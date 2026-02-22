@@ -16,7 +16,7 @@ let socketInstance: Socket<ServerToClientEvents, ClientToServerEvents> | null =
  * Returns the socket immediately (it may not be connected yet).
  * SocketProvider tracks connection state via socket events.
  *
- * Uses a function for `auth` so Socket.IO automatically picks up
+ * Uses a callback function for `auth` so Socket.IO automatically picks up
  * the latest token on every connection/reconnection attempt —
  * no manual token-refresh subscription needed.
  *
@@ -27,7 +27,7 @@ export function getSocketSingleton(): Socket<
   ServerToClientEvents,
   ClientToServerEvents
 > {
-  if (socketInstance?.connected) {
+  if (socketInstance?.active) {
     return socketInstance;
   }
 
@@ -52,7 +52,7 @@ export function getSocketSingleton(): Socket<
 
   socketInstance = io(url, {
     transports: ["websocket"],
-    auth: () => ({ token: `Bearer ${getAccessToken()}` }),
+    auth: (cb) => cb({ token: `Bearer ${getAccessToken()}` }),
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,

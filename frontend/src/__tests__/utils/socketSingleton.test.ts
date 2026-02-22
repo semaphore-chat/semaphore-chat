@@ -7,6 +7,7 @@ vi.mock('../../utils/logger', () => ({
 
 const mockSocket = {
   connected: false,
+  active: true,
   removeAllListeners: vi.fn(),
   disconnect: vi.fn(),
   on: vi.fn(),
@@ -38,6 +39,7 @@ describe('socketSingleton', () => {
     disconnectSocket();
     vi.clearAllMocks();
     mockSocket.connected = false;
+    mockSocket.active = true;
   });
 
   // ─── getSocketSingleton ─────────────────────────────────────────
@@ -67,20 +69,23 @@ describe('socketSingleton', () => {
       }));
     });
 
-    it('uses a function for auth that reads the current token', () => {
+    it('uses a callback function for auth that reads the current token', () => {
       mockGetAccessToken.mockReturnValue('initial-token');
 
       getSocketSingleton();
 
-      const options = mockIo.mock.calls[0][1] as { auth: () => { token: string } };
+      const options = mockIo.mock.calls[0][1] as { auth: (cb: (data: { token: string }) => void) => void };
       expect(typeof options.auth).toBe('function');
 
-      // Auth function should read from getAccessToken dynamically
-      expect(options.auth()).toEqual({ token: 'Bearer initial-token' });
+      // Auth function uses Socket.IO callback pattern: auth(cb) => cb(data)
+      let authData: { token: string } | undefined;
+      options.auth((data) => { authData = data; });
+      expect(authData).toEqual({ token: 'Bearer initial-token' });
 
       // Simulate token refresh — auth function picks up new token
       mockGetAccessToken.mockReturnValue('refreshed-token');
-      expect(options.auth()).toEqual({ token: 'Bearer refreshed-token' });
+      options.auth((data) => { authData = data; });
+      expect(authData).toEqual({ token: 'Bearer refreshed-token' });
     });
 
     it('returns existing connected socket without creating a new one', () => {
@@ -88,10 +93,28 @@ describe('socketSingleton', () => {
 
       const socket1 = getSocketSingleton();
       mockSocket.connected = true;
+      mockSocket.active = true;
       const socket2 = getSocketSingleton();
 
       expect(mockIo).toHaveBeenCalledOnce();
       expect(socket1).toBe(socket2);
+    });
+
+    it('returns existing socket that is still connecting (active but not connected)', () => {
+      mockGetAccessToken.mockReturnValue('valid-token');
+
+      // Create initial socket — it starts active but not yet connected
+      const socket1 = getSocketSingleton();
+      mockSocket.connected = false;
+      mockSocket.active = true;
+
+      // Second call (e.g. StrictMode double-invoke) should reuse, not tear down
+      const socket2 = getSocketSingleton();
+
+      expect(mockIo).toHaveBeenCalledOnce();
+      expect(socket1).toBe(socket2);
+      expect(mockSocket.removeAllListeners).not.toHaveBeenCalled();
+      expect(mockSocket.disconnect).not.toHaveBeenCalled();
     });
 
     it('tears down stale disconnected socket and creates a new one', () => {
@@ -101,12 +124,14 @@ describe('socketSingleton', () => {
       getSocketSingleton();
       expect(mockIo).toHaveBeenCalledOnce();
 
-      // Socket is not connected (stale) — next call should tear it down
+      // Socket was explicitly disconnected (e.g. by disconnectSocket() during logout)
       mockSocket.connected = false;
+      mockSocket.active = false;
 
       // Create a new mock for the second io() call
       const newMockSocket = {
         connected: false,
+        active: true,
         removeAllListeners: vi.fn(),
         disconnect: vi.fn(),
         on: vi.fn(),
@@ -169,6 +194,7 @@ describe('socketSingleton', () => {
 
       const newMockSocket = {
         connected: false,
+        active: true,
         removeAllListeners: vi.fn(),
         disconnect: vi.fn(),
         on: vi.fn(),
