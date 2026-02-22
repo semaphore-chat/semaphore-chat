@@ -5,113 +5,71 @@ import type {
 } from "./SocketContext";
 import { getWebSocketUrl } from "../config/env";
 import { logger } from "./logger";
-import {
-  getAccessToken,
-  refreshToken,
-  onTokenRefreshed,
-} from "./tokenService";
+import { getAccessToken } from "./tokenService";
 
 let socketInstance: Socket<ServerToClientEvents, ClientToServerEvents> | null =
   null;
-let connectPromise: Promise<
-  Socket<ServerToClientEvents, ClientToServerEvents>
-> | null = null;
-
-// Subscribe to token refresh events to update socket auth
-let unsubscribeTokenRefresh: (() => void) | null = null;
-
-export async function getSocketSingleton(): Promise<
-  Socket<ServerToClientEvents, ClientToServerEvents>
-> {
-  if (socketInstance && socketInstance.connected) {
-    return socketInstance;
-  }
-  if (connectPromise) {
-    return connectPromise;
-  }
-
-  connectPromise = (async () => {
-    // Use centralized token service for refresh
-    let token = getAccessToken();
-
-    // If no token, try to refresh
-    if (!token) {
-      logger.dev("[Socket] No access token, attempting refresh...");
-      token = await refreshToken();
-    }
-
-    if (!token) {
-      const error = new Error(
-        "No token available for socket connection. Please log in and configure server connection."
-      );
-      logger.error("[Socket]", error.message);
-      throw error;
-    }
-
-    // Use configurable WebSocket URL from environment
-    const url = getWebSocketUrl();
-    logger.dev("[Socket] Connecting to WebSocket URL:", url);
-
-    socketInstance = io(url, {
-      transports: ["websocket"],
-      auth: { token: `Bearer ${token}` },
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 30000,
-      randomizationFactor: 0.5,
-    });
-
-    // Subscribe to token refresh events to update socket auth
-    // This ensures the socket uses the new token if it reconnects
-    if (unsubscribeTokenRefresh) {
-      unsubscribeTokenRefresh();
-    }
-    unsubscribeTokenRefresh = onTokenRefreshed((newToken) => {
-      logger.dev("[Socket] Token refreshed, updating socket auth");
-      if (socketInstance) {
-        socketInstance.auth = { token: `Bearer ${newToken}` };
-        // Force reconnect with new token if disconnected
-        if (!socketInstance.connected) {
-          logger.dev("[Socket] Socket disconnected, reconnecting with new token");
-          socketInstance.connect();
-        }
-      }
-    });
-
-    return new Promise<Socket<ServerToClientEvents, ClientToServerEvents>>(
-      (resolve, reject) => {
-        socketInstance!.once("connect", () => {
-          logger.dev("Socket connected " + socketInstance!.id);
-          resolve(socketInstance!);
-        });
-        socketInstance!.once("connect_error", (err) => {
-          connectPromise = null;
-          reject(err);
-        });
-      }
-    );
-  })();
-
-  connectPromise = connectPromise.catch((err) => {
-    connectPromise = null;
-    throw err;
-  });
-
-  return connectPromise;
-}
 
 /**
- * Disconnect the socket and cleanup
+ * Get or create the socket singleton.
+ *
+ * Returns the socket immediately (it may not be connected yet).
+ * SocketProvider tracks connection state via socket events.
+ *
+ * Uses a function for `auth` so Socket.IO automatically picks up
+ * the latest token on every connection/reconnection attempt —
+ * no manual token-refresh subscription needed.
+ *
+ * AuthGate guarantees a valid token before SocketProvider mounts,
+ * so this function does not attempt token refresh.
  */
-export function disconnectSocket(): void {
-  if (unsubscribeTokenRefresh) {
-    unsubscribeTokenRefresh();
-    unsubscribeTokenRefresh = null;
+export function getSocketSingleton(): Socket<
+  ServerToClientEvents,
+  ClientToServerEvents
+> {
+  if (socketInstance?.connected) {
+    return socketInstance;
   }
+
+  // Tear down any stale disconnected socket (e.g. from a previous session
+  // with an expired token) so we create a fresh one with the current token.
   if (socketInstance) {
+    logger.dev("[Socket] Cleaning up stale disconnected socket");
+    socketInstance.removeAllListeners();
     socketInstance.disconnect();
     socketInstance = null;
   }
-  connectPromise = null;
+
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error(
+      "No token available for socket connection. Please log in."
+    );
+  }
+
+  const url = getWebSocketUrl();
+  logger.dev("[Socket] Connecting to WebSocket URL:", url);
+
+  socketInstance = io(url, {
+    transports: ["websocket"],
+    auth: () => ({ token: `Bearer ${getAccessToken()}` }),
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 30000,
+    randomizationFactor: 0.5,
+  });
+
+  return socketInstance;
+}
+
+/**
+ * Disconnect the socket and cleanup.
+ */
+export function disconnectSocket(): void {
+  if (socketInstance) {
+    socketInstance.removeAllListeners();
+    socketInstance.disconnect();
+    socketInstance = null;
+  }
 }

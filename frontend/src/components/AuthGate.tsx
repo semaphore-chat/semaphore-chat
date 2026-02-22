@@ -5,10 +5,12 @@ import { useQuery } from "@tanstack/react-query";
 import { onboardingControllerGetStatusOptions } from "../api-client/@tanstack/react-query.gen";
 import {
   getAccessToken,
-  isTokenExpired,
   refreshToken,
   clearTokens,
+  onAuthFailure,
 } from "../utils/tokenService";
+import { disconnectSocket } from "../utils/socketSingleton";
+import { userControllerGetProfile } from "../api-client/sdk.gen";
 import { SocketProvider } from "../utils/SocketProvider";
 import { AvatarCacheProvider } from "../contexts/AvatarCacheContext";
 import { NotificationProvider } from "../contexts/NotificationContext";
@@ -53,6 +55,17 @@ export function AuthGate() {
     }
   }, [isCheckingOnboarding, onboardingChecked, onboardingCheckFailed, onboardingStatus]);
 
+  // Listen for unrecoverable 401s during the session (e.g. refresh token
+  // expired while the user was browsing). The interceptor calls
+  // notifyAuthFailure() instead of performing navigation/cleanup itself.
+  useEffect(() => {
+    return onAuthFailure(() => {
+      clearTokens();
+      disconnectSocket();
+      setAuthState("unauthenticated");
+    });
+  }, []);
+
   async function validateToken() {
     const token = getAccessToken();
 
@@ -61,26 +74,33 @@ export function AuthGate() {
       return;
     }
 
-    if (!isTokenExpired(token)) {
-      // Token looks valid — proceed
-      setAuthState("authenticated");
-      return;
+    // Verify token server-side — catches expiry, revocation, clock skew, etc.
+    // The 401 response interceptor will attempt a refresh automatically.
+    try {
+      const { error } = await userControllerGetProfile();
+      if (!error) {
+        setAuthState("authenticated");
+        return;
+      }
+    } catch {
+      // Network error or other failure — fall through to refresh
     }
 
-    // Token is expired — attempt refresh
-    logger.dev("[AuthGate] Token expired, attempting refresh...");
+    // Server rejected the token (or network error) — try explicit refresh
+    logger.dev("[AuthGate] Server validation failed, attempting refresh...");
     try {
       const newToken = await refreshToken();
       if (newToken) {
         setAuthState("authenticated");
-      } else {
-        clearTokens();
-        setAuthState("unauthenticated");
+        return;
       }
     } catch {
-      clearTokens();
-      setAuthState("unauthenticated");
+      // Refresh failed
     }
+
+    clearTokens();
+    disconnectSocket();
+    setAuthState("unauthenticated");
   }
 
   if (authState === "loading") {

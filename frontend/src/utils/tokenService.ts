@@ -12,7 +12,11 @@ import { logger } from "./logger";
 
 // Event emitter for token refresh notifications
 type TokenRefreshListener = (newToken: string) => void;
-const listeners: Set<TokenRefreshListener> = new Set();
+const refreshListeners: Set<TokenRefreshListener> = new Set();
+
+// Event emitter for unrecoverable auth failures (e.g. refresh token expired)
+type AuthFailureListener = () => void;
+const authFailureListeners: Set<AuthFailureListener> = new Set();
 
 // Mutex for preventing concurrent refresh attempts
 let refreshPromise: Promise<string | null> | null = null;
@@ -126,19 +130,45 @@ export function getAuthenticatedUrl(url: string): string {
  * @returns Unsubscribe function
  */
 export function onTokenRefreshed(listener: TokenRefreshListener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  refreshListeners.add(listener);
+  return () => refreshListeners.delete(listener);
 }
 
 /**
  * Notify all listeners of a token refresh
  */
 function notifyTokenRefreshed(newToken: string): void {
-  listeners.forEach((listener) => {
+  refreshListeners.forEach((listener) => {
     try {
       listener(newToken);
     } catch (error) {
       logger.error("[TokenService] Error in token refresh listener:", error);
+    }
+  });
+}
+
+/**
+ * Subscribe to unrecoverable auth failure events.
+ *
+ * Fired by the HTTP interceptor when a 401 cannot be resolved by refreshing.
+ * AuthGate listens for this to redirect to login.
+ *
+ * @returns Unsubscribe function
+ */
+export function onAuthFailure(listener: AuthFailureListener): () => void {
+  authFailureListeners.add(listener);
+  return () => authFailureListeners.delete(listener);
+}
+
+/**
+ * Notify all listeners of an unrecoverable auth failure.
+ */
+export function notifyAuthFailure(): void {
+  authFailureListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      logger.error("[TokenService] Error in auth failure listener:", error);
     }
   });
 }

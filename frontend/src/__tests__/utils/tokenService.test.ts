@@ -12,6 +12,8 @@ import {
   isTokenExpired,
   getAuthenticatedUrl,
   onTokenRefreshed,
+  onAuthFailure,
+  notifyAuthFailure,
   isRefreshing,
   redirectToLogin,
 } from '../../utils/tokenService';
@@ -283,6 +285,88 @@ describe('tokenService', () => {
 
       // Even if we somehow triggered a refresh, the listener shouldn't fire
       expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── onAuthFailure / notifyAuthFailure ───────────────────────
+
+  describe('onAuthFailure / notifyAuthFailure', () => {
+    it('returns an unsubscribe function', () => {
+      const unsub = onAuthFailure(vi.fn());
+      expect(typeof unsub).toBe('function');
+      unsub();
+    });
+
+    it('calls registered listener when notifyAuthFailure is called', () => {
+      const listener = vi.fn();
+      const unsub = onAuthFailure(listener);
+
+      notifyAuthFailure();
+
+      expect(listener).toHaveBeenCalledOnce();
+      unsub();
+    });
+
+    it('does not call listener after unsubscribe', () => {
+      const listener = vi.fn();
+      const unsub = onAuthFailure(listener);
+      unsub();
+
+      notifyAuthFailure();
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    it('calls multiple listeners', () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+      const unsub1 = onAuthFailure(listener1);
+      const unsub2 = onAuthFailure(listener2);
+
+      notifyAuthFailure();
+
+      expect(listener1).toHaveBeenCalledOnce();
+      expect(listener2).toHaveBeenCalledOnce();
+      unsub1();
+      unsub2();
+    });
+
+    it('continues calling remaining listeners if one throws', () => {
+      const badListener = vi.fn(() => { throw new Error('boom'); });
+      const goodListener = vi.fn();
+      const unsub1 = onAuthFailure(badListener);
+      const unsub2 = onAuthFailure(goodListener);
+
+      notifyAuthFailure();
+
+      expect(badListener).toHaveBeenCalledOnce();
+      expect(goodListener).toHaveBeenCalledOnce();
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.stringContaining('auth failure listener'),
+        expect.any(Error),
+      );
+      unsub1();
+      unsub2();
+    });
+
+    it('is a no-op when no listeners are registered', () => {
+      expect(() => notifyAuthFailure()).not.toThrow();
+    });
+
+    it('only unsubscribes the specific listener', () => {
+      const listener1 = vi.fn();
+      const listener2 = vi.fn();
+      const unsub1 = onAuthFailure(listener1);
+      onAuthFailure(listener2);
+
+      unsub1();
+      notifyAuthFailure();
+
+      expect(listener1).not.toHaveBeenCalled();
+      expect(listener2).toHaveBeenCalledOnce();
+
+      // cleanup
+      listener2.mockClear();
     });
   });
 

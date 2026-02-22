@@ -1,6 +1,6 @@
 import { client } from './api-client/client.gen';
 import { getApiBaseUrl } from './config/env';
-import { getAccessToken, refreshToken, redirectToLogin } from './utils/tokenService';
+import { getAccessToken, refreshToken, notifyAuthFailure } from './utils/tokenService';
 
 export function configureApiClient() {
   // The generated SDK URLs already include the /api prefix (e.g. /api/auth/login),
@@ -36,13 +36,16 @@ export function configureApiClient() {
         retryRequest.headers.set('Authorization', `Bearer ${newToken}`);
         return fetch(retryRequest);
       }
+
+      // Refresh failed — notify the auth layer (AuthGate) to handle cleanup
+      // and redirect. Don't perform side effects here (navigation, socket
+      // teardown) — that's the UI layer's responsibility.
       const publicPrefixes = ['/login', '/register', '/join', '/onboarding'];
       const currentPath = window.location.hash.replace('#', '') || '/';
       const isPublicRoute = publicPrefixes.some(p => currentPath === p || currentPath.startsWith(p + '/'));
-      if (isPublicRoute) {
-        return response;
+      if (!isPublicRoute) {
+        notifyAuthFailure();
       }
-      redirectToLogin();
     }
     return response;
   });

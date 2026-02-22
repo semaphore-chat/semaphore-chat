@@ -1,5 +1,5 @@
 import { Socket } from "socket.io-client";
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { getSocketSingleton } from "./socketSingleton";
 import {
   SocketContext,
@@ -8,57 +8,22 @@ import {
 } from "./SocketContext";
 import { logger } from "./logger";
 
-const MAX_RETRY_COUNT = 3;
-const RETRY_DELAY_MS = 2000;
-
 export function SocketProvider({ children }: { children: React.ReactNode }) {
-  const [socket, setSocket] = useState<Socket<
+  const [socket] = useState<Socket<
     ServerToClientEvents,
     ClientToServerEvents
-  > | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
-  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const mountedRef = useRef(true);
-
-  const connectSocket = useCallback(async (retryCount: number) => {
+  > | null>(() => {
     try {
-      const sock = await getSocketSingleton();
-      if (!mountedRef.current) return;
-      setSocket(sock);
-      setIsConnected(sock.connected);
+      return getSocketSingleton();
     } catch (err) {
-      if (!mountedRef.current) return;
-      const error =
-        err instanceof Error ? err : new Error("Socket connection failed");
-      logger.error("[Socket] Failed to connect:", error.message);
-
-      if (retryCount < MAX_RETRY_COUNT) {
-        logger.info(
-          `[Socket] Retrying connection (${retryCount + 1}/${MAX_RETRY_COUNT})...`
-        );
-        retryTimeoutRef.current = setTimeout(() => {
-          connectSocket(retryCount + 1);
-        }, RETRY_DELAY_MS);
-      } else {
-        logger.error("[Socket] Max retries exceeded");
-      }
+      logger.error(
+        "[Socket] Failed to create socket:",
+        err instanceof Error ? err.message : err
+      );
+      return null;
     }
-  }, []);
-
-  // AuthGate guarantees a valid token before this component mounts,
-  // so we connect immediately.
-  useEffect(() => {
-    mountedRef.current = true;
-    connectSocket(0);
-
-    return () => {
-      mountedRef.current = false;
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
-        retryTimeoutRef.current = null;
-      }
-    };
-  }, [connectSocket]);
+  });
+  const [isConnected, setIsConnected] = useState(socket?.connected ?? false);
 
   // Track connection state via socket events
   useEffect(() => {
@@ -75,7 +40,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
       if (reason === "io server disconnect") {
         // Server initiated disconnect — Socket.IO will NOT auto-reconnect
-        logger.warn("[Socket] Server-initiated disconnect, reconnecting explicitly");
+        logger.warn(
+          "[Socket] Server-initiated disconnect, reconnecting explicitly"
+        );
         socket.connect();
       }
       // For all other reasons, Socket.IO will auto-reconnect

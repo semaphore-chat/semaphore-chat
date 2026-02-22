@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
+import { notifyAuthFailure } from '../../utils/tokenService';
 import { Route, Routes } from 'react-router-dom';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
@@ -13,6 +14,12 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
     client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
   };
 });
+
+// Mock disconnectSocket so we can verify it's called on auth failure
+const mockDisconnectSocket = vi.fn();
+vi.mock('../../utils/socketSingleton', () => ({
+  disconnectSocket: (...args: unknown[]) => mockDisconnectSocket(...args),
+}));
 
 // Track whether SocketProvider mounted — this is the key invariant
 // (no socket connection should happen without validated auth)
@@ -62,15 +69,20 @@ function expiredToken() {
   return makeJwt(Math.floor(Date.now() / 1000) - 60);
 }
 
-function soonExpiringToken(secondsRemaining: number) {
-  return makeJwt(Math.floor(Date.now() / 1000) + secondsRemaining);
-}
-
 /** Standard: onboarding check passes, no setup needed */
 function mockOnboardingOk() {
   server.use(
     http.get(`${BASE_URL}/api/onboarding/status`, () =>
       HttpResponse.json({ needsSetup: false }),
+    ),
+  );
+}
+
+/** Mock profile endpoint to return 401 (token rejected by server) */
+function mockProfileUnauthorized() {
+  server.use(
+    http.get(`${BASE_URL}/api/users/profile`, () =>
+      HttpResponse.json({ message: 'Unauthorized' }, { status: 401 }),
     ),
   );
 }
@@ -95,6 +107,7 @@ describe('AuthGate', () => {
     localStorage.clear();
     vi.clearAllMocks();
     socketProviderMounted = false;
+    mockDisconnectSocket.mockReset();
   });
 
   // ─── Loading State ─────────────────────────────────────────────
@@ -256,7 +269,7 @@ describe('AuthGate', () => {
   // ─── Valid Token ───────────────────────────────────────────────
 
   describe('valid token', () => {
-    it('renders authenticated content when token is valid', async () => {
+    it('renders authenticated content when server accepts token', async () => {
       localStorage.setItem('accessToken', validToken());
       mockOnboardingOk();
 
@@ -302,7 +315,7 @@ describe('AuthGate', () => {
       });
     });
 
-    it('does not trigger token refresh when token is still valid', async () => {
+    it('does not trigger token refresh when server accepts the token', async () => {
       localStorage.setItem('accessToken', validToken());
       mockOnboardingOk();
 
@@ -352,10 +365,11 @@ describe('AuthGate', () => {
       });
     });
 
-    it('redirects to /login when legacy-format token is expired', async () => {
+    it('redirects to /login when legacy-format token is rejected by server', async () => {
       const token = expiredToken();
       localStorage.setItem('accessToken', JSON.stringify(token));
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () =>
           HttpResponse.json({ message: 'Expired' }, { status: 401 }),
@@ -370,14 +384,15 @@ describe('AuthGate', () => {
     });
   });
 
-  // ─── Expired Token + Refresh ──────────────────────────────────
+  // ─── Server-Rejected Token + Refresh ───────────────────────────
 
-  describe('expired token refresh flow', () => {
-    it('refreshes an expired token and authenticates on success', async () => {
+  describe('server-rejected token refresh flow', () => {
+    it('refreshes when server rejects token and authenticates on success', async () => {
       localStorage.setItem('accessToken', expiredToken());
 
       const freshToken = validToken();
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () =>
           HttpResponse.json({ accessToken: freshToken }),
@@ -390,53 +405,13 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('home')).toBeInTheDocument();
       });
       expect(localStorage.getItem('accessToken')).toBe(freshToken);
-    });
-
-    it('triggers refresh for token expiring within 30s buffer', async () => {
-      // Token expires in 10 seconds — within the 30s buffer
-      localStorage.setItem('accessToken', soonExpiringToken(10));
-
-      const freshToken = validToken();
-      mockOnboardingOk();
-      server.use(
-        http.post(`${BASE_URL}/api/auth/refresh`, () =>
-          HttpResponse.json({ accessToken: freshToken }),
-        ),
-      );
-
-      renderAuthGate();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('home')).toBeInTheDocument();
-      });
-      expect(localStorage.getItem('accessToken')).toBe(freshToken);
-    });
-
-    it('does NOT trigger refresh for token expiring in 31+ seconds', async () => {
-      // Token expires in 60 seconds — outside the 30s buffer
-      localStorage.setItem('accessToken', soonExpiringToken(60));
-      mockOnboardingOk();
-
-      let refreshCalled = false;
-      server.use(
-        http.post(`${BASE_URL}/api/auth/refresh`, () => {
-          refreshCalled = true;
-          return HttpResponse.json({ accessToken: validToken() });
-        }),
-      );
-
-      renderAuthGate();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('home')).toBeInTheDocument();
-      });
-      expect(refreshCalled).toBe(false);
     });
 
     it('redirects to /login when refresh returns 401', async () => {
       localStorage.setItem('accessToken', expiredToken());
 
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () =>
           HttpResponse.json({ message: 'Invalid' }, { status: 401 }),
@@ -455,6 +430,7 @@ describe('AuthGate', () => {
       localStorage.setItem('refreshToken', 'old-refresh-token');
 
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () =>
           HttpResponse.json({ message: 'Expired' }, { status: 401 }),
@@ -470,10 +446,30 @@ describe('AuthGate', () => {
       expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 
+    it('calls disconnectSocket when refresh fails', async () => {
+      localStorage.setItem('accessToken', expiredToken());
+
+      mockOnboardingOk();
+      mockProfileUnauthorized();
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () =>
+          HttpResponse.json({ message: 'Expired' }, { status: 401 }),
+        ),
+      );
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(mockDisconnectSocket).toHaveBeenCalled();
+    });
+
     it('redirects to /login when refresh returns a network error', async () => {
       localStorage.setItem('accessToken', expiredToken());
 
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () => HttpResponse.error()),
       );
@@ -492,6 +488,7 @@ describe('AuthGate', () => {
       // Use a delayed response so we can assert during the in-flight state
       let refreshStarted = false;
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, async () => {
           refreshStarted = true;
@@ -521,6 +518,7 @@ describe('AuthGate', () => {
       localStorage.setItem('accessToken', expiredToken());
 
       mockOnboardingOk();
+      mockProfileUnauthorized();
       server.use(
         http.post(`${BASE_URL}/api/auth/refresh`, () =>
           HttpResponse.json({ message: 'Expired' }, { status: 401 }),
@@ -533,6 +531,70 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
       expect(socketProviderMounted).toBe(false);
+    });
+  });
+
+  // ─── Mid-Session Auth Failure (event-driven) ──────────────────
+
+  describe('mid-session auth failure via notifyAuthFailure', () => {
+    it('redirects to /login when notifyAuthFailure is called', async () => {
+      localStorage.setItem('accessToken', validToken());
+      mockOnboardingOk();
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+
+      // Simulate the interceptor detecting an unrecoverable 401
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+    });
+
+    it('calls disconnectSocket and clears tokens on notifyAuthFailure', async () => {
+      localStorage.setItem('accessToken', validToken());
+      mockOnboardingOk();
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      expect(mockDisconnectSocket).toHaveBeenCalled();
+      expect(localStorage.getItem('accessToken')).toBeNull();
+    });
+
+    it('unmounts SocketProvider on notifyAuthFailure', async () => {
+      localStorage.setItem('accessToken', validToken());
+      mockOnboardingOk();
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('socket-provider')).toBeInTheDocument();
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId('socket-provider')).not.toBeInTheDocument();
+      });
     });
   });
 });
