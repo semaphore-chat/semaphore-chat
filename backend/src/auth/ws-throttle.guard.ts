@@ -20,13 +20,13 @@ interface RateLimitEntry {
  * The HTTP ThrottlerGuard doesn't apply to WebSocket gateways,
  * so this provides equivalent protection for WS events.
  *
- * Default: 30 events per 10 seconds per connection.
+ * Default: 50 events per 10 seconds per connection.
  */
 @Injectable()
 export class WsThrottleGuard implements CanActivate, OnModuleDestroy {
   private readonly logger = new Logger(WsThrottleGuard.name);
   private readonly limits = new Map<string, RateLimitEntry>();
-  private readonly maxEventsPerWindow = 30;
+  private readonly maxEventsPerWindow = 50;
   private readonly windowMs = 10000;
   private readonly cleanupInterval: NodeJS.Timeout;
 

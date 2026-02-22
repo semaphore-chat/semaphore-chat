@@ -30,6 +30,8 @@ export const useMessageVisibility = ({
   const observerRef = useRef<IntersectionObserver | null>(null);
   const visibleMessagesRef = useRef<Set<string>>(new Set());
   const lastMarkedMessageIdRef = useRef<string | null>(null);
+  const pendingMessageIdRef = useRef<string | null>(null);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messagesRef = useRef(messages);
 
   // Keep messages ref updated
@@ -37,20 +39,22 @@ export const useMessageVisibility = ({
     messagesRef.current = messages;
   }, [messages]);
 
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
   // Stable callback to mark messages as read
+  // Optimistic cache update runs immediately; socket emit is debounced (1s trailing)
   const markAsRead = useCallback(
     (messageId: string) => {
       if (!socket || !enabled) return;
       if (!channelId && !directMessageGroupId) return;
       if (lastMarkedMessageIdRef.current === messageId) return;
-
-      const payload: MarkAsReadPayload = {
-        lastReadMessageId: messageId,
-        ...(channelId ? { channelId } : { directMessageGroupId }),
-      };
-
-      socket.emit(ClientEvents.MARK_AS_READ, payload);
-      lastMarkedMessageIdRef.current = messageId;
 
       // Optimistic cache clear — immediately remove unread/mention indicators
       const id = channelId || directMessageGroupId;
@@ -73,6 +77,25 @@ export const useMessageVisibility = ({
           return next;
         });
       }
+
+      // Debounced socket emit — only fires after scrolling settles
+      pendingMessageIdRef.current = messageId;
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+      debounceTimerRef.current = setTimeout(() => {
+        const pendingId = pendingMessageIdRef.current;
+        if (!pendingId || lastMarkedMessageIdRef.current === pendingId) return;
+
+        const payload: MarkAsReadPayload = {
+          lastReadMessageId: pendingId,
+          ...(channelId ? { channelId } : { directMessageGroupId }),
+        };
+
+        socket.emit(ClientEvents.MARK_AS_READ, payload);
+        lastMarkedMessageIdRef.current = pendingId;
+        debounceTimerRef.current = null;
+      }, 1000);
     },
     [socket, channelId, directMessageGroupId, enabled, queryClient]
   );
