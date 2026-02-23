@@ -24,10 +24,10 @@ export const IncomingCallBanner: React.FC = () => {
   const handleAccept = async () => {
     try {
       await actions.joinDmVoice(incomingCall.dmGroupId, incomingCall.dmGroupName);
+      dismissCall();
     } catch (error) {
       logger.error("Failed to accept incoming DM voice call:", error);
     }
-    dismissCall();
   };
 
   const handleDecline = () => {
@@ -36,6 +36,7 @@ export const IncomingCallBanner: React.FC = () => {
 
   return (
     <Paper
+      role="alert"
       elevation={8}
       sx={{
         position: "fixed",

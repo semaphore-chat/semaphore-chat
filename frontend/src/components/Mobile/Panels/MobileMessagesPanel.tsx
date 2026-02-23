@@ -78,7 +78,7 @@ export const MobileMessagesPanel: React.FC = () => {
                 currentUserId={currentUser?.id}
                 onClick={() => handleDmClick(dmGroup.id)}
                 touchFriendly
-                isInCall={voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
+                isInCall={voiceState.isConnected && voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
               />
             ))}
             {dmGroups.length === 0 && (

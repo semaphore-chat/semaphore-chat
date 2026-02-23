@@ -51,7 +51,7 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
               currentUserId={currentUser?.id}
               isSelected={selectedDmGroupId === dmGroup.id}
               onClick={() => onSelectDmGroup(dmGroup.id)}
-              isInCall={voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
+              isInCall={voiceState.isConnected && voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
             />
           ))}
           {dmGroups.length === 0 && (

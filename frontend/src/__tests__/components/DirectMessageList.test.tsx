@@ -27,6 +27,13 @@ vi.mock('../../components/Common/EmptyState', () => ({
   default: ({ variant }: { variant: string }) => <div data-testid="empty-state">Empty {variant}</div>,
 }));
 
+vi.mock('../../hooks/useVoiceConnection', () => ({
+  useVoiceConnection: vi.fn(() => ({
+    state: { isConnected: false, contextType: null, currentDmGroupId: null },
+    actions: {},
+  })),
+}));
+
 const defaultProps = {
   onSelectDmGroup: vi.fn(),
   showCreateDialog: false,

@@ -27,8 +27,13 @@ export const IncomingCallListener: React.FC = () => {
         avatarUrl?: string | null;
       };
     }) => {
+      // Don't ring if not logged in
+      if (!user) {
+        return;
+      }
+
       // Don't ring for our own calls
-      if (user && payload.startedBy === user.id) {
+      if (payload.startedBy === user.id) {
         return;
       }
 

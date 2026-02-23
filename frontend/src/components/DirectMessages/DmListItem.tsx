@@ -67,7 +67,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
             <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
               {getDmDisplayName(group, currentUserId)}
               {isInCall && (
-                <Phone sx={{ fontSize: 14, color: "success.main" }} />
+                <Phone aria-label="In call" sx={{ fontSize: 14, color: "success.main" }} />
               )}
             </Box>
           }
