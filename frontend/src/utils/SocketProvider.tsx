@@ -56,6 +56,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
 
+    // If the socket connected before this effect ran (or during a
+    // StrictMode cleanup/re-register cycle), sync state now.
+    if (socket.connected) {
+      setIsConnected(true);
+    }
+
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
