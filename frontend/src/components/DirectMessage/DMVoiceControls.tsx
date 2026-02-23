@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Box, IconButton, Tooltip, CircularProgress } from "@mui/material";
+import { Box, IconButton, Tooltip, CircularProgress, Chip } from "@mui/material";
 import { Phone, Videocam } from "@mui/icons-material";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { logger } from "../../utils/logger";
@@ -70,23 +70,12 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
   // If in this DM call, show active indicator (controls are in bottom bar)
   if (isInThisDmCall) {
     return (
-      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-        <Tooltip title="In voice call">
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: "50%",
-              backgroundColor: "success.main",
-              animation: "pulse 2s infinite",
-              "@keyframes pulse": {
-                "0%, 100%": { opacity: 1 },
-                "50%": { opacity: 0.5 },
-              },
-            }}
-          />
-        </Tooltip>
-      </Box>
+      <Chip
+        icon={<Phone />}
+        label="In Call"
+        color="success"
+        size="small"
+      />
     );
   }
 

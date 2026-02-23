@@ -24,6 +24,9 @@ import NotificationCenter from "./components/Notifications/NotificationCenter";
 import { ReplayBufferProvider } from "./contexts/ReplayBufferContext";
 import { VideoOverlayProvider, useVideoOverlay } from "./contexts/VideoOverlayContext";
 import { SocketHubProvider } from "./socket-hub";
+import { IncomingCallProvider } from "./contexts/IncomingCallContext";
+import { IncomingCallListener } from "./components/DirectMessage/IncomingCallListener";
+import { IncomingCallBanner } from "./components/DirectMessage/IncomingCallBanner";
 import { setTelemetryUser, clearTelemetryUser } from "./services/telemetry";
 import { useThemeSync } from "./hooks/useThemeSync";
 import { disconnectSocket } from "./utils/socketSingleton";
@@ -151,8 +154,12 @@ const Layout: React.FC = () => {
     return (
       <ReplayBufferProvider>
         <SocketHubProvider>
-          <LayoutHooksBridge />
-          <MobileLayout />
+          <IncomingCallProvider>
+            <LayoutHooksBridge />
+            <IncomingCallListener />
+            <IncomingCallBanner />
+            <MobileLayout />
+          </IncomingCallProvider>
         </SocketHubProvider>
       </ReplayBufferProvider>
     );
@@ -163,8 +170,12 @@ const Layout: React.FC = () => {
     return (
       <ReplayBufferProvider>
         <SocketHubProvider>
-          <LayoutHooksBridge />
-          <TabletLayout />
+          <IncomingCallProvider>
+            <LayoutHooksBridge />
+            <IncomingCallListener />
+            <IncomingCallBanner />
+            <TabletLayout />
+          </IncomingCallProvider>
         </SocketHubProvider>
       </ReplayBufferProvider>
     );
@@ -174,71 +185,75 @@ const Layout: React.FC = () => {
   return (
     <ReplayBufferProvider>
       <SocketHubProvider>
-        <LayoutHooksBridge />
-        <VideoOverlayProvider>
-          <AppBar position="fixed">
-            <Toolbar sx={{ minHeight: APPBAR_HEIGHT }}>
-              <div
-                style={{
-                  flexGrow: 1,
-                  flexDirection: "row",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.25em",
-                }}
-              >
-                <IconButton
-                  size="large"
-                  edge="start"
-                  aria-label="menu"
-                  onClick={() => setIsMenuExpanded(!isMenuExpanded)}
-                  sx={{ mr: 2, color: "text.primary" }}
+        <IncomingCallProvider>
+          <LayoutHooksBridge />
+          <IncomingCallListener />
+          <IncomingCallBanner />
+          <VideoOverlayProvider>
+            <AppBar position="fixed">
+              <Toolbar sx={{ minHeight: APPBAR_HEIGHT }}>
+                <div
+                  style={{
+                    flexGrow: 1,
+                    flexDirection: "row",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.25em",
+                  }}
                 >
-                  <MenuIcon />
-                </IconButton>
-                <Typography variant="h6" sx={{ color: "text.primary" }}>Kraken</Typography>
-              </div>
-              <NavigationLinks
-                isLoading={isLoading}
-                isError={isError}
-                userData={userData as User | undefined}
-                handleLogout={handleLogout}
-                logoutLoading={logoutLoading}
-              />
-              <ThemeToggle />
-              &nbsp;
-              {!isLoading && (
-                <>
-                  <NotificationBadge
-                    onClick={() => setNotificationCenterOpen(true)}
-                  />
-                  <ProfileIcon
-                    userData={profileUserData}
-                    anchorElUser={anchorElUser}
-                    handleOpenUserMenu={handleOpenUserMenu}
-                    handleCloseUserMenu={handleCloseUserMenu}
-                    settings={settings}
-                    onSettingClick={handleSettingClick}
-                  />
-                </>
-              )}
-            </Toolbar>
-          </AppBar>
-          <NotificationCenter
-            open={notificationCenterOpen}
-            onClose={() => setNotificationCenterOpen(false)}
-          />
-          <CommunityToggle
-            isExpanded={isMenuExpanded}
-            appBarHeight={APPBAR_HEIGHT}
-          />
-          <LayoutContentArea voiceConnected={voiceState.isConnected} isMenuExpanded={isMenuExpanded} />
+                  <IconButton
+                    size="large"
+                    edge="start"
+                    aria-label="menu"
+                    onClick={() => setIsMenuExpanded(!isMenuExpanded)}
+                    sx={{ mr: 2, color: "text.primary" }}
+                  >
+                    <MenuIcon />
+                  </IconButton>
+                  <Typography variant="h6" sx={{ color: "text.primary" }}>Kraken</Typography>
+                </div>
+                <NavigationLinks
+                  isLoading={isLoading}
+                  isError={isError}
+                  userData={userData as User | undefined}
+                  handleLogout={handleLogout}
+                  logoutLoading={logoutLoading}
+                />
+                <ThemeToggle />
+                &nbsp;
+                {!isLoading && (
+                  <>
+                    <NotificationBadge
+                      onClick={() => setNotificationCenterOpen(true)}
+                    />
+                    <ProfileIcon
+                      userData={profileUserData}
+                      anchorElUser={anchorElUser}
+                      handleOpenUserMenu={handleOpenUserMenu}
+                      handleCloseUserMenu={handleCloseUserMenu}
+                      settings={settings}
+                      onSettingClick={handleSettingClick}
+                    />
+                  </>
+                )}
+              </Toolbar>
+            </AppBar>
+            <NotificationCenter
+              open={notificationCenterOpen}
+              onClose={() => setNotificationCenterOpen(false)}
+            />
+            <CommunityToggle
+              isExpanded={isMenuExpanded}
+              appBarHeight={APPBAR_HEIGHT}
+            />
+            <LayoutContentArea voiceConnected={voiceState.isConnected} isMenuExpanded={isMenuExpanded} />
 
-          {/* Voice Components */}
-          <VoiceBottomBar />
-          <AudioRenderer />
-          <PersistentVideoOverlay />
-        </VideoOverlayProvider>
+            {/* Voice Components */}
+            <VoiceBottomBar />
+            <AudioRenderer />
+            <PersistentVideoOverlay />
+          </VideoOverlayProvider>
+        </IncomingCallProvider>
       </SocketHubProvider>
     </ReplayBufferProvider>
   );

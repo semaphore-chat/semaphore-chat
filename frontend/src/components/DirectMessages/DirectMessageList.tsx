@@ -9,6 +9,7 @@ import {
   directMessagesControllerFindUserDmGroupsOptions,
   userControllerGetProfileOptions,
 } from "../../api-client/@tanstack/react-query.gen";
+import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 
 import DmListItem from "./DmListItem";
 import CreateDmDialog from "./CreateDmDialog";
@@ -29,6 +30,7 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
 }) => {
   const { data: dmGroups = [], isLoading } = useQuery(directMessagesControllerFindUserDmGroupsOptions());
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
+  const { state: voiceState } = useVoiceConnection();
 
   if (isLoading) {
     return (
@@ -49,6 +51,7 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
               currentUserId={currentUser?.id}
               isSelected={selectedDmGroupId === dmGroup.id}
               onClick={() => onSelectDmGroup(dmGroup.id)}
+              isInCall={voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
             />
           ))}
           {dmGroups.length === 0 && (

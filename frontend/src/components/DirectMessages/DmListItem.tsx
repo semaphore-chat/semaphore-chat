@@ -14,7 +14,7 @@ import {
   ListItemText,
   Avatar,
 } from "@mui/material";
-import { Group as GroupIcon } from "@mui/icons-material";
+import { Group as GroupIcon, Phone } from "@mui/icons-material";
 
 import UserAvatar from "../Common/UserAvatar";
 import { getDmDisplayName, getDmOtherUser, formatLastMessageTime } from "../../utils/dmHelpers";
@@ -26,6 +26,7 @@ interface DmListItemProps {
   isSelected?: boolean;
   onClick: () => void;
   touchFriendly?: boolean;
+  isInCall?: boolean;
 }
 
 const DmListItem: React.FC<DmListItemProps> = ({
@@ -34,6 +35,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
   isSelected = false,
   onClick,
   touchFriendly = false,
+  isInCall = false,
 }) => {
   return (
     <ListItem disablePadding>
@@ -61,7 +63,14 @@ const DmListItem: React.FC<DmListItemProps> = ({
           )}
         </ListItemAvatar>
         <ListItemText
-          primary={getDmDisplayName(group, currentUserId)}
+          primary={
+            <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+              {getDmDisplayName(group, currentUserId)}
+              {isInCall && (
+                <Phone sx={{ fontSize: 14, color: "success.main" }} />
+              )}
+            </Box>
+          }
           secondary={
             group.lastMessage ? (
               <Box

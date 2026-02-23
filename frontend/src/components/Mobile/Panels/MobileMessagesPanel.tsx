@@ -25,6 +25,7 @@ import {
 import DmListItem from '../../DirectMessages/DmListItem';
 import CreateDmDialog from '../../DirectMessages/CreateDmDialog';
 import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
+import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
 import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
 import MobileAppBar from '../MobileAppBar';
 
@@ -36,6 +37,7 @@ export const MobileMessagesPanel: React.FC = () => {
   const { navigateToDmChat } = useMobileNavigation();
   const { data: dmGroups = [], isLoading } = useQuery(directMessagesControllerFindUserDmGroupsOptions());
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
+  const { state: voiceState } = useVoiceConnection();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
@@ -76,6 +78,7 @@ export const MobileMessagesPanel: React.FC = () => {
                 currentUserId={currentUser?.id}
                 onClick={() => handleDmClick(dmGroup.id)}
                 touchFriendly
+                isInCall={voiceState.contextType === "dm" && voiceState.currentDmGroupId === dmGroup.id}
               />
             ))}
             {dmGroups.length === 0 && (
