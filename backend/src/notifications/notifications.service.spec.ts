@@ -750,6 +750,323 @@ describe('NotificationsService', () => {
   });
 
   // ============================================================================
+  // PUSH NOTIFICATION BODY
+  // ============================================================================
+
+  describe('push notification body formatting', () => {
+    const authorId = 'author-1';
+    const channelId = 'channel-1';
+    const communityId = 'community-1';
+
+    const authorInfo = {
+      id: authorId,
+      username: 'johndoe',
+      displayName: 'John Doe',
+      avatarUrl: null,
+    };
+
+    const channelInfo = {
+      id: channelId,
+      name: 'general',
+      communityId,
+    };
+
+    beforeEach(() => {
+      pushNotificationsService.isEnabled.mockReturnValue(true);
+    });
+
+    function setupNotificationCreate(
+      type: NotificationType,
+      spans: any[],
+      options: { channel?: boolean } = {},
+    ) {
+      const notification = NotificationFactory.build({
+        type,
+        authorId,
+        channelId: options.channel !== false ? channelId : null,
+      });
+
+      mockDatabase.notification.create.mockResolvedValue({
+        ...notification,
+        author: authorInfo,
+        message: { id: 'msg-1', spans, channelId, directMessageGroupId: null },
+        channel: options.channel !== false ? channelInfo : null,
+      });
+
+      return notification;
+    }
+
+    it('should include message text in USER_MENTION push body', async () => {
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: 'Hello world', userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      setupNotificationCreate(NotificationType.USER_MENTION, spans);
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      const message = MessageFactory.build({
+        id: 'msg-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.USER_MENTION, userId: 'target-user', text: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'target-user',
+        expect.objectContaining({
+          body: 'John Doe: Hello world',
+        }),
+      );
+    });
+
+    it('should fallback to generic text for USER_MENTION when message has no text spans', async () => {
+      setupNotificationCreate(NotificationType.USER_MENTION, []);
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      const message = MessageFactory.build({
+        id: 'msg-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.USER_MENTION, userId: 'target-user', text: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'target-user',
+        expect.objectContaining({
+          body: 'John Doe mentioned you',
+        }),
+      );
+    });
+
+    it('should include message text in DIRECT_MESSAGE push body', async () => {
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: 'Hey there!', userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      const notification = NotificationFactory.build({
+        type: NotificationType.DIRECT_MESSAGE,
+        authorId,
+        channelId: null,
+        directMessageGroupId: 'dm-group-1',
+      });
+
+      mockDatabase.notification.create.mockResolvedValue({
+        ...notification,
+        author: authorInfo,
+        message: { id: 'msg-1', spans, channelId: null, directMessageGroupId: 'dm-group-1' },
+        channel: null,
+      });
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+
+      const message = MessageFactory.buildDirectMessage({
+        id: 'msg-1',
+        directMessageGroupId: 'dm-group-1',
+        authorId,
+        spans: [],
+      });
+
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'recipient-1' },
+      ]);
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'recipient-1',
+        expect.objectContaining({
+          body: 'Hey there!',
+        }),
+      );
+    });
+
+    it('should fallback to generic text for DIRECT_MESSAGE when message has no text spans', async () => {
+      const notification = NotificationFactory.build({
+        type: NotificationType.DIRECT_MESSAGE,
+        authorId,
+        channelId: null,
+        directMessageGroupId: 'dm-group-1',
+      });
+
+      mockDatabase.notification.create.mockResolvedValue({
+        ...notification,
+        author: authorInfo,
+        message: { id: 'msg-1', spans: [], channelId: null, directMessageGroupId: 'dm-group-1' },
+        channel: null,
+      });
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+
+      const message = MessageFactory.buildDirectMessage({
+        id: 'msg-1',
+        directMessageGroupId: 'dm-group-1',
+        authorId,
+        spans: [],
+      });
+
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
+        { userId: 'recipient-1' },
+      ]);
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'recipient-1',
+        expect.objectContaining({
+          body: 'New message',
+        }),
+      );
+    });
+
+    it('should include message text in THREAD_REPLY push body', async () => {
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: 'I agree!', userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      const notification = NotificationFactory.build({
+        type: NotificationType.THREAD_REPLY,
+        authorId,
+        channelId,
+      });
+
+      mockDatabase.notification.create.mockResolvedValue({
+        ...notification,
+        author: authorInfo,
+        message: { id: 'reply-1', spans, channelId, directMessageGroupId: null },
+        channel: channelInfo,
+      });
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      mockDatabase.threadSubscriber.findMany.mockResolvedValue([
+        { userId: 'subscriber-1' },
+      ]);
+
+      const reply = MessageFactory.build({
+        id: 'reply-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.PLAINTEXT, text: 'I agree!', userId: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processThreadReplyNotifications(reply, 'parent-msg-1', authorId);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'subscriber-1',
+        expect.objectContaining({
+          body: 'John Doe: I agree!',
+        }),
+      );
+    });
+
+    it('should truncate long message text to 100 characters', async () => {
+      const longText = 'A'.repeat(150);
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: longText, userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      setupNotificationCreate(NotificationType.USER_MENTION, spans);
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      const message = MessageFactory.build({
+        id: 'msg-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.USER_MENTION, userId: 'target-user', text: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'target-user',
+        expect.objectContaining({
+          body: `John Doe: ${'A'.repeat(100)}...`,
+        }),
+      );
+    });
+
+    it('should preserve original case in message text', async () => {
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: 'Hello World! Testing CaSe', userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      setupNotificationCreate(NotificationType.USER_MENTION, spans);
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      const message = MessageFactory.build({
+        id: 'msg-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.USER_MENTION, userId: 'target-user', text: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'target-user',
+        expect.objectContaining({
+          body: 'John Doe: Hello World! Testing CaSe',
+        }),
+      );
+    });
+
+    it('should join multiple spans into a single text', async () => {
+      const spans = [
+        { type: SpanType.PLAINTEXT, text: 'Hello', userId: null, specialKind: null, communityId: null, aliasId: null },
+        { type: SpanType.PLAINTEXT, text: 'World', userId: null, specialKind: null, communityId: null, aliasId: null },
+      ];
+      setupNotificationCreate(NotificationType.USER_MENTION, spans);
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.findUnique.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(null);
+
+      const message = MessageFactory.build({
+        id: 'msg-1',
+        channelId,
+        authorId,
+        spans: [
+          { type: SpanType.USER_MENTION, userId: 'target-user', text: null, specialKind: null, communityId: null, aliasId: null },
+        ],
+      });
+
+      await service.processMessageForNotifications(message);
+
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'target-user',
+        expect.objectContaining({
+          body: 'John Doe: Hello World',
+        }),
+      );
+    });
+  });
+
+  // ============================================================================
   // DEBUG METHODS
   // ============================================================================
 

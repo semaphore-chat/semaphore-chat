@@ -20,6 +20,7 @@ import { UpdateChannelOverrideDto } from './dto/update-channel-override.dto';
 import { NotificationQueryDto } from './dto/notification-query.dto';
 import { NotificationsGateway } from './notifications.gateway';
 import { PushNotificationsService } from '@/push-notifications/push-notifications.service';
+import { flattenSpansToDisplayText } from '@/common/utils/text.utils';
 
 @Injectable()
 export class NotificationsService {
@@ -348,6 +349,7 @@ export class NotificationsService {
     notification: Notification & {
       author: { username: string; displayName: string | null } | null;
       channel: { name: string; communityId: string } | null;
+      message: { spans: { text?: string | null }[] } | null;
     },
   ): Promise<void> {
     try {
@@ -414,6 +416,7 @@ export class NotificationsService {
   private formatPushBody(
     notification: Notification & {
       author: { username: string; displayName: string | null } | null;
+      message: { spans: { text?: string | null }[] } | null;
     },
   ): string {
     const authorName =
@@ -421,15 +424,30 @@ export class NotificationsService {
       notification.author?.username ||
       'Someone';
 
+    const MAX_BODY_LENGTH = 100;
+    const rawText = notification.message?.spans
+      ? flattenSpansToDisplayText(notification.message.spans)
+      : undefined;
+    const messageText =
+      rawText && rawText.length > MAX_BODY_LENGTH
+        ? rawText.slice(0, MAX_BODY_LENGTH) + '...'
+        : rawText;
+
     switch (notification.type) {
       case NotificationType.USER_MENTION:
-        return `${authorName} mentioned you`;
+        return messageText
+          ? `${authorName}: ${messageText}`
+          : `${authorName} mentioned you`;
       case NotificationType.DIRECT_MESSAGE:
-        return 'You have a new message';
+        return messageText || 'New message';
       case NotificationType.CHANNEL_MESSAGE:
-        return `${authorName} sent a message`;
+        return messageText
+          ? `${authorName}: ${messageText}`
+          : `${authorName} sent a message`;
       case NotificationType.THREAD_REPLY:
-        return `${authorName} replied to a thread`;
+        return messageText
+          ? `${authorName}: ${messageText}`
+          : `${authorName} replied to a thread`;
       default:
         return 'You have a new notification';
     }
