@@ -180,6 +180,15 @@ const electronAPI = {
       ipcRenderer.removeListener('notification:click', subscription);
     };
   },
+
+  // Settings
+  getSettings: () => {
+    return ipcRenderer.invoke('settings:get');
+  },
+
+  setSetting: (key: string, value: unknown) => {
+    return ipcRenderer.invoke('settings:set', key, value);
+  },
 };
 
 // Expose protected methods to renderer process

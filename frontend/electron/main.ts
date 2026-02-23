@@ -13,6 +13,7 @@ import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
 import * as path from 'path';
 import * as fs from 'fs';
+import { loadSettings, getSetting, setSetting, AppSettings } from './settings';
 
 // Enable PipeWire-based screen capture for Wayland (must be before initMain()
 // so electron-audio-loopback picks it up in its feature flag merging)
@@ -160,6 +161,15 @@ function setupTray(): void {
     },
     { type: 'separator' },
     {
+      label: 'Close to Tray',
+      type: 'checkbox',
+      checked: getSetting('closeToTray'),
+      click: (menuItem: Electron.MenuItem) => {
+        setSetting('closeToTray', menuItem.checked);
+      },
+    },
+    { type: 'separator' },
+    {
       label: 'Check for Updates',
       click: () => {
         autoUpdater.checkForUpdates().catch((err: Error) => {
@@ -210,6 +220,15 @@ function setupApplicationMenu(): void {
         { role: 'unhide' as const },
         { type: 'separator' as const },
         {
+          label: 'Close to Tray',
+          type: 'checkbox' as const,
+          checked: getSetting('closeToTray'),
+          click: (menuItem: Electron.MenuItem) => {
+            setSetting('closeToTray', menuItem.checked);
+          },
+        },
+        { type: 'separator' as const },
+        {
           label: 'Quit',
           accelerator: 'CmdOrCtrl+Q',
           click: () => { isQuitting = true; app.quit(); },
@@ -220,6 +239,15 @@ function setupApplicationMenu(): void {
     ...(!isMac ? [{
       label: 'File',
       submenu: [
+        {
+          label: 'Close to Tray',
+          type: 'checkbox' as const,
+          checked: getSetting('closeToTray'),
+          click: (menuItem: Electron.MenuItem) => {
+            setSetting('closeToTray', menuItem.checked);
+          },
+        },
+        { type: 'separator' as const },
         {
           label: 'Quit',
           accelerator: 'CmdOrCtrl+Q',
@@ -463,6 +491,16 @@ function setupIpcHandlers() {
       activeNotifications.delete(tag);
     }
   });
+
+  // Settings handlers
+  ipcMain.handle('settings:get', () => {
+    return loadSettings();
+  });
+
+  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+    setSetting(key as keyof AppSettings, value as AppSettings[keyof AppSettings]);
+    return loadSettings();
+  });
 }
 
 /**
@@ -526,10 +564,10 @@ function createWindow() {
   mainWindow.on('resize', debouncedSave);
   mainWindow.on('move', debouncedSave);
 
-  // Hide to tray instead of closing (unless quitting)
+  // Hide to tray instead of closing (unless quitting or closeToTray is disabled)
   mainWindow.on('close', (event) => {
     saveWindowState();
-    if (!isQuitting) {
+    if (!isQuitting && getSetting('closeToTray')) {
       event.preventDefault();
       mainWindow!.hide();
     }
