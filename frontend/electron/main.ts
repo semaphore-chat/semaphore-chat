@@ -13,6 +13,7 @@ import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
 import * as path from 'path';
 import * as fs from 'fs';
+import { loadSettings, getSetting, setSetting, AppSettings } from './settings';
 
 // Enable PipeWire-based screen capture for Wayland (must be before initMain()
 // so electron-audio-loopback picks it up in its feature flag merging)
@@ -130,22 +131,19 @@ function saveWindowState(): void {
 
 // ─── System Tray ────────────────────────────────────────────────────────────
 
-function setupTray(): void {
-  const iconPath = getIconPath();
-  let trayIcon: Electron.NativeImage;
-  try {
-    trayIcon = nativeImage.createFromPath(iconPath);
-    const traySize = process.platform === 'linux' ? 22 : 16;
-    trayIcon = trayIcon.resize({ width: traySize, height: traySize });
-  } catch {
-    // Fallback to empty icon if file not found
-    trayIcon = nativeImage.createEmpty();
+/**
+ * Rebuild both app menu and tray context menu to reflect current settings.
+ * Called after any setting change so all menus stay in sync.
+ */
+function rebuildMenus(): void {
+  setupApplicationMenu();
+  if (tray) {
+    tray.setContextMenu(buildTrayContextMenu());
   }
+}
 
-  tray = new Tray(trayIcon);
-  tray.setToolTip('Kraken');
-
-  const contextMenu = Menu.buildFromTemplate([
+function buildTrayContextMenu(): Electron.Menu {
+  return Menu.buildFromTemplate([
     {
       label: 'Show/Hide Kraken',
       click: () => {
@@ -156,6 +154,16 @@ function setupTray(): void {
           mainWindow.show();
           mainWindow.focus();
         }
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Close to Tray',
+      type: 'checkbox',
+      checked: getSetting('closeToTray'),
+      click: (menuItem: Electron.MenuItem) => {
+        setSetting('closeToTray', menuItem.checked);
+        rebuildMenus();
       },
     },
     { type: 'separator' },
@@ -175,8 +183,23 @@ function setupTray(): void {
       },
     },
   ]);
+}
 
-  tray.setContextMenu(contextMenu);
+function setupTray(): void {
+  const iconPath = getIconPath();
+  let trayIcon: Electron.NativeImage;
+  try {
+    trayIcon = nativeImage.createFromPath(iconPath);
+    const traySize = process.platform === 'linux' ? 22 : 16;
+    trayIcon = trayIcon.resize({ width: traySize, height: traySize });
+  } catch {
+    // Fallback to empty icon if file not found
+    trayIcon = nativeImage.createEmpty();
+  }
+
+  tray = new Tray(trayIcon);
+  tray.setToolTip('Kraken');
+  tray.setContextMenu(buildTrayContextMenu());
 
   // On Linux/Windows, clicking the tray icon toggles window visibility
   // macOS uses the dock icon for this (via 'activate' event)
@@ -210,6 +233,16 @@ function setupApplicationMenu(): void {
         { role: 'unhide' as const },
         { type: 'separator' as const },
         {
+          label: 'Close to Tray',
+          type: 'checkbox' as const,
+          checked: getSetting('closeToTray'),
+          click: (menuItem: Electron.MenuItem) => {
+            setSetting('closeToTray', menuItem.checked);
+            rebuildMenus();
+          },
+        },
+        { type: 'separator' as const },
+        {
           label: 'Quit',
           accelerator: 'CmdOrCtrl+Q',
           click: () => { isQuitting = true; app.quit(); },
@@ -220,6 +253,16 @@ function setupApplicationMenu(): void {
     ...(!isMac ? [{
       label: 'File',
       submenu: [
+        {
+          label: 'Close to Tray',
+          type: 'checkbox' as const,
+          checked: getSetting('closeToTray'),
+          click: (menuItem: Electron.MenuItem) => {
+            setSetting('closeToTray', menuItem.checked);
+            rebuildMenus();
+          },
+        },
+        { type: 'separator' as const },
         {
           label: 'Quit',
           accelerator: 'CmdOrCtrl+Q',
@@ -463,6 +506,21 @@ function setupIpcHandlers() {
       activeNotifications.delete(tag);
     }
   });
+
+  // Settings handlers
+  ipcMain.handle('settings:get', () => {
+    return loadSettings();
+  });
+
+  ipcMain.handle('settings:set', (_event, key: string, value: unknown) => {
+    const current = loadSettings();
+    if (!Object.prototype.hasOwnProperty.call(current, key)) {
+      throw new Error(`Invalid settings key: ${key}`);
+    }
+    setSetting(key as keyof AppSettings, value as AppSettings[keyof AppSettings]);
+    rebuildMenus();
+    return loadSettings();
+  });
 }
 
 /**
@@ -526,10 +584,10 @@ function createWindow() {
   mainWindow.on('resize', debouncedSave);
   mainWindow.on('move', debouncedSave);
 
-  // Hide to tray instead of closing (unless quitting)
+  // Hide to tray instead of closing (unless quitting or closeToTray is disabled)
   mainWindow.on('close', (event) => {
     saveWindowState();
-    if (!isQuitting) {
+    if (!isQuitting && getSetting('closeToTray')) {
       event.preventDefault();
       mainWindow!.hide();
     }
