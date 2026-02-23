@@ -16,6 +16,8 @@ import { messageQueryKeyForContext, channelMessagesQueryKey } from '../../utils/
 import {
   readReceiptsControllerGetUnreadCountsQueryKey,
   userControllerGetProfileQueryKey,
+  moderationControllerGetPinnedMessagesQueryKey,
+  directMessagesControllerFindUserDmGroupsQueryKey,
 } from '../../api-client/@tanstack/react-query.gen';
 import {
   prependMessageToInfinite,
@@ -39,6 +41,13 @@ export const handleNewMessage: SocketEventHandler<typeof ServerEvents.NEW_MESSAG
   queryClient.setQueryData(queryKey, (old: unknown) =>
     prependMessageToInfinite(old as never, message as Message),
   );
+
+  // Invalidate DM groups list so sidebar preview updates
+  if (message.directMessageGroupId) {
+    queryClient.invalidateQueries({
+      queryKey: directMessagesControllerFindUserDmGroupsQueryKey(),
+    });
+  }
 
   // Increment unread count — skip for own messages
   const currentUser = queryClient.getQueryData<UserControllerGetProfileResponse>(
@@ -154,6 +163,9 @@ export const handleMessagePinned: SocketEventHandler<typeof ServerEvents.MESSAGE
       pinnedAt,
     });
   });
+  queryClient.invalidateQueries({
+    queryKey: moderationControllerGetPinnedMessagesQueryKey({ path: { channelId } }),
+  });
 };
 
 export const handleMessageUnpinned: SocketEventHandler<typeof ServerEvents.MESSAGE_UNPINNED> = async (
@@ -171,6 +183,9 @@ export const handleMessageUnpinned: SocketEventHandler<typeof ServerEvents.MESSA
       pinnedBy: null,
       pinnedAt: null,
     });
+  });
+  queryClient.invalidateQueries({
+    queryKey: moderationControllerGetPinnedMessagesQueryKey({ path: { channelId } }),
   });
 };
 

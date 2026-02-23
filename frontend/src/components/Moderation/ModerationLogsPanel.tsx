@@ -93,7 +93,8 @@ const ModerationLogsPanel: React.FC<ModerationLogsPanelProps> = ({ communityId }
     const parts: string[] = [];
 
     if (log.targetUserId) {
-      parts.push(`Target: ${log.targetUserId.slice(0, 8)}...`);
+      const targetName = log.targetUser?.displayName || log.targetUser?.username || `${log.targetUserId.slice(0, 8)}...`;
+      parts.push(`Target: ${targetName}`);
     }
     if (log.targetMessageId) {
       parts.push(`Message: ${log.targetMessageId.slice(0, 8)}...`);
@@ -204,7 +205,7 @@ const ModerationLogsPanel: React.FC<ModerationLogsPanelProps> = ({ communityId }
                           }}
                         />
                         <Typography variant="caption" color="text.secondary">
-                          by {log.moderatorId.slice(0, 8)}...
+                          by {log.moderator?.displayName || log.moderator?.username || `${log.moderatorId.slice(0, 8)}...`}
                         </Typography>
                       </Box>
                     }

@@ -1,12 +1,26 @@
-import { FileType, ModerationAction, Prisma } from '@prisma/client';
+import { FileType, ModerationAction, Prisma, InstanceRole } from '@prisma/client';
 import { ApiProperty } from '@nestjs/swagger';
 import {
   FileTypeValues,
   ModerationActionValues,
+  InstanceRoleValues,
 } from '@/common/enums/swagger-enums';
 import { SpanDto, ReactionDto } from '@/messages/dto/message-response.dto';
 
 export { SuccessMessageDto } from '@/common/dto/common-response.dto';
+
+export class ModerationUserDto {
+  id: string;
+  username: string;
+  @ApiProperty({ enum: InstanceRoleValues })
+  role: InstanceRole;
+  avatarUrl: string | null;
+  bannerUrl: string | null;
+  lastSeen: Date | null;
+  displayName: string | null;
+  bio: string | null;
+  status: string | null;
+}
 
 export class PinnedMessageAuthorDto {
   id: string;
@@ -57,6 +71,10 @@ export class CommunityBanDto {
   createdAt: Date;
   expiresAt: Date | null;
   active: boolean;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  user: ModerationUserDto | null;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  moderator: ModerationUserDto | null;
 }
 
 export class CommunityTimeoutDto {
@@ -67,6 +85,10 @@ export class CommunityTimeoutDto {
   reason: string | null;
   createdAt: Date;
   expiresAt: Date;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  user: ModerationUserDto | null;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  moderator: ModerationUserDto | null;
 }
 
 export class ModerationLogDto {
@@ -80,6 +102,10 @@ export class ModerationLogDto {
   @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
   metadata: Prisma.JsonValue | null;
   createdAt: Date;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  moderator: ModerationUserDto | null;
+  @ApiProperty({ type: ModerationUserDto, nullable: true })
+  targetUser: ModerationUserDto | null;
 }
 
 export class TimeoutStatusResponseDto {

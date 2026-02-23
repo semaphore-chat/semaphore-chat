@@ -2646,6 +2646,29 @@
         ]
       }
     },
+    "/api/file/{id}/thumbnail": {
+      "get": {
+        "operationId": "FileController_getFileThumbnail",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "File"
+        ]
+      }
+    },
     "/api/file/{id}": {
       "get": {
         "operationId": "FileController_getFile",
@@ -8041,6 +8064,9 @@
           },
           "size": {
             "type": "number"
+          },
+          "hasThumbnail": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -8048,7 +8074,8 @@
           "id",
           "filename",
           "mimeType",
-          "size"
+          "size",
+          "hasThumbnail"
         ]
       },
       "ReactionDto": {
@@ -8461,6 +8488,9 @@
           },
           "size": {
             "type": "number"
+          },
+          "hasThumbnail": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -8468,7 +8498,8 @@
           "id",
           "filename",
           "mimeType",
-          "size"
+          "size",
+          "hasThumbnail"
         ]
       },
       "CreateMembershipDto": {
@@ -9128,9 +9159,79 @@
           }
         }
       },
+      "ModerationUserDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "USER"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "bannerUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSeen": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "role",
+          "id",
+          "username",
+          "avatarUrl",
+          "bannerUrl",
+          "lastSeen",
+          "displayName",
+          "bio",
+          "status"
+        ]
+      },
       "CommunityBanDto": {
         "type": "object",
         "properties": {
+          "user": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
+          "moderator": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -9161,6 +9262,8 @@
           }
         },
         "required": [
+          "user",
+          "moderator",
           "id",
           "communityId",
           "userId",
@@ -9206,6 +9309,22 @@
       "CommunityTimeoutDto": {
         "type": "object",
         "properties": {
+          "user": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
+          "moderator": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -9232,6 +9351,8 @@
           }
         },
         "required": [
+          "user",
+          "moderator",
           "id",
           "communityId",
           "userId",
@@ -9482,6 +9603,22 @@
             "nullable": true,
             "additionalProperties": true
           },
+          "moderator": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
+          "targetUser": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ModerationUserDto"
+              }
+            ]
+          },
           "id": {
             "type": "string"
           },
@@ -9507,6 +9644,8 @@
         "required": [
           "action",
           "metadata",
+          "moderator",
+          "targetUser",
           "id",
           "communityId",
           "moderatorId",

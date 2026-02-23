@@ -85,7 +85,7 @@ describe('RegisterPage', () => {
     await user.click(screen.getByRole('button', { name: /register/i }));
 
     await waitFor(() => {
-      expect(screen.getByRole('alert')).toHaveTextContent('Registration failed. Please try again.');
+      expect(screen.getByRole('alert')).toHaveTextContent('Registration failed');
     });
     expect(mockNavigate).not.toHaveBeenCalled();
   });

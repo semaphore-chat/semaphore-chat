@@ -238,11 +238,15 @@ const MessageComponent = React.memo(MessageComponentInner, (prevProps, nextProps
     ) &&
     // Deep compare reactions array (including userIds content)
     prevMsg.reactions.length === nextMsg.reactions.length &&
-    prevMsg.reactions.every((r, i) =>
-      r.emoji === nextMsg.reactions[i]?.emoji &&
-      r.userIds.length === nextMsg.reactions[i]?.userIds.length &&
-      r.userIds.every((uid, j) => uid === nextMsg.reactions[i]?.userIds[j])
-    ) &&
+    prevMsg.reactions.every((r, i) => {
+      const prevIds = r.userIds ?? [];
+      const nextIds = nextMsg.reactions[i]?.userIds ?? [];
+      return (
+        r.emoji === nextMsg.reactions[i]?.emoji &&
+        prevIds.length === nextIds.length &&
+        prevIds.every((uid, j) => uid === nextIds[j])
+      );
+    }) &&
     // Deep compare attachments array
     prevMsg.attachments?.length === nextMsg.attachments?.length &&
     prevMsg.attachments?.every((a, i) => a.id === nextMsg.attachments?.[i]?.id)

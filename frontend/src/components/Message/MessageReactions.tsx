@@ -19,10 +19,11 @@ const SingleReactionChip: React.FC<{
   onReactionClick: (emoji: string) => void
 }> = ({ reaction, userHasReacted, onReactionClick }) => {
   const theme = useTheme();
-  const count = reaction.userIds.length;
+  const userIds = reaction.userIds ?? [];
+  const count = userIds.length;
 
   return (
-    <ReactionTooltip userIds={reaction.userIds}>
+    <ReactionTooltip userIds={userIds}>
       <Chip
         label={`${reaction.emoji} ${count}`}
         size="small"
@@ -78,7 +79,7 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
   return (
     <Box display="flex" gap={0.5} mt={0.5} flexWrap="wrap">
       {reactions.map((reaction) => {
-        const userHasReacted = currentUser ? reaction.userIds.includes(currentUser.id) : false;
+        const userHasReacted = currentUser ? (reaction.userIds ?? []).includes(currentUser.id) : false;
 
         return (
           <SingleReactionChip

@@ -247,7 +247,7 @@ export function useMessageActions(
     if (!currentUserId) return;
 
     const reaction = message.reactions.find(r => r.emoji === emoji);
-    const userHasReacted = reaction?.userIds.includes(currentUserId) ?? false;
+    const userHasReacted = reaction?.userIds?.includes(currentUserId) ?? false;
 
     try {
       if (userHasReacted) {

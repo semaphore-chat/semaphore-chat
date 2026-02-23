@@ -13,6 +13,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@kraken/shared';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { RoomName } from '@/common/utils/room-name.util';
+import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import {
   ModerationAction,
   Prisma,
@@ -287,7 +288,21 @@ export class ModerationService {
       }
     }
 
-    return activeBans;
+    // Enrich with user data
+    const userIds = [
+      ...new Set(activeBans.flatMap((b) => [b.userId, b.moderatorId])),
+    ];
+    const users = await this.databaseService.user.findMany({
+      where: { id: { in: userIds } },
+      select: PUBLIC_USER_SELECT,
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return activeBans.map((ban) => ({
+      ...ban,
+      user: userMap.get(ban.userId) ?? null,
+      moderator: userMap.get(ban.moderatorId) ?? null,
+    }));
   }
 
   // =========================================
@@ -546,7 +561,21 @@ export class ModerationService {
       }
     }
 
-    return activeTimeouts;
+    // Enrich with user data
+    const userIds = [
+      ...new Set(activeTimeouts.flatMap((t) => [t.userId, t.moderatorId])),
+    ];
+    const users = await this.databaseService.user.findMany({
+      where: { id: { in: userIds } },
+      select: PUBLIC_USER_SELECT,
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    return activeTimeouts.map((timeout) => ({
+      ...timeout,
+      user: userMap.get(timeout.userId) ?? null,
+      moderator: userMap.get(timeout.moderatorId) ?? null,
+    }));
   }
 
   // =========================================
@@ -821,7 +850,29 @@ export class ModerationService {
       this.databaseService.moderationLog.count({ where }),
     ]);
 
-    return { logs, total };
+    // Enrich with user data
+    const userIds = [
+      ...new Set(
+        logs.flatMap((l) =>
+          [l.moderatorId, l.targetUserId].filter(Boolean),
+        ) as string[],
+      ),
+    ];
+    const users = await this.databaseService.user.findMany({
+      where: { id: { in: userIds } },
+      select: PUBLIC_USER_SELECT,
+    });
+    const userMap = new Map(users.map((u) => [u.id, u]));
+
+    const enrichedLogs = logs.map((log) => ({
+      ...log,
+      moderator: userMap.get(log.moderatorId) ?? null,
+      targetUser: log.targetUserId
+        ? (userMap.get(log.targetUserId) ?? null)
+        : null,
+    }));
+
+    return { logs: enrichedLogs, total };
   }
 
   // =========================================

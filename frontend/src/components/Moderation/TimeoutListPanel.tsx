@@ -242,7 +242,7 @@ const TimeoutListPanel: React.FC<TimeoutListPanelProps> = ({ communityId }) => {
             >
               <ListItemAvatar>
                 <UserAvatar
-                  user={{ id: timeout.userId, username: timeout.userId }}
+                  user={timeout.user ? { id: timeout.userId, username: timeout.user.username, avatarUrl: timeout.user.avatarUrl } : { id: timeout.userId, username: timeout.userId }}
                   size="medium"
                 />
               </ListItemAvatar>
@@ -250,7 +250,7 @@ const TimeoutListPanel: React.FC<TimeoutListPanelProps> = ({ communityId }) => {
                 primary={
                   <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                     <Typography variant="subtitle2">
-                      User ID: {timeout.userId.slice(0, 8)}...
+                      {timeout.user?.displayName || timeout.user?.username || `User ${timeout.userId.slice(0, 8)}...`}
                     </Typography>
                     <Chip
                       label={formatTimeRemaining(timeout.expiresAt)}

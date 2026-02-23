@@ -47,6 +47,9 @@ describe('ModerationService', () => {
     membershipService = unitRef.get(MembershipService);
     websocketService = unitRef.get(WebsocketService);
     eventEmitter = unitRef.get(EventEmitter2);
+
+    // Default: user lookups return empty (enrichment queries)
+    mockDatabase.user.findMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -628,15 +631,18 @@ describe('ModerationService', () => {
   describe('getModerationLogs', () => {
     it('should return logs with total count', async () => {
       const logs = [
-        { id: 'log-1', action: ModerationAction.BAN_USER },
-        { id: 'log-2', action: ModerationAction.KICK_USER },
+        { id: 'log-1', action: ModerationAction.BAN_USER, moderatorId: 'mod-1', targetUserId: null },
+        { id: 'log-2', action: ModerationAction.KICK_USER, moderatorId: 'mod-1', targetUserId: null },
       ];
       mockDatabase.moderationLog.findMany.mockResolvedValue(logs as any);
       mockDatabase.moderationLog.count.mockResolvedValue(2);
 
       const result = await service.getModerationLogs(communityId);
 
-      expect(result).toEqual({ logs, total: 2 });
+      expect(result.total).toBe(2);
+      expect(result.logs).toHaveLength(2);
+      expect(result.logs[0]).toMatchObject({ id: 'log-1' });
+      expect(result.logs[1]).toMatchObject({ id: 'log-2' });
     });
 
     it('should support filtering by action', async () => {

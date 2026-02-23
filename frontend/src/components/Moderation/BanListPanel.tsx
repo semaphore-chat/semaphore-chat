@@ -229,7 +229,7 @@ const BanListPanel: React.FC<BanListPanelProps> = ({ communityId }) => {
               >
                 <ListItemAvatar>
                   <UserAvatar
-                    user={{ id: ban.userId, username: ban.userId }}
+                    user={ban.user ? { id: ban.userId, username: ban.user.username, avatarUrl: ban.user.avatarUrl } : { id: ban.userId, username: ban.userId }}
                     size="medium"
                   />
                 </ListItemAvatar>
@@ -237,7 +237,7 @@ const BanListPanel: React.FC<BanListPanelProps> = ({ communityId }) => {
                   primary={
                     <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
                       <Typography variant="subtitle2">
-                        User ID: {ban.userId.slice(0, 8)}...
+                        {ban.user?.displayName || ban.user?.username || `User ${ban.userId.slice(0, 8)}...`}
                       </Typography>
                       <Chip
                         label={status.label}

@@ -33,6 +33,13 @@ const FormBox = styled(Box)({
   maxWidth: "400px",
 });
 
+const getErrorMessage = (err: unknown): string => {
+  const msg = (err as Record<string, unknown>)?.message;
+  if (Array.isArray(msg)) return msg.join(', ');
+  if (typeof msg === 'string') return msg;
+  return 'Registration failed. Please try again.';
+};
+
 const RegisterPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -78,7 +85,7 @@ const RegisterPage: React.FC = () => {
             sx={{ width: "100%", marginBottom: 2 }}
             role="alert"
           >
-            Registration failed. Please try again.
+            {getErrorMessage(error)}
           </Alert>
         )}
         <TextField
@@ -112,6 +119,7 @@ const RegisterPage: React.FC = () => {
           onChange={(e) => setPassword(e.target.value)}
           sx={{ marginBottom: 2 }}
           required
+          helperText="Must be at least 8 characters"
         />
         <TextField
           id="code"
