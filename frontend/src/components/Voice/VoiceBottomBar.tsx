@@ -69,7 +69,6 @@ export const VoiceBottomBar: React.FC = () => {
   );
   const [showUserList, setShowUserList] = useState(false);
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
-  const [deviceSettingsTab, setDeviceSettingsTab] = useState<'audio' | 'video'>('audio');
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const [isSpeakerphone, setIsSpeakerphone] = useState(false);
 
@@ -114,8 +113,7 @@ export const VoiceBottomBar: React.FC = () => {
     }
   }, [actions, isCameraEnabled]);
 
-  const handleDeviceSettingsOpen = useCallback((initialTab?: 'audio' | 'video') => {
-    setDeviceSettingsTab(initialTab ?? 'audio');
+  const handleDeviceSettingsOpen = useCallback(() => {
     setShowDeviceSettings(true);
     setSettingsAnchor(null);
   }, []);
@@ -568,11 +566,8 @@ export const VoiceBottomBar: React.FC = () => {
           >
             {state.showVideoTiles ? "Hide Video Tiles" : "Show Video Tiles"}
           </MenuItem>
-          <MenuItem onClick={() => handleDeviceSettingsOpen('audio')}>
-            Audio Settings
-          </MenuItem>
-          <MenuItem onClick={() => handleDeviceSettingsOpen('video')}>
-            Video Settings
+          <MenuItem onClick={handleDeviceSettingsOpen}>
+            Voice & Video Settings
           </MenuItem>
           <Divider />
           <MenuItem
@@ -590,7 +585,6 @@ export const VoiceBottomBar: React.FC = () => {
           open={showDeviceSettings}
           onClose={handleDeviceSettingsClose}
           onDeviceChange={handleDeviceChange}
-          initialTab={deviceSettingsTab}
         />
 
         {/* Screen Source Picker Dialog */}
