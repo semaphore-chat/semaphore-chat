@@ -110,15 +110,5 @@
     "vite-plugin-pwa": "^1.2.0",
     "vitest": "^4.0.18",
     "wait-on": "^8.0.3"
-  },
-  "build": {
-    "appId": "com.kraken.app",
-    "productName": "Kraken",
-    "extends": null,
-    "files": [
-      "dist/**/*",
-      "electron/dist/**/*",
-      "package.json"
-    ]
   }
 }
