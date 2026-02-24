@@ -86,15 +86,27 @@ export class RolesService implements OnModuleInit {
     if (resourceType === RbacResourceType.COMMUNITY) {
       communityId = resourceId!;
     } else if (resourceType === RbacResourceType.CHANNEL) {
-      // Get the channel to find its community
+      // Get the channel to find its community and privacy status
       const channel = await this.databaseService.channel.findUnique({
         where: { id: resourceId },
-        select: { communityId: true },
+        select: { communityId: true, isPrivate: true },
       });
 
       if (!channel) {
         this.logger.warn(`Channel not found for RBAC check: ${resourceId}`);
         return false; // Channel doesn't exist
+      }
+
+      // Private channels require explicit channel membership
+      if (channel.isPrivate) {
+        const channelMembership =
+          await this.databaseService.channelMembership.findFirst({
+            where: { userId, channelId: resourceId },
+          });
+
+        if (!channelMembership) {
+          return false;
+        }
       }
 
       communityId = channel.communityId;
@@ -106,7 +118,7 @@ export class RolesService implements OnModuleInit {
           channelId: true,
           directMessageGroupId: true,
           channel: {
-            select: { communityId: true },
+            select: { communityId: true, isPrivate: true },
           },
         },
       });
@@ -142,6 +154,18 @@ export class RolesService implements OnModuleInit {
       if (!message.channel) {
         this.logger.warn(`Message has no associated channel: ${resourceId}`);
         return false; // Message has no associated channel
+      }
+
+      // Private channels require explicit channel membership
+      if (message.channel.isPrivate && message.channelId) {
+        const channelMembership =
+          await this.databaseService.channelMembership.findFirst({
+            where: { userId, channelId: message.channelId },
+          });
+
+        if (!channelMembership) {
+          return false;
+        }
       }
 
       communityId = message.channel.communityId;

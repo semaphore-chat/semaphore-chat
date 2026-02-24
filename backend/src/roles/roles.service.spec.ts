@@ -155,14 +155,15 @@ describe('RolesService', () => {
     });
 
     describe('Channel resource type', () => {
-      it('should verify permissions for channel by finding community', async () => {
+      it('should verify permissions for public channel by finding community', async () => {
         const user = UserFactory.build();
-        const channel = ChannelFactory.build();
+        const channel = ChannelFactory.build({ isPrivate: false });
         const role = RoleFactory.buildModerator();
 
         mockDatabase.channel.findUnique.mockResolvedValue({
           id: channel.id,
           communityId: channel.communityId,
+          isPrivate: false,
         });
 
         mockDatabase.userRoles.findMany.mockResolvedValue([
@@ -185,8 +186,70 @@ describe('RolesService', () => {
         expect(result).toBe(true);
         expect(mockDatabase.channel.findUnique).toHaveBeenCalledWith({
           where: { id: channel.id },
-          select: { communityId: true },
+          select: { communityId: true, isPrivate: true },
         });
+      });
+
+      it('should allow access to private channel when user has channel membership', async () => {
+        const user = UserFactory.build();
+        const channel = ChannelFactory.build({ isPrivate: true });
+        const role = RoleFactory.buildMember();
+
+        mockDatabase.channel.findUnique.mockResolvedValue({
+          id: channel.id,
+          communityId: channel.communityId,
+          isPrivate: true,
+        });
+
+        mockDatabase.channelMembership.findFirst.mockResolvedValue({
+          userId: user.id,
+          channelId: channel.id,
+        });
+
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId: user.id,
+            communityId: channel.communityId,
+            roleId: role.id,
+            isInstanceRole: false,
+            role,
+          },
+        ]);
+
+        const result = await service.verifyActionsForUserAndResource(
+          user.id,
+          channel.id,
+          RbacResourceType.CHANNEL,
+          [RbacActions.READ_MESSAGE],
+        );
+
+        expect(result).toBe(true);
+        expect(mockDatabase.channelMembership.findFirst).toHaveBeenCalledWith({
+          where: { userId: user.id, channelId: channel.id },
+        });
+      });
+
+      it('should deny access to private channel when user lacks channel membership', async () => {
+        const user = UserFactory.build();
+        const channel = ChannelFactory.build({ isPrivate: true });
+
+        mockDatabase.channel.findUnique.mockResolvedValue({
+          id: channel.id,
+          communityId: channel.communityId,
+          isPrivate: true,
+        });
+
+        mockDatabase.channelMembership.findFirst.mockResolvedValue(null);
+
+        const result = await service.verifyActionsForUserAndResource(
+          user.id,
+          channel.id,
+          RbacResourceType.CHANNEL,
+          [RbacActions.READ_MESSAGE],
+        );
+
+        expect(result).toBe(false);
+        expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
 
       it('should deny when channel not found', async () => {
@@ -207,10 +270,13 @@ describe('RolesService', () => {
     });
 
     describe('Message resource type', () => {
-      it('should verify permissions for message by finding channel and community', async () => {
+      it('should verify permissions for message in public channel', async () => {
         const user = UserFactory.build();
         const message = MessageFactory.build();
-        const channel = ChannelFactory.build({ id: message.channelId! });
+        const channel = ChannelFactory.build({
+          id: message.channelId!,
+          isPrivate: false,
+        });
         const role = RoleFactory.buildMember();
 
         mockDatabase.message.findUnique.mockResolvedValue({
@@ -219,6 +285,7 @@ describe('RolesService', () => {
           directMessageGroupId: null,
           channel: {
             communityId: channel.communityId,
+            isPrivate: false,
           },
         });
 
@@ -240,6 +307,84 @@ describe('RolesService', () => {
         );
 
         expect(result).toBe(true);
+      });
+
+      it('should allow access to message in private channel when user has channel membership', async () => {
+        const user = UserFactory.build();
+        const message = MessageFactory.build();
+        const channel = ChannelFactory.build({
+          id: message.channelId!,
+          isPrivate: true,
+        });
+        const role = RoleFactory.buildMember();
+
+        mockDatabase.message.findUnique.mockResolvedValue({
+          id: message.id,
+          channelId: channel.id,
+          directMessageGroupId: null,
+          channel: {
+            communityId: channel.communityId,
+            isPrivate: true,
+          },
+        });
+
+        mockDatabase.channelMembership.findFirst.mockResolvedValue({
+          userId: user.id,
+          channelId: channel.id,
+        });
+
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId: user.id,
+            communityId: channel.communityId,
+            roleId: role.id,
+            isInstanceRole: false,
+            role,
+          },
+        ]);
+
+        const result = await service.verifyActionsForUserAndResource(
+          user.id,
+          message.id,
+          RbacResourceType.MESSAGE,
+          [RbacActions.READ_MESSAGE],
+        );
+
+        expect(result).toBe(true);
+        expect(mockDatabase.channelMembership.findFirst).toHaveBeenCalledWith({
+          where: { userId: user.id, channelId: channel.id },
+        });
+      });
+
+      it('should deny access to message in private channel when user lacks channel membership', async () => {
+        const user = UserFactory.build();
+        const message = MessageFactory.build();
+        const channel = ChannelFactory.build({
+          id: message.channelId!,
+          isPrivate: true,
+        });
+
+        mockDatabase.message.findUnique.mockResolvedValue({
+          id: message.id,
+          channelId: channel.id,
+          directMessageGroupId: null,
+          channel: {
+            communityId: channel.communityId,
+            isPrivate: true,
+          },
+        });
+
+        mockDatabase.channelMembership.findFirst.mockResolvedValue(null);
+
+        const result = await service.verifyActionsForUserAndResource(
+          user.id,
+          message.id,
+          RbacResourceType.MESSAGE,
+          [RbacActions.READ_MESSAGE],
+        );
+
+        expect(result).toBe(false);
+        expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
 
       it('should grant access to DM message when user is member', async () => {
