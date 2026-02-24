@@ -399,6 +399,72 @@ volumes:
 !!! note "LiveKit Cloud"
     LiveKit Cloud writes egress output to cloud storage (S3/GCS/Azure Blob), which Kraken can't read from yet. Replay capture is not available with LiveKit Cloud until cloud storage support is added. See [#227](https://github.com/krakenchat/kraken/issues/227) for progress.
 
+### Dynamic IP support
+
+If your server has a dynamic public IP (common with residential ISPs), voice and video will break when the IP changes. LiveKit resolves its external IP once at startup via STUN and bakes it into WebRTC ICE candidates — there is no periodic re-resolution.
+
+Kraken ships an IP watcher script that monitors your external IP and automatically restarts LiveKit when it changes.
+
+**Prerequisites:**
+
+1. Your LiveKit config must use `use_external_ip: true`. The watcher is not needed when `use_external_ip: false` with a static `node_ip`.
+
+2. Download the watcher script into a `scripts/` directory next to your `docker-compose.yml`:
+
+    ```bash
+    mkdir -p scripts
+    curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh \
+      -o scripts/livekit-ip-watcher.sh
+    ```
+
+**Add the service to your `docker-compose.yml`:**
+
+```yaml
+services:
+  # ... your existing services ...
+
+  livekit-ip-watcher:
+    image: alpine:latest
+    profiles: ["dynamic-ip"]
+    command: sh -c 'apk add --no-cache curl && sh /scripts/livekit-ip-watcher.sh'
+    environment:
+      - CHECK_INTERVAL=${IP_WATCHER_CHECK_INTERVAL:-300}
+      - LIVEKIT_CONTAINER=livekit
+    volumes:
+      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      livekit:
+        condition: service_started
+    restart: unless-stopped
+```
+
+**Start with the watcher enabled:**
+
+```bash
+docker compose --profile dynamic-ip up -d
+```
+
+Without the `--profile dynamic-ip` flag, the watcher does not start.
+
+**Configuration:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `IP_WATCHER_CHECK_INTERVAL` | `300` | Seconds between IP checks (set in `.env`) |
+| `IP_CHECK_URLS` | `https://api.ipify.org,...` | Comma-separated external IP lookup URLs (set via `docker-compose.override.yml`) |
+
+**Verify it's running:**
+
+```bash
+docker compose logs livekit-ip-watcher
+```
+
+You should see the initial IP logged and periodic "IP unchanged" messages.
+
+!!! warning "Docker socket security"
+    The watcher mounts `/var/run/docker.sock` to restart the LiveKit container. This grants it full Docker API access. Only use this on hosts where you trust all running containers.
+
 ## Updating
 
 ```bash

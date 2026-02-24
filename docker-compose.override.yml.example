@@ -62,6 +62,19 @@
 #       device: ":/path/to/nfs/share/kraken-egress"
 
 # ==============================================================================
+# DYNAMIC IP WATCHER OVERRIDES
+# ==============================================================================
+# The livekit-ip-watcher service monitors your external IP and restarts
+# LiveKit when it changes (useful for residential / dynamic-IP connections).
+# Enable it with: docker compose --profile dynamic-ip up -d
+#
+# services:
+#   livekit-ip-watcher:
+#     environment:
+#       - CHECK_INTERVAL=120                # Check every 2 minutes instead of 5
+#       - IP_CHECK_URLS=https://api.ipify.org,https://ifconfig.me/ip
+
+# ==============================================================================
 # OTHER LOCAL OVERRIDES
 # ==============================================================================
 # You can override any service configuration here, for example:

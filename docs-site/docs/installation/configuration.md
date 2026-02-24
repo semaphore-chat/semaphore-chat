@@ -43,6 +43,14 @@ Configuration for the replay buffer / screen recording feature. Requires LiveKit
 | `REPLAY_EGRESS_OUTPUT_PATH` | LiveKit egress output path (must be accessible by egress pods) | `/out` |
 | `REPLAY_SEGMENT_CLEANUP_AGE_MINUTES` | How long to keep replay segments before cleanup | `20` |
 
+### Dynamic IP watcher
+
+Configuration for the optional IP watcher sidecar. See [Dynamic IP support](docker-compose.md#dynamic-ip-support) for setup instructions.
+
+| Variable | Description | Default |
+|----------|------------|---------|
+| `IP_WATCHER_CHECK_INTERVAL` | Seconds between external IP checks | `300` |
+
 ### Push notifications (VAPID)
 
 Web Push notifications require VAPID keys. Each instance needs its own unique key pair.
