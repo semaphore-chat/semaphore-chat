@@ -19,6 +19,7 @@ const VideoCard = styled(Card)(({ theme }) => ({
   borderRadius: theme.spacing(1),
   backgroundColor: theme.palette.background.paper,
   border: `1px solid ${theme.palette.divider}`,
+  display: "inline-block",
 }));
 
 const ThumbnailContainer = styled(Box)({

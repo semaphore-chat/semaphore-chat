@@ -11,6 +11,7 @@ const AttachmentCard = styled(Card)(({ theme }) => ({
   borderRadius: theme.spacing(1),
   backgroundColor: theme.palette.background.paper,
   border: `1px solid ${theme.palette.divider}`,
+  display: "inline-block",
 }));
 
 const LoadingContainer = styled(Box)(({ theme }) => ({

@@ -25,6 +25,7 @@ import { channelMessagesQueryKey, dmMessagesQueryKey } from "../../utils/message
 import {
   updateMessageInInfinite,
   deleteMessageFromInfinite,
+  findMessageInInfinite,
 } from "../../utils/messageCacheUpdaters";
 import { logger } from "../../utils/logger";
 
@@ -62,6 +63,34 @@ function updateCache(
   queryClient.setQueryData(queryKey, (old: unknown) =>
     updateMessageInInfinite(old as never, msg)
   );
+}
+
+/**
+ * Update only the reactions field on a cached message.
+ *
+ * Reaction endpoints return a raw MessageDto (attachments as plain IDs),
+ * not an EnrichedMessageDto. Replacing the whole cached message would
+ * overwrite enriched attachment metadata and crash components that
+ * depend on it (e.g. DownloadLink accessing metadata.mimeType).
+ */
+function updateReactionsInCache(
+  queryClient: ReturnType<typeof useQueryClient>,
+  msg: { channelId?: string | null; directMessageGroupId?: string | null; id: string; reactions: MessageType["reactions"] },
+) {
+  const queryKey = msg.channelId
+    ? channelMessagesQueryKey(msg.channelId)
+    : msg.directMessageGroupId
+      ? dmMessagesQueryKey(msg.directMessageGroupId)
+      : undefined;
+  if (!queryKey) return;
+  queryClient.setQueryData(queryKey, (old: unknown) => {
+    const existing = findMessageInInfinite(old as never, msg.id);
+    if (!existing) return old;
+    return updateMessageInInfinite(old as never, {
+      ...existing,
+      reactions: msg.reactions,
+    });
+  });
 }
 
 /** Delete a message from the TQ cache (handles both channel and DM contexts) */
@@ -121,14 +150,14 @@ export function useMessageActions(
   const { mutateAsync: addReactionApi } = useMutation({
     ...messagesControllerAddReactionMutation(),
     onSuccess: (updatedMessage) => {
-      updateCache(queryClient, updatedMessage as MessageType);
+      updateReactionsInCache(queryClient, updatedMessage as MessageType);
     },
   });
 
   const { mutateAsync: removeReactionApi } = useMutation({
     ...messagesControllerRemoveReactionMutation(),
     onSuccess: (updatedMessage) => {
-      updateCache(queryClient, updatedMessage as MessageType);
+      updateReactionsInCache(queryClient, updatedMessage as MessageType);
     },
   });
 
