@@ -75,10 +75,12 @@ WORKDIR /app/backend
 # uses node-pre-gyp template variables (module_name, etc.), so raw node-gyp
 # fails with "Undefined variable module_name". Use node-pre-gyp which resolves
 # those variables and drives the native compilation correctly.
-# Force node-gyp headers to the official Node mirror because the Alpine build
-# can point to unofficial-builds, which may lag freshly released Node versions.
+# Alpine's Node points node-gyp at unofficial-builds.nodejs.org which may lack
+# headers for new releases, so override disturl to the official mirror.
 RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
-    cd /app/backend/node_modules/bcrypt && npm_config_disturl=https://nodejs.org/download/release npx @mapbox/node-pre-gyp install --build-from-source && \
+    cd /app/node_modules/bcrypt && \
+    npm_config_disturl=https://nodejs.org/download/release \
+    npx @mapbox/node-pre-gyp install --build-from-source && \
     apk del .build-deps
 
 # Add OCI labels for GHCR integration (including creation timestamp)
