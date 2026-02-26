@@ -82,6 +82,18 @@ describe('JwtStrategy', () => {
       expect(extract(req)).toBe('query-token');
     });
 
+    it('should extract query token on /api/file/ routes (Electron direct requests)', () => {
+      const extract = getExtractor(strategy);
+      const req = {
+        headers: {},
+        path: '/api/file/abc123',
+        query: { token: 'query-token' },
+        cookies: { access_token: 'cookie-token' },
+      };
+
+      expect(extract(req)).toBe('query-token');
+    });
+
     it('should fall back to cookie on non-file routes', () => {
       const extract = getExtractor(strategy);
       const req = {
