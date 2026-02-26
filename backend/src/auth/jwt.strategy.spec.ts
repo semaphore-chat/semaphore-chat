@@ -94,6 +94,18 @@ describe('JwtStrategy', () => {
       expect(extract(req)).toBe('cookie-token');
     });
 
+    it('should prefer query token over cookie on /api/file/ routes (Electron)', () => {
+      const extract = getExtractor(strategy);
+      const req = {
+        headers: {},
+        path: '/api/file/abc123',
+        query: { token: 'query-token' },
+        cookies: { access_token: 'cookie-token' },
+      };
+
+      expect(extract(req)).toBe('query-token');
+    });
+
     it('should prefer Authorization header over both', () => {
       const extract = getExtractor(strategy);
       const req = {
