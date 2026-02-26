@@ -66,6 +66,7 @@ export class FileController {
     res.set({
       'Content-Type': 'image/jpeg',
       'Cache-Control': 'private, max-age=86400', // Thumbnails are immutable, cache 24h in user's browser
+      'Cross-Origin-Resource-Policy': 'cross-origin', // Allow Electron (different origin) to load
     });
 
     return new StreamableFile(stream);
@@ -99,6 +100,7 @@ export class FileController {
     res.set({
       'Accept-Ranges': 'bytes',
       'Content-Disposition': `inline; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`,
+      'Cross-Origin-Resource-Policy': 'cross-origin', // Allow Electron (different origin) to load
     });
 
     // Handle Range requests for streaming
