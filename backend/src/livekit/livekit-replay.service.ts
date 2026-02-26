@@ -28,6 +28,7 @@ import { CreateMessageDto } from '@/messages/dto/create-message.dto';
 import { ServerEvents } from '@kraken/shared';
 import { RoomName } from '@/common/utils/room-name.util';
 import { getErrorMessage } from '@/common/utils/error.utils';
+import { ThumbnailService } from '@/file/thumbnail.service';
 import { FfmpegService } from './ffmpeg.service';
 import * as ffmpegModule from 'fluent-ffmpeg';
 import {
@@ -61,6 +62,7 @@ export class LivekitReplayService {
     private readonly websocketService: WebsocketService,
     private readonly ffmpegService: FfmpegService,
     private readonly messagesService: MessagesService,
+    private readonly thumbnailService: ThumbnailService,
   ) {
     // Load configuration
     // segmentsPath is now loaded from StorageService which handles prefix resolution
@@ -1067,6 +1069,9 @@ export class LivekitReplayService {
 
     this.logger.log(`Created file record: ${file.id}`);
 
+    // Generate thumbnail for the video clip (fire-and-forget — failure won't block response)
+    this.generateThumbnailAsync(clipPath, file.id);
+
     // 8. Create ReplayClip record
     const clip = await this.databaseService.replayClip.create({
       data: {
@@ -1242,6 +1247,30 @@ export class LivekitReplayService {
       stream.on('end', () => resolve(hash.digest('hex')));
       stream.on('error', reject);
     });
+  }
+
+  /**
+   * Fire-and-forget thumbnail generation for replay clips.
+   * Errors are logged but never propagate to the capture response.
+   */
+  private generateThumbnailAsync(filePath: string, fileId: string): void {
+    void (async () => {
+      try {
+        const thumbnailPath =
+          await this.thumbnailService.generateVideoThumbnail(filePath, fileId);
+        if (thumbnailPath) {
+          await this.databaseService.file.update({
+            where: { id: fileId },
+            data: { thumbnailPath },
+          });
+          this.logger.log(`Generated thumbnail for replay clip ${fileId}`);
+        }
+      } catch (error) {
+        this.logger.error(
+          `Failed to generate thumbnail for replay clip ${fileId}: ${getErrorMessage(error)}`,
+        );
+      }
+    })();
   }
 
   /**

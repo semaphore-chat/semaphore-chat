@@ -22,15 +22,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromExtractors([
         // Primary: Authorization header
         ExtractJwt.fromAuthHeaderAsBearerToken(),
-        // Fallback 1: Cookie (for same-origin browser requests)
-        (req: Request): string | null => {
-          const cookies = req?.cookies as Record<string, string> | undefined;
-          return cookies?.access_token || null;
-        },
-        // Fallback 2: Query parameter — ONLY for file-serving routes
+        // Fallback 1: Query parameter — ONLY for file-serving routes
         // This allows URLs like /api/file/123?token=<jwt> for embedded <img>/<video> tags
         // Restricted to /file/ to prevent token leakage via browser history, logs, and Referer headers
         // Note: req.path is relative to the global prefix (/api), so /api/file/... becomes /file/...
+        // Must run BEFORE cookie extractor so an explicit ?token= always takes precedence
+        // over a potentially stale httpOnly access_token cookie the browser can't clear
         (req: Request): string | null => {
           const path = req?.path || '';
           if (!path.startsWith('/file/')) {
@@ -41,6 +38,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
             return token;
           }
           return null;
+        },
+        // Fallback 2: Cookie (for same-origin browser requests)
+        (req: Request): string | null => {
+          const cookies = req?.cookies as Record<string, string> | undefined;
+          return cookies?.access_token || null;
         },
       ]),
       ignoreExpiration: false,

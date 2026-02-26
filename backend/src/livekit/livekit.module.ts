@@ -18,6 +18,7 @@ import { LivekitController } from './livekit.controller';
 import { LivekitWebhookController } from './livekit-webhook.controller';
 import { UserModule } from '@/user/user.module';
 import { RolesModule } from '@/roles/roles.module';
+import { ThumbnailService } from '@/file/thumbnail.service';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { RolesModule } from '@/roles/roles.module';
     FfmpegProvider,
     RoomServiceProvider,
     EgressClientProvider,
+    ThumbnailService,
   ],
   exports: [
     LivekitService,

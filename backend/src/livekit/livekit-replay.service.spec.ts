@@ -7,6 +7,9 @@ import { StorageService } from '@/storage/storage.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@kraken/shared';
 import { EgressStatus } from 'livekit-server-sdk';
+import { ThumbnailService } from '@/file/thumbnail.service';
+import { FfmpegService } from './ffmpeg.service';
+import { MessagesService } from '@/messages/messages.service';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 
@@ -42,6 +45,12 @@ describe('LivekitReplayService', () => {
   let storageService: any;
 
   let websocketService: any;
+
+  let thumbnailService: any;
+
+  let ffmpegService: any;
+
+  let messagesService: any;
 
   const mockEgressClient = {
     startTrackCompositeEgress: jest.fn(),
@@ -82,6 +91,10 @@ describe('LivekitReplayService', () => {
     databaseService = unitRef.get(DatabaseService);
     storageService = unitRef.get(StorageService);
     websocketService = unitRef.get(WebsocketService);
+
+    thumbnailService = unitRef.get(ThumbnailService);
+    ffmpegService = unitRef.get(FfmpegService);
+    messagesService = unitRef.get(MessagesService);
 
     // Set up default return values for StorageService
     storageService.getSegmentsPrefix.mockReturnValue(
@@ -798,6 +811,92 @@ describe('LivekitReplayService', () => {
       await service.cleanupOrphanedSessions();
 
       expect(databaseService.egressSession.update).toHaveBeenCalled();
+    });
+  });
+
+  describe('captureReplay', () => {
+    const userId = 'user-123';
+    const dto = {
+      durationMinutes: 1 as const,
+      destination: 'library' as const,
+    };
+
+    beforeEach(() => {
+      databaseService.egressSession.findFirst.mockResolvedValue({
+        id: 'session-1',
+        userId,
+        channelId: 'channel-1',
+        status: 'active',
+        segmentPath: 'session-1',
+      });
+      storageService.listFiles.mockResolvedValue([
+        '2025-01-01T000000-segment_00000.ts',
+        '2025-01-01T000010-segment_00001.ts',
+      ]);
+      storageService.ensureDirectory.mockResolvedValue(undefined);
+      ffmpegService.concatenateSegments.mockResolvedValue(undefined);
+      ffmpegService.getVideoDuration.mockResolvedValue(20);
+      storageService.getFileStats.mockResolvedValue({ size: 1024000 });
+      storageService.createReadStream.mockReturnValue({
+        on: jest.fn().mockImplementation(function (
+          this: any,
+          event: string,
+          cb: (arg?: any) => void,
+        ) {
+          if (event === 'end') cb();
+          return this;
+        }),
+      });
+      databaseService.file.create.mockResolvedValue({
+        id: 'file-1',
+        filename: 'replay-123.mp4',
+      });
+      databaseService.replayClip.create.mockResolvedValue({
+        id: 'clip-1',
+      });
+      thumbnailService.generateVideoThumbnail.mockResolvedValue(
+        '/app/uploads/thumbnails/file-1.jpg',
+      );
+      databaseService.file.update.mockResolvedValue({});
+    });
+
+    it('should call generateVideoThumbnail after file creation', async () => {
+      await service.captureReplay(userId, dto);
+
+      // Allow the fire-and-forget async to settle
+      await new Promise((r) => setImmediate(r));
+
+      expect(thumbnailService.generateVideoThumbnail).toHaveBeenCalledWith(
+        expect.stringContaining('replay-'),
+        'file-1',
+      );
+    });
+
+    it('should update file record with thumbnailPath on success', async () => {
+      await service.captureReplay(userId, dto);
+
+      // Allow the fire-and-forget async to settle
+      await new Promise((r) => setImmediate(r));
+
+      expect(databaseService.file.update).toHaveBeenCalledWith({
+        where: { id: 'file-1' },
+        data: { thumbnailPath: '/app/uploads/thumbnails/file-1.jpg' },
+      });
+    });
+
+    it('should not fail captureReplay when thumbnail generation fails', async () => {
+      thumbnailService.generateVideoThumbnail.mockRejectedValue(
+        new Error('FFmpeg not found'),
+      );
+
+      // captureReplay should still succeed
+      const result = await service.captureReplay(userId, dto);
+
+      expect(result.clipId).toBe('clip-1');
+      expect(result.fileId).toBe('file-1');
+
+      // Allow the fire-and-forget async to settle (error is logged, not thrown)
+      await new Promise((r) => setImmediate(r));
     });
   });
 
