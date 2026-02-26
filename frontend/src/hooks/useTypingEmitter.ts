@@ -19,29 +19,42 @@ export function useTypingEmitter({ channelId, directMessageGroupId }: UseTypingE
   const lastEmitRef = useRef(0);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
-
-  const roomPayload = channelId
-    ? { channelId }
+  const roomType = channelId
+    ? 'channel'
     : directMessageGroupId
-      ? { directMessageGroupId }
+      ? 'dm'
       : null;
+  const roomId = channelId ?? directMessageGroupId ?? null;
+
+  const emitTypingEvent = useCallback(
+    (event: ClientEvents.TYPING_START | ClientEvents.TYPING_STOP) => {
+      if (!socket || !roomType || !roomId) return;
+
+      const payload =
+        roomType === 'channel'
+          ? { channelId: roomId }
+          : { directMessageGroupId: roomId };
+
+      socket.emit(event, payload);
+    },
+    [socket, roomType, roomId],
+  );
 
   const sendStart = useCallback(() => {
-    if (!socket || !roomPayload) return;
-    socket.emit(ClientEvents.TYPING_START, roomPayload);
+    emitTypingEvent(ClientEvents.TYPING_START);
     isTypingRef.current = true;
     lastEmitRef.current = Date.now();
-  }, [socket, roomPayload]);
+  }, [emitTypingEvent]);
 
   const sendStop = useCallback(() => {
-    if (!socket || !roomPayload || !isTypingRef.current) return;
-    socket.emit(ClientEvents.TYPING_STOP, roomPayload);
+    if (!isTypingRef.current) return;
+    emitTypingEvent(ClientEvents.TYPING_STOP);
     isTypingRef.current = false;
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
       idleTimerRef.current = null;
     }
-  }, [socket, roomPayload]);
+  }, [emitTypingEvent]);
 
   const handleKeyPress = useCallback(() => {
     const now = Date.now();
@@ -63,14 +76,14 @@ export function useTypingEmitter({ channelId, directMessageGroupId }: UseTypingE
   // Cleanup on unmount or context change
   useEffect(() => {
     return () => {
-      if (isTypingRef.current && socket && roomPayload) {
-        socket.emit(ClientEvents.TYPING_STOP, roomPayload);
+      if (isTypingRef.current) {
+        emitTypingEvent(ClientEvents.TYPING_STOP);
       }
       if (idleTimerRef.current) {
         clearTimeout(idleTimerRef.current);
       }
     };
-  }, [socket, roomPayload]);
+  }, [emitTypingEvent]);
 
   return { handleKeyPress, sendTypingStop: sendStop };
 }

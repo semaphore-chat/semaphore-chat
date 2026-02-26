@@ -349,19 +349,34 @@ describe('FriendsService', () => {
   });
 
   describe('getFriends', () => {
-    it('should return the other user from each friendship', async () => {
+    it('should return friendship IDs and the other user', async () => {
       const userId = 'user-123';
       const friendA = UserFactory.build({ id: 'friend-a' });
       const friendB = UserFactory.build({ id: 'friend-b' });
 
       mockDatabase.friendship.findMany.mockResolvedValue([
-        { userAId: userId, userBId: 'friend-a', userA: {}, userB: friendA },
-        { userAId: 'friend-b', userBId: userId, userA: friendB, userB: {} },
+        {
+          id: 'fs-1',
+          userAId: userId,
+          userBId: 'friend-a',
+          userA: {},
+          userB: friendA,
+        },
+        {
+          id: 'fs-2',
+          userAId: 'friend-b',
+          userBId: userId,
+          userA: friendB,
+          userB: {},
+        },
       ]);
 
       const result = await service.getFriends(userId);
 
-      expect(result).toEqual([friendA, friendB]);
+      expect(result).toEqual([
+        { friendshipId: 'fs-1', user: friendA },
+        { friendshipId: 'fs-2', user: friendB },
+      ]);
     });
   });
 

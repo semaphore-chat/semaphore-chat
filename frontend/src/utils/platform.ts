@@ -5,31 +5,7 @@
  * This utility helps maintain clean separation between platform-specific code.
  */
 
-/**
- * Extended Window interface with Electron API
- */
-interface ElectronAPI {
-  isElectron?: boolean;
-  isWayland?: boolean;
-  platform?: string;
-  getDesktopSources?: (types: string[]) => Promise<unknown[]>;
-  getScreenStream?: (sourceId: string) => Promise<MediaStream | null>;
-  getAppVersion?: () => Promise<string>;
-  writeClipboard?: (text: string) => void;
-  [key: string]: unknown;
-}
-
-declare global {
-  interface Window {
-    electronAPI?: ElectronAPI;
-    __selectedScreenSourceId?: string;
-    __screenShareSettings?: {
-      resolution: string;
-      fps: number;
-      enableAudio: boolean;
-    };
-  }
-}
+import type { ElectronAPI } from "../types/electron-api";
 
 /**
  * Platform types

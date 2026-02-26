@@ -26,7 +26,7 @@ import {
 import { ParseObjectIdPipe } from 'nestjs-object-id';
 import { AuthenticatedRequest } from '@/types';
 import {
-  BanUserDto,
+  ModerationBanUserDto,
   UnbanUserDto,
   KickUserDto,
   TimeoutUserDto,
@@ -66,7 +66,7 @@ export class ModerationController {
   async banUser(
     @Param('communityId', ParseObjectIdPipe) communityId: string,
     @Param('userId', ParseObjectIdPipe) userId: string,
-    @Body() dto: BanUserDto,
+    @Body() dto: ModerationBanUserDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<SuccessMessageDto> {
     const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : undefined;

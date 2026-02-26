@@ -1,5 +1,4 @@
-import { $Enums, Channel } from '@prisma/client';
-import { Exclude } from 'class-transformer';
+import { $Enums } from '@prisma/client';
 import {
   IsString,
   IsNotEmpty,
@@ -13,7 +12,7 @@ import {
 import { ApiProperty } from '@nestjs/swagger';
 import { ChannelTypeValues } from '@/common/enums/swagger-enums';
 
-export class CreateChannelDto implements Channel {
+export class CreateChannelDto {
   @IsBoolean()
   @IsNotEmpty()
   isPrivate: boolean;
@@ -32,17 +31,11 @@ export class CreateChannelDto implements Channel {
 
   @IsNumber()
   @IsOptional()
-  position: number;
+  position?: number;
 
   @IsNumber()
   @IsOptional()
   @Min(0)
   @Max(21600) // Max 6 hours
-  slowmodeSeconds: number;
-
-  @Exclude()
-  id: string;
-
-  @Exclude()
-  createdAt: Date;
+  slowmodeSeconds?: number;
 }

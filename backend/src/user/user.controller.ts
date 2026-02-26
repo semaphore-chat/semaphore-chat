@@ -11,7 +11,6 @@ import {
   Patch,
   Req,
   Delete,
-  DefaultValuePipe,
   UseInterceptors,
   ClassSerializerInterceptor,
 } from '@nestjs/common';
@@ -27,13 +26,14 @@ import {
 import { AdminUserEntity } from './dto/admin-user-response.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
-import { BanUserDto } from './dto/ban-user.dto';
+import { SetUserBanStatusDto } from './dto/ban-user.dto';
+import { AdminUserListQueryDto } from './dto/admin-user-list-query.dto';
 import { Public } from '@/auth/public.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
-import { InstanceRole, RbacActions } from '@prisma/client';
+import { RbacActions } from '@prisma/client';
 import { RbacResource, RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
 import { ParseObjectIdPipe } from 'nestjs-object-id';
@@ -152,18 +152,20 @@ export class UserController {
   @RbacResource({ type: RbacResourceType.INSTANCE })
   @ApiOkResponse({ type: AdminUserListResponseDto })
   async findAllUsersAdmin(
-    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-    @Query('continuationToken') continuationToken?: string,
-    @Query('banned', new DefaultValuePipe(undefined)) banned?: string,
-    @Query('role') role?: InstanceRole,
-    @Query('search') search?: string,
+    @Query() query: AdminUserListQueryDto,
   ): Promise<AdminUserListResponseDto> {
+    const limit = query.limit ?? 50;
     const filters = {
-      banned: banned === 'true' ? true : banned === 'false' ? false : undefined,
-      role,
-      search,
+      banned:
+        query.banned === 'true'
+          ? true
+          : query.banned === 'false'
+            ? false
+            : undefined,
+      role: query.role,
+      search: query.search,
     };
-    return this.userService.findAllAdmin(limit, continuationToken, filters);
+    return this.userService.findAllAdmin(limit, query.continuationToken, filters);
   }
 
   /**
@@ -211,7 +213,7 @@ export class UserController {
   async setBanStatus(
     @Req() req: AuthenticatedRequest,
     @Param('id', ParseObjectIdPipe) id: string,
-    @Body() dto: BanUserDto,
+    @Body() dto: SetUserBanStatusDto,
   ): Promise<AdminUserEntity> {
     return this.userService.setBanStatus(id, dto.banned, req.user.id);
   }

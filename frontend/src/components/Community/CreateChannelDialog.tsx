@@ -29,14 +29,12 @@ interface CreateChannelDialogProps {
 interface CreateChannelFormData {
   name: string;
   type: "TEXT" | "VOICE";
-  description: string;
   isPrivate: boolean;
 }
 
 const initialFormData: CreateChannelFormData = {
   name: "",
   type: "TEXT",
-  description: "",
   isPrivate: false,
 };
 
@@ -65,7 +63,6 @@ const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
       await createChannel({
         body: {
           name: formData.name.trim(),
-          description: formData.description.trim() || undefined,
           type: formData.type,
           communityId,
           isPrivate: formData.isPrivate,
@@ -104,16 +101,6 @@ const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
             <MenuItem value="VOICE">Voice Channel</MenuItem>
           </Select>
         </FormControl>
-        <TextField
-          label="Description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          fullWidth
-          margin="normal"
-          multiline
-          rows={2}
-          placeholder="What is this channel about?"
-        />
         <FormControlLabel
           control={
             <Switch

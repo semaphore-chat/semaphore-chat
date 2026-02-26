@@ -19,6 +19,20 @@ import {
   switchVideoInputDevice,
 } from "../features/voice/voiceActions";
 
+type LivekitConnectionInfo = {
+  url: string;
+  [key: string]: unknown;
+};
+
+function hasLivekitUrl(value: unknown): value is LivekitConnectionInfo {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as { url?: unknown };
+  return typeof candidate.url === "string" && candidate.url.length > 0;
+}
+
 export const useVoiceConnection = () => {
   const voiceState = useVoice();
   const { dispatch, stateRef } = useVoiceDispatch();
@@ -48,6 +62,11 @@ export const useVoiceConnection = () => {
         logger.error('[useVoiceConnection] Missing user or connectionInfo');
         throw new Error("User or connection info not available");
       }
+      if (!hasLivekitUrl(connectionInfo)) {
+        logger.error('[useVoiceConnection] Missing LiveKit URL in connection info payload');
+        throw new Error("LiveKit URL is missing. Check backend LIVEKIT_URL configuration.");
+      }
+      const livekitConnectionInfo = connectionInfo;
 
       // Leave current channel/DM before joining a new one
       const deps = getDeps();
@@ -74,7 +93,8 @@ export const useVoiceConnection = () => {
             username: user.username,
             displayName: user.displayName ?? undefined,
           },
-          connectionInfo,
+          // Forward the full backend payload so future connection fields are preserved.
+          connectionInfo: livekitConnectionInfo,
         },
         deps
       );
@@ -88,6 +108,10 @@ export const useVoiceConnection = () => {
       if (!user || !connectionInfo) {
         throw new Error("User or connection info not available");
       }
+      if (!hasLivekitUrl(connectionInfo)) {
+        throw new Error("LiveKit URL is missing. Check backend LIVEKIT_URL configuration.");
+      }
+      const livekitConnectionInfo = connectionInfo;
 
       // Leave current channel/DM before joining a new one
       const deps = getDeps();
@@ -110,7 +134,8 @@ export const useVoiceConnection = () => {
             username: user.username,
             displayName: user.displayName ?? undefined,
           },
-          connectionInfo,
+          // Forward the full backend payload so future connection fields are preserved.
+          connectionInfo: livekitConnectionInfo,
         },
         deps
       );

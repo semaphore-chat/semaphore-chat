@@ -14,11 +14,13 @@ import {
   Message as MessageIcon,
   PersonRemove as RemoveIcon,
 } from "@mui/icons-material";
-import { User } from "../../types/auth.type";
 import UserAvatar from "../Common/UserAvatar";
+import type { FriendListItemDto } from "../../api-client/types.gen";
+
+type FriendSummary = Pick<FriendListItemDto, "id" | "username" | "displayName" | "avatarUrl">;
 
 interface FriendCardProps {
-  friend: User;
+  friend: FriendSummary;
   friendshipId: string;
   onMessage: (userId: string) => void;
   onRemove: (friendshipId: string) => void;

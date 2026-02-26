@@ -42,6 +42,14 @@ jobs:
         working-directory: ./frontend
         run: pnpm exec openapi-ts
 
+      - name: Run ESLint
+        working-directory: ./frontend
+        run: pnpm run lint
+
+      - name: Type check with TypeScript
+        working-directory: ./frontend
+        run: pnpm exec tsc --noEmit
+
       - name: Run unit tests with coverage
         working-directory: ./frontend
         run: pnpm run test:cov

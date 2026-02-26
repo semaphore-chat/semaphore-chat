@@ -237,27 +237,6 @@ export const clearNotificationsByTag = (tag: string): void => {
   }
 };
 
-/**
- * Extended Window interface with Electron notification API
- */
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron?: boolean;
-      showNotification?: (options: {
-        title: string;
-        body?: string;
-        icon?: string;
-        tag?: string;
-        silent?: boolean;
-      }) => void;
-      clearNotifications?: (tag: string) => void;
-      onNotificationClick?: (callback: (notificationId: string) => void) => void;
-      [key: string]: unknown;
-    };
-  }
-}
-
 export default {
   supportsNotifications,
   getNotificationPermission,

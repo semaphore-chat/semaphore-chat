@@ -9,12 +9,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, LinearProgress, Snackbar, Box, Typography } from '@mui/material';
 import { Download, Refresh } from '@mui/icons-material';
 import { logger } from '../../utils/logger';
-
-interface UpdateInfo {
-  version: string;
-  releaseDate?: string;
-  releaseNotes?: string;
-}
+import type { UpdateInfo } from '../../types/electron-api';
 
 export const AutoUpdater = () => {
   const [updateAvailable, setUpdateAvailable] = useState(false);
@@ -26,56 +21,61 @@ export const AutoUpdater = () => {
   const [isElectron, setIsElectron] = useState(false);
 
   useEffect(() => {
-    // Check if running in Electron
-    if (window.electronAPI) {
-      setIsElectron(true);
+    const electronAPI = window.electronAPI;
+    if (!electronAPI?.isElectron) return;
 
-      // Set up event listeners
-      const unsubUpdateAvailable = window.electronAPI.onUpdateAvailable((info) => {
-        logger.dev('Update available:', info);
-        setUpdateInfo(info);
-        setUpdateAvailable(true);
-        setDownloading(true);
-      });
+    setIsElectron(true);
 
-      const unsubDownloadProgress = window.electronAPI.onDownloadProgress((progress) => {
-        logger.dev('Download progress:', progress.percent);
-        setDownloadProgress(progress.percent);
-      });
-
-      const unsubUpdateDownloaded = window.electronAPI.onUpdateDownloaded((info) => {
-        logger.dev('Update downloaded:', info);
-        setDownloading(false);
-        setUpdateDownloaded(true);
-      });
-
-      const unsubUpdateError = window.electronAPI.onUpdateError((err) => {
-        logger.error('Update error:', err);
-        setError(err.message || 'Failed to download update');
-        setDownloading(false);
-        setUpdateAvailable(false);
-      });
-
-      // Cleanup on unmount
-      return () => {
-        unsubUpdateAvailable();
-        unsubDownloadProgress();
-        unsubUpdateDownloaded();
-        unsubUpdateError();
-      };
+    if (
+      !electronAPI.onUpdateAvailable ||
+      !electronAPI.onDownloadProgress ||
+      !electronAPI.onUpdateDownloaded ||
+      !electronAPI.onUpdateError
+    ) {
+      return;
     }
+
+    // Set up event listeners
+    const unsubUpdateAvailable = electronAPI.onUpdateAvailable((info) => {
+      logger.dev('Update available:', info);
+      setUpdateInfo(info);
+      setUpdateAvailable(true);
+      setDownloading(true);
+    });
+
+    const unsubDownloadProgress = electronAPI.onDownloadProgress((progress) => {
+      logger.dev('Download progress:', progress.percent);
+      setDownloadProgress(progress.percent);
+    });
+
+    const unsubUpdateDownloaded = electronAPI.onUpdateDownloaded((info) => {
+      logger.dev('Update downloaded:', info);
+      setDownloading(false);
+      setUpdateDownloaded(true);
+    });
+
+    const unsubUpdateError = electronAPI.onUpdateError((err) => {
+      logger.error('Update error:', err);
+      setError(err.message || 'Failed to download update');
+      setDownloading(false);
+      setUpdateAvailable(false);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      unsubUpdateAvailable();
+      unsubDownloadProgress();
+      unsubUpdateDownloaded();
+      unsubUpdateError();
+    };
   }, []);
 
   const handleInstallUpdate = () => {
-    if (window.electronAPI) {
-      window.electronAPI.quitAndInstall();
-    }
+    window.electronAPI?.quitAndInstall?.();
   };
 
   const handleCheckForUpdates = () => {
-    if (window.electronAPI) {
-      window.electronAPI.checkForUpdates();
-    }
+    window.electronAPI?.checkForUpdates?.();
   };
 
   const handleDismissError = () => {

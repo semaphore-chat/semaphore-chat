@@ -413,15 +413,18 @@
         "parameters": [
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "number"
+              "type": "number",
+              "default": 50,
+              "minimum": 1,
+              "maximum": 100
             }
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -429,23 +432,31 @@
           },
           {
             "name": "banned",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
             }
           },
           {
             "name": "role",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "string",
+              "enum": [
+                "OWNER",
+                "USER"
+              ]
             }
           },
           {
             "name": "search",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -588,7 +599,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BanUserDto"
+                "$ref": "#/components/schemas/SetUserBanStatusDto"
               }
             }
           }
@@ -3741,7 +3752,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/BanUserDto"
+                "$ref": "#/components/schemas/ModerationBanUserDto"
               }
             }
           }
@@ -5973,7 +5984,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/UserEntity"
+                    "$ref": "#/components/schemas/FriendListItemDto"
                   }
                 }
               }
@@ -6994,17 +7005,6 @@
           "role"
         ]
       },
-      "BanUserDto": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string"
-          }
-        }
-      },
       "SuccessResponseDto": {
         "type": "object",
         "properties": {
@@ -7500,24 +7500,13 @@
             "type": "number",
             "minimum": 0,
             "maximum": 21600
-          },
-          "id": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
           }
         },
         "required": [
           "type",
           "isPrivate",
           "name",
-          "communityId",
-          "position",
-          "slowmodeSeconds",
-          "id",
-          "createdAt"
+          "communityId"
         ]
       },
       "ChannelDto": {
@@ -7590,13 +7579,6 @@
             "type": "number",
             "minimum": 0,
             "maximum": 21600
-          },
-          "id": {
-            "type": "string"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
           }
         }
       },
@@ -11775,6 +11757,86 @@
         },
         "required": [
           "memberIds"
+        ]
+      },
+      "SetUserBanStatusDto": {
+        "type": "object",
+        "properties": {
+          "banned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "banned"
+        ]
+      },
+      "ModerationBanUserDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        }
+      },
+      "FriendListItemDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "USER"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "bannerUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSeen": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "friendshipId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "id",
+          "username",
+          "avatarUrl",
+          "bannerUrl",
+          "lastSeen",
+          "displayName",
+          "bio",
+          "status",
+          "friendshipId"
         ]
       }
     }

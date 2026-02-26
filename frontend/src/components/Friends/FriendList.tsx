@@ -42,10 +42,6 @@ const FriendList: React.FC<FriendListProps> = ({ onSelectDmGroup }) => {
     },
   });
 
-  // We need to track the friendship IDs with each friend
-  // For now, we'll fetch the friendship status when needed
-  // This is a limitation - ideally the backend would return friendship IDs with the friends list
-
   const handleMessage = async (userId: string) => {
     try {
       // Create or get existing DM with this user
@@ -66,7 +62,7 @@ const FriendList: React.FC<FriendListProps> = ({ onSelectDmGroup }) => {
 
   const handleRemove = async (friendshipId: string) => {
     try {
-      await removeFriend({ path: { friendshipId } });
+      await removeFriend({ path: { id: friendshipId } });
     } catch (err) {
       logger.error("Failed to remove friend:", err);
     }
@@ -112,7 +108,7 @@ const FriendList: React.FC<FriendListProps> = ({ onSelectDmGroup }) => {
           <FriendCard
             key={friend.id}
             friend={friend}
-            friendshipId={friend.id} // Note: This should be the friendship ID, not user ID
+            friendshipId={friend.friendshipId}
             onMessage={handleMessage}
             onRemove={handleRemove}
           />

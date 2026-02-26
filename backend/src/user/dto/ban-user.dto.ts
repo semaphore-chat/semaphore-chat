@@ -1,6 +1,6 @@
 import { IsBoolean } from 'class-validator';
 
-export class BanUserDto {
+export class SetUserBanStatusDto {
   @IsBoolean()
   banned: boolean;
 }

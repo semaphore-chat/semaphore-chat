@@ -76,7 +76,12 @@ const AdminUsersPage: React.FC = () => {
   const { data, isLoading, error, refetch } = useQuery(userControllerFindAllUsersAdminOptions({
     query: {
       search: search || undefined,
-      banned: bannedFilter === "all" ? undefined : bannedFilter === "banned",
+      banned:
+        bannedFilter === "all"
+          ? undefined
+          : bannedFilter === "banned"
+            ? "true"
+            : "false",
       role: roleFilter === "all" ? undefined : (roleFilter as "OWNER" | "USER"),
       limit: 100,
     },
@@ -143,19 +148,19 @@ const AdminUsersPage: React.FC = () => {
     try {
       switch (action) {
         case "ban":
-          await setBanStatus({ path: { userId: user.id }, body: { banned: true } });
+          await setBanStatus({ path: { id: user.id }, body: { banned: true } });
           break;
         case "unban":
-          await setBanStatus({ path: { userId: user.id }, body: { banned: false } });
+          await setBanStatus({ path: { id: user.id }, body: { banned: false } });
           break;
         case "delete":
           await deleteUser({ path: { id: user.id } });
           break;
         case "promote":
-          await updateRole({ path: { userId: user.id }, body: { role: "OWNER" } });
+          await updateRole({ path: { id: user.id }, body: { role: "OWNER" } });
           break;
         case "demote":
-          await updateRole({ path: { userId: user.id }, body: { role: "USER" } });
+          await updateRole({ path: { id: user.id }, body: { role: "USER" } });
           break;
       }
       refetch();
@@ -189,13 +194,11 @@ const AdminUsersPage: React.FC = () => {
   // Instance role management handlers
   const handleOpenRoleDialog = (user: AdminUser) => {
     setRoleDialogUser(user);
-    setUserRoles([]); // Will be fetched when we have user roles endpoint
     handleMenuClose();
   };
 
   const handleCloseRoleDialog = () => {
     setRoleDialogUser(null);
-    setUserRoles([]);
   };
 
   const handleToggleRole = async (roleId: string, isAssigned: boolean) => {

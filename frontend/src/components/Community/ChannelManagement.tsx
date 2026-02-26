@@ -210,11 +210,6 @@ const ChannelManagement: React.FC<ChannelManagementProps> = ({ communityId }) =>
                       {channel.isPrivate && (
                         <Chip label="Private" size="small" color="warning" />
                       )}
-                      {channel.description && (
-                        <Typography variant="caption" color="text.secondary">
-                          {channel.description}
-                        </Typography>
-                      )}
                     </Box>
 
                     {canManageChannels && (
@@ -293,11 +288,6 @@ const ChannelManagement: React.FC<ChannelManagementProps> = ({ communityId }) =>
                       </Typography>
                       {channel.isPrivate && (
                         <Chip label="Private" size="small" color="warning" />
-                      )}
-                      {channel.description && (
-                        <Typography variant="caption" color="text.secondary">
-                          {channel.description}
-                        </Typography>
                       )}
                     </Box>
 

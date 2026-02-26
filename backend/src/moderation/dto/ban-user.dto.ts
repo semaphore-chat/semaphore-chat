@@ -1,6 +1,6 @@
 import { IsString, IsOptional, IsDateString } from 'class-validator';
 
-export class BanUserDto {
+export class ModerationBanUserDto {
   @IsString()
   @IsOptional()
   reason?: string;

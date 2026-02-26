@@ -17,6 +17,7 @@ import {
   FriendshipDto,
   PendingRequestsDto,
   FriendshipStatusDto,
+  FriendListItemDto,
 } from './dto/friends-response.dto';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { SuccessResponseDto } from '@/common/dto/common-response.dto';
@@ -31,10 +32,14 @@ export class FriendsController {
    * Get all friends for the current user
    */
   @Get()
-  @ApiOkResponse({ type: [UserEntity] })
-  async getFriends(@Req() req: AuthenticatedRequest): Promise<UserEntity[]> {
+  @ApiOkResponse({ type: [FriendListItemDto] })
+  async getFriends(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<FriendListItemDto[]> {
     const friends = await this.friendsService.getFriends(req.user.id);
-    return friends.map((f) => new UserEntity(f));
+    return friends.map(
+      (friend) => new FriendListItemDto(friend.friendshipId, friend.user),
+    );
   }
 
   /**

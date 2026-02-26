@@ -29,16 +29,23 @@ describe('FriendsController', () => {
   });
 
   describe('getFriends', () => {
-    it('should return friends wrapped as UserEntity', async () => {
+    it('should return friends with friendship IDs', async () => {
       const friends = [
-        { id: 'f1', username: 'alice', displayName: 'Alice' },
-        { id: 'f2', username: 'bob', displayName: 'Bob' },
+        {
+          friendshipId: 'fs-1',
+          user: { id: 'f1', username: 'alice', displayName: 'Alice' },
+        },
+        {
+          friendshipId: 'fs-2',
+          user: { id: 'f2', username: 'bob', displayName: 'Bob' },
+        },
       ];
-      friendsService.getFriends.mockResolvedValue(friends);
+      friendsService.getFriends.mockResolvedValue(friends as any);
 
       const result = await controller.getFriends(mockReq);
 
       expect(result).toHaveLength(2);
+      expect(result[0]?.friendshipId).toBe('fs-1');
       expect(friendsService.getFriends).toHaveBeenCalledWith(userId);
     });
   });

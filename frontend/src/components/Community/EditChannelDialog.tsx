@@ -24,13 +24,11 @@ interface EditChannelDialogProps {
 
 interface EditChannelFormData {
   name: string;
-  description: string;
   isPrivate: boolean;
 }
 
 const initialFormData: EditChannelFormData = {
   name: "",
-  description: "",
   isPrivate: false,
 };
 
@@ -51,7 +49,6 @@ const EditChannelDialog: React.FC<EditChannelDialogProps> = ({
     if (channel) {
       setFormData({
         name: channel.name,
-        description: channel.description || "",
         isPrivate: channel.isPrivate,
       });
     } else {
@@ -72,7 +69,6 @@ const EditChannelDialog: React.FC<EditChannelDialogProps> = ({
         path: { id: channel.id },
         body: {
           name: formData.name.trim(),
-          description: formData.description.trim() || undefined,
           isPrivate: formData.isPrivate,
         },
       });
@@ -94,15 +90,6 @@ const EditChannelDialog: React.FC<EditChannelDialogProps> = ({
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           fullWidth
           margin="normal"
-        />
-        <TextField
-          label="Description"
-          value={formData.description}
-          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-          fullWidth
-          margin="normal"
-          multiline
-          rows={2}
         />
         <FormControlLabel
           control={

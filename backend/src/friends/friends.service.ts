@@ -18,6 +18,11 @@ export interface PendingRequests {
   received: FriendshipWithUsers[];
 }
 
+export interface FriendListItem {
+  friendshipId: string;
+  user: Partial<User>;
+}
+
 @Injectable()
 export class FriendsService {
   constructor(private readonly databaseService: DatabaseService) {}
@@ -213,7 +218,7 @@ export class FriendsService {
   /**
    * Get all accepted friends for a user
    */
-  async getFriends(userId: string): Promise<Partial<User>[]> {
+  async getFriends(userId: string): Promise<FriendListItem[]> {
     const friendships = await this.databaseService.friendship.findMany({
       where: {
         status: FriendshipStatus.ACCEPTED,
@@ -225,8 +230,10 @@ export class FriendsService {
       },
     });
 
-    // Return the other user (not the requesting user)
-    return friendships.map((f) => (f.userAId === userId ? f.userB : f.userA));
+    return friendships.map((f) => ({
+      friendshipId: f.id,
+      user: f.userAId === userId ? f.userB : f.userA,
+    }));
   }
 
   /**

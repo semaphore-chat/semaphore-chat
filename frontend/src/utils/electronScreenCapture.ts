@@ -7,27 +7,7 @@
 
 import { logger } from './logger';
 import { isElectron } from './platform';
-
-interface DesktopSource {
-  id: string;
-  name: string;
-  thumbnail: string;
-  display_id?: string;
-  appIcon?: string;
-}
-
-interface ElectronAPI {
-  isElectron?: boolean;
-  getDesktopSources?: (types: string[]) => Promise<DesktopSource[]>;
-  getScreenStream?: (sourceId: string) => Promise<MediaStream | null>;
-}
-
-// Extend the Window interface to include electronAPI
-declare global {
-  interface Window {
-    electronAPI?: ElectronAPI;
-  }
-}
+import type { DesktopSource } from '../types/electron-api';
 
 /**
  * Get available desktop sources for screen capture

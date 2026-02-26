@@ -35,3 +35,13 @@ export class FriendshipStatusDto {
   @ApiProperty({ enum: ['sent', 'received'], nullable: true })
   direction: 'sent' | 'received' | null;
 }
+
+export class FriendListItemDto extends UserEntity {
+  @ApiProperty()
+  friendshipId: string;
+
+  constructor(friendshipId: string, partial: Partial<UserEntity>) {
+    super(partial);
+    this.friendshipId = friendshipId;
+  }
+}
