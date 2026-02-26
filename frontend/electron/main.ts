@@ -721,7 +721,7 @@ app.whenReady().then(() => {
 
           // Safety net: never attempt loopback on Linux (restrictOwnAudio not supported by OS)
           const isLinux = process.platform === 'linux';
-          const audioConfig = (DEBUG_VIDEO_ONLY || isLinux) ? undefined : (enableAudio ? 'loopback' : undefined);
+          const audioConfig = (DEBUG_VIDEO_ONLY || isLinux) ? undefined : (enableAudio ? 'loopbackWithoutChrome' : undefined);
           log('Audio enabled from settings:', enableAudio);
           log('DEBUG_VIDEO_ONLY:', DEBUG_VIDEO_ONLY);
           log('Final audio config:', audioConfig);
