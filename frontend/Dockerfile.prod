@@ -18,8 +18,9 @@ COPY frontend/package.json ./frontend/
 # Copy shared source before install so the prepare script can build it
 COPY shared/ ./shared/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Install dependencies (--ignore-scripts skips native compilation of hoisted
+# backend deps like bcrypt that aren't needed for the frontend build)
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy backend OpenAPI spec (needed for API client generation)
 COPY backend/openapi.json ./backend/openapi.json

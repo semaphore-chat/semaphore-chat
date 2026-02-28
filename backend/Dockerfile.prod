@@ -38,8 +38,15 @@ RUN pnpm exec prisma generate --schema=prisma/schema.prisma
 # Build the application
 RUN pnpm run build
 
-# Prune dev dependencies - keep only production
-RUN CI=true pnpm prune --prod
+# Prune dev dependencies but preserve prisma CLI (devDependency needed at runtime for db push).
+# Done in a single RUN to guarantee /tmp persistence across the save/prune/restore cycle.
+# pnpm hoists prisma to /app/node_modules/; cp -rL dereferences the .bin symlink.
+RUN cp -rL /app/node_modules/.bin/prisma /tmp/prisma-cli && \
+    cp -r /app/node_modules/prisma /tmp/prisma-pkg && \
+    CI=true pnpm prune --prod && \
+    mkdir -p /app/node_modules/.bin && \
+    cp /tmp/prisma-cli /app/node_modules/.bin/prisma && \
+    cp -r /tmp/prisma-pkg /app/node_modules/prisma
 
 # ============================================
 # Stage 2: Production Runtime
@@ -67,6 +74,7 @@ COPY --from=builder --chown=nestjs:nodejs /app/backend/dist ./backend/dist
 COPY --from=builder --chown=nestjs:nodejs /app/backend/node_modules ./backend/node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/backend/package.json ./backend/
 COPY --from=builder --chown=nestjs:nodejs /app/backend/prisma ./backend/prisma
+COPY --from=builder --chown=nestjs:nodejs /app/backend/docker-entrypoint.sh ./backend/
 
 WORKDIR /app/backend
 
@@ -102,5 +110,6 @@ EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/api/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
 
-# Start the application
+# Push schema on startup (idempotent) then start the application
+ENTRYPOINT ["sh", "./docker-entrypoint.sh"]
 CMD ["node", "dist/src/main.js"]

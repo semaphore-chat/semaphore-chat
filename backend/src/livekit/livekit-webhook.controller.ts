@@ -33,7 +33,7 @@ import {
  * @example
  * Configure in LiveKit Cloud dashboard or self-hosted server:
  * Webhook URL: https://your-domain.com/api/livekit/webhook
- * Secret: [LIVEKIT_WEBHOOK_SECRET from env]
+ * Webhook signatures are verified using LIVEKIT_API_KEY and LIVEKIT_API_SECRET.
  */
 @Controller('livekit')
 export class LivekitWebhookController {
