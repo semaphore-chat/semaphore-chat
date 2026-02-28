@@ -19,6 +19,7 @@ import { ParseObjectIdPipe } from 'nestjs-object-id';
 import { FileAccessGuard } from '@/file/file-access/file-access.guard';
 import { FileAuthGuard } from '@/file/file-auth.guard';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
+import { Public } from '@/auth/public.decorator';
 import { FileMetadataResponseDto } from './dto/file-metadata-response.dto';
 import { AuthenticatedRequest } from '@/types';
 
@@ -49,6 +50,7 @@ export class FileController {
     return { url, expiresAt: expiresAt.toISOString() };
   }
 
+  @Public()
   @Get(':id/metadata')
   @UseGuards(FileAuthGuard, FileAccessGuard)
   @ApiOkResponse({ type: FileMetadataResponseDto })
@@ -70,6 +72,7 @@ export class FileController {
     };
   }
 
+  @Public()
   @Get(':id/thumbnail')
   @UseGuards(FileAuthGuard, FileAccessGuard)
   async getFileThumbnail(
@@ -96,6 +99,7 @@ export class FileController {
     return new StreamableFile(stream);
   }
 
+  @Public()
   @Get(':id')
   @UseGuards(FileAuthGuard, FileAccessGuard)
   async getFile(
