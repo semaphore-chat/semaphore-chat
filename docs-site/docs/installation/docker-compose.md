@@ -154,7 +154,7 @@ Copy the Compose file for your chosen setup:
 
     ```title="Caddyfile"
     {$HOST:?Set HOST in .env} {
-    	reverse_proxy /api/* backend:3000
+    	reverse_proxy /api /api/* backend:3000
     	reverse_proxy /socket.io/* backend:3000
     	reverse_proxy frontend:5173
     }
@@ -405,6 +405,9 @@ openssl rand -base64 32
 !!! warning "Security"
     Never use the default secrets in production. Generate unique values for each secret.
 
+!!! tip "Push notifications"
+    To enable push notifications, add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` to your `.env`. See the [Configuration](configuration.md#push-notifications-vapid) page for how to generate VAPID keys.
+
 See the [Configuration](configuration.md) page for the full environment variable reference.
 
 ### 3. Start all services
@@ -456,14 +459,12 @@ docker compose up -d
     | 7881 | TCP | LiveKit WebRTC (TCP) |
     | 7882 | UDP | LiveKit WebRTC (UDP) |
 
-    Configure your reverse proxy to route:
+    The frontend's built-in nginx already proxies `/api` and `/socket.io` to the backend internally. Your reverse proxy only needs to route by domain:
 
     | Domain | Destination | Notes |
     |--------|-------------|-------|
-    | `your-domain.com` | `localhost:5173` | Frontend |
-    | `your-domain.com/api/*` | `localhost:3000` | Backend API |
-    | `your-domain.com/socket.io/*` | `localhost:3000` | WebSocket — ensure upgrade headers are forwarded |
-    | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade |
+    | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
+    | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
 === "Bring your own LiveKit"
 
@@ -547,10 +548,9 @@ graph LR
 
 If you chose the "With Caddy" setup, this is already handled. For the other setups, place a reverse proxy in front of Kraken to handle TLS termination:
 
-- Proxy `your-domain.com` to the frontend (port 5173)
-- Proxy `your-domain.com/api` and `your-domain.com/socket.io` to the backend (port 3000)
+- Proxy `your-domain.com` to the frontend (port 5173) — the frontend's nginx handles `/api` and `/socket.io` routing to the backend internally
 - Proxy `lk.your-domain.com` to LiveKit signaling (port 7880)
-- Ensure WebSocket upgrade headers are forwarded for both Socket.IO and LiveKit
+- Ensure WebSocket upgrade headers are forwarded for LiveKit
 
 ### Data persistence
 

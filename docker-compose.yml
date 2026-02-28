@@ -12,7 +12,6 @@ services:
       - LIVEKIT_INTERNAL_URL=http://livekit:7880
       - LIVEKIT_API_KEY=devkey
       - LIVEKIT_API_SECRET=secret-that-is-at-least-32-characters-long
-      - LIVEKIT_WEBHOOK_SECRET=secret-that-is-at-least-32-characters-long
       - REPLAY_SEGMENTS_PATH=/app/storage/replay-segments
       - REPLAY_EGRESS_OUTPUT_PATH=/out
     env_file:

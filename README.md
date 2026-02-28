@@ -93,6 +93,8 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
 
   livekit:
     image: livekit/livekit-server:latest
@@ -169,7 +171,7 @@ Save this as `Caddyfile` next to your `docker-compose.yml`:
 
 ```
 {$HOST:?Set HOST in .env} {
-	reverse_proxy /api/* backend:3000
+	reverse_proxy /api /api/* backend:3000
 	reverse_proxy /socket.io/* backend:3000
 	reverse_proxy frontend:5173
 }
@@ -226,6 +228,8 @@ services:
       - "5173:5173"
     environment:
       BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
 
   livekit:
     image: livekit/livekit-server:latest
@@ -297,14 +301,12 @@ volumes:
 
 #### Reverse proxy routing
 
-Configure your reverse proxy to route:
+The frontend's built-in nginx already proxies `/api` and `/socket.io` to the backend internally. Your reverse proxy only needs to route by domain — no path splitting required:
 
 | Domain | Destination | Notes |
 |--------|-------------|-------|
-| `your-domain.com` | `localhost:5173` | Frontend |
-| `your-domain.com/api/*` | `localhost:3000` | Backend API |
-| `your-domain.com/socket.io/*` | `localhost:3000` | WebSocket — ensure upgrade headers are forwarded |
-| `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade |
+| `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
+| `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
 #### Port forwarding
 
@@ -333,6 +335,8 @@ Generate secrets with:
 ```bash
 openssl rand -base64 32
 ```
+
+For push notifications, you'll also need VAPID keys — see the [configuration reference](https://docs.krakenchat.app/installation/configuration/) for details.
 
 ### 3. Start
 

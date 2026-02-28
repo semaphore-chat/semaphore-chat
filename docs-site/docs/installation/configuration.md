@@ -30,8 +30,7 @@ These are optional — voice and video features are disabled if not configured.
 | `LIVEKIT_URL` | LiveKit server URL returned to the browser for WebRTC connections | `wss://your-livekit-server.com` |
 | `LIVEKIT_INTERNAL_URL` | *(Optional)* Internal URL for server-to-server LiveKit API calls. Falls back to `LIVEKIT_URL` if not set. Useful when LiveKit is on a Docker network (e.g., `http://livekit:7880`) while browsers need a different URL. | `http://livekit:7880` |
 | `LIVEKIT_API_KEY` | LiveKit API key | `your-api-key` |
-| `LIVEKIT_API_SECRET` | LiveKit API secret | `your-api-secret` |
-| `LIVEKIT_WEBHOOK_SECRET` | Secret for verifying LiveKit webhook payloads | `your-webhook-secret` |
+| `LIVEKIT_API_SECRET` | LiveKit API secret (also used to verify webhook signatures — must be at least 32 characters) | `your-api-secret` |
 
 ### Replay buffer
 
