@@ -1,228 +1,411 @@
 [![License: AGPL v3 + Commercial](https://img.shields.io/badge/license-AGPL%20v3%20%2F%20Commercial-blue)](LICENSE.md)
 [![Backend Coverage](https://raw.githubusercontent.com/krakenchat/kraken/badges/backend-coverage.svg)](https://github.com/krakenchat/kraken/actions/workflows/backend-tests.yml)
 [![Frontend Coverage](https://raw.githubusercontent.com/krakenchat/kraken/badges/frontend-coverage.svg)](https://github.com/krakenchat/kraken/actions/workflows/frontend-tests.yml)
+[![Docs](https://img.shields.io/badge/docs-docs.krakenchat.app-blue)](https://docs.krakenchat.app)
 
-# Kraken Chat Backend — Developer Setup
+# Kraken
 
-Welcome to the Kraken Chat backend!  
-This guide will help you spin up a local development environment with Docker, hot-reloading, and powered by a modern full-stack architecture.
+Self-hosted voice, video, and text chat — communication you own and control.
 
----
+Kraken is an open-source communication platform that gives you full control over your data. Built with a modern stack — NestJS, React, MongoDB, and LiveKit — it provides real-time messaging, voice and video calls, and community management out of the box. Run it in your browser or as an Electron desktop app on Windows and Linux.
 
-## Tech Stack Overview
+## Features
 
-- **Backend:**  
-  [NestJS](https://docs.nestjs.com/) (TypeScript), modular structure (`/src`), real-time via WebSockets, REST endpoints.
-- **Data Layer:**  
-  [Prisma ORM](https://www.prisma.io/docs/)
-  - **MongoDB:** for message documents, spans, attachments, reactions, and mentions (`prisma/mongo.schema.prisma`)
-- **Frontend:**  
-  [React](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/docs/), rapid HMR via [Vite](https://vitejs.dev/).
-- **Development:**  
-  Docker Compose multi-service dev environment, volume mount hot-reload.
+- **Messaging** — Real-time text channels with mentions, reactions, threads, file attachments, and read receipts
+- **Voice & Video** — LiveKit-powered calls with screen sharing and replay buffer with clip trimming
+- **Communities** — Servers with text and voice channels, private channels, DMs, and group DMs
+- **Administration** — Role-based access control with granular permissions, moderation tools, storage quotas, and invite system
+- **User Experience** — Profiles with avatars and banners, presence, friends list, push notifications, desktop app, and PWA support
 
----
+## Architecture
 
-## Project Structure
-
-```
-repo-root/
-  backend/
-    prisma/
-      schema.prisma       # MongoDB schema (no migrations, just push)
-      generated/
-    src/
-    ...
-  frontend/
-  docker-compose.yml
+```mermaid
+graph LR
+    Client[Browser] --> Proxy[Reverse Proxy<br/>nginx / Caddy]
+    Proxy -->|/| Frontend[Frontend<br/>React + Nginx<br/>:5173]
+    Proxy -->|/api, /socket.io| Backend[Backend<br/>NestJS<br/>:3000]
+    Backend --> MongoDB[(MongoDB<br/>:27017)]
+    Backend --> Redis[(Redis<br/>:6379)]
+    Backend --> LiveKit[LiveKit Server]
 ```
 
----
+| Layer | Technology |
+|-------|-----------|
+| Backend | [NestJS](https://nestjs.com/) (TypeScript) |
+| Frontend | [React 19](https://react.dev/) + [Vite](https://vitejs.dev/) + [Material UI](https://mui.com/) |
+| Database | [MongoDB](https://www.mongodb.com/) with [Prisma ORM](https://www.prisma.io/) |
+| Real-time | [Socket.IO](https://socket.io/) with Redis adapter |
+| Voice/Video | [LiveKit](https://livekit.io/) |
+| State | [TanStack Query v5](https://tanstack.com/query/latest) |
+| Auth | JWT with [Passport.js](https://www.passportjs.org/) |
+| Desktop | [Electron](https://www.electronjs.org/) |
 
 ## Quickstart
 
-### 1. Start the stack with Docker Compose
+Docker Compose setup. For Kubernetes deployment with Helm, see the [full docs](https://docs.krakenchat.app/installation/kubernetes/).
 
-```
-docker-compose up
-```
+### 1. Pick your setup
 
-This will bring up:
+<details open>
+<summary><strong>With Caddy</strong> — automatic HTTPS</summary>
 
-- **backend** (NestJS backend, Node.js, hot reload)
-- **frontend** (React+Vite, hot reload)
-- **mongo** (persistent via Docker volume)
-
-### 2. Access the app
-
-- **Backend API:** http://localhost:3000
-- **Frontend:** http://localhost:5173
-
----
-
-## Local Development Workflow
-
-- Source code changes in `backend/` and `frontend/` are automatically reloaded in the running containers (via Docker volume mounts).
-- Database services are managed and persisted between runs by Docker volumes.
-
----
-
-## LiveKit Configuration
-
-Kraken uses [LiveKit](https://livekit.io/) for voice and video calls. You'll need a LiveKit server (self-hosted or LiveKit Cloud).
-
-### Backend Environment Variables
-
-Add these to `backend/.env`:
-
-```bash
-LIVEKIT_URL=wss://your-livekit-server.com
-LIVEKIT_API_KEY=your-api-key
-LIVEKIT_API_SECRET=your-api-secret
-```
-
-### Webhook Configuration (Required)
-
-LiveKit must be configured to send webhook events to your Kraken backend. This is required for:
-- Voice channel presence (seeing who's in a voice channel)
-- Replay buffer / screen recording features
-
-**For LiveKit Cloud:**
-1. Go to [LiveKit Cloud Dashboard](https://cloud.livekit.io/)
-2. Select your project → Settings → Webhooks
-3. Add webhook URL: `https://your-kraken-domain.com/api/livekit/webhook`
-4. Enable these events:
-   - `participant_joined`
-   - `participant_left`
-   - `egress_started`
-   - `egress_updated`
-   - `egress_ended`
-
-**For Self-Hosted LiveKit:**
-
-Add to your `livekit.yaml` configuration:
+#### docker-compose.yml
 
 ```yaml
-webhook:
-  api_key: your-livekit-api-key
-  urls:
-    - https://your-kraken-domain.com/api/livekit/webhook
-  events:
-    - participant_joined
-    - participant_left
-    - egress_started
-    - egress_updated
-    - egress_ended
+services:
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+      - livekit
+
+  backend:
+    image: ghcr.io/krakenchat/kraken-backend:latest
+    restart: unless-stopped
+    environment:
+      MONGODB_URL: mongodb://mongo:27017/kraken?replicaSet=rs0&retryWrites=true&w=majority&directConnection=true
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+
+  frontend:
+    image: ghcr.io/krakenchat/kraken-frontend:latest
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3000
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_mux_port: 7882
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+        webhook:
+          api_key: ${LIVEKIT_API_KEY}
+          urls:
+            - http://backend:3000/api/livekit/webhook
+    ports:
+      - "7881:7881"
+      - "7882:7882/udp"
+
+  livekit-ip-watcher:
+    image: alpine:latest
+    restart: unless-stopped
+    command: >
+      sh -c 'apk add --no-cache curl &&
+      curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+    environment:
+      CHECK_INTERVAL: 300
+      LIVEKIT_CONTAINER: livekit
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      livekit:
+        condition: service_started
+
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+    volumes:
+      - mongodata:/data/db
+      - mongodb_config:/data/configdb
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - redisdata:/data
+
+volumes:
+  mongodata:
+  mongodb_config:
+  redisdata:
+  caddy_data:
+  caddy_config:
 ```
 
-Then restart your LiveKit server.
+#### Caddyfile
 
----
-
-## Database Migrations & Prisma
-
-- **MongoDB (messages):** Uses `prisma db push` from `prisma/mongo.schema.prisma` to sync types in Mongo (no migrations engine).
-
-### Running migrations in the backend container:
-
-From the repo root, to (re-)generate the database schema:
+Save this as `Caddyfile` next to your `docker-compose.yml`:
 
 ```
-docker-compose run backend npx prisma migrate dev --schema=prisma/schema.prisma --name "init"
-docker-compose run backend npx prisma db push --schema=prisma/mongo.schema.prisma
+{$HOST:?Set HOST in .env} {
+	reverse_proxy /api/* backend:3000
+	reverse_proxy /socket.io/* backend:3000
+	reverse_proxy frontend:5173
+}
+
+lk.{$HOST} {
+	reverse_proxy livekit:7880
+}
 ```
 
-- Or use the provided NPM scripts for convenience (from `backend/`):
+#### Port forwarding
 
-  ```
-  npm run prisma:migrate
-  npm run prisma:mongo:push
-  ```
+| Port | Protocol | Service |
+|------|----------|---------|
+| 443 | TCP | HTTPS (frontend, backend, LiveKit signaling) |
+| 80 | TCP | HTTP → HTTPS redirect |
+| 7881 | TCP | LiveKit WebRTC (TCP) |
+| 7882 | UDP | LiveKit WebRTC (UDP) |
 
-- You **do not need to rebuild** containers after schema changes.
-- For changes to take effect, just run the migration commands above.
+</details>
 
----
+<details>
+<summary><strong>BYO reverse proxy</strong> — use your own (nginx, NPM, Traefik, etc.)</summary>
 
-## Production Deployment (Kubernetes)
+#### docker-compose.yml
 
-Kraken can be deployed to production Kubernetes clusters using our official Helm chart.
+```yaml
+services:
+  backend:
+    image: ghcr.io/krakenchat/kraken-backend:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      MONGODB_URL: mongodb://mongo:27017/kraken?replicaSet=rs0&retryWrites=true&w=majority&directConnection=true
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      LIVEKIT_URL: wss://lk.${HOST:?Set HOST in .env}
+      LIVEKIT_INTERNAL_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
+      LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
 
-### Quick Installation
+  frontend:
+    image: ghcr.io/krakenchat/kraken-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    environment:
+      BACKEND_URL: http://backend:3000
+
+  livekit:
+    image: livekit/livekit-server:latest
+    restart: unless-stopped
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        rtc:
+          tcp_port: 7881
+          udp_mux_port: 7882
+          use_external_ip: true
+        keys:
+          ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
+        webhook:
+          api_key: ${LIVEKIT_API_KEY}
+          urls:
+            - http://backend:3000/api/livekit/webhook
+    ports:
+      - "7880:7880"
+      - "7881:7881"
+      - "7882:7882/udp"
+
+  livekit-ip-watcher:
+    image: alpine:latest
+    restart: unless-stopped
+    command: >
+      sh -c 'apk add --no-cache curl &&
+      curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+    environment:
+      CHECK_INTERVAL: 300
+      LIVEKIT_CONTAINER: livekit
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      livekit:
+        condition: service_started
+
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    command: ["--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    healthcheck:
+      test: echo "try { rs.status() } catch (err) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) }" | mongosh --port 27017 --quiet
+      interval: 5s
+      timeout: 30s
+      start_period: 0s
+      start_interval: 1s
+      retries: 30
+    volumes:
+      - mongodata:/data/db
+      - mongodb_config:/data/configdb
+
+  redis:
+    image: redis:latest
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    volumes:
+      - redisdata:/data
+
+volumes:
+  mongodata:
+  mongodb_config:
+  redisdata:
+```
+
+#### Reverse proxy routing
+
+Configure your reverse proxy to route:
+
+| Domain | Destination | Notes |
+|--------|-------------|-------|
+| `your-domain.com` | `localhost:5173` | Frontend |
+| `your-domain.com/api/*` | `localhost:3000` | Backend API |
+| `your-domain.com/socket.io/*` | `localhost:3000` | WebSocket — ensure upgrade headers are forwarded |
+| `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade |
+
+#### Port forwarding
+
+| Port | Protocol | Service |
+|------|----------|---------|
+| 443 | TCP | Your reverse proxy |
+| 7881 | TCP | LiveKit WebRTC (TCP) |
+| 7882 | UDP | LiveKit WebRTC (UDP) |
+
+</details>
+
+### 2. Configure environment
+
+Create a `.env` file next to your `docker-compose.yml`. Your domain needs two DNS records pointing to your server — `HOST` and `lk.HOST` (e.g. `kraken.example.com` and `lk.kraken.example.com`), or a wildcard `*.kraken.example.com`.
+
+```env
+HOST=kraken.example.com
+JWT_SECRET=replace-with-a-long-random-string
+JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
+LIVEKIT_API_KEY=replace-with-a-key-name
+LIVEKIT_API_SECRET=replace-with-a-secret-at-least-32-characters
+```
+
+Generate secrets with:
 
 ```bash
-helm install kraken oci://ghcr.io/krakenchat/charts/kraken \
-  --set ingress.hosts[0].host=kraken.yourdomain.com \
-  --set livekit.url=wss://your-livekit-server.com \
-  --set livekit.apiKey=YOUR_KEY \
-  --set livekit.apiSecret=YOUR_SECRET \
-  --set secrets.jwtSecret="$(openssl rand -base64 32)" \
-  --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)"
+openssl rand -base64 32
 ```
 
-### Features
+### 3. Start
 
-- 📦 **Bundled Dependencies**: Optional MongoDB and Redis included
-- 🔒 **TLS/SSL Support**: Automatic certificates via cert-manager or manual
-- 📈 **Auto-scaling**: Horizontal Pod Autoscaler support
-- 🎯 **Production Ready**: Resource limits, health checks, and security contexts
-- 🔧 **Highly Configurable**: External databases, custom resources, and more
+```bash
+docker compose up -d
+```
 
-### Documentation
+### 4. Open Kraken
 
-- **[Helm Chart README](./helm/kraken/README.md)** - Complete chart documentation
-- **[Kubernetes Deployment Guide](https://docs.krakenchat.app/deployment/kubernetes/)** - Step-by-step installation guide
-- **[Docker Images](#)** - Available on GitHub Container Registry (GHCR)
-  - `ghcr.io/krakenchat/kraken-backend`
-  - `ghcr.io/krakenchat/kraken-frontend`
+Visit `https://<your-domain>` and create your first account.
 
-### Prerequisites
+For more details, see the [full installation guide](https://docs.krakenchat.app/installation/docker-compose/).
 
-- Kubernetes 1.24+
-- Helm 3.8+
-- NGINX Ingress Controller
-- LiveKit server (external)
+## Development
 
----
+For contributors working on Kraken itself — clone the repo and use the dev Compose file which mounts source code with hot reload:
 
-## Troubleshooting
+```bash
+git clone https://github.com/krakenchat/kraken.git
+cd kraken
+docker compose up
+```
 
-- **Prisma errors about missing schema:**  
-  Ensure your `prisma/` directory is present, and not ignored in `.dockerignore`.
-- **Dependency or OpenSSL errors in Docker:**  
-  The backend Dockerfile installs the OpenSSL library needed by Prisma. If you see errors, rebuild your containers with:
+All development happens inside Docker containers — never run pnpm/npm/node directly on the host.
+
+```bash
+# Run backend tests
+docker compose run --rm backend pnpm run test
+
+# Run frontend tests
+docker compose run --rm frontend pnpm run test
+
+# Lint
+docker compose run --rm backend pnpm run lint
+
+# Push database schema
+docker compose run --rm backend pnpm run prisma
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) and the [developer docs](https://docs.krakenchat.app) for more.
+
+## Deployment
+
+- **Docker Compose** — The [installation guide](https://docs.krakenchat.app/installation/docker-compose/) covers everything from first launch to production with reverse proxy, TLS, and backups.
+
+- **Kubernetes** — Deploy with the official Helm chart:
+  ```bash
+  helm install kraken oci://ghcr.io/krakenchat/charts/kraken
   ```
-  docker-compose build --no-cache backend migrate
-  ```
-- **Permission issues or file not found:**  
-  Verify your docker volumes and that your local files are accessible to Docker (especially on macOS/Windows).
+  See the [Helm chart README](./helm/kraken/README.md) and [Kubernetes guide](https://docs.krakenchat.app/installation/kubernetes/).
 
----
+- **Desktop app** — Electron builds for Windows and Linux are available from the [desktop app page](https://docs.krakenchat.app/installation/desktop-app/).
 
-## Useful commands
+- **Docker images** — `ghcr.io/krakenchat/kraken-backend` and `ghcr.io/krakenchat/kraken-frontend`
 
-- Enter a backend container shell:
+## Documentation
 
-  ```
-  docker compose run backend bash
-  ```
+- Full docs: [docs.krakenchat.app](https://docs.krakenchat.app)
+- API docs: Swagger UI at `/api` when running locally
 
-- Push latest Mongo schema:
-  ```
-  docker compose run backend npm run prisma:generate && npm run prisma:push
-  ```
+## Contributing
 
----
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on bug reports, feature requests, and code contributions.
 
-## Support
+## Security
 
-For issues or questions, please open a pull request or GitHub issue.
+To report a vulnerability, see [SECURITY.md](./SECURITY.md).
 
-## 📜 License
+## License
 
 Kraken Chat is **dual-licensed**:
 
 - **AGPLv3** (default) — free for everyone, including commercial use, as long as you comply with AGPL terms (see [LICENSE](./LICENSE.md)).
 - **Commercial License** — available for those who want to keep modifications proprietary or avoid AGPL source-sharing obligations (see [LICENSE_COM](./LICENSE_COM.md) and [LICENSE-FAQ.md](./LICENSE-FAQ.md)).
 
-Contact us for commercial licensing — licensing {at} krakenchat [dot] app
+Contact us for commercial licensing — licensing {at} krakenchat [dot] app
