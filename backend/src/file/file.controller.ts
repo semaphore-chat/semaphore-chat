@@ -12,19 +12,45 @@ import {
 import { ApiOkResponse } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { FileService } from './file.service';
+import { SignedUrlService } from './signed-url.service';
 import { StorageType } from '@prisma/client';
 import { createReadStream } from 'fs';
 import { ParseObjectIdPipe } from 'nestjs-object-id';
 import { FileAccessGuard } from '@/file/file-access/file-access.guard';
+import { FileAuthGuard } from '@/file/file-auth.guard';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { FileMetadataResponseDto } from './dto/file-metadata-response.dto';
+import { AuthenticatedRequest } from '@/types';
 
 @Controller('file')
 export class FileController {
-  constructor(private readonly fileService: FileService) {}
+  constructor(
+    private readonly fileService: FileService,
+    private readonly signedUrlService: SignedUrlService,
+  ) {}
+
+  @Get(':id/signed-url')
+  @UseGuards(JwtAuthGuard, FileAccessGuard)
+  async getSignedUrl(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<{ url: string; expiresAt: string }> {
+    const file = await this.fileService.findOne(id);
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    const { url, expiresAt } = this.signedUrlService.generateSignedUrl(
+      `/api/file/${id}`,
+      id,
+      req.user.id,
+    );
+
+    return { url, expiresAt: expiresAt.toISOString() };
+  }
 
   @Get(':id/metadata')
-  @UseGuards(JwtAuthGuard, FileAccessGuard)
+  @UseGuards(FileAuthGuard, FileAccessGuard)
   @ApiOkResponse({ type: FileMetadataResponseDto })
   async getFileMetadata(
     @Param('id', ParseObjectIdPipe) id: string,
@@ -34,7 +60,6 @@ export class FileController {
       throw new NotFoundException('File not found');
     }
 
-    // Return only metadata, not the file content
     return {
       id: file.id,
       filename: file.filename,
@@ -46,7 +71,7 @@ export class FileController {
   }
 
   @Get(':id/thumbnail')
-  @UseGuards(JwtAuthGuard, FileAccessGuard)
+  @UseGuards(FileAuthGuard, FileAccessGuard)
   async getFileThumbnail(
     @Param('id', ParseObjectIdPipe) id: string,
     @Res({ passthrough: true }) res: Response,
@@ -60,8 +85,7 @@ export class FileController {
       throw new NotFoundException('No thumbnail available for this file');
     }
 
-    const thumbnailPath = file.thumbnailPath as string;
-    const stream = createReadStream(thumbnailPath);
+    const stream = createReadStream(file.thumbnailPath);
 
     res.set({
       'Content-Type': 'image/jpeg',
@@ -73,7 +97,7 @@ export class FileController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard, FileAccessGuard)
+  @UseGuards(FileAuthGuard, FileAccessGuard)
   async getFile(
     @Param('id', ParseObjectIdPipe) id: string,
     @Req() req: Request,

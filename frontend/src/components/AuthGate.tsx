@@ -70,6 +70,19 @@ export function AuthGate() {
     const token = getAccessToken();
 
     if (!token) {
+      // No in-memory token (e.g. page refresh). Attempt silent refresh
+      // using httpOnly refresh_token cookie (web) or stored token (Electron).
+      logger.dev("[AuthGate] No token in memory, attempting silent refresh...");
+      try {
+        const newToken = await refreshToken();
+        if (newToken) {
+          setAuthState("authenticated");
+          return;
+        }
+      } catch {
+        // Refresh failed — user must log in
+      }
+
       setAuthState("unauthenticated");
       return;
     }

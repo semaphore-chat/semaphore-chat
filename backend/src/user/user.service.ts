@@ -195,12 +195,12 @@ export class UserService {
         : {}),
     };
 
-    const users = (await this.databaseService.user.findMany({
-      ...query,
-      select: PUBLIC_USER_SELECT,
-    })).map(
-      (u) => new UserEntity(u),
-    );
+    const users = (
+      await this.databaseService.user.findMany({
+        ...query,
+        select: PUBLIC_USER_SELECT,
+      })
+    ).map((u) => new UserEntity(u));
     const nextToken =
       users.length === limit ? users[users.length - 1].id : undefined;
 

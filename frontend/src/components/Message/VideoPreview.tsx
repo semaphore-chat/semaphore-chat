@@ -10,7 +10,7 @@ import {
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import VideocamIcon from "@mui/icons-material/Videocam";
 import { useFileCache } from "../../contexts/AvatarCacheContext";
-import { getStreamUrl } from "../../utils/fileStream";
+import { useVideoUrl } from "../../hooks/useVideoUrl";
 import type { FileMetadata } from "../../types/message.type";
 
 const VideoCard = styled(Card)(({ theme }) => ({
@@ -99,6 +99,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({ metadata }) => {
   const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
   const [thumbnailLoading, setThumbnailLoading] = useState(false);
   const fileCache = useFileCache();
+  const { url: videoUrl } = useVideoUrl(state === "playing" ? metadata.id : null);
 
   // Fetch thumbnail on mount if available
   useEffect(() => {
@@ -133,7 +134,13 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({ metadata }) => {
   if (state === "playing") {
     return (
       <VideoCard>
-        <StyledVideo src={getStreamUrl(metadata.id)} controls autoPlay />
+        {videoUrl ? (
+          <StyledVideo src={videoUrl} controls autoPlay crossOrigin="use-credentials" />
+        ) : (
+          <GenericPlaceholder>
+            <CircularProgress size={32} />
+          </GenericPlaceholder>
+        )}
       </VideoCard>
     );
   }

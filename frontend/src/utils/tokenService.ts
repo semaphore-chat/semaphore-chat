@@ -21,53 +21,37 @@ const authFailureListeners: Set<AuthFailureListener> = new Set();
 // Mutex for preventing concurrent refresh attempts
 let refreshPromise: Promise<string | null> | null = null;
 
+// In-memory access token storage.
+// Stored in a module-scoped variable instead of localStorage to prevent
+// XSS-based token theft. On page refresh, the token is recovered via
+// silent refresh using the httpOnly refresh_token cookie (web) or
+// stored refresh token (Electron).
+let accessTokenInMemory: string | null = null;
+
 /**
- * Get the current access token from localStorage.
- *
- * Handles backwards-compatible reading:
- * - Plain string (current format)
- * - JSON-encoded string (legacy: JSON.stringify wrapping)
- * - JSON object with `value` key (legacy: setCachedItem wrapping)
+ * Get the current access token from in-memory storage.
  */
 export function getAccessToken(): string | null {
-  const raw = localStorage.getItem("accessToken");
-  if (!raw) return null;
-
-  // Try JSON.parse for backwards compat with old formats
-  try {
-    const parsed = JSON.parse(raw);
-
-    // Handle { value: "token" } format from old setCachedItem
-    if (parsed && typeof parsed === "object" && "value" in parsed) {
-      return parsed.value || null;
-    }
-
-    // Handle JSON-encoded string: JSON.stringify("token") → '"token"'
-    if (typeof parsed === "string") {
-      return parsed;
-    }
-
-    // Unknown object format
-    logger.warn("[TokenService] Unexpected token format in localStorage:", typeof parsed);
-    return null;
-  } catch {
-    // Not valid JSON — treat as plain string (current format)
-    return raw;
-  }
+  return accessTokenInMemory;
 }
 
 /**
- * Set the access token in localStorage as a plain string.
+ * Set the access token in in-memory storage.
  */
 export function setAccessToken(token: string): void {
-  localStorage.setItem("accessToken", token);
+  accessTokenInMemory = token;
 }
 
 /**
- * Clear all auth tokens from localStorage.
+ * Clear all auth tokens.
+ * Access token is cleared from memory; Electron refresh token from secure storage.
  */
 export function clearTokens(): void {
-  localStorage.removeItem("accessToken");
+  accessTokenInMemory = null;
+  // Clear refresh token from secure storage (Electron) or localStorage (fallback)
+  if (isElectron() && window.electronAPI?.deleteRefreshToken) {
+    window.electronAPI.deleteRefreshToken().catch(() => {});
+  }
   localStorage.removeItem("refreshToken");
 }
 
@@ -96,34 +80,6 @@ export function isTokenExpired(token: string, bufferSeconds = 30): boolean {
   }
 }
 
-/**
- * Append authentication token to a URL as a query parameter.
- *
- * Needed for embedded resources (<img>, <video>, <source> tags) that
- * cannot use Authorization headers.
- */
-export function getAuthenticatedUrl(url: string): string {
-  const token = getAccessToken();
-
-  if (!token) {
-    logger.warn("[TokenService] No token available for authenticated URL");
-    return url;
-  }
-
-  try {
-    const urlObj = new URL(url, window.location.origin);
-
-    if (urlObj.searchParams.has("token")) {
-      return url;
-    }
-
-    urlObj.searchParams.set("token", token);
-    return urlObj.toString();
-  } catch (error) {
-    logger.error("[TokenService] Error creating authenticated URL:", error);
-    return url;
-  }
-}
 
 /**
  * Subscribe to token refresh events
@@ -176,6 +132,37 @@ export function notifyAuthFailure(): void {
 /**
  * Perform the actual token refresh
  */
+/**
+ * Read the Electron refresh token from secure storage, falling back to
+ * localStorage for backward compatibility with older Electron builds.
+ */
+export async function getElectronRefreshToken(): Promise<string | null> {
+  // Try secure storage first
+  if (window.electronAPI?.getRefreshToken) {
+    const token = await window.electronAPI.getRefreshToken();
+    if (token) {
+      return token;
+    }
+  }
+  // Fall back to localStorage (migration path from older builds)
+  return localStorage.getItem("refreshToken");
+}
+
+/**
+ * Store the Electron refresh token in secure storage.
+ * Also cleans up the legacy localStorage entry if present.
+ */
+export async function storeElectronRefreshToken(token: string): Promise<void> {
+  if (window.electronAPI?.storeRefreshToken) {
+    await window.electronAPI.storeRefreshToken(token);
+    // Clean up legacy localStorage entry after successful migration
+    localStorage.removeItem("refreshToken");
+  } else {
+    // Fallback for older Electron builds without safeStorage
+    localStorage.setItem("refreshToken", token);
+  }
+}
+
 async function performRefresh(): Promise<string | null> {
   const isElectronApp = isElectron();
 
@@ -183,7 +170,7 @@ async function performRefresh(): Promise<string | null> {
     let refreshResponse;
 
     if (isElectronApp) {
-      const refreshToken = localStorage.getItem("refreshToken");
+      const refreshToken = await getElectronRefreshToken();
       if (!refreshToken) {
         throw new Error("No refresh token available for Electron client");
       }
@@ -208,7 +195,7 @@ async function performRefresh(): Promise<string | null> {
 
       // Update stored refresh token for Electron
       if (isElectronApp && refreshResponse.data.refreshToken) {
-        localStorage.setItem("refreshToken", refreshResponse.data.refreshToken);
+        await storeElectronRefreshToken(refreshResponse.data.refreshToken);
       }
 
       logger.dev("[TokenService] Token refreshed successfully");
@@ -257,6 +244,15 @@ export async function refreshToken(): Promise<string | null> {
  */
 export function isRefreshing(): boolean {
   return refreshPromise !== null;
+}
+
+/**
+ * Check if user is authenticated (has a token in storage).
+ *
+ * Note: This only checks for token presence, not validity.
+ */
+export function isAuthenticated(): boolean {
+  return getAccessToken() !== null;
 }
 
 /**

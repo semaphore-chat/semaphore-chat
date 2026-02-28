@@ -31,6 +31,8 @@ import { TOUCH_TARGETS } from '../../../utils/breakpoints';
 import { useNavigate } from 'react-router-dom';
 import MobileAppBar from '../MobileAppBar';
 import { logger } from '../../../utils/logger';
+import { isElectron } from '../../../utils/platform';
+import { getElectronRefreshToken } from '../../../utils/tokenService';
 
 /**
  * Profile panel - Shows user profile and settings
@@ -55,7 +57,9 @@ export const MobileProfilePanel: React.FC = () => {
 
   const handleLogout = async () => {
     try {
-      await logout({});
+      // Electron clients must send refresh token in body since cookies don't work cross-origin
+      const refreshToken = isElectron() ? (await getElectronRefreshToken()) ?? undefined : undefined;
+      await logout({ body: { refreshToken } });
       navigate('/login');
     } catch (error) {
       logger.error('Failed to logout:', error);

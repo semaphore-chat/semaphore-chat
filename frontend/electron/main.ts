@@ -7,7 +7,7 @@
 
 import {
   app, BrowserWindow, ipcMain, session, desktopCapturer, Notification,
-  Tray, Menu, nativeImage, screen, dialog,
+  Tray, Menu, nativeImage, screen, dialog, safeStorage,
 } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
@@ -549,6 +549,53 @@ function setupIpcHandlers() {
     setSetting(key as keyof AppSettings, value as AppSettings[keyof AppSettings]);
     rebuildMenus();
     return loadSettings();
+  });
+
+  // Secure storage handlers — encrypt refresh token via OS keychain
+  const secureStoragePath = path.join(app.getPath('userData'), 'secure-tokens');
+
+  ipcMain.handle('secure-storage:store', async (_event, key: string, value: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        throw new Error('Encryption not available');
+      }
+      const encrypted = safeStorage.encryptString(value);
+      if (!fs.existsSync(secureStoragePath)) {
+        fs.mkdirSync(secureStoragePath, { recursive: true });
+      }
+      fs.writeFileSync(path.join(secureStoragePath, key), encrypted);
+    } catch (error) {
+      console.error('Failed to store secure token:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('secure-storage:get', async (_event, key: string) => {
+    try {
+      if (!safeStorage.isEncryptionAvailable()) {
+        return null;
+      }
+      const filePath = path.join(secureStoragePath, key);
+      if (!fs.existsSync(filePath)) {
+        return null;
+      }
+      const encrypted = fs.readFileSync(filePath);
+      return safeStorage.decryptString(encrypted);
+    } catch (error) {
+      console.error('Failed to read secure token:', error);
+      return null;
+    }
+  });
+
+  ipcMain.handle('secure-storage:delete', async (_event, key: string) => {
+    try {
+      const filePath = path.join(secureStoragePath, key);
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch (error) {
+      console.error('Failed to delete secure token:', error);
+    }
   });
 }
 

@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
-import { notifyAuthFailure } from '../../utils/tokenService';
+import { notifyAuthFailure, setAccessToken, getAccessToken, clearTokens } from '../../utils/tokenService';
 import { Route, Routes } from 'react-router-dom';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
@@ -104,6 +104,7 @@ function renderAuthGate(initialRoute = '/') {
 
 describe('AuthGate', () => {
   beforeEach(() => {
+    clearTokens();
     localStorage.clear();
     vi.clearAllMocks();
     socketProviderMounted = false;
@@ -129,7 +130,7 @@ describe('AuthGate', () => {
         http.get(`${BASE_URL}/api/onboarding/status`, () => new Promise(() => {})),
       );
 
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       renderAuthGate();
 
       expect(screen.queryByTestId('home')).not.toBeInTheDocument();
@@ -140,7 +141,7 @@ describe('AuthGate', () => {
         http.get(`${BASE_URL}/api/onboarding/status`, () => new Promise(() => {})),
       );
 
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       renderAuthGate();
 
       expect(socketProviderMounted).toBe(false);
@@ -165,7 +166,7 @@ describe('AuthGate', () => {
     });
 
     it('redirects to /onboarding even if a valid token exists', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
 
       server.use(
         http.get(`${BASE_URL}/api/onboarding/status`, () =>
@@ -209,7 +210,7 @@ describe('AuthGate', () => {
     });
 
     it('falls through to authenticated state when onboarding API returns 500 but token is valid', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
 
       server.use(
         http.get(`${BASE_URL}/api/onboarding/status`, () =>
@@ -270,7 +271,7 @@ describe('AuthGate', () => {
 
   describe('valid token', () => {
     it('renders authenticated content when server accepts token', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate();
@@ -281,7 +282,7 @@ describe('AuthGate', () => {
     });
 
     it('mounts SocketProvider when authenticated', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate();
@@ -294,7 +295,7 @@ describe('AuthGate', () => {
     });
 
     it('gates nested child routes — /community/:id/channel/:id', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate('/community/abc/channel/xyz');
@@ -305,7 +306,7 @@ describe('AuthGate', () => {
     });
 
     it('gates /settings route', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate('/settings');
@@ -316,7 +317,7 @@ describe('AuthGate', () => {
     });
 
     it('does not trigger token refresh when server accepts the token', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       let refreshCalled = false;
@@ -336,59 +337,11 @@ describe('AuthGate', () => {
     });
   });
 
-  // ─── Legacy Token Formats ─────────────────────────────────────
-
-  describe('legacy token formats (backwards compatibility)', () => {
-    it('authenticates with JSON-encoded string format (legacy LoginPage bug)', async () => {
-      // Old code did: localStorage.setItem('accessToken', JSON.stringify(token))
-      const token = validToken();
-      localStorage.setItem('accessToken', JSON.stringify(token));
-      mockOnboardingOk();
-
-      renderAuthGate();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('home')).toBeInTheDocument();
-      });
-    });
-
-    it('authenticates with { value: token } format (legacy setCachedItem)', async () => {
-      // Old code used setCachedItem which stored: { value: token }
-      const token = validToken();
-      localStorage.setItem('accessToken', JSON.stringify({ value: token }));
-      mockOnboardingOk();
-
-      renderAuthGate();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('home')).toBeInTheDocument();
-      });
-    });
-
-    it('redirects to /login when legacy-format token is rejected by server', async () => {
-      const token = expiredToken();
-      localStorage.setItem('accessToken', JSON.stringify(token));
-      mockOnboardingOk();
-      mockProfileUnauthorized();
-      server.use(
-        http.post(`${BASE_URL}/api/auth/refresh`, () =>
-          HttpResponse.json({ message: 'Expired' }, { status: 401 }),
-        ),
-      );
-
-      renderAuthGate();
-
-      await waitFor(() => {
-        expect(screen.getByTestId('login')).toBeInTheDocument();
-      });
-    });
-  });
-
   // ─── Server-Rejected Token + Refresh ───────────────────────────
 
   describe('server-rejected token refresh flow', () => {
     it('refreshes when server rejects token and authenticates on success', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       const freshToken = validToken();
       mockOnboardingOk();
@@ -404,11 +357,11 @@ describe('AuthGate', () => {
       await waitFor(() => {
         expect(screen.getByTestId('home')).toBeInTheDocument();
       });
-      expect(localStorage.getItem('accessToken')).toBe(freshToken);
+      expect(getAccessToken()).toBe(freshToken);
     });
 
     it('redirects to /login when refresh returns 401', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -426,7 +379,7 @@ describe('AuthGate', () => {
     });
 
     it('clears both access and refresh tokens on failed refresh', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
       localStorage.setItem('refreshToken', 'old-refresh-token');
 
       mockOnboardingOk();
@@ -442,12 +395,12 @@ describe('AuthGate', () => {
       await waitFor(() => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
-      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(getAccessToken()).toBeNull();
       expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 
     it('calls disconnectSocket when refresh fails', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -466,7 +419,7 @@ describe('AuthGate', () => {
     });
 
     it('redirects to /login when refresh returns a network error', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -479,11 +432,11 @@ describe('AuthGate', () => {
       await waitFor(() => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
-      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(getAccessToken()).toBeNull();
     });
 
     it('does not mount SocketProvider during refresh attempt', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       // Use a delayed response so we can assert during the in-flight state
       let refreshStarted = false;
@@ -515,7 +468,7 @@ describe('AuthGate', () => {
     });
 
     it('does not mount SocketProvider when refresh fails', async () => {
-      localStorage.setItem('accessToken', expiredToken());
+      setAccessToken(expiredToken());
 
       mockOnboardingOk();
       mockProfileUnauthorized();
@@ -538,7 +491,7 @@ describe('AuthGate', () => {
 
   describe('mid-session auth failure via notifyAuthFailure', () => {
     it('redirects to /login when notifyAuthFailure is called', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate();
@@ -558,7 +511,7 @@ describe('AuthGate', () => {
     });
 
     it('calls disconnectSocket and clears tokens on notifyAuthFailure', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate();
@@ -575,11 +528,11 @@ describe('AuthGate', () => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
-      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(getAccessToken()).toBeNull();
     });
 
     it('unmounts SocketProvider on notifyAuthFailure', async () => {
-      localStorage.setItem('accessToken', validToken());
+      setAccessToken(validToken());
       mockOnboardingOk();
 
       renderAuthGate();

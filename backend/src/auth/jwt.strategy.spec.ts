@@ -66,56 +66,49 @@ describe('JwtStrategy', () => {
   });
 
   describe('JWT extractor precedence', () => {
-    // Access the composite extractor that passport-jwt stores internally
     const getExtractor = (s: JwtStrategy) =>
       (s as any)._jwtFromRequest as (req: any) => string | null;
 
-    it('should prefer query token over cookie on /file/ routes', () => {
+    it('should prefer Authorization header over cookie', () => {
       const extract = getExtractor(strategy);
       const req = {
-        headers: {},
-        path: '/file/abc123',
-        query: { token: 'query-token' },
+        headers: { authorization: 'Bearer header-token' },
         cookies: { access_token: 'cookie-token' },
       };
 
-      expect(extract(req)).toBe('query-token');
+      expect(extract(req)).toBe('header-token');
     });
 
-    it('should extract query token on /api/file/ routes (Electron direct requests)', () => {
+    it('should fall back to cookie when no Authorization header', () => {
       const extract = getExtractor(strategy);
       const req = {
         headers: {},
-        path: '/api/file/abc123',
-        query: { token: 'query-token' },
-        cookies: { access_token: 'cookie-token' },
-      };
-
-      expect(extract(req)).toBe('query-token');
-    });
-
-    it('should fall back to cookie on non-file routes', () => {
-      const extract = getExtractor(strategy);
-      const req = {
-        headers: {},
-        path: '/user/me',
-        query: { token: 'query-token' },
         cookies: { access_token: 'cookie-token' },
       };
 
       expect(extract(req)).toBe('cookie-token');
     });
 
-    it('should prefer Authorization header over both', () => {
+    it('should return null when no token source is available', () => {
       const extract = getExtractor(strategy);
       const req = {
-        headers: { authorization: 'Bearer header-token' },
-        path: '/file/abc123',
-        query: { token: 'query-token' },
-        cookies: { access_token: 'cookie-token' },
+        headers: {},
+        cookies: {},
       };
 
-      expect(extract(req)).toBe('header-token');
+      expect(extract(req)).toBeNull();
+    });
+
+    it('should not extract query param tokens', () => {
+      const extract = getExtractor(strategy);
+      const req = {
+        headers: {},
+        path: '/file/abc123',
+        query: { token: 'query-token' },
+        cookies: {},
+      };
+
+      expect(extract(req)).toBeNull();
     });
   });
 

@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import RegisterPage from '../../pages/RegisterPage';
-import { getAccessToken } from '../../utils/tokenService';
+import { getAccessToken, clearTokens } from '../../utils/tokenService';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -22,6 +22,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 describe('RegisterPage', () => {
   beforeEach(() => {
+    clearTokens();
     localStorage.clear();
     mockNavigate.mockReset();
   });
@@ -48,7 +49,7 @@ describe('RegisterPage', () => {
     await user.click(screen.getByRole('button', { name: /register/i }));
 
     await waitFor(() => {
-      expect(localStorage.getItem('accessToken')).toBe('mock-access-token');
+      expect(getAccessToken()).toBe('mock-access-token');
     });
     expect(mockNavigate).toHaveBeenCalledWith('/');
   });
@@ -65,8 +66,6 @@ describe('RegisterPage', () => {
     await waitFor(() => {
       expect(getAccessToken()).toBe('mock-access-token');
     });
-    // Verify it's NOT JSON-wrapped (the old bug)
-    expect(localStorage.getItem('accessToken')!.startsWith('"')).toBe(false);
   });
 
   it('shows error alert on registration failure', async () => {

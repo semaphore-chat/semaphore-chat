@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import LoginPage from '../../pages/LoginPage';
-import { getAccessToken } from '../../utils/tokenService';
+import { getAccessToken, clearTokens } from '../../utils/tokenService';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -22,6 +22,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 describe('LoginPage', () => {
   beforeEach(() => {
+    clearTokens();
     localStorage.clear();
     mockNavigate.mockReset();
   });
@@ -44,7 +45,7 @@ describe('LoginPage', () => {
     await user.click(screen.getByRole('button', { name: /login/i }));
 
     await waitFor(() => {
-      expect(localStorage.getItem('accessToken')).toBe('mock-access-token');
+      expect(getAccessToken()).toBe('mock-access-token');
     });
     expect(localStorage.getItem('refreshToken')).toBe('mock-refresh-token');
     expect(mockNavigate).toHaveBeenCalledWith('/');
@@ -60,8 +61,6 @@ describe('LoginPage', () => {
     await waitFor(() => {
       expect(getAccessToken()).toBe('mock-access-token');
     });
-    // Verify it's NOT JSON-wrapped (the old bug)
-    expect(localStorage.getItem('accessToken')!.startsWith('"')).toBe(false);
   });
 
   it('shows error alert on failed login', async () => {

@@ -18,7 +18,7 @@ import {
 } from '@mui/icons-material';
 import Hls from 'hls.js';
 import { getApiUrl } from '../../config/env';
-import { getAuthToken, getAuthenticatedUrl } from '../../utils/auth';
+import { getAccessToken } from '../../utils/tokenService';
 import { useQuery } from '@tanstack/react-query';
 import { ServerEvents } from '@kraken/shared';
 import { livekitControllerGetSessionInfoOptions } from '../../api-client/@tanstack/react-query.gen';
@@ -109,8 +109,8 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
     if (!videoRef.current || !sessionInfo?.hasActiveSession || !maxDuration) return;
 
     const video = videoRef.current;
-    // Use authenticated URL for embedded resources (works in Electron cross-origin)
-    const playlistUrl = getAuthenticatedUrl(getApiUrl('/livekit/replay/preview/playlist.m3u8'));
+    // HLS.js sends Authorization header via xhrSetup; Safari native uses cookie auth
+    const playlistUrl = getApiUrl('/livekit/replay/preview/playlist.m3u8');
 
     if (Hls.isSupported()) {
       const hls = new Hls({
@@ -128,7 +128,7 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
           // Send cookies for same-origin requests
           xhr.withCredentials = true;
           // Also set Authorization header as backup (more reliable for XHR)
-          const token = getAuthToken();
+          const token = getAccessToken();
           if (token) {
             xhr.setRequestHeader('Authorization', `Bearer ${token}`);
           }
@@ -201,7 +201,7 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
         hlsRef.current = null;
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS - uses authenticated URL with token query param
+      // Safari native HLS - uses cookie-based auth (same-origin)
       video.src = playlistUrl;
       const handleLoadedMetadata = () => {
         setIsLoading(false);

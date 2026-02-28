@@ -3,6 +3,7 @@ import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { PublicRoute } from '../../components/PublicRoute';
 import { Route, Routes } from 'react-router-dom';
+import { setAccessToken, clearTokens } from '../../utils/tokenService';
 
 vi.mock('../../utils/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), dev: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -43,6 +44,7 @@ function renderPublicRoute(initialRoute = '/login') {
 
 describe('PublicRoute', () => {
   beforeEach(() => {
+    clearTokens();
     localStorage.clear();
   });
 
@@ -53,7 +55,7 @@ describe('PublicRoute', () => {
   });
 
   it('renders children when token is expired', () => {
-    localStorage.setItem('accessToken', expiredToken());
+    setAccessToken(expiredToken());
     renderPublicRoute();
     expect(screen.getByTestId('login-form')).toBeInTheDocument();
     expect(screen.queryByTestId('home')).not.toBeInTheDocument();
@@ -61,35 +63,22 @@ describe('PublicRoute', () => {
 
   it('renders children when token is expiring within the 30s buffer', () => {
     const soonExp = Math.floor(Date.now() / 1000) + 10;
-    localStorage.setItem('accessToken', makeJwt(soonExp));
+    setAccessToken(makeJwt(soonExp));
     renderPublicRoute();
     expect(screen.getByTestId('login-form')).toBeInTheDocument();
   });
 
   it('redirects to / when user has a valid (non-expired) token', () => {
-    localStorage.setItem('accessToken', validToken());
+    setAccessToken(validToken());
     renderPublicRoute();
     expect(screen.getByTestId('home')).toBeInTheDocument();
     expect(screen.queryByTestId('login-form')).not.toBeInTheDocument();
   });
 
   it('renders children when token is malformed (not a JWT)', () => {
-    localStorage.setItem('accessToken', 'not-a-jwt');
+    setAccessToken('not-a-jwt');
     renderPublicRoute();
     expect(screen.getByTestId('login-form')).toBeInTheDocument();
   });
 
-  it('handles legacy JSON-encoded token format — redirects if valid', () => {
-    // Legacy format: JSON.stringify(token) wraps the JWT in quotes
-    localStorage.setItem('accessToken', JSON.stringify(validToken()));
-    renderPublicRoute();
-    // getAccessToken() unwraps the JSON, isTokenExpired checks inner JWT
-    expect(screen.getByTestId('home')).toBeInTheDocument();
-  });
-
-  it('handles legacy { value: token } format — redirects if valid', () => {
-    localStorage.setItem('accessToken', JSON.stringify({ value: validToken() }));
-    renderPublicRoute();
-    expect(screen.getByTestId('home')).toBeInTheDocument();
-  });
 });

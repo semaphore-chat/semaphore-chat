@@ -29,7 +29,7 @@ import {
 
 import { useParams } from 'react-router-dom';
 import { getApiUrl } from '../../config/env';
-import { getAuthToken } from '../../utils/auth';
+import { getAccessToken } from '../../utils/tokenService';
 import { TrimPreview } from './TrimPreview';
 import type { Channel } from '../../types/channel.type';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
@@ -114,7 +114,7 @@ export const CaptureReplayModal: React.FC<CaptureReplayModalProps> = ({
 
   // Helper function to download file via blob (with authentication)
   const downloadFileBlob = async (url: string, filename: string) => {
-    const token = getAuthToken();
+    const token = getAccessToken();
     if (!token) {
       throw new Error('Not authenticated');
     }

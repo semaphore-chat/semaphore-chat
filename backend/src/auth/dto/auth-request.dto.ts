@@ -15,3 +15,11 @@ export class RefreshRequestDto {
   @ApiPropertyOptional()
   refreshToken?: string;
 }
+
+export class LogoutRequestDto {
+  @ApiPropertyOptional({
+    description:
+      'Refresh token (required for Electron clients that cannot use cookies)',
+  })
+  refreshToken?: string;
+}

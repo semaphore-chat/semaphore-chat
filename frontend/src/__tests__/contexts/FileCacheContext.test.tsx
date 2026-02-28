@@ -9,10 +9,10 @@ vi.mock('../../config/env', () => ({
 }));
 
 // Import so we can reset the mock return value in beforeEach
-import { getAuthToken } from '../../utils/auth';
+import { getAccessToken } from '../../utils/tokenService';
 
-vi.mock('../../utils/auth', () => ({
-  getAuthToken: vi.fn(),
+vi.mock('../../utils/tokenService', () => ({
+  getAccessToken: vi.fn(),
 }));
 
 // Mock global fetch and URL.createObjectURL / revokeObjectURL
@@ -26,7 +26,7 @@ beforeEach(() => {
   global.URL.revokeObjectURL = mockRevokeObjectURL;
 
   // Reset mock return value (vi.clearAllMocks does NOT reset mockReturnValue)
-  vi.mocked(getAuthToken).mockReturnValue('mock-jwt-token');
+  vi.mocked(getAccessToken).mockReturnValue('mock-jwt-token');
 
   mockCreateObjectURL.mockImplementation(
     (_blob: Blob) => `blob:${Math.random().toString(36).slice(2)}`,
@@ -121,7 +121,7 @@ describe('FileCacheContext', () => {
     });
 
     it('should throw when no auth token', async () => {
-      vi.mocked(getAuthToken).mockReturnValue(null);
+      vi.mocked(getAccessToken).mockReturnValue(null);
 
       const { result } = renderHook(() => useFileCache(), { wrapper });
 
@@ -220,7 +220,7 @@ describe('FileCacheContext', () => {
     });
 
     it('should throw when no auth token for thumbnail', async () => {
-      vi.mocked(getAuthToken).mockReturnValue(null);
+      vi.mocked(getAccessToken).mockReturnValue(null);
 
       const { result } = renderHook(() => useFileCache(), { wrapper });
 

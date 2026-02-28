@@ -12,6 +12,13 @@ export class RefreshTokenFactory {
       tokenHash: overrides.tokenHash || this.generateTokenHash(),
       createdAt: overrides.createdAt || now,
       expiresAt: overrides.expiresAt || expiresAt,
+      deviceName: null,
+      userAgent: null,
+      ipAddress: null,
+      lastUsedAt: now,
+      familyId: this.generateId(),
+      consumed: false,
+      consumedAt: null,
       ...overrides,
     } as RefreshToken;
   }

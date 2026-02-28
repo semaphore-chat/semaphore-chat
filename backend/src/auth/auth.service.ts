@@ -101,6 +101,7 @@ export class AuthService {
     userId: string,
     deviceInfo?: DeviceInfo,
     tx?: Prisma.TransactionClient,
+    familyId?: string,
   ) {
     // generate a MongoDB ObjectId for the jti
     const jti = new ObjectId().toHexString();
@@ -126,6 +127,7 @@ export class AuthService {
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
         lastUsedAt: new Date(),
+        familyId: familyId ?? new ObjectId().toHexString(),
       },
     });
 
@@ -172,7 +174,11 @@ export class AuthService {
     return os ? `${browser} on ${os}` : browser;
   }
 
-  async removeRefreshToken(
+  /**
+   * Mark a refresh token as consumed (used for rotation).
+   * Returns the consumed token record (caller needs familyId).
+   */
+  async consumeRefreshToken(
     jti: string,
     refreshToken: string,
     tx?: Prisma.TransactionClient,
@@ -184,22 +190,72 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    await client.refreshToken.delete({
+    await client.refreshToken.update({
       where: { id: token.id },
+      data: { consumed: true, consumedAt: new Date() },
     });
+
+    return token;
   }
 
+  /**
+   * Delete a refresh token outright (used for logout).
+   * Also deletes all consumed tokens in the same family.
+   */
+  async deleteRefreshToken(
+    jti: string,
+    refreshToken: string,
+    tx?: Prisma.TransactionClient,
+  ) {
+    const client = tx ?? this.databaseService;
+    const token = await this.findMatchingToken(jti, refreshToken, tx);
+
+    if (!token) {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
+    // Delete this token and all consumed tokens in the same family
+    if (token.familyId) {
+      await client.refreshToken.deleteMany({
+        where: {
+          OR: [{ id: token.id }, { familyId: token.familyId, consumed: true }],
+        },
+      });
+    } else {
+      await client.refreshToken.delete({ where: { id: token.id } });
+    }
+  }
+
+  /**
+   * Validate a refresh token and return the full token record.
+   * Includes consumed/familyId fields for reuse detection.
+   */
   async validateRefreshToken(
     jti: string,
     refreshToken: string,
     tx?: Prisma.TransactionClient,
-  ): Promise<string | null> {
+  ) {
     const token = await this.findMatchingToken(jti, refreshToken, tx);
     if (token && token.expiresAt > new Date()) {
-      return token.id;
+      return token;
     }
 
     return null;
+  }
+
+  /**
+   * Invalidate an entire token family (all tokens from the same login session).
+   * Called when refresh token reuse is detected.
+   */
+  async invalidateTokenFamily(
+    familyId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<number> {
+    const client = tx ?? this.databaseService;
+    const result = await client.refreshToken.deleteMany({
+      where: { familyId },
+    });
+    return result.count;
   }
 
   private async findMatchingToken(
@@ -228,12 +284,20 @@ export class AuthService {
 
   @Cron(CronExpression.EVERY_DAY_AT_6AM)
   async cleanExpiredTokens() {
-    const expiredTokens = await this.databaseService.refreshToken.deleteMany({
-      where: { expiresAt: { lt: new Date() } },
-    });
+    const [expired, consumed] = await Promise.all([
+      this.databaseService.refreshToken.deleteMany({
+        where: { expiresAt: { lt: new Date() } },
+      }),
+      this.databaseService.refreshToken.deleteMany({
+        where: {
+          consumed: true,
+          consumedAt: { lt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) },
+        },
+      }),
+    ]);
 
     this.logger.log(
-      `Cleaned up ${expiredTokens.count} expired refresh tokens from the database.`,
+      `Cleaned up ${expired.count} expired and ${consumed.count} consumed refresh tokens.`,
     );
   }
 
@@ -248,6 +312,7 @@ export class AuthService {
       where: {
         userId,
         expiresAt: { gt: new Date() },
+        consumed: false,
       },
       orderBy: { lastUsedAt: 'desc' },
       select: {

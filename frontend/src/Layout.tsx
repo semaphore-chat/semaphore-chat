@@ -31,7 +31,8 @@ import { setTelemetryUser, clearTelemetryUser } from "./services/telemetry";
 import { useThemeSync } from "./hooks/useThemeSync";
 import { disconnectSocket } from "./utils/socketSingleton";
 import { clearSavedConnection } from "./features/voice/voiceActions";
-import { clearTokens } from "./utils/tokenService";
+import { clearTokens, getElectronRefreshToken } from "./utils/tokenService";
+import { isElectron } from "./utils/platform";
 
 const settings = ["My Profile", "Settings", "Logout"];
 
@@ -135,7 +136,9 @@ const Layout: React.FC = () => {
     }
     clearSavedConnection();
     disconnectSocket();
-    await logout({});
+    // Electron clients must send refresh token in body since cookies don't work cross-origin
+    const refreshToken = isElectron() ? (await getElectronRefreshToken()) ?? undefined : undefined;
+    await logout({ body: { refreshToken } });
     clearTokens();
     clearTelemetryUser();
     navigate("/login");

@@ -12,7 +12,7 @@ import { LockOutlined } from "@mui/icons-material";
 import { useMutation } from "@tanstack/react-query";
 import { authControllerLoginMutation } from "../api-client/@tanstack/react-query.gen";
 import { useNavigate, Link } from "react-router-dom";
-import { setAccessToken } from "../utils/tokenService";
+import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -24,12 +24,11 @@ const LoginPage: React.FC = () => {
     e.preventDefault();
     try {
       const response = await login({ body: { username, password } });
-      // Store the access token in localStorage
       setAccessToken(response.accessToken);
 
-      // Store refresh token for Electron clients
+      // Store refresh token for Electron clients (secure storage)
       if (response.refreshToken) {
-        localStorage.setItem('refreshToken', response.refreshToken);
+        await storeElectronRefreshToken(response.refreshToken);
       }
 
       navigate("/");

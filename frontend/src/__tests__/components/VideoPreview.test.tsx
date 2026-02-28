@@ -14,9 +14,13 @@ vi.mock('../../contexts/AvatarCacheContext', () => ({
   })),
 }));
 
-// Mock the stream URL utility
-vi.mock('../../utils/fileStream', () => ({
-  getStreamUrl: vi.fn((id: string) => `http://localhost:3000/api/file/${id}?token=test-jwt`),
+// Mock the useVideoUrl hook
+vi.mock('../../hooks/useVideoUrl', () => ({
+  useVideoUrl: vi.fn((fileId: string | null) =>
+    fileId
+      ? { url: `http://localhost:3000/api/file/${fileId}`, isLoading: false, refresh: vi.fn() }
+      : { url: null, isLoading: false, refresh: vi.fn() },
+  ),
 }));
 
 const theme = generateTheme('dark', 'blue', 'balanced');
@@ -88,7 +92,7 @@ describe('VideoPreview', () => {
     // After clicking, a <video> element should appear
     const video = document.querySelector('video');
     expect(video).not.toBeNull();
-    expect(video?.src).toContain('/api/file/video-123?token=');
+    expect(video?.src).toContain('/api/file/video-123');
     expect(video?.autoplay).toBe(true);
   });
 
@@ -173,14 +177,14 @@ describe('VideoPreview', () => {
       expect(video?.hasAttribute('controls')).toBe(true);
     });
 
-    it('should use getStreamUrl for the video src', () => {
+    it('should use useVideoUrl hook for the video src', () => {
       renderWithTheme(<VideoPreview metadata={baseMetadata} />);
 
       fireEvent.click(screen.getByTestId('PlayArrowIcon'));
 
       const video = document.querySelector('video');
       expect(video?.src).toBe(
-        'http://localhost:3000/api/file/video-123?token=test-jwt',
+        'http://localhost:3000/api/file/video-123',
       );
     });
   });

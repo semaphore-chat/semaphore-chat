@@ -25,7 +25,7 @@ import BanDialog from "../Moderation/BanDialog";
 import TimeoutDialog from "../Moderation/TimeoutDialog";
 import KickConfirmDialog from "../Moderation/KickConfirmDialog";
 import { getApiBaseUrl } from "../../config/env";
-import { getAuthToken } from "../../utils/auth";
+import { getAccessToken } from "../../utils/tokenService";
 import { useNotification } from "../../contexts/NotificationContext";
 import type { VoicePresenceUserDto } from "../../api-client/types.gen";
 import { VOLUME_STORAGE_PREFIX } from "../../constants/voice";
@@ -203,7 +203,7 @@ const VoiceUserContextMenu: React.FC<VoiceUserContextMenuProps> = ({
     if (!voiceState.currentChannelId) return;
     try {
       const baseUrl = getApiBaseUrl();
-      const token = getAuthToken();
+      const token = getAccessToken();
       const response = await fetch(
         `${baseUrl}/livekit/channels/${voiceState.currentChannelId}/mute-participant`,
         {

@@ -10,7 +10,7 @@ import {
   setAccessToken,
   clearTokens,
   isTokenExpired,
-  getAuthenticatedUrl,
+  isAuthenticated,
   onTokenRefreshed,
   onAuthFailure,
   notifyAuthFailure,
@@ -29,108 +29,53 @@ function makeJwt(payload: Record<string, unknown>): string {
 
 describe('tokenService', () => {
   beforeEach(() => {
+    // Clear in-memory token between tests
+    clearTokens();
     localStorage.clear();
     vi.clearAllMocks();
   });
 
-  // ─── getAccessToken ────────────────────────────────────────────
+  // ─── getAccessToken (in-memory) ─────────────────────────────────
 
   describe('getAccessToken', () => {
-    it('returns plain string token (current format)', () => {
-      localStorage.setItem('accessToken', 'plain-tok');
-      expect(getAccessToken()).toBe('plain-tok');
-    });
-
-    it('returns value from JSON string format (backwards compat)', () => {
-      localStorage.setItem('accessToken', JSON.stringify('json-tok'));
-      expect(getAccessToken()).toBe('json-tok');
-    });
-
-    it('returns value from { value: "..." } format (backwards compat)', () => {
-      localStorage.setItem('accessToken', JSON.stringify({ value: 'obj-tok' }));
-      expect(getAccessToken()).toBe('obj-tok');
-    });
-
-    it('returns null when nothing stored', () => {
+    it('returns null when no token is set', () => {
       expect(getAccessToken()).toBeNull();
     });
 
-    it('returns null for empty value key', () => {
-      localStorage.setItem('accessToken', JSON.stringify({ value: '' }));
-      expect(getAccessToken()).toBeNull();
+    it('returns the token after setAccessToken', () => {
+      setAccessToken('my-token');
+      expect(getAccessToken()).toBe('my-token');
     });
 
-    it('returns null and logs warning for unexpected object format', () => {
-      localStorage.setItem('accessToken', JSON.stringify({ foo: 'bar' }));
-      expect(getAccessToken()).toBeNull();
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Unexpected token format'),
-        expect.anything(),
-      );
-    });
-
-    it('returns null for JSON number', () => {
-      localStorage.setItem('accessToken', JSON.stringify(12345));
-      expect(getAccessToken()).toBeNull();
-    });
-
-    it('returns null for JSON boolean', () => {
-      localStorage.setItem('accessToken', JSON.stringify(true));
-      expect(getAccessToken()).toBeNull();
-    });
-
-    it('returns null for JSON null', () => {
-      localStorage.setItem('accessToken', 'null');
-      expect(getAccessToken()).toBeNull();
-    });
-
-    it('handles a real-looking JWT as a plain string', () => {
-      const jwt = makeJwt({ exp: 99999999999, sub: 'user1' });
-      localStorage.setItem('accessToken', jwt);
-      // JWTs are not valid JSON, so JSON.parse throws, falls through to raw
-      expect(getAccessToken()).toBe(jwt);
+    it('does not store token in localStorage', () => {
+      setAccessToken('in-memory-only');
+      expect(localStorage.getItem('accessToken')).toBeNull();
     });
   });
 
-  // ─── setAccessToken ────────────────────────────────────────────
+  // ─── setAccessToken (in-memory) ─────────────────────────────────
 
   describe('setAccessToken', () => {
-    it('stores token as plain string', () => {
-      setAccessToken('my-token');
-      expect(localStorage.getItem('accessToken')).toBe('my-token');
-    });
-
     it('overwrites previous token', () => {
       setAccessToken('old');
       setAccessToken('new');
-      expect(localStorage.getItem('accessToken')).toBe('new');
+      expect(getAccessToken()).toBe('new');
     });
 
     it('roundtrips with getAccessToken', () => {
       setAccessToken('roundtrip-tok');
       expect(getAccessToken()).toBe('roundtrip-tok');
     });
-
-    it('overwrites legacy format and roundtrips correctly', () => {
-      // Start with old JSON format
-      localStorage.setItem('accessToken', JSON.stringify('legacy'));
-      expect(getAccessToken()).toBe('legacy');
-
-      // Overwrite with new plain string format
-      setAccessToken('modern');
-      expect(getAccessToken()).toBe('modern');
-      expect(localStorage.getItem('accessToken')).toBe('modern');
-    });
   });
 
   // ─── clearTokens ──────────────────────────────────────────────
 
   describe('clearTokens', () => {
-    it('removes both accessToken and refreshToken', () => {
-      localStorage.setItem('accessToken', 'at');
+    it('clears in-memory access token and localStorage refresh token', () => {
+      setAccessToken('at');
       localStorage.setItem('refreshToken', 'rt');
       clearTokens();
-      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(getAccessToken()).toBeNull();
       expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 
@@ -139,7 +84,7 @@ describe('tokenService', () => {
     });
 
     it('does not affect other localStorage keys', () => {
-      localStorage.setItem('accessToken', 'at');
+      setAccessToken('at');
       localStorage.setItem('other', 'value');
       clearTokens();
       expect(localStorage.getItem('other')).toBe('value');
@@ -213,47 +158,6 @@ describe('tokenService', () => {
 
     it('returns true for an empty string', () => {
       expect(isTokenExpired('')).toBe(true);
-    });
-  });
-
-  // ─── getAuthenticatedUrl ───────────────────────────────────────
-
-  describe('getAuthenticatedUrl', () => {
-    it('appends token as query param to relative URL', () => {
-      setAccessToken('my-token');
-      const result = getAuthenticatedUrl('/api/file/123');
-      expect(result).toContain('/api/file/123');
-      expect(result).toContain('token=my-token');
-    });
-
-    it('appends token to absolute URL', () => {
-      setAccessToken('my-token');
-      const result = getAuthenticatedUrl('http://example.com/api/file/123');
-      expect(result).toBe('http://example.com/api/file/123?token=my-token');
-    });
-
-    it('preserves existing query params when appending token', () => {
-      setAccessToken('my-token');
-      const result = getAuthenticatedUrl('/api/file/123?format=mp4');
-      expect(result).toContain('format=mp4');
-      expect(result).toContain('token=my-token');
-    });
-
-    it('does not duplicate token if already in URL', () => {
-      setAccessToken('my-token');
-      const url = '/api/file/123?token=existing';
-      expect(getAuthenticatedUrl(url)).toBe(url);
-    });
-
-    it('returns original URL when no token available', () => {
-      expect(getAuthenticatedUrl('/api/file/123')).toBe('/api/file/123');
-    });
-
-    it('logs warning when no token available', () => {
-      getAuthenticatedUrl('/api/file/123');
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('No token available'),
-      );
     });
   });
 
@@ -370,6 +274,19 @@ describe('tokenService', () => {
     });
   });
 
+  // ─── isAuthenticated ─────────────────────────────────────────
+
+  describe('isAuthenticated', () => {
+    it('returns true when token is present', () => {
+      setAccessToken('my-token');
+      expect(isAuthenticated()).toBe(true);
+    });
+
+    it('returns false when token is absent', () => {
+      expect(isAuthenticated()).toBe(false);
+    });
+  });
+
   // ─── isRefreshing ─────────────────────────────────────────────
 
   describe('isRefreshing', () => {
@@ -395,7 +312,7 @@ describe('tokenService', () => {
       setAccessToken('my-token');
       localStorage.setItem('refreshToken', 'rt');
       redirectToLogin();
-      expect(localStorage.getItem('accessToken')).toBeNull();
+      expect(getAccessToken()).toBeNull();
       expect(localStorage.getItem('refreshToken')).toBeNull();
     });
 

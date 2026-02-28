@@ -2,16 +2,19 @@ import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { FileController } from './file.controller';
 import { FileService } from './file.service';
+import { SignedUrlService } from './signed-url.service';
 import { NotFoundException, NotImplementedException } from '@nestjs/common';
 import { StorageType, FileType } from '@prisma/client';
 import { Request, Response } from 'express';
 import * as fs from 'fs';
+import { AuthenticatedRequest } from '@/types';
 
 jest.mock('fs');
 
 describe('FileController', () => {
   let controller: FileController;
   let service: Mocked<FileService>;
+  let signedUrlService: Mocked<SignedUrlService>;
 
   const mockResponse = {
     set: jest.fn(),
@@ -28,6 +31,7 @@ describe('FileController', () => {
 
     controller = unit;
     service = unitRef.get(FileService);
+    signedUrlService = unitRef.get(SignedUrlService);
 
     // Reset mocks
     jest.clearAllMocks();
@@ -464,6 +468,64 @@ describe('FileController', () => {
           'Content-Disposition': `inline; filename="my _special_ file.pdf"; filename*=UTF-8''my%20%22special%22%20file.pdf`,
         }),
       );
+    });
+  });
+
+  describe('getSignedUrl', () => {
+    const mockAuthRequest = (userId: string) =>
+      ({
+        user: { id: userId },
+      }) as unknown as AuthenticatedRequest;
+
+    it('should return a signed URL and expiry for a valid file', async () => {
+      const fileId = 'file-signed';
+      const mockFile = {
+        id: fileId,
+        filename: 'video.mp4',
+        mimeType: 'video/mp4',
+        fileType: FileType.VIDEO,
+        size: 10000,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/video.mp4',
+      };
+
+      const expiresAt = new Date(Date.now() + 3600 * 1000);
+      service.findOne.mockResolvedValue(mockFile as any);
+      signedUrlService.generateSignedUrl.mockReturnValue({
+        url: `/api/file/${fileId}?sig=abc&exp=123&uid=user-1`,
+        expiresAt,
+      });
+
+      const result = await controller.getSignedUrl(
+        fileId,
+        mockAuthRequest('user-1'),
+      );
+
+      expect(result).toEqual({
+        url: `/api/file/${fileId}?sig=abc&exp=123&uid=user-1`,
+        expiresAt: expiresAt.toISOString(),
+      });
+      expect(signedUrlService.generateSignedUrl).toHaveBeenCalledWith(
+        `/api/file/${fileId}`,
+        fileId,
+        'user-1',
+      );
+    });
+
+    it('should throw NotFoundException when file does not exist', async () => {
+      service.findOne.mockResolvedValue(null as any);
+
+      await expect(
+        controller.getSignedUrl('non-existent', mockAuthRequest('user-1')),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should propagate service errors', async () => {
+      service.findOne.mockRejectedValue(new Error('Database error'));
+
+      await expect(
+        controller.getSignedUrl('error-file', mockAuthRequest('user-1')),
+      ).rejects.toThrow('Database error');
     });
   });
 });

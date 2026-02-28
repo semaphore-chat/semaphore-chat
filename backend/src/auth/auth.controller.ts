@@ -32,7 +32,11 @@ import {
   RevokeSessionResponseDto,
   RevokeAllSessionsResponseDto,
 } from './dto/auth-response.dto';
-import { LoginRequestDto, RefreshRequestDto } from './dto/auth-request.dto';
+import {
+  LoginRequestDto,
+  RefreshRequestDto,
+  LogoutRequestDto,
+} from './dto/auth-request.dto';
 import { Public } from './public.decorator';
 
 @Controller('auth')
@@ -129,21 +133,45 @@ export class AuthController {
 
     // Do this in a tx so we don't have dangling refresh tokens or something weird
     const token = await this.databaseService.$transaction(async (tx) => {
-      const tokenId = await this.authService.validateRefreshToken(
+      const tokenRecord = await this.authService.validateRefreshToken(
         jti,
         refreshToken,
         tx,
       );
 
-      if (!tokenId) {
+      if (!tokenRecord) {
         this.logger.error('Could not find token by id');
         throw new UnauthorizedException('Invalid refresh token');
       }
 
-      // Delete old token
-      await this.authService.removeRefreshToken(jti, refreshToken, tx);
-      // Generate new token with device info
-      return this.authService.generateRefreshToken(user.id, deviceInfo, tx);
+      // Reuse detection: if the token has already been consumed, someone
+      // is replaying a stolen token. Invalidate the entire token family.
+      if (tokenRecord.consumed) {
+        this.logger.warn(
+          `Refresh token reuse detected! Family: ${tokenRecord.familyId}, User: ${user.id}`,
+        );
+        if (tokenRecord.familyId) {
+          await this.authService.invalidateTokenFamily(
+            tokenRecord.familyId,
+            tx,
+          );
+        }
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
+      // Consume (not delete) old token so reuse can be detected later
+      const consumed = await this.authService.consumeRefreshToken(
+        jti,
+        refreshToken,
+        tx,
+      );
+      // Generate new token in the same family
+      return this.authService.generateRefreshToken(
+        user.id,
+        deviceInfo,
+        tx,
+        consumed.familyId ?? undefined,
+      );
     });
 
     const newAccessToken = this.authService.login(user);
@@ -162,14 +190,20 @@ export class AuthController {
 
   @Throttle({ short: { limit: 2, ttl: 1000 }, long: { limit: 5, ttl: 60000 } })
   @Post('logout')
+  @ApiBody({ type: LogoutRequestDto })
   @ApiCreatedResponse({ type: LogoutResponseDto })
   async logout(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LogoutResponseDto> {
-    const refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
+    // Get refresh token from cookie or body (Electron sends tokens in body, not cookies)
+    let refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
       | string
       | undefined;
+    const body = req.body as LogoutRequestDto | undefined;
+    if (!refreshToken && body?.refreshToken) {
+      refreshToken = body.refreshToken;
+    }
 
     if (refreshToken) {
       try {
@@ -178,7 +212,7 @@ export class AuthController {
             await this.authService.verifyRefreshToken(refreshToken);
 
           if (user) {
-            await this.authService.removeRefreshToken(jti, refreshToken, tx);
+            await this.authService.deleteRefreshToken(jti, refreshToken, tx);
           }
         });
       } catch {

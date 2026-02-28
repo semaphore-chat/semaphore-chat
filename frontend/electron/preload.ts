@@ -189,6 +189,19 @@ const electronAPI = {
   setSetting: (key: string, value: unknown) => {
     return ipcRenderer.invoke('settings:set', key, value);
   },
+
+  // Secure token storage (OS keychain via safeStorage)
+  storeRefreshToken: (token: string): Promise<void> => {
+    return ipcRenderer.invoke('secure-storage:store', 'refreshToken', token);
+  },
+
+  getRefreshToken: (): Promise<string | null> => {
+    return ipcRenderer.invoke('secure-storage:get', 'refreshToken');
+  },
+
+  deleteRefreshToken: (): Promise<void> => {
+    return ipcRenderer.invoke('secure-storage:delete', 'refreshToken');
+  },
 };
 
 // Expose protected methods to renderer process

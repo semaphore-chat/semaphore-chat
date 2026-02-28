@@ -283,7 +283,7 @@ describe('AuthService', () => {
   });
 
   describe('validateRefreshToken', () => {
-    it('should return token id when token is valid and not expired', async () => {
+    it('should return full token record when token is valid and not expired', async () => {
       const jti = 'token-jti-123';
       const refreshToken = 'valid-token';
       const mockToken = RefreshTokenFactory.build({
@@ -296,7 +296,7 @@ describe('AuthService', () => {
 
       const result = await service.validateRefreshToken(jti, refreshToken);
 
-      expect(result).toBe(jti);
+      expect(result).toEqual(mockToken);
       expect(mockDatabase.refreshToken.findUnique).toHaveBeenCalledWith({
         where: { id: jti },
       });
@@ -369,31 +369,36 @@ describe('AuthService', () => {
     });
   });
 
-  describe('removeRefreshToken', () => {
-    it('should delete valid refresh token', async () => {
+  describe('consumeRefreshToken', () => {
+    it('should mark token as consumed and return token record', async () => {
       const jti = 'token-jti-123';
       const refreshToken = 'valid-token';
-      const mockToken = RefreshTokenFactory.build({ id: jti });
+      const mockToken = RefreshTokenFactory.build({
+        id: jti,
+        familyId: 'family-1',
+      });
 
       mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
       mockBcrypt.compare.mockResolvedValue(true as never);
-      mockDatabase.refreshToken.delete.mockResolvedValue(mockToken);
+      mockDatabase.refreshToken.update.mockResolvedValue(mockToken);
 
-      await service.removeRefreshToken(jti, refreshToken);
+      const result = await service.consumeRefreshToken(jti, refreshToken);
 
-      expect(mockDatabase.refreshToken.delete).toHaveBeenCalledWith({
+      expect(mockDatabase.refreshToken.update).toHaveBeenCalledWith({
         where: { id: jti },
+        data: { consumed: true, consumedAt: expect.any(Date) },
       });
+      expect(result).toEqual(mockToken);
     });
 
     it('should throw UnauthorizedException when token not found', async () => {
       mockDatabase.refreshToken.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.removeRefreshToken('nonexistent', 'token'),
+        service.consumeRefreshToken('nonexistent', 'token'),
       ).rejects.toThrow(UnauthorizedException);
 
-      expect(mockDatabase.refreshToken.delete).not.toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
     });
 
     it('should throw UnauthorizedException when token hash does not match', async () => {
@@ -404,10 +409,10 @@ describe('AuthService', () => {
       mockBcrypt.compare.mockResolvedValue(false as never);
 
       await expect(
-        service.removeRefreshToken(jti, 'wrong-token'),
+        service.consumeRefreshToken(jti, 'wrong-token'),
       ).rejects.toThrow(UnauthorizedException);
 
-      expect(mockDatabase.refreshToken.delete).not.toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
     });
 
     it('should use transaction client when provided', async () => {
@@ -417,36 +422,139 @@ describe('AuthService', () => {
 
       mockTx.refreshToken.findUnique.mockResolvedValue(mockToken);
       mockBcrypt.compare.mockResolvedValue(true as never);
-      mockTx.refreshToken.delete.mockResolvedValue(mockToken);
+      mockTx.refreshToken.update.mockResolvedValue(mockToken);
 
-      await service.removeRefreshToken(
+      await service.consumeRefreshToken(
         jti,
         'token',
-        mockTx as unknown as Parameters<typeof service.removeRefreshToken>[2],
+        mockTx as unknown as Parameters<typeof service.consumeRefreshToken>[2],
       );
 
-      expect(mockTx.refreshToken.delete).toHaveBeenCalled();
-      expect(mockDatabase.refreshToken.delete).not.toHaveBeenCalled();
+      expect(mockTx.refreshToken.update).toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteRefreshToken', () => {
+    it('should delete token and consumed family tokens when familyId exists', async () => {
+      const jti = 'token-jti-123';
+      const refreshToken = 'valid-token';
+      const mockToken = RefreshTokenFactory.build({
+        id: jti,
+        familyId: 'family-1',
+      });
+
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 2 });
+
+      await service.deleteRefreshToken(jti, refreshToken);
+
+      expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: {
+          OR: [{ id: jti }, { familyId: 'family-1', consumed: true }],
+        },
+      });
+    });
+
+    it('should delete single token when no familyId', async () => {
+      const jti = 'token-jti-123';
+      const refreshToken = 'valid-token';
+      const mockToken = RefreshTokenFactory.build({ id: jti, familyId: null });
+
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockDatabase.refreshToken.delete.mockResolvedValue(mockToken);
+
+      await service.deleteRefreshToken(jti, refreshToken);
+
+      expect(mockDatabase.refreshToken.delete).toHaveBeenCalledWith({
+        where: { id: jti },
+      });
+    });
+
+    it('should throw UnauthorizedException when token not found', async () => {
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.deleteRefreshToken('nonexistent', 'token'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('should use transaction client when provided', async () => {
+      const mockTx = createMockDatabase();
+      const jti = 'token-jti-123';
+      const mockToken = RefreshTokenFactory.build({
+        id: jti,
+        familyId: 'family-1',
+      });
+
+      mockTx.refreshToken.findUnique.mockResolvedValue(mockToken);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+      mockTx.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.deleteRefreshToken(
+        jti,
+        'token',
+        mockTx as unknown as Parameters<typeof service.deleteRefreshToken>[2],
+      );
+
+      expect(mockTx.refreshToken.deleteMany).toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('invalidateTokenFamily', () => {
+    it('should delete all tokens in the family', async () => {
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 3 });
+
+      const result = await service.invalidateTokenFamily('family-1');
+
+      expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { familyId: 'family-1' },
+      });
+      expect(result).toBe(3);
+    });
+
+    it('should use transaction client when provided', async () => {
+      const mockTx = createMockDatabase();
+      mockTx.refreshToken.deleteMany.mockResolvedValue({ count: 2 });
+
+      const result = await service.invalidateTokenFamily(
+        'family-1',
+        mockTx as unknown as Parameters<
+          typeof service.invalidateTokenFamily
+        >[1],
+      );
+
+      expect(mockTx.refreshToken.deleteMany).toHaveBeenCalledWith({
+        where: { familyId: 'family-1' },
+      });
+      expect(result).toBe(2);
+      expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
     });
   });
 
   describe('cleanExpiredTokens', () => {
-    it('should delete expired tokens and log count', async () => {
-      const mockDeleteResult = { count: 5 };
-
-      mockDatabase.refreshToken.deleteMany.mockResolvedValue(mockDeleteResult);
+    it('should delete expired and old consumed tokens and log counts', async () => {
+      mockDatabase.refreshToken.deleteMany
+        .mockResolvedValueOnce({ count: 5 })
+        .mockResolvedValueOnce({ count: 3 });
 
       const loggerSpy = jest.spyOn(service['logger'], 'log');
 
       await service.cleanExpiredTokens();
 
-      expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledTimes(1);
+      expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledTimes(2);
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('5 expired refresh tokens'),
+        expect.stringContaining('5 expired'),
+      );
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('3 consumed'),
       );
     });
 
-    it('should handle zero expired tokens', async () => {
+    it('should handle zero expired and consumed tokens', async () => {
       mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
 
       const loggerSpy = jest.spyOn(service['logger'], 'log');
@@ -454,7 +562,10 @@ describe('AuthService', () => {
       await service.cleanExpiredTokens();
 
       expect(loggerSpy).toHaveBeenCalledWith(
-        expect.stringContaining('0 expired refresh tokens'),
+        expect.stringContaining('0 expired'),
+      );
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('0 consumed'),
       );
     });
   });

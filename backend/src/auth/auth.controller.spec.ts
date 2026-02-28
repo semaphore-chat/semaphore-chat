@@ -135,6 +135,21 @@ describe('AuthController', () => {
     const jti = 'token-id-123';
     const newRefreshToken = 'new-refresh-token';
 
+    const mockTokenRecord = {
+      id: jti,
+      userId: mockUser.id,
+      tokenHash: 'hashed',
+      familyId: 'family-123',
+      consumed: false,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 86400000),
+      createdAt: new Date(),
+      lastUsedAt: new Date(),
+      deviceName: 'Chrome',
+      userAgent: null,
+      ipAddress: null,
+    };
+
     beforeEach(() => {
       jest
         .spyOn(authService, 'verifyRefreshToken')
@@ -143,8 +158,12 @@ describe('AuthController', () => {
       mockDatabase.$transaction.mockImplementation((callback: any) => {
         return callback(mockDatabase);
       });
-      jest.spyOn(authService, 'validateRefreshToken').mockResolvedValue(jti);
-      jest.spyOn(authService, 'removeRefreshToken').mockResolvedValue();
+      jest
+        .spyOn(authService, 'validateRefreshToken')
+        .mockResolvedValue(mockTokenRecord);
+      jest
+        .spyOn(authService, 'consumeRefreshToken')
+        .mockResolvedValue(mockTokenRecord);
       jest
         .spyOn(authService, 'generateRefreshToken')
         .mockResolvedValue(newRefreshToken);
@@ -167,7 +186,7 @@ describe('AuthController', () => {
         mockRefreshToken,
         mockDatabase,
       );
-      expect(authService.removeRefreshToken).toHaveBeenCalledWith(
+      expect(authService.consumeRefreshToken).toHaveBeenCalledWith(
         jti,
         mockRefreshToken,
         mockDatabase,
@@ -176,6 +195,7 @@ describe('AuthController', () => {
         mockUser.id,
         expect.objectContaining({ userAgent: 'Mozilla/5.0' }),
         mockDatabase,
+        'family-123',
       );
       expect(result).toEqual({ accessToken: mockAccessToken });
     });
@@ -265,6 +285,27 @@ describe('AuthController', () => {
         mockRefreshToken,
       );
     });
+
+    it('should detect reuse and invalidate token family when token is already consumed', async () => {
+      const consumedRecord = { ...mockTokenRecord, consumed: true };
+      jest
+        .spyOn(authService, 'validateRefreshToken')
+        .mockResolvedValue(consumedRecord);
+      jest.spyOn(authService, 'invalidateTokenFamily').mockResolvedValue(3);
+
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(authService.invalidateTokenFamily).toHaveBeenCalledWith(
+        'family-123',
+        mockDatabase,
+      );
+    });
   });
 
   describe('logout', () => {
@@ -285,7 +326,7 @@ describe('AuthController', () => {
       jest
         .spyOn(authService, 'verifyRefreshToken')
         .mockResolvedValue([mockUser, jti]);
-      jest.spyOn(authService, 'removeRefreshToken').mockResolvedValue();
+      jest.spyOn(authService, 'deleteRefreshToken').mockResolvedValue();
     });
 
     it('should logout and clear cookie when refresh token present', async () => {
@@ -299,12 +340,29 @@ describe('AuthController', () => {
       expect(authService.verifyRefreshToken).toHaveBeenCalledWith(
         mockRefreshToken,
       );
-      expect(authService.removeRefreshToken).toHaveBeenCalledWith(
+      expect(authService.deleteRefreshToken).toHaveBeenCalledWith(
         jti,
         mockRefreshToken,
         mockDatabase,
       );
       expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+      expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('should logout Electron client using refresh token from body', async () => {
+      const req = {
+        ...mockReq,
+        cookies: {},
+        body: { refreshToken: mockRefreshToken },
+      };
+
+      const result = await controller.logout(req, mockRes);
+
+      expect(authService.deleteRefreshToken).toHaveBeenCalledWith(
+        jti,
+        mockRefreshToken,
+        mockDatabase,
+      );
       expect(result).toEqual({ message: 'Logged out successfully' });
     });
 

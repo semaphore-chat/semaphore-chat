@@ -22,7 +22,7 @@ import { OnboardingData } from './OnboardingWizard';
 import { useMutation } from '@tanstack/react-query';
 import { onboardingControllerSetupInstanceMutation, authControllerLoginMutation } from '../../api-client/@tanstack/react-query.gen';
 import { logger } from '../../utils/logger';
-import { setAccessToken } from '../../utils/tokenService';
+import { setAccessToken, storeElectronRefreshToken } from '../../utils/tokenService';
 
 interface CompletionStepProps {
   data: OnboardingData;
@@ -70,7 +70,7 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
           // Store the tokens
           setAccessToken(response.accessToken);
           if (response.refreshToken) {
-            localStorage.setItem('refreshToken', response.refreshToken);
+            await storeElectronRefreshToken(response.refreshToken);
           }
           
           // Give user a moment to see the success message, then redirect

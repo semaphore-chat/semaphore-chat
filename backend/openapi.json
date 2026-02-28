@@ -88,6 +88,16 @@
       "post": {
         "operationId": "AuthController_logout",
         "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LogoutRequestDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "",
@@ -416,10 +426,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "number",
-              "default": 50,
               "minimum": 1,
-              "maximum": 100
+              "maximum": 100,
+              "default": 50,
+              "type": "number"
             }
           },
           {
@@ -2624,6 +2634,29 @@
         },
         "tags": [
           "Messages"
+        ]
+      }
+    },
+    "/api/file/{id}/signed-url": {
+      "get": {
+        "operationId": "FileController_getSignedUrl",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "File"
         ]
       }
     },
@@ -6676,6 +6709,15 @@
           }
         }
       },
+      "LogoutRequestDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "description": "Refresh token (required for Electron clients that cannot use cookies)"
+          }
+        }
+      },
       "LogoutResponseDto": {
         "type": "object",
         "properties": {
@@ -7005,6 +7047,17 @@
           "role"
         ]
       },
+      "SetUserBanStatusDto": {
+        "type": "object",
+        "properties": {
+          "banned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "banned"
+        ]
+      },
       "SuccessResponseDto": {
         "type": "object",
         "properties": {
@@ -7158,7 +7211,6 @@
                 "CREATE_CHANNEL",
                 "CREATE_COMMUNITY",
                 "CREATE_INVITE",
-                "CREATE_USER",
                 "CREATE_ROLE",
                 "CREATE_ALIAS_GROUP",
                 "CREATE_ALIAS_GROUP_MEMBER",
@@ -7178,7 +7230,6 @@
                 "READ_MEMBER",
                 "UPDATE_COMMUNITY",
                 "UPDATE_CHANNEL",
-                "UPDATE_MESSAGE",
                 "UPDATE_USER",
                 "UPDATE_ROLE",
                 "UPDATE_ALIAS_GROUP",
@@ -7300,7 +7351,6 @@
                 "CREATE_CHANNEL",
                 "CREATE_COMMUNITY",
                 "CREATE_INVITE",
-                "CREATE_USER",
                 "CREATE_ROLE",
                 "CREATE_ALIAS_GROUP",
                 "CREATE_ALIAS_GROUP_MEMBER",
@@ -7320,7 +7370,6 @@
                 "READ_MEMBER",
                 "UPDATE_COMMUNITY",
                 "UPDATE_CHANNEL",
-                "UPDATE_MESSAGE",
                 "UPDATE_USER",
                 "UPDATE_ROLE",
                 "UPDATE_ALIAS_GROUP",
@@ -7379,7 +7428,6 @@
                 "CREATE_CHANNEL",
                 "CREATE_COMMUNITY",
                 "CREATE_INVITE",
-                "CREATE_USER",
                 "CREATE_ROLE",
                 "CREATE_ALIAS_GROUP",
                 "CREATE_ALIAS_GROUP_MEMBER",
@@ -7399,7 +7447,6 @@
                 "READ_MEMBER",
                 "UPDATE_COMMUNITY",
                 "UPDATE_CHANNEL",
-                "UPDATE_MESSAGE",
                 "UPDATE_USER",
                 "UPDATE_ROLE",
                 "UPDATE_ALIAS_GROUP",
@@ -9132,6 +9179,17 @@
           "failed",
           "message"
         ]
+      },
+      "ModerationBanUserDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          }
+        }
       },
       "UnbanUserDto": {
         "type": "object",
@@ -11198,6 +11256,64 @@
           }
         }
       },
+      "FriendListItemDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "USER"
+            ]
+          },
+          "friendshipId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "avatarUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "bannerUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "lastSeen": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "bio": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "role",
+          "friendshipId",
+          "id",
+          "username",
+          "avatarUrl",
+          "bannerUrl",
+          "lastSeen",
+          "displayName",
+          "bio",
+          "status"
+        ]
+      },
       "FriendshipWithUsersDto": {
         "type": "object",
         "properties": {
@@ -11757,86 +11873,6 @@
         },
         "required": [
           "memberIds"
-        ]
-      },
-      "SetUserBanStatusDto": {
-        "type": "object",
-        "properties": {
-          "banned": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "banned"
-        ]
-      },
-      "ModerationBanUserDto": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string"
-          },
-          "expiresAt": {
-            "type": "string"
-          }
-        }
-      },
-      "FriendListItemDto": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "OWNER",
-              "USER"
-            ]
-          },
-          "id": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "avatarUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "bannerUrl": {
-            "type": "string",
-            "nullable": true
-          },
-          "lastSeen": {
-            "format": "date-time",
-            "type": "string",
-            "nullable": true
-          },
-          "displayName": {
-            "type": "string",
-            "nullable": true
-          },
-          "bio": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "type": "string",
-            "nullable": true
-          },
-          "friendshipId": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "role",
-          "id",
-          "username",
-          "avatarUrl",
-          "bannerUrl",
-          "lastSeen",
-          "displayName",
-          "bio",
-          "status",
-          "friendshipId"
         ]
       }
     }

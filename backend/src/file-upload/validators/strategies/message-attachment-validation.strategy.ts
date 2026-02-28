@@ -4,9 +4,7 @@ import { IFileValidationStrategy } from './file-validation-strategy.interface';
  * Validation strategy for message attachments
  * Supports images, videos, documents, and audio with generous limits
  */
-export class MessageAttachmentValidationStrategy
-  implements IFileValidationStrategy
-{
+export class MessageAttachmentValidationStrategy implements IFileValidationStrategy {
   private readonly MAX_VIDEO_SIZE = 500 * 1024 * 1024; // 500MB
   private readonly MAX_IMAGE_SIZE = 25 * 1024 * 1024; // 25MB
   private readonly MAX_DOCUMENT_SIZE = 100 * 1024 * 1024; // 100MB

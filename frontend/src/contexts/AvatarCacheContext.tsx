@@ -1,7 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useRef, useCallback, useEffect } from "react";
 import { getApiUrl } from "../config/env";
-import { getAuthToken } from "../utils/auth";
+import { getAccessToken } from "../utils/tokenService";
 import { logger } from "../utils/logger";
 
 // Maximum number of cached blob URLs to prevent memory leaks
@@ -119,7 +119,7 @@ export const FileCacheProvider: React.FC<FileCacheProviderProps> = ({
     const fetchPromise = (async () => {
       try {
         // Get auth token using centralized utility
-        const token = getAuthToken();
+        const token = getAccessToken();
 
         if (!token) {
           throw new Error("No authentication token found");
@@ -183,7 +183,7 @@ export const FileCacheProvider: React.FC<FileCacheProviderProps> = ({
     // 3. Start new fetch
     const fetchPromise = (async () => {
       try {
-        const token = getAuthToken();
+        const token = getAccessToken();
         if (!token) {
           throw new Error("No authentication token found");
         }

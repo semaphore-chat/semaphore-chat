@@ -22,26 +22,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromExtractors([
         // Primary: Authorization header
         ExtractJwt.fromAuthHeaderAsBearerToken(),
-        // Fallback 1: Query parameter — ONLY for file-serving routes
-        // This allows URLs like /api/file/123?token=<jwt> for embedded <img>/<video> tags
-        // Restricted to file routes to prevent token leakage via browser history, logs, and Referer headers
-        // Must check both /file/ and /api/file/ because req.path varies by client:
-        //   - Web (via Vite proxy): req.path = /file/...  (proxy strips /api prefix)
-        //   - Electron (direct):    req.path = /api/file/... (full path including prefix)
-        // Must run BEFORE cookie extractor so an explicit ?token= always takes precedence
-        // over a potentially stale httpOnly access_token cookie the browser can't clear
-        (req: Request): string | null => {
-          const reqPath = req?.path || '';
-          if (!reqPath.startsWith('/file/') && !reqPath.startsWith('/api/file/')) {
-            return null;
-          }
-          const token = req?.query?.token;
-          if (typeof token === 'string' && token.length > 0) {
-            return token;
-          }
-          return null;
-        },
-        // Fallback 2: Cookie (for same-origin browser requests)
+        // Fallback: Cookie (for same-origin browser requests)
         (req: Request): string | null => {
           const cookies = req?.cookies as Record<string, string> | undefined;
           return cookies?.access_token || null;

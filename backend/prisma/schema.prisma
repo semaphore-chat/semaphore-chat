@@ -242,7 +242,16 @@ model RefreshToken {
   ipAddress  String?  // Client IP address
   lastUsedAt DateTime @default(now()) // Last activity with this token
 
+  // Token family for reuse detection (RFC 9700 best practice)
+  // All tokens from a single login share a familyId. On rotation the old
+  // token is marked consumed rather than deleted. If a consumed token is
+  // presented again, the entire family is invalidated.
+  familyId   String?   @db.ObjectId
+  consumed   Boolean   @default(false)
+  consumedAt DateTime?
+
   @@index([userId, lastUsedAt]) // For fetching user's sessions sorted by activity
+  @@index([familyId])           // For invalidating entire token family on reuse
 }
 
 model InstanceInvite {
