@@ -38,8 +38,16 @@ RUN pnpm exec prisma generate --schema=prisma/schema.prisma
 # Build the application
 RUN pnpm run build
 
+# Save prisma CLI before pruning (it's a devDependency but needed at runtime for db push)
+RUN cp -r /app/backend/node_modules/.bin/prisma /tmp/prisma-cli && \
+    cp -r /app/backend/node_modules/prisma /tmp/prisma-pkg
+
 # Prune dev dependencies - keep only production
 RUN CI=true pnpm prune --prod
+
+# Restore prisma CLI after prune
+RUN cp /tmp/prisma-cli /app/backend/node_modules/.bin/prisma && \
+    cp -r /tmp/prisma-pkg /app/backend/node_modules/prisma
 
 # ============================================
 # Stage 2: Production Runtime

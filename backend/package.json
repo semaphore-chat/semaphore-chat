@@ -65,8 +65,7 @@
     "socket.io": "^4.8.1",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0",
-    "web-push": "^3.6.7",
-    "prisma": "^6.6.0"
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.3",
