@@ -10,7 +10,6 @@ import {
   Menu,
   MenuItem,
   Badge,
-  Collapse,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -24,8 +23,6 @@ import {
   StopScreenShare,
   CallEnd,
   Settings,
-  ExpandLess,
-  ExpandMore,
   VolumeUp,
   FiberManualRecord,
   MovieCreation,
@@ -39,15 +36,12 @@ import { useScreenShare } from "../../hooks/useScreenShare";
 import { useLocalMediaState } from "../../hooks/useLocalMediaState";
 import { useDeafenEffect } from "../../hooks/useDeafenEffect";
 import { useReplayBufferState } from "../../contexts/ReplayBufferContext";
-import { useVoiceParticipantCount } from "../../hooks/useVoiceParticipantCount";
 import { useDebugPanelShortcut } from "../../hooks/useDebugPanelShortcut";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
-import { VoiceChannelUserList } from "./VoiceChannelUserList";
 import { DeviceSettingsDialog } from "./DeviceSettingsDialog";
 import { ScreenSourcePicker } from "./ScreenSourcePicker";
 import { VoiceDebugPanel } from "./VoiceDebugPanel";
 import { CaptureReplayModal } from "./CaptureReplayModal";
-import { ChannelType } from "../../types/channel.type";
 import { useResponsive } from "../../hooks/useResponsive";
 import { logger } from "../../utils/logger";
 import { LAYOUT_CONSTANTS } from "../../utils/breakpoints";
@@ -67,7 +61,6 @@ export const VoiceBottomBar: React.FC = () => {
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(
     null
   );
-  const [showUserList, setShowUserList] = useState(false);
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const [isSpeakerphone, setIsSpeakerphone] = useState(false);
@@ -75,11 +68,6 @@ export const VoiceBottomBar: React.FC = () => {
   // Use extracted hooks for cleaner organization
   const { showDebugPanel } = useDebugPanelShortcut();
   const { isActive: isPTTActive, isKeyHeld: isPTTKeyHeld, currentKeyDisplay: pttKeyDisplay } = usePushToTalk();
-  const { participantCount } = useVoiceParticipantCount({
-    channelId: state.currentChannelId,
-    dmGroupId: state.currentDmGroupId,
-    contextType: state.contextType,
-  });
 
   // Keep voice presence TTL alive in Redis while connected
   useVoicePresenceHeartbeat({
@@ -181,37 +169,6 @@ export const VoiceBottomBar: React.FC = () => {
 
   return (
     <>
-      {/* User List Expansion - only for channels */}
-      {state.contextType === 'channel' && state.currentChannelId && (
-        <Collapse in={showUserList} timeout={300}>
-          <Box
-            sx={{
-              position: "fixed",
-              bottom: 80,
-              left: 0,
-              right: 0,
-              zIndex: 1200,
-              display: "flex",
-              justifyContent: "center",
-              px: 2,
-            }}
-          >
-            <Box sx={{ maxWidth: 400, width: "100%" }}>
-              <VoiceChannelUserList
-                channel={{
-                  id: state.currentChannelId,
-                  name: state.channelName || "Voice Channel",
-                  type: ChannelType.VOICE,
-                  communityId: state.communityId || "",
-                  isPrivate: state.isPrivate ?? false,
-                  createdAt: state.createdAt || "",
-                }}
-              />
-            </Box>
-          </Box>
-        </Collapse>
-      )}
-
       {/* Main Bottom Bar */}
       <Paper
         elevation={8}
@@ -264,24 +221,6 @@ export const VoiceBottomBar: React.FC = () => {
               />
             )}
 
-            {/* Participants Count - only for channels, hide on mobile */}
-            {state.contextType === 'channel' && !isMobile && (
-              <Tooltip title="Show participants">
-                <IconButton
-                  size="small"
-                  onClick={() => setShowUserList(!showUserList)}
-                  sx={{
-                    backgroundColor: showUserList
-                      ? "action.selected"
-                      : "transparent",
-                  }}
-                >
-                  <Badge badgeContent={participantCount} color="primary">
-                    {showUserList ? <ExpandMore /> : <ExpandLess />}
-                  </Badge>
-                </IconButton>
-              </Tooltip>
-            )}
           </Box>
 
           {/* Voice Controls */}

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders, createUser, createFriendship } from '../test-utils';
 import AddFriendDialog from '../../components/Friends/AddFriendDialog';
+import type { default as userEvent } from '@testing-library/user-event';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -35,8 +36,8 @@ function setupHandlers({
     http.get(`${BASE_URL}/api/users/profile`, () =>
       HttpResponse.json(currentUser),
     ),
-    http.get(`${BASE_URL}/api/users`, () =>
-      HttpResponse.json({ users: [currentUser, ...users] }),
+    http.get(`${BASE_URL}/api/users/search`, () =>
+      HttpResponse.json([currentUser, ...users]),
     ),
     http.get(`${BASE_URL}/api/friends`, () =>
       HttpResponse.json(friends),
@@ -48,6 +49,16 @@ function setupHandlers({
       HttpResponse.json({ id: 'new-friendship', status: 'PENDING' }),
     ),
   );
+}
+
+/** Type a search query and wait for debounced results to appear */
+async function typeAndWaitForResults(user: ReturnType<typeof userEvent.setup>, query: string) {
+  const input = screen.getByLabelText('Search for a user');
+  await user.click(input);
+  await user.type(input, query);
+  await waitFor(() => {
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  }, { timeout: 2000 });
 }
 
 const defaultProps = {
@@ -71,11 +82,8 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    // Open the autocomplete dropdown
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'friend');
 
-    // Wait for options to load and find the friend option
     const friendOption = await screen.findByText('Friend User');
     const listItem = friendOption.closest('li')!;
     expect(within(listItem).getByText('Friends')).toBeInTheDocument();
@@ -97,8 +105,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'sent');
 
     const sentOption = await screen.findByText('Sent User');
     const listItem = sentOption.closest('li')!;
@@ -121,8 +128,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'received');
 
     const receivedOption = await screen.findByText('Received User');
     const listItem = receivedOption.closest('li')!;
@@ -135,8 +141,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'normal');
 
     const normalOption = await screen.findByText('Normal User');
     const listItem = normalOption.closest('li')!;
@@ -157,8 +162,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'normal');
     const normalOption = await screen.findByText('Normal User');
     await user.click(normalOption);
 
@@ -184,8 +188,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'normal');
     const normalOption = await screen.findByText('Normal User');
     await user.click(normalOption);
 
@@ -211,8 +214,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'normal');
     const normalOption = await screen.findByText('Normal User');
     await user.click(normalOption);
 
@@ -228,8 +230,7 @@ describe('AddFriendDialog', () => {
 
     const { user } = renderWithProviders(<AddFriendDialog {...defaultProps} />);
 
-    const input = screen.getByLabelText('Search for a user');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'normal');
     const normalOption = await screen.findByText('Normal User');
     await user.click(normalOption);
 

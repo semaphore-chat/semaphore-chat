@@ -63,6 +63,27 @@ export const getWebSocketUrl = (): string => {
 };
 
 /**
+ * Get the instance URL (origin) for building user-facing links (e.g. invite URLs).
+ * In Electron, window.location.origin is file:// so we use the configured server URL.
+ * In web, window.location.origin is correct.
+ */
+export const getInstanceUrl = (): string => {
+  if (isElectron()) {
+    const activeServer = getActiveServer();
+    if (activeServer) {
+      return activeServer.url;
+    }
+    return '';
+  }
+
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.origin;
+  }
+
+  return 'http://localhost:3000';
+};
+
+/**
  * Get full API endpoint URL
  * @param path - API endpoint path (e.g., '/auth/login')
  */

@@ -36,6 +36,7 @@ import { useUserPermissions } from "../../features/roles/useUserPermissions";
 import { CreateInviteDto, InstanceInvite } from "../../types/invite.type";
 import { copyToClipboard } from "../../utils/clipboard";
 import { invalidateInviteQueries } from "../../utils/queryInvalidation";
+import { getInstanceUrl } from "../../config/env";
 import { logger } from "../../utils/logger";
 import ConfirmDialog from "../Common/ConfirmDialog";
 
@@ -82,7 +83,7 @@ const InviteManagement: React.FC<InviteManagementProps> = ({ communityId }) => {
   });
 
   const getInviteUrl = (code: string) => {
-    return `${window.location.origin}/#/join/${code}`;
+    return `${getInstanceUrl()}/#/join/${code}`;
   };
 
   const handleCopyInvite = async (code: string) => {

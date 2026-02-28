@@ -433,11 +433,14 @@ describe('UserService', () => {
       const result = await service.findAll(50);
 
       expect(result.users).toHaveLength(3);
-      expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
-        where: {},
-        take: 50,
-        orderBy: { username: 'asc' },
-      });
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {},
+          select: expect.objectContaining({ id: true, username: true }),
+          take: 50,
+          orderBy: { username: 'asc' },
+        }),
+      );
     });
 
     it('should return continuation token when limit reached', async () => {
@@ -465,13 +468,16 @@ describe('UserService', () => {
 
       await service.findAll(50, token);
 
-      expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
-        where: {},
-        take: 50,
-        orderBy: { username: 'asc' },
-        cursor: { id: token },
-        skip: 1,
-      });
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {},
+          select: expect.objectContaining({ id: true, username: true }),
+          take: 50,
+          orderBy: { username: 'asc' },
+          cursor: { id: token },
+          skip: 1,
+        }),
+      );
     });
   });
 
@@ -483,16 +489,19 @@ describe('UserService', () => {
       const result = await service.searchUsers('test');
 
       expect(result).toHaveLength(3);
-      expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
-        where: {
-          OR: [
-            { username: { contains: 'test', mode: 'insensitive' } },
-            { displayName: { contains: 'test', mode: 'insensitive' } },
-          ],
-        },
-        take: 50,
-        orderBy: { username: 'asc' },
-      });
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { username: { contains: 'test', mode: 'insensitive' } },
+              { displayName: { contains: 'test', mode: 'insensitive' } },
+            ],
+          },
+          select: expect.objectContaining({ id: true, username: true }),
+          take: 50,
+          orderBy: { username: 'asc' },
+        }),
+      );
     });
 
     it('should filter out existing community members', async () => {
@@ -502,23 +511,26 @@ describe('UserService', () => {
 
       await service.searchUsers('test', communityId);
 
-      expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
-        where: {
-          OR: [
-            { username: { contains: 'test', mode: 'insensitive' } },
-            { displayName: { contains: 'test', mode: 'insensitive' } },
-          ],
-          NOT: {
-            memberships: {
-              some: {
-                communityId: communityId,
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            OR: [
+              { username: { contains: 'test', mode: 'insensitive' } },
+              { displayName: { contains: 'test', mode: 'insensitive' } },
+            ],
+            NOT: {
+              memberships: {
+                some: {
+                  communityId: communityId,
+                },
               },
             },
           },
-        },
-        take: 50,
-        orderBy: { username: 'asc' },
-      });
+          select: expect.objectContaining({ id: true, username: true }),
+          take: 50,
+          orderBy: { username: 'asc' },
+        }),
+      );
     });
 
     it('should respect custom limit', async () => {

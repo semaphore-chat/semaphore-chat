@@ -50,6 +50,7 @@ import {
 
 import ConfirmDialog from "../components/Common/ConfirmDialog";
 import { copyToClipboard } from "../utils/clipboard";
+import { getInstanceUrl } from "../config/env";
 import { invalidateInviteQueries } from "../utils/queryInvalidation";
 import { useUserPermissions } from "../features/roles/useUserPermissions";
 import { CreateInviteDto, InstanceInvite } from "../types/invite.type";
@@ -125,7 +126,7 @@ const AdminInvitePage: React.FC = () => {
   });
 
   const getInviteUrl = (code: string) => {
-    return `${window.location.origin}/#/join/${code}`;
+    return `${getInstanceUrl()}/#/join/${code}`;
   };
 
   const handleCopyInvite = async (code: string) => {

@@ -86,13 +86,6 @@ vi.mock('../../hooks/useResponsive', () => ({
   })),
 }));
 
-vi.mock('../../hooks/useVoiceParticipantCount', () => ({
-  useVoiceParticipantCount: vi.fn(() => ({
-    participantCount: 3,
-    isLoading: false,
-  })),
-}));
-
 vi.mock('../../contexts/ReplayBufferContext', () => ({
   useReplayBufferState: vi.fn(() => ({
     isReplayBufferActive: false,
@@ -129,11 +122,6 @@ vi.mock('../../hooks/useDeafenEffect', () => ({
 
 vi.mock('../../hooks/useVoicePresenceHeartbeat', () => ({
   useVoicePresenceHeartbeat: vi.fn(),
-}));
-
-// Mock child components
-vi.mock('../../components/Voice/VoiceChannelUserList', () => ({
-  VoiceChannelUserList: () => <div data-testid="voice-user-list" />,
 }));
 
 const mockNavigate = vi.fn();
@@ -310,12 +298,6 @@ describe('VoiceBottomBar', () => {
     renderWithProviders(<VoiceBottomBar />);
 
     expect(screen.queryByRole('button', { name: /capture replay/i })).not.toBeInTheDocument();
-  });
-
-  it('shows participant count badge', () => {
-    renderWithProviders(<VoiceBottomBar />);
-
-    expect(screen.getByText('3')).toBeInTheDocument();
   });
 
   it('shows connected chip', () => {

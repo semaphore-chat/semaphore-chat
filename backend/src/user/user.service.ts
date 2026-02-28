@@ -16,6 +16,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { UserEntity } from './dto/user-response.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 
 @Injectable()
 export class UserService {
@@ -194,7 +195,10 @@ export class UserService {
         : {}),
     };
 
-    const users = (await this.databaseService.user.findMany(query)).map(
+    const users = (await this.databaseService.user.findMany({
+      ...query,
+      select: PUBLIC_USER_SELECT,
+    })).map(
       (u) => new UserEntity(u),
     );
     const nextToken =
@@ -228,6 +232,7 @@ export class UserService {
 
     const users = await this.databaseService.user.findMany({
       where: whereClause,
+      select: PUBLIC_USER_SELECT,
       take: limit,
       orderBy: { username: 'asc' },
     });
@@ -496,7 +501,7 @@ export class UserService {
   async getBlockedUsers(userId: string): Promise<UserEntity[]> {
     const blocks = await this.databaseService.userBlock.findMany({
       where: { blockerId: userId },
-      include: { blocked: true },
+      include: { blocked: { select: PUBLIC_USER_SELECT } },
     });
 
     return blocks.map((block) => new UserEntity(block.blocked));

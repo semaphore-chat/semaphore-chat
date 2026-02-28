@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { screen, within, waitFor } from '@testing-library/react';
 import { Chip } from '@mui/material';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -25,15 +25,26 @@ const currentUser = createUser({ id: 'current-user-1', username: 'testuser', dis
 const userAlice = createUser({ id: 'alice-1', username: 'alice', displayName: 'Alice' });
 const userBob = createUser({ id: 'bob-1', username: 'bob', displayName: 'Bob' });
 
-function setupHandlers(users = [currentUser, userAlice, userBob]) {
+function setupHandlers(users = [userAlice, userBob]) {
   server.use(
     http.get(`${BASE_URL}/api/users/profile`, () =>
       HttpResponse.json(currentUser),
     ),
-    http.get(`${BASE_URL}/api/users`, () =>
-      HttpResponse.json({ users }),
+    http.get(`${BASE_URL}/api/users/search`, () =>
+      HttpResponse.json(users),
     ),
   );
+}
+
+/** Type a search query and wait for debounced results to appear */
+async function typeAndWaitForResults(user: ReturnType<typeof import('@testing-library/user-event').default.setup>, query: string) {
+  const input = screen.getByLabelText('Search users');
+  await user.click(input);
+  await user.type(input, query);
+  // Wait for debounce (300ms) and results to load
+  await waitFor(() => {
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  }, { timeout: 2000 });
 }
 
 beforeAll(() => server.listen());
@@ -41,6 +52,43 @@ afterAll(() => server.close());
 afterEach(() => server.resetHandlers());
 
 describe('UserSearchAutocomplete', () => {
+  it('does not fetch results until user types', async () => {
+    const searchSpy = vi.fn();
+    server.use(
+      http.get(`${BASE_URL}/api/users/profile`, () =>
+        HttpResponse.json(currentUser),
+      ),
+      http.get(`${BASE_URL}/api/users/search`, () => {
+        searchSpy();
+        return HttpResponse.json([userAlice, userBob]);
+      }),
+    );
+    const onChange = vi.fn();
+
+    renderWithProviders(
+      <UserSearchAutocomplete value={null} onChange={onChange} />,
+    );
+
+    // Initially, no search request should be made
+    await waitFor(() => {
+      expect(searchSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  it('fetches results after typing and debounce', async () => {
+    setupHandlers();
+    const onChange = vi.fn();
+
+    const { user } = renderWithProviders(
+      <UserSearchAutocomplete value={null} onChange={onChange} />,
+    );
+
+    await typeAndWaitForResults(user, 'ali');
+
+    const aliceOption = await screen.findByText('Alice');
+    expect(aliceOption).toBeInTheDocument();
+  });
+
   it('renders options without extra content when renderOptionExtra is not provided', async () => {
     setupHandlers();
     const onChange = vi.fn();
@@ -49,8 +97,7 @@ describe('UserSearchAutocomplete', () => {
       <UserSearchAutocomplete value={null} onChange={onChange} />,
     );
 
-    const input = screen.getByLabelText('Search users');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'a');
 
     const aliceOption = await screen.findByText('Alice');
     const listItem = aliceOption.closest('li')!;
@@ -72,8 +119,7 @@ describe('UserSearchAutocomplete', () => {
       />,
     );
 
-    const input = screen.getByLabelText('Search users');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'a');
 
     const aliceOption = await screen.findByText('Alice');
     const aliceItem = aliceOption.closest('li')!;
@@ -97,8 +143,7 @@ describe('UserSearchAutocomplete', () => {
       />,
     );
 
-    const input = screen.getByLabelText('Search users');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'a');
 
     const aliceOption = await screen.findByText('Alice');
     const aliceItem = aliceOption.closest('li')!;
@@ -121,8 +166,7 @@ describe('UserSearchAutocomplete', () => {
       />,
     );
 
-    const input = screen.getByLabelText('Search users');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'b');
 
     const bobOption = await screen.findByText('Bob');
     await user.click(bobOption);
@@ -148,12 +192,68 @@ describe('UserSearchAutocomplete', () => {
       />,
     );
 
-    const input = screen.getByLabelText('Search users');
-    await user.click(input);
+    await typeAndWaitForResults(user, 'a');
 
     const aliceOption = await screen.findByText('Alice');
     const aliceItem = aliceOption.closest('li')!;
     expect(aliceItem).toHaveAttribute('aria-disabled', 'true');
     expect(within(aliceItem).getByText('Disabled')).toBeInTheDocument();
+  });
+
+  it('excludes current user from results by default', async () => {
+    setupHandlers([currentUser, userAlice, userBob]);
+    const onChange = vi.fn();
+
+    const { user } = renderWithProviders(
+      <UserSearchAutocomplete value={null} onChange={onChange} />,
+    );
+
+    await typeAndWaitForResults(user, 'test');
+
+    // Current user should be filtered out
+    await screen.findByText('Alice');
+    expect(screen.queryByText('Test User')).not.toBeInTheDocument();
+  });
+
+  it('excludes specified user IDs from results', async () => {
+    setupHandlers();
+    const onChange = vi.fn();
+
+    const { user } = renderWithProviders(
+      <UserSearchAutocomplete
+        value={null}
+        onChange={onChange}
+        excludeUserIds={['alice-1']}
+      />,
+    );
+
+    await typeAndWaitForResults(user, 'a');
+
+    await screen.findByText('Bob');
+    expect(screen.queryByText('Alice')).not.toBeInTheDocument();
+  });
+
+  it('passes search query to the API endpoint', async () => {
+    let capturedQuery = '';
+    server.use(
+      http.get(`${BASE_URL}/api/users/profile`, () =>
+        HttpResponse.json(currentUser),
+      ),
+      http.get(`${BASE_URL}/api/users/search`, ({ request }) => {
+        const url = new URL(request.url);
+        capturedQuery = url.searchParams.get('q') || '';
+        return HttpResponse.json([userAlice]);
+      }),
+    );
+    const onChange = vi.fn();
+
+    const { user } = renderWithProviders(
+      <UserSearchAutocomplete value={null} onChange={onChange} />,
+    );
+
+    await typeAndWaitForResults(user, 'alice');
+
+    await screen.findByText('Alice');
+    expect(capturedQuery).toBe('alice');
   });
 });

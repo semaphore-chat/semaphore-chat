@@ -10,6 +10,7 @@ import {
   ListItemAvatar,
   ListItemText,
   Divider,
+  IconButton,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -46,7 +47,7 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
   showCompact = false,
 }) => {
   const theme = useTheme();
-  const { state: voiceState } = useVoiceConnection();
+  const { state: voiceState, actions: voiceActions } = useVoiceConnection();
   const [livekitParticipants, setLivekitParticipants] = useState<VoicePresenceUserDto[]>([]);
   const { openProfile } = useUserProfile();
   const [contextMenu, setContextMenu] = useState<{
@@ -324,15 +325,43 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
 
                 {/* Video enabled state */}
                 {userState.isVideoEnabled && (
-                  <Tooltip title="Camera">
-                    <Videocam sx={{ fontSize: 16, color: theme.palette.semantic.status.positive }} />
+                  <Tooltip title={isConnectedToThisChannel ? "View camera" : "Camera"}>
+                    {isConnectedToThisChannel ? (
+                      <IconButton
+                        size="small"
+                        aria-label="View camera"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          voiceActions.setShowVideoTiles(true);
+                        }}
+                        sx={{ p: 0.25 }}
+                      >
+                        <Videocam sx={{ fontSize: 16, color: theme.palette.semantic.status.positive }} />
+                      </IconButton>
+                    ) : (
+                      <Videocam sx={{ fontSize: 16, color: theme.palette.semantic.status.positive }} />
+                    )}
                   </Tooltip>
                 )}
 
                 {/* Screen sharing state */}
                 {userState.isScreenSharing && (
-                  <Tooltip title="Screen Share">
-                    <ScreenShare sx={{ fontSize: 16, color: theme.palette.primary.main }} />
+                  <Tooltip title={isConnectedToThisChannel ? "View screen share" : "Screen Share"}>
+                    {isConnectedToThisChannel ? (
+                      <IconButton
+                        size="small"
+                        aria-label="View screen share"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          voiceActions.setShowVideoTiles(true);
+                        }}
+                        sx={{ p: 0.25 }}
+                      >
+                        <ScreenShare sx={{ fontSize: 16, color: theme.palette.primary.main }} />
+                      </IconButton>
+                    ) : (
+                      <ScreenShare sx={{ fontSize: 16, color: theme.palette.primary.main }} />
+                    )}
                   </Tooltip>
                 )}
               </Box>

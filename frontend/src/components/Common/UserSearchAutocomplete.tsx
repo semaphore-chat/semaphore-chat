@@ -5,7 +5,7 @@
  * Supports both single and multiple selection modes.
  */
 
-import React from "react";
+import React, { useState, useMemo } from "react";
 import {
   Autocomplete,
   TextField,
@@ -15,7 +15,8 @@ import {
   Typography,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import { userControllerFindAllUsersOptions, userControllerGetProfileOptions } from "../../api-client/@tanstack/react-query.gen";
+import { userControllerSearchUsersOptions, userControllerGetProfileOptions } from "../../api-client/@tanstack/react-query.gen";
+import { useDebounce } from "../../hooks/useDebounce";
 import UserAvatar from "./UserAvatar";
 
 export interface UserOption {
@@ -63,10 +64,16 @@ const UserSearchAutocomplete: React.FC<UserSearchAutocompleteProps> = ({
   renderOptionExtra,
   getOptionDisabled,
 }) => {
-  const { data: usersData, isLoading } = useQuery(userControllerFindAllUsersOptions({ query: { limit: 100 } }));
+  const [inputValue, setInputValue] = useState("");
+  const debouncedQuery = useDebounce(inputValue.trim(), 300);
+
+  const { data: usersData, isLoading } = useQuery({
+    ...userControllerSearchUsersOptions({ query: { q: debouncedQuery, limit: 100 } }),
+    enabled: debouncedQuery.length >= 1,
+  });
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
 
-  const users = usersData?.users || [];
+  const users = useMemo(() => usersData ?? [], [usersData]);
 
   // Filter out excluded users
   const filteredUsers = users.filter((user) => {
@@ -88,6 +95,8 @@ const UserSearchAutocomplete: React.FC<UserSearchAutocompleteProps> = ({
         getOptionDisabled={getOptionDisabled}
         value={(value as UserOption[]) || []}
         onChange={handleChange as (event: React.SyntheticEvent, value: UserOption[]) => void}
+        onInputChange={(_e, newInputValue) => setInputValue(newInputValue)}
+        filterOptions={(x) => x}
         loading={isLoading}
         disabled={disabled}
         isOptionEqualToValue={(option, val) => option.id === val.id}
@@ -152,6 +161,8 @@ const UserSearchAutocomplete: React.FC<UserSearchAutocompleteProps> = ({
       getOptionDisabled={getOptionDisabled}
       value={value as UserOption | null}
       onChange={handleChange as (event: React.SyntheticEvent, value: UserOption | null) => void}
+      onInputChange={(_e, newInputValue) => setInputValue(newInputValue)}
+      filterOptions={(x) => x}
       loading={isLoading}
       disabled={disabled}
       isOptionEqualToValue={(option, val) => option.id === val.id}

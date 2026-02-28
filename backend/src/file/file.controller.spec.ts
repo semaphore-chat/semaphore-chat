@@ -138,6 +138,7 @@ describe('FileController', () => {
       expect(mockResponse.set).toHaveBeenCalledWith({
         'Content-Type': 'image/jpeg',
         'Cache-Control': 'private, max-age=86400',
+        'Cross-Origin-Resource-Policy': 'cross-origin',
       });
       expect(result).toBeDefined();
     });

@@ -24,6 +24,7 @@ import { useTheme } from "@mui/material/styles";
 import { Link } from "react-router-dom";
 import { copyToClipboard } from "../utils/clipboard";
 import { isElectron } from "../utils/platform";
+import { getInstanceUrl } from "../config/env";
 import { useUserPermissions } from "../features/roles/useUserPermissions";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -97,7 +98,7 @@ const DesktopHomePage: React.FC = () => {
       setLastCreatedInvite(newInvite.code);
 
       // Auto-copy the invite link
-      const inviteUrl = `${window.location.origin}/#/join/${newInvite.code}`;
+      const inviteUrl = `${getInstanceUrl()}/#/join/${newInvite.code}`;
       await copyToClipboard(inviteUrl);
       setSnackbarOpen(true);
     } catch (error) {
@@ -108,7 +109,7 @@ const DesktopHomePage: React.FC = () => {
   const handleCopyInvite = async () => {
     if (lastCreatedInvite) {
       try {
-        const inviteUrl = `${window.location.origin}/#/join/${lastCreatedInvite}`;
+        const inviteUrl = `${getInstanceUrl()}/#/join/${lastCreatedInvite}`;
         await copyToClipboard(inviteUrl);
         setSnackbarOpen(true);
       } catch (error) {
