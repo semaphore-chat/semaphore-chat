@@ -42,5 +42,19 @@ describe('OptionalJwtAuthGuard', () => {
 
       expect(result).toBeNull();
     });
+
+    it('should rethrow non-authentication errors', () => {
+      const err = new Error('Database connection failed');
+
+      expect(() => guard.handleRequest(err, false)).toThrow(
+        'Database connection failed',
+      );
+    });
+
+    it('should rethrow TypeError from strategy', () => {
+      const err = new TypeError('Cannot read properties of undefined');
+
+      expect(() => guard.handleRequest(err, false)).toThrow(TypeError);
+    });
   });
 });

@@ -48,6 +48,11 @@ export class FileAuthGuard implements CanActivate {
       return true;
     }
 
+    // Partial signed URL params — likely a malformed signed URL
+    if (sig || exp || uid) {
+      throw new UnauthorizedException('Missing signed URL parameters');
+    }
+
     // No signed URL params — require that an upstream guard (e.g. OptionalJwtAuthGuard)
     // has already authenticated the user via JWT
     if (req.user) {

@@ -197,20 +197,26 @@ describe('FileAuthGuard', () => {
       );
     });
 
-    it('should throw UnauthorizedException with partial signed URL params (sig only)', async () => {
+    it('should throw with specific message for partial signed URL params (sig only)', async () => {
       const ctx = createContext({ sig: 'abc' }, { id: 'file-1' });
 
       await expect(guard.canActivate(ctx)).rejects.toThrow(
         UnauthorizedException,
       );
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        'Missing signed URL parameters',
+      );
       expect(signedUrlService.verify).not.toHaveBeenCalled();
     });
 
-    it('should throw UnauthorizedException with partial signed URL params (sig + exp)', async () => {
+    it('should throw with specific message for partial signed URL params (sig + exp)', async () => {
       const ctx = createContext({ sig: 'abc', exp: '123' }, { id: 'file-1' });
 
       await expect(guard.canActivate(ctx)).rejects.toThrow(
         UnauthorizedException,
+      );
+      await expect(guard.canActivate(ctx)).rejects.toThrow(
+        'Missing signed URL parameters',
       );
       expect(signedUrlService.verify).not.toHaveBeenCalled();
     });
