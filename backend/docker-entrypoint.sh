@@ -10,7 +10,7 @@ else
 
   while [ "$attempt" -le "$max_retries" ]; do
     echo "Running Prisma db push (attempt ${attempt}/${max_retries})..."
-    if ./node_modules/.bin/prisma db push --schema=prisma/schema.prisma --skip-generate; then
+    if /app/node_modules/.bin/prisma db push --schema=prisma/schema.prisma --skip-generate; then
       echo "Prisma db push complete."
       break
     fi
