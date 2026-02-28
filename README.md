@@ -160,13 +160,12 @@ services:
   livekit-ip-watcher:
     image: alpine:latest
     restart: unless-stopped
-    command: >
-      sh -c 'apk add --no-cache curl &&
-      curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+    command: sh /scripts/livekit-ip-watcher.sh
     environment:
       CHECK_INTERVAL: 300
       LIVEKIT_CONTAINER: livekit
     volumes:
+      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       livekit:
@@ -222,6 +221,13 @@ Save this as `Caddyfile` next to your `docker-compose.yml`:
 lk.{$HOST} {
 	reverse_proxy livekit:7880
 }
+```
+
+#### Download the IP watcher script
+
+```bash
+mkdir -p scripts
+curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
 ```
 
 #### Port forwarding
@@ -330,13 +336,12 @@ services:
   livekit-ip-watcher:
     image: alpine:latest
     restart: unless-stopped
-    command: >
-      sh -c 'apk add --no-cache curl &&
-      curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+    command: sh /scripts/livekit-ip-watcher.sh
     environment:
       CHECK_INTERVAL: 300
       LIVEKIT_CONTAINER: livekit
     volumes:
+      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       livekit:
@@ -385,6 +390,13 @@ The frontend's built-in nginx already proxies `/api` and `/socket.io` to the bac
 | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
 | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
 
+#### Download the IP watcher script
+
+```bash
+mkdir -p scripts
+curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
+```
+
 #### Port forwarding
 
 | Port | Protocol | Service |
@@ -412,8 +424,6 @@ Generate secrets with:
 ```bash
 openssl rand -base64 32
 ```
-
-For push notifications, you'll also need VAPID keys — see the [configuration reference](https://docs.krakenchat.app/installation/configuration/) for details.
 
 ### 3. Start
 

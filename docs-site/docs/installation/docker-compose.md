@@ -34,6 +34,13 @@ Three options depending on your existing infrastructure:
 mkdir kraken && cd kraken
 ```
 
+Download the IP watcher script (used by the "With Caddy" and "Batteries included" setups to restart LiveKit when your public IP changes):
+
+```bash
+mkdir -p scripts
+curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh -o scripts/livekit-ip-watcher.sh
+```
+
 Copy the Compose file for your chosen setup:
 
 === "With Caddy"
@@ -145,13 +152,12 @@ Copy the Compose file for your chosen setup:
       livekit-ip-watcher:
         image: alpine:latest
         restart: unless-stopped
-        command: >
-          sh -c 'apk add --no-cache curl &&
-          curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+        command: sh /scripts/livekit-ip-watcher.sh
         environment:
           CHECK_INTERVAL: 300
           LIVEKIT_CONTAINER: livekit
         volumes:
+          - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
           - /var/run/docker.sock:/var/run/docker.sock
         depends_on:
           livekit:
@@ -315,13 +321,12 @@ Copy the Compose file for your chosen setup:
       livekit-ip-watcher:
         image: alpine:latest
         restart: unless-stopped
-        command: >
-          sh -c 'apk add --no-cache curl &&
-          curl -fsSL https://raw.githubusercontent.com/krakenchat/kraken/main/scripts/livekit-ip-watcher.sh | sh'
+        command: sh /scripts/livekit-ip-watcher.sh
         environment:
           CHECK_INTERVAL: 300
           LIVEKIT_CONTAINER: livekit
         volumes:
+          - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
           - /var/run/docker.sock:/var/run/docker.sock
         depends_on:
           livekit:
@@ -501,9 +506,6 @@ openssl rand -base64 32
 !!! warning "Security"
     Never use the default secrets in production. Generate unique values for each secret.
 
-!!! tip "Push notifications"
-    To enable push notifications, add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and `VAPID_SUBJECT` to your `.env`. See the [Configuration](configuration.md#push-notifications-vapid) page for how to generate VAPID keys.
-
 See the [Configuration](configuration.md) page for the full environment variable reference.
 
 ### 3. Start all services
@@ -540,7 +542,7 @@ docker compose up -d
     |---------|------------|-----|
     | **Frontend** | Nginx serving the React app | `http://localhost:5173` |
     | **Backend** | NestJS API | `http://localhost:3000` |
-    | **LiveKit** | Voice/video media server | `ws://localhost:7880` |
+    | **LiveKit** | Voice/video media server | `wss://lk.your-domain.com` |
     | **MongoDB** | Database (replica set) | internal only |
     | **Redis** | Cache and pub/sub | internal only |
 

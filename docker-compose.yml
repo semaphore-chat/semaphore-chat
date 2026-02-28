@@ -87,9 +87,8 @@ services:
         port: 7880
         rtc:
           tcp_port: 7881
-          port_range_start: 50000
-          port_range_end: 50060
-          use_external_ip: false
+          udp_port: 7882
+          use_external_ip: true
         redis:
           address: redis:6379
         keys:
@@ -101,10 +100,24 @@ services:
     ports:
       - "7880:7880"
       - "7881:7881"
-      - "50000-50060:50000-50060/udp"
+      - "7882:7882/udp"
     depends_on:
       redis:
         condition: service_healthy
+
+  livekit-ip-watcher:
+    image: alpine:latest
+    restart: unless-stopped
+    command: sh /scripts/livekit-ip-watcher.sh
+    environment:
+      CHECK_INTERVAL: 300
+      LIVEKIT_CONTAINER: livekit
+    volumes:
+      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      livekit:
+        condition: service_started
 
   egress-init:
     image: busybox
