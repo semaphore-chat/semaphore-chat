@@ -271,8 +271,6 @@ export const handleReadReceiptUpdated: SocketEventHandler<typeof ServerEvents.RE
       // Only update queries for the same conversation context
       const keyContextId = keyObj.query?.directMessageGroupId || keyObj.query?.channelId;
       if (keyContextId !== id) continue;
-      // ObjectID lexicographic comparison works chronologically
-      if (msgId > lastReadMessageId) continue;
       // Skip if this user is already in the readers list
       if (cachedData.some((r) => r.userId === payload.userId)) continue;
       queryClient.setQueryData(cachedKey, [...cachedData, newReader]);

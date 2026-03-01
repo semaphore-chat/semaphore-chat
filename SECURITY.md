@@ -55,7 +55,7 @@ If you're self-hosting Kraken:
 1. **Change all default secrets** in your `.env` and Helm values
 2. **Use HTTPS** with valid TLS certificates
 3. **Keep dependencies updated** - watch for Dependabot alerts
-4. **Restrict network access** to your MongoDB and Redis instances
+4. **Restrict network access** to your PostgreSQL and Redis instances
 5. **Enable authentication** on all database connections
 6. **Regularly backup** your data
 7. **Monitor logs** for suspicious activity

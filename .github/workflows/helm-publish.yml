@@ -76,7 +76,7 @@ jobs:
 
       - name: Package Helm chart
         run: |
-          # Update dependencies (MongoDB and Redis subcharts)
+          # Update dependencies (PostgreSQL and Redis subcharts)
           helm dependency update helm/${{ env.CHART_NAME }}
 
           # Package the chart

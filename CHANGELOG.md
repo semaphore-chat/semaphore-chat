@@ -99,6 +99,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - NestJS backend with modular architecture
 - React 19 frontend with Material-UI
 - Redux Toolkit with RTK Query for state management
-- MongoDB with Prisma ORM
+- PostgreSQL with Prisma ORM
 - Redis for caching and WebSocket scaling
 - LiveKit for WebRTC media

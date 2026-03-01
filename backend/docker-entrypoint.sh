@@ -1,22 +1,22 @@
 #!/bin/sh
 set -e
 
-if [ "${SKIP_PRISMA_DB_PUSH:-false}" = "true" ]; then
-  echo "Skipping Prisma db push (SKIP_PRISMA_DB_PUSH=true)"
+if [ "${SKIP_PRISMA_MIGRATE:-false}" = "true" ]; then
+  echo "Skipping Prisma migrate (SKIP_PRISMA_MIGRATE=true)"
 else
-  max_retries="${PRISMA_DB_PUSH_RETRIES:-5}"
-  delay="${PRISMA_DB_PUSH_RETRY_DELAY:-5}"
+  max_retries="${PRISMA_MIGRATE_RETRIES:-5}"
+  delay="${PRISMA_MIGRATE_RETRY_DELAY:-5}"
   attempt=1
 
   while [ "$attempt" -le "$max_retries" ]; do
-    echo "Running Prisma db push (attempt ${attempt}/${max_retries})..."
-    if /app/node_modules/.bin/prisma db push --schema=prisma/schema.prisma --skip-generate; then
-      echo "Prisma db push complete."
+    echo "Running Prisma migrate deploy (attempt ${attempt}/${max_retries})..."
+    if /app/node_modules/.bin/prisma migrate deploy --schema=prisma/schema.prisma; then
+      echo "Prisma migrate deploy complete."
       break
     fi
 
     if [ "$attempt" -eq "$max_retries" ]; then
-      echo "Prisma db push failed after ${max_retries} attempts."
+      echo "Prisma migrate deploy failed after ${max_retries} attempts."
       exit 1
     fi
 

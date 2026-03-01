@@ -90,18 +90,18 @@ trap cleanup EXIT
 echo -e "${BLUE}📦 Starting E2E Docker containers...${NC}"
 cd "$PROJECT_ROOT"
 docker-compose -f docker-compose.e2e.yml down -v --remove-orphans 2>/dev/null || true
-docker-compose -f docker-compose.e2e.yml up -d mongo-test redis-test
+docker-compose -f docker-compose.e2e.yml up -d postgres-test redis-test
 
-# Wait for MongoDB to be ready
-echo -e "${YELLOW}⏳ Waiting for MongoDB...${NC}"
+# Wait for PostgreSQL to be ready
+echo -e "${YELLOW}⏳ Waiting for PostgreSQL...${NC}"
 for i in {1..30}; do
-  if docker-compose -f docker-compose.e2e.yml exec -T mongo-test mongosh --eval "rs.status()" > /dev/null 2>&1; then
-    echo -e "${GREEN}✓ MongoDB is ready${NC}"
+  if docker-compose -f docker-compose.e2e.yml exec -T postgres-test pg_isready -U kraken > /dev/null 2>&1; then
+    echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
     break
   fi
   sleep 2
   if [ $i -eq 30 ]; then
-    echo -e "${RED}✗ MongoDB failed to start${NC}"
+    echo -e "${RED}✗ PostgreSQL failed to start${NC}"
     exit 1
   fi
 done
