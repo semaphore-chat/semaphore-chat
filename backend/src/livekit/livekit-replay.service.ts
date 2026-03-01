@@ -1264,8 +1264,10 @@ export class LivekitReplayService {
         if (stats.size >= 10000) {
           complete.push(segment);
         }
-      } catch {
-        // Skip segments we can't stat
+      } catch (error) {
+        this.logger.warn(
+          `Skipping segment that could not be stat-ed (${segment.path}): ${getErrorMessage(error)}`,
+        );
       }
     }
     return complete;
