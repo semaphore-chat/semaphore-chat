@@ -17,7 +17,7 @@ export class DmGroupMemberDto {
 
 export class DmGroupLastMessageDto {
   id: string;
-  authorId: string;
+  authorId: string | null;
   @ApiProperty({ type: [SpanDto] })
   spans: SpanDto[];
   sentAt: Date;

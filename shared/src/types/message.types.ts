@@ -33,7 +33,7 @@ export interface Message {
   id: string;
   channelId?: string;
   directMessageGroupId?: string;
-  authorId: string;
+  authorId: string | null;
   spans: Span[];
   attachments: FileMetadata[];
   pendingAttachments?: number;

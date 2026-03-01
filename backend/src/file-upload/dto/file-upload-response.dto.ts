@@ -19,8 +19,12 @@ export class FileUploadResponseDto {
   deletedAt: Date | null;
   @ApiProperty({ enum: ResourceTypeValues })
   resourceType: ResourceType;
-  resourceId: string | null;
+  fileUserId: string | null;
+  fileCommunityId: string | null;
+  fileMessageId: string | null;
   @ApiProperty({ enum: StorageTypeValues })
   storageType: StorageType;
   storagePath: string;
+
+  thumbnailPath: string | null;
 }

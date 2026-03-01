@@ -74,7 +74,9 @@ export class NotificationsService {
       }
 
       // Remove the author from mentioned users (don't notify yourself)
-      mentionedUserIds.delete(message.authorId);
+      if (message.authorId) {
+        mentionedUserIds.delete(message.authorId);
+      }
 
       // Create notifications for mentioned users
       const mentionPromises = Array.from(mentionedUserIds).map((userId) =>
@@ -196,7 +198,7 @@ export class NotificationsService {
       type,
     );
 
-    if (!shouldNotify) {
+    if (!shouldNotify || !message.authorId) {
       return null;
     }
 
@@ -769,7 +771,7 @@ export class NotificationsService {
       NotificationType.THREAD_REPLY,
     );
 
-    if (!shouldNotify) {
+    if (!shouldNotify || !reply.authorId) {
       return null;
     }
 

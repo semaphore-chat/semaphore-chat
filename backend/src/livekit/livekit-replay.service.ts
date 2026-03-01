@@ -1073,7 +1073,7 @@ export class LivekitReplayService {
         storageType: 'LOCAL',
         storagePath: clipPath,
         resourceType: 'REPLAY_CLIP',
-        resourceId: userId, // Clip owner (doesn't change when shared)
+        fileUserId: userId, // Clip owner (doesn't change when shared)
       },
     });
 
@@ -1085,8 +1085,8 @@ export class LivekitReplayService {
     // 8. Create ReplayClip record
     const clip = await this.databaseService.replayClip.create({
       data: {
-        user: { connect: { id: userId } },
-        file: { connect: { id: file.id } },
+        userId,
+        fileId: file.id,
         channelId: session.channelId,
         durationSeconds: actualDurationSeconds,
       },

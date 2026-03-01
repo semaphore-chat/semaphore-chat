@@ -353,7 +353,7 @@ export class DirectMessagesService {
     }[];
     messages: {
       id: string;
-      authorId: string;
+      authorId: string | null;
       spans: any[];
       sentAt: Date;
     }[];

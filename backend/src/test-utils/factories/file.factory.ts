@@ -18,7 +18,9 @@ export class FileFactory {
       uploadedAt: overrides.uploadedAt || new Date(),
       deletedAt: overrides.deletedAt || null,
       resourceType: overrides.resourceType || ResourceType.MESSAGE_ATTACHMENT,
-      resourceId: overrides.resourceId || null,
+      fileUserId: overrides.fileUserId ?? null,
+      fileCommunityId: overrides.fileCommunityId ?? null,
+      fileMessageId: overrides.fileMessageId ?? null,
       storageType: overrides.storageType || StorageType.LOCAL,
       storagePath: overrides.storagePath || `/uploads/${filename}`,
       thumbnailPath: ('thumbnailPath' in overrides
@@ -43,7 +45,7 @@ export class FileFactory {
       mimeType: 'image/png',
       fileType: FileType.IMAGE,
       resourceType: ResourceType.USER_AVATAR,
-      resourceId: userId,
+      fileUserId: userId,
       ...overrides,
     });
   }
@@ -54,7 +56,7 @@ export class FileFactory {
   ): File {
     return this.build({
       resourceType: ResourceType.MESSAGE_ATTACHMENT,
-      resourceId: messageId,
+      fileMessageId: messageId,
       ...overrides,
     });
   }

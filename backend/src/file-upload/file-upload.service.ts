@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { CreateFileUploadDto } from './dto/create-file-upload.dto';
 import { DatabaseService } from '@/database/database.service';
-import { FileType, StorageType } from '@prisma/client';
+import { FileType, ResourceType, StorageType } from '@prisma/client';
 import { createHash } from 'crypto';
 import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
@@ -69,9 +69,14 @@ export class FileUploadService {
 
       // Create database record
       try {
+        const { resourceId, ...dtoRest } = createFileUploadDto;
         const fileRecord = await this.databaseService.file.create({
           data: {
-            ...createFileUploadDto,
+            ...dtoRest,
+            ...this.mapResourceIdToTypedColumn(
+              dtoRest.resourceType,
+              resourceId,
+            ),
             filename: file.originalname,
             mimeType: file.mimetype,
             fileType,
@@ -200,6 +205,28 @@ export class FileUploadService {
       return FileType.OTHER;
     }
     return FileType.OTHER;
+  }
+
+  /**
+   * Map a resourceId to the correct typed FK column based on resourceType.
+   */
+  private mapResourceIdToTypedColumn(
+    resourceType: ResourceType,
+    resourceId?: string | null,
+  ): { fileUserId?: string; fileCommunityId?: string; fileMessageId?: string } {
+    if (!resourceId) return {};
+    switch (resourceType) {
+      case ResourceType.USER_AVATAR:
+      case ResourceType.USER_BANNER:
+      case ResourceType.REPLAY_CLIP:
+        return { fileUserId: resourceId };
+      case ResourceType.COMMUNITY_AVATAR:
+      case ResourceType.COMMUNITY_BANNER:
+      case ResourceType.CUSTOM_EMOJI:
+        return { fileCommunityId: resourceId };
+      case ResourceType.MESSAGE_ATTACHMENT:
+        return { fileMessageId: resourceId };
+    }
   }
 
   async remove(id: string, userId: string) {

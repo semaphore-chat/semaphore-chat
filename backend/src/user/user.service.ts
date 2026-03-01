@@ -252,7 +252,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    const updateData: Prisma.UserUpdateInput = {};
+    const updateData: Prisma.UserUncheckedUpdateInput = {};
 
     if (updateProfileDto.displayName !== undefined) {
       updateData.displayName = updateProfileDto.displayName.trim();

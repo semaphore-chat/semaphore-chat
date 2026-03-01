@@ -49,7 +49,10 @@ function MessageComponentInner({
   onOpenThread,
   contextType,
 }: MessageProps) {
-  const { data: author } = useQuery(userControllerGetUserByIdOptions({ path: { id: message.authorId } }));
+  const { data: author } = useQuery({
+    ...userControllerGetUserByIdOptions({ path: { id: message.authorId! } }),
+    enabled: !!message.authorId,
+  });
   const { user: currentUser } = useCurrentUser();
   const { openProfile } = useUserProfile();
 
@@ -103,29 +106,42 @@ function MessageComponentInner({
     >
       <div style={{ marginRight: 12, marginTop: 4 }}>
         <UserAvatar
-          user={author ? { ...author, id: message.authorId } : null}
+          user={message.authorId && author ? { ...author, id: message.authorId } : null}
           size="small"
-          clickable
+          clickable={!!message.authorId}
         />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-          <Link
-            component="button"
-            variant="body2"
-            onClick={() => openProfile(message.authorId)}
-            sx={{
-              fontWeight: 700,
-              color: "text.primary",
-              textDecoration: "none",
-              cursor: "pointer",
-              "&:hover": {
-                textDecoration: "underline",
-              },
-            }}
-          >
-            {author?.displayName || author?.username || message.authorId}
-          </Link>
+          {message.authorId ? (
+            <Link
+              component="button"
+              variant="body2"
+              onClick={() => openProfile(message.authorId!)}
+              sx={{
+                fontWeight: 700,
+                color: "text.primary",
+                textDecoration: "none",
+                cursor: "pointer",
+                "&:hover": {
+                  textDecoration: "underline",
+                },
+              }}
+            >
+              {author?.displayName || author?.username || message.authorId}
+            </Link>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                fontWeight: 700,
+                color: "text.secondary",
+                fontStyle: "italic",
+              }}
+            >
+              [Deleted User]
+            </Typography>
+          )}
           <Typography
             variant="caption"
             color="text.secondary"

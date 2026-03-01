@@ -13,7 +13,7 @@ export class ThreadReplyDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
-  authorId: string;
+  authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
   pendingAttachments: number | null;
@@ -36,7 +36,7 @@ export class EnrichedThreadReplyDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
-  authorId: string;
+  authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
   pendingAttachments: number | null;
