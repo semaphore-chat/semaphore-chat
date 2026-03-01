@@ -8,6 +8,7 @@
 import React from 'react';
 import {
   SwipeableDrawer,
+  Badge,
   Box,
   List,
   ListItem,
@@ -30,6 +31,7 @@ import { useMobileNavigation } from './MobileNavigationContext';
 import { useQuery } from '@tanstack/react-query';
 import { communityControllerFindAllMineOptions } from '../../../api-client/@tanstack/react-query.gen';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
+import { useReadReceipts } from '../../../hooks/useReadReceipts';
 import { MOBILE_CONSTANTS, TOUCH_TARGETS, MOBILE_ANIMATIONS } from '../../../utils/breakpoints';
 import { stringToColor, getCommunityInitials } from '../../../utils/communityHelpers';
 import type { Community } from '../../../types/community.type';
@@ -111,6 +113,7 @@ const MobileCommunityDrawer: React.FC = () => {
   const navigate = useNavigate();
   const { state, closeDrawer, navigateToChannels, navigateToDmList } = useMobileNavigation();
   const { data: communities, isLoading } = useQuery(communityControllerFindAllMineOptions());
+  const { totalDmUnreadCount: totalDmUnread } = useReadReceipts();
 
   const handleCommunitySelect = (communityId: string) => {
     navigateToChannels(communityId);
@@ -193,9 +196,16 @@ const MobileCommunityDrawer: React.FC = () => {
               }}
             >
               <ListItemAvatar>
-                <Avatar sx={{ bgcolor: 'primary.main' }}>
-                  <ChatIcon />
-                </Avatar>
+                <Badge
+                  badgeContent={totalDmUnread}
+                  color="error"
+                  max={99}
+                  overlap="circular"
+                >
+                  <Avatar sx={{ bgcolor: 'primary.main' }}>
+                    <ChatIcon />
+                  </Avatar>
+                </Badge>
               </ListItemAvatar>
               <ListItemText
                 primary="Direct Messages"

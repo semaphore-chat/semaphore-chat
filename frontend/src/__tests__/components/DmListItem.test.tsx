@@ -205,4 +205,123 @@ describe('DmListItem', () => {
     const button = screen.getByRole('button');
     expect(button).toHaveClass('Mui-selected');
   });
+
+  describe('unread indicators', () => {
+    it('shows unread badge when unreadCount > 0', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          onClick={onClick}
+          unreadCount={3}
+        />,
+      );
+
+      expect(screen.getByTestId('unread-badge')).toBeInTheDocument();
+    });
+
+    it('shows mention count in badge when mentionCount > 0', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          onClick={onClick}
+          unreadCount={5}
+          mentionCount={2}
+        />,
+      );
+
+      const badge = screen.getByTestId('unread-badge');
+      expect(badge).toBeInTheDocument();
+      expect(badge.querySelector('.MuiBadge-badge')).toHaveTextContent('2');
+    });
+
+    it('shows dot badge when unread but no mentions', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          onClick={onClick}
+          unreadCount={3}
+          mentionCount={0}
+        />,
+      );
+
+      const badge = screen.getByTestId('unread-badge');
+      expect(badge).toBeInTheDocument();
+      expect(badge.querySelector('.MuiBadge-dot')).toBeInTheDocument();
+    });
+
+    it('does not show badge when unreadCount is 0', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          onClick={onClick}
+          unreadCount={0}
+        />,
+      );
+
+      expect(screen.queryByTestId('unread-badge')).not.toBeInTheDocument();
+    });
+
+    it('does not show badge when item is selected even if unread', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          isSelected
+          onClick={onClick}
+          unreadCount={5}
+          mentionCount={2}
+        />,
+      );
+
+      expect(screen.queryByTestId('unread-badge')).not.toBeInTheDocument();
+    });
+
+    it('bolds DM name when unread', () => {
+      const group = createDmGroup({
+        isGroup: false,
+        members: [currentMember, otherMember],
+      });
+
+      renderWithProviders(
+        <DmListItem
+          group={group}
+          currentUserId={CURRENT_USER_ID}
+          onClick={onClick}
+          unreadCount={3}
+        />,
+      );
+
+      const nameElement = screen.getByText('Alice Smith');
+      expect(nameElement).toHaveStyle({ fontWeight: 700 });
+    });
+  });
 });

@@ -7,6 +7,7 @@
 
 import React from "react";
 import {
+  Badge,
   Box,
   ListItem,
   ListItemButton,
@@ -27,6 +28,8 @@ interface DmListItemProps {
   onClick: () => void;
   touchFriendly?: boolean;
   isInCall?: boolean;
+  unreadCount?: number;
+  mentionCount?: number;
 }
 
 const DmListItem: React.FC<DmListItemProps> = ({
@@ -36,7 +39,10 @@ const DmListItem: React.FC<DmListItemProps> = ({
   onClick,
   touchFriendly = false,
   isInCall = false,
+  unreadCount = 0,
+  mentionCount = 0,
 }) => {
+  const isUnread = unreadCount > 0 && !isSelected;
   return (
     <ListItem disablePadding>
       <ListItemButton
@@ -65,7 +71,9 @@ const DmListItem: React.FC<DmListItemProps> = ({
         <ListItemText
           primary={
             <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              {getDmDisplayName(group, currentUserId)}
+              <Box component="span" sx={{ fontWeight: isUnread ? 700 : undefined }}>
+                {getDmDisplayName(group, currentUserId)}
+              </Box>
               {isInCall && (
                 <Phone aria-label="In call" sx={{ fontSize: 14, color: "success.main" }} />
               )}
@@ -112,6 +120,27 @@ const DmListItem: React.FC<DmListItemProps> = ({
           }
           sx={{ minWidth: 0 }}
         />
+        {isUnread && (
+          <Badge
+            data-testid="unread-badge"
+            badgeContent={mentionCount > 0 ? mentionCount : undefined}
+            variant={mentionCount > 0 ? "standard" : "dot"}
+            color="error"
+            max={99}
+            sx={{
+              ml: "auto",
+              "& .MuiBadge-badge": {
+                position: "static",
+                transform: "none",
+              },
+              "& .MuiBadge-standard": {
+                fontSize: 10,
+                height: 16,
+                minWidth: 16,
+              },
+            }}
+          />
+        )}
       </ListItemButton>
     </ListItem>
   );

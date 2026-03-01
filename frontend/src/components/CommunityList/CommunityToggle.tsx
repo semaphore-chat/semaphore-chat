@@ -8,10 +8,11 @@ import { useResponsive } from "../../hooks/useResponsive";
 import CommunityListItem from "./CommunityListItem";
 import CreateCommunityButton from "./CreateCommunityButton";
 import { useParams, useNavigate } from "react-router-dom";
-import { Tooltip, Button, Avatar } from "@mui/material";
+import { Tooltip, Button, Avatar, Badge } from "@mui/material";
 import ChatIcon from "@mui/icons-material/Chat";
 import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
+import { useReadReceipts } from "../../hooks/useReadReceipts";
 
 export interface Community {
   id: string;
@@ -84,6 +85,7 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
   const { communityId } = useParams();
   const navigate = useNavigate();
   const canCreateCommunity = useCanPerformAction("INSTANCE", undefined, RBAC_ACTIONS.CREATE_COMMUNITY);
+  const { totalDmUnreadCount: totalDmUnread } = useReadReceipts();
 
   const handleCreateCommunity = () => {
     // Navigate to create community page (you may need to adjust this route)
@@ -138,16 +140,23 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
                   },
                 }}
               >
-                <Avatar
-                  sx={{
-                    width: 48,
-                    height: 48,
-                    bgcolor: "primary.main",
-                    mr: 2,
-                  }}
+                <Badge
+                  badgeContent={totalDmUnread}
+                  color="error"
+                  max={99}
+                  overlap="circular"
                 >
-                  <ChatIcon sx={{ color: "primary.contrastText" }} />
-                </Avatar>
+                  <Avatar
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      bgcolor: "primary.main",
+                      mr: 2,
+                    }}
+                  >
+                    <ChatIcon sx={{ color: "primary.contrastText" }} />
+                  </Avatar>
+                </Badge>
                 <Box sx={{ textAlign: "left", textTransform: "none" }}>
                   <Box sx={{ fontSize: 14, fontWeight: 600, color: "text.primary" }}>
                     Direct Messages
@@ -162,15 +171,22 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
                 variant="text"
                 sx={{ width: "90%", padding: 0 }}
               >
-                <Avatar
-                  sx={{
-                    width: 48,
-                    height: 48,
-                    bgcolor: "primary.main",
-                  }}
+                <Badge
+                  badgeContent={totalDmUnread}
+                  color="error"
+                  max={99}
+                  overlap="circular"
                 >
-                  <ChatIcon sx={{ color: "primary.contrastText" }} />
-                </Avatar>
+                  <Avatar
+                    sx={{
+                      width: 48,
+                      height: 48,
+                      bgcolor: "primary.main",
+                    }}
+                  >
+                    <ChatIcon sx={{ color: "primary.contrastText" }} />
+                  </Avatar>
+                </Badge>
               </Button>
             </Tooltip>
           )}

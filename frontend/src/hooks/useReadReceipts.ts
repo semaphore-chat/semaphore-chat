@@ -38,5 +38,12 @@ export function useReadReceipts() {
     return (byId.get(id)?.unreadCount ?? 0) > 0;
   };
 
-  return { unreadCount, mentionCount, lastReadMessageId, hasUnread, allUnreadCounts: unreadCounts };
+  const totalDmUnreadCount = useMemo(() => {
+    if (!unreadCounts) return 0;
+    return unreadCounts
+      .filter((c) => c.directMessageGroupId)
+      .reduce((sum, c) => sum + c.unreadCount, 0);
+  }, [unreadCounts]);
+
+  return { unreadCount, mentionCount, lastReadMessageId, hasUnread, allUnreadCounts: unreadCounts, totalDmUnreadCount };
 }
