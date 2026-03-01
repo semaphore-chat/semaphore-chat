@@ -7,10 +7,16 @@ const VOICE_SETTINGS_KEY = 'kraken_voice_settings';
 const HOLD_OPEN_MS = 300;
 const MIN_CLOSE_MS = 100;
 const HYSTERESIS_OFFSET = 5;
+const SETTINGS_READ_INTERVAL = 60; // Re-read localStorage every ~60 frames (~1s at 60fps)
 
 interface VoiceSettingsCache {
   inputMode?: string;
   voiceActivityThreshold?: number;
+}
+
+interface ParsedSettings {
+  threshold: number;
+  isVoiceActivity: boolean;
 }
 
 /**
@@ -28,7 +34,7 @@ interface VoiceSettingsCache {
  * - **Hold-open**: 300ms delay before closing after speech stops
  * - **Hysteresis**: close threshold is 5 points below open threshold
  * - **Min close time**: 100ms minimum before re-opening
- * - **Cleanup**: re-enables `mediaStreamTrack.enabled = true`
+ * - **Cleanup**: re-enables `mediaStreamTrack.enabled` only if gate disabled it
  *
  * @example
  * const { speakingMap, isSpeaking } = useSpeakingDetection();
@@ -47,11 +53,15 @@ export const useSpeakingDetection = () => {
 
   // Gate state refs (used for both indicator and audio gating)
   const gateOpenRef = useRef(true);
+  const gateDisabledTrackRef = useRef(false); // true only when OUR gate set track.enabled = false
   const lastAboveThresholdRef = useRef(0);
   const lastGateCloseRef = useRef(0);
 
-  // Read settings from localStorage
-  const getSettings = useCallback((): { threshold: number; isVoiceActivity: boolean } => {
+  // Cached settings — re-read from localStorage periodically, not every frame
+  const cachedSettingsRef = useRef<ParsedSettings>({ threshold: 25, isVoiceActivity: true });
+  const frameCountRef = useRef(0);
+
+  const readSettings = useCallback((): ParsedSettings => {
     const settings = getCachedItem<VoiceSettingsCache>(VOICE_SETTINGS_KEY);
     return {
       threshold: settings?.voiceActivityThreshold ?? 25,
@@ -142,13 +152,25 @@ export const useSpeakingDetection = () => {
 
         // Initialize gate state
         gateOpenRef.current = true;
+        gateDisabledTrackRef.current = false;
         lastAboveThresholdRef.current = Date.now();
         lastGateCloseRef.current = 0;
+
+        // Read settings immediately on start
+        cachedSettingsRef.current = readSettings();
+        frameCountRef.current = 0;
 
         const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
         const tick = () => {
           if (!localAnalysisActiveRef.current || !analyserRef.current) return;
+
+          // Periodically re-read settings from localStorage (not every frame)
+          frameCountRef.current++;
+          if (frameCountRef.current >= SETTINGS_READ_INTERVAL) {
+            frameCountRef.current = 0;
+            cachedSettingsRef.current = readSettings();
+          }
 
           analyser.getByteFrequencyData(dataArray);
 
@@ -160,7 +182,7 @@ export const useSpeakingDetection = () => {
           const average = sum / dataArray.length;
           const level = (average / 255) * 100;
 
-          const { threshold, isVoiceActivity } = getSettings();
+          const { threshold, isVoiceActivity } = cachedSettingsRef.current;
           const now = Date.now();
 
           if (isVoiceActivity) {
@@ -181,6 +203,7 @@ export const useSpeakingDetection = () => {
                 const elapsed = now - lastAboveThresholdRef.current;
                 if (elapsed >= HOLD_OPEN_MS) {
                   gateOpenRef.current = false;
+                  gateDisabledTrackRef.current = true;
                   lastGateCloseRef.current = now;
                   mediaStreamTrack.enabled = false;
                   setSpeakingMap((prev) => {
@@ -197,6 +220,7 @@ export const useSpeakingDetection = () => {
                 const closedFor = now - lastGateCloseRef.current;
                 if (closedFor >= MIN_CLOSE_MS) {
                   gateOpenRef.current = true;
+                  gateDisabledTrackRef.current = false;
                   lastAboveThresholdRef.current = now;
                   mediaStreamTrack.enabled = true;
                   setSpeakingMap((prev) => {
@@ -209,10 +233,12 @@ export const useSpeakingDetection = () => {
               }
             }
           } else {
-            // ---------- Non-gated mode (PTT): simple threshold indicator ----------
-            // Ensure track is enabled (PTT controls it separately)
-            if (!mediaStreamTrack.enabled) {
+            // ---------- Non-gated mode (PTT): indicator only ----------
+            // Only undo gate-caused disables; never touch track.enabled otherwise
+            // (PTT/manual mute control it via LiveKit's publish/unpublish)
+            if (gateDisabledTrackRef.current) {
               mediaStreamTrack.enabled = true;
+              gateDisabledTrackRef.current = false;
               gateOpenRef.current = true;
             }
             const speaking = level > threshold;
@@ -258,11 +284,15 @@ export const useSpeakingDetection = () => {
       }
       analyserRef.current = null;
 
-      // Re-enable track so PTT/manual mute work normally
-      const micPub = local.getTrackPublication(Track.Source.Microphone);
-      const track = micPub?.track?.mediaStreamTrack;
-      if (track) {
-        track.enabled = true;
+      // Only re-enable track if OUR gate disabled it — don't override
+      // explicit user mute/deafen/PTT state
+      if (gateDisabledTrackRef.current) {
+        const micPub = local.getTrackPublication(Track.Source.Microphone);
+        const track = micPub?.track?.mediaStreamTrack;
+        if (track) {
+          track.enabled = true;
+        }
+        gateDisabledTrackRef.current = false;
       }
       gateOpenRef.current = true;
     };
@@ -309,7 +339,7 @@ export const useSpeakingDetection = () => {
       local.off("localTrackPublished", handleLocalTrackPublished);
       local.off("localTrackUnpublished", handleLocalTrackUnpublished);
     };
-  }, [room, getSettings]);
+  }, [room, readSettings]);
 
   /**
    * Check if a specific user (by identity/userId) is currently speaking

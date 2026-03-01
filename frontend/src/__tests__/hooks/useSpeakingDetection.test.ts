@@ -317,7 +317,7 @@ describe('useSpeakingDetection', () => {
     });
     expect(mockMediaStreamTrack.enabled).toBe(false);
 
-    // Switch to PTT — next tick should re-enable
+    // Switch to PTT — next tick should re-enable (once settings cache refreshes)
     storedSettings = {
       kraken_voice_settings: {
         inputMode: 'push_to_talk',
@@ -325,8 +325,27 @@ describe('useSpeakingDetection', () => {
       },
     };
 
+    // Tick enough frames to trigger settings cache refresh (every 60 frames)
+    act(() => tickRAF(60));
+    expect(mockMediaStreamTrack.enabled).toBe(true);
+  });
+
+  it('does NOT re-enable track on cleanup when user manually muted (gate did not disable)', () => {
+    renderSpeaking();
+
+    // Audio is above threshold, gate stays open, track stays enabled
+    audioLevel = 50;
     act(() => tickRAF(1));
     expect(mockMediaStreamTrack.enabled).toBe(true);
+
+    // Simulate external code disabling the track (not our gate)
+    mockMediaStreamTrack.enabled = false;
+
+    const { unmount } = renderSpeaking();
+    unmount();
+
+    // Should NOT re-enable — we didn't disable it, so we shouldn't touch it
+    expect(mockMediaStreamTrack.enabled).toBe(false);
   });
 
   // ------------------------------------------------------------------
