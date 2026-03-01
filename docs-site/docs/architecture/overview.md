@@ -66,4 +66,4 @@ LiveKit handles all media transport. The backend generates LiveKit tokens and ma
 | Real-time | Socket.IO + Redis adapter | Multi-pod scaling, automatic reconnection, room-based broadcasting |
 | Voice/Video | LiveKit | Open-source SFU with WebRTC, supports screen sharing and recording |
 | Auth | JWT + Passport | Stateless tokens, refresh token rotation, works with WebSocket |
-| Schema management | `prisma db push` | No migration files; direct schema sync for PostgreSQL |
+| Schema management | Prisma Migrate | SQL migration files for reproducible schema changes |

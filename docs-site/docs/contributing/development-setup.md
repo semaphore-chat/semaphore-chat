@@ -71,8 +71,11 @@ docker compose run --rm backend pnpm run prisma
 # Generate Prisma client only
 docker compose run --rm backend pnpm run prisma:generate
 
-# Push schema to database only
-docker compose run --rm backend pnpm run prisma:push
+# Run migrations
+docker compose run --rm backend pnpm run prisma:migrate
+
+# Create a new migration after schema changes
+docker compose run --rm backend pnpm run prisma:migrate:dev
 
 # Open Prisma Studio (database browser)
 docker compose run --rm -p 5555:5555 backend npx prisma studio

@@ -86,6 +86,11 @@ jobs:
             sleep 2
           done
 
+      - name: Run database migrations
+        run: |
+          echo "Running database migrations..."
+          docker compose -f docker-compose.e2e.yml exec -T backend-test pnpm run prisma:migrate
+
       - name: Seed test database
         run: |
           echo "Seeding test database..."

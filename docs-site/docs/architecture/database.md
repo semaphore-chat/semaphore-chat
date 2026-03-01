@@ -1,6 +1,6 @@
 # Database Schema
 
-Kraken uses **PostgreSQL** with **Prisma ORM**. Schema changes use `prisma db push` (no migrations).
+Kraken uses **PostgreSQL** with **Prisma ORM**. Schema changes use Prisma Migrate (`prisma migrate dev` to create migrations, `prisma migrate deploy` to apply).
 
 ---
 
@@ -319,6 +319,6 @@ const userRoles = await prisma.userRoles.findMany({
 
 ## Schema Management
 
-- **Development**: `prisma db push` applies changes directly
-- **Production**: Coordinate schema changes carefully; back up before major changes
+- **Development**: `prisma migrate dev` creates and applies migrations
+- **Production**: `prisma migrate deploy` applies pending migrations; back up before major changes
 - **Indexing**: Prisma auto-creates indexes for `@unique` and `@@unique` constraints; compound indexes on `Message.channelId + sentAt` and `Membership.userId + communityId` are critical for performance

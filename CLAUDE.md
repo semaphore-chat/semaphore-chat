@@ -197,8 +197,9 @@ import { isElectron, hasElectronFeature } from './utils/platform';
 ### Database Operations (Prisma in Docker)
 
 - **Generate Prisma client**: `docker compose run backend pnpm run prisma:generate`
-- **Push schema to DB**: `docker compose run backend pnpm run prisma:push`
-- **Full setup**: `docker compose run backend pnpm run prisma` (generates + pushes)
+- **Run migrations**: `docker compose run backend pnpm run prisma:migrate`
+- **Create new migration**: `docker compose run backend pnpm run prisma:migrate:dev`
+- **Full setup**: `docker compose run backend pnpm run prisma` (generates + migrates)
 - **Prisma studio**: `docker compose run -p 5555:5555 backend pnpm exec prisma studio`
 
 ### OpenAPI SDK Client Regeneration
@@ -240,8 +241,8 @@ docker compose run backend pnpm run test
 # 3. In separate terminal: Check backend linting
 docker compose run backend pnpm run lint
 
-# 4. In separate terminal: Update database schema
-docker compose run backend pnpm run prisma:push
+# 4. In separate terminal: Run database migrations
+docker compose run backend pnpm run prisma:migrate
 
 # 5. View logs for specific service
 docker-compose logs backend -f
@@ -263,7 +264,7 @@ docker-compose down
 ### Tech Stack
 
 - **Backend**: NestJS (TypeScript) with modular architecture
-- **Database**: PostgreSQL with Prisma ORM (uses `db push` + `post-push.sql`)
+- **Database**: PostgreSQL with Prisma ORM (uses migrations)
 - **Frontend**: React 19 + TypeScript + Vite + Material-UI
 - **State Management**: TanStack Query (React Query) for server state
 - **Real-time**: WebSockets via Socket.IO with Redis adapter
@@ -390,8 +391,9 @@ Always import `PartialType` from `@nestjs/swagger`, **not** `@nestjs/mapped-type
 
 ### Database Operations
 
-- PostgreSQL uses `prisma db push` + `post-push.sql` (the `prisma:push` script runs both)
+- PostgreSQL uses Prisma migrations (`prisma migrate deploy` for production, `prisma migrate dev` for development)
 - Always run `prisma generate` after schema changes
+- To create a new migration after schema changes: `docker compose run backend pnpm run prisma:migrate:dev`
 
 ### Environment Variables
 
