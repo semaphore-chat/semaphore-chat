@@ -21,20 +21,18 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
   directMessageGroupId,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [fetchEnabled, setFetchEnabled] = useState(false);
 
   const { data: readersData, isLoading, isFetching } = useQuery({
     ...readReceiptsControllerGetMessageReadersOptions({
       path: { messageId },
       query: { channelId: '', directMessageGroupId },
     }),
-    enabled: fetchEnabled,
+    staleTime: 30_000,
   });
   const readers = (readersData as MessageReader[] | undefined) ?? undefined;
 
   const handleOpen = () => {
     setIsOpen(true);
-    setFetchEnabled(true);
   };
 
   const handleClose = () => {
@@ -43,8 +41,7 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
 
   // Determine read status from fetched readers
   const hasSeen = (readers?.length ?? 0) > 0;
-  // Always show eye icon; color changes from grey (sent) to blue (read) after fetching
-  const readStatus = fetchEnabled && hasSeen ? "read" as const : "sent" as const;
+  const readStatus = hasSeen ? "read" as const : "sent" as const;
 
   const displayReaders = readers?.slice(0, 15) ?? [];
   const remainingCount = (readers?.length ?? 0) - displayReaders.length;

@@ -7,7 +7,7 @@
 
 import {
   app, BrowserWindow, ipcMain, session, desktopCapturer, Notification,
-  Tray, Menu, nativeImage, screen, dialog, safeStorage,
+  Tray, Menu, nativeImage, screen, dialog, safeStorage, shell,
 } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
@@ -832,6 +832,23 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+
+  // Open target="_blank" links in the OS default browser instead of a new Electron window
+  mainWindow!.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Catch in-page navigation to external URLs and open them in the default browser
+  mainWindow!.webContents.on('will-navigate', (event, url) => {
+    const parsedUrl = new URL(url);
+    // Allow navigation to the app's own URLs (localhost in dev, file:// in prod)
+    if (parsedUrl.protocol === 'file:') return;
+    if (parsedUrl.hostname === 'localhost') return;
+    event.preventDefault();
+    shell.openExternal(url);
+  });
+
   setupTray();
   setupApplicationMenu();
   setupAutoUpdater();

@@ -42,6 +42,16 @@ describe('handleReconnect', () => {
     expect(hasReadReceipts).toBe(true);
   });
 
+  it('invalidates message readers queries', () => {
+    handleReconnect(queryClient);
+
+    expect(invalidateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queryKey: [{ _id: 'readReceiptsControllerGetMessageReaders' }],
+      }),
+    );
+  });
+
   it('invalidates notification unread count', () => {
     handleReconnect(queryClient);
 
@@ -84,10 +94,10 @@ describe('handleReconnect', () => {
     );
   });
 
-  it('invalidates all 7 query types in a single call', () => {
+  it('invalidates all 8 query types in a single call', () => {
     handleReconnect(queryClient);
 
-    // Exactly 7 invalidation calls — one per stale data source
-    expect(invalidateSpy).toHaveBeenCalledTimes(7);
+    // 8 invalidation calls — one per stale data source (added message readers)
+    expect(invalidateSpy).toHaveBeenCalledTimes(8);
   });
 });
