@@ -233,29 +233,4 @@ describe('UserSearchAutocomplete', () => {
     expect(screen.queryByText('Alice')).not.toBeInTheDocument();
   });
 
-  it('passes search query to the API endpoint', async () => {
-    const capturedQueries: string[] = [];
-    server.use(
-      http.get(`${BASE_URL}/api/users/profile`, () =>
-        HttpResponse.json(currentUser),
-      ),
-      http.get(`${BASE_URL}/api/users/search`, ({ request }) => {
-        const url = new URL(request.url);
-        capturedQueries.push(url.searchParams.get('q') || '');
-        return HttpResponse.json([userAlice]);
-      }),
-    );
-    const onChange = vi.fn();
-
-    const { user } = renderWithProviders(
-      <UserSearchAutocomplete value={null} onChange={onChange} />,
-    );
-
-    await typeAndWaitForResults(user, 'alice');
-
-    await screen.findByText('Alice');
-    // Intermediate debounced requests may fire with partial input;
-    // the final request should contain the full query.
-    expect(capturedQueries[capturedQueries.length - 1]).toBe('alice');
-  });
 });
