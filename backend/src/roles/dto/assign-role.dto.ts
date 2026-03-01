@@ -1,11 +1,11 @@
-import { IsString, IsMongoId } from 'class-validator';
+import { IsString, IsUUID } from 'class-validator';
 
 export class AssignRoleDto {
   @IsString()
-  @IsMongoId({ message: 'Invalid user ID format' })
+  @IsUUID('all', { message: 'Invalid user ID format' })
   userId: string;
 
   @IsString()
-  @IsMongoId({ message: 'Invalid role ID format' })
+  @IsUUID('all', { message: 'Invalid role ID format' })
   roleId: string;
 }

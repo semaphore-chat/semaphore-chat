@@ -1,7 +1,7 @@
-import { IsString, IsMongoId, IsOptional } from 'class-validator';
+import { IsString, IsUUID, IsOptional } from 'class-validator';
 
 export class StartReplayBufferDto {
-  @IsMongoId()
+  @IsUUID()
   channelId: string;
 
   @IsString()

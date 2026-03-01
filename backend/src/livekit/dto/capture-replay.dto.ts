@@ -1,7 +1,7 @@
 import {
   IsEnum,
   IsOptional,
-  IsMongoId,
+  IsUUID,
   ValidateIf,
   IsInt,
   Min,
@@ -84,7 +84,7 @@ export class CaptureReplayDto {
    * Channel ID to post the clip to
    */
   @ValidateIf((o: CaptureReplayDto) => o.destination === 'channel')
-  @IsMongoId()
+  @IsUUID()
   targetChannelId?: string;
 
   /**
@@ -92,7 +92,7 @@ export class CaptureReplayDto {
    * Direct message group ID to send clip to
    */
   @ValidateIf((o: CaptureReplayDto) => o.destination === 'dm')
-  @IsMongoId()
+  @IsUUID()
   targetDirectMessageGroupId?: string;
 }
 

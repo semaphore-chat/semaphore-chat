@@ -3,7 +3,7 @@ import {
   IsArray,
   IsOptional,
   MaxLength,
-  IsMongoId,
+  IsUUID,
   MinLength,
   Matches,
 } from 'class-validator';
@@ -20,6 +20,6 @@ export class CreateAliasGroupDto {
 
   @IsArray()
   @IsOptional()
-  @IsMongoId({ each: true })
+  @IsUUID('all', { each: true })
   memberIds?: string[];
 }

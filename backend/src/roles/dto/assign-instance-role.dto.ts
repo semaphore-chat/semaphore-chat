@@ -1,7 +1,7 @@
-import { IsString, IsMongoId } from 'class-validator';
+import { IsString, IsUUID } from 'class-validator';
 
 export class AssignInstanceRoleDto {
   @IsString()
-  @IsMongoId({ message: 'Invalid user ID format' })
+  @IsUUID('all', { message: 'Invalid user ID format' })
   userId: string;
 }

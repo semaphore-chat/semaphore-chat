@@ -84,7 +84,7 @@ describe('MessagesService', () => {
       const result = await service.create(createDto);
 
       expect(result).toBeDefined();
-      expect(result.channelId).toBe('channel-123');
+      expect((result as any).channelId).toBe('channel-123');
 
       expect(mockDatabase.message.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
@@ -743,6 +743,227 @@ describe('MessagesService', () => {
       expect(
         (result.attachments[1] as { hasThumbnail: boolean }).hasThumbnail,
       ).toBe(false);
+    });
+  });
+
+  describe('searchChannelMessages', () => {
+    it('should return empty array for empty query', async () => {
+      const result = await service.searchChannelMessages('channel-123', '');
+      expect(result).toEqual([]);
+      expect(mockDatabase.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array for whitespace-only query', async () => {
+      const result = await service.searchChannelMessages('channel-123', '   ');
+      expect(result).toEqual([]);
+      expect(mockDatabase.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('should use $queryRaw with searchVector and return enriched messages', async () => {
+      const channelId = 'channel-123';
+      const msg1 = buildMessageWithIncludes({ id: 'msg-1', channelId });
+      const msg2 = buildMessageWithIncludes({ id: 'msg-2', channelId });
+
+      // Raw query returns matching IDs in order
+      mockDatabase.$queryRaw.mockResolvedValue([
+        { id: 'msg-1' },
+        { id: 'msg-2' },
+      ]);
+      // Enrichment query returns full messages (may be in different order)
+      mockDatabase.message.findMany.mockResolvedValue([msg2, msg1]);
+
+      const result = await service.searchChannelMessages(channelId, 'hello');
+
+      expect(mockDatabase.$queryRaw).toHaveBeenCalled();
+      expect(mockDatabase.message.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['msg-1', 'msg-2'] } },
+        include: expect.objectContaining({
+          spans: expect.any(Object),
+          reactions: true,
+          attachments: expect.any(Object),
+        }),
+      });
+      expect(result).toHaveLength(2);
+      // Should preserve order from raw query (msg-1 first)
+      expect((result[0] as any).id).toBe('msg-1');
+      expect((result[1] as any).id).toBe('msg-2');
+    });
+
+    it('should return empty array when raw query returns no results', async () => {
+      mockDatabase.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.searchChannelMessages(
+        'channel-123',
+        'nonexistent',
+      );
+
+      expect(result).toEqual([]);
+      // Should not call findMany when no raw results
+      expect(mockDatabase.message.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('searchDirectMessages', () => {
+    it('should return empty array for empty query', async () => {
+      const result = await service.searchDirectMessages('dm-123', '');
+      expect(result).toEqual([]);
+      expect(mockDatabase.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('should use $queryRaw with searchVector and return enriched messages', async () => {
+      const dmGroupId = 'dm-123';
+      const msg1 = buildMessageWithIncludes({
+        id: 'msg-1',
+        directMessageGroupId: dmGroupId,
+        channelId: null,
+      });
+
+      mockDatabase.$queryRaw.mockResolvedValue([{ id: 'msg-1' }]);
+      mockDatabase.message.findMany.mockResolvedValue([msg1]);
+
+      const result = await service.searchDirectMessages(dmGroupId, 'hello');
+
+      expect(mockDatabase.$queryRaw).toHaveBeenCalled();
+      expect(mockDatabase.message.findMany).toHaveBeenCalledWith({
+        where: { id: { in: ['msg-1'] } },
+        include: expect.objectContaining({
+          spans: expect.any(Object),
+          reactions: true,
+          attachments: expect.any(Object),
+        }),
+      });
+      expect(result).toHaveLength(1);
+    });
+
+    it('should return empty array when raw query returns no results', async () => {
+      mockDatabase.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.searchDirectMessages(
+        'dm-123',
+        'nonexistent',
+      );
+
+      expect(result).toEqual([]);
+      expect(mockDatabase.message.findMany).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('searchCommunityMessages', () => {
+    it('should return empty array for empty query', async () => {
+      const result = await service.searchCommunityMessages(
+        'community-123',
+        'user-123',
+        '',
+      );
+      expect(result).toEqual([]);
+    });
+
+    it('should return empty array when user has no accessible channels', async () => {
+      mockDatabase.channel.findMany.mockResolvedValue([]);
+
+      const result = await service.searchCommunityMessages(
+        'community-123',
+        'user-123',
+        'hello',
+      );
+
+      expect(result).toEqual([]);
+      expect(mockDatabase.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('should use $queryRaw with searchVector and enrich with channel names', async () => {
+      const communityId = 'community-123';
+      const userId = 'user-123';
+      const channelId = 'channel-1';
+
+      // Accessible channels
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: channelId, name: 'general' },
+      ]);
+
+      const msg1 = buildMessageWithIncludes({
+        id: 'msg-1',
+        channelId,
+      });
+
+      // Raw query returns IDs with channelId
+      mockDatabase.$queryRaw.mockResolvedValue([{ id: 'msg-1', channelId }]);
+      // Enrichment query
+      mockDatabase.message.findMany.mockResolvedValue([msg1]);
+
+      const result = await service.searchCommunityMessages(
+        communityId,
+        userId,
+        'hello',
+      );
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
+        where: {
+          communityId,
+          OR: [
+            { isPrivate: false },
+            {
+              isPrivate: true,
+              ChannelMembership: { some: { userId } },
+            },
+          ],
+        },
+        select: { id: true, name: true },
+      });
+      expect(mockDatabase.$queryRaw).toHaveBeenCalled();
+      expect(result).toHaveLength(1);
+      expect((result[0] as any).channelName).toBe('general');
+    });
+
+    it('should return empty array when raw query returns no results', async () => {
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: 'channel-1', name: 'general' },
+      ]);
+      mockDatabase.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.searchCommunityMessages(
+        'community-123',
+        'user-123',
+        'nonexistent',
+      );
+
+      expect(result).toEqual([]);
+      // Should not call message.findMany when no raw results
+      expect(mockDatabase.message.findMany).not.toHaveBeenCalled();
+    });
+
+    it('should preserve order from raw query across multiple channels', async () => {
+      mockDatabase.channel.findMany.mockResolvedValue([
+        { id: 'ch-1', name: 'general' },
+        { id: 'ch-2', name: 'random' },
+      ]);
+
+      const msg1 = buildMessageWithIncludes({ id: 'msg-1', channelId: 'ch-1' });
+      const msg2 = buildMessageWithIncludes({ id: 'msg-2', channelId: 'ch-2' });
+      const msg3 = buildMessageWithIncludes({ id: 'msg-3', channelId: 'ch-1' });
+
+      // Raw query returns in sentAt DESC order
+      mockDatabase.$queryRaw.mockResolvedValue([
+        { id: 'msg-2', channelId: 'ch-2' },
+        { id: 'msg-1', channelId: 'ch-1' },
+        { id: 'msg-3', channelId: 'ch-1' },
+      ]);
+      // findMany may return in different order
+      mockDatabase.message.findMany.mockResolvedValue([msg1, msg3, msg2]);
+
+      const result = await service.searchCommunityMessages(
+        'community-123',
+        'user-123',
+        'hello',
+      );
+
+      expect(result).toHaveLength(3);
+      expect((result[0] as any).id).toBe('msg-2');
+      expect((result[0] as any).channelName).toBe('random');
+      expect((result[1] as any).id).toBe('msg-1');
+      expect((result[1] as any).channelName).toBe('general');
+      expect((result[2] as any).id).toBe('msg-3');
+      expect((result[2] as any).channelName).toBe('general');
     });
   });
 });

@@ -363,7 +363,8 @@ export class MessagesService {
   }
 
   /**
-   * Search messages in a specific channel using PostgreSQL full-text search.
+   * Search messages in a specific channel using PostgreSQL full-text search
+   * via the GIN-indexed searchVector tsvector column.
    */
   async searchChannelMessages(channelId: string, query: string, limit = 50) {
     if (!query || query.trim().length === 0) {
@@ -374,26 +375,41 @@ export class MessagesService {
       `Searching messages in channel ${channelId} for query: "${query}"`,
     );
 
+    const rawMessages = await this.databaseService.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Message"
+      WHERE "channelId" = ${channelId}
+        AND "deletedAt" IS NULL
+        AND "searchVector" @@ plainto_tsquery('english', ${query})
+      ORDER BY "sentAt" DESC
+      LIMIT ${limit}
+    `;
+
+    if (rawMessages.length === 0) {
+      return [];
+    }
+
+    const messageIds = rawMessages.map((m) => m.id);
     const messages = await this.databaseService.message.findMany({
-      where: {
-        channelId,
-        deletedAt: null,
-        searchText: { search: query },
-      },
-      orderBy: { sentAt: 'desc' },
-      take: limit,
+      where: { id: { in: messageIds } },
       include: MESSAGE_INCLUDE,
     });
 
+    // Preserve the ORDER BY sentAt DESC from the raw query
+    const messageMap = new Map(messages.map((m) => [m.id, m]));
+    const ordered = messageIds
+      .map((id) => messageMap.get(id))
+      .filter(Boolean) as typeof messages;
+
     this.logger.log(
-      `Found ${messages.length} messages matching query "${query}"`,
+      `Found ${ordered.length} messages matching query "${query}"`,
     );
 
-    return messages.map((m) => this.formatMessage(m));
+    return ordered.map((m) => this.formatMessage(m));
   }
 
   /**
-   * Search messages in a specific direct message group using PostgreSQL full-text search.
+   * Search messages in a specific direct message group using PostgreSQL full-text search
+   * via the GIN-indexed searchVector tsvector column.
    */
   async searchDirectMessages(
     directMessageGroupId: string,
@@ -404,22 +420,37 @@ export class MessagesService {
       return [];
     }
 
+    const rawMessages = await this.databaseService.$queryRaw<{ id: string }[]>`
+      SELECT "id" FROM "Message"
+      WHERE "directMessageGroupId" = ${directMessageGroupId}
+        AND "deletedAt" IS NULL
+        AND "searchVector" @@ plainto_tsquery('english', ${query})
+      ORDER BY "sentAt" DESC
+      LIMIT ${limit}
+    `;
+
+    if (rawMessages.length === 0) {
+      return [];
+    }
+
+    const messageIds = rawMessages.map((m) => m.id);
     const messages = await this.databaseService.message.findMany({
-      where: {
-        directMessageGroupId,
-        deletedAt: null,
-        searchText: { search: query },
-      },
-      orderBy: { sentAt: 'desc' },
-      take: limit,
+      where: { id: { in: messageIds } },
       include: MESSAGE_INCLUDE,
     });
 
-    return messages.map((m) => this.formatMessage(m));
+    // Preserve the ORDER BY sentAt DESC from the raw query
+    const messageMap = new Map(messages.map((m) => [m.id, m]));
+    const ordered = messageIds
+      .map((id) => messageMap.get(id))
+      .filter(Boolean) as typeof messages;
+
+    return ordered.map((m) => this.formatMessage(m));
   }
 
   /**
-   * Search messages across all accessible channels in a community using PostgreSQL full-text search.
+   * Search messages across all accessible channels in a community using PostgreSQL full-text search
+   * via the GIN-indexed searchVector tsvector column.
    */
   async searchCommunityMessages(
     communityId: string,
@@ -453,18 +484,34 @@ export class MessagesService {
       return [];
     }
 
+    const rawMessages = await this.databaseService.$queryRaw<
+      { id: string; channelId: string }[]
+    >`
+      SELECT "id", "channelId" FROM "Message"
+      WHERE "channelId" = ANY(${channelIds})
+        AND "deletedAt" IS NULL
+        AND "searchVector" @@ plainto_tsquery('english', ${query})
+      ORDER BY "sentAt" DESC
+      LIMIT ${limit}
+    `;
+
+    if (rawMessages.length === 0) {
+      return [];
+    }
+
+    const messageIds = rawMessages.map((m) => m.id);
     const messages = await this.databaseService.message.findMany({
-      where: {
-        channelId: { in: channelIds },
-        deletedAt: null,
-        searchText: { search: query },
-      },
-      orderBy: { sentAt: 'desc' },
-      take: limit,
+      where: { id: { in: messageIds } },
       include: MESSAGE_INCLUDE,
     });
 
-    return messages.map((msg) => ({
+    // Preserve the ORDER BY sentAt DESC from the raw query
+    const messageMap = new Map(messages.map((m) => [m.id, m]));
+    const ordered = messageIds
+      .map((id) => messageMap.get(id))
+      .filter(Boolean) as typeof messages;
+
+    return ordered.map((msg) => ({
       ...this.formatMessage(msg),
       channelName: channelMap.get(msg.channelId ?? '') ?? 'Unknown',
     }));

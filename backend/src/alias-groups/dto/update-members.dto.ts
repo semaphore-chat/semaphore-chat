@@ -1,7 +1,7 @@
-import { IsArray, IsMongoId } from 'class-validator';
+import { IsArray, IsUUID } from 'class-validator';
 
 export class UpdateMembersDto {
   @IsArray()
-  @IsMongoId({ each: true })
+  @IsUUID('all', { each: true })
   memberIds: string[];
 }

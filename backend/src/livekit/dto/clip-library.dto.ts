@@ -1,7 +1,7 @@
 import {
   IsBoolean,
   IsEnum,
-  IsMongoId,
+  IsUUID,
   IsOptional,
   ValidateIf,
 } from 'class-validator';
@@ -39,7 +39,7 @@ export class ShareClipDto {
    * Channel ID to post the clip to
    */
   @ValidateIf((o: ShareClipDto) => o.destination === 'channel')
-  @IsMongoId()
+  @IsUUID()
   targetChannelId?: string;
 
   /**
@@ -47,7 +47,7 @@ export class ShareClipDto {
    * Direct message group ID to send clip to
    */
   @ValidateIf((o: ShareClipDto) => o.destination === 'dm')
-  @IsMongoId()
+  @IsUUID()
   targetDirectMessageGroupId?: string;
 }
 
