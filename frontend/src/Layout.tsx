@@ -19,6 +19,7 @@ import { useResponsive } from "./hooks/useResponsive";
 import type { User } from "./types/auth.type";
 import { APPBAR_HEIGHT, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "./constants/layout";
 import { useNotificationSideEffects } from "./hooks/useNotificationSideEffects";
+import { useVoicePresenceSounds } from "./hooks/useVoicePresenceSounds";
 import NotificationBadge from "./components/Notifications/NotificationBadge";
 import NotificationCenter from "./components/Notifications/NotificationCenter";
 import { ReplayBufferProvider } from "./contexts/ReplayBufferContext";
@@ -72,6 +73,9 @@ const LayoutHooksBridge: React.FC = () => {
     showDesktopNotifications: true,
     playSound: true,
   });
+
+  // Voice presence sounds (other users joining/leaving your channel)
+  useVoicePresenceSounds();
 
   return null;
 };

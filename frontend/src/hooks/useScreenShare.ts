@@ -16,6 +16,7 @@ import { ScreenShareSettings } from '../components/Voice/ScreenSourcePicker';
 import { setScreenShareConfig, clearScreenShareConfig } from '../utils/screenShareState';
 import { useNotification } from '../contexts/NotificationContext';
 import { useVoice } from '../contexts/VoiceContext';
+import { playSound, Sounds } from './useSound';
 
 interface UseScreenShareReturn {
   isScreenSharing: boolean;
@@ -43,6 +44,7 @@ export const useScreenShare = (): UseScreenShareReturn => {
   // Show notification when audio capture fails
   useEffect(() => {
     if (screenShareAudioFailed && !prevAudioFailedRef.current) {
+      playSound(Sounds.error);
       showNotification(
         'Screen audio capture failed. This may be due to your audio device settings. Sharing screen without audio.',
         'warning'

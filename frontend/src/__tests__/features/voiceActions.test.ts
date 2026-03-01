@@ -68,6 +68,19 @@ vi.mock('../../utils/platform', () => ({
   isElectron: vi.fn().mockReturnValue(false),
 }));
 
+vi.mock('../../hooks/useSound', () => ({
+  playSound: vi.fn(),
+  Sounds: {
+    connected: 'connected',
+    disconnected: 'disconnected',
+    toggleOn: 'toggleOn',
+    toggleOff: 'toggleOff',
+    screenShareStarted: 'screenShareStarted',
+    screenShareStopped: 'screenShareStopped',
+    error: 'error',
+  },
+}));
+
 vi.mock('../../utils/logger', () => ({
   logger: { dev: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));

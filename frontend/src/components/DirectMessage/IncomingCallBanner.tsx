@@ -4,6 +4,7 @@ import { Phone, CallEnd } from "@mui/icons-material";
 import { useIncomingCall } from "../../contexts/IncomingCallContext";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { logger } from "../../utils/logger";
+import { playSound, Sounds } from "../../hooks/useSound";
 
 const pulseKeyframes = {
   "@keyframes incomingCallPulse": {
@@ -31,6 +32,7 @@ export const IncomingCallBanner: React.FC = () => {
   };
 
   const handleDecline = () => {
+    playSound(Sounds.callEnded);
     dismissCall();
   };
 

@@ -434,6 +434,10 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 - Mock `useParams`/`useNavigate`: mock `react-router-dom` with `importOriginal` spread + overrides
 - Test async error flows: rejected promises from mocked functions trigger catch blocks; use `findByRole`/`waitFor` to assert on resulting DOM changes
 
+**Pre-push requirement**: Always run the full test suite locally before pushing to remote or opening a PR. This catches failures early and avoids wasting CI minutes:
+- Frontend: `docker compose run --rm frontend pnpm run test`
+- Backend: `docker compose run --rm backend pnpm run test`
+
 ### Code Quality
 
 - ESLint configured for both backend and frontend

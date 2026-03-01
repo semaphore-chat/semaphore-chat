@@ -11,7 +11,7 @@
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ServerEvents } from '@kraken/shared';
+import { ServerEvents, NotificationType } from '@kraken/shared';
 import type { NewNotificationPayload } from '@kraken/shared';
 import { useServerEvent } from '../socket-hub/useServerEvent';
 import {
@@ -23,6 +23,14 @@ import {
 import { isNotificationShown, markNotificationAsShown } from '../utils/notificationTracking';
 import { isElectron, getElectronAPI } from '../utils/platform';
 import { logger } from '../utils/logger';
+import { playSound as playSoundEffect, Sounds, type SoundName } from './useSound';
+
+const NOTIFICATION_SOUND_MAP: Record<string, SoundName> = {
+  [NotificationType.CHANNEL_MESSAGE]: Sounds.channelMessage,
+  [NotificationType.DIRECT_MESSAGE]: Sounds.directMessage,
+  [NotificationType.USER_MENTION]: Sounds.mention,
+  [NotificationType.SPECIAL_MENTION]: Sounds.mention,
+};
 
 export interface UseNotificationSideEffectsOptions {
   showDesktopNotifications?: boolean;
@@ -40,40 +48,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
   } = options;
 
   const navigate = useNavigate();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const notificationsRef = useRef<Map<string, NewNotificationPayload>>(new Map());
-  const soundEnabledRef = useRef(false);
-
-  // Initialize notification sound
-  useEffect(() => {
-    if (playSound && typeof Audio !== 'undefined') {
-      const audio = new Audio('./sounds/notification.mp3');
-      audio.addEventListener('canplaythrough', () => {
-        audioRef.current = audio;
-        soundEnabledRef.current = true;
-      });
-      audio.addEventListener('error', () => {
-        soundEnabledRef.current = false;
-      });
-      audio.load();
-    }
-
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current = null;
-      }
-    };
-  }, [playSound]);
-
-  const playNotificationSound = useCallback(() => {
-    if (audioRef.current && soundEnabledRef.current && playSound) {
-      audioRef.current.currentTime = 0;
-      audioRef.current.play().catch((error) => {
-        logger.error('[Notifications] Error playing sound:', error);
-      });
-    }
-  }, [playSound]);
 
   const navigateToNotification = useCallback(
     (notification: { communityId?: string | null; channelId?: string | null; directMessageGroupId?: string | null }) => {
@@ -107,9 +82,10 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
     // Custom callback
     onNotificationReceived?.(payload);
 
-    // Sound
+    // Sound — pick the right sound based on notification type
     if (playSound) {
-      playNotificationSound();
+      const soundName = NOTIFICATION_SOUND_MAP[payload.type] || Sounds.channelMessage;
+      playSoundEffect(soundName);
     }
 
     // Desktop notification (skip if already shown via push handler)

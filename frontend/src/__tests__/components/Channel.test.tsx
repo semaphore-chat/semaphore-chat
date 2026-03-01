@@ -50,6 +50,11 @@ vi.mock('../../hooks/useReadReceipts', () => ({
 
 const mockNavigate = vi.fn();
 let mockParams: Record<string, string> = { communityId: 'c1', channelId: 'other' };
+vi.mock('../../hooks/useSound', () => ({
+  playSound: vi.fn(),
+  Sounds: { error: 'error' },
+}));
+
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return {

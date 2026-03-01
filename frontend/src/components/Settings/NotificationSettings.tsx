@@ -46,6 +46,7 @@ import { isElectron } from '../../utils/platform';
 import { showNotification } from '../../utils/notifications';
 import { logger } from '../../utils/logger';
 import type { UpdateNotificationSettingsDto } from '../../types/notification.type';
+import { playSound, Sounds, type SoundName } from '../../hooks/useSound';
 
 export const NotificationSettings: React.FC = () => {
   const queryClient = useQueryClient();
@@ -279,8 +280,12 @@ export const NotificationSettings: React.FC = () => {
               <IconButton
                 size="small"
                 onClick={() => {
-                  const audio = new Audio('/sounds/notification.mp3');
-                  audio.play().catch((e) => logger.error('Failed to play sound:', e));
+                  const soundTypeMap: Record<string, SoundName> = {
+                    default: Sounds.channelMessage,
+                    mention: Sounds.mention,
+                    dm: Sounds.directMessage,
+                  };
+                  playSound(soundTypeMap[formValues.soundType] || Sounds.channelMessage);
                 }}
               >
                 <PlayArrowIcon />

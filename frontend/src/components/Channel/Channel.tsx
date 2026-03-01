@@ -17,6 +17,7 @@ import type { ListItemProps } from "@mui/material/ListItem";
 import { useNotification } from "../../contexts/NotificationContext";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { logger } from "../../utils/logger";
+import { playSound, Sounds } from "../../hooks/useSound";
 
 interface ChannelProps {
   channel: ChannelType;
@@ -103,6 +104,7 @@ export function Channel({ channel }: ChannelProps) {
         }
       } catch (error) {
         logger.error("Failed to join voice channel:", error);
+        playSound(Sounds.error);
         showNotification("Failed to join voice channel. Please try again.", "error");
       }
     }
