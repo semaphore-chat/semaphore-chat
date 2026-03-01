@@ -12,6 +12,7 @@ import type {
 } from '@kraken/shared';
 import type { Message } from '../../types/message.type';
 import type { UnreadCountDto, UserControllerGetProfileResponse } from '../../api-client';
+import type { MessageReader } from '../../types/read-receipt.type';
 import { messageQueryKeyForContext, channelMessagesQueryKey } from '../../utils/messageQueryKeys';
 import {
   readReceiptsControllerGetUnreadCountsQueryKey,
@@ -209,9 +210,10 @@ export const handleThreadReplyCountUpdated: SocketEventHandler<typeof ServerEven
 };
 
 export const handleReadReceiptUpdated: SocketEventHandler<typeof ServerEvents.READ_RECEIPT_UPDATED> = (
-  { channelId, directMessageGroupId, lastReadMessageId }: ReadReceiptUpdatedPayload,
+  payload: ReadReceiptUpdatedPayload,
   queryClient: QueryClient,
 ) => {
+  const { channelId, directMessageGroupId, lastReadMessageId } = payload;
   const id = channelId || directMessageGroupId;
   if (!id) return;
   const queryKey = readReceiptsControllerGetUnreadCountsQueryKey();
@@ -235,4 +237,45 @@ export const handleReadReceiptUpdated: SocketEventHandler<typeof ServerEvents.RE
     }
     return [...old, updated];
   });
+
+  // Direct cache update for message readers (DM "seen by" real-time sync)
+  if (payload.userId && payload.username) {
+    // Skip if this is the current user's own read receipt
+    const currentUser = queryClient.getQueryData<UserControllerGetProfileResponse>(
+      userControllerGetProfileQueryKey(),
+    );
+    if (currentUser && payload.userId === currentUser.id) return;
+
+    const newReader: MessageReader = {
+      userId: payload.userId,
+      username: payload.username,
+      displayName: payload.displayName ?? undefined,
+      avatarUrl: payload.avatarUrl ?? undefined,
+      readAt: new Date(payload.lastReadAt),
+    };
+
+    // Update all cached message readers queries for messages <= lastReadMessageId
+    const queries = queryClient.getQueriesData<MessageReader[]>({
+      queryKey: [{ _id: 'readReceiptsControllerGetMessageReaders' }],
+    });
+
+    for (const [cachedKey, cachedData] of queries) {
+      if (!cachedData) continue;
+      // Extract messageId and context from the query key options
+      const keyObj = cachedKey[0] as {
+        path?: { messageId?: string };
+        query?: { channelId?: string; directMessageGroupId?: string };
+      };
+      const msgId = keyObj.path?.messageId;
+      if (!msgId) continue;
+      // Only update queries for the same conversation context
+      const keyContextId = keyObj.query?.directMessageGroupId || keyObj.query?.channelId;
+      if (keyContextId !== id) continue;
+      // ObjectID lexicographic comparison works chronologically
+      if (msgId > lastReadMessageId) continue;
+      // Skip if this user is already in the readers list
+      if (cachedData.some((r) => r.userId === payload.userId)) continue;
+      queryClient.setQueryData(cachedKey, [...cachedData, newReader]);
+    }
+  }
 };

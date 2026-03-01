@@ -7,7 +7,7 @@
 
 import {
   app, BrowserWindow, ipcMain, session, desktopCapturer, Notification,
-  Tray, Menu, nativeImage, screen, dialog, safeStorage,
+  Tray, Menu, nativeImage, screen, dialog, safeStorage, shell,
 } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
@@ -674,6 +674,31 @@ function createWindow() {
   // Handle window destroyed
   mainWindow.on('closed', () => {
     mainWindow = null;
+  });
+
+  // Open target="_blank" links in the OS default browser instead of a new Electron window
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const parsed = new URL(url);
+      if (['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+        void shell.openExternal(url);
+      }
+    } catch { /* ignore invalid URLs */ }
+    return { action: 'deny' };
+  });
+
+  // Catch in-page navigation to external URLs and open them in the default browser
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const parsedUrl = new URL(url);
+      // Allow navigation to the app's own URLs (localhost in dev, file:// in prod)
+      if (parsedUrl.protocol === 'file:') return;
+      if (parsedUrl.hostname === 'localhost') return;
+      event.preventDefault();
+      if (['http:', 'https:', 'mailto:'].includes(parsedUrl.protocol)) {
+        void shell.openExternal(url);
+      }
+    } catch { /* ignore invalid URLs */ }
   });
 }
 

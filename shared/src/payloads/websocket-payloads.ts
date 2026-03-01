@@ -94,6 +94,11 @@ export interface ReadReceiptUpdatedPayload {
   directMessageGroupId?: string | null;
   lastReadMessageId: string;
   lastReadAt: string;
+  /** Present when broadcast to DM room (not on user-room self-sync) */
+  userId?: string;
+  username?: string;
+  displayName?: string | null;
+  avatarUrl?: string | null;
 }
 
 // =============================================================================
