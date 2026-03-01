@@ -862,8 +862,8 @@ export class LivekitReplayService {
       session.segmentPath,
     );
 
-    // 4. List ALL segments in session directory and sort by sequence
-    const allSegments = await this.listAndSortSegments(segmentDir);
+    // 4. List only complete segments (>= 10KB) to avoid corrupt/partial data
+    const allSegments = await this.listCompleteSegments(segmentDir);
 
     if (allSegments.length === 0) {
       throw new BadRequestException(
@@ -935,8 +935,8 @@ export class LivekitReplayService {
       session.segmentPath,
     );
 
-    // 3. List ALL segments in session directory and sort by sequence
-    const allSegments = await this.listAndSortSegments(segmentDir);
+    // 3. List only complete segments (>= 10KB) to avoid corrupt/partial data
+    const allSegments = await this.listCompleteSegments(segmentDir);
 
     if (allSegments.length === 0) {
       throw new BadRequestException(
@@ -950,32 +950,43 @@ export class LivekitReplayService {
       undefined;
 
     if (isCustomRange) {
-      // Custom range: calculate segment indices from timestamps
-      const startSegmentIndex = Math.floor(dto.startSeconds! / 10);
-      const endSegmentIndex = Math.ceil(dto.endSeconds! / 10);
-
-      // Validate range
-      if (startSegmentIndex >= allSegments.length) {
-        throw new BadRequestException(
-          `Start time ${dto.startSeconds}s exceeds available buffer (${allSegments.length * 10}s)`,
-        );
-      }
-      if (endSegmentIndex > allSegments.length) {
-        throw new BadRequestException(
-          `End time ${dto.endSeconds}s exceeds available buffer (${allSegments.length * 10}s)`,
-        );
-      }
       if (dto.startSeconds! >= dto.endSeconds!) {
         throw new BadRequestException('Start time must be before end time');
       }
 
-      segments = allSegments.slice(startSegmentIndex, endSegmentIndex);
+      // Custom range: calculate segment indices from timestamps
+      const startSegmentIndex = Math.floor(dto.startSeconds! / 10);
+      const endSegmentIndex = Math.ceil(dto.endSeconds! / 10);
+
+      // Clamp to available segments instead of throwing
+      const clampedStart = Math.min(
+        startSegmentIndex,
+        Math.max(0, allSegments.length - 1),
+      );
+      const clampedEnd = Math.min(endSegmentIndex, allSegments.length);
+
+      if (clampedStart >= clampedEnd) {
+        throw new BadRequestException(
+          'Requested range has no available segments. The buffer may have been cleaned up.',
+        );
+      }
+
+      if (
+        clampedStart !== startSegmentIndex ||
+        clampedEnd !== endSegmentIndex
+      ) {
+        this.logger.warn(
+          `Clamped capture range: requested [${startSegmentIndex}, ${endSegmentIndex}) -> available [${clampedStart}, ${clampedEnd})`,
+        );
+      }
+
+      segments = allSegments.slice(clampedStart, clampedEnd);
 
       // Calculate precise trim options for FFmpeg
       // startOffset: how many seconds into the first segment to skip
-      // duration: exact clip duration requested
-      const startOffset = dto.startSeconds! - startSegmentIndex * 10;
-      const exactDuration = dto.endSeconds! - dto.startSeconds!;
+      const startOffset = dto.startSeconds! - clampedStart * 10;
+      const clampedEndSeconds = Math.min(dto.endSeconds!, clampedEnd * 10);
+      const exactDuration = clampedEndSeconds - dto.startSeconds!;
 
       if (startOffset > 0 || exactDuration !== segments.length * 10) {
         trimOptions = {
@@ -1232,6 +1243,35 @@ export class LivekitReplayService {
   }
 
   /**
+   * List segments that are complete (>= 10KB), filtering out segments still being written.
+   *
+   * @param segmentDir - Absolute path to segment directory
+   * @returns Sorted array of complete segments
+   * @private
+   */
+  private async listCompleteSegments(
+    segmentDir: string,
+  ): Promise<Array<{ filename: string; sequence: number; path: string }>> {
+    const allSegments = await this.listAndSortSegments(segmentDir);
+    const complete: Array<{
+      filename: string;
+      sequence: number;
+      path: string;
+    }> = [];
+    for (const segment of allSegments) {
+      try {
+        const stats = await this.storageService.getFileStats(segment.path);
+        if (stats.size >= 10000) {
+          complete.push(segment);
+        }
+      } catch {
+        // Skip segments we can't stat
+      }
+    }
+    return complete;
+  }
+
+  /**
    * Generate SHA-256 checksum for a file
    *
    * @param filePath - Path to the file
@@ -1340,9 +1380,9 @@ export class LivekitReplayService {
     const segmentDir = this.storageService.resolveSegmentPath(
       session.segmentPath,
     );
-    const segments = await this.listAndSortSegments(segmentDir);
+    const completeSegments = await this.listCompleteSegments(segmentDir);
 
-    if (segments.length === 0) {
+    if (completeSegments.length === 0) {
       return {
         hasActiveSession: true,
         sessionId: session.id,
@@ -1351,25 +1391,12 @@ export class LivekitReplayService {
       };
     }
 
-    // Count only complete segments (10KB+ to filter out segments being written)
-    let completeSegmentCount = 0;
-    for (const segment of segments) {
-      try {
-        const stats = await this.storageService.getFileStats(segment.path);
-        if (stats.size >= 10000) {
-          completeSegmentCount++;
-        }
-      } catch {
-        // Skip segments we can't stat
-      }
-    }
-
-    const totalDurationSeconds = completeSegmentCount * 10; // Each segment is ~10 seconds
+    const totalDurationSeconds = completeSegments.length * 10; // Each segment is ~10 seconds
 
     return {
       hasActiveSession: true,
       sessionId: session.id,
-      totalSegments: completeSegmentCount,
+      totalSegments: completeSegments.length,
       totalDurationSeconds,
       bufferStartTime: session.startedAt,
       bufferEndTime: new Date(), // Segments are being created in real-time
@@ -1399,32 +1426,7 @@ export class LivekitReplayService {
     const segmentDir = this.storageService.resolveSegmentPath(
       session.segmentPath,
     );
-    const segments = await this.listAndSortSegments(segmentDir);
-
-    if (segments.length === 0) {
-      throw new BadRequestException('No segments available in buffer.');
-    }
-
-    // Filter out incomplete segments (the latest segment is often still being written)
-    // A valid segment should be at least 10KB (has headers + some data)
-    const completeSegments: typeof segments = [];
-    for (const segment of segments) {
-      try {
-        const stats = await this.storageService.getFileStats(segment.path);
-        if (stats.size >= 10000) {
-          completeSegments.push(segment);
-        } else {
-          this.logger.debug(
-            `Excluding incomplete segment from playlist: ${segment.filename} (${stats.size} bytes)`,
-          );
-        }
-      } catch {
-        // If we can't stat the file, skip it
-        this.logger.warn(
-          `Could not stat segment ${segment.filename}, excluding from playlist`,
-        );
-      }
-    }
+    const completeSegments = await this.listCompleteSegments(segmentDir);
 
     if (completeSegments.length === 0) {
       throw new BadRequestException(
