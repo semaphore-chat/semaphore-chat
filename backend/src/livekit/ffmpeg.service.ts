@@ -228,6 +228,8 @@ export class FfmpegService {
         'copy', // Stream copy (no re-encoding)
         '-movflags',
         '+faststart', // Optimize for web playback
+        '-avoid_negative_ts',
+        'make_zero', // Normalize timestamps so output starts at 0
       ];
 
       // Add trim options if provided

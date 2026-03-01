@@ -138,6 +138,8 @@ describe('FfmpegService', () => {
         'copy',
         '-movflags',
         '+faststart',
+        '-avoid_negative_ts',
+        'make_zero',
       );
       expect(mockCommand.output).toHaveBeenCalledWith(outputPath);
     });
@@ -155,6 +157,8 @@ describe('FfmpegService', () => {
         'copy',
         '-movflags',
         '+faststart',
+        '-avoid_negative_ts',
+        'make_zero',
         '-t',
         '60',
       );

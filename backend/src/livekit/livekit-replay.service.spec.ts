@@ -6,7 +6,7 @@ import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@kraken/shared';
-import { AudioCodec, EgressStatus, EncodingOptions } from 'livekit-server-sdk';
+import { AudioCodec, EgressStatus } from 'livekit-server-sdk';
 import { ThumbnailService } from '@/file/thumbnail.service';
 import { FfmpegService } from './ffmpeg.service';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
@@ -205,9 +205,7 @@ describe('LivekitReplayService', () => {
 
       await service.startReplayBuffer(paramsWithIdentity);
 
-      expect(
-        mockEgressClient.startTrackCompositeEgress,
-      ).toHaveBeenCalledWith(
+      expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalledWith(
         'room-789',
         expect.objectContaining({ segments: expect.any(Object) }),
         expect.objectContaining({
@@ -925,6 +923,91 @@ describe('LivekitReplayService', () => {
 
       // Allow the fire-and-forget async to settle (error is logged, not thrown)
       await new Promise((r) => setImmediate(r));
+    });
+
+    it('should exclude incomplete segments (< 10KB) from capture', async () => {
+      storageService.listFiles.mockResolvedValue([
+        '2025-01-01T000000-segment_00000.ts',
+        '2025-01-01T000010-segment_00001.ts',
+        '2025-01-01T000020-segment_00002.ts',
+      ]);
+      // First segment is incomplete (< 10KB), others are complete
+      // getFileStats is called: once per segment in listCompleteSegments, then again for file stats after FFmpeg
+      storageService.getFileStats
+        .mockResolvedValueOnce({ size: 500 }) // segment 0: incomplete
+        .mockResolvedValueOnce({ size: 50000 }) // segment 1: complete
+        .mockResolvedValueOnce({ size: 50000 }) // segment 2: complete
+        .mockResolvedValue({ size: 1024000 }); // subsequent calls for file stats
+
+      await service.captureReplay(userId, dto);
+
+      // FFmpeg should only receive the 2 complete segments
+      expect(ffmpegService.concatenateSegments).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.stringContaining('segment_00001.ts'),
+          expect.stringContaining('segment_00002.ts'),
+        ]),
+        expect.any(String),
+        undefined,
+      );
+      const segmentPaths = ffmpegService.concatenateSegments.mock.calls[0][0];
+      expect(segmentPaths).toHaveLength(2);
+      expect(segmentPaths[0]).not.toContain('segment_00000.ts');
+    });
+
+    it('should clamp custom range when end exceeds available buffer', async () => {
+      // 5 segments available (50 seconds)
+      storageService.listFiles.mockResolvedValue([
+        '2025-01-01T000000-segment_00000.ts',
+        '2025-01-01T000010-segment_00001.ts',
+        '2025-01-01T000020-segment_00002.ts',
+        '2025-01-01T000030-segment_00003.ts',
+        '2025-01-01T000040-segment_00004.ts',
+      ]);
+      storageService.getFileStats.mockResolvedValue({ size: 50000 });
+
+      const customDto = {
+        startSeconds: 10,
+        endSeconds: 130, // Exceeds 50s buffer
+        destination: 'library' as const,
+      };
+
+      const result = await service.captureReplay(userId, customDto);
+
+      // Should succeed (clamped) instead of throwing
+      expect(result.clipId).toBe('clip-1');
+      // Verify FFmpeg was called (meaning it didn't throw)
+      expect(ffmpegService.concatenateSegments).toHaveBeenCalled();
+    });
+
+    it('should throw when all segments are incomplete', async () => {
+      storageService.listFiles.mockResolvedValue([
+        '2025-01-01T000000-segment_00000.ts',
+      ]);
+      // All segments are incomplete (< 10KB), so listCompleteSegments returns empty
+      storageService.getFileStats.mockResolvedValue({ size: 500 });
+
+      const customDto = {
+        startSeconds: 0,
+        endSeconds: 10,
+        destination: 'library' as const,
+      };
+
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw when start time is after end time', async () => {
+      const customDto = {
+        startSeconds: 30,
+        endSeconds: 10,
+        destination: 'library' as const,
+      };
+
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        'Start time must be before end time',
+      );
     });
   });
 

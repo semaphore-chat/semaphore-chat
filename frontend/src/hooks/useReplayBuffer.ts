@@ -42,6 +42,10 @@ export const useReplayBuffer = () => {
   const isOperationPendingRef = useRef(false);
   const isActiveRef = useRef(false);
 
+  // Operation queuing: instead of dropping events when busy, queue them
+  const pendingOperationRef = useRef<'start' | 'stop' | null>(null);
+  const pendingStartDataRef = useRef<LocalTrackPublication | null>(null);
+
   // Keep ref in sync with state for external reactivity
   useEffect(() => {
     isActiveRef.current = isReplayBufferActive;
@@ -51,53 +55,45 @@ export const useReplayBuffer = () => {
   useEffect(() => {
     if (!room || !currentVoiceChannel) return;
 
-    const handleTrackPublished = async (publication: LocalTrackPublication) => {
-      // Only handle screen share tracks
-      if (publication.source !== Track.Source.ScreenShare) return;
-
-      // Prevent race conditions - use refs which are always current
-      if (isActiveRef.current || isOperationPendingRef.current) {
-        logger.dev('[ReplayBuffer] Already active or operation pending, skipping');
-        return;
-      }
-
-      // Extract video track ID
-      const videoTrackId = publication.track?.sid;
-
-      if (!videoTrackId) {
-        logger.warn('[ReplayBuffer] Screen share has no video track');
-        return;
-      }
-
-      // Screen share audio is published as a separate track (Track.Source.ScreenShareAudio).
-      // It may arrive slightly after the video track, so retry briefly.
-      let audioTrackId: string | undefined;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const audioPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
-        audioTrackId = audioPub?.track?.sid;
-        if (audioTrackId) break;
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-
-      if (!audioTrackId) {
-        logger.warn('[ReplayBuffer] No screen share audio track found — recording without audio');
-      }
-
-      // Get participant identity for track resolution query
-      const participantIdentity = room.localParticipant?.identity;
-
-      logger.dev('[ReplayBuffer] Screen share published, starting replay buffer', {
-        channelId: currentVoiceChannel,
-        roomName: room.name,
-        videoTrackId,
-        audioTrackId,
-        participantIdentity,
-      });
-
-      // Mark operation as pending to prevent concurrent calls
+    const executeStart = async (publication: LocalTrackPublication) => {
+      // Mark pending immediately so events during audio discovery are queued,
+      // not dropped (audio wait can take up to 2s)
       isOperationPendingRef.current = true;
 
       try {
+        // Extract video track ID
+        const videoTrackId = publication.track?.sid;
+
+        if (!videoTrackId) {
+          logger.warn('[ReplayBuffer] Screen share has no video track');
+          return;
+        }
+
+        // Screen share audio is published as a separate track (Track.Source.ScreenShareAudio).
+        // It may arrive slightly after the video track, so retry briefly.
+        let audioTrackId: string | undefined;
+        for (let attempt = 0; attempt < 10; attempt++) {
+          const audioPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
+          audioTrackId = audioPub?.track?.sid;
+          if (audioTrackId) break;
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
+
+        if (!audioTrackId) {
+          logger.warn('[ReplayBuffer] No screen share audio track found — recording without audio');
+        }
+
+        // Get participant identity for track resolution query
+        const participantIdentity = room.localParticipant?.identity;
+
+        logger.dev('[ReplayBuffer] Screen share published, starting replay buffer', {
+          channelId: currentVoiceChannel,
+          roomName: room.name,
+          videoTrackId,
+          audioTrackId,
+          participantIdentity,
+        });
+
         await startReplayBuffer({
           body: {
             channelId: currentVoiceChannel,
@@ -117,22 +113,13 @@ export const useReplayBuffer = () => {
         showNotification('Replay unavailable', 'error');
       } finally {
         isOperationPendingRef.current = false;
+        processPendingOperation();
       }
     };
 
-    const handleTrackUnpublished = async (publication: LocalTrackPublication) => {
-      // Only handle screen share tracks
-      if (publication.source !== Track.Source.ScreenShare) return;
+    const executeStop = async () => {
+      logger.dev('[ReplayBuffer] Stopping replay buffer');
 
-      // Prevent race conditions - use refs which are always current
-      if (!isActiveRef.current || isOperationPendingRef.current) {
-        logger.dev('[ReplayBuffer] Not active or operation pending, skipping');
-        return;
-      }
-
-      logger.dev('[ReplayBuffer] Screen share unpublished, stopping replay buffer');
-
-      // Mark operation as pending to prevent concurrent calls
       isOperationPendingRef.current = true;
 
       try {
@@ -144,7 +131,62 @@ export const useReplayBuffer = () => {
         logger.error('[ReplayBuffer] Failed to stop replay buffer:', error);
       } finally {
         isOperationPendingRef.current = false;
+        processPendingOperation();
       }
+    };
+
+    const processPendingOperation = () => {
+      const pending = pendingOperationRef.current;
+      if (!pending) return;
+
+      pendingOperationRef.current = null;
+
+      if (pending === 'start') {
+        const publication = pendingStartDataRef.current;
+        pendingStartDataRef.current = null;
+        if (publication) {
+          logger.dev('[ReplayBuffer] Processing queued start operation');
+          executeStart(publication);
+        }
+      } else if (pending === 'stop') {
+        if (isActiveRef.current) {
+          logger.dev('[ReplayBuffer] Processing queued stop operation');
+          executeStop();
+        }
+      }
+    };
+
+    const handleTrackPublished = async (publication: LocalTrackPublication) => {
+      // Only handle screen share tracks
+      if (publication.source !== Track.Source.ScreenShare) return;
+
+      // Queue if an operation is in-flight
+      if (isOperationPendingRef.current) {
+        logger.dev('[ReplayBuffer] Operation pending, queuing start');
+        pendingOperationRef.current = 'start';
+        pendingStartDataRef.current = publication;
+        return;
+      }
+
+      // The backend handles "start while active" by stopping the old session first,
+      // so we don't need to guard on isActiveRef here.
+      await executeStart(publication);
+    };
+
+    const handleTrackUnpublished = async (publication: LocalTrackPublication) => {
+      // Only handle screen share tracks
+      if (publication.source !== Track.Source.ScreenShare) return;
+
+      // Queue if an operation is in-flight
+      if (isOperationPendingRef.current) {
+        logger.dev('[ReplayBuffer] Operation pending, queuing stop');
+        pendingOperationRef.current = 'stop';
+        return;
+      }
+
+      if (!isActiveRef.current) return;
+
+      await executeStop();
     };
 
     // Attach event listeners to room (not localParticipant)
