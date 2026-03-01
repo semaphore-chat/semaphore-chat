@@ -1,5 +1,6 @@
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { DatabaseService } from '@/database/database.service';
+import { isPrismaError } from '@/common/utils/prisma.utils';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import {
@@ -510,24 +511,25 @@ export class RolesService implements OnModuleInit {
 
     await this.databaseService.$transaction(async (tx) => {
       for (const defaultRole of defaultRoles) {
-        await tx.role.upsert({
-          where: {
-            name_communityId: {
+        const existing = await tx.role.findFirst({
+          where: { name: defaultRole.name, communityId },
+        });
+
+        if (existing) {
+          await tx.role.update({
+            where: { id: existing.id },
+            data: { actions: defaultRole.actions, isDefault: true },
+          });
+        } else {
+          await tx.role.create({
+            data: {
               name: defaultRole.name,
               communityId,
+              isDefault: true,
+              actions: defaultRole.actions,
             },
-          },
-          update: {
-            actions: defaultRole.actions,
-            isDefault: true,
-          },
-          create: {
-            name: defaultRole.name,
-            communityId,
-            isDefault: true,
-            actions: defaultRole.actions,
-          },
-        });
+          });
+        }
       }
     });
 
@@ -1277,17 +1279,28 @@ export class RolesService implements OnModuleInit {
       return existingRole.id;
     }
 
-    const role = await this.databaseService.role.create({
-      data: {
-        name: roleConfig.name,
-        actions: roleConfig.actions,
-        communityId: null,
-        isDefault: true,
-      },
-    });
+    try {
+      const role = await this.databaseService.role.create({
+        data: {
+          name: roleConfig.name,
+          actions: roleConfig.actions,
+          communityId: null,
+          isDefault: true,
+        },
+      });
 
-    this.logger.log(`Created default instance role: ${roleConfig.name}`);
-    return role.id;
+      this.logger.log(`Created default instance role: ${roleConfig.name}`);
+      return role.id;
+    } catch (error) {
+      if (isPrismaError(error, 'P2002')) {
+        // Race condition: another replica created the role between our findFirst and create
+        const role = await this.databaseService.role.findFirst({
+          where: { name: roleConfig.name, communityId: null },
+        });
+        return role!.id;
+      }
+      throw error;
+    }
   }
 
   /**

@@ -57,10 +57,10 @@ async function main() {
   }
   console.log({ admin });
 
-  const adminRole = await prisma.role.upsert({
-    where: { name_communityId: { name: 'admin', communityId: '' } },
-    update: {},
-    create: {
+  const adminRole = await prisma.role.findFirst({
+    where: { name: 'admin', communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: 'admin',
       actions: [
         RbacActions.DELETE_MESSAGE,
@@ -100,10 +100,10 @@ async function main() {
 
   console.log({ adminRole });
 
-  const modRole = await prisma.role.upsert({
-    where: { name_communityId: { name: 'moderator', communityId: '' } },
-    update: {},
-    create: {
+  const modRole = await prisma.role.findFirst({
+    where: { name: 'moderator', communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: 'moderator',
       actions: [
         RbacActions.DELETE_MESSAGE,
@@ -132,15 +132,10 @@ async function main() {
   console.log({ modRole });
 
   // Create default instance-level roles
-  const instanceAdminRole = await prisma.role.upsert({
-    where: {
-      name_communityId: {
-        name: DEFAULT_INSTANCE_ADMIN_ROLE.name,
-        communityId: '',
-      },
-    },
-    update: {},
-    create: {
+  const instanceAdminRole = await prisma.role.findFirst({
+    where: { name: DEFAULT_INSTANCE_ADMIN_ROLE.name, communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: DEFAULT_INSTANCE_ADMIN_ROLE.name,
       actions: DEFAULT_INSTANCE_ADMIN_ROLE.actions,
       isDefault: true,
@@ -148,15 +143,10 @@ async function main() {
   });
   console.log({ instanceAdminRole });
 
-  const communityCreatorRole = await prisma.role.upsert({
-    where: {
-      name_communityId: {
-        name: DEFAULT_COMMUNITY_CREATOR_ROLE.name,
-        communityId: '',
-      },
-    },
-    update: {},
-    create: {
+  const communityCreatorRole = await prisma.role.findFirst({
+    where: { name: DEFAULT_COMMUNITY_CREATOR_ROLE.name, communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: DEFAULT_COMMUNITY_CREATOR_ROLE.name,
       actions: DEFAULT_COMMUNITY_CREATOR_ROLE.actions,
       isDefault: true,
@@ -164,15 +154,10 @@ async function main() {
   });
   console.log({ communityCreatorRole });
 
-  const userManagerRole = await prisma.role.upsert({
-    where: {
-      name_communityId: {
-        name: DEFAULT_USER_MANAGER_ROLE.name,
-        communityId: '',
-      },
-    },
-    update: {},
-    create: {
+  const userManagerRole = await prisma.role.findFirst({
+    where: { name: DEFAULT_USER_MANAGER_ROLE.name, communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: DEFAULT_USER_MANAGER_ROLE.name,
       actions: DEFAULT_USER_MANAGER_ROLE.actions,
       isDefault: true,
@@ -180,15 +165,10 @@ async function main() {
   });
   console.log({ userManagerRole });
 
-  const inviteManagerRole = await prisma.role.upsert({
-    where: {
-      name_communityId: {
-        name: DEFAULT_INVITE_MANAGER_ROLE.name,
-        communityId: '',
-      },
-    },
-    update: {},
-    create: {
+  const inviteManagerRole = await prisma.role.findFirst({
+    where: { name: DEFAULT_INVITE_MANAGER_ROLE.name, communityId: null },
+  }) ?? await prisma.role.create({
+    data: {
       name: DEFAULT_INVITE_MANAGER_ROLE.name,
       actions: DEFAULT_INVITE_MANAGER_ROLE.actions,
       isDefault: true,
@@ -197,20 +177,14 @@ async function main() {
   console.log({ inviteManagerRole });
 
   // Assign Instance Admin role to the admin user
-  const adminInstanceRole = await prisma.userRoles.upsert({
-    where: {
-      userId_communityId_roleId: {
-        userId: admin.id,
-        communityId: '', // Empty string for instance roles
-        roleId: instanceAdminRole.id,
-      },
-    },
-    create: {
+  const adminInstanceRole = await prisma.userRoles.findFirst({
+    where: { userId: admin.id, roleId: instanceAdminRole.id, isInstanceRole: true },
+  }) ?? await prisma.userRoles.create({
+    data: {
       userId: admin.id,
       roleId: instanceAdminRole.id,
       isInstanceRole: true,
     },
-    update: {},
   });
   console.log({ adminInstanceRole });
 
@@ -225,12 +199,10 @@ async function main() {
   console.log({ community });
 
   // Create community-specific roles
-  const communityAdminRole = await prisma.role.upsert({
-    where: {
-      name_communityId: { name: 'Community Admin', communityId: community.id },
-    },
-    update: {},
-    create: {
+  const communityAdminRole = await prisma.role.findFirst({
+    where: { name: 'Community Admin', communityId: community.id },
+  }) ?? await prisma.role.create({
+    data: {
       name: 'Community Admin',
       communityId: community.id,
       isDefault: true,
@@ -270,12 +242,10 @@ async function main() {
   });
   console.log({ communityAdminRole });
 
-  const communityModeratorRole = await prisma.role.upsert({
-    where: {
-      name_communityId: { name: 'Moderator', communityId: community.id },
-    },
-    update: {},
-    create: {
+  const communityModeratorRole = await prisma.role.findFirst({
+    where: { name: 'Moderator', communityId: community.id },
+  }) ?? await prisma.role.create({
+    data: {
       name: 'Moderator',
       communityId: community.id,
       isDefault: true,
@@ -300,15 +270,10 @@ async function main() {
   });
   console.log({ communityModeratorRole });
 
-  const communityMemberRole = await prisma.role.upsert({
-    where: {
-      name_communityId: {
-        name: DEFAULT_MEMBER_ROLE.name,
-        communityId: community.id,
-      },
-    },
-    update: {},
-    create: {
+  const communityMemberRole = await prisma.role.findFirst({
+    where: { name: DEFAULT_MEMBER_ROLE.name, communityId: community.id },
+  }) ?? await prisma.role.create({
+    data: {
       name: DEFAULT_MEMBER_ROLE.name,
       communityId: community.id,
       isDefault: true,
@@ -333,21 +298,15 @@ async function main() {
   console.log({ member });
 
   // Assign admin user to the community admin role
-  const adminUserRole = await prisma.userRoles.upsert({
-    where: {
-      userId_communityId_roleId: {
-        userId: admin.id,
-        communityId: community.id,
-        roleId: communityAdminRole.id,
-      },
-    },
-    create: {
+  const adminUserRole = await prisma.userRoles.findFirst({
+    where: { userId: admin.id, communityId: community.id, roleId: communityAdminRole.id },
+  }) ?? await prisma.userRoles.create({
+    data: {
       userId: admin.id,
       communityId: community.id,
       roleId: communityAdminRole.id,
       isInstanceRole: false,
     },
-    update: {},
   });
   console.log({ adminUserRole });
 
@@ -383,21 +342,15 @@ async function main() {
     console.log({ user0Member });
 
     // Assign Member role to user-0
-    const user0UserRole = await prisma.userRoles.upsert({
-      where: {
-        userId_communityId_roleId: {
-          userId: user0.id,
-          communityId: community.id,
-          roleId: communityMemberRole.id,
-        },
-      },
-      create: {
+    const user0UserRole = await prisma.userRoles.findFirst({
+      where: { userId: user0.id, communityId: community.id, roleId: communityMemberRole.id },
+    }) ?? await prisma.userRoles.create({
+      data: {
         userId: user0.id,
         communityId: community.id,
         roleId: communityMemberRole.id,
         isInstanceRole: false,
       },
-      update: {},
     });
     console.log({ user0UserRole });
   }

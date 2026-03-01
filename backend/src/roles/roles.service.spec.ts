@@ -1235,8 +1235,12 @@ describe('RolesService', () => {
   });
 
   describe('resetDefaultCommunityRoles', () => {
-    it('should upsert all three default roles and return community roles', async () => {
+    it('should find and update/create all three default roles and return community roles', async () => {
       const communityId = 'community-123';
+      const existingRole = RoleFactory.build({
+        id: 'existing-id',
+        communityId,
+      });
       const roles = [
         RoleFactory.build({
           name: 'Community Admin',
@@ -1250,53 +1254,57 @@ describe('RolesService', () => {
       mockDatabase.$transaction.mockImplementation((fn: any) =>
         fn(mockDatabase),
       );
-      mockDatabase.role.upsert.mockResolvedValue(RoleFactory.build());
+      mockDatabase.role.findFirst.mockResolvedValue(existingRole);
+      mockDatabase.role.update.mockResolvedValue(existingRole);
       mockDatabase.role.findMany.mockResolvedValue(roles);
 
       const result = await service.resetDefaultCommunityRoles(communityId);
 
       expect(mockDatabase.$transaction).toHaveBeenCalled();
-      expect(mockDatabase.role.upsert).toHaveBeenCalledTimes(3);
+      expect(mockDatabase.role.findFirst).toHaveBeenCalledTimes(3);
       expect(result.communityId).toBe(communityId);
       expect(result.roles).toHaveLength(3);
     });
 
-    it('should upsert with correct where/update/create for each default role', async () => {
+    it('should use findFirst + update for existing roles, create for missing ones', async () => {
       const communityId = 'community-456';
+      const existingAdmin = RoleFactory.build({
+        id: 'admin-role-id',
+        name: 'Community Admin',
+        communityId,
+      });
 
       mockDatabase.$transaction.mockImplementation((fn: any) =>
         fn(mockDatabase),
       );
-      mockDatabase.role.upsert.mockResolvedValue(RoleFactory.build());
+      // First call (Community Admin) finds existing, rest return null
+      mockDatabase.role.findFirst
+        .mockResolvedValueOnce(existingAdmin)
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(null);
+      mockDatabase.role.update.mockResolvedValue(existingAdmin);
+      mockDatabase.role.create.mockResolvedValue(RoleFactory.build());
       mockDatabase.role.findMany.mockResolvedValue([]);
 
       await service.resetDefaultCommunityRoles(communityId);
 
-      // Verify each upsert uses the compound unique key
-      expect(mockDatabase.role.upsert).toHaveBeenCalledWith({
-        where: { name_communityId: { name: 'Community Admin', communityId } },
-        update: { actions: expect.any(Array), isDefault: true },
-        create: {
-          name: 'Community Admin',
-          communityId,
-          isDefault: true,
-          actions: expect.any(Array),
-        },
+      // Existing role gets updated by id
+      expect(mockDatabase.role.update).toHaveBeenCalledWith({
+        where: { id: 'admin-role-id' },
+        data: { actions: expect.any(Array), isDefault: true },
       });
-      expect(mockDatabase.role.upsert).toHaveBeenCalledWith({
-        where: { name_communityId: { name: 'Moderator', communityId } },
-        update: { actions: expect.any(Array), isDefault: true },
-        create: {
+
+      // Missing roles get created
+      expect(mockDatabase.role.create).toHaveBeenCalledWith({
+        data: {
           name: 'Moderator',
           communityId,
           isDefault: true,
           actions: expect.any(Array),
         },
       });
-      expect(mockDatabase.role.upsert).toHaveBeenCalledWith({
-        where: { name_communityId: { name: 'Member', communityId } },
-        update: { actions: expect.any(Array), isDefault: true },
-        create: {
+      expect(mockDatabase.role.create).toHaveBeenCalledWith({
+        data: {
           name: 'Member',
           communityId,
           isDefault: true,
@@ -1307,23 +1315,25 @@ describe('RolesService', () => {
 
     it('should reset permissions on existing roles without affecting user assignments', async () => {
       const communityId = 'community-789';
+      const existingRole = RoleFactory.build({ id: 'role-id', communityId });
 
       mockDatabase.$transaction.mockImplementation((fn: any) =>
         fn(mockDatabase),
       );
-      mockDatabase.role.upsert.mockResolvedValue(RoleFactory.build());
+      mockDatabase.role.findFirst.mockResolvedValue(existingRole);
+      mockDatabase.role.update.mockResolvedValue(existingRole);
       mockDatabase.role.findMany.mockResolvedValue([]);
 
       await service.resetDefaultCommunityRoles(communityId);
 
-      // Upsert only touches actions and isDefault on update — not UserRoles
-      for (const call of mockDatabase.role.upsert.mock.calls) {
+      // Update only touches actions and isDefault — not UserRoles
+      for (const call of mockDatabase.role.update.mock.calls) {
         const args = call[0];
-        expect(args.update).toEqual({
+        expect(args.data).toEqual({
           actions: expect.any(Array),
           isDefault: true,
         });
-        expect(args.update).not.toHaveProperty('UserRoles');
+        expect(args.data).not.toHaveProperty('UserRoles');
       }
     });
   });

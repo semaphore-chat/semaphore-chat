@@ -386,7 +386,7 @@ model Role {
 
   UserRoles UserRoles[]
 
-  @@unique([name, communityId])
+  @@index([name, communityId])
 }
 
 model UserRoles {
@@ -400,7 +400,7 @@ model UserRoles {
   community      Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
   role           Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
-  @@unique([userId, communityId, roleId])
+  @@index([userId, communityId, roleId])
 }
 
 model DirectMessageGroup {
