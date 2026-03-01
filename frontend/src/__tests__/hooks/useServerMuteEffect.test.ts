@@ -37,6 +37,11 @@ vi.mock('../../utils/logger', () => ({
   logger: { dev: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
+vi.mock('../../hooks/useSound', () => ({
+  playSound: vi.fn(),
+  Sounds: { error: 'error' },
+}));
+
 describe('useServerMuteEffect', () => {
   beforeEach(() => {
     vi.clearAllMocks();

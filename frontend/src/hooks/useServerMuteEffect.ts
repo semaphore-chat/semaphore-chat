@@ -4,6 +4,7 @@ import { useVoiceDispatch } from '../contexts/VoiceContext';
 import { useRoom } from './useRoom';
 import { useCurrentUser } from './useCurrentUser';
 import { logger } from '../utils/logger';
+import { playSound, Sounds } from './useSound';
 
 /**
  * Hook that listens for VOICE_CHANNEL_USER_UPDATED events and enforces
@@ -28,6 +29,10 @@ export const useServerMuteEffect = () => {
     const isServerMuted = payload.user.isServerMuted ?? false;
 
     dispatch({ type: 'SET_SERVER_MUTED', payload: isServerMuted });
+
+    if (isServerMuted) {
+      playSound(Sounds.error);
+    }
 
     if (isServerMuted && room) {
       room.localParticipant.setMicrophoneEnabled(false).catch((err) => {

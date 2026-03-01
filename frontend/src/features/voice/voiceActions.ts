@@ -9,6 +9,7 @@ import { logger } from "../../utils/logger";
 import { isElectron } from "../../utils/platform";
 import { getCachedItem, setCachedItem, removeCachedItem } from "../../utils/storage";
 import { refreshToken as refreshAuthToken } from "../../utils/tokenService";
+import { playSound, Sounds } from "../../hooks/useSound";
 
 // Storage key must match useDeviceSettings.ts
 const DEVICE_PREFERENCES_KEY = 'kraken_device_preferences';
@@ -250,6 +251,7 @@ export async function joinVoiceChannel(
       createdAt,
     });
 
+    playSound(Sounds.connected);
     logger.info('[Voice] === Voice channel join complete ===');
   } catch (error) {
     logger.error("[Voice] Failed to join voice channel:", error);
@@ -290,6 +292,7 @@ export async function leaveVoiceChannel(deps: VoiceActionDeps) {
     dispatch({ type: 'SET_DISCONNECTED' });
     clearConnectionState();
 
+    playSound(Sounds.disconnected);
     logger.info('[Voice] === Voice channel leave complete ===');
   } catch (error) {
     logger.error('[Voice] Failed to leave voice channel:', error);
@@ -357,6 +360,8 @@ export async function joinDmVoice(
       dmGroupId,
       dmGroupName,
     });
+
+    playSound(Sounds.connected);
   } catch (error) {
     logger.error("Failed to join DM voice call:", error);
     const message = error instanceof Error ? error.message : "Failed to join DM voice call";
@@ -378,6 +383,7 @@ export async function leaveDmVoice(deps: VoiceActionDeps) {
     setRoom(null);
     dispatch({ type: 'SET_DISCONNECTED' });
     clearConnectionState();
+    playSound(Sounds.disconnected);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to leave DM voice call";
     dispatch({ type: 'SET_CONNECTION_ERROR', payload: message });
@@ -413,6 +419,7 @@ export async function toggleMicrophone(deps: VoiceActionDeps) {
 
   try {
     await room.localParticipant.setMicrophoneEnabled(newState);
+    playSound(newState ? Sounds.toggleOn : Sounds.toggleOff);
     logger.info('[Voice] Microphone toggled successfully');
   } catch (error) {
     logger.error("[Voice] Failed to toggle microphone:", error);
@@ -451,6 +458,7 @@ export async function toggleCameraUnified(deps: VoiceActionDeps) {
       : undefined;
 
     await room.localParticipant.setCameraEnabled(newState, videoCaptureOptions);
+    playSound(newState ? Sounds.toggleOn : Sounds.toggleOff);
     logger.info('[Voice] Camera toggled successfully');
   } catch (error) {
     logger.error("[Voice] Failed to toggle camera:", error);
@@ -529,6 +537,7 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
           resolution: resolutionConfig as { width: number; height: number; frameRate: number },
           preferCurrentTab: false,
         });
+        playSound(Sounds.screenShareStarted);
         logger.info('[Voice] Screen share enabled with audio');
       } catch (audioError) {
         if (audioError instanceof Error) {
@@ -569,6 +578,7 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
           });
 
           dispatch({ type: 'SET_SCREEN_SHARE_AUDIO_FAILED', payload: true });
+          playSound(Sounds.screenShareStarted);
           logger.info('[Voice] Screen share enabled without audio (fallback)');
         } else {
           throw audioError;
@@ -577,6 +587,7 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
     } else {
       await room.localParticipant.setScreenShareEnabled(false);
       dispatch({ type: 'SET_SCREEN_SHARE_AUDIO_FAILED', payload: false });
+      playSound(Sounds.screenShareStopped);
     }
     logger.info('[Voice] Screen share toggled successfully');
   } catch (error) {

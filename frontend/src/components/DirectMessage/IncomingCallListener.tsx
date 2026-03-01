@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useRef } from "react";
 import { ServerEvents } from "@kraken/shared";
 import { useServerEvent } from "../../socket-hub/useServerEvent";
 import { useIncomingCall } from "../../contexts/IncomingCallContext";
@@ -9,12 +9,42 @@ import { useQueryClient } from "@tanstack/react-query";
 import { directMessagesControllerFindUserDmGroupsQueryKey } from "../../api-client/@tanstack/react-query.gen";
 import { getDmDisplayName } from "../../utils/dmHelpers";
 import type { DirectMessageGroup } from "../../types/direct-message.type";
+import { playSound, Sounds } from "../../hooks/useSound";
+
+const RING_INTERVAL_MS = 3500;
 
 export const IncomingCallListener: React.FC = () => {
-  const { showIncomingCall } = useIncomingCall();
+  const { incomingCall, showIncomingCall } = useIncomingCall();
   const { state: voiceState } = useVoiceConnection();
   const { user } = useCurrentUser();
   const queryClient = useQueryClient();
+  const ringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Loop the incoming call sound while incomingCall is active
+  useEffect(() => {
+    if (incomingCall) {
+      // Play immediately on arrival
+      playSound(Sounds.incomingCall);
+
+      // Then loop every ~3.5s
+      ringIntervalRef.current = setInterval(() => {
+        playSound(Sounds.incomingCall);
+      }, RING_INTERVAL_MS);
+    } else {
+      // Call dismissed/accepted — stop ringing
+      if (ringIntervalRef.current) {
+        clearInterval(ringIntervalRef.current);
+        ringIntervalRef.current = null;
+      }
+    }
+
+    return () => {
+      if (ringIntervalRef.current) {
+        clearInterval(ringIntervalRef.current);
+        ringIntervalRef.current = null;
+      }
+    };
+  }, [incomingCall]);
 
   const handleDmVoiceCallStarted = useCallback(
     (payload: {
