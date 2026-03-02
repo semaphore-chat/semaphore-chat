@@ -3,7 +3,6 @@ import {
   SubscribeMessage,
   MessageBody,
   ConnectedSocket,
-  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { VoicePresenceService } from './voice-presence.service';
 import { Socket } from 'socket.io';
@@ -32,41 +31,21 @@ class VoiceChannelEventDto {
 /**
  * Voice Presence WebSocket Gateway
  *
- * NOTE: Voice presence is now primarily managed by LiveKit webhooks.
+ * NOTE: Voice presence is managed by LiveKit webhooks.
  * - participant_joined webhook → updates Redis when user connects to LiveKit
  * - participant_left webhook → updates Redis when user disconnects from LiveKit
  *
  * This gateway provides:
- * - Cleanup on WebSocket disconnect (backup for LiveKit webhook)
- * - Presence TTL refresh
+ * - Presence TTL refresh (heartbeat from connected clients)
  */
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway()
 @UsePipes(wsValidationPipe)
 @UseGuards(WsJwtAuthGuard, RbacGuard)
-export class VoicePresenceGateway implements OnGatewayDisconnect {
+export class VoicePresenceGateway {
   private readonly logger = new Logger(VoicePresenceGateway.name);
 
   constructor(private readonly voicePresenceService: VoicePresenceService) {}
-
-  async handleDisconnect(client: Socket) {
-    const user = (client.handshake as { user?: UserEntity }).user;
-    if (!user) return;
-
-    this.logger.log(
-      `Client disconnected: ${client.id}, cleaning up voice presence`,
-    );
-
-    // Clean up user's voice presence in all channels they were in
-    // This is a backup for LiveKit webhooks - if the webhook fails,
-    // we still clean up when the user's WebSocket disconnects
-    const voiceChannels = await this.voicePresenceService.getUserVoiceChannels(
-      user.id,
-    );
-    for (const channelId of voiceChannels) {
-      await this.voicePresenceService.leaveVoiceChannel(channelId, user.id);
-    }
-  }
 
   @SubscribeMessage(ClientEvents.VOICE_PRESENCE_REFRESH)
   @RequiredActions(RbacActions.JOIN_CHANNEL)

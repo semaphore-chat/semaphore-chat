@@ -83,7 +83,7 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
         expect.any(String),
         'EX',
-        300,
+        90,
       );
       expect(mockPipeline.sadd).toHaveBeenCalledTimes(2);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
@@ -112,7 +112,7 @@ describe('VoicePresenceService', () => {
 
       expect(mockRedis.expire).toHaveBeenCalledWith(
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
-        300,
+        90,
       );
       // Should not create new entry or emit join event
       expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
@@ -302,7 +302,7 @@ describe('VoicePresenceService', () => {
   });
 
   describe('refreshPresence', () => {
-    it('should refresh TTL for user presence', async () => {
+    it('should extend TTL when key still exists', async () => {
       const channelId = 'channel-123';
       const userId = 'user-123';
 
@@ -312,7 +312,48 @@ describe('VoicePresenceService', () => {
 
       expect(mockRedis.expire).toHaveBeenCalledWith(
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
-        300,
+        90,
+      );
+      // Should NOT re-register
+      expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should re-register user when key has expired', async () => {
+      const channelId = 'channel-123';
+      const userId = 'user-123';
+      const mockUser = {
+        id: userId,
+        username: 'testuser',
+        displayName: 'Test User',
+        avatarUrl: 'https://example.com/avatar.png',
+      };
+
+      // expire returns 0 = key does not exist
+      mockRedis.expire.mockResolvedValue(0);
+      // No existing data (expired)
+      mockRedis.get.mockResolvedValue(null);
+      mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
+
+      await service.refreshPresence(channelId, userId);
+
+      // Should have called handleWebhookChannelParticipantJoined internally
+      expect(mockDatabaseService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: userId },
+      });
+      expect(mockRedis.pipeline).toHaveBeenCalled();
+      expect(mockPipeline.set).toHaveBeenCalledWith(
+        expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
+        expect.any(String),
+        'EX',
+        90,
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        channelId,
+        ServerEvents.VOICE_CHANNEL_USER_JOINED,
+        expect.objectContaining({
+          channelId,
+          user: expect.objectContaining({ id: userId }),
+        }),
       );
     });
 
@@ -329,7 +370,7 @@ describe('VoicePresenceService', () => {
   });
 
   describe('refreshDmPresence', () => {
-    it('should refresh TTL for DM voice presence', async () => {
+    it('should extend TTL when key still exists', async () => {
       const dmGroupId = 'dm-group-123';
       const userId = 'user-123';
 
@@ -341,7 +382,43 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(
           `dm_voice_presence:user:${dmGroupId}:${userId}`,
         ),
-        300,
+        90,
+      );
+      // Should NOT re-register
+      expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('should re-register user when key has expired', async () => {
+      const dmGroupId = 'dm-group-123';
+      const userId = 'user-123';
+      const mockUser = {
+        id: userId,
+        username: 'testuser',
+        displayName: 'Test User',
+        avatarUrl: 'https://example.com/avatar.png',
+      };
+
+      // expire returns 0 = key does not exist
+      mockRedis.expire.mockResolvedValue(0);
+      // No existing data (expired)
+      mockRedis.get.mockResolvedValue(null);
+      mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
+      mockRedis.smembers.mockResolvedValue([]);
+
+      await service.refreshDmPresence(dmGroupId, userId);
+
+      // Should have called handleWebhookDmParticipantJoined internally
+      expect(mockDatabaseService.user.findUnique).toHaveBeenCalledWith({
+        where: { id: userId },
+      });
+      expect(mockRedis.pipeline).toHaveBeenCalled();
+      expect(mockPipeline.set).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `dm_voice_presence:user:${dmGroupId}:${userId}`,
+        ),
+        expect.any(String),
+        'EX',
+        90,
       );
     });
 
@@ -422,7 +499,7 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
         expect.stringContaining('"isDeafened":true'),
         'EX',
-        300,
+        90,
       );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         channelId,
@@ -454,7 +531,7 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
         expect.stringContaining('"isDeafened":false'),
         'EX',
-        300,
+        90,
       );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         channelId,
@@ -502,7 +579,7 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
         expect.stringContaining('"isServerMuted":true'),
         'EX',
-        300,
+        90,
       );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         channelId,
@@ -535,7 +612,7 @@ describe('VoicePresenceService', () => {
         expect.stringContaining(`voice_presence:user:${channelId}:${userId}`),
         expect.stringContaining('"isServerMuted":false'),
         'EX',
-        300,
+        90,
       );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         channelId,
