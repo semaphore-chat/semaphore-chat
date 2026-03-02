@@ -7,7 +7,7 @@ import {
 import { VoicePresenceService } from './voice-presence.service';
 import { Socket } from 'socket.io';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { Logger, UseGuards, UsePipes, UseFilters } from '@nestjs/common';
+import { UseGuards, UsePipes, UseFilters } from '@nestjs/common';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { ClientEvents } from '@kraken/shared';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -43,8 +43,6 @@ class VoiceChannelEventDto {
 @UsePipes(wsValidationPipe)
 @UseGuards(WsJwtAuthGuard, RbacGuard)
 export class VoicePresenceGateway {
-  private readonly logger = new Logger(VoicePresenceGateway.name);
-
   constructor(private readonly voicePresenceService: VoicePresenceService) {}
 
   @SubscribeMessage(ClientEvents.VOICE_PRESENCE_REFRESH)

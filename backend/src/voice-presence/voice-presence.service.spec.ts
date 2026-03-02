@@ -35,6 +35,9 @@ describe('VoicePresenceService', () => {
       directMessageGroup: {
         findFirst: jest.fn(),
       },
+      directMessageGroupMember: {
+        findFirst: jest.fn(),
+      },
       user: {
         findUnique: jest.fn(),
       },
@@ -388,7 +391,7 @@ describe('VoicePresenceService', () => {
       expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
     });
 
-    it('should re-register user when key has expired', async () => {
+    it('should re-register user when key has expired and user is a DM member', async () => {
       const dmGroupId = 'dm-group-123';
       const userId = 'user-123';
       const mockUser = {
@@ -400,6 +403,11 @@ describe('VoicePresenceService', () => {
 
       // expire returns 0 = key does not exist
       mockRedis.expire.mockResolvedValue(0);
+      // Membership check passes
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue({
+        groupId: dmGroupId,
+        userId,
+      });
       // No existing data (expired)
       mockRedis.get.mockResolvedValue(null);
       mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
@@ -407,6 +415,12 @@ describe('VoicePresenceService', () => {
 
       await service.refreshDmPresence(dmGroupId, userId);
 
+      // Should verify membership first
+      expect(
+        mockDatabaseService.directMessageGroupMember.findFirst,
+      ).toHaveBeenCalledWith({
+        where: { groupId: dmGroupId, userId },
+      });
       // Should have called handleWebhookDmParticipantJoined internally
       expect(mockDatabaseService.user.findUnique).toHaveBeenCalledWith({
         where: { id: userId },
@@ -420,6 +434,24 @@ describe('VoicePresenceService', () => {
         'EX',
         90,
       );
+    });
+
+    it('should not re-register when key has expired and user is not a DM member', async () => {
+      const dmGroupId = 'dm-group-123';
+      const userId = 'user-123';
+
+      // expire returns 0 = key does not exist
+      mockRedis.expire.mockResolvedValue(0);
+      // Membership check fails
+      mockDatabaseService.directMessageGroupMember.findFirst.mockResolvedValue(
+        null,
+      );
+
+      await service.refreshDmPresence(dmGroupId, userId);
+
+      // Should not re-register
+      expect(mockDatabaseService.user.findUnique).not.toHaveBeenCalled();
+      expect(mockRedis.pipeline).not.toHaveBeenCalled();
     });
 
     it('should not throw error on failure', async () => {

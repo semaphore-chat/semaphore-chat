@@ -244,7 +244,19 @@ export class VoicePresenceService {
       );
 
       if (result === 0) {
-        // Key expired or missing — re-register the user
+        // Key expired or missing — verify membership before re-registering
+        const member =
+          await this.databaseService.directMessageGroupMember.findFirst({
+            where: { groupId: dmGroupId, userId },
+          });
+
+        if (!member) {
+          this.logger.warn(
+            `User ${userId} is not a member of DM ${dmGroupId}, skipping re-registration`,
+          );
+          return;
+        }
+
         this.logger.log(
           `DM presence expired for user ${userId} in DM ${dmGroupId}, re-registering`,
         );
