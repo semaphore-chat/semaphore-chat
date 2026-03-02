@@ -43,7 +43,7 @@ export class VoicePresenceService {
   private readonly DM_VOICE_PRESENCE_MEMBERS_PREFIX = 'dm_voice_presence:dm';
   private readonly DM_VOICE_PRESENCE_USER_DMS_PREFIX =
     'dm_voice_presence:user_dms';
-  private readonly VOICE_PRESENCE_TTL = 300; // 5 minutes
+  private readonly VOICE_PRESENCE_TTL = 90; // 90 seconds (3 missed heartbeats at 30s interval)
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -204,12 +204,25 @@ export class VoicePresenceService {
   }
 
   /**
-   * Refresh a user's presence in the voice channel (extend TTL)
+   * Refresh a user's presence in the voice channel (extend TTL).
+   * If the key has expired (e.g. tab was backgrounded too long),
+   * re-register the user so presence is restored on the next heartbeat.
    */
   async refreshPresence(channelId: string, userId: string): Promise<void> {
     try {
       const userDataKey = `${this.VOICE_PRESENCE_USER_DATA_PREFIX}:${channelId}:${userId}`;
-      await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
+      const result = await this.redis.expire(
+        userDataKey,
+        this.VOICE_PRESENCE_TTL,
+      );
+
+      if (result === 0) {
+        // Key expired or missing — re-register the user
+        this.logger.log(
+          `Presence expired for user ${userId} in channel ${channelId}, re-registering`,
+        );
+        await this.handleWebhookChannelParticipantJoined(channelId, userId);
+      }
     } catch (error) {
       this.logger.error(
         `Failed to refresh presence for user ${userId} in channel ${channelId}`,
@@ -219,12 +232,36 @@ export class VoicePresenceService {
   }
 
   /**
-   * Refresh a user's presence in a DM voice call (extend TTL)
+   * Refresh a user's presence in a DM voice call (extend TTL).
+   * If the key has expired, re-register the user so presence is restored.
    */
   async refreshDmPresence(dmGroupId: string, userId: string): Promise<void> {
     try {
       const userDataKey = `${this.DM_VOICE_PRESENCE_USER_DATA_PREFIX}:${dmGroupId}:${userId}`;
-      await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
+      const result = await this.redis.expire(
+        userDataKey,
+        this.VOICE_PRESENCE_TTL,
+      );
+
+      if (result === 0) {
+        // Key expired or missing — verify membership before re-registering
+        const member =
+          await this.databaseService.directMessageGroupMember.findFirst({
+            where: { groupId: dmGroupId, userId },
+          });
+
+        if (!member) {
+          this.logger.warn(
+            `User ${userId} is not a member of DM ${dmGroupId}, skipping re-registration`,
+          );
+          return;
+        }
+
+        this.logger.log(
+          `DM presence expired for user ${userId} in DM ${dmGroupId}, re-registering`,
+        );
+        await this.handleWebhookDmParticipantJoined(dmGroupId, userId);
+      }
     } catch (error) {
       this.logger.error(
         `Failed to refresh DM presence for user ${userId} in DM ${dmGroupId}`,
