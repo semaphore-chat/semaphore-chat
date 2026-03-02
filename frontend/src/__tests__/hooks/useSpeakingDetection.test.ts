@@ -44,7 +44,11 @@ type Handler = (...args: unknown[]) => void;
 const participantHandlers = new Map<string, Set<Handler>>();
 const roomHandlers = new Map<string, Set<Handler>>();
 
-const mockMediaStreamTrack = { enabled: true };
+const mockAnalysisTrack = { enabled: true, stop: vi.fn() };
+const mockMediaStreamTrack = {
+  enabled: true,
+  clone: vi.fn(() => mockAnalysisTrack),
+};
 
 const mockLocalParticipant = {
   identity: 'user-1',
@@ -116,6 +120,9 @@ describe('useSpeakingDetection', () => {
     rafCallbacks = [];
     audioLevel = 0;
     mockMediaStreamTrack.enabled = true;
+    mockMediaStreamTrack.clone.mockReturnValue(mockAnalysisTrack);
+    mockAnalysisTrack.enabled = true;
+    mockAnalysisTrack.stop.mockClear();
     currentRoom = makeRoom();
     storedSettings = {
       kraken_voice_settings: {
@@ -396,5 +403,138 @@ describe('useSpeakingDetection', () => {
 
     expect(mockLocalParticipant.off).toHaveBeenCalledWith('localTrackPublished', expect.any(Function));
     expect(mockLocalParticipant.off).toHaveBeenCalledWith('localTrackUnpublished', expect.any(Function));
+  });
+
+  // ------------------------------------------------------------------
+  // Track cloning for analysis (gate lockout fix)
+  // ------------------------------------------------------------------
+
+  it('uses a cloned track for analysis, gating the original', () => {
+    renderSpeaking();
+
+    // clone() should have been called to create the analysis track
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalled();
+
+    // Close the gate — original track should be disabled, clone stays enabled
+    audioLevel = 0;
+    act(() => tickRAF(1));
+    act(() => {
+      vi.advanceTimersByTime(350);
+      tickRAF(1);
+    });
+
+    expect(mockMediaStreamTrack.enabled).toBe(false);
+    expect(mockAnalysisTrack.enabled).toBe(true);
+  });
+
+  it('reopens gate when audio rises above threshold after being closed', () => {
+    const { result } = renderSpeaking();
+
+    // Close the gate
+    audioLevel = 0;
+    act(() => tickRAF(1));
+    act(() => {
+      vi.advanceTimersByTime(350);
+      tickRAF(1);
+    });
+    expect(mockMediaStreamTrack.enabled).toBe(false);
+    expect(result.current.isSpeaking('user-1')).toBe(false);
+
+    // Because analysis uses a cloned track, the analyser still reads real audio.
+    // Raise audio above threshold and wait past min close time — gate should reopen.
+    audioLevel = 50;
+    act(() => {
+      vi.advanceTimersByTime(150);
+      tickRAF(1);
+    });
+
+    expect(mockMediaStreamTrack.enabled).toBe(true);
+    expect(result.current.isSpeaking('user-1')).toBe(true);
+  });
+
+  it('stops the cloned analysis track on cleanup', () => {
+    const { unmount } = renderSpeaking();
+
+    // Verify clone was used
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalled();
+
+    unmount();
+
+    expect(mockAnalysisTrack.stop).toHaveBeenCalled();
+  });
+
+  it('stops cloned track when local track is republished', () => {
+    renderSpeaking();
+
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalledTimes(1);
+
+    // Simulate track republish
+    act(() => {
+      participantHandlers.get('localTrackPublished')?.forEach(h => h());
+    });
+
+    // Old clone should be stopped
+    expect(mockAnalysisTrack.stop).toHaveBeenCalled();
+
+    // After delay, a new clone should be created
+    act(() => vi.advanceTimersByTime(250));
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to original track if clone() fails', () => {
+    mockMediaStreamTrack.clone.mockImplementation(() => { throw new Error('clone failed'); });
+
+    renderSpeaking();
+
+    // Should still work — gate controls the original track directly
+    audioLevel = 50;
+    act(() => tickRAF(1));
+    expect(mockMediaStreamTrack.enabled).toBe(true);
+
+    audioLevel = 0;
+    act(() => tickRAF(1));
+    act(() => {
+      vi.advanceTimersByTime(350);
+      tickRAF(1);
+    });
+    expect(mockMediaStreamTrack.enabled).toBe(false);
+  });
+
+  // ------------------------------------------------------------------
+  // Device change handling
+  // ------------------------------------------------------------------
+
+  it('restarts analysis when active audio device changes', () => {
+    renderSpeaking();
+
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalledTimes(1);
+
+    // Simulate device change
+    act(() => {
+      roomHandlers.get('activeDeviceChanged')?.forEach(h => h('audioinput'));
+    });
+
+    // Old clone should be stopped
+    expect(mockAnalysisTrack.stop).toHaveBeenCalled();
+    expect(mockAudioContextClose).toHaveBeenCalled();
+
+    // After delay, analysis restarts with new clone
+    act(() => vi.advanceTimersByTime(250));
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not restart analysis for non-audio device changes', () => {
+    renderSpeaking();
+
+    const cloneCountBefore = mockMediaStreamTrack.clone.mock.calls.length;
+
+    act(() => {
+      roomHandlers.get('activeDeviceChanged')?.forEach(h => h('videoinput'));
+    });
+
+    act(() => vi.advanceTimersByTime(250));
+
+    // No additional clone calls — analysis was not restarted
+    expect(mockMediaStreamTrack.clone).toHaveBeenCalledTimes(cloneCountBefore);
   });
 });

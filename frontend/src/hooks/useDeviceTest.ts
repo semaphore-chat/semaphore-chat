@@ -112,7 +112,7 @@ export function useDeviceTest({
       const microphone = audioContext.createMediaStreamSource(stream);
 
       analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.8;
+      analyser.smoothingTimeConstant = 0.5;
       microphone.connect(analyser);
 
       audioContextRef.current = audioContext;

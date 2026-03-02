@@ -50,6 +50,8 @@ export const useSpeakingDetection = () => {
   const animationFrameRef = useRef<number | null>(null);
   const localAnalysisActiveRef = useRef(false);
   const localTrackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const analysisTrackRef = useRef<MediaStreamTrack | null>(null);
+  const analysisTrackIsCloneRef = useRef(false);
 
   // Gate state refs (used for both indicator and audio gating)
   const gateOpenRef = useRef(true);
@@ -142,7 +144,21 @@ export const useSpeakingDetection = () => {
         analyser.fftSize = 256;
         analyser.smoothingTimeConstant = 0.5;
 
-        const stream = new MediaStream([mediaStreamTrack]);
+        // Clone the track for analysis so its `enabled` state is independent.
+        // The analyser always reads real audio from the clone, while the gate
+        // toggles `enabled` only on the original (published) track.
+        let analysisTrack: MediaStreamTrack;
+        try {
+          analysisTrack = mediaStreamTrack.clone();
+          analysisTrackIsCloneRef.current = true;
+        } catch {
+          // Fallback: use the original (pre-fix behavior)
+          analysisTrack = mediaStreamTrack;
+          analysisTrackIsCloneRef.current = false;
+        }
+        analysisTrackRef.current = analysisTrack;
+
+        const stream = new MediaStream([analysisTrack]);
         const source = ctx.createMediaStreamSource(stream);
         source.connect(analyser);
 
@@ -283,6 +299,11 @@ export const useSpeakingDetection = () => {
         audioContextRef.current = null;
       }
       analyserRef.current = null;
+      if (analysisTrackRef.current && analysisTrackIsCloneRef.current) {
+        analysisTrackRef.current.stop();
+      }
+      analysisTrackRef.current = null;
+      analysisTrackIsCloneRef.current = false;
 
       // Only re-enable track if OUR gate disabled it — don't override
       // explicit user mute/deafen/PTT state
@@ -318,6 +339,14 @@ export const useSpeakingDetection = () => {
     local.on("localTrackPublished", handleLocalTrackPublished);
     local.on("localTrackUnpublished", handleLocalTrackUnpublished);
 
+    const handleActiveDeviceChanged = (kind: MediaDeviceKind) => {
+      if (kind === 'audioinput') {
+        stopLocalAnalysis();
+        localTrackTimeoutRef.current = setTimeout(() => startLocalAnalysis(), 200);
+      }
+    };
+    room.on("activeDeviceChanged", handleActiveDeviceChanged);
+
     // Cleanup
     return () => {
       // Remote handlers
@@ -333,6 +362,7 @@ export const useSpeakingDetection = () => {
 
       room.off("participantConnected", handleParticipantConnected);
       room.off("participantDisconnected", handleParticipantDisconnected);
+      room.off("activeDeviceChanged", handleActiveDeviceChanged);
 
       // Local analysis + gating cleanup
       stopLocalAnalysis();
