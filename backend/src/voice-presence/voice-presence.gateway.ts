@@ -2,20 +2,13 @@ import {
   WebSocketGateway,
   SubscribeMessage,
   MessageBody,
-  WsException,
   ConnectedSocket,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
 import { VoicePresenceService } from './voice-presence.service';
 import { Socket } from 'socket.io';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import {
-  Logger,
-  UseGuards,
-  UsePipes,
-  ValidationPipe,
-  UseFilters,
-} from '@nestjs/common';
+import { Logger, UseGuards, UsePipes, UseFilters } from '@nestjs/common';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { ClientEvents } from '@kraken/shared';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -25,6 +18,7 @@ import {
   RbacResourceType,
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
+import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { IsString, IsNotEmpty } from 'class-validator';
@@ -48,9 +42,7 @@ class VoiceChannelEventDto {
  */
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway()
-@UsePipes(
-  new ValidationPipe({ exceptionFactory: (errors) => new WsException(errors) }),
-)
+@UsePipes(wsValidationPipe)
 @UseGuards(WsJwtAuthGuard, RbacGuard)
 export class VoicePresenceGateway implements OnGatewayDisconnect {
   private readonly logger = new Logger(VoicePresenceGateway.name);

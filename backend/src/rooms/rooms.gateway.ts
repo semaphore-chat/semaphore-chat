@@ -7,19 +7,14 @@ import {
 } from '@nestjs/websockets';
 import { RoomsService } from './rooms.service';
 import { Server, Socket } from 'socket.io';
-import {
-  Logger,
-  UseGuards,
-  UsePipes,
-  ValidationPipe,
-  UseFilters,
-} from '@nestjs/common';
+import { Logger, UseGuards, UsePipes, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { UserService } from '@/user/user.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { ClientEvents } from '@kraken/shared';
+import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -28,7 +23,6 @@ import {
   AuthenticatedSocket,
   extractTokenFromHandshake,
 } from '@/common/utils/socket.utils';
-import { WsException } from '@nestjs/websockets';
 
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway({
@@ -40,9 +34,7 @@ import { WsException } from '@nestjs/websockets';
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-@UsePipes(
-  new ValidationPipe({ exceptionFactory: (errors) => new WsException(errors) }),
-)
+@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
 export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(RoomsGateway.name);

@@ -27,7 +27,10 @@ export class CreateMessageDto {
   @IsString()
   directMessageGroupId: string | null;
 
+  @Exclude()
   authorId: string;
+
+  @Exclude()
   sentAt: Date;
 
   @Exclude()
