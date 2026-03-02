@@ -588,7 +588,7 @@ describe('UserService', () => {
       expect(result.avatarUrl).toBe(avatarFileId);
       expect(mockDatabase.user.update).toHaveBeenCalledWith({
         where: { id: user.id },
-        data: { avatarUrl: avatarFileId },
+        data: { avatarFile: { connect: { id: avatarFileId } } },
       });
     });
 
@@ -607,7 +607,7 @@ describe('UserService', () => {
       expect(result.bannerUrl).toBe(bannerFileId);
       expect(mockDatabase.user.update).toHaveBeenCalledWith({
         where: { id: user.id },
-        data: { bannerUrl: bannerFileId },
+        data: { bannerFile: { connect: { id: bannerFileId } } },
       });
     });
 
@@ -633,8 +633,8 @@ describe('UserService', () => {
         where: { id: user.id },
         data: {
           displayName: 'New Name',
-          avatarUrl: 'avatar-123',
-          bannerUrl: 'banner-456',
+          avatarFile: { connect: { id: 'avatar-123' } },
+          bannerFile: { connect: { id: 'banner-456' } },
         },
       });
     });

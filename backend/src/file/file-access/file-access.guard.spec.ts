@@ -56,11 +56,10 @@ describe('FileAccessGuard', () => {
     });
   });
 
-  describe('Public files (no resourceId)', () => {
-    it('should allow access to files with no resourceId', async () => {
+  describe('Public files (no resource FK)', () => {
+    it('should allow access to files with no resource FK', async () => {
       const user = UserFactory.build();
       const file = FileFactory.build({
-        resourceId: null,
         resourceType: ResourceType.USER_AVATAR,
       });
       const context = createMockHttpExecutionContext({
@@ -76,9 +75,8 @@ describe('FileAccessGuard', () => {
       expect(fileService.findOne).toHaveBeenCalledWith(file.id);
     });
 
-    it('should allow unauthenticated access to files with no resourceId', async () => {
+    it('should allow unauthenticated access to files with no resource FK', async () => {
       const file = FileFactory.build({
-        resourceId: null,
         resourceType: ResourceType.USER_AVATAR,
       });
 
@@ -110,7 +108,7 @@ describe('FileAccessGuard', () => {
     it('should allow access to user avatars for authenticated users', async () => {
       const user = UserFactory.build();
       const file = FileFactory.build({
-        resourceId: 'other-user-id',
+        fileUserId: 'other-user-id',
         resourceType: ResourceType.USER_AVATAR,
       });
       const context = createMockHttpExecutionContext({
@@ -128,7 +126,7 @@ describe('FileAccessGuard', () => {
     it('should allow access to user banners for authenticated users', async () => {
       const user = UserFactory.build();
       const file = FileFactory.build({
-        resourceId: 'other-user-id',
+        fileUserId: 'other-user-id',
         resourceType: ResourceType.USER_BANNER,
       });
       const context = createMockHttpExecutionContext({
@@ -149,7 +147,7 @@ describe('FileAccessGuard', () => {
       const user = UserFactory.build();
       const communityId = 'community-123';
       const file = FileFactory.build({
-        resourceId: communityId,
+        fileCommunityId: communityId,
         resourceType: ResourceType.COMMUNITY_AVATAR,
       });
       const context = createMockHttpExecutionContext({
@@ -173,7 +171,7 @@ describe('FileAccessGuard', () => {
       const user = UserFactory.build();
       const communityId = 'community-456';
       const file = FileFactory.build({
-        resourceId: communityId,
+        fileCommunityId: communityId,
         resourceType: ResourceType.COMMUNITY_BANNER,
       });
       const context = createMockHttpExecutionContext({
@@ -196,7 +194,7 @@ describe('FileAccessGuard', () => {
       const user = UserFactory.build();
       const communityId = 'community-789';
       const file = FileFactory.build({
-        resourceId: communityId,
+        fileCommunityId: communityId,
         resourceType: ResourceType.CUSTOM_EMOJI,
       });
       const context = createMockHttpExecutionContext({
@@ -220,7 +218,7 @@ describe('FileAccessGuard', () => {
       const channelId = 'channel-456';
       const communityId = 'community-789';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -256,7 +254,7 @@ describe('FileAccessGuard', () => {
       const channelId = 'channel-456';
       const communityId = 'community-789';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -291,7 +289,7 @@ describe('FileAccessGuard', () => {
       const channelId = 'channel-private';
       const communityId = 'community-123';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -328,7 +326,7 @@ describe('FileAccessGuard', () => {
       const channelId = 'channel-private';
       const communityId = 'community-123';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -364,7 +362,7 @@ describe('FileAccessGuard', () => {
       const messageId = 'dm-message-123';
       const dmGroupId = 'dm-group-456';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -403,7 +401,7 @@ describe('FileAccessGuard', () => {
       const messageId = 'dm-message-123';
       const dmGroupId = 'dm-group-456';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -431,7 +429,7 @@ describe('FileAccessGuard', () => {
   describe('Error scenarios', () => {
     it('should throw ForbiddenException when user not authenticated for resource files', async () => {
       const file = FileFactory.build({
-        resourceId: 'community-123',
+        fileCommunityId: 'community-123',
         resourceType: ResourceType.COMMUNITY_AVATAR,
       });
       const mockContext = {
@@ -479,7 +477,7 @@ describe('FileAccessGuard', () => {
     it('should throw NotFoundException when message not found for attachment', async () => {
       const user = UserFactory.build();
       const file = FileFactory.build({
-        resourceId: 'nonexistent-message',
+        fileMessageId: 'nonexistent-message',
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -503,7 +501,7 @@ describe('FileAccessGuard', () => {
       const messageId = 'message-123';
       const channelId = 'nonexistent-channel';
       const file = FileFactory.build({
-        resourceId: messageId,
+        fileMessageId: messageId,
         resourceType: ResourceType.MESSAGE_ATTACHMENT,
       });
       const context = createMockHttpExecutionContext({
@@ -530,7 +528,7 @@ describe('FileAccessGuard', () => {
     it('should throw ForbiddenException for unknown resource type', async () => {
       const user = UserFactory.build();
       const file = FileFactory.build({
-        resourceId: 'resource-123',
+        fileUserId: 'resource-123',
         resourceType: 'UNKNOWN_TYPE' as any,
       });
       const context = createMockHttpExecutionContext({

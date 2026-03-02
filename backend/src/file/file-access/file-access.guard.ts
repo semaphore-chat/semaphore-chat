@@ -82,21 +82,25 @@ export class FileAccessGuard implements CanActivate {
       // Fetch file metadata
       const file = await this.fileService.findOne(fileId);
 
-      // Files without a resourceId are only allowed for intentionally-public resource types.
-      // This prevents accidental public exposure if a code path creates a file without setting resourceId.
-      if (!file.resourceId) {
+      // Resolve the resource ID from the appropriate typed FK column
+      const resourceId =
+        file.fileUserId || file.fileCommunityId || file.fileMessageId;
+
+      // Files without a resource FK are only allowed for intentionally-public resource types.
+      // This prevents accidental public exposure if a code path creates a file without setting a resource FK.
+      if (!resourceId) {
         const publicResourceTypes: ResourceType[] = [
           ResourceType.USER_AVATAR,
           ResourceType.USER_BANNER,
         ];
         if (publicResourceTypes.includes(file.resourceType)) {
           this.logger.debug(
-            `File ${fileId} has no resourceId but is public type ${file.resourceType}, allowing access`,
+            `File ${fileId} has no resource FK but is public type ${file.resourceType}, allowing access`,
           );
           return true;
         }
         this.logger.warn(
-          `File ${fileId} has no resourceId and non-public type ${file.resourceType}, denying access`,
+          `File ${fileId} has no resource FK and non-public type ${file.resourceType}, denying access`,
         );
         throw new ForbiddenException('Access denied');
       }
@@ -120,7 +124,7 @@ export class FileAccessGuard implements CanActivate {
       }
 
       // Delegate access check to the strategy
-      return await strategy.checkAccess(user.id, file.resourceId, fileId);
+      return await strategy.checkAccess(user.id, resourceId, fileId);
     } catch (error) {
       if (
         error instanceof ForbiddenException ||

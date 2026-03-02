@@ -14,7 +14,7 @@ model Message {
   id                   String    @id @default(uuid())
   channelId            String? // Now optional, for DMs
   directMessageGroupId String? // New, for DMs
-  authorId             String
+  authorId             String? // Nullable: shows "[Deleted User]" when author is deleted
   sentAt               DateTime  @default(now())
   editedAt             DateTime?
   deletedAt            DateTime?
@@ -31,7 +31,7 @@ model Message {
   deletedByReason String? // Reason for mod deletion
 
   // Threading fields
-  parentMessageId String?   // If set, this is a thread reply
+  parentMessageId String? // If set, this is a thread reply
   replyCount      Int       @default(0) // Number of replies (only on parent messages)
   lastReplyAt     DateTime? // When the last reply was added
 
@@ -42,6 +42,9 @@ model Message {
 
   channel            Channel?            @relation(fields: [channelId], references: [id], onDelete: Cascade)
   directMessageGroup DirectMessageGroup? @relation("DirectMessageGroupMessages", fields: [directMessageGroupId], references: [id], onDelete: Cascade)
+  author             User?               @relation("MessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  pinnedByUser       User?               @relation("MessagePinner", fields: [pinnedBy], references: [id], onDelete: SetNull)
+  deletedByUser      User?               @relation("MessageDeleter", fields: [deletedBy], references: [id], onDelete: SetNull)
   notifications      Notification[]
 
   // Thread self-relation
@@ -50,6 +53,12 @@ model Message {
 
   // Thread subscribers
   threadSubscribers ThreadSubscriber[] @relation("MessageThreadSubscribers")
+
+  // Back-references
+  moderationLogs             ModerationLog[] @relation("LogTargetMessage")
+  readReceipts               ReadReceipt[]   @relation("ReadReceiptLastMessage")
+  parentMessageNotifications Notification[]  @relation("NotificationParentMessage")
+  resourceFiles              File[]          @relation("FileResourceMessage")
 
   @@index([channelId, sentAt]) // Primary message loading (cursor pagination)
   @@index([channelId, authorId, sentAt]) // Slowmode check
@@ -70,7 +79,10 @@ model MessageSpan {
   communityId String? // For COMMUNITY_MENTION
   aliasId     String? // For ALIAS_MENTION
 
-  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  message    Message     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user       User?       @relation("SpanUser", fields: [userId], references: [id], onDelete: SetNull)
+  community  Community?  @relation("SpanCommunity", fields: [communityId], references: [id], onDelete: SetNull)
+  aliasGroup AliasGroup? @relation("SpanAlias", fields: [aliasId], references: [id], onDelete: SetNull)
 
   @@index([messageId])
 }
@@ -83,6 +95,7 @@ model MessageReaction {
   createdAt DateTime @default(now())
 
   message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation("ReactionUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([messageId, emoji, userId])
   @@index([messageId])
@@ -126,6 +139,7 @@ model ReadReceipt {
   user               User?               @relation("UserReadReceipts", fields: [userId], references: [id], onDelete: Cascade)
   channel            Channel?            @relation("ChannelReadReceipts", fields: [channelId], references: [id], onDelete: Cascade)
   directMessageGroup DirectMessageGroup? @relation("DirectMessageGroupReadReceipts", fields: [directMessageGroupId], references: [id], onDelete: Cascade)
+  lastReadMessage    Message             @relation("ReadReceiptLastMessage", fields: [lastReadMessageId], references: [id], onDelete: Cascade)
 
   @@index([userId, channelId])
   @@index([userId, directMessageGroupId])
@@ -147,10 +161,12 @@ model Notification {
   dismissed            Boolean          @default(false)
   createdAt            DateTime         @default(now())
 
-  user    User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  message Message? @relation(fields: [messageId], references: [id], onDelete: Cascade)
-  author  User     @relation("NotificationAuthors", fields: [authorId], references: [id], onDelete: Cascade)
-  channel Channel? @relation("ChannelNotifications", fields: [channelId], references: [id], onDelete: Cascade)
+  user               User                @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  message            Message?            @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  author             User                @relation("NotificationAuthors", fields: [authorId], references: [id], onDelete: Cascade)
+  channel            Channel?            @relation("ChannelNotifications", fields: [channelId], references: [id], onDelete: Cascade)
+  parentMessage      Message?            @relation("NotificationParentMessage", fields: [parentMessageId], references: [id], onDelete: SetNull)
+  directMessageGroup DirectMessageGroup? @relation("NotificationDMGroup", fields: [directMessageGroupId], references: [id], onDelete: Cascade)
 
   @@index([userId, read]) // Fast query for unread notifications
   @@index([userId, createdAt]) // For notification history with pagination
@@ -228,11 +244,15 @@ model User {
   blockedByUsers UserBlock[] @relation("BlockedUser")
 
   // Ban status
-  banned     Boolean   @default(false)
-  bannedAt   DateTime?
-  bannedById String?
-  bannedBy   User?     @relation("BannedByUser", fields: [bannedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  bannedUsers User[]   @relation("BannedByUser")
+  banned      Boolean   @default(false)
+  bannedAt    DateTime?
+  bannedById  String?
+  bannedBy    User?     @relation("BannedByUser", fields: [bannedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  bannedUsers User[]    @relation("BannedByUser")
+
+  // Avatar/banner FK relations
+  avatarFile File? @relation("UserAvatar", fields: [avatarUrl], references: [id], onDelete: SetNull)
+  bannerFile File? @relation("UserBanner", fields: [bannerUrl], references: [id], onDelete: SetNull)
 
   InstanceInvite InstanceInvite[]
 
@@ -269,20 +289,36 @@ model User {
 
   // Alias group memberships
   aliasGroupMemberships AliasGroupMember[]
+
+  // FK back-references
+  authoredMessages          Message[]             @relation("MessageAuthor")
+  pinnedMessages            Message[]             @relation("MessagePinner")
+  deletedMessages           Message[]             @relation("MessageDeleter")
+  mentionSpans              MessageSpan[]         @relation("SpanUser")
+  addedChannelMemberships   ChannelMembership[]   @relation("ChannelMembershipAddedBy")
+  moderatorLogs             ModerationLog[]       @relation("LogModerator")
+  targetOfLogs              ModerationLog[]       @relation("LogTargetUser")
+  messageReactions          MessageReaction[]     @relation("ReactionUser")
+  communityBansReceived     CommunityBan[]        @relation("BannedUser")
+  communityBansMade         CommunityBan[]        @relation("BanModerator")
+  communityTimeoutsReceived CommunityTimeout[]    @relation("TimedOutUser")
+  communityTimeoutsMade     CommunityTimeout[]    @relation("TimeoutModerator")
+  instanceInviteUsages      InstanceInviteUsage[] @relation("InviteUsageUser")
+  resourceFiles             File[]                @relation("FileResourceUser")
 }
 
 model RefreshToken {
-  id         String   @id @default(uuid())
-  userId     String
-  tokenHash  String
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
-  user       User     @relation(fields: [userId], references: [id])
+  id        String   @id @default(uuid())
+  userId    String
+  tokenHash String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id])
 
   // Session/device tracking
-  deviceName String?  // User-friendly name (e.g., "Chrome on Windows")
-  userAgent  String?  // Full user agent string
-  ipAddress  String?  // Client IP address
+  deviceName String? // User-friendly name (e.g., "Chrome on Windows")
+  userAgent  String? // Full user agent string
+  ipAddress  String? // Client IP address
   lastUsedAt DateTime @default(now()) // Last activity with this token
 
   // Token family for reuse detection (RFC 9700 best practice)
@@ -294,7 +330,7 @@ model RefreshToken {
   consumedAt DateTime?
 
   @@index([userId, lastUsedAt]) // For fetching user's sessions sorted by activity
-  @@index([familyId])           // For invalidating entire token family on reuse
+  @@index([familyId]) // For invalidating entire token family on reuse
 }
 
 model InstanceInvite {
@@ -320,6 +356,7 @@ model InstanceInviteUsage {
   usedAt   DateTime @default(now())
 
   invite InstanceInvite @relation(fields: [inviteId], references: [id], onDelete: Cascade)
+  user   User           @relation("InviteUsageUser", fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([inviteId, userId])
   @@index([inviteId])
@@ -347,7 +384,7 @@ model InstanceSettings {
 
   // Storage settings
   defaultStorageQuotaBytes BigInt @default(53687091200) // 50GB default for new users
-  maxFileSizeBytes         BigInt @default(524288000)   // 500MB max per file
+  maxFileSizeBytes         BigInt @default(524288000) // 500MB max per file
 
   // VAPID keys for push notifications (auto-generated if not set via env vars)
   vapidPublicKey  String?
@@ -356,9 +393,9 @@ model InstanceSettings {
 }
 
 enum RegistrationMode {
-  OPEN        // Anyone can register
+  OPEN // Anyone can register
   INVITE_ONLY // Requires an invite code
-  CLOSED      // Registration disabled
+  CLOSED // Registration disabled
 }
 
 model Membership {
@@ -384,6 +421,10 @@ model Community {
   UserRoles   UserRoles[]
   roles       Role[]
 
+  // Avatar/banner FK relations
+  avatarFile File? @relation("CommunityAvatar", fields: [avatar], references: [id], onDelete: SetNull)
+  bannerFile File? @relation("CommunityBanner", fields: [banner], references: [id], onDelete: SetNull)
+
   // Moderation relations
   bans           CommunityBan[]     @relation("CommunityBans")
   timeouts       CommunityTimeout[] @relation("CommunityTimeouts")
@@ -391,6 +432,11 @@ model Community {
 
   // Instance invite defaults
   instanceInviteDefaults InstanceInviteDefaultCommunity[]
+
+  // FK back-references
+  mentionSpans  MessageSpan[] @relation("SpanCommunity")
+  aliasGroups   AliasGroup[]  @relation("AliasGroupCommunity")
+  resourceFiles File[]        @relation("FileResourceCommunity")
 
   @@unique([name])
 }
@@ -411,6 +457,10 @@ model Channel {
   notificationOverrides ChannelNotificationOverride[] @relation("ChannelNotificationOverrides")
   notifications         Notification[]                @relation("ChannelNotifications")
 
+  // FK back-references
+  replayClips    ReplayClip[]    @relation("ReplayClipChannel")
+  egressSessions EgressSession[] @relation("EgressSessionChannel")
+
   @@unique([communityId, name])
   @@index([communityId, type, position])
 }
@@ -424,6 +474,8 @@ model ChannelMembership {
   channelId String
   addedBy   String? // Who added this user (for private channels)
 
+  addedByUser User? @relation("ChannelMembershipAddedBy", fields: [addedBy], references: [id], onDelete: SetNull)
+
   @@unique([userId, channelId])
 }
 
@@ -433,6 +485,9 @@ model AliasGroup {
   communityId String
   members     AliasGroupMember[]
   createdAt   DateTime           @default(now())
+
+  community    Community     @relation("AliasGroupCommunity", fields: [communityId], references: [id], onDelete: Cascade)
+  mentionSpans MessageSpan[] @relation("SpanAlias")
 
   @@unique([communityId, name])
 }
@@ -483,6 +538,9 @@ model DirectMessageGroup {
   messages     Message[]                  @relation("DirectMessageGroupMessages")
   isGroup      Boolean                    @default(false) // true for group DMs, false for 1:1
   ReadReceipts ReadReceipt[]              @relation("DirectMessageGroupReadReceipts")
+
+  // FK back-references
+  notifications Notification[] @relation("NotificationDMGroup")
 }
 
 model DirectMessageGroupMember {
@@ -535,20 +593,37 @@ model File {
   uploadedAt   DateTime     @default(now())
   deletedAt    DateTime? // Soft delete
   resourceType ResourceType
-  resourceId   String? // ID of the resource this file is associated with (userId, communityId, messageId, etc.)
+
+  // Typed FK columns (replaces polymorphic resourceId)
+  fileUserId      String? // USER_AVATAR, USER_BANNER, REPLAY_CLIP
+  fileCommunityId String? // COMMUNITY_AVATAR, COMMUNITY_BANNER, CUSTOM_EMOJI
+  fileMessageId   String? // MESSAGE_ATTACHMENT
 
   // Storage configuration
   storageType   StorageType @default(LOCAL)
   storagePath   String // Local path or cloud key
   thumbnailPath String? // Path to generated thumbnail image (for videos)
 
+  // Typed FK relations
+  resourceUser      User?      @relation("FileResourceUser", fields: [fileUserId], references: [id], onDelete: Cascade)
+  resourceCommunity Community? @relation("FileResourceCommunity", fields: [fileCommunityId], references: [id], onDelete: Cascade)
+  resourceMessage   Message?   @relation("FileResourceMessage", fields: [fileMessageId], references: [id], onDelete: Cascade)
+
   // Relations
   replayClips        ReplayClip[]
   messageAttachments MessageAttachment[]
 
+  // Avatar/banner back-references
+  userAvatars      User[]      @relation("UserAvatar")
+  userBanners      User[]      @relation("UserBanner")
+  communityAvatars Community[] @relation("CommunityAvatar")
+  communityBanners Community[] @relation("CommunityBanner")
+
   @@index([uploadedById]) // show my files or files for specific user
   @@index([deletedAt]) // For cleaning up deleted files
-  @@index([resourceType, resourceId]) // For fetching files related to a specific resource
+  @@index([fileUserId]) // For fetching files related to a user
+  @@index([fileCommunityId]) // For fetching files related to a community
+  @@index([fileMessageId]) // For fetching files related to a message
 }
 
 model EgressSession {
@@ -566,6 +641,8 @@ model EgressSession {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
+  channel Channel @relation("EgressSessionChannel", fields: [channelId], references: [id], onDelete: Cascade)
+
   @@index([userId, status])
   @@index([status, createdAt])
 }
@@ -581,6 +658,8 @@ model ReplayClip {
   isPublic        Boolean  @default(false) // Show on user's public profile
   capturedAt      DateTime @default(now())
 
+  channel Channel? @relation("ReplayClipChannel", fields: [channelId], references: [id], onDelete: SetNull)
+
   @@index([userId, capturedAt])
 }
 
@@ -588,13 +667,15 @@ model CommunityBan {
   id          String    @id @default(uuid())
   communityId String
   userId      String
-  moderatorId String
+  moderatorId String? // Nullable: SetNull when moderator is deleted
   reason      String?
   createdAt   DateTime  @default(now())
   expiresAt   DateTime? // null = permanent ban
   active      Boolean   @default(true)
 
   community Community @relation("CommunityBans", fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation("BannedUser", fields: [userId], references: [id], onDelete: Cascade)
+  moderator User?     @relation("BanModerator", fields: [moderatorId], references: [id], onDelete: SetNull)
 
   @@unique([communityId, userId])
   @@index([communityId, active])
@@ -604,12 +685,14 @@ model CommunityTimeout {
   id          String   @id @default(uuid())
   communityId String
   userId      String
-  moderatorId String
+  moderatorId String? // Nullable: SetNull when moderator is deleted
   reason      String?
   createdAt   DateTime @default(now())
   expiresAt   DateTime // Required - timeouts are always temporary
 
   community Community @relation("CommunityTimeouts", fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation("TimedOutUser", fields: [userId], references: [id], onDelete: Cascade)
+  moderator User?     @relation("TimeoutModerator", fields: [moderatorId], references: [id], onDelete: SetNull)
 
   @@unique([communityId, userId])
   @@index([communityId, expiresAt])
@@ -618,7 +701,7 @@ model CommunityTimeout {
 model ModerationLog {
   id              String           @id @default(uuid())
   communityId     String
-  moderatorId     String
+  moderatorId     String? // Nullable: SetNull when moderator is deleted
   targetUserId    String?
   targetMessageId String?
   action          ModerationAction
@@ -626,7 +709,10 @@ model ModerationLog {
   metadata        Json?
   createdAt       DateTime         @default(now())
 
-  community Community @relation("ModerationLogs", fields: [communityId], references: [id], onDelete: Cascade)
+  community     Community @relation("ModerationLogs", fields: [communityId], references: [id], onDelete: Cascade)
+  moderator     User?     @relation("LogModerator", fields: [moderatorId], references: [id], onDelete: SetNull)
+  targetUser    User?     @relation("LogTargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+  targetMessage Message?  @relation("LogTargetMessage", fields: [targetMessageId], references: [id], onDelete: SetNull)
 
   @@index([communityId, createdAt])
 }
@@ -752,7 +838,7 @@ model PushSubscription {
   id        String   @id @default(uuid())
   userId    String
   endpoint  String   @unique
-  keys      Json     // { p256dh, auth }
+  keys      Json // { p256dh, auth }
   userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

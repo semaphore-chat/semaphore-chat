@@ -259,11 +259,15 @@ export class UserService {
     }
 
     if (updateProfileDto.avatar !== undefined) {
-      updateData.avatarUrl = updateProfileDto.avatar;
+      updateData.avatarFile = updateProfileDto.avatar
+        ? { connect: { id: updateProfileDto.avatar } }
+        : { disconnect: true };
     }
 
     if (updateProfileDto.banner !== undefined) {
-      updateData.bannerUrl = updateProfileDto.banner;
+      updateData.bannerFile = updateProfileDto.banner
+        ? { connect: { id: updateProfileDto.banner } }
+        : { disconnect: true };
     }
 
     if (updateProfileDto.bio !== undefined) {

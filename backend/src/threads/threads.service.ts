@@ -105,6 +105,9 @@ export class ThreadsService {
       const reply = await tx.message.create({
         data: {
           authorId,
+          channelId: parent.channelId,
+          directMessageGroupId: parent.directMessageGroupId,
+          parentMessageId,
           spans: {
             create: sanitizedSpans.map((s, i) => ({ position: i, ...s })),
           },
@@ -120,16 +123,6 @@ export class ThreadsService {
               }
             : {}),
           pendingAttachments: pendingAttachments || 0,
-          // Use relation connect syntax for Prisma
-          ...(parent.channelId && {
-            channel: { connect: { id: parent.channelId } },
-          }),
-          ...(parent.directMessageGroupId && {
-            directMessageGroup: {
-              connect: { id: parent.directMessageGroupId },
-            },
-          }),
-          parentMessage: { connect: { id: parentMessageId } },
         },
         include: MESSAGE_INCLUDE,
       });

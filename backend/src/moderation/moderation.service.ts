@@ -291,7 +291,11 @@ export class ModerationService {
 
     // Enrich with user data
     const userIds = [
-      ...new Set(activeBans.flatMap((b) => [b.userId, b.moderatorId])),
+      ...new Set(
+        activeBans
+          .flatMap((b) => [b.userId, b.moderatorId])
+          .filter((id): id is string => id != null),
+      ),
     ];
     const users = await this.databaseService.user.findMany({
       where: { id: { in: userIds } },
@@ -302,7 +306,7 @@ export class ModerationService {
     return activeBans.map((ban) => ({
       ...ban,
       user: userMap.get(ban.userId) ?? null,
-      moderator: userMap.get(ban.moderatorId) ?? null,
+      moderator: ban.moderatorId ? (userMap.get(ban.moderatorId) ?? null) : null,
     }));
   }
 
@@ -564,7 +568,11 @@ export class ModerationService {
 
     // Enrich with user data
     const userIds = [
-      ...new Set(activeTimeouts.flatMap((t) => [t.userId, t.moderatorId])),
+      ...new Set(
+        activeTimeouts
+          .flatMap((t) => [t.userId, t.moderatorId])
+          .filter((id): id is string => id != null),
+      ),
     ];
     const users = await this.databaseService.user.findMany({
       where: { id: { in: userIds } },
@@ -575,7 +583,9 @@ export class ModerationService {
     return activeTimeouts.map((timeout) => ({
       ...timeout,
       user: userMap.get(timeout.userId) ?? null,
-      moderator: userMap.get(timeout.moderatorId) ?? null,
+      moderator: timeout.moderatorId
+        ? (userMap.get(timeout.moderatorId) ?? null)
+        : null,
     }));
   }
 
@@ -730,7 +740,9 @@ export class ModerationService {
 
     // Fetch authors for enrichment
     const authorIds = new Set<string>();
-    activeMessages.forEach((message) => authorIds.add(message.authorId));
+    activeMessages.forEach((message) => {
+      if (message.authorId) authorIds.add(message.authorId);
+    });
 
     const authors = await this.databaseService.user.findMany({
       where: { id: { in: Array.from(authorIds) } },
@@ -747,7 +759,7 @@ export class ModerationService {
     // Transform messages: add author, format attachments and reactions
     return activeMessages.map((message) => ({
       ...message,
-      author: authorMap.get(message.authorId) || null,
+      author: message.authorId ? (authorMap.get(message.authorId) ?? null) : null,
       spans: message.spans ?? [],
       reactions: message.reactions ? groupReactions(message.reactions) : [],
       attachments: message.attachments.map((a) => ({
@@ -846,9 +858,9 @@ export class ModerationService {
     // Enrich with user data
     const userIds = [
       ...new Set(
-        logs.flatMap((l) =>
-          [l.moderatorId, l.targetUserId].filter(Boolean),
-        ) as string[],
+        logs
+          .flatMap((l) => [l.moderatorId, l.targetUserId])
+          .filter((id): id is string => id != null),
       ),
     ];
     const users = await this.databaseService.user.findMany({
@@ -859,7 +871,7 @@ export class ModerationService {
 
     const enrichedLogs = logs.map((log) => ({
       ...log,
-      moderator: userMap.get(log.moderatorId) ?? null,
+      moderator: log.moderatorId ? (userMap.get(log.moderatorId) ?? null) : null,
       targetUser: log.targetUserId
         ? (userMap.get(log.targetUserId) ?? null)
         : null,

@@ -31,7 +31,7 @@ export class EnrichedMessageDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
-  authorId: string;
+  authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
   pendingAttachments: number | null;
@@ -50,7 +50,7 @@ export class MessageDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
-  authorId: string;
+  authorId: string | null;
   spans: SpanDto[];
   attachments: string[];
   pendingAttachments: number | null;

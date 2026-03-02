@@ -117,7 +117,7 @@ describe('FileUploadService', () => {
       expect(databaseService.file.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           resourceType: ResourceType.MESSAGE_ATTACHMENT,
-          resourceId: 'msg-123',
+          fileMessageId: 'msg-123',
           filename: 'test.png',
           mimeType: 'image/png',
           fileType: FileType.IMAGE,

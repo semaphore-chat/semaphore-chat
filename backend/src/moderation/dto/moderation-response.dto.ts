@@ -47,7 +47,7 @@ export class PinnedMessageDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
-  authorId: string;
+  authorId: string | null;
   spans: SpanDto[];
   reactions: ReactionDto[];
   sentAt: Date;
@@ -71,7 +71,7 @@ export class CommunityBanDto {
   id: string;
   communityId: string;
   userId: string;
-  moderatorId: string;
+  moderatorId: string | null;
   reason: string | null;
   createdAt: Date;
   expiresAt: Date | null;
@@ -86,7 +86,7 @@ export class CommunityTimeoutDto {
   id: string;
   communityId: string;
   userId: string;
-  moderatorId: string;
+  moderatorId: string | null;
   reason: string | null;
   createdAt: Date;
   expiresAt: Date;
@@ -99,7 +99,7 @@ export class CommunityTimeoutDto {
 export class ModerationLogDto {
   id: string;
   communityId: string;
-  moderatorId: string;
+  moderatorId: string | null;
   targetUserId: string | null;
   @ApiProperty({ enum: ModerationActionValues })
   action: ModerationAction;
