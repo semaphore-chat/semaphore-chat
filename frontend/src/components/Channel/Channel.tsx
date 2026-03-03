@@ -4,7 +4,7 @@ import {
   ChannelType as ChannelKind,
 } from "../../types/channel.type";
 import { Badge, Box, alpha } from "@mui/material";
-import ListItem from "@mui/material/ListItem";
+import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import TagIcon from "@mui/icons-material/Tag";
@@ -13,7 +13,7 @@ import { styled } from "@mui/material/styles";
 import { useNavigate, useParams } from "react-router-dom";
 import { VoiceChannelUserList } from "../Voice";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import type { ListItemProps } from "@mui/material/ListItem";
+import type { ListItemButtonProps } from "@mui/material/ListItemButton";
 import { useNotification } from "../../contexts/NotificationContext";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { logger } from "../../utils/logger";
@@ -23,7 +23,7 @@ interface ChannelProps {
   channel: ChannelType;
 }
 
-interface ChannelContainerProps extends ListItemProps {
+interface ChannelContainerProps extends ListItemButtonProps {
   isSelected?: boolean;
 }
 
@@ -34,7 +34,7 @@ const ChannelName = styled(ListItemText)(({ theme }) => ({
   },
 }));
 
-const ChannelContainer = styled(ListItem, {
+const ChannelContainer = styled(ListItemButton, {
   shouldForwardProp: (prop) => prop !== "isSelected",
 })<ChannelContainerProps>(({ theme, isSelected }) => ({
   padding: theme.spacing(0.75, 1.5),
@@ -126,7 +126,7 @@ export function Channel({ channel }: ChannelProps) {
     <Box>
       <ChannelContainer
         isSelected={isSelected}
-        sx={{ pl: 2, cursor: "pointer" }}
+        sx={{ pl: 2 }}
         onClick={handleClick}
       >
         {/* Unread dot indicator — pill on the left */}
