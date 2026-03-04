@@ -23,6 +23,7 @@ import {
   Edit as EditIcon,
   Logout as LogoutIcon,
   AdminPanelSettings as AdminIcon,
+  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { userControllerGetProfileOptions, authControllerLogoutMutation } from '../../../api-client/@tanstack/react-query.gen';
@@ -49,6 +50,10 @@ export const MobileProfilePanel: React.FC = () => {
 
   const handleEditProfile = () => {
     navigate('/profile/edit');
+  };
+
+  const handleSettings = () => {
+    navigate('/settings');
   };
 
   const handleAdminPanel = () => {
@@ -176,6 +181,21 @@ export const MobileProfilePanel: React.FC = () => {
                 <ListItemText
                   primary="Edit Profile"
                   secondary="Update your display name and settings"
+                />
+              </ListItemButton>
+            </ListItem>
+
+            <ListItem disablePadding>
+              <ListItemButton
+                onClick={handleSettings}
+                sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}
+              >
+                <ListItemIcon>
+                  <SettingsIcon />
+                </ListItemIcon>
+                <ListItemText
+                  primary="Settings"
+                  secondary="Notifications, appearance, and audio"
                 />
               </ListItemButton>
             </ListItem>

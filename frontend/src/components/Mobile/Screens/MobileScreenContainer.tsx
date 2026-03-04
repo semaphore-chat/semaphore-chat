@@ -25,6 +25,7 @@ import { MobileMessagesPanel } from '../Panels/MobileMessagesPanel';
 import { MobileProfilePanel } from '../Panels/MobileProfilePanel';
 import { NotificationsScreen } from './NotificationsScreen';
 import MobileAppBar from '../MobileAppBar';
+import SettingsPage from '../../../pages/SettingsPage';
 
 interface MobileScreenContainerProps {
   bottomOffset?: number;
@@ -32,7 +33,7 @@ interface MobileScreenContainerProps {
 
 // Helper to determine if a screen is a "detail" view (slides in from right)
 const isDetailScreen = (screen: ScreenType): boolean => {
-  return screen === 'chat' || screen === 'dm-chat';
+  return screen === 'chat' || screen === 'dm-chat' || screen === 'settings';
 };
 
 
@@ -123,6 +124,16 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
 
       case 'profile':
         return <MobileProfilePanel />;
+
+      case 'settings':
+        return (
+          <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <MobileAppBar title="Settings" showBack />
+            <Box sx={{ flex: 1, overflowY: 'auto' }}>
+              <SettingsPage />
+            </Box>
+          </Box>
+        );
 
       default:
         return null;

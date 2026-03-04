@@ -19,7 +19,8 @@ export type ScreenType =
   | 'dm-list'       // DM conversations list (messages tab default)
   | 'dm-chat'       // DM chat view
   | 'notifications' // Notifications list (notifications tab default)
-  | 'profile';      // Profile/settings (profile tab default)
+  | 'profile'       // Profile (profile tab default)
+  | 'settings';     // Settings detail view (from profile tab)
 
 // Navigation state
 export interface MobileNavigationState {
@@ -50,6 +51,7 @@ interface MobileNavigationContextType {
   navigateToDmChat: (dmGroupId: string) => void;
   navigateToNotifications: () => void;
   navigateToProfile: () => void;
+  navigateToSettings: () => void;
 
   // Generic back navigation
   goBack: () => void;
@@ -83,6 +85,7 @@ const getTabFromScreen = (screen: ScreenType): MobileTab => {
     case 'notifications':
       return 'notifications';
     case 'profile':
+    case 'settings':
       return 'profile';
   }
 };
@@ -162,6 +165,14 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
         channelId: null,
         dmGroupId: null,
       }));
+    } else if (path === '/settings' || path.startsWith('/settings/')) {
+      setState(prev => ({
+        ...prev,
+        currentScreen: 'settings',
+        communityId: null,
+        channelId: null,
+        dmGroupId: null,
+      }));
     } else if (path === '/profile' || path.startsWith('/profile/')) {
       setState(prev => ({
         ...prev,
@@ -211,10 +222,14 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     navigate('/profile');
   }, [navigate]);
 
+  const navigateToSettings = useCallback(() => {
+    navigate('/settings');
+  }, [navigate]);
+
   // Back navigation
   const canGoBack = useCallback((): boolean => {
     // Can go back if we're in a detail view
-    return state.currentScreen === 'chat' || state.currentScreen === 'dm-chat';
+    return state.currentScreen === 'chat' || state.currentScreen === 'dm-chat' || state.currentScreen === 'settings';
   }, [state.currentScreen]);
 
   const goBack = useCallback(() => {
@@ -224,6 +239,9 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     } else if (state.currentScreen === 'dm-chat') {
       // Go back from DM chat to DM list
       navigate('/direct-messages');
+    } else if (state.currentScreen === 'settings') {
+      // Go back from settings to profile
+      navigate('/profile');
     } else {
       // Use browser history for other cases
       navigate(-1);
@@ -285,6 +303,7 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     navigateToDmChat,
     navigateToNotifications,
     navigateToProfile,
+    navigateToSettings,
     goBack,
     canGoBack,
     setActiveTab,
