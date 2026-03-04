@@ -129,14 +129,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: windows-installer
-          path: frontend/release/Kraken Setup *.exe
+          path: frontend/release/Kraken-Setup-*.exe
           retention-days: 7
 
       - name: Upload Windows blockmap
         uses: actions/upload-artifact@v4
         with:
           name: windows-blockmap
-          path: frontend/release/Kraken Setup *.exe.blockmap
+          path: frontend/release/Kraken-Setup-*.exe.blockmap
           retention-days: 7
 
       - name: Upload Windows update manifest
