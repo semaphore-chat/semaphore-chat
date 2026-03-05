@@ -462,7 +462,7 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
             <Box sx={{ position: 'relative' }}>
               <LinearProgress
                 variant="determinate"
-                value={audioLevel}
+                value={inputMode === 'voice_activity' ? rawAudioLevel : audioLevel}
                 sx={{
                   height: 8,
                   borderRadius: 1,
@@ -479,9 +479,8 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
                   data-testid="threshold-marker"
                   sx={{
                     position: 'absolute',
-                    // Threshold is on the raw (un-doubled) scale; the bar uses the doubled scale.
-                    // Map threshold to bar position: threshold * 2, capped at 100.
-                    left: `${Math.min(100, voiceActivityThreshold * 2)}%`,
+                    // Marker position matches the raw-scale progress bar.
+                    left: `${voiceActivityThreshold}%`,
                     top: -2,
                     bottom: -2,
                     width: 2,

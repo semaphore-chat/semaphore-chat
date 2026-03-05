@@ -121,11 +121,12 @@ export const useReplayBuffer = () => {
       logger.dev('[ReplayBuffer] Stopping replay buffer');
 
       isOperationPendingRef.current = true;
+      // Clear state immediately — track is already gone
+      isActiveRef.current = false;
+      setIsReplayBufferActive(false);
 
       try {
         await stopReplayBuffer({});
-        isActiveRef.current = false;
-        setIsReplayBufferActive(false);
         logger.dev('[ReplayBuffer] Replay buffer stopped successfully');
       } catch (error) {
         logger.error('[ReplayBuffer] Failed to stop replay buffer:', error);
@@ -149,10 +150,8 @@ export const useReplayBuffer = () => {
           executeStart(publication);
         }
       } else if (pending === 'stop') {
-        if (isActiveRef.current) {
-          logger.dev('[ReplayBuffer] Processing queued stop operation');
-          executeStop();
-        }
+        logger.dev('[ReplayBuffer] Processing queued stop operation');
+        executeStop();
       }
     };
 
@@ -183,8 +182,6 @@ export const useReplayBuffer = () => {
         pendingOperationRef.current = 'stop';
         return;
       }
-
-      if (!isActiveRef.current) return;
 
       await executeStop();
     };

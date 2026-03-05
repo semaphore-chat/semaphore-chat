@@ -116,15 +116,24 @@ export class AuthService {
 
     const hashed = await bcrypt.hash(refreshToken, 10);
     const client = tx ?? this.databaseService;
+    const deviceName = deviceInfo?.userAgent
+      ? this.parseDeviceName(deviceInfo.userAgent)
+      : 'Unknown Device';
+
+    // Fresh login (no familyId) — deduplicate sessions for same device
+    if (!familyId) {
+      await client.refreshToken.deleteMany({
+        where: { userId, deviceName, consumed: false },
+      });
+    }
+
     await client.refreshToken.create({
       data: {
         id: jti,
         userId,
         tokenHash: hashed,
         expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
-        deviceName: deviceInfo?.userAgent
-          ? this.parseDeviceName(deviceInfo.userAgent)
-          : 'Unknown Device',
+        deviceName,
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
         lastUsedAt: new Date(),

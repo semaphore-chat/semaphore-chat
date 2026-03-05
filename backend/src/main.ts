@@ -56,6 +56,10 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
+  // Trust proxy headers so req.ip reflects the real client IP
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.set('trust proxy', process.env.TRUST_PROXY || true);
+
   const redisIoAdapter = new RedisIoAdapter(app);
   await redisIoAdapter.connectToRedis();
 
