@@ -22,6 +22,11 @@ data:
   # Node environment
   NODE_ENV: "production"
 
+  # Reverse proxy trust (Express "trust proxy" setting)
+  {{- if .Values.backend.trustProxy }}
+  TRUST_PROXY: {{ .Values.backend.trustProxy | quote }}
+  {{- end }}
+
   # File upload configuration
   FILE_UPLOAD_DEST: "/app/uploads"
 

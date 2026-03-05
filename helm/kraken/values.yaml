@@ -23,6 +23,11 @@ backend:
     pullPolicy: Always
     tag: "latest"
 
+  # Trust proxy setting for Express (required behind ingress/load balancer).
+  # Number of proxy hops, a subnet, or a specific IP.
+  # See: https://expressjs.com/en/guide/behind-proxies.html
+  trustProxy: "1"
+
   # Database migrations (runs as a Helm pre-install/pre-upgrade hook Job)
   migrations:
     enabled: true  # Set false to manage migrations externally
