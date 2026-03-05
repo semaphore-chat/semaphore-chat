@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SignedUrlService } from './signed-url.service';
 import { DatabaseService } from '@/database/database.service';
+import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { Request } from 'express';
 
 @Injectable()
@@ -37,6 +38,7 @@ export class FileAuthGuard implements CanActivate {
 
       const user = await this.databaseService.user.findUnique({
         where: { id: uid },
+        select: { ...PUBLIC_USER_SELECT, banned: true },
       });
 
       if (!user || user.banned) {

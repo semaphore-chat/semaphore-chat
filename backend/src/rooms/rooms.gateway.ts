@@ -10,6 +10,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards, UsePipes, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RbacGuard } from '@/auth/rbac.guard';
+import { TokenBlacklistService } from '@/auth/token-blacklist.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { UserService } from '@/user/user.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
@@ -51,6 +52,7 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
     private readonly websocketService: WebsocketService,
     private readonly jwtService: JwtService,
     private readonly userService: UserService,
+    private readonly tokenBlacklistService: TokenBlacklistService,
   ) {}
 
   afterInit(server: Server) {
@@ -95,27 +97,42 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
         return;
       }
 
-      let payload: { sub: string };
+      let payload: { sub: string; jti?: string };
       try {
-        payload = this.jwtService.verify<{ sub: string }>(token);
+        payload = this.jwtService.verify<{ sub: string; jti?: string }>(token);
       } catch {
         next(new Error('AUTH_FAILED'));
         return;
       }
 
-      this.userService
-        .findById(payload.sub)
-        .then((user) => {
-          if (!user) {
+      const checkBlacklistAndUser = async () => {
+        if (payload.jti) {
+          const isBlacklisted =
+            await this.tokenBlacklistService.isBlacklisted(payload.jti);
+          if (isBlacklisted) {
             next(new Error('AUTH_FAILED'));
             return;
           }
-          (socket.handshake as Record<string, any>).user = new UserEntity(user);
-          next();
-        })
-        .catch(() => {
+        }
+
+        const user = await this.userService.findById(payload.sub);
+        if (!user) {
           next(new Error('AUTH_FAILED'));
-        });
+          return;
+        }
+
+        if (user.banned) {
+          next(new Error('AUTH_FAILED'));
+          return;
+        }
+
+        (socket.handshake as Record<string, any>).user = new UserEntity(user);
+        next();
+      };
+
+      checkBlacklistAndUser().catch(() => {
+        next(new Error('AUTH_FAILED'));
+      });
     });
   }
 

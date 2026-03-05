@@ -14,7 +14,7 @@ export class FileService {
 
   findOne(id: string) {
     return this.databaseService.file.findUniqueOrThrow({
-      where: { id },
+      where: { id, deletedAt: null },
     });
   }
 

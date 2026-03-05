@@ -48,7 +48,6 @@ export class MessageAttachmentValidationStrategy implements IFileValidationStrat
     'application/x-tar',
     'application/x-bzip',
     'application/x-bzip2',
-    'application/octet-stream', // Generic binary - often used for zip/rar/archive files
     // Audio
     'audio/mpeg', // .mp3
     'audio/wav',

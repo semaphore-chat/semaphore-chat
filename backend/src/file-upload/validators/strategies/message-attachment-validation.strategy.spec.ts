@@ -65,7 +65,7 @@ describe('MessageAttachmentValidationStrategy', () => {
       expect(mimeTypes).toContain('application/x-rar-compressed');
       expect(mimeTypes).toContain('application/x-7z-compressed');
       expect(mimeTypes).toContain('application/gzip');
-      expect(mimeTypes).toContain('application/octet-stream');
+      expect(mimeTypes).not.toContain('application/octet-stream');
     });
 
     it('should include audio MIME types', () => {

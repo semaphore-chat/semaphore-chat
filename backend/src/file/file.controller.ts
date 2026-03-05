@@ -124,12 +124,22 @@ export class FileController {
     const sanitizedFilename = file.filename.replace(/["\\\n\r]/g, '_');
     const encodedFilename = encodeURIComponent(file.filename);
 
+    // Force download for MIME types that can execute scripts
+    const dangerousMimeTypes = [
+      'image/svg+xml',
+      'text/html',
+      'application/xhtml+xml',
+    ];
+    const disposition = dangerousMimeTypes.includes(file.mimeType)
+      ? 'attachment'
+      : 'inline';
+
     const fileSize = file.size;
     const rangeHeader = req.headers.range;
 
     res.set({
       'Accept-Ranges': 'bytes',
-      'Content-Disposition': `inline; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`,
+      'Content-Disposition': `${disposition}; filename="${sanitizedFilename}"; filename*=UTF-8''${encodedFilename}`,
       'Cross-Origin-Resource-Policy': 'cross-origin', // Allow Electron (different origin) to load
     });
 

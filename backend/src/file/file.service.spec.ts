@@ -51,7 +51,7 @@ describe('FileService', () => {
 
       expect(result).toEqual(mockFile);
       expect(databaseService.file.findUniqueOrThrow).toHaveBeenCalledWith({
-        where: { id: fileId },
+        where: { id: fileId, deletedAt: null },
       });
     });
 
