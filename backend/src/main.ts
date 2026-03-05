@@ -1,4 +1,5 @@
 import { NestFactory, Reflector } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import {
   ClassSerializerInterceptor,
@@ -47,7 +48,7 @@ function validateSecrets() {
 async function bootstrap() {
   validateSecrets();
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger: new ConsoleLogger({
       prefix: 'KrakenChat',
       timestamp: true,
@@ -56,9 +57,15 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
-  // Trust proxy headers so req.ip reflects the real client IP
-  const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.set('trust proxy', process.env.TRUST_PROXY || true);
+  // Trust proxy headers so req.ip reflects the real client IP.
+  // TRUST_PROXY accepts: "true"/"false", a number of hops, or a subnet/name (e.g. "loopback").
+  // Defaults to disabled when unset. See Express "trust proxy" docs for values.
+  if (process.env.TRUST_PROXY) {
+    const raw = process.env.TRUST_PROXY;
+    const trustValue =
+      raw === 'true' ? true : raw === 'false' ? false : Number(raw) || raw;
+    app.set('trust proxy', trustValue);
+  }
 
   const redisIoAdapter = new RedisIoAdapter(app);
   await redisIoAdapter.connectToRedis();
