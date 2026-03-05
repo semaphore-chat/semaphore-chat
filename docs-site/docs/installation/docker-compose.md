@@ -205,9 +205,15 @@ Copy the Compose file for your chosen setup:
 
     ```title="Caddyfile"
     {$HOST:?Set HOST in .env} {
-    	reverse_proxy /api /api/* backend:3000
-    	reverse_proxy /socket.io/* backend:3000
-    	reverse_proxy frontend:5173
+    	handle /api/* {
+    		reverse_proxy backend:3000
+    	}
+    	handle /socket.io/* {
+    		reverse_proxy backend:3000
+    	}
+    	handle {
+    		reverse_proxy frontend:5173
+    	}
     }
 
     lk.{$HOST} {
