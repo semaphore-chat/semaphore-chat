@@ -45,6 +45,23 @@ function validateSecrets() {
   }
 }
 
+/**
+ * Parse the TRUST_PROXY env var into the type Express expects.
+ * Express distinguishes between:
+ *   - number (hop count): trust the nth proxy from the client
+ *   - boolean true: trust all proxies (not recommended)
+ *   - string: treated as a subnet/address (e.g. "loopback", "10.0.0.0/8")
+ */
+function parseTrustProxy(value: string): boolean | number | string {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+
+  const asNumber = Number(value);
+  if (!Number.isNaN(asNumber)) return asNumber;
+
+  return value; // subnet or address, e.g. "loopback"
+}
+
 async function bootstrap() {
   validateSecrets();
 
@@ -58,10 +75,9 @@ async function bootstrap() {
   });
 
   // Trust proxy so req.ip resolves the real client IP behind a reverse proxy.
-  // Accepts a hop count ("1"), subnet ("loopback"), or "true" (trust all — not recommended).
   // https://expressjs.com/en/guide/behind-proxies.html
   if (process.env.TRUST_PROXY) {
-    app.set('trust proxy', process.env.TRUST_PROXY);
+    app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
   }
 
   const redisIoAdapter = new RedisIoAdapter(app);
