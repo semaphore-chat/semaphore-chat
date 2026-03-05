@@ -42,6 +42,28 @@ Configuration for the replay buffer / screen recording feature. Requires LiveKit
 | `REPLAY_EGRESS_OUTPUT_PATH` | LiveKit egress output path (must be accessible by egress pods) | `/out` |
 | `REPLAY_SEGMENT_CLEANUP_AGE_MINUTES` | How long to keep replay segments before cleanup | `20` |
 
+### Reverse proxy
+
+If Kraken runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting and session IPs use the real client address instead of the proxy's.
+
+| Variable | Description | Default |
+|----------|------------|---------|
+| `TRUST_PROXY` | Number of trusted proxy hops, a subnet name, or a specific IP | `1` |
+
+Common values:
+
+| Value | When to use |
+|-------|-------------|
+| `1` | Single reverse proxy (Nginx, Traefik, k8s ingress) |
+| `2` | CDN → reverse proxy → Kraken |
+| `loopback` | Proxy runs on the same host (localhost) |
+| `10.0.0.0/8` | Trust a specific internal subnet |
+
+!!! warning "Never use `true` in production"
+    `true` trusts **all** `X-Forwarded-For` headers, which lets any client spoof their IP and bypass rate-limiting. Always use a hop count or subnet.
+
+See the [Express proxy documentation](https://expressjs.com/en/guide/behind-proxies.html) for all supported values.
+
 ### Dynamic IP watcher
 
 Configuration for the optional IP watcher sidecar. See [Dynamic IP support](docker-compose.md#dynamic-ip-support) for setup instructions.

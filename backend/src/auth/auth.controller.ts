@@ -56,6 +56,7 @@ export class AuthController {
    */
   private getDeviceInfo(req: Request): DeviceInfo {
     const userAgent = req.headers['user-agent'] || '';
+    // req.ip respects the TRUST_PROXY setting configured in main.ts
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     return { userAgent, ipAddress };
   }

@@ -57,14 +57,11 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
-  // Trust proxy headers so req.ip reflects the real client IP.
-  // TRUST_PROXY accepts: "true"/"false", a number of hops, or a subnet/name (e.g. "loopback").
-  // Defaults to disabled when unset. See Express "trust proxy" docs for values.
+  // Trust proxy so req.ip resolves the real client IP behind a reverse proxy.
+  // Accepts a hop count ("1"), subnet ("loopback"), or "true" (trust all — not recommended).
+  // https://expressjs.com/en/guide/behind-proxies.html
   if (process.env.TRUST_PROXY) {
-    const raw = process.env.TRUST_PROXY;
-    const trustValue =
-      raw === 'true' ? true : raw === 'false' ? false : Number(raw) || raw;
-    app.set('trust proxy', trustValue);
+    app.set('trust proxy', process.env.TRUST_PROXY);
   }
 
   const redisIoAdapter = new RedisIoAdapter(app);
