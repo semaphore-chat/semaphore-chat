@@ -448,6 +448,72 @@ describe('FileController', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
+    it('should force attachment disposition for SVG files', async () => {
+      const mockFile = {
+        id: 'file-svg',
+        filename: 'image.svg',
+        mimeType: 'image/svg+xml',
+        fileType: FileType.IMAGE,
+        size: 2048,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/image.svg',
+      };
+
+      service.findOne.mockResolvedValue(mockFile as any);
+
+      await controller.getFile('file-svg', mockRequest(), mockResponse);
+
+      expect(mockResponse.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'Content-Disposition': expect.stringMatching(/^attachment;/),
+        }),
+      );
+    });
+
+    it('should force attachment disposition for HTML files', async () => {
+      const mockFile = {
+        id: 'file-html',
+        filename: 'page.html',
+        mimeType: 'text/html',
+        fileType: FileType.DOCUMENT,
+        size: 512,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/page.html',
+      };
+
+      service.findOne.mockResolvedValue(mockFile as any);
+
+      await controller.getFile('file-html', mockRequest(), mockResponse);
+
+      expect(mockResponse.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'Content-Disposition': expect.stringMatching(/^attachment;/),
+        }),
+      );
+    });
+
+    it('should use inline disposition for safe MIME types', async () => {
+      const mockFile = {
+        id: 'file-png',
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        fileType: FileType.IMAGE,
+        size: 4096,
+        storageType: StorageType.LOCAL,
+        storagePath: '/tmp/photo.png',
+      };
+
+      service.findOne.mockResolvedValue(mockFile as any);
+
+      await controller.getFile('file-png', mockRequest(), mockResponse);
+
+      expect(mockResponse.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          'Content-Disposition': expect.stringMatching(/^inline;/),
+        }),
+      );
+    });
+
     it('should handle filenames with special characters', async () => {
       const mockFile = {
         id: 'file-special',
