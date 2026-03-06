@@ -24,7 +24,7 @@ extraResources:
 # Auto-update configuration
 publish:
   provider: github
-  owner: semaphorechat
+  owner: semaphore-chat
   repo: semaphore-chat
 
 # Windows configuration
