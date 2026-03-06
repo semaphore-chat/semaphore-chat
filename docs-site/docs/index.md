@@ -19,7 +19,7 @@ Semaphore Chat is an open-source communication platform that gives you full cont
 - **Desktop app** — [Electron client](installation/desktop-app.md) for Windows and Linux with a custom screen source picker showing live thumbnails, configurable resolution and frame rate, system tray integration, and auto-updates
 - **Communities** — Create servers with text and voice channels, private channels, direct messages, and group DMs with file attachments
 - **Role-based access control** — Granular permissions at the instance and community level, with community bans, timeouts, and moderation logs
-- **Mobile-friendly** — Responsive design with swipe navigation, mobile-optimized layouts, and PWA support
+- **Mobile-friendly** — Responsive design with swipe navigation, mobile-optimized layouts, PWA support with push notifications
 - **Self-hosted** — Run on your own infrastructure with [Docker Compose](installation/docker-compose.md) or [Kubernetes](installation/kubernetes.md). Your data stays yours
 
 ---
