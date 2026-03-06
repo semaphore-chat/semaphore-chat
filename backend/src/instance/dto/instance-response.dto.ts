@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import { RegistrationModeValues } from '@/common/enums/swagger-enums';
 
 export class PublicSettingsResponseDto {
+  @ApiProperty()
+  name: string;
+
   @ApiProperty({ enum: RegistrationModeValues })
   registrationMode: string;
 

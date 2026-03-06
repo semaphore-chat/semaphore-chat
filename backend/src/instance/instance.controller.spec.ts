@@ -42,6 +42,7 @@ describe('InstanceController', () => {
       const result = await controller.getPublicSettings();
 
       expect(result).toEqual({
+        name: 'Test Instance',
         registrationMode: RegistrationMode.OPEN,
         maxFileSizeBytes: 524288000,
       });

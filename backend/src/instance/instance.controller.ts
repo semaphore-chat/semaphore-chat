@@ -36,6 +36,7 @@ export class InstanceController {
   async getPublicSettings(): Promise<PublicSettingsResponseDto> {
     const settings = await this.instanceService.getSettings();
     return {
+      name: settings.name,
       registrationMode: settings.registrationMode,
       maxFileSizeBytes: Number(settings.maxFileSizeBytes),
     };

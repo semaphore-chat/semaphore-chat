@@ -2,8 +2,8 @@ import React, { useEffect } from "react";
 import { Box, AppBar, Toolbar, Typography, IconButton } from "@mui/material";
 import MenuIcon from "@mui/icons-material/Menu";
 import { Outlet, useNavigate } from "react-router-dom";
-import { useMutation } from "@tanstack/react-query";
-import { authControllerLogoutMutation } from "./api-client/@tanstack/react-query.gen";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { authControllerLogoutMutation, instanceControllerGetPublicSettingsOptions } from "./api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "./hooks/useCurrentUser";
 import ThemeToggle from "./components/ThemeToggle/ThemeToggle";
 import CommunityToggle from "./components/CommunityList/CommunityToggle";
@@ -85,6 +85,8 @@ const Layout: React.FC = () => {
   const { user: userData, isLoading, isError } = useCurrentUser();
   const { mutateAsync: logout, isPending: logoutLoading } = useMutation(authControllerLogoutMutation());
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
+  const { data: publicSettings } = useQuery(instanceControllerGetPublicSettingsOptions());
+  const instanceName = publicSettings?.name || "Kraken";
   const { isMobile, isTablet } = useResponsive();
 
   // Sync theme settings with server (server wins on initial load)
@@ -92,6 +94,11 @@ const Layout: React.FC = () => {
 
   // Attempt to recover voice connection after page refresh
   useVoiceRecovery();
+
+  // Update document title with instance name
+  useEffect(() => {
+    document.title = instanceName;
+  }, [instanceName]);
 
   // Set telemetry user context when profile loads
   useEffect(() => {
@@ -217,7 +224,7 @@ const Layout: React.FC = () => {
                   >
                     <MenuIcon />
                   </IconButton>
-                  <Typography variant="h6" sx={{ color: "text.primary" }}>Kraken</Typography>
+                  <Typography variant="h6" sx={{ color: "text.primary" }}>{instanceName}</Typography>
                 </div>
                 <NavigationLinks
                   isLoading={isLoading}

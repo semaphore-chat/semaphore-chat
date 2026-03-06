@@ -387,36 +387,6 @@
         ]
       }
     },
-    "/api/users/{id}": {
-      "get": {
-        "operationId": "UserController_getUserById",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserEntity"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "User"
-        ]
-      }
-    },
     "/api/users/admin/list": {
       "get": {
         "operationId": "UserController_findAllUsersAdmin",
@@ -742,6 +712,36 @@
           }
         },
         "summary": "Check if a specific user is blocked",
+        "tags": [
+          "User"
+        ]
+      }
+    },
+    "/api/users/{id}": {
+      "get": {
+        "operationId": "UserController_getUserById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserEntity"
+                }
+              }
+            }
+          }
+        },
         "tags": [
           "User"
         ]
@@ -1961,39 +1961,6 @@
       }
     },
     "/api/community/{id}": {
-      "get": {
-        "operationId": "CommunityController_findOne",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CommunityResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "Community"
-        ]
-      },
       "patch": {
         "operationId": "CommunityController_update",
         "parameters": [
@@ -2052,6 +2019,39 @@
         "responses": {
           "204": {
             "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "Community"
+        ]
+      },
+      "get": {
+        "operationId": "CommunityController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3225,6 +3225,7 @@
             "in": "query",
             "schema": {
               "minimum": 1,
+              "maximum": 100,
               "default": 50,
               "type": "number"
             }
@@ -6820,7 +6821,8 @@
           "username": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 32
+            "maxLength": 32,
+            "pattern": "/^[a-zA-Z0-9_-]+$/"
           },
           "password": {
             "type": "string",
@@ -7591,10 +7593,12 @@
             "type": "boolean"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "communityId": {
-            "type": "string"
+            "type": "string",
+            "format": "uuid"
           },
           "position": {
             "type": "number"
@@ -7659,29 +7663,21 @@
       "UpdateChannelDto": {
         "type": "object",
         "properties": {
-          "type": {
+          "name": {
             "type": "string",
-            "enum": [
-              "TEXT",
-              "VOICE"
-            ]
+            "maxLength": 100
           },
           "isPrivate": {
             "type": "boolean"
-          },
-          "name": {
-            "type": "string"
-          },
-          "communityId": {
-            "type": "string"
-          },
-          "position": {
-            "type": "number"
           },
           "slowmodeSeconds": {
             "type": "number",
             "minimum": 0,
             "maximum": 21600
+          },
+          "position": {
+            "type": "number",
+            "minimum": 0
           }
         }
       },
@@ -7968,11 +7964,13 @@
           },
           "channelId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "directMessageGroupId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "authorId": {
             "type": "string"
@@ -8440,11 +8438,13 @@
           },
           "channelId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "directMessageGroupId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "authorId": {
             "type": "string"
@@ -8630,10 +8630,6 @@
             "format": "uuid"
           },
           "channelId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "addedBy": {
             "type": "string",
             "format": "uuid"
           }
@@ -11127,6 +11123,9 @@
       "PublicSettingsResponseDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string"
+          },
           "registrationMode": {
             "type": "string",
             "enum": [
@@ -11140,6 +11139,7 @@
           }
         },
         "required": [
+          "name",
           "registrationMode",
           "maxFileSizeBytes"
         ]
