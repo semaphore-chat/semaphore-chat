@@ -5,22 +5,20 @@
 
 # Semaphore Chat
 
-Self-hosted voice, video, and text chat — communication you own and control.
+Semaphore Chat is a self-hosted, free, open-source communication platform that provides real-time messaging, voice and video calls, screen sharing with audio and replay capture, and community management out of the box. Run it in your browser or as an Electron desktop app on Windows and Linux, as well as on your phone as a PWA with push notification support.
 
 > **Beta Software** — Semaphore Chat is under active development. Expect bugs and occasional breaking changes.
-
-Semaphore Chat is an open-source communication platform that gives you full control over your data. Built with a modern stack — NestJS, React, PostgreSQL, and LiveKit — it provides real-time messaging, voice and video calls, and community management out of the box. Run it in your browser or as an Electron desktop app on Windows and Linux.
 
 ## Features
 
 - **Messaging** — Real-time text channels with mentions, reactions, threads, file attachments, and read receipts
-- **Voice & Video** — LiveKit-powered calls with screen sharing, including system audio capture on the desktop app. Persistent connections stay active as you navigate
-- **Replay Capture** — Continuously buffers screen share sessions so you can retroactively clip the last 1-10 minutes. Trim to the exact moment, then share to a channel or save to your personal clip library
+- **Voice & Video** — LiveKit-powered calls with screen sharing, including system audio capture on the desktop app
+- **Replay Capture** — Continuously buffers screen share sessions so you can retroactively clip the last 1-10 minutes. Trim to the exact clip, then share to a channel or save to your personal clip library
 - **Desktop App** — Electron client for Windows and Linux with a custom screen source picker, system tray integration, and auto-updates
 - **Communities** — Servers with text and voice channels, private channels, direct messages, and group DMs with file attachments
 - **Administration** — Role-based access control with granular permissions, community bans and timeouts, moderation logs, and per-user storage quotas
 - **Mobile-Friendly** — Responsive UI with swipe navigation, mobile-optimized panels, PWA support for install-to-homescreen, and push notifications
-- **Self-Hosted** — Run on your own infrastructure with Docker Compose or Kubernetes. Your data stays yours
+- **Self-Hosted** — Run on your own infrastructure with Docker Compose or Kubernetes. Your data stays yours and you can choose the data upload limits for your users
 
 ## Architecture
 
