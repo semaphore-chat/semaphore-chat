@@ -224,6 +224,10 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
           channelId={channelId}
           communityId={communityId || ""}
           onClose={() => setPinnedPanelOpen(false)}
+          onMessageClick={(messageId) => {
+            setPinnedPanelOpen(false);
+            navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`);
+          }}
         />
       </Drawer>
 

@@ -9,6 +9,7 @@ import { useMessageVisibility } from "../../hooks/useMessageVisibility";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { useResponsive } from "../../hooks/useResponsive";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import TypingIndicator from "./TypingIndicator";
 
 interface MessageContainerProps {
   // Data
@@ -301,6 +302,10 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             </Typography>
           </Box>
         )}
+
+        {/* Other user typing indicator */}
+        <TypingIndicator channelId={channelId} directMessageGroupId={directMessageGroupId} currentUserId={authorId} />
+
 
         {/* Input rendered outside scroll container — stable DOM, never unmounted by message changes */}
         <Box sx={{ flexShrink: 0 }}>
