@@ -21,6 +21,7 @@ import {
   Security as RolesIcon,
   Storage as StorageIcon,
   Settings as SettingsIcon,
+  BugReport as BugReportIcon,
 } from "@mui/icons-material";
 
 const DRAWER_WIDTH = 240;
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { label: "Roles", path: "/admin/roles", icon: <RolesIcon /> },
   { label: "Storage", path: "/admin/storage", icon: <StorageIcon /> },
   { label: "Settings", path: "/admin/settings", icon: <SettingsIcon /> },
+  { label: "Debug", path: "/admin/debug", icon: <BugReportIcon /> },
 ];
 
 const AdminLayout: React.FC = () => {

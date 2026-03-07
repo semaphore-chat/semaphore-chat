@@ -42,6 +42,7 @@ import { FriendsModule } from './friends/friends.module';
 import { ThreadsModule } from './threads/threads.module';
 import { StorageQuotaModule } from './storage-quota/storage-quota.module';
 import { AliasGroupsModule } from './alias-groups/alias-groups.module';
+import { DebugModule } from './debug/debug.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 
 @Module({
@@ -107,6 +108,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard';
     ThreadsModule,
     StorageQuotaModule,
     AliasGroupsModule,
+    ...(process.env.ADMIN_DEBUG_PANEL === 'true' ? [DebugModule] : []),
   ],
   controllers: [AppController],
   providers: [

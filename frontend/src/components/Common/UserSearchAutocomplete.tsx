@@ -88,10 +88,13 @@ const UserSearchAutocomplete: React.FC<UserSearchAutocompleteProps> = ({
 
   // Shared props for both single and multiple modes
   // (server-side filtering — client-side filterOptions is a passthrough)
+  const noOptionsText = debouncedQuery.length < 1 ? "Type to search..." : "No users found";
+
   const sharedProps = {
     options: filteredUsers,
     getOptionLabel: (user: UserOption) => user.displayName || user.username,
     getOptionDisabled,
+    noOptionsText,
     onInputChange: (_e: React.SyntheticEvent, newInputValue: string) => setInputValue(newInputValue),
     filterOptions: (x: UserOption[]) => x,
     loading: isLoading,

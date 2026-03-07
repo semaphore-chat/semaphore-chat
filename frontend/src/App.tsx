@@ -30,6 +30,7 @@ const AdminCommunitiesPage = React.lazy(() => import("./pages/admin").then(m => 
 const AdminSettingsPage = React.lazy(() => import("./pages/admin").then(m => ({ default: m.AdminSettingsPage })));
 const AdminRolesPage = React.lazy(() => import("./pages/admin").then(m => ({ default: m.AdminRolesPage })));
 const AdminStoragePage = React.lazy(() => import("./pages/admin").then(m => ({ default: m.AdminStoragePage })));
+const AdminDebugPage = React.lazy(() => import("./pages/admin").then(m => ({ default: m.AdminDebugPage })));
 const NotificationDebugPage = React.lazy(() => import("./pages/debug/NotificationDebugPage"));
 const DirectMessagesPage = React.lazy(() => import("./pages/DirectMessagesPage"));
 const FriendsPage = React.lazy(() => import("./pages/FriendsPage"));
@@ -96,6 +97,7 @@ function App() {
                 <Route path="roles" element={<AdminRolesPage />} />
                 <Route path="storage" element={<AdminStoragePage />} />
                 <Route path="settings" element={<AdminSettingsPage />} />
+                <Route path="debug" element={<AdminDebugPage />} />
               </Route>
 
               {/* Debug routes (admin only - access check in component) */}

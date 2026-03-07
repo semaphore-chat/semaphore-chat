@@ -33,6 +33,7 @@ services:
       - LIVEKIT_API_SECRET=secret-that-is-at-least-32-characters-long
       - REPLAY_SEGMENTS_PATH=/app/storage/replay-segments
       - REPLAY_EGRESS_OUTPUT_PATH=/out
+      - ADMIN_DEBUG_PANEL=true
     env_file:
       - ./backend/.env
     volumes:
@@ -125,20 +126,6 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-
-  livekit-ip-watcher:
-    image: curlimages/curl:latest
-    restart: unless-stopped
-    command: sh /scripts/livekit-ip-watcher.sh
-    environment:
-      CHECK_INTERVAL: 300
-      LIVEKIT_CONTAINER: livekit
-    volumes:
-      - ./scripts/livekit-ip-watcher.sh:/scripts/livekit-ip-watcher.sh:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      livekit:
-        condition: service_started
 
   egress-init:
     image: busybox
