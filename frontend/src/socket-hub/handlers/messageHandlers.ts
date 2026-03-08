@@ -144,6 +144,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
       path: { parentMessageId },
       query: { limit: 50, continuationToken: '' },
     });
+    await queryClient.cancelQueries({ queryKey: threadQueryKey });
     queryClient.setQueryData(threadQueryKey, (old: ThreadRepliesResponseDto | undefined) => {
       if (!old) return old;
       return {
@@ -188,6 +189,7 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
       path: { parentMessageId },
       query: { limit: 50, continuationToken: '' },
     });
+    await queryClient.cancelQueries({ queryKey: threadQueryKey });
     queryClient.setQueryData(threadQueryKey, (old: ThreadRepliesResponseDto | undefined) => {
       if (!old) return old;
       return {

@@ -227,12 +227,7 @@ export class MessagesService {
           }
         }
 
-        // Delete thread subscribers for this parent
-        await tx.threadSubscriber.deleteMany({
-          where: { parentMessageId: id },
-        });
-
-        // Delete all thread replies
+        // Delete all thread replies (thread subscribers cascade-delete with the parent)
         await tx.message.deleteMany({ where: { parentMessageId: id } });
 
         // 2. Delete the parent message

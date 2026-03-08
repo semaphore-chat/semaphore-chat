@@ -342,7 +342,6 @@ describe('MessagesService', () => {
       // Default: no thread replies
       mockDatabase.message.findMany.mockResolvedValue([]);
       mockDatabase.message.deleteMany.mockResolvedValue({ count: 0 });
-      mockDatabase.threadSubscriber.deleteMany.mockResolvedValue({ count: 0 });
     });
 
     it('should delete a message', async () => {
@@ -434,11 +433,6 @@ describe('MessagesService', () => {
         include: { attachments: { include: { file: true } } },
       });
 
-      // Should delete thread subscribers
-      expect(mockDatabase.threadSubscriber.deleteMany).toHaveBeenCalledWith({
-        where: { parentMessageId: parentId },
-      });
-
       // Should delete all thread replies
       expect(mockDatabase.message.deleteMany).toHaveBeenCalledWith({
         where: { parentMessageId: parentId },
@@ -485,7 +479,7 @@ describe('MessagesService', () => {
       );
     });
 
-    it('should delete thread subscribers when deleting parent', async () => {
+    it('should not explicitly delete thread subscribers (cascade handles it)', async () => {
       const parentId = 'parent-msg';
 
       mockDatabase.message.delete.mockResolvedValue(
@@ -494,9 +488,8 @@ describe('MessagesService', () => {
 
       await service.remove(parentId);
 
-      expect(mockDatabase.threadSubscriber.deleteMany).toHaveBeenCalledWith({
-        where: { parentMessageId: parentId },
-      });
+      // ThreadSubscriber has onDelete: Cascade on parentMessage, so no explicit delete needed
+      expect(mockDatabase.threadSubscriber.deleteMany).not.toHaveBeenCalled();
     });
   });
 

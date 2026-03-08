@@ -282,22 +282,8 @@ export function useMessageActions(
 
   const handleConfirmThreadDelete = useCallback(async () => {
     setShowThreadDeleteConfirm(false);
-    setStagedForDelete(true);
-    // Trigger the same delete flow
-    setIsDeleting(true);
-    deleteTimeoutRef.current = setTimeout(async () => {
-      try {
-        await deleteMessageApi({
-          path: { id: message.id },
-        });
-      } catch (error) {
-        logger.error("Failed to delete message:", error);
-        setIsDeleting(false);
-        setStagedForDelete(false);
-      }
-      deleteTimeoutRef.current = null;
-    }, 300);
-  }, [message.id, deleteMessageApi]);
+    await handleConfirmDelete();
+  }, [handleConfirmDelete]);
 
   const handleCancelThreadDelete = useCallback(() => {
     setShowThreadDeleteConfirm(false);
