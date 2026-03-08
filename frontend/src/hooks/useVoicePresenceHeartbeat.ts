@@ -56,6 +56,12 @@ export function useVoicePresenceHeartbeat({
     sendHeartbeat();
 
     // Try using a Web Worker timer to avoid background-tab throttling
+    const fallbackToInterval = () => {
+      if (!intervalRef.current) {
+        intervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+      }
+    };
+
     try {
       const worker = new Worker(
         new URL('../workers/background-timer.worker.ts', import.meta.url),
@@ -66,11 +72,17 @@ export function useVoicePresenceHeartbeat({
           sendHeartbeat();
         }
       };
+      worker.onerror = () => {
+        // Worker script failed to load — tear down and fall back to setInterval
+        worker.terminate();
+        workerRef.current = null;
+        fallbackToInterval();
+      };
       worker.postMessage({ type: 'start', name: 'heartbeat', interval: HEARTBEAT_INTERVAL_MS });
       workerRef.current = worker;
     } catch {
-      // Fallback to setInterval if Worker creation fails
-      intervalRef.current = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+      // Synchronous Worker creation failed — fall back to setInterval
+      fallbackToInterval();
     }
 
     return () => {

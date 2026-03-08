@@ -907,7 +907,7 @@ app.on('window-all-closed', () => {
   }
 });
 
-// Set isQuitting flag and clean up power save blocker before the app starts closing windows
+// Set isQuitting flag before the app starts closing windows
 app.on('before-quit', () => {
   isQuitting = true;
 });

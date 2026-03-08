@@ -276,6 +276,16 @@ export const useSpeakingDetection = () => {
 
         // Use a Web Worker timer instead of requestAnimationFrame so the
         // analysis loop keeps running when the tab/window is backgrounded.
+        const fallbackToRaf = () => {
+          const rafTick = () => {
+            tick();
+            if (localAnalysisActiveRef.current) {
+              requestAnimationFrame(rafTick);
+            }
+          };
+          rafTick();
+        };
+
         try {
           const worker = new Worker(
             new URL('../workers/background-timer.worker.ts', import.meta.url),
@@ -286,17 +296,17 @@ export const useSpeakingDetection = () => {
               tick();
             }
           };
+          worker.onerror = () => {
+            // Worker script failed to load — tear down and fall back to rAF
+            worker.terminate();
+            workerRef.current = null;
+            fallbackToRaf();
+          };
           worker.postMessage({ type: 'start', name: 'voice-analysis', interval: ANALYSIS_TICK_MS });
           workerRef.current = worker;
         } catch {
-          // Fallback: use requestAnimationFrame if Worker creation fails
-          const rafTick = () => {
-            tick();
-            if (localAnalysisActiveRef.current) {
-              requestAnimationFrame(rafTick);
-            }
-          };
-          rafTick();
+          // Synchronous Worker creation failed — fall back to rAF
+          fallbackToRaf();
         }
       } catch {
         // Fall back to LiveKit's isSpeaking for local user if Web Audio fails

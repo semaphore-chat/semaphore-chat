@@ -13,6 +13,9 @@ vi.mock('../../utils/platform', () => ({
   isElectron: vi.fn(() => mockIsElectron),
 }));
 
+// Save original navigator.locks descriptor so we can restore after tests
+const originalLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
+
 describe('useBackgroundVoiceKeepAlive', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -41,6 +44,15 @@ describe('useBackgroundVoiceKeepAlive', () => {
     // Release any pending locks
     lockResolvers.forEach((resolve) => resolve());
     lockResolvers = [];
+
+    // Restore original navigator.locks to avoid leaking into other test files
+    if (originalLocksDescriptor) {
+      Object.defineProperty(navigator, 'locks', originalLocksDescriptor);
+    } else {
+      // navigator.locks didn't exist originally (jsdom) — remove it
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      delete (navigator as any).locks;
+    }
   });
 
   it('should acquire a Web Lock when connected', () => {

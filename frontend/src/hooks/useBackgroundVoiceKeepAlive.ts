@@ -49,10 +49,16 @@ export function useBackgroundVoiceKeepAlive({ isConnected }: UseBackgroundVoiceK
     }
 
     // --- Electron power save blocker ---
+    let cleanedUp = false;
     if (isElectron() && window.electronAPI?.requestPowerSaveBlock) {
       window.electronAPI.requestPowerSaveBlock().then((id) => {
         if (typeof id === 'number') {
-          powerSaveIdRef.current = id;
+          if (cleanedUp) {
+            // Cleanup already ran — release immediately to avoid leaking the blocker
+            window.electronAPI?.releasePowerSaveBlock?.(id)?.catch(() => {});
+          } else {
+            powerSaveIdRef.current = id;
+          }
         }
       }).catch(() => {
         // Power save block not available — not critical
@@ -60,6 +66,8 @@ export function useBackgroundVoiceKeepAlive({ isConnected }: UseBackgroundVoiceK
     }
 
     return () => {
+      cleanedUp = true;
+
       // Release Web Lock
       if (lockReleaseRef.current) {
         lockReleaseRef.current();
