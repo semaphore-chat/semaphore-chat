@@ -42,6 +42,7 @@ class MockWorker {
     if (workerShouldFail) {
       throw new Error('Worker not supported');
     }
+    // eslint-disable-next-line @typescript-eslint/no-this-alias
     lastWorkerInstance = this;
   }
 }
