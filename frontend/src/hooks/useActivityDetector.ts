@@ -77,8 +77,9 @@ export function useActivityDetector(): void {
       'touchstart',
     ];
 
-    // Kick off the initial idle timer
-    resetIdleTimer();
+    // Kick off the initial idle timer (bypass throttle to handle remounts)
+    lastActivity = Date.now();
+    startIdleTimer();
 
     const handler = () => resetIdleTimer();
 

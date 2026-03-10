@@ -118,7 +118,7 @@ export type ServerToClientEvents = {
 export type ClientToServerEvents = {
   // Connection & Room Management
   [ClientEvents.SUBSCRIBE_ALL]: () => void;
-  [ClientEvents.PRESENCE_ONLINE]: () => void;
+  [ClientEvents.PRESENCE_ONLINE]: (data?: { idle?: boolean }) => void;
 
   // Messaging: Channels
   [ClientEvents.SEND_MESSAGE]: (

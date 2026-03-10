@@ -135,6 +135,78 @@ describe('PresenceGateway', () => {
       expect(websocketService.sendToAll).not.toHaveBeenCalled();
     });
 
+    it('should call setConnectionIdle with true when idle flag is true', async () => {
+      const mockClient = {
+        id: 'socket-idle',
+        handshake: {
+          user: {
+            id: 'user-idle',
+            username: 'idleuser',
+            displayName: 'Idle User',
+            avatarUrl: null,
+          },
+        },
+      } as any;
+
+      presenceService.addConnection.mockResolvedValue(false);
+
+      await gateway.handleMessage(mockClient, { idle: true });
+
+      expect(presenceService.setConnectionIdle).toHaveBeenCalledWith(
+        'user-idle',
+        'socket-idle',
+        true,
+      );
+    });
+
+    it('should call setConnectionIdle with false when idle flag is false', async () => {
+      const mockClient = {
+        id: 'socket-active',
+        handshake: {
+          user: {
+            id: 'user-active',
+            username: 'activeuser',
+            displayName: 'Active User',
+            avatarUrl: null,
+          },
+        },
+      } as any;
+
+      presenceService.addConnection.mockResolvedValue(false);
+
+      await gateway.handleMessage(mockClient, { idle: false });
+
+      expect(presenceService.setConnectionIdle).toHaveBeenCalledWith(
+        'user-active',
+        'socket-active',
+        false,
+      );
+    });
+
+    it('should default idle to false when no data provided', async () => {
+      const mockClient = {
+        id: 'socket-nodata',
+        handshake: {
+          user: {
+            id: 'user-nodata',
+            username: 'nodatauser',
+            displayName: 'No Data User',
+            avatarUrl: null,
+          },
+        },
+      } as any;
+
+      presenceService.addConnection.mockResolvedValue(false);
+
+      await gateway.handleMessage(mockClient);
+
+      expect(presenceService.setConnectionIdle).toHaveBeenCalledWith(
+        'user-nodata',
+        'socket-nodata',
+        false,
+      );
+    });
+
     it('should handle multiple clients from same user', async () => {
       const mockClient1 = {
         id: 'socket-1',

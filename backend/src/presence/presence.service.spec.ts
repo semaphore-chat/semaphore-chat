@@ -369,6 +369,7 @@ describe('PresenceService', () => {
   describe('setConnectionIdle', () => {
     it('should set idle flag in Redis hash when idle is true', async () => {
       mockRedis.hset.mockResolvedValue(1);
+      mockRedis.expire.mockResolvedValue(1);
 
       await service.setConnectionIdle('user-1', 'conn-1', true);
 
@@ -377,16 +378,25 @@ describe('PresenceService', () => {
         'conn-1',
         '1',
       );
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        'presence:idle:user-1',
+        60,
+      );
     });
 
     it('should remove idle flag from Redis hash when idle is false', async () => {
       mockRedis.hdel.mockResolvedValue(1);
+      mockRedis.expire.mockResolvedValue(1);
 
       await service.setConnectionIdle('user-1', 'conn-1', false);
 
       expect(mockRedis.hdel).toHaveBeenCalledWith(
         'presence:idle:user-1',
         'conn-1',
+      );
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        'presence:idle:user-1',
+        60,
       );
     });
   });

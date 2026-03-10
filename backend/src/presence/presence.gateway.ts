@@ -60,7 +60,7 @@ export class PresenceGateway
   ): Promise<string> {
     const userId = client.handshake.user.id;
     const connectionId = client.id;
-    const idle = data?.idle ?? false;
+    const idle = data?.idle === true;
 
     // Add this connection and check if user went from offline to online
     const wentOnline = await this.presenceService.addConnection(

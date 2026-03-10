@@ -138,11 +138,13 @@ export class PresenceService {
 
   /**
    * Set the idle state for a specific connection.
+   * TTL matches the connections key so orphaned idle hashes expire automatically.
    */
   async setConnectionIdle(
     userId: string,
     connectionId: string,
     idle: boolean,
+    ttlSeconds: number = DEFAULT_TTL_SECONDS,
   ): Promise<void> {
     const idleKey = USER_IDLE_KEY_PREFIX + userId;
     if (idle) {
@@ -150,11 +152,17 @@ export class PresenceService {
     } else {
       await this.redis.hdel(idleKey, connectionId);
     }
+    // Refresh TTL to prevent orphaned idle hashes if cleanup cron doesn't fire
+    await this.redis.expire(idleKey, ttlSeconds);
   }
 
   /**
    * Check if a user is actively using the app (online + at least one non-idle connection).
    * Used to decide whether to suppress push notifications.
+   *
+   * Note: There is a small TOCTOU window between smembers and hmget where a connection
+   * could be added/removed. This is acceptable for push suppression — worst case is an
+   * occasional extra or missed push, compensated by the in-app WebSocket notification.
    */
   async isActive(userId: string): Promise<boolean> {
     // Must be online first

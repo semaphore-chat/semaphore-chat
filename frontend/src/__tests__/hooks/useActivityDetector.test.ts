@@ -2,6 +2,9 @@ import { renderHook, act } from '@testing-library/react';
 import { useActivityDetector, getIsIdle, _resetIdleState } from '../../hooks/useActivityDetector';
 
 describe('useActivityDetector', () => {
+  const originalHiddenDescriptor = Object.getOwnPropertyDescriptor(document, 'hidden') ??
+    Object.getOwnPropertyDescriptor(Document.prototype, 'hidden')!;
+
   beforeEach(() => {
     _resetIdleState();
     vi.useFakeTimers();
@@ -10,6 +13,10 @@ describe('useActivityDetector', () => {
   afterEach(() => {
     vi.useRealTimers();
     _resetIdleState();
+    // Restore original document.hidden descriptor
+    if (originalHiddenDescriptor) {
+      Object.defineProperty(document, 'hidden', originalHiddenDescriptor);
+    }
   });
 
   it('should not be idle initially', () => {
@@ -69,13 +76,6 @@ describe('useActivityDetector', () => {
     });
 
     expect(getIsIdle()).toBe(true);
-
-    // Restore
-    Object.defineProperty(document, 'hidden', {
-      value: false,
-      writable: true,
-      configurable: true,
-    });
   });
 
   it('should reset idle when document becomes visible again', () => {
