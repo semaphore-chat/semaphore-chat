@@ -5,16 +5,13 @@
   "author": "",
   "private": true,
   "license": "AGPL-3.0-only",
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
-  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "prisma": "pnpm run prisma:generate && pnpm run prisma:migrate",
-    "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
-    "prisma:migrate": "prisma migrate deploy --schema=prisma/schema.prisma",
-    "prisma:migrate:dev": "prisma migrate dev --schema=prisma/schema.prisma",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
     "postinstall": "pnpm run prisma:generate",
     "start": "nest start",
     "start:dev": "nest start --watch",
