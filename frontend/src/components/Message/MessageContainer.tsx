@@ -23,6 +23,13 @@ interface MessageContainerProps {
   isLoadingMore: boolean;
   onLoadMore?: () => Promise<void>;
 
+  // Bidirectional pagination (anchored mode)
+  onLoadNewer?: () => Promise<void>;
+  isLoadingNewer?: boolean;
+  hasNewer?: boolean;
+  mode?: 'normal' | 'anchored';
+  jumpToPresent?: () => void;
+
   // Message Input
   messageInput: React.ReactNode;
 
@@ -54,6 +61,11 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   continuationToken,
   isLoadingMore,
   onLoadMore,
+  onLoadNewer,
+  isLoadingNewer,
+  hasNewer,
+  mode = 'normal',
+  jumpToPresent,
   messageInput,
   memberListComponent,
   showMemberList = true,
@@ -95,6 +107,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
 
   // "At bottom" detection via IntersectionObserver on bottom sentinel
   // Bottom sentinel is first in DOM = visual bottom in column-reverse
+  // In anchored mode, also triggers loading newer messages
   const hasMessages = messages.length > 0;
   useEffect(() => {
     const sentinel = bottomSentinelRef.current;
@@ -102,12 +115,17 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     if (!sentinel || !container) return;
 
     const observer = new IntersectionObserver(
-      ([entry]) => setAtBottom(entry.isIntersecting),
+      ([entry]) => {
+        setAtBottom(entry.isIntersecting);
+        if (entry.isIntersecting && mode === 'anchored' && onLoadNewer && !isLoadingNewer && hasNewer) {
+          onLoadNewer();
+        }
+      },
       { root: container, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMessages]);
+  }, [hasMessages, mode, onLoadNewer, isLoadingNewer, hasNewer]);
 
   // "Load more" pagination via IntersectionObserver on top sentinel
   // Top sentinel is last in DOM = visual top in column-reverse
@@ -238,6 +256,16 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           >
             {/* Bottom sentinel: first in DOM = visual bottom in column-reverse */}
             <Box ref={bottomSentinelRef} sx={{ height: '1px', flexShrink: 0 }} />
+
+            {/* Loading skeleton at visual bottom for newer messages (anchored mode) */}
+            {isLoadingNewer && (
+              <Box sx={{ p: 2, textAlign: "center" }}>
+                <MessageSkeleton />
+                <MessageSkeleton />
+                <MessageSkeleton />
+              </Box>
+            )}
+
             <Box sx={{ px: 2, minHeight: 20 }} />
 
             {/* Messages newest-first; column-reverse shows oldest at top */}
@@ -314,7 +342,25 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           {messageInput}
         </Box>
 
-        {!atBottom && (
+        {mode === 'anchored' && jumpToPresent ? (
+          <Fab
+            variant="extended"
+            size="small"
+            onClick={jumpToPresent}
+            data-testid="jump-to-present-fab"
+            sx={{
+              position: "absolute",
+              bottom: 80,
+              right: 16,
+              backgroundColor: "primary.main",
+              "&:hover": { backgroundColor: "primary.dark" },
+              color: "primary.contrastText",
+            }}
+          >
+            <KeyboardArrowDownIcon sx={{ mr: 0.5 }} />
+            Jump to Present
+          </Fab>
+        ) : !atBottom && (
           <Fab
             size="small"
             onClick={scrollToBottom}

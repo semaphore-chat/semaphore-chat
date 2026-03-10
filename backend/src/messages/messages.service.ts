@@ -258,6 +258,7 @@ export class MessagesService {
     channelId: string,
     limit = 50,
     continuationToken?: string,
+    direction: 'older' | 'newer' = 'older',
   ) {
     if (!channelId) {
       throw new NotFoundException('No channelId provided');
@@ -267,6 +268,7 @@ export class MessagesService {
       channelId,
       limit,
       continuationToken,
+      direction,
     );
   }
 
@@ -274,6 +276,7 @@ export class MessagesService {
     directMessageGroupId: string,
     limit = 50,
     continuationToken?: string,
+    direction: 'older' | 'newer' = 'older',
   ) {
     if (!directMessageGroupId) {
       throw new NotFoundException('No directMessageGroupId provided');
@@ -283,6 +286,30 @@ export class MessagesService {
       directMessageGroupId,
       limit,
       continuationToken,
+      direction,
+    );
+  }
+
+  async findAroundForChannel(channelId: string, messageId: string, limit = 50) {
+    if (!channelId) {
+      throw new NotFoundException('No channelId provided');
+    }
+    return this.findAroundMessage('channelId', channelId, messageId, limit);
+  }
+
+  async findAroundForDirectMessageGroup(
+    directMessageGroupId: string,
+    messageId: string,
+    limit = 50,
+  ) {
+    if (!directMessageGroupId) {
+      throw new NotFoundException('No directMessageGroupId provided');
+    }
+    return this.findAroundMessage(
+      'directMessageGroupId',
+      directMessageGroupId,
+      messageId,
+      limit,
     );
   }
 
@@ -362,14 +389,18 @@ export class MessagesService {
     value: string,
     limit = 50,
     continuationToken?: string,
+    direction: 'older' | 'newer' = 'older',
   ) {
     const where = {
       [field]: value,
       parentMessageId: null,
     };
+
+    const isNewer = direction === 'newer';
+    const sortOrder = isNewer ? ('asc' as const) : ('desc' as const);
     const query = {
       where,
-      orderBy: { sentAt: 'desc' as const },
+      orderBy: { sentAt: sortOrder },
       take: limit,
       include: MESSAGE_INCLUDE,
       ...(continuationToken
@@ -378,13 +409,71 @@ export class MessagesService {
     };
     const messages = await this.databaseService.message.findMany(query);
 
+    // Compute continuation token before reversing.
+    // For both directions, the token is the last element in Prisma's sort order
+    // (oldest for 'older', newest for 'newer') so the next page continues from there.
+    const nextToken =
+      messages.length === limit ? messages[messages.length - 1].id : undefined;
+
+    // For newer direction, reverse so results are still newest-first
+    if (isNewer) {
+      messages.reverse();
+    }
+
     const messagesWithMetadata = messages.map((message) =>
       this.formatMessage(message),
     );
 
-    const nextToken =
-      messages.length === limit ? messages[messages.length - 1].id : undefined;
     return { messages: messagesWithMetadata, continuationToken: nextToken };
+  }
+
+  private async findAroundMessage(
+    field: 'channelId' | 'directMessageGroupId',
+    fieldValue: string,
+    messageId: string,
+    limit = 50,
+  ) {
+    const halfLimit = Math.floor(limit / 2);
+
+    // Fetch the anchor message
+    const anchor = await this.databaseService.message.findUnique({
+      where: { id: messageId },
+      include: MESSAGE_INCLUDE,
+    });
+
+    if (!anchor || anchor[field] !== fieldValue || anchor.parentMessageId !== null) {
+      throw new NotFoundException('Message not found');
+    }
+
+    const baseWhere = { [field]: fieldValue, parentMessageId: null };
+
+    // Fetch older messages (sentAt < anchor, descending)
+    const older = await this.databaseService.message.findMany({
+      where: { ...baseWhere, sentAt: { lt: anchor.sentAt } },
+      orderBy: { sentAt: 'desc' as const },
+      take: halfLimit,
+      include: MESSAGE_INCLUDE,
+    });
+
+    // Fetch newer messages (sentAt > anchor, ascending, then reverse)
+    const newer = await this.databaseService.message.findMany({
+      where: { ...baseWhere, sentAt: { gt: anchor.sentAt } },
+      orderBy: { sentAt: 'asc' as const },
+      take: halfLimit,
+      include: MESSAGE_INCLUDE,
+    });
+    newer.reverse();
+
+    // Combine: newest-first order [...newer, anchor, ...older]
+    const combined = [...newer, anchor, ...older];
+    const messages = combined.map((m) => this.formatMessage(m));
+
+    const olderContinuationToken =
+      older.length === halfLimit ? older[older.length - 1].id : undefined;
+    const newerContinuationToken =
+      newer.length === halfLimit ? newer[newer.length - 1].id : undefined;
+
+    return { messages, olderContinuationToken, newerContinuationToken };
   }
 
   /**

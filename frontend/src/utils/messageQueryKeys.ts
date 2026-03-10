@@ -1,6 +1,8 @@
 import {
   messagesControllerFindAllForChannelQueryKey,
   messagesControllerFindAllForGroupQueryKey,
+  messagesControllerFindAroundForChannelQueryKey,
+  messagesControllerFindAroundForGroupQueryKey,
 } from '../api-client/@tanstack/react-query.gen';
 
 // WebSocket events keep message data fresh — disable TanStack Query
@@ -21,6 +23,20 @@ export function dmMessagesQueryKey(dmGroupId: string) {
   return messagesControllerFindAllForGroupQueryKey({
     path: { groupId: dmGroupId },
     query: { limit: 25, continuationToken: '' },
+  });
+}
+
+export function channelAnchoredMessagesQueryKey(channelId: string, anchorMessageId: string) {
+  return messagesControllerFindAroundForChannelQueryKey({
+    path: { channelId, messageId: anchorMessageId },
+    query: { limit: 50 },
+  });
+}
+
+export function dmAnchoredMessagesQueryKey(dmGroupId: string, anchorMessageId: string) {
+  return messagesControllerFindAroundForGroupQueryKey({
+    path: { groupId: dmGroupId, messageId: anchorMessageId },
+    query: { limit: 50 },
   });
 }
 

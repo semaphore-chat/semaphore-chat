@@ -8,7 +8,7 @@ import MessageSearch from "../Message/MessageSearch";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { useMessages } from "../../hooks/useMessages";
+import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -133,8 +133,8 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
       name: channel.name,
     })), [channelData]);
 
-  // Get messages using the unified hook
-  const messagesHookResult = useMessages('channel', channelId);
+  // Get messages using the jump-to-message hook (supports anchored mode for pinned/search/notification links)
+  const messagesHookResult = useJumpToMessage('channel', channelId, highlightMessageId || undefined);
 
   // Create member list component for the channel
   const memberListComponent = (

@@ -2,7 +2,7 @@ import React from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
-import { useMessages } from "../../hooks/useMessages";
+import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useQuery } from "@tanstack/react-query";
 import { directMessagesControllerFindDmGroupOptions } from "../../api-client/@tanstack/react-query.gen";
@@ -60,8 +60,8 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
     })) || [];
   }, [dmGroup?.members]);
 
-  // Get messages using the unified hook
-  const messagesHookResult = useMessages('dm', dmGroupId);
+  // Get messages using the jump-to-message hook (supports anchored mode for notification deep links)
+  const messagesHookResult = useJumpToMessage('dm', dmGroupId, highlightMessageId || undefined);
 
   // Create member list component for the DM group
   const memberListComponent = (
