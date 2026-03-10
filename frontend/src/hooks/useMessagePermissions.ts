@@ -17,6 +17,8 @@ interface UseMessagePermissionsResult {
   canDelete: boolean;
   /** Whether the current user can pin/unpin this message */
   canPin: boolean;
+  /** Whether the current user can add reactions to this message */
+  canReact: boolean;
   /** Whether the current user is the author of this message */
   isOwnMessage: boolean;
 }
@@ -51,16 +53,18 @@ export function useMessagePermissions({
   currentUserId,
 }: UseMessagePermissionsParams): UseMessagePermissionsResult {
   const isOwnMessage = currentUserId === message.authorId;
+  const isDm = !message.channelId && !!message.directMessageGroupId;
 
-  // Check if user can moderate messages in this channel
+  // Check if user can moderate messages in this channel.
+  // For DMs, skip RBAC — pin is not supported and delete is ownership-only.
   const canDeleteMessage = useCanPerformAction(
     RBAC_RESOURCES.CHANNEL,
-    message.channelId,
+    isDm ? undefined : message.channelId,
     RBAC_ACTIONS.DELETE_MESSAGE
   );
   const canPinMessage = useCanPerformAction(
     RBAC_RESOURCES.CHANNEL,
-    message.channelId,
+    isDm ? undefined : message.channelId,
     RBAC_ACTIONS.PIN_MESSAGE
   );
 
@@ -75,10 +79,18 @@ export function useMessagePermissions({
     return isOwnMessage || canDeleteMessage;
   }, [isOwnMessage, canDeleteMessage]);
 
+  // Backend forbids pinning in DMs — only allow for channel messages with permission
+  const canPin = !isDm && canPinMessage;
+
+  // In DMs, all participants can react (backend grants DM group members full access).
+  // This ensures the toolbar renders even when other permissions are false.
+  const canReact = isDm || !!currentUserId;
+
   return {
     canEdit,
     canDelete,
-    canPin: canPinMessage,
+    canPin,
+    canReact,
     isOwnMessage,
   };
 }

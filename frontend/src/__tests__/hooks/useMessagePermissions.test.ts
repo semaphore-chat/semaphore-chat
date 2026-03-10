@@ -90,4 +90,83 @@ describe('useMessagePermissions', () => {
     );
     expect(otherResult.current.isOwnMessage).toBe(false);
   });
+
+  describe('DM context (directMessageGroupId set, no channelId)', () => {
+    it('returns canPin=false for DMs (backend forbids pinning in DMs)', () => {
+      const message = createMessage({
+        authorId: 'other-user',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+
+      expect(result.current.canPin).toBe(false);
+    });
+
+    it('returns canReact=true for any DM participant', () => {
+      const message = createMessage({
+        authorId: 'other-user',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+
+      expect(result.current.canReact).toBe(true);
+    });
+
+    it('returns canDelete=false for others messages in DMs', () => {
+      const message = createMessage({
+        authorId: 'other-user',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+
+      expect(result.current.canDelete).toBe(false);
+    });
+
+    it('returns canEdit=true and canDelete=true for own DM messages', () => {
+      const message = createMessage({
+        authorId: 'user-1',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+
+      expect(result.current.canEdit).toBe(true);
+      expect(result.current.canDelete).toBe(true);
+      expect(result.current.canReact).toBe(true);
+    });
+
+    it('does not pass DM resourceId to RBAC checks', () => {
+      const message = createMessage({
+        authorId: 'other-user',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+
+      // Should call with undefined resourceId, not the DM group ID
+      expect(mockCanPerformAction).toHaveBeenCalledWith(
+        'CHANNEL',
+        undefined,
+        'DELETE_MESSAGE',
+      );
+      expect(mockCanPerformAction).toHaveBeenCalledWith(
+        'CHANNEL',
+        undefined,
+        'PIN_MESSAGE',
+      );
+    });
+  });
 });

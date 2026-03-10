@@ -62,7 +62,7 @@ function MessageComponentInner({
   const isMentioned = isUserMentioned(message, currentUser?.id);
 
   // Use extracted hook for cleaner permission logic
-  const { canEdit, canDelete, canPin } = useMessagePermissions({
+  const { canEdit, canDelete, canPin, canReact } = useMessagePermissions({
     message,
     currentUserId: currentUser?.id,
   });
@@ -207,7 +207,7 @@ function MessageComponentInner({
           </>
         )}
       </div>
-      {(canEdit || canDelete || canPin || canThread) && !isEditing && (
+      {(canEdit || canDelete || canPin || canReact || canThread) && !isEditing && (
         <MessageToolbar
           canEdit={canEdit}
           canDelete={canDelete}
