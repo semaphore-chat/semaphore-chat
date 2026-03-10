@@ -30,6 +30,8 @@ import type { PinnedMessageDto as PinnedMessage } from "../../api-client/types.g
 import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import UserAvatar from "../Common/UserAvatar";
+import { AttachmentPreview } from "../Message/AttachmentPreview";
+import type { FileMetadata } from "../../types/message.type";
 import { formatDistanceToNow } from "date-fns";
 import { logger } from "../../utils/logger";
 
@@ -181,6 +183,7 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
                   }
                 >
                   <ListItemText
+                    secondaryTypographyProps={{ component: "div" } as object}
                     primary={
                       <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 0.5 }}>
                         {message.author && (
@@ -195,19 +198,44 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
                       </Box>
                     }
                     secondary={
-                      <Typography
-                        variant="body2"
-                        color="text.primary"
-                        sx={{
-                          display: "-webkit-box",
-                          WebkitLineClamp: 3,
-                          WebkitBoxOrient: "vertical",
-                          overflow: "hidden",
-                          wordBreak: "break-word",
-                        }}
-                      >
-                        {getMessageContent(message)}
-                      </Typography>
+                      <Box component="span" sx={{ display: "block" }}>
+                        {getMessageContent(message) && (
+                          <Typography
+                            variant="body2"
+                            color="text.primary"
+                            sx={{
+                              display: "-webkit-box",
+                              WebkitLineClamp: 3,
+                              WebkitBoxOrient: "vertical",
+                              overflow: "hidden",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {getMessageContent(message)}
+                          </Typography>
+                        )}
+                        {message.attachments.length > 0 && (
+                          <Box
+                            sx={{
+                              mt: getMessageContent(message) ? 1 : 0,
+                              maxHeight: 150,
+                              overflow: "hidden",
+                              pointerEvents: "none",
+                              "& img": { maxHeight: 140 },
+                              "& video": { maxHeight: 140 },
+                            }}
+                          >
+                            <AttachmentPreview
+                              metadata={message.attachments[0] as FileMetadata}
+                            />
+                            {message.attachments.length > 1 && (
+                              <Typography variant="caption" color="text.secondary">
+                                +{message.attachments.length - 1} more
+                              </Typography>
+                            )}
+                          </Box>
+                        )}
+                      </Box>
                     }
                   />
                 </ListItem>
