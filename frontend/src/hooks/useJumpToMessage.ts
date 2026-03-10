@@ -4,8 +4,6 @@ import { useMessages } from "./useMessages";
 import { useAnchoredMessages } from "./useAnchoredMessages";
 import { findMessageInInfinite } from "../utils/messageCacheUpdaters";
 import {
-  channelMessagesQueryKey,
-  dmMessagesQueryKey,
   channelAnchoredMessagesQueryKey,
   dmAnchoredMessagesQueryKey,
 } from "../utils/messageQueryKeys";
@@ -26,31 +24,33 @@ export const useJumpToMessage = (
   const normalResult = useMessages(type, id);
   const anchoredResult = useAnchoredMessages(type, id, anchorMessageId);
 
-  // When highlightMessageId changes, check if it's in the normal cache
+  // When highlightMessageId changes, check if it's in the normal data.
+  // Wait for the normal query to finish loading before deciding, to avoid
+  // a race where we switch to anchored mode before the first page arrives.
   useEffect(() => {
     if (!highlightMessageId || !id) {
       return;
     }
 
-    const normalQueryKey =
-      type === "channel"
-        ? channelMessagesQueryKey(id)
-        : dmMessagesQueryKey(id);
+    // Don't decide until the normal query has completed its initial load
+    if (normalResult.isLoading) {
+      return;
+    }
 
-    const normalData = queryClient.getQueryData<
-      InfiniteData<PaginatedMessagesResponseDto>
-    >(normalQueryKey);
+    const normalData = normalResult.data as
+      | InfiniteData<PaginatedMessagesResponseDto>
+      | undefined;
 
     const found = findMessageInInfinite(normalData, highlightMessageId);
 
     if (found) {
-      // Message is in normal cache — stay in normal mode
+      // Message is in normal data — stay in normal mode
       setAnchorMessageId(undefined);
     } else {
       // Message not loaded — switch to anchored mode
       setAnchorMessageId(highlightMessageId);
     }
-  }, [highlightMessageId, id, type, queryClient]);
+  }, [highlightMessageId, id, normalResult.isLoading, normalResult.data]);
 
   const jumpToPresent = useCallback(() => {
     if (!id || !anchorMessageId) return;

@@ -14,7 +14,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 import { ReactionsService } from './reactions.service';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -84,18 +84,20 @@ export class MessagesController {
     idKey: 'groupId',
     source: ResourceIdSource.PARAM,
   })
+  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
   findAllForGroup(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
-    @Query('direction') direction?: 'older' | 'newer',
+    @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
     limit = Math.min(limit, 100);
+    const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForDirectMessageGroup(
       groupId,
       limit,
       continuationToken,
-      direction || 'older',
+      dir,
     );
   }
 
@@ -107,18 +109,20 @@ export class MessagesController {
     idKey: 'channelId',
     source: ResourceIdSource.PARAM,
   })
+  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
   findAllForChannel(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
-    @Query('direction') direction?: 'older' | 'newer',
+    @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
     limit = Math.min(limit, 100);
+    const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForChannel(
       channelId,
       limit,
       continuationToken,
-      direction || 'older',
+      dir,
     );
   }
 

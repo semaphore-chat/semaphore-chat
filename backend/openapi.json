@@ -2386,9 +2386,13 @@
           },
           {
             "name": "direction",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
+              "enum": [
+                "older",
+                "newer"
+              ],
               "type": "string"
             }
           }
@@ -2440,9 +2444,13 @@
           },
           {
             "name": "direction",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
+              "enum": [
+                "older",
+                "newer"
+              ],
               "type": "string"
             }
           }

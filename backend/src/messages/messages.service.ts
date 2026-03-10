@@ -462,16 +462,16 @@ export class MessagesService {
       take: halfLimit,
       include: MESSAGE_INCLUDE,
     });
-    newer.reverse();
-
-    // Combine: newest-first order [...newer, anchor, ...older]
-    const combined = [...newer, anchor, ...older];
-    const messages = combined.map((m) => this.formatMessage(m));
 
     const olderContinuationToken =
       older.length === halfLimit ? older[older.length - 1].id : undefined;
+    // newer is asc (oldest→newest), so last element is the newest (farthest from anchor)
     const newerContinuationToken =
       newer.length === halfLimit ? newer[newer.length - 1].id : undefined;
+
+    // Combine in newest-first order: [...newerReversed, anchor, ...older]
+    const combined = [...[...newer].reverse(), anchor, ...older];
+    const messages = combined.map((m) => this.formatMessage(m));
 
     return { messages, olderContinuationToken, newerContinuationToken };
   }
