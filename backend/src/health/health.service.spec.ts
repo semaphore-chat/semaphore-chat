@@ -1,18 +1,25 @@
 import { TestBed } from '@suites/unit';
 import { HealthService } from './health.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
+import { DatabaseService } from '@/database/database.service';
 import { createMockRedis } from '@/test-utils';
 
 describe('HealthService', () => {
   let service: HealthService;
   let mockRedis: ReturnType<typeof createMockRedis>;
+  let mockDatabase: { $queryRawUnsafe: jest.Mock };
 
   beforeEach(async () => {
     mockRedis = createMockRedis();
+    mockDatabase = {
+      $queryRawUnsafe: jest.fn().mockResolvedValue([{ '?column?': 1 }]),
+    };
 
     const { unit } = await TestBed.solitary(HealthService)
       .mock(REDIS_CLIENT)
       .final(mockRedis)
+      .mock(DatabaseService)
+      .final(mockDatabase)
       .compile();
 
     service = unit;
@@ -156,6 +163,82 @@ describe('HealthService', () => {
       service.getHealthMetadata();
 
       expect(mockRedis.get).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('checkHealth', () => {
+    it('should return ok when both Redis and database are healthy', async () => {
+      const result = await service.checkHealth();
+
+      expect(result.status).toBe('ok');
+      expect(result.checks.redis.status).toBe('up');
+      expect(result.checks.database.status).toBe('up');
+      expect(result).toHaveProperty('instanceName');
+      expect(result).toHaveProperty('version');
+      expect(result).toHaveProperty('timestamp');
+    });
+
+    it('should return degraded when Redis is down', async () => {
+      mockRedis.ping.mockRejectedValue(new Error('Connection refused'));
+
+      const result = await service.checkHealth();
+
+      expect(result.status).toBe('degraded');
+      expect(result.checks.redis.status).toBe('down');
+      expect(result.checks.redis.error).toBe('Connection refused');
+      expect(result.checks.database.status).toBe('up');
+    });
+
+    it('should return degraded when database is down', async () => {
+      mockDatabase.$queryRawUnsafe.mockRejectedValue(
+        new Error('Connection terminated'),
+      );
+
+      const result = await service.checkHealth();
+
+      expect(result.status).toBe('degraded');
+      expect(result.checks.redis.status).toBe('up');
+      expect(result.checks.database.status).toBe('down');
+      expect(result.checks.database.error).toBe('Connection terminated');
+    });
+
+    it('should return degraded when both are down', async () => {
+      mockRedis.ping.mockRejectedValue(new Error('Redis offline'));
+      mockDatabase.$queryRawUnsafe.mockRejectedValue(new Error('DB offline'));
+
+      const result = await service.checkHealth();
+
+      expect(result.status).toBe('degraded');
+      expect(result.checks.redis.status).toBe('down');
+      expect(result.checks.redis.error).toBe('Redis offline');
+      expect(result.checks.database.status).toBe('down');
+      expect(result.checks.database.error).toBe('DB offline');
+    });
+
+    it('should not include error field when checks pass', async () => {
+      const result = await service.checkHealth();
+
+      expect(result.checks.redis).not.toHaveProperty('error');
+      expect(result.checks.database).not.toHaveProperty('error');
+    });
+
+    it('should log errors for failed checks', async () => {
+      const loggerSpy = jest.spyOn(service['logger'], 'error');
+      mockRedis.ping.mockRejectedValue(new Error('Redis offline'));
+
+      await service.checkHealth();
+
+      expect(loggerSpy).toHaveBeenCalledWith(
+        'Redis health check failed',
+        expect.any(Error),
+      );
+    });
+
+    it('should call redis.ping and database.$queryRawUnsafe', async () => {
+      await service.checkHealth();
+
+      expect(mockRedis.ping).toHaveBeenCalled();
+      expect(mockDatabase.$queryRawUnsafe).toHaveBeenCalledWith('SELECT 1');
     });
   });
 });

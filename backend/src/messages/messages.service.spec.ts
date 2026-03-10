@@ -416,8 +416,16 @@ describe('MessagesService', () => {
 
     it('should delete thread replies before deleting parent message', async () => {
       const parentId = 'parent-msg';
-      const reply1 = { id: 'reply-1', parentMessageId: parentId, attachments: [] };
-      const reply2 = { id: 'reply-2', parentMessageId: parentId, attachments: [] };
+      const reply1 = {
+        id: 'reply-1',
+        parentMessageId: parentId,
+        attachments: [],
+      };
+      const reply2 = {
+        id: 'reply-2',
+        parentMessageId: parentId,
+        attachments: [],
+      };
 
       mockDatabase.message.findMany.mockResolvedValue([reply1, reply2]);
       mockDatabase.message.deleteMany.mockResolvedValue({ count: 2 });

@@ -1,8 +1,9 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Res } from '@nestjs/common';
 import { ApiTags, ApiOkResponse } from '@nestjs/swagger';
 import { Public } from '@/auth/public.decorator';
 import { HealthService } from './health.service';
 import { HealthResponseDto } from './dto/health-response.dto';
+import { Response } from 'express';
 
 @ApiTags('Health')
 @Controller('health')
@@ -12,7 +13,10 @@ export class HealthController {
   @Get()
   @Public()
   @ApiOkResponse({ type: HealthResponseDto })
-  check(): HealthResponseDto {
-    return this.healthService.getHealthMetadata();
+  async check(@Res() res: Response): Promise<void> {
+    const health = await this.healthService.checkHealth();
+    const status =
+      health.status === 'ok' ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
+    res.status(status).json(health);
   }
 }

@@ -24,6 +24,7 @@
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 
 export type MockRedisClient = {
+  ping: jest.Mock;
   get: jest.Mock;
   set: jest.Mock;
   del: jest.Mock;
@@ -71,6 +72,7 @@ export function createMockRedis(): MockRedisClient {
   };
 
   return {
+    ping: jest.fn(() => Promise.resolve('PONG')),
     get: jest.fn((key: string) => Promise.resolve(store.get(key) || null)),
     set: jest.fn((key: string, value: string, ...args: any[]) => {
       store.set(key, value);
