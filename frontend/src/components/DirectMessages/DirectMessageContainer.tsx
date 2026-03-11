@@ -2,7 +2,7 @@ import React from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
-import { useMessages } from "../../hooks/useMessages";
+import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useQuery } from "@tanstack/react-query";
 import { directMessagesControllerFindDmGroupOptions } from "../../api-client/@tanstack/react-query.gen";
@@ -41,13 +41,11 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
   const dmNavigate = useNavigate();
   const highlightMessageId = searchParams.get("highlight");
 
-  // Clear highlight param from URL after a delay (so the flash animation can play)
+  // Clear highlight param from URL immediately after capturing it.
+  // useJumpToMessage stores it locally for scroll/flash (3s auto-clear).
   React.useEffect(() => {
     if (highlightMessageId) {
-      const timer = setTimeout(() => {
-        dmNavigate(`/direct-messages?group=${dmGroupId}`, { replace: true });
-      }, 3000);
-      return () => clearTimeout(timer);
+      dmNavigate(`/direct-messages?group=${dmGroupId}`, { replace: true });
     }
   }, [highlightMessageId, dmGroupId, dmNavigate]);
 
@@ -60,8 +58,8 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
     })) || [];
   }, [dmGroup?.members]);
 
-  // Get messages using the unified hook
-  const messagesHookResult = useMessages('dm', dmGroupId);
+  // Get messages using the jump-to-message hook (supports anchored mode for notification deep links)
+  const messagesHookResult = useJumpToMessage('dm', dmGroupId, highlightMessageId || undefined);
 
   // Create member list component for the DM group
   const memberListComponent = (
@@ -81,7 +79,7 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
       memberListComponent={memberListComponent}
       placeholder="Type a direct message..."
       emptyStateMessage="No messages yet. Start the conversation!"
-      highlightMessageId={highlightMessageId || undefined}
+      highlightMessageId={messagesHookResult.highlightMessageId}
     />
   );
 };

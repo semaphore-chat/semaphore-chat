@@ -15,6 +15,12 @@ export interface MessagesHookResult {
   continuationToken?: string;
   isLoadingMore: boolean;
   onLoadMore?: () => Promise<void>;
+  onLoadNewer?: () => Promise<void>;
+  isLoadingNewer?: boolean;
+  hasNewer?: boolean;
+  mode?: 'normal' | 'anchored';
+  jumpToPresent?: () => void;
+  highlightSeq?: number;
 }
 
 export interface MessageContainerWrapperProps {
@@ -57,6 +63,12 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
     continuationToken,
     isLoadingMore,
     onLoadMore,
+    onLoadNewer,
+    isLoadingNewer,
+    hasNewer,
+    mode,
+    jumpToPresent,
+    highlightSeq,
   } = useMessagesHook();
 
   // Create the message input component
@@ -81,10 +93,16 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
       continuationToken={continuationToken}
       isLoadingMore={isLoadingMore}
       onLoadMore={onLoadMore}
+      onLoadNewer={onLoadNewer}
+      isLoadingNewer={isLoadingNewer}
+      hasNewer={hasNewer}
+      mode={mode}
+      jumpToPresent={jumpToPresent}
       messageInput={messageInput}
       memberListComponent={memberListComponent}
       emptyStateMessage={emptyStateMessage}
       highlightMessageId={highlightMessageId}
+      highlightSeq={highlightSeq}
       contextId={contextId}
       communityId={communityId}
       onOpenThread={onOpenThread}

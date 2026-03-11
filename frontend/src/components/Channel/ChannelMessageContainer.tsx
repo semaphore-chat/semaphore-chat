@@ -8,7 +8,7 @@ import MessageSearch from "../Message/MessageSearch";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import { useMessages } from "../../hooks/useMessages";
+import { useJumpToMessage } from "../../hooks/useJumpToMessage";
 import { useMessageFileUpload } from "../../hooks/useMessageFileUpload";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -55,15 +55,14 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const navigate = useNavigate();
   const highlightMessageId = searchParams.get("highlight");
 
-  // Clear highlight param from URL after a delay (so the flash animation can play)
+  // Clear highlight param from URL immediately after capturing it.
+  // useJumpToMessage stores it locally for scroll/flash (3s auto-clear).
+  // Immediate URL clear allows re-clicking the same pinned message.
   React.useEffect(() => {
     if (highlightMessageId) {
-      const timer = setTimeout(() => {
-        navigate(`/community/${communityId}/channel/${channelId}`, {
-          replace: true,
-        });
-      }, 3000); // Clear after 3 seconds
-      return () => clearTimeout(timer);
+      navigate(`/community/${communityId}/channel/${channelId}`, {
+        replace: true,
+      });
     }
   }, [highlightMessageId, communityId, channelId, navigate]);
 
@@ -133,8 +132,8 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
       name: channel.name,
     })), [channelData]);
 
-  // Get messages using the unified hook
-  const messagesHookResult = useMessages('channel', channelId);
+  // Get messages using the jump-to-message hook (supports anchored mode for pinned/search/notification links)
+  const messagesHookResult = useJumpToMessage('channel', channelId, highlightMessageId || undefined);
 
   // Create member list component for the channel
   const memberListComponent = (
@@ -206,7 +205,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
           memberListComponent={memberListComponent}
           placeholder="Type a message... Use @ for members, @here, @channel"
           emptyStateMessage="No messages yet. Start the conversation!"
-          highlightMessageId={highlightMessageId || undefined}
+          highlightMessageId={messagesHookResult.highlightMessageId}
           onOpenThread={handleOpenThread}
         />
       </Box>

@@ -155,6 +155,7 @@ describe('MessagesController', () => {
         groupId,
         50,
         undefined,
+        'older',
       );
       expect(result).toEqual(mockMessages);
     });
@@ -175,6 +176,7 @@ describe('MessagesController', () => {
         groupId,
         25,
         continuationToken,
+        'older',
       );
     });
   });
@@ -195,6 +197,7 @@ describe('MessagesController', () => {
         channelId,
         50,
         undefined,
+        'older',
       );
       expect(result).toEqual(mockMessages);
     });
@@ -213,6 +216,7 @@ describe('MessagesController', () => {
         channelId,
         100,
         undefined,
+        'older',
       );
     });
 
@@ -230,6 +234,7 @@ describe('MessagesController', () => {
         channelId,
         50,
         undefined,
+        'older',
       );
     });
 
@@ -247,6 +252,7 @@ describe('MessagesController', () => {
         channelId,
         100,
         undefined,
+        'older',
       );
     });
 
@@ -264,6 +270,7 @@ describe('MessagesController', () => {
         channelId,
         100,
         undefined,
+        'older',
       );
     });
   });

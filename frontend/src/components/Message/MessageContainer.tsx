@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useMemo } from "react";
 import MessageComponent from "./MessageComponent";
 import { Box, Typography, Fab } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -8,6 +8,8 @@ import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { useResponsive } from "../../hooks/useResponsive";
+import { useBidirectionalScroll } from "../../hooks/useBidirectionalScroll";
+import { useAnchoredModeTransition } from "../../hooks/useAnchoredModeTransition";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 import TypingIndicator from "./TypingIndicator";
 
@@ -23,6 +25,13 @@ interface MessageContainerProps {
   isLoadingMore: boolean;
   onLoadMore?: () => Promise<void>;
 
+  // Bidirectional pagination (anchored mode)
+  onLoadNewer?: () => Promise<void>;
+  isLoadingNewer?: boolean;
+  hasNewer?: boolean;
+  mode?: 'normal' | 'anchored';
+  jumpToPresent?: () => void;
+
   // Message Input
   messageInput: React.ReactNode;
 
@@ -35,6 +44,7 @@ interface MessageContainerProps {
 
   // Search highlight
   highlightMessageId?: string;
+  highlightSeq?: number;
 
   // Thread handling
   contextId?: string;
@@ -54,11 +64,17 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   continuationToken,
   isLoadingMore,
   onLoadMore,
+  onLoadNewer,
+  isLoadingNewer,
+  hasNewer,
+  mode = 'normal',
+  jumpToPresent,
   messageInput,
   memberListComponent,
   showMemberList = true,
   emptyStateMessage = "No messages yet. Start the conversation!",
   highlightMessageId,
+  highlightSeq,
   contextId,
   communityId,
   onOpenThread,
@@ -66,11 +82,35 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   directMessageGroupId,
 }) => {
   const { isMobile } = useResponsive();
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomSentinelRef = useRef<HTMLDivElement>(null);
-  const topSentinelRef = useRef<HTMLDivElement>(null);
-  const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const [atBottom, setAtBottom] = useState(true);
+
+  const {
+    scrollContainerRef,
+    bottomSentinelRef,
+    topSentinelRef,
+    messageRefs,
+    atBottom,
+    scrollToBottom,
+  } = useBidirectionalScroll({
+    messages,
+    mode,
+    highlightMessageId,
+    highlightSeq,
+    onLoadMore,
+    isLoadingMore,
+    continuationToken,
+    onLoadNewer,
+    isLoadingNewer,
+    hasNewer,
+  });
+
+  useAnchoredModeTransition({
+    mode,
+    atBottom,
+    hasNewer,
+    isLoadingNewer,
+    jumpToPresent,
+    scrollContainerRef,
+  });
 
   // Auto-mark messages as read when they scroll into view
   useMessageVisibility({
@@ -92,59 +132,6 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     if (!lastReadMessageId) return -1;
     return messages.findIndex((msg) => msg.id === lastReadMessageId);
   }, [messages, lastReadMessageId]);
-
-  // "At bottom" detection via IntersectionObserver on bottom sentinel
-  // Bottom sentinel is first in DOM = visual bottom in column-reverse
-  const hasMessages = messages.length > 0;
-  useEffect(() => {
-    const sentinel = bottomSentinelRef.current;
-    const container = scrollContainerRef.current;
-    if (!sentinel || !container) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => setAtBottom(entry.isIntersecting),
-      { root: container, threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMessages]);
-
-  // "Load more" pagination via IntersectionObserver on top sentinel
-  // Top sentinel is last in DOM = visual top in column-reverse
-  useEffect(() => {
-    const sentinel = topSentinelRef.current;
-    const container = scrollContainerRef.current;
-    if (!sentinel || !container) return;
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !isLoadingMore && continuationToken && onLoadMore) {
-          onLoadMore();
-        }
-      },
-      { root: container, threshold: 0 }
-    );
-    observer.observe(sentinel);
-    return () => observer.disconnect();
-  }, [hasMessages, continuationToken, onLoadMore, isLoadingMore]);
-
-  // Scroll to bottom: scrollTop=0 is visual bottom in column-reverse
-  const scrollToBottom = useCallback(() => {
-    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-  }, []);
-
-  // Scroll to highlighted message
-  useEffect(() => {
-    if (highlightMessageId && messages.length > 0) {
-      const el = messageRefs.current.get(highlightMessageId);
-      if (el) {
-        const timer = setTimeout(() => {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 100);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [highlightMessageId, messages]);
 
   const skeletonCount = 10;
 
@@ -238,6 +225,16 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           >
             {/* Bottom sentinel: first in DOM = visual bottom in column-reverse */}
             <Box ref={bottomSentinelRef} sx={{ height: '1px', flexShrink: 0 }} />
+
+            {/* Loading skeleton at visual bottom for newer messages (anchored mode) */}
+            {isLoadingNewer && (
+              <Box sx={{ p: 2, textAlign: "center" }}>
+                <MessageSkeleton />
+                <MessageSkeleton />
+                <MessageSkeleton />
+              </Box>
+            )}
+
             <Box sx={{ px: 2, minHeight: 20 }} />
 
             {/* Messages newest-first; column-reverse shows oldest at top */}
@@ -249,8 +246,12 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
               const showDividerBefore =
                 unreadCount > 0 && lastReadIndex > 0 && index === lastReadIndex;
 
+              // Composite key: when highlighted, include highlightSeq so React remounts
+              // the element and restarts the CSS flash animation on re-clicks.
+              const key = isHighlighted ? `${message.id}-hl-${highlightSeq}` : message.id;
+
               return (
-                <React.Fragment key={message.id}>
+                <React.Fragment key={key}>
                   {showDividerBefore && (
                     <UnreadMessageDivider unreadCount={unreadCount} />
                   )}
@@ -314,7 +315,25 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           {messageInput}
         </Box>
 
-        {!atBottom && (
+        {mode === 'anchored' && jumpToPresent ? (
+          <Fab
+            variant="extended"
+            size="small"
+            onClick={jumpToPresent}
+            data-testid="jump-to-present-fab"
+            sx={{
+              position: "absolute",
+              bottom: 80,
+              right: 16,
+              backgroundColor: "primary.main",
+              "&:hover": { backgroundColor: "primary.dark" },
+              color: "primary.contrastText",
+            }}
+          >
+            <KeyboardArrowDownIcon sx={{ mr: 0.5 }} />
+            Jump to Present
+          </Fab>
+        ) : !atBottom && (
           <Fab
             size="small"
             onClick={scrollToBottom}

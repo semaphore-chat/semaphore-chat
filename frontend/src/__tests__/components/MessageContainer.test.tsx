@@ -441,6 +441,11 @@ describe('MessageContainer', () => {
 
   // ── Highlighted message ────────────────────────────────────────────
   describe('highlighted message', () => {
+    beforeEach(() => {
+      // scrollIntoView is not implemented in jsdom; mock it globally
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
     it('marks the correct message as highlighted', () => {
       const messages = [
         createMessage({ id: 'msg-a' }),
@@ -476,23 +481,18 @@ describe('MessageContainer', () => {
           {...defaultProps}
           messages={messages}
           highlightMessageId="msg-b"
+          highlightSeq={1}
         />,
       );
 
-      // The ref callback sets the data-message-id element
       const msgEl = document.querySelector('[data-message-id="msg-b"]')!;
-      msgEl.scrollIntoView = vi.fn();
 
-      // scrollIntoView is called after a 100ms timeout
-      await waitFor(
-        () => {
-          expect(msgEl.scrollIntoView).toHaveBeenCalledWith({
-            behavior: 'smooth',
-            block: 'center',
-          });
-        },
-        { timeout: 300 },
-      );
+      await waitFor(() => {
+        expect(msgEl.scrollIntoView).toHaveBeenCalledWith({
+          behavior: 'instant',
+          block: 'center',
+        });
+      });
     });
   });
 
@@ -520,6 +520,128 @@ describe('MessageContainer', () => {
       );
 
       expect(screen.queryByTestId('member-list')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Anchored mode (jump to message) ──────────────────────────────
+  describe('anchored mode', () => {
+    it('shows "Jump to Present" button in anchored mode', () => {
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="anchored"
+          jumpToPresent={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByTestId('jump-to-present-fab')).toBeInTheDocument();
+      expect(screen.getByText('Jump to Present')).toBeInTheDocument();
+    });
+
+    it('does not show "Jump to Present" in normal mode', () => {
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="normal"
+        />,
+      );
+
+      expect(screen.queryByTestId('jump-to-present-fab')).not.toBeInTheDocument();
+    });
+
+    it('calls jumpToPresent when "Jump to Present" button is clicked', async () => {
+      const jumpToPresent = vi.fn();
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      const { user } = renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="anchored"
+          jumpToPresent={jumpToPresent}
+        />,
+      );
+
+      await user.click(screen.getByTestId('jump-to-present-fab'));
+      expect(jumpToPresent).toHaveBeenCalledTimes(1);
+    });
+
+    it('calls onLoadNewer when bottom sentinel intersects in anchored mode', () => {
+      const onLoadNewer = vi.fn().mockResolvedValue(undefined);
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="anchored"
+          jumpToPresent={vi.fn()}
+          onLoadNewer={onLoadNewer}
+          isLoadingNewer={false}
+          hasNewer={true}
+        />,
+      );
+
+      // First threshold=0 observer is the bottom sentinel
+      const bottomObserver = mockObserverInstances.find(
+        (inst) => inst.options?.threshold === 0 && inst.elements.size > 0,
+      );
+      expect(bottomObserver).toBeDefined();
+
+      act(() => {
+        bottomObserver!.trigger([{ isIntersecting: true }]);
+      });
+      expect(onLoadNewer).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not call onLoadNewer when isLoadingNewer is true', () => {
+      const onLoadNewer = vi.fn().mockResolvedValue(undefined);
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="anchored"
+          jumpToPresent={vi.fn()}
+          onLoadNewer={onLoadNewer}
+          isLoadingNewer={true}
+          hasNewer={true}
+        />,
+      );
+
+      const bottomObserver = mockObserverInstances.find(
+        (inst) => inst.options?.threshold === 0 && inst.elements.size > 0,
+      );
+
+      act(() => {
+        bottomObserver!.trigger([{ isIntersecting: true }]);
+      });
+      expect(onLoadNewer).not.toHaveBeenCalled();
+    });
+
+    it('shows loading skeletons when isLoadingNewer is true', () => {
+      const messages = [createMessage({ id: 'msg-1' })];
+
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          messages={messages}
+          mode="anchored"
+          jumpToPresent={vi.fn()}
+          isLoadingNewer={true}
+        />,
+      );
+
+      // 3 skeletons for newer loading
+      const skeletons = screen.getAllByTestId('message-skeleton');
+      expect(skeletons.length).toBe(3);
     });
   });
 

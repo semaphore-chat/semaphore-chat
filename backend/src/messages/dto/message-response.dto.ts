@@ -73,3 +73,9 @@ export class PaginatedMessagesResponseDto {
   messages: EnrichedMessageDto[];
   continuationToken?: string;
 }
+
+export class AnchoredMessagesResponseDto {
+  messages: EnrichedMessageDto[];
+  olderContinuationToken?: string;
+  newerContinuationToken?: string;
+}

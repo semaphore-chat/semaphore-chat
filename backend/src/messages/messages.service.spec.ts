@@ -624,6 +624,74 @@ describe('MessagesService', () => {
     });
   });
 
+  describe('findAllByField with direction=newer', () => {
+    it('should return newer messages in newest-first order', async () => {
+      const channelId = 'channel-123';
+      const cursorId = 'cursor-msg';
+      // Prisma returns in asc order for newer
+      const msg1 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-01T10:00:00Z'),
+      });
+      const msg2 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-01T11:00:00Z'),
+      });
+      const msg3 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-01T12:00:00Z'),
+      });
+
+      // findMany returns asc order [msg1, msg2, msg3]
+      mockDatabase.message.findMany.mockResolvedValue([msg1, msg2, msg3]);
+
+      const result = await service.findAllForChannel(
+        channelId,
+        50,
+        cursorId,
+        'newer',
+      );
+
+      // Should be reversed to newest-first
+      expect(result.messages[0]).toMatchObject({ id: msg3.id });
+      expect(result.messages[1]).toMatchObject({ id: msg2.id });
+      expect(result.messages[2]).toMatchObject({ id: msg1.id });
+
+      expect(mockDatabase.message.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: { sentAt: 'asc' },
+          cursor: { id: cursorId },
+          skip: 1,
+        }),
+      );
+    });
+
+    it('should return continuation token for newer direction when limit reached', async () => {
+      const channelId = 'channel-123';
+      const messages = Array.from({ length: 25 }, (_, i) =>
+        buildMessageWithIncludes({
+          channelId,
+          sentAt: new Date(Date.now() + i * 1000),
+        }),
+      );
+
+      // Save the last element's id before the service mutates the array via reverse()
+      const newestMessageId = messages[messages.length - 1].id;
+
+      mockDatabase.message.findMany.mockResolvedValue(messages);
+
+      const result = await service.findAllForChannel(
+        channelId,
+        25,
+        'cursor-msg',
+        'newer',
+      );
+
+      // Token is computed before reverse — last element in asc order (newest message)
+      expect(result.continuationToken).toBe(newestMessageId);
+    });
+  });
+
   describe('findAllForDirectMessageGroup', () => {
     it('should return messages for a DM group', async () => {
       const dmGroupId = 'dm-123';
@@ -1094,6 +1162,169 @@ describe('MessagesService', () => {
       expect((result[1] as any).channelName).toBe('general');
       expect((result[2] as any).id).toBe('msg-3');
       expect((result[2] as any).channelName).toBe('general');
+    });
+  });
+
+  describe('findAroundForChannel', () => {
+    const channelId = 'channel-123';
+    const anchorId = 'anchor-msg';
+
+    function buildAnchorMessage() {
+      return buildMessageWithIncludes({
+        id: anchorId,
+        channelId,
+        sentAt: new Date('2026-01-15T12:00:00Z'),
+        parentMessageId: null,
+      });
+    }
+
+    it('should return anchor centered with older and newer messages', async () => {
+      const anchor = buildAnchorMessage();
+      const older1 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-15T11:00:00Z'),
+      });
+      const older2 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-15T10:00:00Z'),
+      });
+      const newer1 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-15T13:00:00Z'),
+      });
+      const newer2 = buildMessageWithIncludes({
+        channelId,
+        sentAt: new Date('2026-01-15T14:00:00Z'),
+      });
+
+      // findUnique returns anchor
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+      // First findMany call: older (desc order)
+      // Second findMany call: newer (asc order)
+      mockDatabase.message.findMany
+        .mockResolvedValueOnce([older1, older2])
+        .mockResolvedValueOnce([newer1, newer2]);
+
+      const result = await service.findAroundForChannel(channelId, anchorId);
+
+      // Result should be newest-first: [newer2, newer1, anchor, older1, older2]
+      expect(result.messages).toHaveLength(5);
+      expect(result.messages[0]).toMatchObject({ id: newer2.id });
+      expect(result.messages[1]).toMatchObject({ id: newer1.id });
+      expect(result.messages[2]).toMatchObject({ id: anchorId });
+      expect(result.messages[3]).toMatchObject({ id: older1.id });
+      expect(result.messages[4]).toMatchObject({ id: older2.id });
+    });
+
+    it('should set continuation tokens when both sides reach limit', async () => {
+      const anchor = buildAnchorMessage();
+      // halfLimit = floor((50-1)/2) = 24
+      const halfLimit = 24;
+      const olderMsgs = Array.from({ length: halfLimit }, (_, i) =>
+        buildMessageWithIncludes({
+          channelId,
+          sentAt: new Date(Date.now() - (i + 1) * 60000),
+        }),
+      );
+      const newerMsgs = Array.from({ length: halfLimit }, (_, i) =>
+        buildMessageWithIncludes({
+          channelId,
+          sentAt: new Date(Date.now() + (i + 1) * 60000),
+        }),
+      );
+
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+      mockDatabase.message.findMany
+        .mockResolvedValueOnce(olderMsgs)
+        .mockResolvedValueOnce(newerMsgs);
+
+      const result = await service.findAroundForChannel(channelId, anchorId);
+
+      expect(result.olderContinuationToken).toBe(olderMsgs[halfLimit - 1].id);
+      expect(result.newerContinuationToken).toBe(newerMsgs[halfLimit - 1].id);
+    });
+
+    it('should omit continuation tokens when results do not fill half limit', async () => {
+      const anchor = buildAnchorMessage();
+
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+      mockDatabase.message.findMany
+        .mockResolvedValueOnce([
+          buildMessageWithIncludes({ channelId }),
+        ]) // 1 older
+        .mockResolvedValueOnce([]); // 0 newer
+
+      const result = await service.findAroundForChannel(channelId, anchorId);
+
+      expect(result.olderContinuationToken).toBeUndefined();
+      expect(result.newerContinuationToken).toBeUndefined();
+    });
+
+    it('should throw NotFoundException for missing message', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue(null);
+
+      await expect(
+        service.findAroundForChannel(channelId, 'nonexistent'),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException for message in wrong channel', async () => {
+      const anchor = buildMessageWithIncludes({
+        id: anchorId,
+        channelId: 'other-channel',
+        sentAt: new Date(),
+        parentMessageId: null,
+      });
+
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+
+      await expect(
+        service.findAroundForChannel(channelId, anchorId),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should throw NotFoundException for thread reply message', async () => {
+      const anchor = buildMessageWithIncludes({
+        id: anchorId,
+        channelId,
+        sentAt: new Date(),
+        parentMessageId: 'some-parent',
+      });
+
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+
+      await expect(
+        service.findAroundForChannel(channelId, anchorId),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('findAroundForDirectMessageGroup', () => {
+    it('should work for DM groups', async () => {
+      const dmGroupId = 'dm-123';
+      const anchorId = 'anchor-dm-msg';
+      const anchor = buildMessageWithIncludes({
+        id: anchorId,
+        channelId: null,
+        directMessageGroupId: dmGroupId,
+        sentAt: new Date('2026-01-15T12:00:00Z'),
+        parentMessageId: null,
+      });
+
+      mockDatabase.message.findUnique.mockResolvedValue(anchor);
+      mockDatabase.message.findMany
+        .mockResolvedValueOnce([]) // no older
+        .mockResolvedValueOnce([]); // no newer
+
+      const result = await service.findAroundForDirectMessageGroup(
+        dmGroupId,
+        anchorId,
+      );
+
+      expect(result.messages).toHaveLength(1);
+      expect(result.messages[0]).toMatchObject({ id: anchorId });
+      expect(result.olderContinuationToken).toBeUndefined();
+      expect(result.newerContinuationToken).toBeUndefined();
     });
   });
 });

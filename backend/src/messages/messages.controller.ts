@@ -14,7 +14,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
 import { ReactionsService } from './reactions.service';
 import { CreateMessageDto } from './dto/create-message.dto';
@@ -37,6 +37,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { AuthenticatedRequest } from '@/types';
 import {
+  AnchoredMessagesResponseDto,
   EnrichedMessageDto,
   MessageDto,
   PaginatedMessagesResponseDto,
@@ -83,16 +84,20 @@ export class MessagesController {
     idKey: 'groupId',
     source: ResourceIdSource.PARAM,
   })
+  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
   findAllForGroup(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
+    @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
     limit = Math.min(limit, 100);
+    const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForDirectMessageGroup(
       groupId,
       limit,
       continuationToken,
+      dir,
     );
   }
 
@@ -104,17 +109,55 @@ export class MessagesController {
     idKey: 'channelId',
     source: ResourceIdSource.PARAM,
   })
+  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
   findAllForChannel(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
+    @Query('direction') direction?: string,
   ): Promise<PaginatedMessagesResponseDto> {
     limit = Math.min(limit, 100);
+    const dir = direction === 'newer' ? 'newer' : 'older';
     return this.messagesService.findAllForChannel(
       channelId,
       limit,
       continuationToken,
+      dir,
     );
+  }
+
+  @Get('/channel/:channelId/around/:messageId')
+  @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @RequiredActions(RbacActions.READ_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.CHANNEL,
+    idKey: 'channelId',
+    source: ResourceIdSource.PARAM,
+  })
+  findAroundForChannel(
+    @Param('channelId', ParseUUIDPipe) channelId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ): Promise<AnchoredMessagesResponseDto> {
+    limit = Math.min(limit, 100);
+    return this.messagesService.findAroundForChannel(channelId, messageId, limit);
+  }
+
+  @Get('/group/:groupId/around/:messageId')
+  @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @RequiredActions(RbacActions.READ_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.DM_GROUP,
+    idKey: 'groupId',
+    source: ResourceIdSource.PARAM,
+  })
+  findAroundForGroup(
+    @Param('groupId', ParseUUIDPipe) groupId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+  ): Promise<AnchoredMessagesResponseDto> {
+    limit = Math.min(limit, 100);
+    return this.messagesService.findAroundForDirectMessageGroup(groupId, messageId, limit);
   }
 
   @Get('search/channel/:channelId')
