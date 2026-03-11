@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from "react";
 import MessageComponent from "./MessageComponent";
 import { Box, Typography, Fab } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -168,6 +168,36 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     observer.observe(sentinel);
     return () => observer.disconnect();
   }, [hasMessages]);
+
+  // Stabilize scroll when newer messages are prepended in anchored mode.
+  // In column-reverse, newer messages appear at the visual bottom (DOM start).
+  // Without adjustment, the viewport jumps to show the new content. Shifting
+  // scrollTop by the height delta keeps the user's current view stable and
+  // naturally moves the bottom sentinel out of view (preventing cascading loads).
+  const prevScrollHeightRef = useRef(0);
+  const prevFirstMsgIdRef = useRef<string | undefined>();
+  useLayoutEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || messages.length === 0) return;
+
+    const firstMsgId = messages[0]?.id;
+    const currentScrollHeight = container.scrollHeight;
+    const prevScrollHeight = prevScrollHeightRef.current;
+
+    if (
+      mode === 'anchored' &&
+      prevFirstMsgIdRef.current &&
+      firstMsgId !== prevFirstMsgIdRef.current &&
+      prevScrollHeight > 0 &&
+      currentScrollHeight > prevScrollHeight
+    ) {
+      const delta = currentScrollHeight - prevScrollHeight;
+      container.scrollTop -= delta;
+    }
+
+    prevScrollHeightRef.current = currentScrollHeight;
+    prevFirstMsgIdRef.current = firstMsgId;
+  }, [messages, mode]);
 
   // Scroll to bottom: scrollTop=0 is visual bottom in column-reverse
   const scrollToBottom = useCallback(() => {
