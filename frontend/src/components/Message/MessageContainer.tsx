@@ -109,10 +109,29 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     return messages.findIndex((msg) => msg.id === lastReadMessageId);
   }, [messages, lastReadMessageId]);
 
+  // Stable refs for pagination state so IntersectionObservers aren't
+  // recreated on every loading/token change. Observer recreation causes
+  // a fresh initial callback, which re-triggers loading while the sentinel
+  // is still in view — creating a cascading load loop.
+  const hasMessages = messages.length > 0;
+  const onLoadNewerRef = useRef(onLoadNewer);
+  const isLoadingNewerRef = useRef(isLoadingNewer);
+  const hasNewerRef = useRef(hasNewer);
+  const onLoadMoreRef = useRef(onLoadMore);
+  const isLoadingMoreRef = useRef(isLoadingMore);
+  const continuationTokenRef = useRef(continuationToken);
+  useEffect(() => {
+    onLoadNewerRef.current = onLoadNewer;
+    isLoadingNewerRef.current = isLoadingNewer;
+    hasNewerRef.current = hasNewer;
+    onLoadMoreRef.current = onLoadMore;
+    isLoadingMoreRef.current = isLoadingMore;
+    continuationTokenRef.current = continuationToken;
+  });
+
   // "At bottom" detection via IntersectionObserver on bottom sentinel
   // Bottom sentinel is first in DOM = visual bottom in column-reverse
   // In anchored mode, also triggers loading newer messages
-  const hasMessages = messages.length > 0;
   useEffect(() => {
     const sentinel = bottomSentinelRef.current;
     const container = scrollContainerRef.current;
@@ -121,15 +140,15 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     const observer = new IntersectionObserver(
       ([entry]) => {
         setAtBottom(entry.isIntersecting);
-        if (entry.isIntersecting && mode === 'anchored' && onLoadNewer && !isLoadingNewer && hasNewer && !newerLoadSuppressedRef.current) {
-          onLoadNewer();
+        if (entry.isIntersecting && mode === 'anchored' && onLoadNewerRef.current && !isLoadingNewerRef.current && hasNewerRef.current && !newerLoadSuppressedRef.current) {
+          onLoadNewerRef.current();
         }
       },
       { root: container, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMessages, mode, onLoadNewer, isLoadingNewer, hasNewer]);
+  }, [hasMessages, mode]);
 
   // "Load more" pagination via IntersectionObserver on top sentinel
   // Top sentinel is last in DOM = visual top in column-reverse
@@ -140,15 +159,15 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
 
     const observer = new IntersectionObserver(
       ([entry]) => {
-        if (entry.isIntersecting && !isLoadingMore && continuationToken && onLoadMore) {
-          onLoadMore();
+        if (entry.isIntersecting && !isLoadingMoreRef.current && continuationTokenRef.current && onLoadMoreRef.current) {
+          onLoadMoreRef.current();
         }
       },
       { root: container, threshold: 0 }
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [hasMessages, continuationToken, onLoadMore, isLoadingMore]);
+  }, [hasMessages]);
 
   // Scroll to bottom: scrollTop=0 is visual bottom in column-reverse
   const scrollToBottom = useCallback(() => {
