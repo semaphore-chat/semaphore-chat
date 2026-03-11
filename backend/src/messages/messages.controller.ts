@@ -126,7 +126,7 @@ export class MessagesController {
     );
   }
 
-  @Get('channel/:channelId/around/:messageId')
+  @Get('/channel/:channelId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
@@ -143,7 +143,7 @@ export class MessagesController {
     return this.messagesService.findAroundForChannel(channelId, messageId, limit);
   }
 
-  @Get('group/:groupId/around/:messageId')
+  @Get('/group/:groupId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({

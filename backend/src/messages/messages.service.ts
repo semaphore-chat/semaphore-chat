@@ -433,7 +433,7 @@ export class MessagesService {
     messageId: string,
     limit = 50,
   ) {
-    const halfLimit = Math.floor(limit / 2);
+    const halfLimit = Math.floor((limit - 1) / 2);
 
     // Fetch the anchor message
     const anchor = await this.databaseService.message.findUnique({
@@ -447,17 +447,18 @@ export class MessagesService {
 
     const baseWhere = { [field]: fieldValue, parentMessageId: null };
 
-    // Fetch older messages (sentAt < anchor, descending)
+    // Fetch older messages (sentAt <= anchor, excluding anchor itself, descending)
+    // Uses lte + id exclusion to avoid missing messages with identical timestamps.
     const older = await this.databaseService.message.findMany({
-      where: { ...baseWhere, sentAt: { lt: anchor.sentAt } },
+      where: { ...baseWhere, sentAt: { lte: anchor.sentAt }, id: { not: messageId } },
       orderBy: { sentAt: 'desc' as const },
       take: halfLimit,
       include: MESSAGE_INCLUDE,
     });
 
-    // Fetch newer messages (sentAt > anchor, ascending, then reverse)
+    // Fetch newer messages (sentAt >= anchor, excluding anchor itself, ascending, then reverse)
     const newer = await this.databaseService.message.findMany({
-      where: { ...baseWhere, sentAt: { gt: anchor.sentAt } },
+      where: { ...baseWhere, sentAt: { gte: anchor.sentAt }, id: { not: messageId } },
       orderBy: { sentAt: 'asc' as const },
       take: halfLimit,
       include: MESSAGE_INCLUDE,

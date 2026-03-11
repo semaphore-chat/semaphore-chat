@@ -1218,14 +1218,15 @@ describe('MessagesService', () => {
 
     it('should set continuation tokens when both sides reach limit', async () => {
       const anchor = buildAnchorMessage();
-      // Create exactly halfLimit (25) older and newer messages
-      const olderMsgs = Array.from({ length: 25 }, (_, i) =>
+      // halfLimit = floor((50-1)/2) = 24
+      const halfLimit = 24;
+      const olderMsgs = Array.from({ length: halfLimit }, (_, i) =>
         buildMessageWithIncludes({
           channelId,
           sentAt: new Date(Date.now() - (i + 1) * 60000),
         }),
       );
-      const newerMsgs = Array.from({ length: 25 }, (_, i) =>
+      const newerMsgs = Array.from({ length: halfLimit }, (_, i) =>
         buildMessageWithIncludes({
           channelId,
           sentAt: new Date(Date.now() + (i + 1) * 60000),
@@ -1239,8 +1240,8 @@ describe('MessagesService', () => {
 
       const result = await service.findAroundForChannel(channelId, anchorId);
 
-      expect(result.olderContinuationToken).toBe(olderMsgs[24].id);
-      expect(result.newerContinuationToken).toBe(newerMsgs[24].id);
+      expect(result.olderContinuationToken).toBe(olderMsgs[halfLimit - 1].id);
+      expect(result.newerContinuationToken).toBe(newerMsgs[halfLimit - 1].id);
     });
 
     it('should omit continuation tokens when results do not fill half limit', async () => {

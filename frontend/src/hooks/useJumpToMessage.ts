@@ -2,13 +2,10 @@ import { useState, useCallback, useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useMessages } from "./useMessages";
 import { useAnchoredMessages } from "./useAnchoredMessages";
-import { findMessageInInfinite } from "../utils/messageCacheUpdaters";
 import {
   channelAnchoredMessagesQueryKey,
   dmAnchoredMessagesQueryKey,
 } from "../utils/messageQueryKeys";
-import type { PaginatedMessagesResponseDto } from "../api-client/types.gen";
-import type { InfiniteData } from "@tanstack/react-query";
 
 export const useJumpToMessage = (
   type: "channel" | "dm",
@@ -24,11 +21,13 @@ export const useJumpToMessage = (
   const normalResult = useMessages(type, id);
   const anchoredResult = useAnchoredMessages(type, id, anchorMessageId);
 
-  // When highlightMessageId changes, check if it's in the normal data.
+  // When highlightMessageId changes, check if it's already loaded in normal data.
   // Wait for the normal query to finish loading before deciding, to avoid
   // a race where we switch to anchored mode before the first page arrives.
+  // Reset to normal mode when highlight is cleared or context changes.
   useEffect(() => {
     if (!highlightMessageId || !id) {
+      setAnchorMessageId(undefined);
       return;
     }
 
@@ -37,11 +36,7 @@ export const useJumpToMessage = (
       return;
     }
 
-    const normalData = normalResult.data as
-      | InfiniteData<PaginatedMessagesResponseDto>
-      | undefined;
-
-    const found = findMessageInInfinite(normalData, highlightMessageId);
+    const found = normalResult.messages.some((m) => m.id === highlightMessageId);
 
     if (found) {
       // Message is in normal data — stay in normal mode
@@ -50,7 +45,7 @@ export const useJumpToMessage = (
       // Message not loaded — switch to anchored mode
       setAnchorMessageId(highlightMessageId);
     }
-  }, [highlightMessageId, id, normalResult.isLoading, normalResult.data]);
+  }, [highlightMessageId, id, normalResult.isLoading, normalResult.messages]);
 
   const jumpToPresent = useCallback(() => {
     if (!id || !anchorMessageId) return;

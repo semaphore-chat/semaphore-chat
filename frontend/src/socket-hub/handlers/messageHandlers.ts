@@ -31,6 +31,11 @@ import {
 import type { SocketEventHandler } from './types';
 import type { ServerEvents } from '@semaphore-chat/shared';
 
+// TODO: WS handlers only update the normal message query cache. Anchored mode
+// (jump-to-message) uses separate query keys and won't reflect real-time edits,
+// deletes, or new messages. This is acceptable since anchored mode is transient
+// (seconds), and the user gets fresh data on return to normal mode.
+
 export const handleNewMessage: SocketEventHandler<typeof ServerEvents.NEW_MESSAGE> = async (
   { message }: NewMessagePayload,
   queryClient: QueryClient,
