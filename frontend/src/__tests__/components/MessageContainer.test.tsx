@@ -441,6 +441,11 @@ describe('MessageContainer', () => {
 
   // ── Highlighted message ────────────────────────────────────────────
   describe('highlighted message', () => {
+    beforeEach(() => {
+      // scrollIntoView is not implemented in jsdom; mock it globally
+      Element.prototype.scrollIntoView = vi.fn();
+    });
+
     it('marks the correct message as highlighted', () => {
       const messages = [
         createMessage({ id: 'msg-a' }),
@@ -479,20 +484,14 @@ describe('MessageContainer', () => {
         />,
       );
 
-      // The ref callback sets the data-message-id element
       const msgEl = document.querySelector('[data-message-id="msg-b"]')!;
-      msgEl.scrollIntoView = vi.fn();
 
-      // scrollIntoView is called after a 100ms timeout
-      await waitFor(
-        () => {
-          expect(msgEl.scrollIntoView).toHaveBeenCalledWith({
-            behavior: 'smooth',
-            block: 'center',
-          });
-        },
-        { timeout: 300 },
-      );
+      await waitFor(() => {
+        expect(msgEl.scrollIntoView).toHaveBeenCalledWith({
+          behavior: 'instant',
+          block: 'center',
+        });
+      });
     });
   });
 

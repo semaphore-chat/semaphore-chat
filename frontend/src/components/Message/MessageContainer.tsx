@@ -83,6 +83,10 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   const topSentinelRef = useRef<HTMLDivElement>(null);
   const messageRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [atBottom, setAtBottom] = useState(true);
+  // Suppresses onLoadNewer until the initial scroll-to-highlight completes in anchored mode.
+  // Without this, column-reverse starts at scrollTop=0 (visual bottom), making the bottom
+  // sentinel visible on first render and triggering cascading newer page loads.
+  const newerLoadSuppressedRef = useRef(false);
 
   // Auto-mark messages as read when they scroll into view
   useMessageVisibility({
@@ -117,7 +121,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     const observer = new IntersectionObserver(
       ([entry]) => {
         setAtBottom(entry.isIntersecting);
-        if (entry.isIntersecting && mode === 'anchored' && onLoadNewer && !isLoadingNewer && hasNewer) {
+        if (entry.isIntersecting && mode === 'anchored' && onLoadNewer && !isLoadingNewer && hasNewer && !newerLoadSuppressedRef.current) {
           onLoadNewer();
         }
       },
@@ -151,15 +155,33 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  // Scroll to highlighted message
+  // Suppress onLoadNewer when entering anchored mode, until scroll-to-highlight completes
   useEffect(() => {
-    if (highlightMessageId && messages.length > 0) {
+    if (mode === 'anchored' && highlightMessageId) {
+      newerLoadSuppressedRef.current = true;
+    } else {
+      newerLoadSuppressedRef.current = false;
+    }
+  }, [mode, highlightMessageId]);
+
+  // Scroll to highlighted message.
+  // Only scroll once per highlightMessageId to avoid re-scrolling when
+  // newer/older pages load and change the messages array.
+  const lastScrolledHighlightRef = useRef<string | undefined>();
+  useEffect(() => {
+    if (
+      highlightMessageId &&
+      highlightMessageId !== lastScrolledHighlightRef.current &&
+      messages.length > 0
+    ) {
       const el = messageRefs.current.get(highlightMessageId);
       if (el) {
-        const timer = setTimeout(() => {
-          el.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 100);
-        return () => clearTimeout(timer);
+        el.scrollIntoView({ behavior: "instant", block: "center" });
+        lastScrolledHighlightRef.current = highlightMessageId;
+        // Allow onLoadNewer after the browser processes the scroll
+        requestAnimationFrame(() => {
+          newerLoadSuppressedRef.current = false;
+        });
       }
     }
   }, [highlightMessageId, messages]);
