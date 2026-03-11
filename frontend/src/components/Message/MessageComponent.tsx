@@ -159,7 +159,7 @@ function MessageComponentInner({
             {/* Show read status for own messages in DMs with "seen by" tooltip */}
             {contextType === VoiceSessionType.Dm && isAuthor && contextId && (
               <SeenByTooltip
-                messageId={message.id}
+                sentAt={message.sentAt}
                 directMessageGroupId={contextId}
               />
             )}

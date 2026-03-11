@@ -27,3 +27,8 @@ export class MessageReaderDto {
   avatarUrl: string | null;
   readAt: Date;
 }
+
+export class DmPeerReadDto {
+  userId: string;
+  lastReadAt: Date;
+}

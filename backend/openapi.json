@@ -4784,6 +4784,40 @@
         ]
       }
     },
+    "/api/read-receipts/dm-peer-reads/{directMessageGroupId}": {
+      "get": {
+        "operationId": "ReadReceiptsController_getDmPeerReads",
+        "parameters": [
+          {
+            "name": "directMessageGroupId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DmPeerReadDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get peer read watermarks for a DM group (excludes requesting user).\nGET /read-receipts/dm-peer-reads/:directMessageGroupId",
+        "tags": [
+          "ReadReceipts"
+        ]
+      }
+    },
     "/api/read-receipts/message/{messageId}/readers": {
       "get": {
         "operationId": "ReadReceiptsController_getMessageReaders",
@@ -10117,6 +10151,22 @@
         },
         "required": [
           "lastReadMessageId"
+        ]
+      },
+      "DmPeerReadDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "lastReadAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "lastReadAt"
         ]
       },
       "MessageReaderDto": {

@@ -23,7 +23,7 @@ export function handleReconnect(queryClient: QueryClient): void {
     queryKey: readReceiptsControllerGetUnreadCountsQueryKey(),
   });
   queryClient.invalidateQueries({
-    queryKey: [{ _id: 'readReceiptsControllerGetMessageReaders' }],
+    queryKey: [{ _id: 'readReceiptsControllerGetDmPeerReads' }],
   });
 
   // Notifications

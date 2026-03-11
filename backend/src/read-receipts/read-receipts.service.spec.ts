@@ -1,7 +1,7 @@
 import { TestBed } from '@suites/unit';
 import { ReadReceiptsService } from './read-receipts.service';
 import { DatabaseService } from '@/database/database.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import {
   createMockDatabase,
   ReadReceiptFactory,
@@ -823,6 +823,78 @@ describe('ReadReceiptsService', () => {
       await expect(
         service.getLastReadMessageId(userId, channelId, dmGroupId),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getDmPeerReads', () => {
+    const userId = 'user-123';
+    const dmGroupId = 'dm-group-123';
+
+    it('should return peer watermarks excluding the requesting user', async () => {
+      const peerReads = [
+        { userId: 'peer-1', lastReadAt: new Date('2024-01-15') },
+        { userId: 'peer-2', lastReadAt: new Date('2024-01-16') },
+      ];
+
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+        groupId: dmGroupId,
+        userId,
+      });
+      mockDatabase.readReceipt.findMany.mockResolvedValue(peerReads);
+
+      const result = await service.getDmPeerReads(userId, dmGroupId);
+
+      expect(result).toEqual(peerReads);
+      expect(
+        mockDatabase.directMessageGroupMember.findFirst,
+      ).toHaveBeenCalledWith({
+        where: { groupId: dmGroupId, userId },
+      });
+      expect(mockDatabase.readReceipt.findMany).toHaveBeenCalledWith({
+        where: { directMessageGroupId: dmGroupId, userId: { not: userId } },
+        select: { userId: true, lastReadAt: true },
+      });
+    });
+
+    it('should return empty array when no peers have read receipts', async () => {
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+        groupId: dmGroupId,
+        userId,
+      });
+      mockDatabase.readReceipt.findMany.mockResolvedValue([]);
+
+      const result = await service.getDmPeerReads(userId, dmGroupId);
+
+      expect(result).toEqual([]);
+    });
+
+    it('should return multiple peer watermarks for group DMs', async () => {
+      const peerReads = [
+        { userId: 'peer-1', lastReadAt: new Date('2024-01-15') },
+        { userId: 'peer-2', lastReadAt: new Date('2024-01-16') },
+        { userId: 'peer-3', lastReadAt: new Date('2024-01-17') },
+      ];
+
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+        groupId: dmGroupId,
+        userId,
+      });
+      mockDatabase.readReceipt.findMany.mockResolvedValue(peerReads);
+
+      const result = await service.getDmPeerReads(userId, dmGroupId);
+
+      expect(result).toHaveLength(3);
+    });
+
+    it('should throw ForbiddenException when user is not a member', async () => {
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.getDmPeerReads(userId, dmGroupId),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.getDmPeerReads(userId, dmGroupId),
+      ).rejects.toThrow('You are not a member of this DM group');
     });
   });
 

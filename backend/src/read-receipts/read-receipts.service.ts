@@ -1,4 +1,9 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { MarkAsReadDto } from './dto/mark-as-read.dto';
 
@@ -533,6 +538,30 @@ export class ReadReceiptsService {
     });
 
     return readReceipt?.lastReadMessageId || null;
+  }
+
+  /**
+   * Get peer read watermarks for a DM group.
+   * Returns all other members' lastReadAt timestamps (excludes the requesting user).
+   */
+  async getDmPeerReads(
+    userId: string,
+    directMessageGroupId: string,
+  ): Promise<{ userId: string; lastReadAt: Date }[]> {
+    const membership =
+      await this.databaseService.directMessageGroupMember.findFirst({
+        where: { groupId: directMessageGroupId, userId },
+      });
+    if (!membership) {
+      throw new ForbiddenException(
+        'You are not a member of this DM group',
+      );
+    }
+
+    return this.databaseService.readReceipt.findMany({
+      where: { directMessageGroupId, userId: { not: userId } },
+      select: { userId: true, lastReadAt: true },
+    });
   }
 
   /**

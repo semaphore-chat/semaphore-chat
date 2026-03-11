@@ -1,51 +1,43 @@
-import React, { useState } from "react";
-import { Box, Typography, Tooltip, Avatar, CircularProgress } from "@mui/material";
+import React from "react";
+import { Box, Typography, Tooltip, Avatar } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
-import { readReceiptsControllerGetMessageReadersOptions } from "../../api-client/@tanstack/react-query.gen";
-import type { MessageReader } from "../../types/read-receipt.type";
+import { directMessagesControllerFindDmGroupOptions } from "../../api-client/@tanstack/react-query.gen";
+import { useDmPeerReads } from "../../hooks/useDmPeerReads";
 import { ReadStatusIndicator } from "./ReadStatusIndicator";
 
 interface SeenByTooltipProps {
-  messageId: string;
+  sentAt: string;
   directMessageGroupId: string;
 }
 
 /**
- * Renders a read-status icon for DM messages with a "seen by" tooltip on hover.
- * - Shows a check icon (sent) by default
- * - After hovering and fetching readers, switches to eye icon (seen) if anyone has read it
- * - The "seen by" list never includes the current user (filtered by the backend)
+ * Renders a read-status eye icon for own DM messages with a "seen by" tooltip on hover.
+ * Uses watermark-based comparison: returns null (no icon) when unread,
+ * shows blue eye when at least one peer has read past this message's timestamp.
  */
 export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
-  messageId,
+  sentAt,
   directMessageGroupId,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
+  const { getReadByCount, getReaderIds } = useDmPeerReads(directMessageGroupId);
 
-  const { data: readersData, isLoading, isFetching } = useQuery({
-    ...readReceiptsControllerGetMessageReadersOptions({
-      path: { messageId },
-      query: { channelId: '', directMessageGroupId },
-    }),
-    staleTime: 30_000,
-    enabled: isOpen,
+  const { data: dmGroup } = useQuery({
+    ...directMessagesControllerFindDmGroupOptions({ path: { id: directMessageGroupId } }),
+    staleTime: Infinity,
   });
-  const readers = (readersData as MessageReader[] | undefined) ?? undefined;
 
-  const handleOpen = () => {
-    setIsOpen(true);
-  };
+  const readByCount = getReadByCount(sentAt);
+  if (readByCount === 0) return null;
 
-  const handleClose = () => {
-    setIsOpen(false);
-  };
+  const readerIds = getReaderIds(sentAt);
 
-  // Determine read status from fetched readers
-  const hasSeen = (readers?.length ?? 0) > 0;
-  const readStatus = hasSeen ? "read" as const : "sent" as const;
+  // Look up display info from cached DM group members
+  const readers = readerIds
+    .map((id) => dmGroup?.members?.find((m) => m.userId === id)?.user)
+    .filter(Boolean) as Array<{ id: string; username: string; displayName?: string | null; avatarUrl?: string | null }>;
 
-  const displayReaders = readers?.slice(0, 15) ?? [];
-  const remainingCount = (readers?.length ?? 0) - displayReaders.length;
+  const displayReaders = readers.slice(0, 15);
+  const remainingCount = readers.length - displayReaders.length;
 
   const tooltipContent = (
     <Box sx={{ minWidth: 150, maxWidth: 250, p: 0.5 }}>
@@ -58,21 +50,15 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
           mb: 0.5,
         }}
       >
-        {hasSeen ? "Seen by" : "Sent"}
+        {readers.length === 1
+          ? `Seen by ${displayReaders[0]?.displayName || displayReaders[0]?.username}`
+          : `Seen by ${readByCount}`}
       </Typography>
-      {isLoading || isFetching ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 1 }}>
-          <CircularProgress size={16} />
-        </Box>
-      ) : displayReaders.length === 0 ? (
-        <Typography variant="body2" color="text.secondary" sx={{ fontSize: 12 }}>
-          Not seen yet
-        </Typography>
-      ) : (
+      {readers.length > 1 && (
         <>
-          {displayReaders.map((reader: MessageReader) => (
+          {displayReaders.map((reader) => (
             <Box
-              key={reader.userId}
+              key={reader.id}
               sx={{
                 display: "flex",
                 alignItems: "center",
@@ -81,7 +67,7 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
               }}
             >
               <Avatar
-                src={reader.avatarUrl}
+                src={reader.avatarUrl ?? undefined}
                 sx={{ width: 18, height: 18, fontSize: 10 }}
               >
                 {(reader.displayName || reader.username)?.[0]?.toUpperCase()}
@@ -113,9 +99,6 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
     <Tooltip
       title={tooltipContent}
       placement="top"
-      open={isOpen}
-      onOpen={handleOpen}
-      onClose={handleClose}
       componentsProps={{
         tooltip: {
           sx: {
@@ -130,11 +113,7 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
       }}
     >
       <span>
-        <ReadStatusIndicator
-          status={readStatus}
-          showForDm={true}
-          disableTooltip={true}
-        />
+        <ReadStatusIndicator showForDm={true} disableTooltip={true} />
       </span>
     </Tooltip>
   );

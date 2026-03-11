@@ -42,12 +42,12 @@ describe('handleReconnect', () => {
     expect(hasReadReceipts).toBe(true);
   });
 
-  it('invalidates message readers queries', () => {
+  it('invalidates DM peer reads queries', () => {
     handleReconnect(queryClient);
 
     expect(invalidateSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        queryKey: [{ _id: 'readReceiptsControllerGetMessageReaders' }],
+        queryKey: [{ _id: 'readReceiptsControllerGetDmPeerReads' }],
       }),
     );
   });

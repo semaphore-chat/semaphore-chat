@@ -11,11 +11,11 @@ import type {
   ReadReceiptUpdatedPayload,
 } from '@semaphore-chat/shared';
 import type { Message } from '../../types/message.type';
-import type { UnreadCountDto, UserControllerGetProfileResponse } from '../../api-client';
-import type { MessageReader } from '../../types/read-receipt.type';
+import type { UnreadCountDto, UserControllerGetProfileResponse, DmPeerReadDto } from '../../api-client';
 import { messageQueryKeyForContext, channelMessagesQueryKey } from '../../utils/messageQueryKeys';
 import {
   readReceiptsControllerGetUnreadCountsQueryKey,
+  readReceiptsControllerGetDmPeerReadsQueryKey,
   userControllerGetProfileQueryKey,
   moderationControllerGetPinnedMessagesQueryKey,
   directMessagesControllerFindUserDmGroupsQueryKey,
@@ -298,42 +298,31 @@ export const handleReadReceiptUpdated: SocketEventHandler<typeof ServerEvents.RE
     return [...old, updated];
   });
 
-  // Direct cache update for message readers (DM "seen by" real-time sync)
-  if (payload.userId && payload.username) {
+  // Direct cache update for DM peer reads (watermark-based "seen by" real-time sync)
+  if (payload.userId && payload.directMessageGroupId) {
     // Skip if this is the current user's own read receipt
     const currentUser = queryClient.getQueryData<UserControllerGetProfileResponse>(
       userControllerGetProfileQueryKey(),
     );
     if (currentUser && payload.userId === currentUser.id) return;
 
-    const newReader: MessageReader = {
-      userId: payload.userId,
-      username: payload.username,
-      displayName: payload.displayName ?? undefined,
-      avatarUrl: payload.avatarUrl ?? undefined,
-      readAt: new Date(payload.lastReadAt),
-    };
-
-    // Update all cached message readers queries for messages <= lastReadMessageId
-    const queries = queryClient.getQueriesData<MessageReader[]>({
-      queryKey: [{ _id: 'readReceiptsControllerGetMessageReaders' }],
+    const peerReadsKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+      path: { directMessageGroupId: payload.directMessageGroupId },
     });
 
-    for (const [cachedKey, cachedData] of queries) {
-      if (!cachedData) continue;
-      // Extract messageId and context from the query key options
-      const keyObj = cachedKey[0] as {
-        path?: { messageId?: string };
-        query?: { channelId?: string; directMessageGroupId?: string };
+    queryClient.setQueryData(peerReadsKey, (old: DmPeerReadDto[] | undefined) => {
+      if (!old) return old;
+      const entry: DmPeerReadDto = {
+        userId: payload.userId!,
+        lastReadAt: payload.lastReadAt,
       };
-      const msgId = keyObj.path?.messageId;
-      if (!msgId) continue;
-      // Only update queries for the same conversation context
-      const keyContextId = keyObj.query?.directMessageGroupId || keyObj.query?.channelId;
-      if (keyContextId !== id) continue;
-      // Skip if this user is already in the readers list
-      if (cachedData.some((r) => r.userId === payload.userId)) continue;
-      queryClient.setQueryData(cachedKey, [...cachedData, newReader]);
-    }
+      const index = old.findIndex((p) => p.userId === payload.userId);
+      if (index >= 0) {
+        const next = [...old];
+        next[index] = entry;
+        return next;
+      }
+      return [...old, entry];
+    });
   }
 };

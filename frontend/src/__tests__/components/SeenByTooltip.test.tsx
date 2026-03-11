@@ -1,130 +1,107 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { http, HttpResponse } from 'msw';
-import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import { SeenByTooltip } from '../../components/Message/SeenByTooltip';
-import type { MessageReader } from '../../types/read-receipt.type';
 
-vi.mock('../../api-client/client.gen', async (importOriginal) => {
-  const { createClient, createConfig } = await import('../../api-client/client');
-  return {
-    ...(await importOriginal<Record<string, unknown>>()),
-    client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
-  };
-});
+const mockGetReadByCount = vi.fn<(sentAt: string) => number>();
+const mockGetReaderIds = vi.fn<(sentAt: string) => string[]>();
 
-const BASE_URL = 'http://localhost:3000';
+vi.mock('../../hooks/useDmPeerReads', () => ({
+  useDmPeerReads: () => ({
+    getReadByCount: mockGetReadByCount,
+    getReaderIds: mockGetReaderIds,
+  }),
+}));
+
+vi.mock('../../api-client/@tanstack/react-query.gen', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  directMessagesControllerFindDmGroupOptions: () => ({
+    queryKey: ['dm-group', 'dm-group-1'],
+    queryFn: () => Promise.resolve({
+      id: 'dm-group-1',
+      isGroup: false,
+      members: [
+        {
+          id: 'member-1',
+          userId: 'u2',
+          joinedAt: new Date().toISOString(),
+          user: { id: 'u2', username: 'alice', displayName: 'Alice', avatarUrl: null },
+        },
+        {
+          id: 'member-2',
+          userId: 'u3',
+          joinedAt: new Date().toISOString(),
+          user: { id: 'u3', username: 'bob', displayName: 'Bob', avatarUrl: null },
+        },
+      ],
+    }),
+    staleTime: Infinity,
+  }),
+}));
 
 const defaultProps = () => ({
-  messageId: 'msg-1',
+  sentAt: '2024-01-15T00:00:00Z',
   directMessageGroupId: 'dm-group-1',
 });
 
 describe('SeenByTooltip', () => {
-  beforeAll(() => server.listen());
-  afterAll(() => server.close());
-  afterEach(() => server.resetHandlers());
-
   beforeEach(() => {
     vi.clearAllMocks();
+    mockGetReadByCount.mockReturnValue(0);
+    mockGetReaderIds.mockReturnValue([]);
   });
 
-  it('shows blue eye icon immediately when readers exist (no hover needed)', async () => {
-    const readers: MessageReader[] = [
-      {
-        userId: 'u2',
-        username: 'alice',
-        displayName: 'Alice',
-        avatarUrl: undefined,
-        readAt: new Date(),
-      },
-    ];
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
-    server.use(
-      http.get(`${BASE_URL}/api/read-receipts/message/:messageId/readers`, () => {
-        return HttpResponse.json(readers);
-      })
-    );
+  it('returns null when no peers have read the message', () => {
+    mockGetReadByCount.mockReturnValue(0);
+
+    const { container } = renderWithProviders(<SeenByTooltip {...defaultProps()} />);
+
+    expect(container.innerHTML).toBe('');
+    expect(screen.queryByTestId('VisibilityIcon')).not.toBeInTheDocument();
+  });
+
+  it('shows blue eye icon when at least one peer has read', async () => {
+    mockGetReadByCount.mockReturnValue(1);
+    mockGetReaderIds.mockReturnValue(['u2']);
 
     renderWithProviders(<SeenByTooltip {...defaultProps()} />);
 
-    // Query runs on mount, so eye should turn blue without hover
-    await waitFor(() => {
-      const icon = screen.getByTestId('VisibilityIcon');
-      // The ReadStatusIndicator applies primary color for "read" status
-      expect(icon.closest('svg')).toHaveAttribute('data-testid', 'VisibilityIcon');
-    });
-  });
-
-  it('shows grey eye icon when no readers exist', async () => {
-    server.use(
-      http.get(`${BASE_URL}/api/read-receipts/message/:messageId/readers`, () => {
-        return HttpResponse.json([]);
-      })
-    );
-
-    renderWithProviders(<SeenByTooltip {...defaultProps()} />);
-
-    // Wait for query to settle
     await waitFor(() => {
       expect(screen.getByTestId('VisibilityIcon')).toBeInTheDocument();
     });
-
-    // No DoneIcon ever
-    expect(screen.queryByTestId('DoneIcon')).not.toBeInTheDocument();
   });
 
-  it('shows readers list in tooltip on hover', async () => {
-    const readers: MessageReader[] = [
-      {
-        userId: 'u2',
-        username: 'alice',
-        displayName: 'Alice',
-        avatarUrl: undefined,
-        readAt: new Date(),
-      },
-    ];
-
-    server.use(
-      http.get(`${BASE_URL}/api/read-receipts/message/:messageId/readers`, () => {
-        return HttpResponse.json(readers);
-      })
-    );
+  it('shows "Seen by [name]" tooltip for 1:1 DM', async () => {
+    mockGetReadByCount.mockReturnValue(1);
+    mockGetReaderIds.mockReturnValue(['u2']);
 
     const { user } = renderWithProviders(<SeenByTooltip {...defaultProps()} />);
 
-    // Hover to open tooltip
     const indicator = screen.getByTestId('VisibilityIcon').closest('span')!;
     await user.hover(indicator);
 
-    // Tooltip shows reader info
     await waitFor(() => {
-      expect(screen.getByText('Seen by')).toBeInTheDocument();
+      expect(screen.getByText('Seen by Alice')).toBeInTheDocument();
+    });
+  });
+
+  it('shows "Seen by N" with per-user list for group DM', async () => {
+    mockGetReadByCount.mockReturnValue(2);
+    mockGetReaderIds.mockReturnValue(['u2', 'u3']);
+
+    const { user } = renderWithProviders(<SeenByTooltip {...defaultProps()} />);
+
+    const indicator = screen.getByTestId('VisibilityIcon').closest('span')!;
+    await user.hover(indicator);
+
+    await waitFor(() => {
+      expect(screen.getByText('Seen by 2')).toBeInTheDocument();
     });
     expect(screen.getByText('Alice')).toBeInTheDocument();
-  });
-
-  it('shows "Not seen yet" text when readers list is empty after loading', async () => {
-    server.use(
-      http.get(`${BASE_URL}/api/read-receipts/message/:messageId/readers`, () => {
-        return HttpResponse.json([]);
-      })
-    );
-
-    const { user } = renderWithProviders(<SeenByTooltip {...defaultProps()} />);
-
-    // Hover to open tooltip
-    const indicator = screen.getByTestId('VisibilityIcon').closest('span')!;
-    await user.hover(indicator);
-
-    // After data loads with empty array, tooltip should show "Not seen yet"
-    await waitFor(() => {
-      expect(screen.getByText('Not seen yet')).toBeInTheDocument();
-    });
-
-    // Eye icon should still be shown (grey), no DoneIcon ever
-    expect(screen.getByTestId('VisibilityIcon')).toBeInTheDocument();
-    expect(screen.queryByTestId('DoneIcon')).not.toBeInTheDocument();
+    expect(screen.getByText('Bob')).toBeInTheDocument();
   });
 });

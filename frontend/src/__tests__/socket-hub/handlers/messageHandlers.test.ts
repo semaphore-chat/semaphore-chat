@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
-import type { PaginatedMessagesResponseDto } from '../../../api-client/types.gen';
+import type { PaginatedMessagesResponseDto, DmPeerReadDto } from '../../../api-client/types.gen';
 import {
   handleNewMessage,
   handleUpdateMessage,
@@ -11,10 +11,9 @@ import {
 import { channelMessagesQueryKey } from '../../../utils/messageQueryKeys';
 import {
   readReceiptsControllerGetUnreadCountsQueryKey,
-  readReceiptsControllerGetMessageReadersQueryKey,
+  readReceiptsControllerGetDmPeerReadsQueryKey,
   userControllerGetProfileQueryKey,
 } from '../../../api-client/@tanstack/react-query.gen';
-import type { MessageReader } from '../../../types/read-receipt.type';
 
 function makeMessage(overrides: Record<string, unknown> = {}) {
   return {
@@ -126,25 +125,22 @@ describe('messageHandlers', () => {
       expect(data![0].unreadCount).toBe(0);
     });
 
-    it('adds reader to cached message readers queries for messages <= lastReadMessageId', () => {
+    it('upserts peer read in dm-peer-reads cache', () => {
       const queryClient = new QueryClient();
 
-      // Seed current user (different from the reader)
       queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
 
-      // Seed a cached readers query for msg-2 (before lastReadMessageId msg-5)
-      const readersKey = readReceiptsControllerGetMessageReadersQueryKey({
-        path: { messageId: 'msg-2' },
-        query: { channelId: '', directMessageGroupId: 'dm-1' },
+      const peerReadsKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+        path: { directMessageGroupId: 'dm-1' },
       });
-      queryClient.setQueryData(readersKey, [] as MessageReader[]);
+      queryClient.setQueryData(peerReadsKey, [] as DmPeerReadDto[]);
 
       handleReadReceiptUpdated(
         {
           channelId: null,
           directMessageGroupId: 'dm-1',
           lastReadMessageId: 'msg-5',
-          lastReadAt: '2024-01-01T00:00:00Z',
+          lastReadAt: '2024-01-15T00:00:00Z',
           userId: 'alice-id',
           username: 'alice',
           displayName: 'Alice',
@@ -153,26 +149,52 @@ describe('messageHandlers', () => {
         queryClient,
       );
 
-      const readers = queryClient.getQueryData<MessageReader[]>(readersKey);
-      expect(readers).toHaveLength(1);
-      expect(readers![0].userId).toBe('alice-id');
-      expect(readers![0].username).toBe('alice');
-      expect(readers![0].displayName).toBe('Alice');
-      expect(readers![0].avatarUrl).toBe('https://example.com/alice.png');
-      expect(readers![0].readAt).toEqual(new Date('2024-01-01T00:00:00Z'));
+      const peerReads = queryClient.getQueryData<DmPeerReadDto[]>(peerReadsKey);
+      expect(peerReads).toHaveLength(1);
+      expect(peerReads![0].userId).toBe('alice-id');
+      expect(peerReads![0].lastReadAt).toBe('2024-01-15T00:00:00Z');
     });
 
-    it('does not update readers in a different DM group', () => {
+    it('updates existing peer entry instead of duplicating', () => {
       const queryClient = new QueryClient();
 
       queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
 
-      // Cached readers for a message in dm-2 (different from the payload's dm-1)
-      const otherDmReadersKey = readReceiptsControllerGetMessageReadersQueryKey({
-        path: { messageId: 'msg-2' },
-        query: { channelId: '', directMessageGroupId: 'dm-2' },
+      const peerReadsKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+        path: { directMessageGroupId: 'dm-1' },
       });
-      queryClient.setQueryData(otherDmReadersKey, [] as MessageReader[]);
+      queryClient.setQueryData(peerReadsKey, [
+        { userId: 'alice-id', lastReadAt: '2024-01-10T00:00:00Z' },
+      ] as DmPeerReadDto[]);
+
+      handleReadReceiptUpdated(
+        {
+          channelId: null,
+          directMessageGroupId: 'dm-1',
+          lastReadMessageId: 'msg-10',
+          lastReadAt: '2024-01-20T00:00:00Z',
+          userId: 'alice-id',
+          username: 'alice',
+          displayName: 'Alice',
+          avatarUrl: null,
+        },
+        queryClient,
+      );
+
+      const peerReads = queryClient.getQueryData<DmPeerReadDto[]>(peerReadsKey);
+      expect(peerReads).toHaveLength(1);
+      expect(peerReads![0].lastReadAt).toBe('2024-01-20T00:00:00Z');
+    });
+
+    it('does not update peer reads in a different DM group', () => {
+      const queryClient = new QueryClient();
+
+      queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
+
+      const otherDmKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+        path: { directMessageGroupId: 'dm-2' },
+      });
+      queryClient.setQueryData(otherDmKey, [] as DmPeerReadDto[]);
 
       handleReadReceiptUpdated(
         {
@@ -188,20 +210,19 @@ describe('messageHandlers', () => {
         queryClient,
       );
 
-      const readers = queryClient.getQueryData<MessageReader[]>(otherDmReadersKey);
-      expect(readers).toHaveLength(0);
+      const peerReads = queryClient.getQueryData<DmPeerReadDto[]>(otherDmKey);
+      expect(peerReads).toHaveLength(0);
     });
 
-    it('skips self-reads (does not add current user to readers)', () => {
+    it('skips self-reads (does not update peer reads for current user)', () => {
       const queryClient = new QueryClient();
 
       queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
 
-      const readersKey = readReceiptsControllerGetMessageReadersQueryKey({
-        path: { messageId: 'msg-2' },
-        query: { channelId: '', directMessageGroupId: 'dm-1' },
+      const peerReadsKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+        path: { directMessageGroupId: 'dm-1' },
       });
-      queryClient.setQueryData(readersKey, [] as MessageReader[]);
+      queryClient.setQueryData(peerReadsKey, [] as DmPeerReadDto[]);
 
       handleReadReceiptUpdated(
         {
@@ -217,28 +238,19 @@ describe('messageHandlers', () => {
         queryClient,
       );
 
-      const readers = queryClient.getQueryData<MessageReader[]>(readersKey);
-      expect(readers).toHaveLength(0);
+      const peerReads = queryClient.getQueryData<DmPeerReadDto[]>(peerReadsKey);
+      expect(peerReads).toHaveLength(0);
     });
 
-    it('does not duplicate reader if already in cached readers', () => {
+    it('does not update peer reads cache when payload lacks userId', () => {
       const queryClient = new QueryClient();
 
       queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
 
-      const existingReader: MessageReader = {
-        userId: 'alice-id',
-        username: 'alice',
-        displayName: 'Alice',
-        avatarUrl: undefined,
-        readAt: new Date(),
-      };
-
-      const readersKey = readReceiptsControllerGetMessageReadersQueryKey({
-        path: { messageId: 'msg-2' },
-        query: { channelId: '', directMessageGroupId: 'dm-1' },
+      const peerReadsKey = readReceiptsControllerGetDmPeerReadsQueryKey({
+        path: { directMessageGroupId: 'dm-1' },
       });
-      queryClient.setQueryData(readersKey, [existingReader]);
+      queryClient.setQueryData(peerReadsKey, [] as DmPeerReadDto[]);
 
       handleReadReceiptUpdated(
         {
@@ -246,42 +258,12 @@ describe('messageHandlers', () => {
           directMessageGroupId: 'dm-1',
           lastReadMessageId: 'msg-5',
           lastReadAt: '2024-01-01T00:00:00Z',
-          userId: 'alice-id',
-          username: 'alice',
-          displayName: 'Alice',
-          avatarUrl: null,
         },
         queryClient,
       );
 
-      const readers = queryClient.getQueryData<MessageReader[]>(readersKey);
-      expect(readers).toHaveLength(1);
-    });
-
-    it('does not update readers cache when payload lacks userId (self-sync event)', () => {
-      const queryClient = new QueryClient();
-
-      queryClient.setQueryData(userControllerGetProfileQueryKey(), { id: 'current-user' });
-
-      const readersKey = readReceiptsControllerGetMessageReadersQueryKey({
-        path: { messageId: 'msg-2' },
-        query: { channelId: '', directMessageGroupId: 'dm-1' },
-      });
-      queryClient.setQueryData(readersKey, [] as MessageReader[]);
-
-      handleReadReceiptUpdated(
-        {
-          channelId: null,
-          directMessageGroupId: 'dm-1',
-          lastReadMessageId: 'msg-5',
-          lastReadAt: '2024-01-01T00:00:00Z',
-          // No userId/username — this is a user-room self-sync event
-        },
-        queryClient,
-      );
-
-      const readers = queryClient.getQueryData<MessageReader[]>(readersKey);
-      expect(readers).toHaveLength(0);
+      const peerReads = queryClient.getQueryData<DmPeerReadDto[]>(peerReadsKey);
+      expect(peerReads).toHaveLength(0);
     });
   });
 });

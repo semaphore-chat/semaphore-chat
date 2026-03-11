@@ -22,6 +22,7 @@ import {
   UnreadCountDto,
   LastReadResponseDto,
   MessageReaderDto,
+  DmPeerReadDto,
 } from './dto/read-receipts-response.dto';
 
 @Controller('read-receipts')
@@ -94,6 +95,23 @@ export class ReadReceiptsController {
       );
 
     return { lastReadMessageId };
+  }
+
+  /**
+   * Get peer read watermarks for a DM group (excludes requesting user).
+   * GET /read-receipts/dm-peer-reads/:directMessageGroupId
+   */
+  @Get('dm-peer-reads/:directMessageGroupId')
+  @ApiOkResponse({ type: [DmPeerReadDto] })
+  async getDmPeerReads(
+    @Req() req: AuthenticatedRequest,
+    @Param('directMessageGroupId', ParseUUIDPipe)
+    directMessageGroupId: string,
+  ): Promise<DmPeerReadDto[]> {
+    return this.readReceiptsService.getDmPeerReads(
+      req.user.id,
+      directMessageGroupId,
+    );
   }
 
   /**

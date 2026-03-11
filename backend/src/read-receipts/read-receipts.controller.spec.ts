@@ -24,6 +24,31 @@ describe('ReadReceiptsController', () => {
     expect(controller).toBeDefined();
   });
 
+  describe('getDmPeerReads', () => {
+    const directMessageGroupId = 'dm-group-123';
+    const userId = 'user-789';
+    const mockReq = { user: { id: userId } } as any;
+
+    it('should pass correct args to service', async () => {
+      const mockPeerReads = [
+        { userId: 'peer-1', lastReadAt: new Date() },
+      ];
+
+      readReceiptsService.getDmPeerReads.mockResolvedValue(mockPeerReads);
+
+      const result = await controller.getDmPeerReads(
+        mockReq,
+        directMessageGroupId,
+      );
+
+      expect(result).toEqual(mockPeerReads);
+      expect(readReceiptsService.getDmPeerReads).toHaveBeenCalledWith(
+        userId,
+        directMessageGroupId,
+      );
+    });
+  });
+
   describe('getMessageReaders', () => {
     const messageId = 'message-123';
     const channelId = 'channel-456';
