@@ -796,23 +796,33 @@ export class LivekitReplayService {
 
       for (const userDir of userDirs) {
         const userPath = path.join(this.REMUX_CACHE_DIR, userDir);
-        const stat = await fs.stat(userPath);
-        if (!stat.isDirectory()) continue;
+        try {
+          const stat = await fs.stat(userPath);
+          if (!stat.isDirectory()) continue;
+        } catch (error: any) {
+          if (error?.code === 'ENOENT') continue;
+          throw error;
+        }
 
-        const files = await fs.readdir(userPath);
+        const files = await fs.readdir(userPath).catch(() => [] as string[]);
         for (const file of files) {
-          const filePath = path.join(userPath, file);
-          const fileStat = await fs.stat(filePath);
-          if (now - fileStat.mtimeMs > this.REMUX_CACHE_MAX_AGE_MS) {
-            await fs.unlink(filePath);
-            cleaned++;
+          try {
+            const filePath = path.join(userPath, file);
+            const fileStat = await fs.stat(filePath);
+            if (now - fileStat.mtimeMs > this.REMUX_CACHE_MAX_AGE_MS) {
+              await fs.unlink(filePath);
+              cleaned++;
+            }
+          } catch (error: any) {
+            if (error?.code === 'ENOENT') continue;
+            throw error;
           }
         }
 
         // Remove empty user directories
-        const remaining = await fs.readdir(userPath);
+        const remaining = await fs.readdir(userPath).catch(() => [] as string[]);
         if (remaining.length === 0) {
-          await fs.rmdir(userPath);
+          await fs.rmdir(userPath).catch(() => {});
         }
       }
 

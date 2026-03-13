@@ -369,6 +369,29 @@ describe('LocalStorageProvider', () => {
       expect(fs.unlink).toHaveBeenCalledWith('/test/dir/old.txt');
     });
 
+    it('should silently skip files deleted between listing and stat (ENOENT race)', async () => {
+      const enoentError = Object.assign(new Error('ENOENT'), {
+        code: 'ENOENT',
+      });
+      (fs.access as jest.Mock).mockResolvedValue(undefined);
+      (fs.readdir as jest.Mock).mockResolvedValue([
+        'deleted.txt',
+        'old.txt',
+        'also-deleted.txt',
+      ]);
+      (fs.stat as jest.Mock)
+        .mockRejectedValueOnce(enoentError) // deleted.txt - gone
+        .mockResolvedValueOnce({ mtime: new Date('2025-01-05') }) // old.txt
+        .mockRejectedValueOnce(enoentError); // also-deleted.txt - gone
+      (fs.unlink as jest.Mock).mockResolvedValue(undefined);
+
+      const result = await provider.deleteOldFiles('/test/dir', cutoffDate);
+
+      expect(result).toBe(1);
+      expect(fs.unlink).toHaveBeenCalledTimes(1);
+      expect(fs.unlink).toHaveBeenCalledWith('/test/dir/old.txt');
+    });
+
     it('should propagate error when listFiles fails', async () => {
       (fs.access as jest.Mock).mockResolvedValue(undefined);
       (fs.readdir as jest.Mock).mockRejectedValue(

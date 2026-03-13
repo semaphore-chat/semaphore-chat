@@ -184,8 +184,11 @@ export class LocalStorageProvider implements IStorageProvider {
             await this.deleteFile(filePath);
             deletedCount++;
           }
-        } catch (error) {
-          // Log but continue with other files
+        } catch (error: any) {
+          // File was deleted between listing and stat/unlink (race with other crons or user actions) — skip silently
+          if (error?.code === 'ENOENT') {
+            continue;
+          }
           this.logger.warn(`Failed to process file ${filePath}:`, error);
         }
       }
