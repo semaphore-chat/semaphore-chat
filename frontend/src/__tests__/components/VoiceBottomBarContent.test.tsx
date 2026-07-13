@@ -146,10 +146,6 @@ vi.mock('../../hooks/useVoiceMediaSession', () => ({
   useVoiceMediaSession: vi.fn(),
 }));
 
-vi.mock('../../hooks/useVoiceForegroundResync', () => ({
-  useVoiceForegroundResync: vi.fn(),
-}));
-
 vi.mock('../../hooks/useServerMuteEffect', () => ({
   useServerMuteEffect: vi.fn(),
 }));

@@ -42,21 +42,17 @@ vi.mock('../../hooks/useRoom', () => ({
   useRoom: () => ({ room: currentRoom, setRoom: vi.fn(), getRoom: vi.fn() }),
 }));
 
-// Import RoomEvent values to use in tests - mock livekit-client
+// The source (useLocalMediaState.ts) no longer imports RoomEvent/Track as
+// VALUES from 'livekit-client' — it uses the typed string constants in
+// features/voice/livekitEvents.ts instead (see PR-11 "Fix round 1": this
+// hook is statically reachable from mobile's always-mounted
+// MobileChatPanel, so a runtime livekit-client import here would eagerly
+// fetch the livekit chunk on every page load). Event/source names below are
+// therefore plain string literals matching livekit-client's REAL runtime
+// values (lowerCamelCase event names, snake_case-ish source names) rather
+// than mocked enum members — mismatching them here would silently pass
+// against a fake mock while failing against the real SDK.
 vi.mock('livekit-client', () => ({
-  RoomEvent: {
-    LocalTrackPublished: 'LocalTrackPublished',
-    LocalTrackUnpublished: 'LocalTrackUnpublished',
-    TrackMuted: 'TrackMuted',
-    TrackUnmuted: 'TrackUnmuted',
-  },
-  Track: {
-    Source: {
-      Camera: 'camera',
-      Microphone: 'microphone',
-      ScreenShare: 'screen_share',
-    },
-  },
   LocalAudioTrack: class {},
   LocalVideoTrack: class {},
   LocalTrackPublication: class {},
@@ -112,7 +108,7 @@ describe('useLocalMediaState', () => {
     const { result } = renderUseLocalMediaState();
 
     act(() => {
-      emitRoomEvent('LocalTrackPublished', { source: 'camera', track: {} });
+      emitRoomEvent('localTrackPublished', { source: 'camera', track: {} });
     });
 
     expect(result.current.isCameraEnabled).toBe(true);
@@ -128,7 +124,7 @@ describe('useLocalMediaState', () => {
     expect(result.current.isCameraEnabled).toBe(true);
 
     act(() => {
-      emitRoomEvent('LocalTrackUnpublished', { source: 'camera' });
+      emitRoomEvent('localTrackUnpublished', { source: 'camera' });
     });
 
     expect(result.current.isCameraEnabled).toBe(false);
@@ -145,7 +141,7 @@ describe('useLocalMediaState', () => {
 
     // Mute by local participant
     act(() => {
-      emitRoomEvent('TrackMuted', { source: 'microphone' }, mockLocalParticipant);
+      emitRoomEvent('trackMuted', { source: 'microphone' }, mockLocalParticipant);
     });
 
     expect(result.current.isMicrophoneEnabled).toBe(false);
@@ -162,7 +158,7 @@ describe('useLocalMediaState', () => {
 
     const remoteParticipant = { identity: 'other-user' };
     act(() => {
-      emitRoomEvent('TrackMuted', { source: 'microphone' }, remoteParticipant);
+      emitRoomEvent('trackMuted', { source: 'microphone' }, remoteParticipant);
     });
 
     // Should still be true - ignored remote event
@@ -174,10 +170,10 @@ describe('useLocalMediaState', () => {
 
     unmount();
 
-    expect(mockRoom.off).toHaveBeenCalledWith('LocalTrackPublished', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('LocalTrackUnpublished', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('TrackMuted', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('TrackUnmuted', expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith('localTrackPublished', expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith('localTrackUnpublished', expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith('trackMuted', expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith('trackUnmuted', expect.any(Function));
   });
 
   it('resets state when room becomes null', () => {

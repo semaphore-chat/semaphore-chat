@@ -51,7 +51,6 @@ import { useSpeaking } from "../../hooks/useSpeaking";
 import { useVoicePresenceHeartbeat } from "../../hooks/useVoicePresenceHeartbeat";
 import { useBackgroundVoiceKeepAlive } from "../../hooks/useBackgroundVoiceKeepAlive";
 import { useVoiceMediaSession } from "../../hooks/useVoiceMediaSession";
-import { useVoiceForegroundResync } from "../../hooks/useVoiceForegroundResync";
 import { useServerMuteEffect } from "../../hooks/useServerMuteEffect";
 import { useRemoteVolumeEffect } from "../../hooks/useRemoteVolumeEffect";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -122,15 +121,10 @@ const VoiceBottomBarContent: React.FC = () => {
     onToggleMic: actions.toggleMute,
   });
 
-  // Recover calls that silently died while backgrounded/locked (#350)
-  useVoiceForegroundResync({
-    room: state.room,
-    state,
-    actions: {
-      joinVoiceChannel: actions.joinVoiceChannel,
-      joinDmVoice: actions.joinDmVoice,
-    },
-  });
+  // Recover calls that silently died while backgrounded/locked (#350). Mounted
+  // in the always-mounted Layout.tsx instead of here — see the comment there —
+  // so the room.on(Disconnected) listener attaches as soon as a Room exists,
+  // not only once this (lazy, isConnected-gated) component mounts.
 
   // Keep voice presence TTL alive in Redis while connected
   useVoicePresenceHeartbeat({

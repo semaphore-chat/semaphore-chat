@@ -1,5 +1,4 @@
 import React, { useEffect, useRef } from 'react';
-import { RoomEvent, ConnectionQuality, Track } from 'livekit-client';
 import type {
   RemoteParticipant,
   RemoteTrackPublication,
@@ -9,8 +8,10 @@ import type {
   SubscriptionError,
   DisconnectReason,
   ConnectionState,
+  ConnectionQuality,
 } from 'livekit-client';
 import { useRoom } from './useRoom';
+import { ROOM_EVENT, TRACK_SOURCE, CONNECTION_QUALITY } from '../features/voice/livekitEvents';
 import {
   VoiceEventLogContext,
   type VoiceEventEntry,
@@ -147,11 +148,11 @@ export const VoiceEventLogProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     const onTrackMuted = (pub: TrackPublication, p: Participant) => {
       // Only log mic mutes — video mute is noisy and less actionable here.
-      if (pub.source !== Track.Source.Microphone) return;
+      if (pub.source !== TRACK_SOURCE.Microphone) return;
       store.push({ severity: 'info', category: 'track', message: `${shortName(p)} muted mic` });
     };
     const onTrackUnmuted = (pub: TrackPublication, p: Participant) => {
-      if (pub.source !== Track.Source.Microphone) return;
+      if (pub.source !== TRACK_SOURCE.Microphone) return;
       store.push({ severity: 'info', category: 'track', message: `${shortName(p)} unmuted mic` });
     };
 
@@ -193,7 +194,7 @@ export const VoiceEventLogProvider: React.FC<{ children: React.ReactNode }> = ({
       status: TrackPublication.SubscriptionStatus,
       p: RemoteParticipant,
     ) => {
-      if (pub.source !== Track.Source.Microphone) return;
+      if (pub.source !== TRACK_SOURCE.Microphone) return;
       const severity: VoiceEventSeverity =
         status === 'subscribed' ? 'success' : status === 'unsubscribed' ? 'error' : 'info';
       store.push({
@@ -207,13 +208,13 @@ export const VoiceEventLogProvider: React.FC<{ children: React.ReactNode }> = ({
     // Always log local quality; for remotes, only log Poor/Lost transitions.
     const onConnectionQualityChanged = (quality: ConnectionQuality, p: Participant) => {
       const isLocal = p.identity === room.localParticipant.identity;
-      if (!isLocal && quality !== ConnectionQuality.Poor && quality !== ConnectionQuality.Lost) {
+      if (!isLocal && quality !== CONNECTION_QUALITY.Poor && quality !== CONNECTION_QUALITY.Lost) {
         return;
       }
       const severity: VoiceEventSeverity =
-        quality === ConnectionQuality.Lost
+        quality === CONNECTION_QUALITY.Lost
           ? 'error'
-          : quality === ConnectionQuality.Poor
+          : quality === CONNECTION_QUALITY.Poor
           ? 'warn'
           : 'info';
       store.push({
@@ -223,40 +224,40 @@ export const VoiceEventLogProvider: React.FC<{ children: React.ReactNode }> = ({
       });
     };
 
-    room.on(RoomEvent.Reconnecting, onReconnecting);
-    room.on(RoomEvent.Reconnected, onReconnected);
-    room.on(RoomEvent.SignalConnected, onSignalConnected);
-    room.on(RoomEvent.Disconnected, onDisconnected);
-    room.on(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
-    room.on(RoomEvent.ParticipantConnected, onParticipantConnected);
-    room.on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-    room.on(RoomEvent.TrackPublished, onTrackPublished);
-    room.on(RoomEvent.TrackUnpublished, onTrackUnpublished);
-    room.on(RoomEvent.TrackMuted, onTrackMuted);
-    room.on(RoomEvent.TrackUnmuted, onTrackUnmuted);
-    room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
-    room.on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
-    room.on(RoomEvent.TrackSubscriptionFailed, onTrackSubscriptionFailed);
-    room.on(RoomEvent.TrackSubscriptionStatusChanged, onTrackSubscriptionStatusChanged);
-    room.on(RoomEvent.ConnectionQualityChanged, onConnectionQualityChanged);
+    room.on(ROOM_EVENT.Reconnecting, onReconnecting);
+    room.on(ROOM_EVENT.Reconnected, onReconnected);
+    room.on(ROOM_EVENT.SignalConnected, onSignalConnected);
+    room.on(ROOM_EVENT.Disconnected, onDisconnected);
+    room.on(ROOM_EVENT.ConnectionStateChanged, onConnectionStateChanged);
+    room.on(ROOM_EVENT.ParticipantConnected, onParticipantConnected);
+    room.on(ROOM_EVENT.ParticipantDisconnected, onParticipantDisconnected);
+    room.on(ROOM_EVENT.TrackPublished, onTrackPublished);
+    room.on(ROOM_EVENT.TrackUnpublished, onTrackUnpublished);
+    room.on(ROOM_EVENT.TrackMuted, onTrackMuted);
+    room.on(ROOM_EVENT.TrackUnmuted, onTrackUnmuted);
+    room.on(ROOM_EVENT.TrackSubscribed, onTrackSubscribed);
+    room.on(ROOM_EVENT.TrackUnsubscribed, onTrackUnsubscribed);
+    room.on(ROOM_EVENT.TrackSubscriptionFailed, onTrackSubscriptionFailed);
+    room.on(ROOM_EVENT.TrackSubscriptionStatusChanged, onTrackSubscriptionStatusChanged);
+    room.on(ROOM_EVENT.ConnectionQualityChanged, onConnectionQualityChanged);
 
     return () => {
-      room.off(RoomEvent.Reconnecting, onReconnecting);
-      room.off(RoomEvent.Reconnected, onReconnected);
-      room.off(RoomEvent.SignalConnected, onSignalConnected);
-      room.off(RoomEvent.Disconnected, onDisconnected);
-      room.off(RoomEvent.ConnectionStateChanged, onConnectionStateChanged);
-      room.off(RoomEvent.ParticipantConnected, onParticipantConnected);
-      room.off(RoomEvent.ParticipantDisconnected, onParticipantDisconnected);
-      room.off(RoomEvent.TrackPublished, onTrackPublished);
-      room.off(RoomEvent.TrackUnpublished, onTrackUnpublished);
-      room.off(RoomEvent.TrackMuted, onTrackMuted);
-      room.off(RoomEvent.TrackUnmuted, onTrackUnmuted);
-      room.off(RoomEvent.TrackSubscribed, onTrackSubscribed);
-      room.off(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed);
-      room.off(RoomEvent.TrackSubscriptionFailed, onTrackSubscriptionFailed);
-      room.off(RoomEvent.TrackSubscriptionStatusChanged, onTrackSubscriptionStatusChanged);
-      room.off(RoomEvent.ConnectionQualityChanged, onConnectionQualityChanged);
+      room.off(ROOM_EVENT.Reconnecting, onReconnecting);
+      room.off(ROOM_EVENT.Reconnected, onReconnected);
+      room.off(ROOM_EVENT.SignalConnected, onSignalConnected);
+      room.off(ROOM_EVENT.Disconnected, onDisconnected);
+      room.off(ROOM_EVENT.ConnectionStateChanged, onConnectionStateChanged);
+      room.off(ROOM_EVENT.ParticipantConnected, onParticipantConnected);
+      room.off(ROOM_EVENT.ParticipantDisconnected, onParticipantDisconnected);
+      room.off(ROOM_EVENT.TrackPublished, onTrackPublished);
+      room.off(ROOM_EVENT.TrackUnpublished, onTrackUnpublished);
+      room.off(ROOM_EVENT.TrackMuted, onTrackMuted);
+      room.off(ROOM_EVENT.TrackUnmuted, onTrackUnmuted);
+      room.off(ROOM_EVENT.TrackSubscribed, onTrackSubscribed);
+      room.off(ROOM_EVENT.TrackUnsubscribed, onTrackUnsubscribed);
+      room.off(ROOM_EVENT.TrackSubscriptionFailed, onTrackSubscriptionFailed);
+      room.off(ROOM_EVENT.TrackSubscriptionStatusChanged, onTrackSubscriptionStatusChanged);
+      room.off(ROOM_EVENT.ConnectionQualityChanged, onConnectionQualityChanged);
     };
   }, [room, store]);
 

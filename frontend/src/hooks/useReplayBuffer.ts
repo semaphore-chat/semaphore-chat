@@ -14,8 +14,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { logger } from '../utils/logger';
-import { Track, RoomEvent } from 'livekit-client';
-import type { LocalTrackPublication } from 'livekit-client';
+import type { LocalTrackPublication, Track } from 'livekit-client';
 import { useMutation } from '@tanstack/react-query';
 import {
   livekitControllerStartReplayBufferMutation,
@@ -25,6 +24,7 @@ import { ServerEvents } from '@semaphore-chat/shared';
 import { useNotification } from '../contexts/NotificationContext';
 import { useServerEvent } from '../socket-hub/useServerEvent';
 import { useVoiceConnection } from './useVoiceConnection';
+import { ROOM_EVENT, TRACK_SOURCE } from '../features/voice/livekitEvents';
 
 export const useReplayBuffer = () => {
   const { state } = useVoiceConnection();
@@ -74,7 +74,9 @@ export const useReplayBuffer = () => {
         // It may arrive slightly after the video track, so retry briefly.
         let audioTrackId: string | undefined;
         for (let attempt = 0; attempt < 10; attempt++) {
-          const audioPub = room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio);
+          // getTrackPublication expects the nominal Track.Source enum, not a
+          // string literal — see the cast note in livekitEvents.ts.
+          const audioPub = room.localParticipant.getTrackPublication(TRACK_SOURCE.ScreenShareAudio as Track.Source);
           audioTrackId = audioPub?.track?.sid;
           if (audioTrackId) break;
           await new Promise(resolve => setTimeout(resolve, 200));
@@ -158,7 +160,7 @@ export const useReplayBuffer = () => {
 
     const handleTrackPublished = async (publication: LocalTrackPublication) => {
       // Only handle screen share tracks
-      if (publication.source !== Track.Source.ScreenShare) return;
+      if (publication.source !== TRACK_SOURCE.ScreenShare) return;
 
       // Queue if an operation is in-flight
       if (isOperationPendingRef.current) {
@@ -175,7 +177,7 @@ export const useReplayBuffer = () => {
 
     const handleTrackUnpublished = async (publication: LocalTrackPublication) => {
       // Only handle screen share tracks
-      if (publication.source !== Track.Source.ScreenShare) return;
+      if (publication.source !== TRACK_SOURCE.ScreenShare) return;
 
       // Queue if an operation is in-flight
       if (isOperationPendingRef.current) {
@@ -188,12 +190,12 @@ export const useReplayBuffer = () => {
     };
 
     // Attach event listeners to room (not localParticipant)
-    room.on(RoomEvent.LocalTrackPublished, handleTrackPublished);
-    room.on(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+    room.on(ROOM_EVENT.LocalTrackPublished, handleTrackPublished);
+    room.on(ROOM_EVENT.LocalTrackUnpublished, handleTrackUnpublished);
 
     return () => {
-      room.off(RoomEvent.LocalTrackPublished, handleTrackPublished);
-      room.off(RoomEvent.LocalTrackUnpublished, handleTrackUnpublished);
+      room.off(ROOM_EVENT.LocalTrackPublished, handleTrackPublished);
+      room.off(ROOM_EVENT.LocalTrackUnpublished, handleTrackUnpublished);
     };
   }, [
     room,
