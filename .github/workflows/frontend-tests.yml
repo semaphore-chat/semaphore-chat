@@ -56,6 +56,14 @@ jobs:
         working-directory: ./frontend
         run: pnpm run test:cov
 
+      - name: Build frontend
+        working-directory: ./frontend
+        run: pnpm run build
+
+      - name: Check bundle budget (PR-11)
+        working-directory: ./frontend
+        run: pnpm run check:bundle-budget
+
       - name: Generate coverage badge
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         working-directory: ./frontend
