@@ -1,13 +1,18 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Box, IconButton } from '@mui/material';
 import { alpha, useTheme } from '@mui/material/styles';
 import { Close } from '@mui/icons-material';
 import { useVoice } from '../../contexts/VoiceContext';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useResponsive } from '../../hooks/useResponsive';
-import { VideoTiles } from './VideoTiles';
-import { FloatCard } from './FloatCard';
 import { VOICE_BAR_HEIGHT_MOBILE } from '../../constants/layout';
+
+// VideoTiles and FloatCard pull in livekit-client runtime enums; lazy-load
+// them so they're only fetched once video is actually shown (see PR-11 bundle
+// splitting). This component itself is always mounted in the layouts, but
+// returns null unless voiceState.isConnected && voiceState.showVideoTiles.
+const VideoTiles = lazy(() => import('./VideoTiles').then((m) => ({ default: m.VideoTiles })));
+const FloatCard = lazy(() => import('./FloatCard').then((m) => ({ default: m.FloatCard })));
 
 export const PersistentVideoOverlay: React.FC = () => {
   const theme = useTheme();
@@ -73,7 +78,9 @@ export const PersistentVideoOverlay: React.FC = () => {
 
         {/* Video content */}
         <Box sx={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
-          <VideoTiles />
+          <Suspense fallback={null}>
+            <VideoTiles />
+          </Suspense>
         </Box>
       </Box>
     );
@@ -81,7 +88,11 @@ export const PersistentVideoOverlay: React.FC = () => {
 
   // Desktop: active-speaker float card (drag/resize/minimize + single-tile
   // selection all live in FloatCard).
-  return <FloatCard />;
+  return (
+    <Suspense fallback={null}>
+      <FloatCard />
+    </Suspense>
+  );
 };
 
 export default PersistentVideoOverlay;

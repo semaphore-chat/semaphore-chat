@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { Room, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
+import { RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
+import type { Room } from 'livekit-client';
 import { useVoiceDispatch, VoiceActionType, VoiceSessionType, type VoiceState } from '../contexts/VoiceContext';
 import { setUpdateDeferred } from '../utils/swUpdate';
 import { logger } from '../utils/logger';

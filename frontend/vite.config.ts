@@ -1,12 +1,28 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    // Bundle visualizer — dev-only, opt-in via `pnpm run build:analyze`
+    // (ANALYZE=true). Writes dist/stats.html; never runs in normal builds/CI.
+    // Cast: rollup-plugin-visualizer's published types target an older
+    // Rollup than the one Vite 6 bundles, so its Plugin shape doesn't
+    // structurally match Vite's PluginOption — harmless at runtime.
+    ...(process.env.ANALYZE
+      ? [
+          visualizer({
+            filename: "dist/stats.html",
+            gzipSize: true,
+            brotliSize: true,
+            template: "treemap",
+          }) as PluginOption,
+        ]
+      : []),
     VitePWA({
       // "prompt": a waiting SW is surfaced via UpdateToast and applied on user
       // consent (SKIP_WAITING message) instead of silently reloading mid-session.
@@ -102,8 +118,16 @@ export default defineConfig({
         ],
       },
       injectManifest: {
-        // Increase limit for large bundles (default is 2MB)
-        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024, // 6MB
+        // Post PR-11 (livekit/hls/mui split into their own chunks + several
+        // voice-session components lazy-loaded), the largest chunk is the
+        // entry (~1.3MB); this comfortably covers it with headroom without
+        // reverting to the old 6MB bloat allowance.
+        maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // 3MB
+        // rollup-plugin-visualizer's dist/stats.html (only written when
+        // building with ANALYZE=true) can be several MB of inlined treemap
+        // JSON — exclude it so a stray `pnpm run build:analyze` never leaks
+        // it into the service worker's precache manifest.
+        globIgnores: ["stats.html"],
       },
       devOptions: {
         enabled: true, // Enable PWA in dev mode for testing
@@ -118,6 +142,35 @@ export default defineConfig({
   resolve: {
     alias: {
       "@semaphore-chat/shared": path.resolve(__dirname, "../shared/src"),
+    },
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Force these heavyweight, voice/video-only (or MUI, used broadly but
+        // separately cacheable) dependencies into their own chunks regardless
+        // of whether they're reached via static or dynamic import. This is
+        // what keeps the entry chunk free of livekit/hls code even from the
+        // few remaining eager (always-mounted) call sites documented in
+        // PR-11 — manualChunks placement is independent of import style.
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("livekit-client") || id.includes("@livekit/components-react")) {
+              return "livekit";
+            }
+            if (id.includes("hls.js")) {
+              return "hls";
+            }
+            if (
+              id.includes("@mui/material") ||
+              id.includes("@mui/icons-material") ||
+              id.includes("@emotion/")
+            ) {
+              return "mui";
+            }
+          }
+        },
+      },
     },
   },
   // Use relative paths for Electron file:// protocol compatibility

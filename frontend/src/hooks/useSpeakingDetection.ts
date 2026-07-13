@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRoom } from "./useRoom";
-import { Participant, Track } from "livekit-client";
-import type { TrackPublication } from "livekit-client";
+import { Track } from "livekit-client";
+import type { Participant, TrackPublication } from "livekit-client";
 import { getCachedItem } from "../utils/storage";
 import { computeVoiceLevel } from "../utils/audioLevel";
 

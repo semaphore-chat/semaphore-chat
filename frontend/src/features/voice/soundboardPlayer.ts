@@ -1,4 +1,5 @@
-import { Room, Track, LocalTrackPublication } from 'livekit-client';
+import { Track } from 'livekit-client';
+import type { Room, LocalTrackPublication } from 'livekit-client';
 import { logger } from '../../utils/logger';
 
 /**

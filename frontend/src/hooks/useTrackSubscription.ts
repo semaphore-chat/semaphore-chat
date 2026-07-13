@@ -1,10 +1,9 @@
 import { useEffect, useCallback, createContext, useContext } from 'react';
-import {
-  RoomEvent,
-  Track,
+import { RoomEvent, Track } from 'livekit-client';
+import type {
   RemoteTrackPublication,
   RemoteParticipant,
-  type SubscriptionError,
+  SubscriptionError,
 } from 'livekit-client';
 import { useRoom } from './useRoom';
 import { useVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';

@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback, useMemo, useState } from "react";
-import { Room } from "livekit-client";
+import type { Room } from "livekit-client";
 import { useVoiceDispatch } from "./VoiceContext";
 import { RoomContext, RoomContextType } from "./RoomContextDef";
 import { getApiBaseUrl } from "../config/env";

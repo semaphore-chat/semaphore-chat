@@ -14,7 +14,8 @@
 
 import { useEffect, useState, useRef } from 'react';
 import { logger } from '../utils/logger';
-import { Track, LocalTrackPublication, RoomEvent } from 'livekit-client';
+import { Track, RoomEvent } from 'livekit-client';
+import type { LocalTrackPublication } from 'livekit-client';
 import { useMutation } from '@tanstack/react-query';
 import {
   livekitControllerStartReplayBufferMutation,

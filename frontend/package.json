@@ -18,6 +18,7 @@
   "scripts": {
     "clean": "rimraf dist electron/dist release",
     "build": "vite build",
+    "build:analyze": "cross-env ANALYZE=true vite build",
     "build-electron": "tsc --project electron/tsconfig.electron.json && node -e \"const fs=require('fs');fs.renameSync('electron/dist/main.js','electron/dist/main.cjs');fs.writeFileSync('electron/dist/package.json',JSON.stringify({type:'commonjs'}))\"",
     "build-preload": "tsc electron/preload.ts --outDir electron/dist --module commonjs --target es2020 --esModuleInterop --skipLibCheck && node -e \"require('fs').renameSync('electron/dist/preload.js','electron/dist/preload.cjs')\"",
     "build:all": "pnpm run clean && pnpm run build && pnpm run build-electron && pnpm run build-preload && pnpm run verify-electron-build",
@@ -57,7 +58,8 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "generate:api": "openapi-ts",
-    "generate:pwa-assets": "node scripts/generate-pwa-assets.mjs"
+    "generate:pwa-assets": "node scripts/generate-pwa-assets.mjs",
+    "check:bundle-budget": "node scripts/check-bundle-budget.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -95,6 +97,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.0.18",
+    "rollup-plugin-visualizer": "^5.14.0",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "38.8.2",

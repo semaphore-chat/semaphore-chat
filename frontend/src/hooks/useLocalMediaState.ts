@@ -1,10 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useRoom } from './useRoom';
-import {
+import { RoomEvent, Track } from 'livekit-client';
+import type {
   LocalAudioTrack,
   LocalVideoTrack,
-  RoomEvent,
-  Track,
   LocalTrackPublication,
   TrackPublication,
   Participant,

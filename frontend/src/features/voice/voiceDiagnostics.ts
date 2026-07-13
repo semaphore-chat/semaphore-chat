@@ -1,5 +1,5 @@
-import { Room, RemoteTrackPublication, Track } from 'livekit-client';
-import type { RemoteParticipant, LocalParticipant } from 'livekit-client';
+import { Track } from 'livekit-client';
+import type { Room, RemoteTrackPublication, RemoteParticipant, LocalParticipant } from 'livekit-client';
 import type { VoiceEventEntry } from '../../hooks/useVoiceEventLogDef';
 
 /**

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RemoteParticipant, RemoteTrackPublication, Track, AudioTrack, RoomEvent } from 'livekit-client';
+import { Track, RoomEvent } from 'livekit-client';
+import type { RemoteParticipant, RemoteTrackPublication, AudioTrack } from 'livekit-client';
 import { useRoom } from '../../hooks/useRoom';
 import { useVoice } from '../../contexts/VoiceContext';
 import { audioBoostManager, boostKey } from '../../features/voice/audioBoostManager';
