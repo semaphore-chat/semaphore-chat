@@ -4,6 +4,7 @@ import { DisconnectReason, type Room } from 'livekit-client';
 import { useVoiceForegroundResync } from '../../hooks/useVoiceForegroundResync';
 import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
+import { ROOM_EVENT, CONNECTION_STATE } from '../../features/voice/livekitEvents';
 
 const mockDispatch = vi.fn();
 
@@ -29,7 +30,7 @@ interface MockRoom {
 
 function createMockRoom(overrides: Partial<MockRoom> = {}): MockRoom {
   return {
-    state: 'connected',
+    state: CONNECTION_STATE.Connected,
     canPlaybackAudio: true,
     startAudio: vi.fn().mockResolvedValue(undefined),
     on: vi.fn(),
@@ -94,7 +95,7 @@ describe('useVoiceForegroundResync', () => {
   });
 
   it('rejoins the channel when the room is dead but context says connected', async () => {
-    const room = createMockRoom({ state: 'disconnected' });
+    const room = createMockRoom({ state: CONNECTION_STATE.Disconnected });
     const actions = createActions();
     renderHook(() =>
       useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions })
@@ -139,7 +140,7 @@ describe('useVoiceForegroundResync', () => {
     actions.joinVoiceChannel.mockRejectedValue(new Error('token expired'));
     renderHook(() =>
       useVoiceForegroundResync({
-        room: createMockRoom({ state: 'disconnected' }) as unknown as Room,
+        room: createMockRoom({ state: CONNECTION_STATE.Disconnected }) as unknown as Room,
         state: createVoiceState(),
         actions,
       })
@@ -207,7 +208,7 @@ describe('useVoiceForegroundResync', () => {
     const actions = createActions();
     renderHook(() =>
       useVoiceForegroundResync({
-        room: createMockRoom({ state: 'disconnected' }) as unknown as Room,
+        room: createMockRoom({ state: CONNECTION_STATE.Disconnected }) as unknown as Room,
         state: createVoiceState(),
         actions,
       })
@@ -225,11 +226,11 @@ describe('useVoiceForegroundResync', () => {
       useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions })
     );
 
-    const disconnectedHandler = room.on.mock.calls.find(([event]) => event === 'disconnected')?.[1];
+    const disconnectedHandler = room.on.mock.calls.find(([event]) => event === ROOM_EVENT.Disconnected)?.[1];
     expect(disconnectedHandler).toBeDefined();
 
     // Simulate the room dying with a server-side reason
-    room.state = 'disconnected';
+    room.state = CONNECTION_STATE.Disconnected;
     await act(async () => {
       disconnectedHandler!(DisconnectReason.SERVER_SHUTDOWN);
       await Promise.resolve();
@@ -245,8 +246,8 @@ describe('useVoiceForegroundResync', () => {
       useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions })
     );
 
-    const disconnectedHandler = room.on.mock.calls.find(([event]) => event === 'disconnected')?.[1];
-    room.state = 'disconnected';
+    const disconnectedHandler = room.on.mock.calls.find(([event]) => event === ROOM_EVENT.Disconnected)?.[1];
+    room.state = CONNECTION_STATE.Disconnected;
     await act(async () => {
       disconnectedHandler!(DisconnectReason.CLIENT_INITIATED);
       await Promise.resolve();
@@ -263,7 +264,7 @@ describe('useVoiceForegroundResync', () => {
     );
     renderHook(() =>
       useVoiceForegroundResync({
-        room: createMockRoom({ state: 'disconnected' }) as unknown as Room,
+        room: createMockRoom({ state: CONNECTION_STATE.Disconnected }) as unknown as Room,
         state: createVoiceState(),
         actions,
       })

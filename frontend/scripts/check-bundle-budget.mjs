@@ -162,6 +162,13 @@ if (existsSync(ASSETS_DIR)) {
     ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
   ].map((ref) => ref.replace(/^\.\//, "").replace(/^assets\//, ""));
 
+  // Local to assertion (c) — must NOT be conflated with the overall
+  // `hadFailure` flag, which may already be true from (a)/(b). Gating the
+  // success print below on the overall flag would silently suppress it
+  // whenever (a)/(b) failed, even though (c) itself passed — misleadingly
+  // implying (c) wasn't checked.
+  let hadEagerReferenceFailure = false;
+
   for (const chunkFile of livekitChunkFiles) {
     if (referencedAssets.includes(chunkFile)) {
       console.error(
@@ -176,11 +183,12 @@ if (existsSync(ASSETS_DIR)) {
           `DisconnectReason, Room, ...). Fix: replace the runtime enum access with the typed string ` +
           `constants in features/voice/livekitEvents.ts and convert the import to \`import type\`.`
       );
+      hadEagerReferenceFailure = true;
       hadFailure = true;
     }
   }
 
-  if (!hadFailure) {
+  if (!hadEagerReferenceFailure) {
     console.log(
       `[check-bundle-budget] livekit-client chunk (assets/${livekitChunkFiles[0]}) is not referenced by index.html — good.`
     );

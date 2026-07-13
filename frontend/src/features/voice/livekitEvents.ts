@@ -34,13 +34,22 @@ import type {
  * - `RoomEvent`, `Track.Source`, and `ConnectionQuality`/`ConnectionState`
  *   are all declared as TypeScript STRING enums (e.g.
  *   `RoomEvent.TrackSubscribed = "trackSubscribed"`), so each member's TYPE
- *   is a string-LITERAL subtype. Template-literal-typing a member
- *   (`` `${RoomEvent.TrackSubscribed}` ``) resolves to the literal type
- *   `"trackSubscribed"` at the type level, even under `import type` — so
+ *   is a string-LITERAL subtype. Each string constant below uses
+ *   `'literal' satisfies \`${RoomEvent.TrackSubscribed}\`` (a `satisfies`
+ *   check against the template-literal type, not an `as` cast) — so
  *   assigning the wrong string here is a compile error, not a silent
- *   runtime drift. Verified empirically against the installed livekit-client
- *   typings (2026-07): an intentionally-wrong literal assigned to one of
- *   these fields fails `tsc -b` with a literal-type mismatch.
+ *   runtime drift, while the constant's inferred type stays the narrow
+ *   string literal (identical to what `as` would have produced).
+ *   **`as` does NOT provide this safety and must not be used here**: an `as`
+ *   cast between two literal types is accepted by TypeScript even when the
+ *   literal is wrong, because `as` only asserts "trust me," it doesn't
+ *   verify assignability. This was proven empirically (2026-07,
+ *   `perf/bundle-splitting`, fix round 2): with the original `as` form,
+ *   deliberately changing one constant's string to a wrong value still
+ *   compiled cleanly under `tsc -b` — a false negative that went undetected
+ *   until this round. Switching every constant to `satisfies` was verified
+ *   to reject the same wrong literal with `error TS2322`, and to accept the
+ *   correct literal with the identical resulting type as the `as` form.
  *
  * - `DisconnectReason` (from `@livekit/protocol`, re-exported by
  *   livekit-client) is a NUMERIC enum, so the template-literal trick doesn't
@@ -64,49 +73,53 @@ import type {
 // ---- RoomEvent ----
 
 export const ROOM_EVENT = {
-  TrackPublished: 'trackPublished' as `${RoomEvent.TrackPublished}`,
-  TrackUnpublished: 'trackUnpublished' as `${RoomEvent.TrackUnpublished}`,
-  TrackSubscribed: 'trackSubscribed' as `${RoomEvent.TrackSubscribed}`,
-  TrackUnsubscribed: 'trackUnsubscribed' as `${RoomEvent.TrackUnsubscribed}`,
-  TrackMuted: 'trackMuted' as `${RoomEvent.TrackMuted}`,
-  TrackUnmuted: 'trackUnmuted' as `${RoomEvent.TrackUnmuted}`,
-  TrackSubscriptionFailed: 'trackSubscriptionFailed' as `${RoomEvent.TrackSubscriptionFailed}`,
+  TrackPublished: 'trackPublished' satisfies `${RoomEvent.TrackPublished}`,
+  TrackUnpublished: 'trackUnpublished' satisfies `${RoomEvent.TrackUnpublished}`,
+  TrackSubscribed: 'trackSubscribed' satisfies `${RoomEvent.TrackSubscribed}`,
+  TrackUnsubscribed: 'trackUnsubscribed' satisfies `${RoomEvent.TrackUnsubscribed}`,
+  TrackMuted: 'trackMuted' satisfies `${RoomEvent.TrackMuted}`,
+  TrackUnmuted: 'trackUnmuted' satisfies `${RoomEvent.TrackUnmuted}`,
+  TrackSubscriptionFailed:
+    'trackSubscriptionFailed' satisfies `${RoomEvent.TrackSubscriptionFailed}`,
   TrackSubscriptionStatusChanged:
-    'trackSubscriptionStatusChanged' as `${RoomEvent.TrackSubscriptionStatusChanged}`,
-  ParticipantConnected: 'participantConnected' as `${RoomEvent.ParticipantConnected}`,
-  ParticipantDisconnected: 'participantDisconnected' as `${RoomEvent.ParticipantDisconnected}`,
-  LocalTrackPublished: 'localTrackPublished' as `${RoomEvent.LocalTrackPublished}`,
-  LocalTrackUnpublished: 'localTrackUnpublished' as `${RoomEvent.LocalTrackUnpublished}`,
-  Reconnecting: 'reconnecting' as `${RoomEvent.Reconnecting}`,
-  Reconnected: 'reconnected' as `${RoomEvent.Reconnected}`,
-  SignalConnected: 'signalConnected' as `${RoomEvent.SignalConnected}`,
-  Disconnected: 'disconnected' as `${RoomEvent.Disconnected}`,
-  ConnectionStateChanged: 'connectionStateChanged' as `${RoomEvent.ConnectionStateChanged}`,
-  ConnectionQualityChanged: 'connectionQualityChanged' as `${RoomEvent.ConnectionQualityChanged}`,
+    'trackSubscriptionStatusChanged' satisfies `${RoomEvent.TrackSubscriptionStatusChanged}`,
+  ParticipantConnected: 'participantConnected' satisfies `${RoomEvent.ParticipantConnected}`,
+  ParticipantDisconnected:
+    'participantDisconnected' satisfies `${RoomEvent.ParticipantDisconnected}`,
+  LocalTrackPublished: 'localTrackPublished' satisfies `${RoomEvent.LocalTrackPublished}`,
+  LocalTrackUnpublished: 'localTrackUnpublished' satisfies `${RoomEvent.LocalTrackUnpublished}`,
+  Reconnecting: 'reconnecting' satisfies `${RoomEvent.Reconnecting}`,
+  Reconnected: 'reconnected' satisfies `${RoomEvent.Reconnected}`,
+  SignalConnected: 'signalConnected' satisfies `${RoomEvent.SignalConnected}`,
+  Disconnected: 'disconnected' satisfies `${RoomEvent.Disconnected}`,
+  ConnectionStateChanged:
+    'connectionStateChanged' satisfies `${RoomEvent.ConnectionStateChanged}`,
+  ConnectionQualityChanged:
+    'connectionQualityChanged' satisfies `${RoomEvent.ConnectionQualityChanged}`,
 } as const;
 
 // ---- Track.Source ----
 
 export const TRACK_SOURCE = {
-  Camera: 'camera' as `${Track.Source.Camera}`,
-  Microphone: 'microphone' as `${Track.Source.Microphone}`,
-  ScreenShare: 'screen_share' as `${Track.Source.ScreenShare}`,
-  ScreenShareAudio: 'screen_share_audio' as `${Track.Source.ScreenShareAudio}`,
-  Unknown: 'unknown' as `${Track.Source.Unknown}`,
+  Camera: 'camera' satisfies `${Track.Source.Camera}`,
+  Microphone: 'microphone' satisfies `${Track.Source.Microphone}`,
+  ScreenShare: 'screen_share' satisfies `${Track.Source.ScreenShare}`,
+  ScreenShareAudio: 'screen_share_audio' satisfies `${Track.Source.ScreenShareAudio}`,
+  Unknown: 'unknown' satisfies `${Track.Source.Unknown}`,
 } as const;
 
 // ---- ConnectionQuality ----
 
 export const CONNECTION_QUALITY = {
-  Poor: 'poor' as `${ConnectionQuality.Poor}`,
-  Lost: 'lost' as `${ConnectionQuality.Lost}`,
+  Poor: 'poor' satisfies `${ConnectionQuality.Poor}`,
+  Lost: 'lost' satisfies `${ConnectionQuality.Lost}`,
 } as const;
 
 // ---- ConnectionState ----
 
 export const CONNECTION_STATE = {
-  Disconnected: 'disconnected' as `${ConnectionState.Disconnected}`,
-  Connected: 'connected' as `${ConnectionState.Connected}`,
+  Disconnected: 'disconnected' satisfies `${ConnectionState.Disconnected}`,
+  Connected: 'connected' satisfies `${ConnectionState.Connected}`,
 } as const;
 
 // ---- DisconnectReason (numeric protobuf enum — see file doc comment) ----
