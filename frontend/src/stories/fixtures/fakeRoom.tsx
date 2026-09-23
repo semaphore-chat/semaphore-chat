@@ -31,13 +31,16 @@
  *     connection; they only need to exist and not throw so mount/cleanup
  *     effects succeed.
  *
- * `PersistentVideoOverlay`/`VideoTiles` are NOT covered — they only mount
- * when `voiceState.showVideoTiles` is true, which the `VoiceConnected` story
- * never sets, so they render `null` before touching `room` at all. If a
- * future story needs the video-tile overlay open, this stub is intentionally
- * *not* enough (no real MediaStreamTrack, so actual `<video>` rendering,
- * codec/simulcast state, etc. can't be honestly faked) — extend it, don't
- * paper over it.
+ * Since #443 (Stage, Float, Dock) this stub ALSO drives the embedded voice
+ * stage: `CommunityPage` (desktop) and `MobileChatPanel` (phone/tablet)
+ * render `VideoTiles` whenever the viewer is connected to the viewed voice
+ * channel, and every connected participant with no camera/screen tile gets
+ * an avatar tile — which needs only `videoTrackPublications` /
+ * `audioTrackPublications` (empty here), `identity` and `name`. So the
+ * `VoiceConnected` story shows a stage of avatar tiles. Real `<video>`
+ * rendering (camera / screen-share tiles, the float card's active-speaker
+ * camera) is NOT faked here — use `fixtures/edge/voice.ts`'s
+ * `createMediaRoom()`, which publishes simulated feeds.
  */
 import type { LocalParticipant, Participant, RemoteParticipant, Room } from 'livekit-client';
 import { RoomContext } from '../../contexts/RoomContextDef';

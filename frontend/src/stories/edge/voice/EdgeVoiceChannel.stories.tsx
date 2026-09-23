@@ -1,10 +1,15 @@
 /**
  * VOICE edge cases — community voice channel: 1 / 4 / 25 participants,
  * speaking / muted / deafened / server-muted, cameras, screen share, and the
- * floating video overlay. See `fixtures/edge/voice.ts` for what the fake
- * LiveKit room does and doesn't reproduce.
+ * Stage / Float / Dock video UI (#443): the embedded stage (every
+ * participant gets a tile — avatar tile when they have no camera), its
+ * sidebar/pinned layout, and the active-speaker float card (expanded and
+ * collapsed to its pill) shown while reading a text channel. See
+ * `fixtures/edge/voice.ts` for what the fake LiveKit room does and doesn't
+ * reproduce.
  */
 import { ServerEvents } from '@semaphore-chat/shared';
+import { VideoLayoutMode } from '../../../types/videoLayout';
 import {
   channelVoiceState,
   createControllableSocket,
@@ -124,10 +129,13 @@ export const SelfMutedDeafenedOthersServerMuted = defineEdgeScreen(
 );
 
 /**
- * Video overlay open (the PiP on desktop/tablet, full-screen sheet on phone):
- * my own camera (simulated feed), one watched remote camera (simulated),
- * one unwatched remote camera and one unwatched screen share (the app's real
- * "Click to watch" placeholders).
+ * Viewing the voice channel with "show video tiles" on: the embedded stage
+ * with my own camera (simulated feed), one watched remote camera
+ * (simulated), one unwatched remote camera and one unwatched screen share
+ * (the app's real "Click to watch" placeholders). Desktop: stage only (the
+ * float card suppresses itself while the stage is mounted). Tablet: the
+ * stage in the chat panel PLUS the float card (the tablet panel doesn't
+ * report the stage as mounted). Phone: the full-screen tile sheet.
  */
 const [v1, v2, v3] = others(scenario, 3);
 const videoCrew: VoicePersona[] = [
@@ -142,7 +150,7 @@ export const VideoOverlayCameras = defineEdgeScreen(withChannelPresence(scenario
   room: createMediaRoom(videoCrew[0], videoCrew.slice(1), { cameras: [v1.id] }),
 });
 
-/** Screen share active: I'm sharing my screen, and I'm watching someone else's share. Overlay open. */
+/** Screen share active: I'm sharing my screen, and I'm watching someone else's share. Video tiles shown. */
 const shareCrew: VoicePersona[] = [
   { user: me, screen: true },
   { user: v1, screen: true, speaking: true },
@@ -155,10 +163,83 @@ export const ScreenShareActive = defineEdgeScreen(withChannelPresence(scenario, 
 });
 
 /**
+ * Community STAGE (viewing the joined voice channel, tiles not explicitly
+ * "shown"): 6 people — a speaking participant with a watched camera
+ * (simulated feed), an unwatched camera ("Click to watch"), and avatar tiles
+ * for everyone voice-only, incl. me, a muted and a deafened participant.
+ */
+const [s1, s2, s3, s4, s5] = others(scenario, 5);
+const stageCrew: VoicePersona[] = [
+  { user: me },
+  { user: s1, camera: true, speaking: true },
+  { user: s2, camera: true },
+  { user: s3, speaking: true },
+  { user: s4, micOn: false },
+  { user: s5, micOn: false, deafened: true },
+];
+export const CommunityStage = defineEdgeScreen(withChannelPresence(scenario, edgeVoiceChannel.id, stageCrew), {
+  path: voicePath,
+  voiceState: channelVoiceState(edgeVoiceChannel, { watchingCameras: new Set([s1.id]) }),
+  room: createMediaRoom(stageCrew[0], stageCrew.slice(1), { cameras: [s1.id] }),
+});
+
+/**
+ * Stage in the SIDEBAR layout with a watched screen share pinned as the main
+ * tile (what clicking a tile's pin does), everyone else in the side strip.
+ */
+const pinCrew: VoicePersona[] = [
+  { user: me },
+  { user: s1, screen: true, speaking: true },
+  { user: s2, camera: true },
+  { user: s3 },
+  { user: s4, micOn: false },
+];
+export const StagePinnedScreenShare = defineEdgeScreen(withChannelPresence(scenario, edgeVoiceChannel.id, pinCrew), {
+  path: voicePath,
+  voiceState: channelVoiceState(edgeVoiceChannel, {
+    watchingScreenShares: new Set([s1.id]),
+    watchingCameras: new Set([s2.id]),
+    layoutMode: VideoLayoutMode.Sidebar,
+    pinnedTileId: `${s1.id}-screen`,
+  }),
+  room: createMediaRoom(pinCrew[0], pinCrew.slice(1), { screens: [s1.id], cameras: [s2.id] }),
+});
+
+/**
+ * FLOAT CARD: in the voice channel but reading #general, video tiles shown —
+ * desktop/tablet get the single-tile active-speaker card (the speaking
+ * participant's watched camera) in its default corner; phone gets the
+ * full-screen tile sheet (the float card is desktop/tablet only).
+ */
+const floatCrew: VoicePersona[] = [
+  { user: me },
+  { user: s1, camera: true, speaking: true },
+  { user: s2 },
+  { user: s3, micOn: false },
+];
+export const FloatCardOverText = defineEdgeScreen(withChannelPresence(scenario, edgeVoiceChannel.id, floatCrew), {
+  path: generalPath,
+  voiceState: channelVoiceState(edgeVoiceChannel, { showVideoTiles: true, watchingCameras: new Set([s1.id]) }),
+  room: createMediaRoom(floatCrew[0], floatCrew.slice(1), { cameras: [s1.id] }),
+});
+
+/** Same, with the float card collapsed to its pill (desktop/tablet; phone ignores the collapsed state). */
+export const FloatCardCollapsedPill = defineEdgeScreen(withChannelPresence(scenario, edgeVoiceChannel.id, floatCrew), {
+  path: generalPath,
+  voiceState: channelVoiceState(edgeVoiceChannel, {
+    showVideoTiles: true,
+    pipCollapsed: true,
+    watchingCameras: new Set([s1.id]),
+  }),
+  room: createMediaRoom(floatCrew[0], floatCrew.slice(1), { cameras: [s1.id] }),
+});
+
+/**
  * WORST CASE: 25 in the channel with very long display names, me muted +
  * deafened with my camera AND screen share on, 2 watched feeds + 3
- * placeholders in the overlay, while reading a busy #general, and a DM call
- * ringing in on top.
+ * placeholders, while reading a busy #general (so: the float card, showing
+ * the watched screen share, on desktop/tablet), and a DM call ringing in on
+ * top.
  */
 const longNames: Record<string, string> = Object.fromEntries(
   scenario.users.slice(0, 8).map((u, i) => [

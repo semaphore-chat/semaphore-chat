@@ -21,6 +21,15 @@
  *    guards on `publication.track` / `instanceof RemoteTrackPublication` and
  *    skips these, so nothing tries to play audio.
  *
+ *    With #443's Stage/Float/Dock redesign this room also drives the NEW
+ *    voice UI: the embedded stage (`VideoTiles` in `CommunityPage` /
+ *    `MobileChatPanel` whenever connected to the viewed voice channel, and
+ *    the DM `StageSplit` on desktop) renders one tile per participant — an
+ *    avatar tile for anyone with no camera/screen — and the desktop/tablet
+ *    `FloatCard` (via `useFloatTileSelection`) picks a single active-speaker
+ *    tile. Remote personas marked `speaking` are reported as LiveKit active
+ *    speakers for that selection (see `createMediaRoom`).
+ *
  *    Camera / screen-share publications that are actually *watched* get a
  *    stand-in `track` whose `attach(videoEl)` plays a canvas-generated
  *    MediaStream visibly labelled "SIMULATED" — there is no real remote
@@ -189,10 +198,27 @@ type Handler = (...args: unknown[]) => void;
 
 class Emitter {
   private handlers = new Map<string, Set<Handler>>();
+  /**
+   * Events whose latest payload is replayed to every new listener (shortly
+   * after it subscribes). Used for `activeSpeakersChanged`: the real Room
+   * emits it whenever the speaker set changes, but in a static story nothing
+   * ever changes, so a late subscriber (the float card mounts after the
+   * layout) would otherwise never learn who's talking.
+   */
+  private sticky = new Map<string, unknown[]>();
   on = (event: string, handler: Handler): this => {
     if (!this.handlers.has(event)) this.handlers.set(event, new Set());
     this.handlers.get(event)!.add(handler);
+    const replay = this.sticky.get(event);
+    if (replay) {
+      setTimeout(() => {
+        if (this.handlers.get(event)?.has(handler)) handler(...replay);
+      }, 50);
+    }
     return this;
+  };
+  setSticky = (event: string, ...args: unknown[]): void => {
+    this.sticky.set(event, args);
   };
   off = (event: string, handler: Handler): this => {
     this.handlers.get(event)?.delete(handler);
@@ -333,6 +359,12 @@ function mediaParticipant(persona: VoicePersona, watched: { camera: boolean; scr
  * screen share the viewer is watching (must match `voiceState.watchingCameras`
  * / `watchingScreenShares`). The local participant's own video is always
  * "attached" (that's how the real app behaves: local tiles show by default).
+ *
+ * Active speakers: the remote personas marked `speaking` (in order) are
+ * delivered as LiveKit's `activeSpeakersChanged` event to whoever subscribes
+ * — only the float card's `useFloatTileSelection` does, to pick the
+ * active-speaker tile. (The local user is excluded, matching the float
+ * card's anti-flap rule, and because local speaking isn't fakeable anyway.)
  */
 export function createMediaRoom(
   me: VoicePersona,
@@ -352,6 +384,10 @@ export function createMediaRoom(
         }) as unknown as RemoteParticipant,
       ),
     );
+  const speakers = remotes
+    .filter((p) => p.speaking && p.user.id !== me.user.id)
+    .map((p) => remoteParticipants.get(p.user.id)!);
+  if (speakers.length > 0) emitter.setSticky('activeSpeakersChanged', speakers);
   return {
     localParticipant: mediaParticipant(me, { camera: true, screen: true }) as unknown as LocalParticipant,
     remoteParticipants,
@@ -452,6 +488,9 @@ export function channelVoiceState(
 ): Partial<VoiceState> {
   return {
     isConnected: true,
+    // Pin the float card's collapsed state (otherwise lazily restored from
+    // localStorage, i.e. whatever the last story/drag left behind).
+    pipCollapsed: false,
     contextType: VoiceSessionType.Channel,
     currentChannelId: channel.id,
     channelName: channel.name,
@@ -466,6 +505,7 @@ export function channelVoiceState(
 export function dmVoiceState(dmGroupId: string, dmGroupName: string, extra: Partial<VoiceState> = {}): Partial<VoiceState> {
   return {
     isConnected: true,
+    pipCollapsed: false,
     contextType: VoiceSessionType.Dm,
     currentDmGroupId: dmGroupId,
     dmGroupName,

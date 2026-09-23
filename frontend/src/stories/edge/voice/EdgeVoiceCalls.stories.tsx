@@ -40,7 +40,12 @@ const callStarted = (dmGroupId: string, caller = edgeDmPartner) => ({
   starter: { id: caller.id, username: caller.username, displayName: caller.displayName, avatarUrl: caller.avatarUrl },
 });
 
-/** 1:1 DM voice call in progress, viewing that DM: "In Call" chip + "DM Voice Call" bar; partner speaking. */
+/**
+ * 1:1 DM voice call in progress, viewing that DM: "In Call" chip + "DM Voice
+ * Call" bar; partner speaking. Desktop: the DM split view (#443) — avatar
+ * tiles on top, the thread below a draggable divider. Phone/tablet: plain
+ * chat (the split view is desktop-only).
+ */
 const dmPair: VoicePersona[] = [{ user: me }, { user: edgeDmPartner, speaking: true }];
 export const DmCallConnected = defineEdgeScreen(scenario, {
   path: dmPath,
@@ -49,7 +54,7 @@ export const DmCallConnected = defineEdgeScreen(scenario, {
   extraHandlers: [dmPresenceHandler(edgeDmGroup.id, [me, edgeDmPartner])],
 });
 
-/** DM video call: both cameras on (simulated feeds), overlay open over the DM. */
+/** DM video call: both cameras on (simulated feeds), video tiles shown — desktop split view with both feeds. */
 const dmVideo: VoicePersona[] = [{ user: me, camera: true }, { user: edgeDmPartner, camera: true, speaking: true }];
 export const DmVideoCall = defineEdgeScreen(scenario, {
   path: dmPath,
@@ -59,6 +64,28 @@ export const DmVideoCall = defineEdgeScreen(scenario, {
   }),
   room: createMediaRoom(dmVideo[0], dmVideo.slice(1), { cameras: [edgeDmPartner.id] }),
   extraHandlers: [dmPresenceHandler(edgeDmGroup.id, [me, edgeDmPartner])],
+});
+
+/**
+ * GROUP DM call, split view: 4 people — one speaking with a watched camera,
+ * the rest avatar tiles — above the group thread (desktop); phone/tablet show
+ * the plain group chat + voice bar.
+ */
+const groupDm = scenario.dmGroups.find((g) => g.members.length > 2)!;
+const groupMembers = groupDm.members
+  .map((m) => scenario.users.find((u) => u.id === m.userId))
+  .filter((u): u is NonNullable<typeof u> => !!u);
+const groupCall: VoicePersona[] = [
+  { user: me },
+  ...groupMembers.map((user, i) => ({ user, speaking: i === 0, camera: i === 0, micOn: i !== 2 })),
+];
+export const DmGroupCallSplitView = defineEdgeScreen(scenario, {
+  path: `/direct-messages/${groupDm.id}`,
+  voiceState: dmVoiceState(groupDm.id, groupDm.name ?? 'Group call', {
+    watchingCameras: new Set(groupMembers.slice(0, 1).map((u) => u.id)),
+  }),
+  room: createMediaRoom(groupCall[0], groupCall.slice(1), { cameras: groupMembers.slice(0, 1).map((u) => u.id) }),
+  extraHandlers: [dmPresenceHandler(groupDm.id, [me, ...groupMembers])],
 });
 
 /** Incoming DM call ringing while idle on the DM list. */

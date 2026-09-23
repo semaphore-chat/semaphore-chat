@@ -7,16 +7,16 @@ import { bigCommunityScenario, primaryCommunity, primaryVoiceChannel } from '../
 import { createFakeVoiceRoom, FakeRoomProvider } from '../fixtures/fakeRoom';
 
 /**
- * Voice-connected state: the persistent bottom voice bar showing, with fake
- * participants already in `voicePresenceByChannel` (see `builder.ts`) — and,
- * unlike a plain `defineScreen()` story, actually rendered in the sidebar's
- * compact list and the main channel-view panel too. Both go through
- * `VoiceChannelUserList`, which — while "connected" — reads participants
- * from the LiveKit `Room` object (`voiceState.room`) instead of the REST
- * voice-presence query, so a real fix needs a fake `Room`, not just fixture
- * data. See `fixtures/fakeRoom.ts` for exactly what that stub implements
- * and why (traced against every hook that touches `room` in this render
- * tree) and what it deliberately leaves un-faked (the video-tile overlay).
+ * Voice-connected state, viewing the joined voice channel: the persistent
+ * bottom voice bar plus the embedded voice STAGE (#443) — one avatar tile per
+ * participant (nobody has a camera on) — with the fake participants from
+ * `voicePresenceByChannel` (see `builder.ts`) also listed in the sidebar's
+ * compact list. Both the stage and `VoiceChannelUserList` read participants
+ * from the LiveKit `Room` object (`voiceState.room`) while "connected", not
+ * the REST voice-presence query, so this needs a fake `Room`, not just
+ * fixture data. See `fixtures/fakeRoom.tsx` for exactly what that stub
+ * implements and what it deliberately leaves un-faked (real video feeds —
+ * the edge voice stories use `createMediaRoom()` for those).
  *
  * This can't use `defineScreen()` as-is: the fake `Room` has to be provided
  * INSIDE `AuthenticatedShell`'s real (always-null-in-the-sandbox)
