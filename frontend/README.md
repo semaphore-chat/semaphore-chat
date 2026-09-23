@@ -52,3 +52,34 @@ export default tseslint.config({
   },
 })
 ```
+
+## UX sandbox (Ladle)
+
+Renders real app screens and components against fake data (MSW) — no backend, no database, no LiveKit — for fast UX review. See `docs/superpowers/specs/2026-09-22-ladle-ux-sandbox-design.md` for the design.
+
+**Run it locally:**
+
+```bash
+docker compose build frontend   # once, or after adding a devDependency
+docker compose --profile tools up -d ladle
+open http://localhost:61000
+```
+
+Stop it with `docker compose stop ladle && docker compose rm -f ladle` (this doesn't touch other running services or volumes).
+
+**Fixtures** live in `src/stories/fixtures/`: `buildScenario(options)` (`builder.ts`) generates a deterministic (seeded) dataset — users, communities, channels, messages, DMs, notifications, friends. Reshape it with the `with*` modifiers in `modifiers.ts` (`withLongNames`, `withUnread`, `withVoiceParticipants`, `withThread`, `withAttachments`, `withEmpty`), and `makeHandlers(scenario)` (`handlers.ts`) turns it into the full set of MSW handlers the app needs. `withErrors`/`withSlowEndpoint` (`handlerHelpers.ts`) simulate a failing or slow endpoint. Adding a new screen story is ~2 lines:
+
+```tsx
+export const MyScreen = defineScreen(bigCommunityScenario, '/community/community-1/channel/channel-1');
+```
+
+**Screenshot sweep** — captures every story at phone/tablet/desktop viewports:
+
+```bash
+docker compose --profile tools up -d ladle
+docker compose --profile tools run --rm ux-shots
+docker compose stop ladle && docker compose rm -f ladle
+```
+
+Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`.
+```

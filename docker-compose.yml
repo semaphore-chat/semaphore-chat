@@ -74,6 +74,62 @@ services:
       - backend
       - redis
 
+  # UX sandbox: renders real app screens/components against fake (MSW) data —
+  # no backend, no LiveKit, no database. See docs/superpowers/specs/2026-09-22-ladle-ux-sandbox-design.md
+  # and frontend/README.md. Opt-in via profile:
+  #   docker compose --profile tools up -d ladle
+  # then open http://localhost:61000
+  ladle:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    profiles: ["tools"]
+    command: pnpm exec ladle serve --host 0.0.0.0
+    ports:
+      - "61000:61000"
+    volumes:
+      - ./frontend:/app/frontend
+      - ./shared:/app/shared
+      - /app/node_modules
+      - /app/frontend/node_modules
+      - /app/shared/node_modules
+      - ./backend:/spec:ro
+    working_dir: /app/frontend
+
+  # Automated screenshot sweep of every Ladle story at phone/tablet/desktop
+  # viewports. Run after `ladle` is up:
+  #   docker compose --profile tools run --rm ux-shots
+  # Output: frontend/.ux-shots/<viewport>/<story-id>.png + report.json (gitignored).
+  # Uses the Microsoft Playwright image (browsers pre-installed, pinned to
+  # the same 1.60.0 release as the frontend's `@playwright/test` devDependency)
+  # and installs the lightweight `playwright-core` driver package on start
+  # since this image doesn't ship the npm package itself. Installed into
+  # /opt/uxshots (NOT frontend/, which is a pnpm workspace member — plain
+  # `npm install` chokes on its `workspace:*` dependency); ux-shots.mjs picks
+  # it up via NODE_PATH + `require()`.
+  ux-shots:
+    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    profiles: ["tools"]
+    working_dir: /app/frontend
+    # Share `ladle`'s network namespace instead of talking to it over the
+    # bridge network as `http://ladle:61000`: `navigator.mediaDevices`
+    # (device enumeration, used by voice/video settings screens) only
+    # exists in a "secure context" — HTTPS, or the browser-special-cased
+    # hostname "localhost" — and a custom docker-compose service hostname
+    # doesn't qualify. Requires `ladle` to already be running.
+    network_mode: "service:ladle"
+    volumes:
+      - ./frontend:/app/frontend
+    environment:
+      - UX_SHOTS_BASE_URL=http://localhost:61000
+      - UX_SHOTS_FILTER
+      - UX_SHOTS_VIEWPORTS
+      - NODE_PATH=/opt/uxshots/node_modules
+    command: >
+      sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
+      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      cd /app/frontend && node scripts/ux-shots.mjs"
+
   # NOTE: near-duplicate of the postgres service in docker-compose.prod.yml and docker-compose.e2e.yml — keep image/healthcheck/env keys in sync.
   postgres:
     image: postgres:17

@@ -57,7 +57,10 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "generate:api": "openapi-ts",
-    "generate:pwa-assets": "node scripts/generate-pwa-assets.mjs"
+    "generate:pwa-assets": "node scripts/generate-pwa-assets.mjs",
+    "ladle": "ladle serve",
+    "ladle:build": "ladle build",
+    "ux-shots": "node scripts/ux-shots.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -85,6 +88,7 @@
   "devDependencies": {
     "@eslint/js": "^9.22.0",
     "@hey-api/openapi-ts": "^0.92.3",
+    "@ladle/react": "^5.1.1",
     "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",

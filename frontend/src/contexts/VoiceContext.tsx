@@ -213,8 +213,20 @@ const VoiceDispatchContext = createContext<{
   stateRef: React.RefObject<VoiceState>;
 } | null>(null);
 
-export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(voiceReducer, initialState);
+export const VoiceProvider: React.FC<{
+  children: React.ReactNode;
+  /**
+   * Test/sandbox-only seam: seeds the reducer's initial state instead of the
+   * default disconnected state (e.g. Ladle stories rendering a "connected"
+   * voice bar without a real LiveKit connection). Unused in production —
+   * AuthGate never passes it.
+   */
+  initialState?: Partial<VoiceState>;
+}> = ({ children, initialState: initialStateOverride }) => {
+  const [state, dispatch] = useReducer(
+    voiceReducer,
+    initialStateOverride ? { ...initialState, ...initialStateOverride } : initialState,
+  );
   const stateRef = useRef(state);
 
   useEffect(() => {

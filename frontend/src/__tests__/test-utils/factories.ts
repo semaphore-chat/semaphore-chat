@@ -1,6 +1,7 @@
 import type { InfiniteData } from '@tanstack/react-query';
 import type { PaginatedMessagesResponseDto, ThreadRepliesResponseDto, EnrichedThreadReplyDto, FriendshipWithUsersDto, UserEntity } from '../../api-client/types.gen';
-import type { Message, Reaction } from '../../types/message.type';
+import type { Message, Reaction, Span } from '../../types/message.type';
+import { SpanType } from '../../types/message.type';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
 import type { DmGroupMemberDto } from '../../api-client/types.gen';
 import { ChannelType, type Channel } from '../../types/channel.type';
@@ -189,15 +190,15 @@ export function createDmGroup(overrides: Partial<DirectMessageGroup> = {}): Dire
 }
 
 export function createSpan(overrides: Partial<{
-  type: string;
+  type: SpanType;
   text: string;
   userId: string;
   specialKind: string;
   communityId: string;
   aliasId: string;
-}> = {}) {
+}> = {}): Span {
   return {
-    type: overrides.type ?? 'PLAINTEXT',
+    type: overrides.type ?? SpanType.PLAINTEXT,
     text: overrides.text ?? 'hello',
     userId: overrides.userId,
     specialKind: overrides.specialKind,
