@@ -290,6 +290,8 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
     // `timeouts/:communityId`) — not a `{bans}`/`{timeouts}` envelope.
     http.get('/api/moderation/bans/:communityId', () => HttpResponse.json([])),
     http.get('/api/moderation/timeouts/:communityId', () => HttpResponse.json([])),
+    // `TimeoutStatusResponseDto` — read by the composer (useComposerAvailability).
+    http.get('/api/moderation/timeout-status/:communityId/:userId', () => HttpResponse.json({ isTimedOut: false })),
     // `ModerationLogsResponseDto` is `{logs, total}` (no continuationToken —
     // it's offset-paginated). `ModerationLogsPanel.tsx` does
     // `Math.ceil(data.total / PAGE_SIZE)`, which was `NaN` against the old

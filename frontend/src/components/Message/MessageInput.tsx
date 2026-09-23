@@ -7,11 +7,14 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Box, IconButton, CircularProgress } from "@mui/material";
+import { Box, IconButton, CircularProgress, Typography } from "@mui/material";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import EmojiEmotionsOutlinedIcon from "@mui/icons-material/EmojiEmotionsOutlined";
-import { StyledPaper, StyledTextField } from "./MessageInputStyles";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
+import BlockIcon from "@mui/icons-material/Block";
+import { StyledNoticePaper, StyledPaper, StyledTextField } from "./MessageInputStyles";
 import { EmojiPickerPopover } from "./EmojiPicker";
 import { GifPickerPopover } from "./GifPicker";
 import type { GifResultDto } from "../../api-client/types.gen";
@@ -49,6 +52,8 @@ import { useTypingEmitter } from "../../hooks/useTypingEmitter";
 import type { Span } from "../../types/message.type";
 import { SpanType } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { useComposerAvailability } from "../../hooks/useComposerAvailability";
+import type { ComposerAvailability } from "../../hooks/useComposerAvailability";
 
 export interface MessageInputProps {
   contextType: VoiceSessionType;
@@ -58,6 +63,59 @@ export interface MessageInputProps {
   onSendMessage: (messageContent: string, spans: Span[], files?: File[]) => void;
   placeholder?: string;
   communityId?: string;
+}
+
+/** "12 min", "2 h 5 min", "42 s" — rounded up so it never reads "0". */
+function formatTimeLeft(ms: number): string {
+  const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds} s`;
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+}
+
+function noticeCopy(availability: ComposerAvailability): string {
+  switch (availability.state) {
+    case "no-permission":
+      return availability.channelName
+        ? `You can't send messages in #${availability.channelName}`
+        : "You can't send messages in this channel";
+    case "timed-out":
+      return availability.remainingMs !== undefined
+        ? `Timed out, ${formatTimeLeft(availability.remainingMs)} left`
+        : "You're timed out in this community";
+    case "banned":
+      return "You're banned from this community";
+    default:
+      return "";
+  }
+}
+
+/** Non-editable stand-in for the composer when the user can't post here. */
+export function ComposerUnavailableNotice({ availability }: { availability: ComposerAvailability }) {
+  const Icon =
+    availability.state === "timed-out"
+      ? TimerOutlinedIcon
+      : availability.state === "banned"
+        ? BlockIcon
+        : LockOutlinedIcon;
+  return (
+    <StyledNoticePaper elevation={2} role="status" data-testid="composer-unavailable">
+      <Icon fontSize="small" aria-hidden />
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="body2" sx={{ color: "text.secondary", overflowWrap: "anywhere" }}>
+          {noticeCopy(availability)}
+        </Typography>
+        {availability.reason && (
+          <Typography variant="caption" sx={{ color: "text.secondary", display: "block", overflowWrap: "anywhere" }}>
+            Reason: {availability.reason}
+          </Typography>
+        )}
+      </Box>
+    </StyledNoticePaper>
+  );
 }
 
 // --- Local mention state for DM context ---
@@ -91,6 +149,8 @@ export default function MessageInput({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showNotification } = useNotification();
   const { isTouchDevice } = useResponsive();
+  const availability = useComposerAvailability({ contextType, contextId, communityId });
+  const canCompose = availability.state === "ok";
 
   // Emoji picker state + last-known selection (captured before the picker steals focus)
   const [emojiAnchorEl, setEmojiAnchorEl] = useState<HTMLElement | null>(null);
@@ -190,11 +250,13 @@ export default function MessageInput({
 
   useEffect(() => {
     setupCursorTracking(inputRef);
-  }, [setupCursorTracking]);
+  }, [setupCursorTracking, canCompose]);
 
+  // Focus on mount, and again if posting becomes possible (e.g. a timeout
+  // expires) since the input only mounts then.
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (canCompose) inputRef.current?.focus();
+  }, [canCompose]);
 
   // --- Mention system: server-backed (channels) or local (DMs) ---
   const mentionHook = useMentionAutocomplete({
@@ -550,6 +612,14 @@ export default function MessageInput({
       handleSend();
     }
   };
+
+  if (!canCompose) {
+    return (
+      <Box sx={{ position: "relative", width: "100%" }}>
+        <ComposerUnavailableNotice availability={availability} />
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ position: "relative", width: "100%" }} {...dropZoneProps}>

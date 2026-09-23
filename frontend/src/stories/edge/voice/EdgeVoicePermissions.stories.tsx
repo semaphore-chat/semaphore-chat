@@ -11,7 +11,7 @@
  * the community roles (`getUserRolesForChannel`).
  */
 import { http, HttpResponse } from 'msw';
-import { ClickOnMount, TypeIntoTextareaOnMount } from '../../fixtures/interactions';
+import { ClickOnMount } from '../../fixtures/interactions';
 import { findButtonByText } from '../../fixtures/domQueries';
 import {
   ADMIN_ACTIONS,
@@ -100,15 +100,14 @@ export const AdminModerationBansTimeouts = defineEdgeScreen(asAdmin.scenario, {
 // ── Read-only / private / timed out / banned ─────────────────────────────
 
 /**
- * A custom "Read-only" role (Member minus CREATE_MESSAGE). The backend
- * rejects sends; the frontend never checks CREATE_MESSAGE, so the composer
- * looks identical — shown here with a draft typed in.
+ * A custom "Read-only" role (Member minus CREATE_MESSAGE). The composer
+ * checks CREATE_MESSAGE (useComposerAvailability) and shows a
+ * "You can't send messages in #general" notice instead of an input.
  */
 const asReadOnly = asCommunityRole(base, cid, readOnlyRole);
 export const ReadOnlyChannel = defineEdgeScreen(asReadOnly.scenario, {
   path: generalPath,
   extraHandlers: asReadOnly.handlers,
-  overlay: <TypeIntoTextareaOnMount text="does this even send? I don't have permission to post here" />,
 });
 
 /** A private channel (lock icon), member view: member list comes from the channel's explicit membership. */
@@ -126,16 +125,18 @@ export const PrivateChannelList = defineEdgeScreen(priv.scenario, {
 });
 
 /**
- * Timed-out member (timeout active server-side). Nothing on the client
- * reflects it — the timeout only surfaces as a `WsException` on send, and
- * the client has no `exception` listener, so a send just times out after
- * 10s as "failed". Shown: the normal composer with a draft, no indicator.
+ * Timed-out member (timeout active server-side, 12 minutes left). The
+ * composer reads `GET /moderation/timeout-status/:communityId/:userId` and
+ * shows "Timed out, 12 min left" with a live countdown instead of an input.
  */
+const timeoutExpiresAt = new Date(Date.now() + 12 * 60_000).toISOString();
 export const TimedOutMember = defineEdgeScreen(asMember.scenario, {
   path: generalPath,
-  // (`GET /moderation/timeout-status/...` exists but no client code calls it.)
-  extraHandlers: asMember.handlers,
-  overlay: <TypeIntoTextareaOnMount text="sorry about earlier, can I explain?" />,
+  extraHandlers: [
+    ...asMember.handlers,
+    http.get(`/api/moderation/timeout-status/${cid}/:userId`, () =>
+      HttpResponse.json({ isTimedOut: true, expiresAt: timeoutExpiresAt })),
+  ],
 });
 
 /**

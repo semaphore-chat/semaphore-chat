@@ -1,4 +1,4 @@
-import MessageInput from '../../components/Message/MessageInput';
+import MessageInput, { ComposerUnavailableNotice } from '../../components/Message/MessageInput';
 import ReplyComposerBanner from '../../components/Message/ReplyComposerBanner';
 import { defineComponent } from '../fixtures/componentStory';
 import { AttachFileOnMount, TypeIntoTextareaOnMount } from '../fixtures/interactions';
@@ -41,4 +41,26 @@ export const WithFilePreviews = defineComponent(bigCommunityScenario, () => (
     <AttachFileOnMount filename="photo.png" type="image/png" />
     <MessageInput {...commonProps} onSendMessage={() => {}} />
   </>
+));
+
+// ── Composer unavailable (useComposerAvailability) ───────────────────────
+// The edge-voice-permissions stories show these in the real screen; these
+// isolate the notice, including `banned`, which no screen can reach today.
+
+export const NoPermission = defineComponent(bigCommunityScenario, () => (
+  <ComposerUnavailableNotice availability={{ state: 'no-permission', channelName: generalChannel.name }} />
+));
+
+export const TimedOut = defineComponent(bigCommunityScenario, () => (
+  <ComposerUnavailableNotice availability={{ state: 'timed-out', remainingMs: 12 * 60_000 }} />
+));
+
+export const TimedOutWithReason = defineComponent(bigCommunityScenario, () => (
+  <ComposerUnavailableNotice
+    availability={{ state: 'timed-out', remainingMs: (2 * 60 + 5) * 60_000, reason: 'Posting the same link in every channel' }}
+  />
+));
+
+export const Banned = defineComponent(bigCommunityScenario, () => (
+  <ComposerUnavailableNotice availability={{ state: 'banned' }} />
 ));
