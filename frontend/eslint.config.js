@@ -66,6 +66,15 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
+  // Node CLI scripts (run in containers by scripts/ui-review/ui-review.sh):
+  // console output is their interface.
+  {
+    files: ['scripts/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: {
+      'no-console': 'off',
+    },
+  },
   // jsx-a11y recommended ruleset, downgraded to warnings (see toWarnOnly).
   {
     files: ['**/*.{ts,tsx}'],
