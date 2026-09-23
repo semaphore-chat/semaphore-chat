@@ -85,3 +85,14 @@ describe('MobileMessagesPanel pull-to-refresh', () => {
     );
   });
 });
+
+describe('MobileMessagesPanel new-DM button', () => {
+  it('leaves room below the list so the FAB never covers the last conversation', async () => {
+    renderWithProviders(<MobileMessagesPanel />);
+    await screen.findByText('No messages yet');
+    // FAB is 56px tall and sits 16px above the bottom chrome; the scroll box
+    // pads its end by at least that much.
+    const scrollBox = screen.getByTestId('dm-list-scroll');
+    expect(scrollBox).toHaveStyle({ paddingBottom: '88px' });
+  });
+});

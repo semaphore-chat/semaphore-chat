@@ -12,13 +12,14 @@ import {
   ListItem,
   ListItemButton,
   ListItemAvatar,
-  ListItemText,
   Avatar,
+  Typography,
 } from "@mui/material";
 import { Group as GroupIcon, Phone } from "@mui/icons-material";
 
 import UserAvatar from "../Common/UserAvatar";
-import { getDmDisplayName, getDmOtherUser, formatLastMessageTime } from "../../utils/dmHelpers";
+import { getDmOtherUser, formatLastMessageTime } from "../../utils/dmHelpers";
+import { getCompactDmName } from "../../utils/dmListName";
 import type { DirectMessageGroup } from "../../types/direct-message.type";
 
 interface DmListItemProps {
@@ -33,6 +34,14 @@ interface DmListItemProps {
   isOnline?: boolean;
 }
 
+/**
+ * One row: [avatar] [name ........ time]
+ *                   [preview ... badge]
+ *
+ * The timestamp always sits on the name row, so it doesn't move depending on
+ * whether a badge is showing. There is exactly one unread indicator: a dot for
+ * a single unread message, otherwise a count (capped at 99+).
+ */
 const DmListItem: React.FC<DmListItemProps> = ({
   group,
   currentUserId,
@@ -44,7 +53,13 @@ const DmListItem: React.FC<DmListItemProps> = ({
   mentionCount = 0,
   isOnline = false,
 }) => {
-  const isUnread = unreadCount > 0 && !isSelected;
+  const badgeCount = Math.max(unreadCount, mentionCount);
+  const isUnread = badgeCount > 0 && !isSelected;
+  const { names, extra, full: fullName } = getCompactDmName(group, currentUserId);
+  const preview = group.lastMessage
+    ? group.lastMessage.spans.find((s) => s.type === "PLAINTEXT")?.text || "Message"
+    : "No messages yet";
+
   return (
     <ListItem disablePadding>
       <ListItemButton
@@ -70,79 +85,93 @@ const DmListItem: React.FC<DmListItemProps> = ({
             <UserAvatar userId={getDmOtherUser(group, currentUserId)?.id} size="medium" showStatus isOnline={isOnline} />
           )}
         </ListItemAvatar>
-        <ListItemText
-          primary={
-            <Box component="span" sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
-              <Box component="span" sx={{ fontWeight: isUnread ? 700 : undefined }}>
-                {getDmDisplayName(group, currentUserId)}
-              </Box>
-              {isInCall && (
-                <Phone aria-label="In call" sx={{ fontSize: 14, color: "success.main" }} />
+        <Box sx={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 0.25 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}>
+            <Box
+              component="span"
+              data-testid="dm-name"
+              title={extra > 0 ? fullName : undefined}
+              sx={{ display: "flex", alignItems: "baseline", gap: 0.5, flex: "0 1 auto", minWidth: 0 }}
+            >
+              <Typography
+                component="span"
+                noWrap
+                sx={{ minWidth: 0, fontWeight: isUnread ? 700 : 500 }}
+              >
+                {names}
+              </Typography>
+              {/* Whitespace for textContent / screen readers; flex drops it visually. */}
+              {extra > 0 && " "}
+              {extra > 0 && (
+                <Typography
+                  component="span"
+                  noWrap
+                  sx={{ flexShrink: 0, fontWeight: isUnread ? 700 : 500, color: "text.secondary" }}
+                >
+                  {`+ ${extra}`}
+                </Typography>
               )}
             </Box>
-          }
-          secondary={
-            group.lastMessage ? (
-              <Box
+            {isInCall && (
+              <Phone aria-label="In call" sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
+            )}
+            {group.lastMessage && (
+              <Typography
                 component="span"
+                variant="caption"
+                data-testid="dm-last-time"
+                noWrap
                 sx={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  minWidth: 0,
+                  ml: "auto",
+                  pl: 1,
+                  flexShrink: 0,
+                  color: isUnread ? "primary.main" : "text.secondary",
+                  fontWeight: isUnread ? 600 : undefined,
                 }}
               >
-                <Box
-                  component="span"
-                  sx={{
-                    flex: 1,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
-                  }}
-                >
-                  {group.lastMessage.spans.find((s) => s.type === "PLAINTEXT")?.text || "Message"}
-                </Box>
-                <Box
-                  component="span"
-                  sx={{
-                    ml: 1,
-                    fontSize: "0.75rem",
-                    flexShrink: 0,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatLastMessageTime(group.lastMessage.sentAt)}
-                </Box>
-              </Box>
-            ) : (
-              "No messages yet"
-            )
-          }
-          sx={{ minWidth: 0 }}
-        />
-        {isUnread && (
-          <Badge
-            data-testid="unread-badge"
-            badgeContent={mentionCount > 0 ? mentionCount : undefined}
-            variant={mentionCount > 0 ? "standard" : "dot"}
-            color="error"
-            max={99}
-            sx={{
-              ml: "auto",
-              "& .MuiBadge-badge": {
-                position: "static",
-                transform: "none",
-              },
-              "& .MuiBadge-standard": {
-                fontSize: 10,
-                height: 16,
-                minWidth: 16,
-              },
-            }}
-          />
-        )}
+                {formatLastMessageTime(group.lastMessage.sentAt)}
+              </Typography>
+            )}
+          </Box>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+            <Typography
+              component="span"
+              variant="body2"
+              noWrap
+              sx={{ flex: 1, minWidth: 0, color: isUnread ? "text.primary" : "text.secondary" }}
+            >
+              {preview}
+            </Typography>
+            {isUnread && (
+              <Badge
+                data-testid="unread-badge"
+                badgeContent={badgeCount === 1 ? undefined : badgeCount}
+                variant={badgeCount === 1 ? "dot" : "standard"}
+                color="error"
+                max={99}
+                aria-label={`${badgeCount} unread`}
+                sx={{
+                  flexShrink: 0,
+                  mr: badgeCount === 1 ? 0.5 : 0,
+                  "& .MuiBadge-badge": {
+                    position: "static",
+                    transform: "none",
+                  },
+                  "& .MuiBadge-dot": {
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                  },
+                  "& .MuiBadge-standard": {
+                    fontSize: 11,
+                    height: 18,
+                    minWidth: 18,
+                  },
+                }}
+              />
+            )}
+          </Box>
+        </Box>
       </ListItemButton>
     </ListItem>
   );

@@ -85,6 +85,9 @@ export const MobileMessagesPanel: React.FC = () => {
           flex: 1,
           overflowY: 'auto',
           px: 1,
+          // Room for the new-DM FAB (56px + 16px gap + 16px) so it never
+          // covers the last conversation when scrolled to the end.
+          pb: '88px',
           position: 'relative',
         }}
         {...pullHandlers}
