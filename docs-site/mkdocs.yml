@@ -38,6 +38,7 @@ theme:
 
 nav:
   - Home: index.md
+  - Tour: tour.md
   - Installation:
       - Docker Compose: installation/docker-compose.md
       - Kubernetes: installation/kubernetes.md
@@ -60,13 +61,26 @@ nav:
       - Testing Guide: contributing/testing.md
       - UI Review Screenshots: contributing/ui-review.md
       - Code Patterns: contributing/code-patterns.md
+      - Regenerating Screenshots: contributing/regenerating-screenshots.md
   - Security: security.md
   - License: license.md
+
+extra_css:
+  - stylesheets/tour.css
 
 plugins:
   - search
   - minify:
       minify_html: true
+  # Lightbox + swipe for the Tour gallery (images are grouped by `data-gallery`).
+  - glightbox:
+      touchNavigation: true
+      loop: false
+      effect: zoom
+      zoomable: true
+      draggable: true
+      skip_classes:
+        - no-lightbox
 
 markdown_extensions:
   - admonition

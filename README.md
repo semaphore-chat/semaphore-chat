@@ -9,6 +9,48 @@ Semaphore Chat is a self-hosted, free, open-source communication platform that p
 
 > **Beta Software** — Semaphore Chat is under active development. Expect bugs and occasional breaking changes. If you find a bug please report it as an issue!
 
+<p align="center">
+  <a href="https://docs.semaphorechat.app/tour/">
+    <picture>
+      <source srcset="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/hero.webp" type="image/webp">
+      <img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/hero.gif" width="960" alt="Semaphore Chat in action: a message is typed and sent in a team channel, teammates react and reply, a thread opens, and then a voice channel shows people talking.">
+    </picture>
+  </a>
+  <br>
+  <sub><a href="https://docs.semaphorechat.app/tour/">Take the full tour →</a></sub>
+</p>
+
+<table>
+  <tr>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-desktop.webp" alt="A team channel on desktop with a pull-request link preview, a code block, emoji reactions and the member list."></a>
+      <br><sub>Channels with link previews, code and reactions</sub>
+    </td>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/thread-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/thread-desktop.webp" alt="A thread with five replies open beside the channel."></a>
+      <br><sub>Threads for side conversations</sub>
+    </td>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/voice-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/voice-desktop.webp" alt="A voice channel with four participants, two of them highlighted as speaking, and the voice controls bar."></a>
+      <br><sub>Drop-in voice with speaking indicators</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/dms-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/dms-desktop.webp" alt="A group direct message with the conversation list showing unread badges."></a>
+      <br><sub>Direct messages and group DMs</sub>
+    </td>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-roles-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-roles-desktop.webp" alt="Community settings showing custom roles and their permissions."></a>
+      <br><sub>Communities with roles and permissions</sub>
+    </td>
+    <td width="33%" align="center" valign="top">
+      <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-light-desktop.webp"><img src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-light-desktop.webp" alt="The same channel in the light theme."></a>
+      <br><sub>Light and dark themes, twelve accents</sub>
+    </td>
+  </tr>
+</table>
+
 ## Features
 
 - **Messaging** — Real-time text channels with mentions, reactions, threads, file attachments, and read receipts

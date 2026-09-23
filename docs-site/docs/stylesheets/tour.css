@@ -1,0 +1,14 @@
+/* Tour page gallery (docs/tour.md): desktop screenshots two per row, phone
+   screenshots in narrow columns so their height stays in proportion. */
+.md-typeset .grid.tour-desktop {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+}
+.md-typeset .grid.tour-phones {
+  grid-template-columns: repeat(auto-fill, minmax(6rem, 8.5rem));
+  justify-content: start;
+}
+.md-typeset .grid.tour-desktop img,
+.md-typeset .grid.tour-phones img {
+  border-radius: 0.4rem;
+  box-shadow: var(--md-shadow-z1);
+}
