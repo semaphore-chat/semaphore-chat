@@ -1,24 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+import { ROOM_EVENT, TRACK_SOURCE } from '../../features/voice/livekitEvents';
 
 // --- Mock livekit-client ---
+//
+// The source (useTrackSubscription.ts) no longer imports RoomEvent/Track as
+// VALUES from 'livekit-client' — it uses the typed string constants in
+// features/voice/livekitEvents.ts instead (see PR-11 "Fix round 1": this
+// hook backs the always-mounted TrackSubscriptionProvider, so a runtime
+// livekit-client import here would eagerly fetch the livekit chunk on every
+// page load). RemoteTrackPublication is still mocked as a class purely to
+// satisfy duck-typing helpers elsewhere; RoomEvent/Track event and source
+// names in this test come from the real (unmocked) ROOM_EVENT/TRACK_SOURCE
+// constants below rather than a re-typed fake enum here.
 vi.mock('livekit-client', () => ({
-  RoomEvent: {
-    TrackPublished: 'trackPublished',
-    TrackUnpublished: 'trackUnpublished',
-    ParticipantConnected: 'participantConnected',
-    Reconnected: 'reconnected',
-    TrackSubscriptionStatusChanged: 'trackSubscriptionStatusChanged',
-    TrackSubscriptionFailed: 'trackSubscriptionFailed',
-  },
-  Track: {
-    Source: {
-      Microphone: 'microphone',
-      Camera: 'camera',
-      ScreenShare: 'screen_share',
-      ScreenShareAudio: 'screen_share_audio',
-    },
-  },
   RemoteTrackPublication: class MockRemoteTrackPublication {},
 }));
 
@@ -98,6 +93,7 @@ vi.mock('../../contexts/VoiceContext', () => ({
     WatchScreenShare: 'WATCH_SCREEN_SHARE',
     StopWatchingScreenShare2: 'STOP_WATCHING_SCREEN_SHARE',
     SetShowVideoTiles: 'SET_SHOW_VIDEO_TILES',
+    SetPipCollapsed: 'SET_PIP_COLLAPSED',
   },
 }));
 
@@ -111,7 +107,7 @@ describe('useTrackSubscription', () => {
 
   describe('on mount', () => {
     it('subscribes to existing mic tracks', () => {
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       const participant = createMockParticipant('user-1', [micPub]);
       mockRoom!.remoteParticipants.set('user-1', participant);
 
@@ -121,7 +117,7 @@ describe('useTrackSubscription', () => {
     });
 
     it('unsubscribes existing camera tracks', () => {
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       camPub.isSubscribed = true;
       camPub.subscriptionStatus = 'desired';
       const participant = createMockParticipant('user-1', [camPub]);
@@ -133,10 +129,10 @@ describe('useTrackSubscription', () => {
     });
 
     it('unsubscribes existing screen share tracks', () => {
-      const screenPub = createMockPublication('screen_share');
+      const screenPub = createMockPublication(TRACK_SOURCE.ScreenShare);
       screenPub.isSubscribed = true;
       screenPub.subscriptionStatus = 'desired';
-      const screenAudioPub = createMockPublication('screen_share_audio');
+      const screenAudioPub = createMockPublication(TRACK_SOURCE.ScreenShareAudio);
       screenAudioPub.isSubscribed = true;
       screenAudioPub.subscriptionStatus = 'desired';
       const participant = createMockParticipant('user-1', [screenPub, screenAudioPub]);
@@ -153,12 +149,12 @@ describe('useTrackSubscription', () => {
     it('subscribes to newly published mic tracks', () => {
       renderHook(() => useTrackSubscription());
 
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       Object.setPrototypeOf(micPub, MockRTP.prototype);
       const participant = createMockParticipant('user-1', [micPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', micPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, micPub, participant);
       });
 
       expect(micPub.setSubscribed).toHaveBeenCalledWith(true);
@@ -167,12 +163,12 @@ describe('useTrackSubscription', () => {
     it('does not call setSubscribed(false) on never-subscribed camera tracks', () => {
       renderHook(() => useTrackSubscription());
 
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       // camPub.isSubscribed is false by default (never subscribed)
       const participant = createMockParticipant('user-1', [camPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', camPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, camPub, participant);
       });
 
       // With the guard, setSubscribed(false) is NOT called on never-subscribed tracks
@@ -183,12 +179,12 @@ describe('useTrackSubscription', () => {
     it('does not call setSubscribed(false) on never-subscribed screen share tracks', () => {
       renderHook(() => useTrackSubscription());
 
-      const screenPub = createMockPublication('screen_share');
+      const screenPub = createMockPublication(TRACK_SOURCE.ScreenShare);
       // screenPub.isSubscribed is false by default (never subscribed)
       const participant = createMockParticipant('user-1', [screenPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', screenPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, screenPub, participant);
       });
 
       expect(screenPub.setSubscribed).not.toHaveBeenCalled();
@@ -197,47 +193,56 @@ describe('useTrackSubscription', () => {
     it('opens the video panel when a screen share is published', () => {
       renderHook(() => useTrackSubscription());
 
-      const screenPub = createMockPublication('screen_share');
+      const screenPub = createMockPublication(TRACK_SOURCE.ScreenShare);
       const participant = createMockParticipant('user-1', [screenPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', screenPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, screenPub, participant);
       });
 
       expect(mockDispatch).toHaveBeenCalledWith({
         type: 'SET_SHOW_VIDEO_TILES',
         payload: true,
       });
+      // Both dispatched together — a show-true-only dispatch could surface
+      // only a collapsed pill, leaving a viewer looking at nothing new.
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: 'SET_PIP_COLLAPSED',
+        payload: false,
+      });
     });
 
     it('does not open the video panel for mic, camera, or screen share audio publishes', () => {
       renderHook(() => useTrackSubscription());
 
-      const micPub = createMockPublication('microphone');
-      const camPub = createMockPublication('camera');
-      const screenAudioPub = createMockPublication('screen_share_audio');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
+      const screenAudioPub = createMockPublication(TRACK_SOURCE.ScreenShareAudio);
       const participant = createMockParticipant('user-1', [micPub, camPub, screenAudioPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', micPub, participant);
-        emitRoomEvent('trackPublished', camPub, participant);
-        emitRoomEvent('trackPublished', screenAudioPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, micPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, camPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, screenAudioPub, participant);
       });
 
       expect(mockDispatch).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'SET_SHOW_VIDEO_TILES' }),
+      );
+      expect(mockDispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'SET_PIP_COLLAPSED' }),
       );
     });
 
     it('unsubscribes previously-subscribed opt-in tracks on re-publish', () => {
       renderHook(() => useTrackSubscription());
 
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       camPub.isSubscribed = true; // simulate a previously subscribed track
       const participant = createMockParticipant('user-1', [camPub]);
 
       act(() => {
-        emitRoomEvent('trackPublished', camPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackPublished, camPub, participant);
       });
 
       expect(camPub.setSubscribed).toHaveBeenCalledWith(false);
@@ -248,11 +253,11 @@ describe('useTrackSubscription', () => {
     it('dispatches StopWatchingCamera when camera is unpublished', () => {
       renderHook(() => useTrackSubscription());
 
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       const participant = createMockParticipant('user-1');
 
       act(() => {
-        emitRoomEvent('trackUnpublished', camPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackUnpublished, camPub, participant);
       });
 
       expect(mockDispatch).toHaveBeenCalledWith({
@@ -264,11 +269,11 @@ describe('useTrackSubscription', () => {
     it('dispatches StopWatchingScreenShare when screen share is unpublished', () => {
       renderHook(() => useTrackSubscription());
 
-      const screenPub = createMockPublication('screen_share');
+      const screenPub = createMockPublication(TRACK_SOURCE.ScreenShare);
       const participant = createMockParticipant('user-1');
 
       act(() => {
-        emitRoomEvent('trackUnpublished', screenPub, participant);
+        emitRoomEvent(ROOM_EVENT.TrackUnpublished, screenPub, participant);
       });
 
       expect(mockDispatch).toHaveBeenCalledWith({
@@ -282,14 +287,14 @@ describe('useTrackSubscription', () => {
     it('subscribes mic and unsubscribes video for newly connected participant', () => {
       renderHook(() => useTrackSubscription());
 
-      const micPub = createMockPublication('microphone');
-      const camPub = createMockPublication('camera');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       camPub.isSubscribed = true;
       camPub.subscriptionStatus = 'desired';
       const participant = createMockParticipant('user-1', [micPub, camPub]);
 
       act(() => {
-        emitRoomEvent('participantConnected', participant);
+        emitRoomEvent(ROOM_EVENT.ParticipantConnected, participant);
       });
 
       expect(micPub.setSubscribed).toHaveBeenCalledWith(true);
@@ -299,7 +304,7 @@ describe('useTrackSubscription', () => {
 
   describe('watch/stop actions', () => {
     it('watchCamera subscribes to camera track and dispatches', () => {
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       const participant = createMockParticipant('user-1', [camPub]);
       mockRoom!.remoteParticipants.set('user-1', participant);
 
@@ -318,7 +323,7 @@ describe('useTrackSubscription', () => {
     });
 
     it('stopWatchingCamera unsubscribes camera track and dispatches', () => {
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       camPub.isSubscribed = true;
       const participant = createMockParticipant('user-1', [camPub]);
       mockRoom!.remoteParticipants.set('user-1', participant);
@@ -337,8 +342,8 @@ describe('useTrackSubscription', () => {
     });
 
     it('watchScreenShare subscribes to both screen share and screen share audio', () => {
-      const screenPub = createMockPublication('screen_share');
-      const screenAudioPub = createMockPublication('screen_share_audio');
+      const screenPub = createMockPublication(TRACK_SOURCE.ScreenShare);
+      const screenAudioPub = createMockPublication(TRACK_SOURCE.ScreenShareAudio);
       const participant = createMockParticipant('user-1', [screenPub, screenAudioPub]);
       mockRoom!.remoteParticipants.set('user-1', participant);
 
@@ -371,7 +376,7 @@ describe('useTrackSubscription', () => {
     it('re-applies subscription policy to all participants with force=true', () => {
       // Pre-populate room with one participant whose mic is already subscribed
       // (mirroring the steady-state right before a reconnect)
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       micPub.isSubscribed = true;
       micPub.subscriptionStatus = 'subscribed';
       const participant = createMockParticipant('user-1', [micPub]);
@@ -382,7 +387,7 @@ describe('useTrackSubscription', () => {
       const initialCallCount = micPub.setSubscribed.mock.calls.length;
 
       act(() => {
-        emitRoomEvent('reconnected');
+        emitRoomEvent(ROOM_EVENT.Reconnected);
       });
 
       // forceResubscribePublication toggles false→true to force a fresh signal,
@@ -392,9 +397,9 @@ describe('useTrackSubscription', () => {
     });
 
     it('force-resubscribes mics for multiple participants', () => {
-      const micA = createMockPublication('microphone');
+      const micA = createMockPublication(TRACK_SOURCE.Microphone);
       micA.isSubscribed = true;
-      const micB = createMockPublication('microphone');
+      const micB = createMockPublication(TRACK_SOURCE.Microphone);
       micB.isSubscribed = true;
       mockRoom!.remoteParticipants.set('a', createMockParticipant('a', [micA]));
       mockRoom!.remoteParticipants.set('b', createMockParticipant('b', [micB]));
@@ -404,7 +409,7 @@ describe('useTrackSubscription', () => {
       const bBefore = micB.setSubscribed.mock.calls.length;
 
       act(() => {
-        emitRoomEvent('reconnected');
+        emitRoomEvent(ROOM_EVENT.Reconnected);
       });
 
       expect(micA.setSubscribed.mock.calls.slice(aBefore)).toEqual([[false], [true]]);
@@ -416,12 +421,12 @@ describe('useTrackSubscription', () => {
     it('forces re-subscribe when a mic transitions to unsubscribed', () => {
       renderHook(() => useTrackSubscription());
 
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       micPub.isSubscribed = false; // post-status-change state
       const participant = createMockParticipant('user-1', [micPub]);
 
       act(() => {
-        emitRoomEvent('trackSubscriptionStatusChanged', micPub, 'unsubscribed', participant);
+        emitRoomEvent(ROOM_EVENT.TrackSubscriptionStatusChanged, micPub, 'unsubscribed', participant);
       });
 
       // forceResubscribePublication: skips the false call (already false), then sets true
@@ -431,11 +436,11 @@ describe('useTrackSubscription', () => {
     it('ignores non-mic publication status changes', () => {
       renderHook(() => useTrackSubscription());
 
-      const camPub = createMockPublication('camera');
+      const camPub = createMockPublication(TRACK_SOURCE.Camera);
       const participant = createMockParticipant('user-1', [camPub]);
 
       act(() => {
-        emitRoomEvent('trackSubscriptionStatusChanged', camPub, 'unsubscribed', participant);
+        emitRoomEvent(ROOM_EVENT.TrackSubscriptionStatusChanged, camPub, 'unsubscribed', participant);
       });
 
       // No re-subscribe attempt for camera tracks via the status-changed path
@@ -445,12 +450,12 @@ describe('useTrackSubscription', () => {
     it('ignores subscribed→subscribed (not a drop)', () => {
       renderHook(() => useTrackSubscription());
 
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       micPub.isSubscribed = true;
       const participant = createMockParticipant('user-1', [micPub]);
 
       act(() => {
-        emitRoomEvent('trackSubscriptionStatusChanged', micPub, 'subscribed', participant);
+        emitRoomEvent(ROOM_EVENT.TrackSubscriptionStatusChanged, micPub, 'subscribed', participant);
       });
 
       expect(micPub.setSubscribed).not.toHaveBeenCalled();
@@ -459,7 +464,7 @@ describe('useTrackSubscription', () => {
 
   describe('forceResubscribeMic action', () => {
     it('toggles a subscribed mic false→true to issue a fresh subscribe', () => {
-      const micPub = createMockPublication('microphone');
+      const micPub = createMockPublication(TRACK_SOURCE.Microphone);
       micPub.isSubscribed = true;
       const participant = createMockParticipant('user-1', [micPub]);
       mockRoom!.remoteParticipants.set('user-1', participant);
@@ -490,12 +495,12 @@ describe('useTrackSubscription', () => {
 
       unmount();
 
-      expect(mockRoom!.off).toHaveBeenCalledWith('trackPublished', expect.any(Function));
-      expect(mockRoom!.off).toHaveBeenCalledWith('trackUnpublished', expect.any(Function));
-      expect(mockRoom!.off).toHaveBeenCalledWith('participantConnected', expect.any(Function));
-      expect(mockRoom!.off).toHaveBeenCalledWith('reconnected', expect.any(Function));
-      expect(mockRoom!.off).toHaveBeenCalledWith('trackSubscriptionStatusChanged', expect.any(Function));
-      expect(mockRoom!.off).toHaveBeenCalledWith('trackSubscriptionFailed', expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.TrackPublished, expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.TrackUnpublished, expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.ParticipantConnected, expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.Reconnected, expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.TrackSubscriptionStatusChanged, expect.any(Function));
+      expect(mockRoom!.off).toHaveBeenCalledWith(ROOM_EVENT.TrackSubscriptionFailed, expect.any(Function));
     });
 
     it('does nothing when room is null', () => {

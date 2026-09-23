@@ -1,13 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Paper, Typography, Chip, Divider, Button, Stack, Tooltip } from '@mui/material';
 import { useTheme, alpha, type Theme } from '@mui/material/styles';
-import {
-  ConnectionQuality,
-  RemoteParticipant,
-  RemoteTrackPublication,
-  Track,
-  RoomEvent,
-} from 'livekit-client';
+import { ConnectionQuality, Track, RoomEvent } from 'livekit-client';
+import type { RemoteParticipant, RemoteTrackPublication } from 'livekit-client';
 import { useRoom } from '../../hooks/useRoom';
 import { useSpeaking } from '../../hooks/useSpeaking';
 import { useTrackSubscriptionActions } from '../../hooks/useTrackSubscription';

@@ -1,11 +1,17 @@
 import React from "react";
 import CommunityToggle from "../CommunityList/CommunityToggle";
 import NotificationCenter from "../Notifications/NotificationCenter";
-import { VideoOverlayProvider } from "../../contexts/VideoOverlayContext";
 import { TrackSubscriptionProvider } from "../Voice/TrackSubscriptionProvider";
 import { VoiceEventLogProvider } from "../../hooks/useVoiceEventLog";
 import { VoiceTestHooks } from "../../features/voice/VoiceTestHooks";
-import { VoiceBottomBar, AudioRenderer } from "../Voice";
+// Import directly from source files, NOT the `../Voice` barrel
+// (components/Voice/index.ts) — that barrel also re-exports VideoTiles,
+// VoiceChannelUserList, DeviceSettingsDialog, ScreenSourcePicker, some of
+// which hold runtime livekit-client imports and are intentionally
+// React.lazy'd elsewhere. A direct import from this always-mounted module
+// avoids relying on Rollup tree-shaking the unused re-exports. See PR-11.
+import { VoiceBottomBar } from "../Voice/VoiceBottomBar";
+import { AudioRenderer } from "../Voice/AudioRenderer";
 import { PersistentVideoOverlay } from "../Voice/PersistentVideoOverlay";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { APPBAR_HEIGHT } from "../../constants/layout";
@@ -32,7 +38,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   const [notificationCenterOpen, setNotificationCenterOpen] = React.useState(false);
 
   return (
-    <VideoOverlayProvider>
+    <>
       <DesktopAppBar
         instanceName={instanceName}
         isLoading={isLoading}
@@ -60,7 +66,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
           <PersistentVideoOverlay />
         </VoiceEventLogProvider>
       </TrackSubscriptionProvider>
-    </VideoOverlayProvider>
+    </>
   );
 };
 

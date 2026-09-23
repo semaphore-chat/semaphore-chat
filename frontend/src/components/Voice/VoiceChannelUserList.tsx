@@ -15,7 +15,7 @@ import { ChannelType, type Channel } from "../../types/channel.type";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import VoiceUserContextMenu from "./VoiceUserContextMenu";
-import { RoomEvent } from "livekit-client";
+import { ROOM_EVENT } from "../../features/voice/livekitEvents";
 import { getUserInfo } from "../../features/users/userApiHelpers";
 import { useServerEvent } from "../../socket-hub/useServerEvent";
 import { ServerEvents } from "@semaphore-chat/shared";
@@ -203,10 +203,10 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
 
     // Listen for participant changes (debounced)
     const events = [
-      RoomEvent.ParticipantConnected,
-      RoomEvent.ParticipantDisconnected,
-      RoomEvent.Connected,
-      RoomEvent.ParticipantMetadataChanged,
+      ROOM_EVENT.ParticipantConnected,
+      ROOM_EVENT.ParticipantDisconnected,
+      ROOM_EVENT.Connected,
+      ROOM_EVENT.ParticipantMetadataChanged,
     ] as const;
 
     events.forEach((event) => room.on(event, debouncedUpdate));
@@ -340,7 +340,7 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
               isSpeaking={isSpeaking}
               onContextMenu={handleContextMenu}
               onClickUser={openProfile}
-              onShowVideoTiles={() => voiceActions.setShowVideoTiles(true)}
+              onShowVideoTiles={() => voiceActions.revealVideoTiles()}
               isWatchingCamera={watchingCameras.has(user.id)}
               isWatchingScreenShare={watchingScreenShares.has(user.id)}
               onWatchCamera={trackActions?.watchCamera}

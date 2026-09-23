@@ -1,24 +1,111 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, act } from '@testing-library/react';
+import { screen, act, within } from '@testing-library/react';
+import { useSyncExternalStore } from 'react';
 import { renderWithProviders } from '../test-utils';
 import { VideoTiles } from '../../components/Voice/VideoTiles';
-import { VoiceSessionType } from '../../contexts/VoiceContext';
+import { VoiceSessionType, VoiceActionType } from '../../contexts/VoiceContext';
+import { VideoLayoutMode } from '../../types/videoLayout';
 
 let mockWatchingCameras = new Set<string>();
 let mockWatchingScreenShares = new Set<string>();
+
+// layoutMode/pinnedTileId/spotlightTileId now live in VoiceContext's reducer
+// (Task 5). Rather than statically mock them, this tiny external store mirrors
+// the reducer's toggle semantics so dispatching from VideoTiles actually
+// updates what useVoice() returns and re-renders the component — the same
+// click-driven assertions the "layout modes and pinning" tests rely on.
+let mockLayoutMode: VideoLayoutMode = VideoLayoutMode.Grid;
+let mockPinnedTileId: string | null = null;
+let mockSpotlightTileId: string | null = null;
+type MockLayoutSnapshot = {
+  layoutMode: VideoLayoutMode;
+  pinnedTileId: string | null;
+  spotlightTileId: string | null;
+};
+let mockLayoutSnapshot: MockLayoutSnapshot = {
+  layoutMode: mockLayoutMode,
+  pinnedTileId: mockPinnedTileId,
+  spotlightTileId: mockSpotlightTileId,
+};
+const mockLayoutListeners = new Set<() => void>();
+
+function mockCommitLayoutSnapshot() {
+  mockLayoutSnapshot = {
+    layoutMode: mockLayoutMode,
+    pinnedTileId: mockPinnedTileId,
+    spotlightTileId: mockSpotlightTileId,
+  };
+  mockLayoutListeners.forEach((listener) => listener());
+}
+
+function mockResetLayoutState() {
+  mockLayoutMode = VideoLayoutMode.Grid;
+  mockPinnedTileId = null;
+  mockSpotlightTileId = null;
+  mockCommitLayoutSnapshot();
+}
+
+function mockSubscribeLayoutState(listener: () => void) {
+  mockLayoutListeners.add(listener);
+  return () => mockLayoutListeners.delete(listener);
+}
+
+function mockGetLayoutSnapshot() {
+  return mockLayoutSnapshot;
+}
+
+function mockDispatchLayoutAction(action: { type: string; payload?: unknown }) {
+  switch (action.type) {
+    case VoiceActionType.SetLayoutMode: {
+      mockLayoutMode = action.payload as VideoLayoutMode;
+      if (mockLayoutMode !== VideoLayoutMode.Spotlight) mockSpotlightTileId = null;
+      break;
+    }
+    case VoiceActionType.TogglePinTile: {
+      const id = action.payload as string;
+      if (mockPinnedTileId === id) {
+        mockPinnedTileId = null;
+      } else {
+        mockPinnedTileId = id;
+        mockLayoutMode = VideoLayoutMode.Sidebar;
+      }
+      break;
+    }
+    case VoiceActionType.ToggleSpotlightTile: {
+      const id = action.payload as string;
+      if (mockLayoutMode === VideoLayoutMode.Spotlight && mockSpotlightTileId === id) {
+        mockSpotlightTileId = null;
+        mockLayoutMode = VideoLayoutMode.Grid;
+      } else {
+        mockSpotlightTileId = id;
+        mockLayoutMode = VideoLayoutMode.Spotlight;
+      }
+      break;
+    }
+    default:
+      return; // other action types are no-ops in this mock — nothing else under test dispatches them
+  }
+  mockCommitLayoutSnapshot();
+}
 
 vi.mock('../../contexts/VoiceContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../contexts/VoiceContext')>();
   return {
     ...actual,
-    useVoice: vi.fn(() => ({
-      isDeafened: false,
-      watchingCameras: mockWatchingCameras,
-      watchingScreenShares: mockWatchingScreenShares,
-      hiddenLocalTiles: new Set<string>(),
-    })),
+    useVoice: vi.fn(() => {
+      const layout = useSyncExternalStore(mockSubscribeLayoutState, mockGetLayoutSnapshot);
+      return {
+        isDeafened: false,
+        watchingCameras: mockWatchingCameras,
+        watchingScreenShares: mockWatchingScreenShares,
+        hiddenLocalTiles: new Set<string>(),
+        layoutMode: layout.layoutMode,
+        pinnedTileId: layout.pinnedTileId,
+        spotlightTileId: layout.spotlightTileId,
+      };
+    }),
     useVoiceDispatch: vi.fn(() => ({
-      dispatch: vi.fn(),
+      dispatch: vi.fn(mockDispatchLayoutAction),
       stateRef: { current: {} },
     })),
   };
@@ -151,6 +238,7 @@ vi.mock('livekit-client', () => ({
     TrackMuted: 'trackMuted',
     TrackUnmuted: 'trackUnmuted',
     ParticipantDisconnected: 'participantDisconnected',
+    ParticipantConnected: 'participantConnected',
   },
   Track: {
     Source: {
@@ -172,7 +260,6 @@ const mockActions = {
   leaveVoiceChannel: vi.fn(),
   switchAudioInputDevice: vi.fn(),
   switchVideoInputDevice: vi.fn(),
-  requestMaximize: vi.fn(),
   joinVoiceChannel: vi.fn(),
   joinDmVoice: vi.fn(),
   toggleAudio: vi.fn(),
@@ -194,7 +281,6 @@ const defaultVoiceState = {
   isDeafened: false,
   showVideoTiles: true,
   screenShareAudioFailed: false,
-  requestMaximize: false,
   selectedAudioInputId: null,
   selectedAudioOutputId: null,
   selectedVideoInputId: null,
@@ -244,6 +330,7 @@ describe('VideoTiles', () => {
     buildMockRoom();
     mockWatchingCameras = new Set<string>();
     mockWatchingScreenShares = new Set<string>();
+    mockResetLayoutState();
     voiceState = { ...defaultVoiceState, room: mockRoom };
     vi.mocked(useVoiceConnection).mockReturnValue({
       state: voiceState,
@@ -269,9 +356,10 @@ describe('VideoTiles', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('shows placeholder when connected but no video tracks', () => {
+  it('shows the local participant as an avatar tile when connected but no video tracks', () => {
     renderWithProviders(<VideoTiles />);
-    expect(screen.getByText(/enable your camera or screen share/i)).toBeInTheDocument();
+    expect(screen.getByText(/local-user/)).toBeInTheDocument();
+    expect(screen.queryByText(/enable your camera or screen share/i)).not.toBeInTheDocument();
   });
 
   it('renders tiles for remote participant with camera', () => {
@@ -301,8 +389,9 @@ describe('VideoTiles', () => {
     it('updates tiles when remote participant publishes a track', () => {
       renderWithProviders(<VideoTiles />);
 
-      // Initially no tiles
-      expect(screen.getByText(/enable your camera or screen share/i)).toBeInTheDocument();
+      // Initially only the local participant's avatar tile
+      expect(screen.getByText(/local-user/)).toBeInTheDocument();
+      expect(screen.queryByText('NewUser')).not.toBeInTheDocument();
 
       // Simulate remote participant publishing a camera track
       const remoteCam = createMockTrackPublication('camera');
@@ -320,13 +409,15 @@ describe('VideoTiles', () => {
       expect(screen.getByText('NewUser')).toBeInTheDocument();
     });
 
-    it('removes tiles when remote participant unpublishes a track', () => {
+    it('converts to an avatar tile when remote participant unpublishes a track', () => {
       const remoteCam = createMockTrackPublication('camera');
       const participant = createMockParticipant('LeavingUser', [remoteCam]);
       remoteParticipants.set('remote-1', participant);
 
       renderWithProviders(<VideoTiles />);
       expect(screen.getByText('LeavingUser')).toBeInTheDocument();
+      // Camera is unwatched, so this starts as a placeholder tile.
+      expect(screen.getByText(/click to watch/i)).toBeInTheDocument();
 
       // Remove the track
       participant.videoTrackPublications.clear();
@@ -335,7 +426,10 @@ describe('VideoTiles', () => {
         emitRoomEvent('trackUnpublished', { source: 'camera' });
       });
 
-      expect(screen.queryByText('LeavingUser')).not.toBeInTheDocument();
+      // The participant is still connected, so they now render as an avatar
+      // tile instead of disappearing — the placeholder affordance is gone.
+      expect(screen.getByText('LeavingUser')).toBeInTheDocument();
+      expect(screen.queryByText(/click to watch/i)).not.toBeInTheDocument();
     });
 
     it('removes tiles when remote participant disconnects', () => {
@@ -374,22 +468,26 @@ describe('VideoTiles', () => {
       expect(screen.getByText('SubscribedUser')).toBeInTheDocument();
     });
 
-    it('updates tiles when remote track mute state changes', () => {
+    it('converts to an avatar tile when remote track mute state changes', () => {
       const remoteCam = createMockTrackPublication('camera', false);
       const participant = createMockParticipant('MutingUser', [remoteCam]);
       remoteParticipants.set('remote-1', participant);
 
       renderWithProviders(<VideoTiles />);
       expect(screen.getByText('MutingUser')).toBeInTheDocument();
+      // Camera is unwatched, so this starts as a placeholder tile.
+      expect(screen.getByText(/click to watch/i)).toBeInTheDocument();
 
-      // Mute the camera track — tile should disappear since isMuted check filters it
+      // Mute the camera track — the isMuted check filters it out of tile-building,
+      // so the participant falls back to an avatar tile instead of disappearing.
       remoteCam.isMuted = true;
 
       act(() => {
         emitRoomEvent('trackMuted');
       });
 
-      expect(screen.queryByText('MutingUser')).not.toBeInTheDocument();
+      expect(screen.getByText('MutingUser')).toBeInTheDocument();
+      expect(screen.queryByText(/click to watch/i)).not.toBeInTheDocument();
     });
   });
 
@@ -408,6 +506,91 @@ describe('VideoTiles', () => {
 
     expect(screen.getByText('UserA')).toBeInTheDocument();
     expect(screen.getByText('UserB')).toBeInTheDocument();
+  });
+
+  describe('avatar tiles', () => {
+    it('renders the local participant as an avatar tile with their name when all tracks are off', () => {
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByText(/local-user/)).toBeInTheDocument();
+      const avatar = screen.getByTestId('user-avatar');
+      expect(avatar).toHaveAttribute('data-user-id', 'local-user');
+      // Not the placeholder branch — placeholder tiles carry a "Click to show" hint.
+      expect(screen.queryByText(/click to show/i)).not.toBeInTheDocument();
+    });
+
+    it('renders a remote participant with no tracks as an avatar tile', () => {
+      remoteParticipants.set('remote-1', createMockParticipant('NoTracksUser'));
+
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByText('NoTracksUser')).toBeInTheDocument();
+      // Not the placeholder branch — placeholder tiles carry a "Click to watch" hint.
+      expect(screen.queryByText(/click to watch/i)).not.toBeInTheDocument();
+    });
+
+    it('renders a placeholder (not an avatar tile) for a remote participant with an unwatched camera', () => {
+      // mockWatchingCameras left empty — the camera track is published but unwatched.
+      remoteParticipants.set(
+        'remote-1',
+        createMockParticipant('UnwatchedUser', [createMockTrackPublication('camera')]),
+      );
+
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByText('UnwatchedUser')).toBeInTheDocument();
+      expect(screen.getByText(/click to watch/i)).toBeInTheDocument();
+    });
+
+    it('has no stop-watching affordance on an avatar tile', () => {
+      remoteParticipants.set('remote-1', createMockParticipant('NoTracksUser'));
+
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.queryByTestId('VisibilityOffIcon')).not.toBeInTheDocument();
+    });
+
+    it('spotlights an avatar tile on click and re-pins it from the sidebar', async () => {
+      remoteParticipants.set('remote-1', createMockParticipant('AvatarUser'));
+
+      const { user } = renderWithProviders(<VideoTiles />);
+
+      // Grid: clicking the avatar tile spotlights it
+      const gridCard = screen.getByText('AvatarUser').closest('[class*="MuiCard"]')!;
+      await user.click(gridCard);
+      expect(screen.getByText('AvatarUser')).toBeInTheDocument();
+      expect(screen.queryByText(/local-user/)).not.toBeInTheDocument();
+
+      // Back to grid, then sidebar — default pin is the first watched tile (local-user)
+      await user.click(screen.getByRole('button', { name: 'Grid Layout' }));
+      await user.click(screen.getByRole('button', { name: 'Sidebar Layout' }));
+      expect(
+        screen.getByText(/local-user/).compareDocumentPosition(screen.getByText('AvatarUser')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      // Clicking AvatarUser's sidebar tile re-pins it as the main view
+      const sidebarCard = screen.getByText('AvatarUser').closest('[class*="MuiCard"]')!;
+      await user.click(sidebarCard);
+      expect(
+        screen.getByText('AvatarUser').compareDocumentPosition(screen.getByText(/local-user/)) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    it('shows a newly-joined participant with no tracks as an avatar tile after ParticipantConnected fires', () => {
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.queryByText('JoiningUser')).not.toBeInTheDocument();
+
+      remoteParticipants.set('remote-1', createMockParticipant('JoiningUser'));
+
+      act(() => {
+        emitRoomEvent('participantConnected');
+      });
+
+      expect(screen.getByText('JoiningUser')).toBeInTheDocument();
+    });
   });
 
   describe('tile audio indicator picks the microphone publication', () => {
@@ -430,8 +613,11 @@ describe('VideoTiles', () => {
       renderWithProviders(<VideoTiles />);
 
       // The muted mic must drive the indicator — not the unmuted share audio.
-      expect(screen.getByTestId('MicOffIcon')).toBeInTheDocument();
-      expect(screen.queryByTestId('MicIcon')).not.toBeInTheDocument();
+      // Scoped to this participant's tile: the local participant's own avatar
+      // tile also shows a MicOffIcon since it has no microphone track.
+      const card = screen.getByText('SharerWithAudio').closest('[class*="MuiCard"]') as HTMLElement;
+      expect(within(card).getByTestId('MicOffIcon')).toBeInTheDocument();
+      expect(within(card).queryByTestId('MicIcon')).not.toBeInTheDocument();
     });
 
     it('shows mic-off for a participant publishing only screen-share audio (no mic)', () => {
@@ -447,8 +633,10 @@ describe('VideoTiles', () => {
 
       renderWithProviders(<VideoTiles />);
 
-      expect(screen.getByTestId('MicOffIcon')).toBeInTheDocument();
-      expect(screen.queryByTestId('MicIcon')).not.toBeInTheDocument();
+      // Scoped to this participant's tile — the local avatar tile also shows MicOffIcon.
+      const card = screen.getByText('MiclessSharer').closest('[class*="MuiCard"]') as HTMLElement;
+      expect(within(card).getByTestId('MicOffIcon')).toBeInTheDocument();
+      expect(within(card).queryByTestId('MicIcon')).not.toBeInTheDocument();
     });
 
     it('shows a live mic indicator when the mic publication is unmuted', () => {
@@ -464,8 +652,10 @@ describe('VideoTiles', () => {
 
       renderWithProviders(<VideoTiles />);
 
-      expect(screen.getByTestId('MicIcon')).toBeInTheDocument();
-      expect(screen.queryByTestId('MicOffIcon')).not.toBeInTheDocument();
+      // Scoped to this participant's tile — the local avatar tile shows MicOffIcon.
+      const card = screen.getByText('TalkingSharer').closest('[class*="MuiCard"]') as HTMLElement;
+      expect(within(card).getByTestId('MicIcon')).toBeInTheDocument();
+      expect(within(card).queryByTestId('MicOffIcon')).not.toBeInTheDocument();
     });
   });
 
@@ -512,8 +702,11 @@ describe('VideoTiles', () => {
       const spotlightButton = screen.getByRole('button', { name: 'Spotlight Layout' });
       await user.click(spotlightButton);
 
-      // No spotlightTileId selected — falls back to first watched tile
-      expect(screen.getByText('UserA')).toBeInTheDocument();
+      // No spotlightTileId selected — falls back to first watched tile, which
+      // is now the local participant's avatar tile (local tiles are pushed
+      // before remote tiles in the tile-building memo).
+      expect(screen.getByText(/local-user/)).toBeInTheDocument();
+      expect(screen.queryByText('UserA')).not.toBeInTheDocument();
       expect(screen.queryByText('UserB')).not.toBeInTheDocument();
     });
 
@@ -652,6 +845,7 @@ describe('VideoTiles', () => {
       expect(mockRoom.off).toHaveBeenCalledWith('trackMuted', expect.any(Function));
       expect(mockRoom.off).toHaveBeenCalledWith('trackUnmuted', expect.any(Function));
       expect(mockRoom.off).toHaveBeenCalledWith('participantDisconnected', expect.any(Function));
+      expect(mockRoom.off).toHaveBeenCalledWith('participantConnected', expect.any(Function));
     });
 
     it('removes local participant event listeners on unmount', () => {

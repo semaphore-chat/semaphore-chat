@@ -1,5 +1,6 @@
-import { Room, Track, LocalTrackPublication } from 'livekit-client';
+import type { Room, LocalTrackPublication, Track } from 'livekit-client';
 import { logger } from '../../utils/logger';
+import { TRACK_SOURCE } from './livekitEvents';
 
 /**
  * The LiveKit `Track.Source` enum is fixed and cannot be extended, so the
@@ -8,6 +9,16 @@ import { logger } from '../../utils/logger';
  *
  * Both `useTrackSubscription` (auto-subscribe) and `AudioRenderer` (attach to a
  * hidden <audio> element) match on this exact name — keep them in sync.
+ *
+ * IMPORTANT: `SOUNDBOARD_TRACK_NAME` is imported directly (statically) by both
+ * of those always-mounted modules — this file is NOT only reachable via
+ * voiceActions.ts's dynamic import, despite the class below (SoundboardPlayer)
+ * only being *used* from there. A static import pulls in this whole module,
+ * including its top-level imports — which is why `Track` is imported as a
+ * TYPE only below, with the one runtime enum access (`Track.Source.Unknown`)
+ * routed through the livekitEvents.ts constants instead. Do not reintroduce a
+ * runtime `import { Track } from 'livekit-client'` here without re-auditing
+ * every static importer of this file.
  */
 export const SOUNDBOARD_TRACK_NAME = 'soundboard';
 
@@ -66,7 +77,11 @@ class SoundboardPlayer {
     logger.info('[Soundboard] Publishing soundboard track');
     this.publication = await room.localParticipant.publishTrack(track, {
       name: SOUNDBOARD_TRACK_NAME,
-      source: Track.Source.Unknown,
+      // `publishTrack`'s `source` option is typed against the nominal
+      // `Track.Source` enum, not a string literal — TRACK_SOURCE.Unknown's
+      // value is verified equal to it (see livekitEvents.ts), so this cast
+      // is a type-system formality, not a value-correctness bypass.
+      source: TRACK_SOURCE.Unknown as Track.Source,
       stopMicTrackOnMute: false,
       dtx: false,
       red: false,

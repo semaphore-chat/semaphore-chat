@@ -79,18 +79,17 @@ vi.mock('../../features/users/userApiHelpers', () => ({
 }));
 
 // Voice connection mock
-const mockSetShowVideoTiles = vi.fn();
+const mockRevealVideoTiles = vi.fn();
 const mockActions = {
   toggleMute: vi.fn(),
   toggleDeafen: vi.fn(),
   toggleVideo: vi.fn(),
   toggleScreenShare: vi.fn(),
-  setShowVideoTiles: mockSetShowVideoTiles,
+  revealVideoTiles: mockRevealVideoTiles,
   leaveVoiceChannel: vi.fn(),
   switchAudioInputDevice: vi.fn(),
   switchVideoInputDevice: vi.fn(),
   switchAudioOutputDevice: vi.fn(),
-  requestMaximize: vi.fn(),
   joinVoiceChannel: vi.fn(),
   joinDmVoice: vi.fn(),
   toggleAudio: vi.fn(),
@@ -237,7 +236,6 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
         isDeafened: false,
         showVideoTiles: false,
         screenShareAudioFailed: false,
-        requestMaximize: false,
         selectedAudioInputId: null,
         selectedAudioOutputId: null,
         selectedVideoInputId: null,
@@ -255,7 +253,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       expect(button).not.toBeNull();
     });
 
-    it('calls watchCamera and setShowVideoTiles when clicking video icon', async () => {
+    it('calls watchCamera and revealVideoTiles when clicking video icon', async () => {
       const { user } = renderWithProviders(
         <VoiceChannelUserList channel={voiceChannel} showCompact />,
       );
@@ -265,7 +263,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       await user.click(button);
 
       expect(mockWatchCamera).toHaveBeenCalledWith('user-1');
-      expect(mockSetShowVideoTiles).toHaveBeenCalledWith(true);
+      expect(mockRevealVideoTiles).toHaveBeenCalled();
     });
 
     it('wraps screen share icon in a clickable button', async () => {
@@ -278,7 +276,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       expect(button).not.toBeNull();
     });
 
-    it('calls watchScreenShare and setShowVideoTiles when clicking screen share icon', async () => {
+    it('calls watchScreenShare and revealVideoTiles when clicking screen share icon', async () => {
       const { user } = renderWithProviders(
         <VoiceChannelUserList channel={voiceChannel} showCompact />,
       );
@@ -288,7 +286,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       await user.click(button);
 
       expect(mockWatchScreenShare).toHaveBeenCalledWith('user-1');
-      expect(mockSetShowVideoTiles).toHaveBeenCalledWith(true);
+      expect(mockRevealVideoTiles).toHaveBeenCalled();
     });
 
     it('seeds joinedAt timestamps from the backend REST API and applies them', async () => {
@@ -331,7 +329,6 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
         isDeafened: false,
         showVideoTiles: false,
         screenShareAudioFailed: false,
-        requestMaximize: false,
         selectedAudioInputId: null,
         selectedAudioOutputId: null,
         selectedVideoInputId: null,
@@ -368,7 +365,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       expect(button).toBeNull();
     });
 
-    it('does not call setShowVideoTiles when icons are not wrapped in buttons', async () => {
+    it('does not call revealVideoTiles when icons are not wrapped in buttons', async () => {
       renderWithProviders(
         <VoiceChannelUserList channel={voiceChannel} showCompact />,
       );
@@ -376,7 +373,7 @@ describe('VoiceChannelUserList - Clickable Icons', () => {
       await screen.findByTestId('VideocamIcon');
       // No click possible on non-button icon, verify action not called
       await waitFor(() => {
-        expect(mockSetShowVideoTiles).not.toHaveBeenCalled();
+        expect(mockRevealVideoTiles).not.toHaveBeenCalled();
       });
     });
   });

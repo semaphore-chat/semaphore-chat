@@ -32,11 +32,11 @@ vi.mock('../../components/Mobile/Navigation/MobileNavigationContext', () => ({
 vi.mock('../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: () => ({
     state: { isConnected: false, currentChannelId: null },
-    actions: { joinVoiceChannel: vi.fn(), setShowVideoTiles: vi.fn(), requestMaximize: vi.fn() },
+    actions: { joinVoiceChannel: vi.fn(), revealVideoTiles: vi.fn() },
   }),
 }));
 
-vi.mock('../../components/Voice', () => ({
+vi.mock('../../components/Voice/VoiceChannelUserList', () => ({
   VoiceChannelUserList: ({ channel }: { channel: { id: string } }) => (
     <div data-testid="voice-user-list" data-channel-id={channel.id} />
   ),

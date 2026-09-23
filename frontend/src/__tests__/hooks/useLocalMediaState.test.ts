@@ -42,21 +42,21 @@ vi.mock('../../hooks/useRoom', () => ({
   useRoom: () => ({ room: currentRoom, setRoom: vi.fn(), getRoom: vi.fn() }),
 }));
 
-// Import RoomEvent values to use in tests - mock livekit-client
+// The source (useLocalMediaState.ts) no longer imports RoomEvent/Track as
+// VALUES from 'livekit-client' — it uses the typed string constants in
+// features/voice/livekitEvents.ts instead (see PR-11 "Fix round 1": this
+// hook is statically reachable from mobile's always-mounted
+// MobileChatPanel, so a runtime livekit-client import here would eagerly
+// fetch the livekit chunk on every page load). Event/source names below
+// therefore come from the REAL (unmocked) ROOM_EVENT/TRACK_SOURCE constants
+// in livekitEvents.ts — not from 'livekit-client' itself (still mocked
+// below) and not re-typed as ad hoc literals here. livekitEvents.ts's own
+// constants are independently pinned against the real SDK's enum types via
+// `satisfies` (see that file), so importing them here keeps this test
+// pinned to the same source of truth as the hook, without reintroducing the
+// "fake mock enum silently drifts from the real SDK" risk this comment used
+// to warn about.
 vi.mock('livekit-client', () => ({
-  RoomEvent: {
-    LocalTrackPublished: 'LocalTrackPublished',
-    LocalTrackUnpublished: 'LocalTrackUnpublished',
-    TrackMuted: 'TrackMuted',
-    TrackUnmuted: 'TrackUnmuted',
-  },
-  Track: {
-    Source: {
-      Camera: 'camera',
-      Microphone: 'microphone',
-      ScreenShare: 'screen_share',
-    },
-  },
   LocalAudioTrack: class {},
   LocalVideoTrack: class {},
   LocalTrackPublication: class {},
@@ -69,6 +69,7 @@ vi.mock('../../utils/logger', () => ({
 }));
 
 import { useLocalMediaState } from '../../hooks/useLocalMediaState';
+import { ROOM_EVENT, TRACK_SOURCE } from '../../features/voice/livekitEvents';
 
 describe('useLocalMediaState', () => {
   beforeEach(() => {
@@ -96,8 +97,8 @@ describe('useLocalMediaState', () => {
 
   it('initializes from existing track publications', () => {
     mockLocalParticipant.getTrackPublication.mockImplementation((source: string) => {
-      if (source === 'camera') return { isMuted: false, track: {} };
-      if (source === 'microphone') return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Camera) return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Microphone) return { isMuted: false, track: {} };
       return null;
     });
 
@@ -112,7 +113,7 @@ describe('useLocalMediaState', () => {
     const { result } = renderUseLocalMediaState();
 
     act(() => {
-      emitRoomEvent('LocalTrackPublished', { source: 'camera', track: {} });
+      emitRoomEvent(ROOM_EVENT.LocalTrackPublished, { source: TRACK_SOURCE.Camera, track: {} });
     });
 
     expect(result.current.isCameraEnabled).toBe(true);
@@ -120,7 +121,7 @@ describe('useLocalMediaState', () => {
 
   it('updates on LocalTrackUnpublished for camera', () => {
     mockLocalParticipant.getTrackPublication.mockImplementation((source: string) => {
-      if (source === 'camera') return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Camera) return { isMuted: false, track: {} };
       return null;
     });
 
@@ -128,7 +129,7 @@ describe('useLocalMediaState', () => {
     expect(result.current.isCameraEnabled).toBe(true);
 
     act(() => {
-      emitRoomEvent('LocalTrackUnpublished', { source: 'camera' });
+      emitRoomEvent(ROOM_EVENT.LocalTrackUnpublished, { source: TRACK_SOURCE.Camera });
     });
 
     expect(result.current.isCameraEnabled).toBe(false);
@@ -136,7 +137,7 @@ describe('useLocalMediaState', () => {
 
   it('updates on TrackMuted for local participant only', () => {
     mockLocalParticipant.getTrackPublication.mockImplementation((source: string) => {
-      if (source === 'microphone') return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Microphone) return { isMuted: false, track: {} };
       return null;
     });
 
@@ -145,7 +146,7 @@ describe('useLocalMediaState', () => {
 
     // Mute by local participant
     act(() => {
-      emitRoomEvent('TrackMuted', { source: 'microphone' }, mockLocalParticipant);
+      emitRoomEvent(ROOM_EVENT.TrackMuted, { source: TRACK_SOURCE.Microphone }, mockLocalParticipant);
     });
 
     expect(result.current.isMicrophoneEnabled).toBe(false);
@@ -153,7 +154,7 @@ describe('useLocalMediaState', () => {
 
   it('ignores TrackMuted for remote participants', () => {
     mockLocalParticipant.getTrackPublication.mockImplementation((source: string) => {
-      if (source === 'microphone') return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Microphone) return { isMuted: false, track: {} };
       return null;
     });
 
@@ -162,7 +163,7 @@ describe('useLocalMediaState', () => {
 
     const remoteParticipant = { identity: 'other-user' };
     act(() => {
-      emitRoomEvent('TrackMuted', { source: 'microphone' }, remoteParticipant);
+      emitRoomEvent(ROOM_EVENT.TrackMuted, { source: TRACK_SOURCE.Microphone }, remoteParticipant);
     });
 
     // Should still be true - ignored remote event
@@ -174,15 +175,15 @@ describe('useLocalMediaState', () => {
 
     unmount();
 
-    expect(mockRoom.off).toHaveBeenCalledWith('LocalTrackPublished', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('LocalTrackUnpublished', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('TrackMuted', expect.any(Function));
-    expect(mockRoom.off).toHaveBeenCalledWith('TrackUnmuted', expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith(ROOM_EVENT.LocalTrackPublished, expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith(ROOM_EVENT.LocalTrackUnpublished, expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith(ROOM_EVENT.TrackMuted, expect.any(Function));
+    expect(mockRoom.off).toHaveBeenCalledWith(ROOM_EVENT.TrackUnmuted, expect.any(Function));
   });
 
   it('resets state when room becomes null', () => {
     mockLocalParticipant.getTrackPublication.mockImplementation((source: string) => {
-      if (source === 'camera') return { isMuted: false, track: {} };
+      if (source === TRACK_SOURCE.Camera) return { isMuted: false, track: {} };
       return null;
     });
 

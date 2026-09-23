@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRoom } from './useRoom';
-import {
-  Track,
-  RoomEvent,
-  Participant,
-  RemoteParticipant,
-} from 'livekit-client';
+import { ROOM_EVENT, TRACK_SOURCE } from '../features/voice/livekitEvents';
+import type { Participant, RemoteParticipant, Track } from 'livekit-client';
 
 export interface ParticipantMediaState {
   isCameraEnabled: boolean;
@@ -84,13 +80,13 @@ export const useParticipantTracks = (
     const updateMediaState = () => {
       if (!participant) return;
 
-      const cameraPublication = participant.getTrackPublication(Track.Source.Camera);
+      const cameraPublication = participant.getTrackPublication(TRACK_SOURCE.Camera as Track.Source);
       const isCameraEnabled = !!cameraPublication && !cameraPublication.isMuted;
 
-      const micPublication = participant.getTrackPublication(Track.Source.Microphone);
+      const micPublication = participant.getTrackPublication(TRACK_SOURCE.Microphone as Track.Source);
       const isMicrophoneEnabled = !!micPublication && !micPublication.isMuted;
 
-      const screenSharePublication = participant.getTrackPublication(Track.Source.ScreenShare);
+      const screenSharePublication = participant.getTrackPublication(TRACK_SOURCE.ScreenShare as Track.Source);
       const isScreenShareEnabled = !!screenSharePublication && !screenSharePublication.isMuted;
 
       let isDeafened = false;
@@ -168,7 +164,7 @@ export const useParticipantTracks = (
       }
     };
 
-    room.on(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+    room.on(ROOM_EVENT.ParticipantDisconnected, handleParticipantDisconnected);
 
     // Cleanup function
     return () => {
@@ -180,7 +176,7 @@ export const useParticipantTracks = (
         participant.off('isSpeakingChanged', handleIsSpeakingChanged);
         participant.off('participantMetadataChanged', handleMetadataChanged);
       }
-      room.off(RoomEvent.ParticipantDisconnected, handleParticipantDisconnected);
+      room.off(ROOM_EVENT.ParticipantDisconnected, handleParticipantDisconnected);
     };
   }, [room, participantIdentity]);
 

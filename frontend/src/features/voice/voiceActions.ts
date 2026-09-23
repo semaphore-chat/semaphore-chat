@@ -1,4 +1,10 @@
-import { Room, RoomEvent, DisconnectReason, VideoCaptureOptions, AudioCaptureOptions } from "livekit-client";
+// LiveKit (livekit-client) is heavyweight (~large chunk with hls.js-adjacent
+// media deps) and previously loaded eagerly for every user via this static
+// import, even users who never join voice. Only TYPES are imported here now
+// — the runtime module is dynamically imported inside connectToLiveKitRoom(),
+// the single place a Room is constructed, so the bytes only download when a
+// user actually joins a voice/DM call (see PR-11 bundle splitting).
+import type { Room, DisconnectReason, VideoCaptureOptions, AudioCaptureOptions } from "livekit-client";
 import { VoiceSessionType, VoiceActionType, type VoiceAction, type VoiceState } from "../../contexts/VoiceContext";
 import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from "../../api-client/sdk.gen";
 import { queryClient } from "../../queryClient";
@@ -10,8 +16,6 @@ import { isElectron } from "../../utils/platform";
 import { getCachedItem, setCachedItem, removeCachedItem } from "../../utils/storage";
 import { refreshToken as refreshAuthToken, getAccessToken } from "../../utils/tokenService";
 import { getApiUrl } from "../../config/env";
-import { soundboardPlayer } from "./soundboardPlayer";
-import { installLivekitWorkerTimers } from "../../utils/livekitWorkerTimers";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { setUpdateDeferred } from "../../utils/swUpdate";
 
@@ -179,6 +183,16 @@ async function connectToLiveKitRoom(
   dispatch: React.Dispatch<VoiceAction>
 ): Promise<Room> {
   logger.info('[Voice] Creating new LiveKit room instance');
+  // Dynamically import livekit-client (and its Web Worker timer shim) here —
+  // this is the ONLY place a Room is constructed, so this await is what
+  // pulls the livekit chunk over the network. The caller already dispatches
+  // SetConnecting (isConnecting: true) before calling this function, so the
+  // existing "Connecting…" UI covers the chunk-load latency on first join —
+  // no new loading state needed.
+  const [{ Room, RoomEvent, DisconnectReason }, { installLivekitWorkerTimers }] = await Promise.all([
+    import("livekit-client"),
+    import("../../utils/livekitWorkerTimers"),
+  ]);
   // Route livekit's connection-critical timers through a Web Worker so
   // background-tab timer throttling can't starve ping/pong on mobile (#350).
   installLivekitWorkerTimers();
@@ -411,7 +425,9 @@ export async function leaveVoiceChannel(deps: VoiceActionDeps) {
     }
 
     // Tear down the soundboard graph before disconnecting so the published
-    // track/AudioContext don't leak across sessions.
+    // track/AudioContext don't leak across sessions. Dynamically imported —
+    // this module isn't needed until an active room exists (see PR-11).
+    const { soundboardPlayer } = await import("./soundboardPlayer");
     await soundboardPlayer.dispose(room).catch(() => {});
 
     logger.info('[Voice] Disconnecting from LiveKit room...');
@@ -517,6 +533,7 @@ export async function leaveDmVoice(deps: VoiceActionDeps) {
   if (!currentDmGroupId || !room) return;
 
   try {
+    const { soundboardPlayer } = await import("./soundboardPlayer");
     await soundboardPlayer.dispose(room).catch(() => {});
     await room.disconnect();
     setRoom(null);
@@ -598,6 +615,7 @@ export async function playSoundboard(fileId: string, deps: VoiceActionDeps) {
   }
   const arrayBuffer = await response.arrayBuffer();
 
+  const { soundboardPlayer } = await import("./soundboardPlayer");
   await soundboardPlayer.play(room, fileId, arrayBuffer);
 }
 

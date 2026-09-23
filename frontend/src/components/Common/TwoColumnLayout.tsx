@@ -6,7 +6,7 @@ interface TwoColumnLayoutProps {
   sidebar: React.ReactNode;
   sidebarWidth?: number;
   children: React.ReactNode;
-  /** ref callback for the content area (used by VideoOverlayContext) */
+  /** ref callback for the content area */
   contentRef?: React.Ref<HTMLDivElement>;
   /** Optional sx overrides for the content area */
   contentSx?: React.ComponentProps<typeof Box>["sx"];

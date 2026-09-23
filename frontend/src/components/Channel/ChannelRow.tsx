@@ -29,7 +29,10 @@ import {
   Channel as ChannelType,
   ChannelType as ChannelKind,
 } from "../../types/channel.type";
-import { VoiceChannelUserList } from "../Voice";
+// Direct path, not the ../Voice barrel: the barrel also re-exports VideoTiles
+// (runtime livekit-client), and this row is statically reachable from the
+// always-mounted mobile layout — the barrel would drag livekit into the entry.
+import { VoiceChannelUserList } from "../Voice/VoiceChannelUserList";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useNotification } from "../../contexts/NotificationContext";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
@@ -125,10 +128,9 @@ export function ChannelRow({
     if (!isVoice) return;
     try {
       if (voiceState.currentChannelId === channel.id && voiceState.isConnected) {
-        // Already connected: open the channel and maximise the video tiles
+        // Already connected: open the channel's stage and reveal the tiles
         navigate(path);
-        voiceActions.setShowVideoTiles(true);
-        voiceActions.requestMaximize();
+        voiceActions.revealVideoTiles();
       } else {
         await voiceActions.joinVoiceChannel(
           channel.id,

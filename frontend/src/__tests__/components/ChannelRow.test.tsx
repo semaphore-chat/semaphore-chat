@@ -21,13 +21,12 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
     state: { isConnected: false, currentChannelId: null, showVideoTiles: false },
     actions: {
       joinVoiceChannel: mockJoinVoiceChannel,
-      setShowVideoTiles: vi.fn(),
-      requestMaximize: vi.fn(),
+      revealVideoTiles: vi.fn(),
     },
   }),
 }));
 
-vi.mock('../../components/Voice', () => ({
+vi.mock('../../components/Voice/VoiceChannelUserList', () => ({
   VoiceChannelUserList: ({ channel }: { channel: { id: string } }) => (
     <div data-testid="voice-user-list" data-channel-id={channel.id}>
       participant-a

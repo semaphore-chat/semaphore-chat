@@ -6,6 +6,8 @@ import DirectMessageList from "../components/DirectMessages/DirectMessageList";
 import DirectMessageContainer from "../components/DirectMessages/DirectMessageContainer";
 import { DMChatHeader } from "../components/DirectMessages/DMChatHeader";
 import { FriendsPanel } from "../components/Friends";
+import { VideoTiles } from "../components/Voice";
+import { StageSplit } from "../components/Voice/StageSplit";
 import { useQuery } from "@tanstack/react-query";
 import {
   directMessagesControllerFindDmGroupOptions,
@@ -14,10 +16,11 @@ import {
 import { styled } from "@mui/material/styles";
 import { getDmDisplayName } from "../utils/dmHelpers";
 import { setActiveDmGroupId } from "../utils/activeDmTracking";
-import { useVideoOverlay } from "../contexts/VideoOverlayContext";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import TwoColumnLayout from "../components/Common/TwoColumnLayout";
 import { useResponsive } from "../hooks/useResponsive";
+import { useVoice, VoiceSessionType } from "../contexts/VoiceContext";
+import { useStagePresence } from "../hooks/useStagePresence";
 
 const DMHeader = styled(Box)(({ theme }) => ({
   display: "flex",
@@ -48,7 +51,7 @@ const DirectMessagesPage: React.FC = () => {
   const { isMobile } = useResponsive();
   const { user: currentUser } = useCurrentUser();
   const { data: pendingRequests } = useQuery(friendsControllerGetPendingRequestsOptions());
-  const { setPageContainer } = useVideoOverlay();
+  const voiceState = useVoice();
 
   // Count of incoming friend requests for badge
   const incomingRequestCount = pendingRequests?.received?.length || 0;
@@ -95,6 +98,13 @@ const DirectMessagesPage: React.FC = () => {
     ...directMessagesControllerFindDmGroupOptions({ path: { id: selectedDmGroupId! } }),
     enabled: !!selectedDmGroupId,
   });
+
+  const isDmStage = Boolean(
+    voiceState.isConnected &&
+    voiceState.contextType === VoiceSessionType.Dm &&
+    voiceState.currentDmGroupId === selectedDmGroupId
+  );
+  useStagePresence(isDmStage && !isMobile);
 
   if (isMobile) {
     // Mobile view: Show either list or chat, not both
@@ -216,7 +226,6 @@ const DirectMessagesPage: React.FC = () => {
           )}
         </>
       }
-      contentRef={setPageContainer}
     >
       {selectedDmGroupId ? (
         <>
@@ -225,7 +234,15 @@ const DirectMessagesPage: React.FC = () => {
             dmGroupName={getDmDisplayName(selectedDmGroup, currentUser?.id)}
           />
           <Box sx={{ flex: 1, overflow: "hidden" }}>
-            <DirectMessageContainer dmGroupId={selectedDmGroupId} />
+            {isDmStage ? (
+              <StageSplit
+                storageKey="semaphore_dm_stage_ratio"
+                top={<VideoTiles />}
+                bottom={<DirectMessageContainer dmGroupId={selectedDmGroupId} />}
+              />
+            ) : (
+              <DirectMessageContainer dmGroupId={selectedDmGroupId} />
+            )}
           </Box>
         </>
       ) : (

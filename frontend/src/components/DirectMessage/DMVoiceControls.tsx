@@ -60,7 +60,7 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
       // Join with audio first, then enable video
       await actions.joinDmVoice(dmGroupId, dmGroupName);
       await actions.toggleVideo();
-      actions.setShowVideoTiles(true);
+      actions.revealVideoTiles();
     } catch (error) {
       logger.error("Failed to start DM video call:", error);
     } finally {
