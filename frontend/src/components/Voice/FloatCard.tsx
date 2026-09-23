@@ -28,6 +28,7 @@ import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { getFloatNavigationTarget } from '../../utils/voiceNavigation';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { VOICE_BAR_HEIGHT } from '../../constants/layout';
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../contexts/BottomChromeContext';
 import {
   PipPlacement,
   Point,
@@ -62,11 +63,17 @@ function loadInitialPlacement(): PipPlacement {
   return isValidPlacement(saved) ? saved : defaultPlacement();
 }
 
-function computeViewport(isConnected: boolean): Viewport {
+/**
+ * `chromeBottom` is everything registered in BottomChromeContext below the
+ * composer level — the voice bar, plus the in-flow bottom nav on tablet — so
+ * the card never covers the bar's controls. VOICE_BAR_HEIGHT stays as a floor
+ * while connected, for the moment before the bar has measured itself.
+ */
+function computeViewport(isConnected: boolean, chromeBottom: number): Viewport {
   return {
     width: window.innerWidth,
     height: window.innerHeight,
-    bottomInset: isConnected ? VOICE_BAR_HEIGHT : 0,
+    bottomInset: Math.max(chromeBottom, isConnected ? VOICE_BAR_HEIGHT : 0),
   };
 }
 
@@ -95,10 +102,11 @@ export const FloatCard: React.FC = () => {
   const { isActive: isPTTActive } = usePushToTalk();
   const micGuarded = isPTTActive || state.isServerMuted;
   const selection = useFloatTileSelection();
+  const chromeBottom = useBottomChromeOffset(BOTTOM_CHROME_ORDER.COMPOSER).px;
   const [isCardHovered, setIsCardHovered] = useState(false);
 
   const [placement, setPlacement] = useState<PipPlacement>(loadInitialPlacement);
-  const [viewport, setViewport] = useState<Viewport>(() => computeViewport(state.isConnected));
+  const [viewport, setViewport] = useState<Viewport>(() => computeViewport(state.isConnected, chromeBottom));
 
   // Transient gesture state — absolute pixel position/size while a
   // drag/resize is in progress. null when idle, so rendered position/size
@@ -135,7 +143,7 @@ export const FloatCard: React.FC = () => {
   // Position is derived (toAbsolute), so viewport changes only need to
   // re-clamp size — the old dedicated position-clamp effect is gone.
   const recomputeViewport = useCallback(() => {
-    const vp = computeViewport(state.isConnected);
+    const vp = computeViewport(state.isConnected, chromeBottom);
     setViewport(vp);
     setPlacement(prev => {
       const clampedSize = clampSizeToViewport(prev.size, vp);
@@ -146,9 +154,10 @@ export const FloatCard: React.FC = () => {
       setCachedItem(PIP_PLACEMENT_KEY, next);
       return next;
     });
-  }, [state.isConnected]);
+  }, [state.isConnected, chromeBottom]);
 
-  // Re-derive on mount and whenever the voice bar's presence changes.
+  // Re-derive on mount and whenever the voice bar's presence (or the
+  // bottom chrome's height) changes.
   useEffect(() => {
     recomputeViewport();
   }, [recomputeViewport]);

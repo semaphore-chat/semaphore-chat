@@ -8,7 +8,6 @@
 
 import React from 'react';
 import { Box } from '@mui/material';
-import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
 import { useVoiceRecovery } from '../../../hooks/useVoiceRecovery';
 import { VoiceBottomBar } from '../../Voice/VoiceBottomBar';
 import { AudioRenderer } from '../../Voice/AudioRenderer';
@@ -20,19 +19,21 @@ import { MobileBottomNavigation } from '../Navigation/MobileBottomNavigation';
 import MobileCommunityDrawer from '../Navigation/MobileCommunityDrawer';
 import { TabletSidebar } from './TabletSidebar';
 import { TabletContentArea } from './TabletContentArea';
-import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
+import { SAFE_AREA_TOP, useTopChromeHost } from '../../../contexts/BottomChromeContext';
 
 /**
  * Inner layout component that has access to navigation context
  */
 const TabletLayoutInner: React.FC = () => {
-  const { state: voiceState } = useVoiceConnection();
   const { state } = useMobileNavigation();
 
   // Attempt to recover voice connection after page refresh
   useVoiceRecovery();
 
-  const hasVoiceBar = voiceState.isConnected;
+  // Edge chrome (BottomChromeContext): top padding for the offline strip /
+  // call banner; voice bar and nav in normal flow at the bottom (the nav
+  // pads the home-indicator area, and hides while the keyboard is open).
+  const topChromeHeight = useTopChromeHost();
 
   // Determine if we should show the sidebar
   // Show sidebar when on home tab (channels/chat screens)
@@ -52,7 +53,7 @@ const TabletLayoutInner: React.FC = () => {
         left: 0,
         right: 0,
         bottom: 0,
-        paddingTop: 'env(safe-area-inset-top)',
+        paddingTop: `calc(${SAFE_AREA_TOP} + ${topChromeHeight}px)`,
       }}
     >
       {/* Community drawer - still available via swipe */}
@@ -64,6 +65,7 @@ const TabletLayoutInner: React.FC = () => {
           <Box
             sx={{
               flex: 1,
+              minHeight: 0,
               display: 'flex',
               overflow: 'hidden',
             }}
@@ -74,14 +76,11 @@ const TabletLayoutInner: React.FC = () => {
             )}
 
             {/* Content area */}
-            <TabletContentArea
-              showSidebar={showSidebar && !!state.communityId}
-              bottomOffset={hasVoiceBar ? LAYOUT_CONSTANTS.VOICE_BAR_HEIGHT_MOBILE : 0}
-            />
+            <TabletContentArea showSidebar={showSidebar && !!state.communityId} />
           </Box>
 
-          {/* Voice bar (only shows when in call) */}
-          {hasVoiceBar && <VoiceBottomBar />}
+          {/* Voice bar (only shows when in call) — in flow, above the nav */}
+          <VoiceBottomBar inline />
 
           {/* Audio renderer for remote participants */}
           <AudioRenderer />
@@ -91,7 +90,7 @@ const TabletLayoutInner: React.FC = () => {
         </VoiceEventLogProvider>
       </TrackSubscriptionProvider>
 
-      {/* Bottom navigation - always visible */}
+      {/* Bottom navigation (hidden while the keyboard is open) */}
       <MobileBottomNavigation />
     </Box>
   );

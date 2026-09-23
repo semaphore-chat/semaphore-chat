@@ -13,13 +13,26 @@
  * - notifications: Notification list
  * - profile: Own profile/settings
  * - user-profile: Another user's profile (/profile/:userId)
+ *
+ * Keep-alive: each tab's root screen (channel list, DM list, notifications,
+ * own profile) stays mounted but hidden while another screen is showing, so
+ * switching tabs or opening a chat and coming back keeps the list's scroll
+ * position and loaded state. Hidden layers are `visibility: hidden` (layout,
+ * and therefore every nested scroll position, is kept), `aria-hidden` and
+ * `inert`. Detail screens (chats, search, settings, routes) still unmount when
+ * left: a hidden chat would keep marking messages read.
  */
 
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Box, Slide, Typography } from '@mui/material';
-import { useMobileNavigation, type ScreenType } from '../Navigation/MobileNavigationContext';
-import { LAYOUT_CONSTANTS, MOBILE_ANIMATIONS } from '../../../utils/breakpoints';
+import {
+  useMobileNavigation,
+  type MobileNavigationState,
+  type MobileTab,
+  type ScreenType,
+} from '../Navigation/MobileNavigationContext';
+import { MOBILE_ANIMATIONS } from '../../../utils/breakpoints';
 
 // Import screen components (reusing existing panels for now)
 import { MobileChannelsPanel } from '../Panels/MobileChannelsPanel';
@@ -57,6 +70,44 @@ const getRouteTitle = (pathname: string): string => {
   return 'Back';
 };
 
+// Tab root screens are kept mounted (hidden) when left; see the header.
+const ROOT_SCREEN_TAB: Partial<Record<ScreenType, MobileTab>> = {
+  channels: 'home',
+  'dm-list': 'messages',
+  notifications: 'notifications',
+  profile: 'profile',
+};
+const TAB_ORDER: MobileTab[] = ['home', 'messages', 'notifications', 'profile'];
+
+interface ScreenDescriptor {
+  /** Identity of the rendered screen; a new key remounts it. */
+  key: string;
+  screen: ScreenType;
+  communityId: string | null;
+  channelId: string | null;
+  dmGroupId: string | null;
+  userId: string | null;
+  pathname: string;
+}
+
+const describeScreen = (state: MobileNavigationState, pathname: string): ScreenDescriptor => {
+  const { currentScreen: screen, communityId, channelId, dmGroupId, userId } = state;
+  let key: string;
+  switch (screen) {
+    case 'channels':
+      key = `channels:${communityId ?? ''}`;
+      break;
+    case 'route':
+    case 'user-profile':
+      key = `${screen}:${pathname}`;
+      break;
+    default:
+      // chat / search / dm-chat: a new conversation mounts a fresh screen
+      key = `${screen}:${channelId ?? dmGroupId ?? ''}`;
+  }
+  return { key, screen, communityId, channelId, dmGroupId, userId, pathname };
+};
+
 
 /**
  * Container that renders screens based on current navigation state
@@ -66,17 +117,16 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
 }) => {
   const { state } = useMobileNavigation();
   const location = useLocation();
-  const { currentScreen, communityId, channelId, dmGroupId, userId } = state;
+  const { currentScreen } = state;
+  const active = describeScreen(state, location.pathname);
 
-  // Track previous screen for transition direction
+  // Transition direction, decided in the same render as the screen change so
+  // the entering screen slides from the correct side on its first frame.
   const [prevScreen, setPrevScreen] = React.useState<ScreenType>(currentScreen);
   const [slideIn, setSlideIn] = React.useState(true);
-
-  React.useEffect(() => {
-    // Determine transition direction based on screen hierarchy
+  if (prevScreen !== currentScreen) {
     const wasDetail = isDetailScreen(prevScreen);
     const isDetail = isDetailScreen(currentScreen);
-
     if (isDetail && !wasDetail) {
       // Going deeper (list -> detail): slide in from right
       setSlideIn(true);
@@ -84,14 +134,32 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
       // Going back (detail -> list): slide in from left
       setSlideIn(false);
     }
-
     setPrevScreen(currentScreen);
-  }, [currentScreen, prevScreen]);
+  }
 
-  const totalBottomOffset = LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE + bottomOffset;
+  // The last root screen of each tab, kept mounted while hidden.
+  const [keptRoots, setKeptRoots] = React.useState<Partial<Record<MobileTab, ScreenDescriptor>>>(
+    {},
+  );
+  const activeRootTab = ROOT_SCREEN_TAB[active.screen];
+  if (activeRootTab && keptRoots[activeRootTab]?.key !== active.key) {
+    setKeptRoots((prev) => ({ ...prev, [activeRootTab]: active }));
+  }
 
-  const renderScreen = () => {
-    switch (currentScreen) {
+  const layers: ScreenDescriptor[] = TAB_ORDER.flatMap((tab) => {
+    if (tab === activeRootTab) return [active];
+    const kept = keptRoots[tab];
+    return kept ? [kept] : [];
+  });
+  if (!activeRootTab) layers.push(active);
+
+  // The bottom nav and voice bar sit in normal flow below this container
+  // (MobileLayout, see BottomChromeContext), so nothing covers the screen and
+  // only an explicit extra offset needs padding.
+  const totalBottomOffset = bottomOffset;
+
+  const renderScreen = ({ screen, communityId, channelId, dmGroupId, userId, pathname }: ScreenDescriptor) => {
+    switch (screen) {
       case 'channels':
         if (!communityId) {
           // No community selected - show empty state with app bar
@@ -171,7 +239,7 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
         // renders the matched React Router element via <Outlet/>.
         return (
           <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <MobileAppBar title={getRouteTitle(location.pathname)} showBack />
+            <MobileAppBar title={getRouteTitle(pathname)} showBack />
             <Box sx={{ flex: 1, overflowY: 'auto' }}>
               <Outlet />
             </Box>
@@ -192,27 +260,39 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
         backgroundColor: 'background.canvas',
       }}
     >
-      <Slide
-        key={currentScreen === 'route' || currentScreen === 'user-profile' ? location.pathname : currentScreen}
-        direction={slideIn ? 'left' : 'right'}
-        in={true}
-        timeout={MOBILE_ANIMATIONS.NORMAL}
-      >
-        <Box
-          sx={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            overflow: 'auto',
-            pb: `${totalBottomOffset}px`,
-            backgroundColor: 'background.canvas',
-          }}
-        >
-          {renderScreen()}
-        </Box>
-      </Slide>
+      {layers.map((layer) => {
+        const isActive = layer.key === active.key;
+        return (
+          <Slide
+            key={layer.key}
+            direction={slideIn ? 'left' : 'right'}
+            in={isActive}
+            appear
+            // Leaving screens hide at once (the entering one slides over them).
+            timeout={{ enter: MOBILE_ANIMATIONS.NORMAL, exit: 0 }}
+          >
+            <Box
+              data-screen-key={layer.key}
+              aria-hidden={isActive ? undefined : true}
+              inert={!isActive}
+              sx={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                overflow: 'auto',
+                pb: `${totalBottomOffset}px`,
+                backgroundColor: 'background.canvas',
+                // Slide also hides exited layers; this covers the exit frame.
+                ...(isActive ? {} : { visibility: 'hidden', pointerEvents: 'none' }),
+              }}
+            >
+              {renderScreen(layer)}
+            </Box>
+          </Slide>
+        );
+      })}
     </Box>
   );
 };

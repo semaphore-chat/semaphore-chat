@@ -7,13 +7,18 @@
  * Architecture:
  * - Community drawer (swipe from left edge)
  * - Screen-based navigation (max 2 levels deep)
- * - Bottom navigation tabs
+ * - Bottom navigation tabs (hidden on chat/search screens and while the
+ *   on-screen keyboard is open)
  * - Voice bar when connected
+ *
+ * Edge chrome (BottomChromeContext): the column stacks, top to bottom,
+ * [top chrome padding] → screen → voice bar → bottom nav, all in normal flow,
+ * so nothing covers the content and the screen needs no bottom padding.
+ * The top padding makes room for the offline strip / incoming-call banner.
  */
 
 import React from 'react';
 import { Box } from '@mui/material';
-import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useVoiceRecovery } from '../../hooks/useVoiceRecovery';
 import { VoiceBottomBar } from '../Voice/VoiceBottomBar';
 import { AudioRenderer } from '../Voice/AudioRenderer';
@@ -23,72 +28,85 @@ import { VoiceEventLogProvider } from '../../hooks/useVoiceEventLog';
 import { VoiceTestHooks } from '../../features/voice/VoiceTestHooks';
 import { MobileNavigationProvider } from './Navigation/MobileNavigationContext';
 import { MobileBottomNavigation } from './Navigation/MobileBottomNavigation';
+import { useBottomNavHidden } from './Navigation/useBottomNavHidden';
 import MobileCommunityDrawer from './Navigation/MobileCommunityDrawer';
 import { MobileScreenContainer } from './Screens/MobileScreenContainer';
-import { LAYOUT_CONSTANTS } from '../../utils/breakpoints';
+import {
+  SAFE_AREA_BOTTOM,
+  SAFE_AREA_TOP,
+  useKeyboardInset,
+  useTopChromeHost,
+} from '../../contexts/BottomChromeContext';
+
+/** Inside MobileNavigationProvider: the nav's visibility depends on the screen. */
+const MobileLayoutColumn: React.FC = () => {
+  // Attempt to recover voice connection after page refresh
+  useVoiceRecovery();
+
+  const topChromeHeight = useTopChromeHost();
+  const navHidden = useBottomNavHidden(true);
+  const keyboardOpen = useKeyboardInset() > 0;
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: 'var(--full-dvh)', // Use dynamic viewport height for mobile
+        width: '100vw',
+        overflow: 'hidden',
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        // Safe area for notches, plus room for the offline strip / call banner.
+        paddingTop: `calc(${SAFE_AREA_TOP} + ${topChromeHeight}px)`,
+        // The nav pads the home-indicator area itself; without it, the column does.
+        paddingBottom: navHidden && !keyboardOpen ? SAFE_AREA_BOTTOM : 0,
+      }}
+    >
+      <TrackSubscriptionProvider>
+        <VoiceEventLogProvider>
+          <VoiceTestHooks />
+          {/* Community drawer - swipe from left edge */}
+          <MobileCommunityDrawer />
+
+          {/* Screen container - main content area */}
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              position: 'relative',
+            }}
+          >
+            <MobileScreenContainer />
+          </Box>
+
+          {/* Voice bar (only shows when in call) — in flow, above the nav */}
+          <VoiceBottomBar inline />
+
+          {/* Audio renderer for remote participants */}
+          <AudioRenderer />
+
+          {/* Floating video overlay */}
+          <PersistentVideoOverlay />
+        </VoiceEventLogProvider>
+      </TrackSubscriptionProvider>
+
+      {/* Bottom navigation - hidden on chat/search screens */}
+      <MobileBottomNavigation hideOnDetailScreens />
+    </Box>
+  );
+};
 
 /**
  * Main mobile layout with drawer-based navigation
  * Drawer + Screens pattern replaces the old panel stack
  */
-export const MobileLayout: React.FC = () => {
-  const { state: voiceState } = useVoiceConnection();
-
-  // Attempt to recover voice connection after page refresh
-  useVoiceRecovery();
-
-  const hasVoiceBar = voiceState.isConnected;
-  const voiceBarOffset = hasVoiceBar ? LAYOUT_CONSTANTS.VOICE_BAR_HEIGHT_MOBILE : 0;
-
-  return (
-    <MobileNavigationProvider>
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          height: 'var(--full-dvh)', // Use dynamic viewport height for mobile
-          width: '100vw',
-          overflow: 'hidden',
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          // Safe area padding for notches and gesture bars
-          paddingTop: 'env(safe-area-inset-top)',
-        }}
-      >
-        <TrackSubscriptionProvider>
-          <VoiceEventLogProvider>
-            <VoiceTestHooks />
-            {/* Community drawer - swipe from left edge */}
-            <MobileCommunityDrawer />
-
-            {/* Screen container - main content area */}
-            <Box
-              sx={{
-                flex: 1,
-                overflow: 'hidden',
-                position: 'relative',
-              }}
-            >
-              <MobileScreenContainer bottomOffset={voiceBarOffset} />
-            </Box>
-
-            {/* Voice bar (only shows when in call) */}
-            {hasVoiceBar && <VoiceBottomBar />}
-
-            {/* Audio renderer for remote participants */}
-            <AudioRenderer />
-
-            {/* Floating video overlay */}
-            <PersistentVideoOverlay />
-          </VoiceEventLogProvider>
-        </TrackSubscriptionProvider>
-
-        {/* Bottom navigation - always visible */}
-        <MobileBottomNavigation />
-      </Box>
-    </MobileNavigationProvider>
-  );
-};
+export const MobileLayout: React.FC = () => (
+  <MobileNavigationProvider>
+    <MobileLayoutColumn />
+  </MobileNavigationProvider>
+);

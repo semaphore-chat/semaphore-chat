@@ -28,7 +28,7 @@ import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
 import { useReadReceipts } from '../../../hooks/useReadReceipts';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { usePullToRefresh } from '../../../hooks/useSwipeGesture';
-import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../../contexts/BottomChromeContext';
 import MobileAppBar from '../MobileAppBar';
 import ListState, { ListSkeleton } from '../../Common/ListState';
 import EmptyState from '../../Common/EmptyState';
@@ -46,6 +46,8 @@ export const MobileMessagesPanel: React.FC = () => {
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
   const { state: voiceState } = useVoiceConnection();
   const { unreadCount, mentionCount } = useReadReceipts();
+  // Above the bottom nav and voice bar (whichever are showing), via BottomChromeContext.
+  const fabOffset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.FAB);
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
 
@@ -136,9 +138,10 @@ export const MobileMessagesPanel: React.FC = () => {
         color="primary"
         aria-label="start conversation"
         onClick={() => setShowCreateDialog(true)}
+        data-chrome-offset={fabOffset.px}
         sx={{
           position: 'fixed',
-          bottom: LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE + 16,
+          bottom: `calc(${fabOffset.css} + 16px)`,
           right: 16,
         }}
       >

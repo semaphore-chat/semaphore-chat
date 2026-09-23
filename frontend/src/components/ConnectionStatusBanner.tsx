@@ -1,16 +1,35 @@
 import React from "react";
-import { Chip, CircularProgress } from "@mui/material";
+import { Chip, CircularProgress, useMediaQuery } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { useSocketConnected } from "../hooks/useSocket";
-import { useVoice } from "../contexts/VoiceContext";
 import { useResponsive } from "../hooks/useResponsive";
-import { VOICE_BAR_HEIGHT, VOICE_BAR_HEIGHT_MOBILE } from "../constants/layout";
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from "../contexts/BottomChromeContext";
 
+/**
+ * "Reconnecting…" chip. Top of the bottom stack (BottomChromeContext): it
+ * sits above the nav, voice bar, composer and any toast, whichever of them
+ * are showing.
+ *
+ * On the tablet and desktop layouts the chip's left corner is over the
+ * sidebar, not the chat column, so it skips the composer level — otherwise
+ * it floats a composer's height up over the sidebar's rows. From `md` up the
+ * (centred) toast can't reach the left edge either, so it skips that level
+ * too. The phone layout (any width) has a full-width composer, so nothing is
+ * skipped there. It always clears
+ * the full-width nav and voice bar.
+ */
 export const ConnectionStatusBanner: React.FC = () => {
   const isConnected = useSocketConnected();
-  const voiceState = useVoice();
+  const theme = useTheme();
   const { isMobile } = useResponsive();
-  const voiceConnected = voiceState.isConnected && (voiceState.currentChannelId || voiceState.currentDmGroupId);
-  const voiceBarHeight = isMobile ? VOICE_BAR_HEIGHT_MOBILE : VOICE_BAR_HEIGHT;
+  const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.CHIP, {
+    skipOrders: isMobile
+      ? undefined
+      : isMdUp
+        ? [BOTTOM_CHROME_ORDER.COMPOSER, BOTTOM_CHROME_ORDER.TOAST]
+        : [BOTTOM_CHROME_ORDER.COMPOSER],
+  });
 
   if (isConnected) return null;
 
@@ -19,9 +38,10 @@ export const ConnectionStatusBanner: React.FC = () => {
       icon={<CircularProgress size={14} color="inherit" />}
       label="Reconnecting..."
       size="small"
+      data-chrome-offset={offset.px}
       sx={{
         position: "fixed",
-        bottom: voiceConnected ? voiceBarHeight + 16 : 16,
+        bottom: `calc(${offset.css} + 16px)`,
         left: 16,
         zIndex: 9999,
         animation: "connectionPulse 2s ease-in-out infinite",

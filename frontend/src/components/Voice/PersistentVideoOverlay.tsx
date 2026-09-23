@@ -5,7 +5,7 @@ import { Close } from '@mui/icons-material';
 import { useVoice } from '../../contexts/VoiceContext';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useResponsive } from '../../hooks/useResponsive';
-import { VOICE_BAR_HEIGHT_MOBILE } from '../../constants/layout';
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../contexts/BottomChromeContext';
 
 // VideoTiles and FloatCard pull in livekit-client runtime enums; lazy-load
 // them so they're only fetched once video is actually shown (see PR-11 bundle
@@ -19,6 +19,9 @@ export const PersistentVideoOverlay: React.FC = () => {
   const voiceState = useVoice();
   const { actions } = useVoiceConnection();
   const { isMobile } = useResponsive();
+  // The phone overlay stops at the top of the in-flow bottom chrome (voice
+  // bar, plus the nav when it's showing) instead of a hard-coded bar height.
+  const chromeBottom = useBottomChromeOffset(BOTTOM_CHROME_ORDER.COMPOSER);
 
   // Only show if connected AND video tiles are enabled
   // Note: We show the overlay when video tiles are enabled (not just when camera is on)
@@ -44,7 +47,7 @@ export const PersistentVideoOverlay: React.FC = () => {
           top: 0,
           left: 0,
           right: 0,
-          bottom: VOICE_BAR_HEIGHT_MOBILE,
+          bottom: chromeBottom.css,
           zIndex: 1200,
           backgroundColor: 'grey.900',
           display: 'flex',

@@ -7,6 +7,7 @@ import { userControllerGetProfileOptions } from "../../api-client/@tanstack/reac
 import type { Message, Span } from "../../types/message.type";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { BOTTOM_CHROME_ORDER, useMeasuredChromeItem } from "../../contexts/BottomChromeContext";
 
 
 export interface MessagesHookResult {
@@ -96,9 +97,14 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
     highlightSeq,
   } = useMessagesHook();
 
+  // Register the composer's measured height (BottomChromeContext) so toasts
+  // and the reconnecting chip float above it instead of covering it. A
+  // composer on a hidden screen measures 0 and drops out by itself.
+  const composerMeasureRef = useMeasuredChromeItem({ order: BOTTOM_CHROME_ORDER.COMPOSER });
+
   // Create the message input component
   const messageInput = (
-    <>
+    <div ref={composerMeasureRef}>
       {replyToMessage && (
         <ReplyComposerBanner
           replyToMessage={replyToMessage}
@@ -114,7 +120,7 @@ const MessageContainerWrapper: React.FC<MessageContainerWrapperProps> = ({
         placeholder={placeholder}
         communityId={communityId}
       />
-    </>
+    </div>
   );
 
   return (

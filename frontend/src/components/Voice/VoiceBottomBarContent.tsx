@@ -10,6 +10,7 @@ import {
   Menu,
   MenuItem,
   Badge,
+  Portal,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -46,7 +47,7 @@ import { useResponsive } from "../../hooks/useResponsive";
 import { useHapticFeedback } from "../../hooks/useHapticFeedback";
 import { useWakeLock } from "../../hooks/useWakeLock";
 import { logger } from "../../utils/logger";
-import { LAYOUT_CONSTANTS } from "../../utils/breakpoints";
+import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useSpeaking } from "../../hooks/useSpeaking";
 import { useVoicePresenceHeartbeat } from "../../hooks/useVoicePresenceHeartbeat";
 import { useBackgroundVoiceKeepAlive } from "../../hooks/useBackgroundVoiceKeepAlive";
@@ -251,14 +252,11 @@ const VoiceBottomBarContent: React.FC = () => {
   return (
     <>
       {/* Main Bottom Bar */}
+      {/* Positioned by the VoiceBottomBar shell (fixed on desktop, in flow
+          above the bottom nav on touch layouts). */}
       <Paper
         elevation={8}
         sx={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 1300,
           borderRadius: 0,
           backgroundColor: "background.paper",
           borderTop: 1,
@@ -270,10 +268,10 @@ const VoiceBottomBarContent: React.FC = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            px: isMobile ? 1 : 3,
+            px: isMobile ? 0.5 : 3,
             py: isMobile ? 1 : 1.5,
             minHeight: isMobile ? LAYOUT_CONSTANTS.VOICE_BAR_HEIGHT_MOBILE : 64,
-            gap: isMobile ? 0.5 : 1,
+            gap: isMobile ? 0 : 1,
           }}
         >
           {/* Channel/DM Info */}
@@ -305,7 +303,7 @@ const VoiceBottomBarContent: React.FC = () => {
           </Box>
 
           {/* Voice Controls */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: isMobile ? 0.5 : 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", flexShrink: 0, gap: isMobile ? 0 : 1 }}>
             {/* Microphone */}
             <Tooltip
               title={
@@ -343,8 +341,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     : state.isServerMuted
                       ? "warning.contrastText"
                       : (!isMicrophoneEnabled ? "error.contrastText" : "text.primary"),
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
+                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                   border: (isMicrophoneEnabled && isCurrentUserSpeaking) || isPTTKeyHeld
                     ? `2px solid ${theme.palette.semantic.status.positive}`
                     : "2px solid transparent",
@@ -406,8 +404,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     color: isSpeakerphone
                       ? "primary.contrastText"
                       : "text.primary",
-                    minWidth: 48,
-                    minHeight: 48,
+                    minWidth: TOUCH_TARGETS.MINIMUM,
+                    minHeight: TOUCH_TARGETS.MINIMUM,
                     "&:hover": {
                       backgroundColor: isSpeakerphone
                         ? "primary.dark"
@@ -420,7 +418,7 @@ const VoiceBottomBarContent: React.FC = () => {
               </Tooltip>
             )}
 
-            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.5 : 1 }} />
+            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.25 : 1 }} />
 
             {/* Video */}
             <Tooltip
@@ -440,8 +438,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color: isCameraEnabled
                     ? "primary.contrastText"
                     : "text.primary",
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
+                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                   "&:hover": {
                     backgroundColor: isCameraEnabled
                       ? "primary.dark"
@@ -491,8 +489,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     color: screenShare.isScreenSharing
                       ? "primary.contrastText"
                       : "text.primary",
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: screenShare.isScreenSharing
                         ? "primary.dark"
@@ -516,8 +514,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color="success"
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "success.main",
                       color: "success.contrastText",
@@ -545,8 +543,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   onClick={() => actions.revealVideoTiles()}
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "action.hover",
                     },
@@ -569,7 +567,7 @@ const VoiceBottomBarContent: React.FC = () => {
               </>
             )}
 
-            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.5 : 1 }} />
+            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.25 : 1 }} />
 
             {/* Disconnect */}
             <Tooltip title="Disconnect" arrow={!isMobile}>
@@ -578,8 +576,8 @@ const VoiceBottomBarContent: React.FC = () => {
                 color="error"
                 size={isMobile ? "medium" : "medium"}
                 sx={{
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
+                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
                   "&:hover": {
                     backgroundColor: "error.main",
                     color: "error.contrastText",
@@ -660,11 +658,14 @@ const VoiceBottomBarContent: React.FC = () => {
         />
       </Paper>
 
-      {/* Debug Panel - Toggle with Ctrl+Shift+D */}
+      {/* Debug Panel - Toggle with Ctrl+Shift+D. Portaled so its own
+          z-index isn't capped by the bar wrapper's stacking context. */}
       {showDebugPanel && (
-        <Suspense fallback={null}>
-          <VoiceDebugPanel />
-        </Suspense>
+        <Portal>
+          <Suspense fallback={null}>
+            <VoiceDebugPanel />
+          </Suspense>
+        </Portal>
       )}
     </>
   );

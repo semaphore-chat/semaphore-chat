@@ -15,7 +15,6 @@ import { MobileProfilePanel } from '../Panels/MobileProfilePanel';
 import { NotificationsScreen } from '../Screens/NotificationsScreen';
 import { MobileSearchScreen } from '../Screens/MobileSearchScreen';
 import SettingsPage from '../../../pages/SettingsPage';
-import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
 import MobileAppBar from '../MobileAppBar';
 
 interface TabletContentAreaProps {
@@ -33,7 +32,9 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
   const { state } = useMobileNavigation();
   const { currentScreen, communityId, channelId, dmGroupId, userId } = state;
 
-  const totalBottomOffset = LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE + bottomOffset;
+  // The bottom nav and voice bar are in normal flow below the content row
+  // (TabletLayout), so only an explicit extra offset needs padding here.
+  const totalBottomOffset = bottomOffset;
 
   const renderContent = () => {
     switch (currentScreen) {

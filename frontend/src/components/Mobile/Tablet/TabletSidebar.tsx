@@ -51,7 +51,7 @@ export const TabletSidebar: React.FC<TabletSidebarProps> = ({ communityId }) => 
           flex: 1,
           overflowY: 'auto',
           pt: 0.5,
-          pb: `${LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE}px`,
+          // The bottom nav is in flow below the layout row — no padding for it.
         }}
       >
         <ChannelCategoryList

@@ -6,6 +6,13 @@ import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { logger } from "../../utils/logger";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { AuthenticatedImage } from "../Common/AuthenticatedImage";
+import {
+  TOP_CHROME_ORDER,
+  useHasTopChromeHost,
+  useMeasuredChromeItem,
+  useTopChromeOffset,
+} from "../../contexts/BottomChromeContext";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 
 const pulseKeyframes = {
   "@keyframes incomingCallPulse": {
@@ -15,9 +22,25 @@ const pulseKeyframes = {
   },
 };
 
+/**
+ * Incoming DM call banner. On the phone/tablet layouts (which host top
+ * chrome, see BottomChromeContext) it registers as top chrome and pushes the
+ * app bar and content down, below the offline strip if that's showing.
+ * Elsewhere (desktop, Electron) it overlays the top of the window as before.
+ */
 export const IncomingCallBanner: React.FC = () => {
   const { incomingCall, dismissCall } = useIncomingCall();
   const { actions } = useVoiceConnection();
+  const asTopChrome = useHasTopChromeHost();
+  const top = useTopChromeOffset(TOP_CHROME_ORDER.INCOMING_CALL);
+  const measureRef = useMeasuredChromeItem({
+    id: "incoming-call",
+    edge: "top",
+    order: TOP_CHROME_ORDER.INCOMING_CALL,
+    fallbackHeight: 64,
+    enabled: asTopChrome && !!incomingCall,
+  });
+  const buttonSize = asTopChrome ? { minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM } : {};
 
   if (!incomingCall) {
     return null;
@@ -39,18 +62,20 @@ export const IncomingCallBanner: React.FC = () => {
 
   return (
     <Paper
+      ref={measureRef}
       role="alert"
       elevation={8}
       sx={{
         position: "fixed",
-        top: 0,
+        top: asTopChrome ? top.css : 0,
         left: 0,
         right: 0,
         zIndex: 1400,
+        ...(asTopChrome ? { borderRadius: 0 } : {}),
         display: "flex",
         alignItems: "center",
         gap: 2,
-        px: 3,
+        px: asTopChrome ? 2 : 3,
         py: 1.5,
         borderBottom: "2px solid",
         borderColor: "success.main",
@@ -85,6 +110,7 @@ export const IncomingCallBanner: React.FC = () => {
           <IconButton
             onClick={handleAccept}
             sx={{
+              ...buttonSize,
               backgroundColor: "success.main",
               color: "common.white",
               "&:hover": { backgroundColor: "success.dark" },
@@ -97,6 +123,7 @@ export const IncomingCallBanner: React.FC = () => {
           <IconButton
             onClick={handleDecline}
             sx={{
+              ...buttonSize,
               backgroundColor: "error.main",
               color: "common.white",
               "&:hover": { backgroundColor: "error.dark" },
