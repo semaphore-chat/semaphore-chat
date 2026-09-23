@@ -7,11 +7,12 @@ import {
   Typography,
   CircularProgress,
   Alert,
+  Link,
 } from "@mui/material";
 import { LockOutlined } from "@mui/icons-material";
 import { useMutation } from "@tanstack/react-query";
 import { authControllerForgotPasswordMutation } from "../api-client/@tanstack/react-query.gen";
-import { Link } from "react-router-dom";
+import { Link as RouterLink } from "react-router-dom";
 
 const ForgotPasswordPage: React.FC = () => {
   const [email, setEmail] = useState("");
@@ -45,6 +46,8 @@ const ForgotPasswordPage: React.FC = () => {
         alignItems: "center",
         justifyContent: "center",
         padding: 2,
+        minHeight: "var(--full-dvh)",
+        boxSizing: "border-box",
       }}
     >
       <Box
@@ -79,7 +82,7 @@ const ForgotPasswordPage: React.FC = () => {
               If an account with that email exists, we've sent a reset link.
             </Alert>
             <Typography variant="body2" color="textSecondary">
-              <Link to="/login" aria-label="Back to login">
+              <Link component={RouterLink} underline="hover" to="/login" aria-label="Back to login">
                 Back to login
               </Link>
             </Typography>
@@ -129,7 +132,7 @@ const ForgotPasswordPage: React.FC = () => {
               )}
             </Button>
             <Typography variant="body2" color="textSecondary">
-              <Link to="/login" aria-label="Back to login">
+              <Link component={RouterLink} underline="hover" to="/login" aria-label="Back to login">
                 Back to login
               </Link>
             </Typography>

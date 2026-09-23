@@ -42,7 +42,7 @@ const QuotePreview: React.FC<QuotePreviewProps> = ({
     if (channelId && communityId) {
       navigate(`/community/${communityId}/channel/${channelId}?highlight=${replyTo.id}`);
     } else if (directMessageGroupId) {
-      navigate(`/dm/${directMessageGroupId}?highlight=${replyTo.id}`);
+      navigate(`/direct-messages/${directMessageGroupId}?highlight=${replyTo.id}`);
     }
   };
 

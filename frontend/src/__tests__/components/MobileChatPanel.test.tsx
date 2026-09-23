@@ -23,6 +23,10 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
 }));
 
 // Mock API client for TanStack Query options
+vi.mock('../../hooks/useCurrentUser', () => ({
+  useCurrentUser: () => ({ user: { id: 'me', username: 'me' } }),
+}));
+
 vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
   channelsControllerFindOneOptions: () => ({ queryKey: ['channel', ''], enabled: false }),
   directMessagesControllerFindDmGroupOptions: () => ({ queryKey: ['dm', ''], enabled: false }),

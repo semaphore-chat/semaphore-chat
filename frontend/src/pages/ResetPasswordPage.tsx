@@ -7,11 +7,12 @@ import {
   Typography,
   CircularProgress,
   Alert,
+  Link,
 } from "@mui/material";
 import { LockOutlined } from "@mui/icons-material";
 import { useMutation } from "@tanstack/react-query";
 import { authControllerResetPasswordMutation } from "../api-client/@tanstack/react-query.gen";
-import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { useNavigate, useSearchParams, Link as RouterLink } from "react-router-dom";
 
 const getErrorMessage = (err: unknown): string => {
   const msg = (err as Record<string, unknown>)?.message;
@@ -74,6 +75,8 @@ const ResetPasswordPage: React.FC = () => {
         alignItems: "center",
         justifyContent: "center",
         padding: 2,
+        minHeight: "var(--full-dvh)",
+        boxSizing: "border-box",
       }}
     >
       <Box
@@ -109,7 +112,7 @@ const ResetPasswordPage: React.FC = () => {
               This reset link is missing or invalid.
             </Alert>
             <Typography variant="body2" color="textSecondary">
-              <Link to="/forgot-password" aria-label="Request a new reset link">
+              <Link component={RouterLink} underline="hover" to="/forgot-password" aria-label="Request a new reset link">
                 Request a new reset link
               </Link>
             </Typography>
@@ -134,7 +137,7 @@ const ResetPasswordPage: React.FC = () => {
                   color="textSecondary"
                   sx={{ marginBottom: 2 }}
                 >
-                  <Link
+                  <Link component={RouterLink} underline="hover"
                     to="/forgot-password"
                     aria-label="Request a new reset link"
                   >
@@ -194,7 +197,7 @@ const ResetPasswordPage: React.FC = () => {
               )}
             </Button>
             <Typography variant="body2" color="textSecondary">
-              <Link to="/login" aria-label="Back to login">
+              <Link component={RouterLink} underline="hover" to="/login" aria-label="Back to login">
                 Back to login
               </Link>
             </Typography>

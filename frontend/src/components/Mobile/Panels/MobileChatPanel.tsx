@@ -35,6 +35,8 @@ import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
 import { MOBILE_CONSTANTS } from '../../../utils/breakpoints';
+import { getDmDisplayName } from '../../../utils/dmHelpers';
+import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { ChannelType } from '../../../types/channel.type';
 import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
 import DirectMessageContainer from '../../DirectMessages/DirectMessageContainer';
@@ -66,6 +68,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const navigate = useNavigate();
   const { shouldUseTouchUI, isMobile } = useResponsive();
   const { state: voiceState } = useVoiceConnection();
+  const { user: currentUser } = useCurrentUser();
 
   // Fetch channel or DM data
   const { data: channel } = useQuery({
@@ -99,6 +102,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     setMenuAnchor(null);
   };
 
+  // Channels and group DMs have a member list; 1:1 DMs don't.
+  const hasMemberList = !!channelId || !!dmGroup?.isGroup;
+
   const handleShowMembers = () => {
     setShowMemberDrawer(true);
     handleMenuClose();
@@ -120,7 +126,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   //    dm-chat → dm list; both handled by the nav context's goBack()). On
   //    tablet the channel list is already visible in the split-view sidebar
   //    (TabletContentArea), so swipe-right must NOT navigate there.
-  //  - Swipe LEFT → open the members drawer (channel chat only). Keeps
+  //  - Swipe LEFT → open the members drawer (channels + group DMs). Keeps
   //    working on tablet as well as phone.
   // Gestures starting within the edge back-gesture zone, on exempt content
   // (inputs, code blocks, horizontally scrollable widgets), or that are mostly
@@ -130,7 +136,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     enabled: shouldUseTouchUI,
     onSwipeRight: isMobile ? () => goBack() : undefined,
     onSwipeLeft: () => {
-      if (channelId) setShowMemberDrawer(true);
+      if (hasMemberList) setShowMemberDrawer(true);
     },
     isExempt: isSwipeExemptTarget,
     ignoreEdgeSwipes: true,
@@ -147,7 +153,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     const prefix = channel.type === ChannelType.VOICE ? '🔊 ' : '# ';
     title = `${prefix}${channel.name}`;
   } else if (dmGroup) {
-    title = dmGroup.name || 'Direct Message';
+    title = getDmDisplayName(dmGroup, currentUser?.id);
   }
 
   // Render content based on channel type
@@ -205,7 +211,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         title={title}
         showBack
         onBack={goBack}
-        showMembers={channel?.type === ChannelType.TEXT}
+        showMembers={channel?.type === ChannelType.TEXT || !!dmGroup?.isGroup}
         onMembersClick={handleShowMembers}
         showMore
         onMoreClick={handleMenuOpen}
@@ -217,7 +223,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           >
-            {channelId && (
+            {hasMemberList && (
               <MenuItem onClick={handleShowMembers}>
                 <ListItemIcon>
                   <PeopleIcon fontSize="small" />

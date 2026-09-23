@@ -98,6 +98,39 @@ describe('Channel', () => {
     expect(screen.getByTestId('TagIcon')).toBeInTheDocument();
   });
 
+  it('shows a lock icon for private channels', () => {
+    const channel = createChannel({ name: 'secret', type: 'TEXT', isPrivate: true });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    expect(screen.getByTestId('LockIcon')).toBeInTheDocument();
+    expect(screen.getByLabelText('Private channel')).toBeInTheDocument();
+  });
+
+  it('does not show a lock icon for public channels', () => {
+    const channel = createChannel({ name: 'general', type: 'TEXT', isPrivate: false });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    expect(screen.queryByTestId('LockIcon')).not.toBeInTheDocument();
+  });
+
+  it('keeps a long channel name on one line so it truncates', () => {
+    const longName = 'a-very-long-channel-name-no-spaces'.slice(0, 32);
+    const channel = createChannel({ name: longName, type: 'TEXT', isPrivate: true });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const name = screen.getByText(longName);
+    expect(name).toHaveClass('MuiTypography-noWrap');
+    // ListItemText must be allowed to shrink so the lock icon stays visible.
+    expect(name.closest('.MuiListItemText-root')).toHaveStyle({ minWidth: '0' });
+    expect(screen.getByLabelText('Private channel')).toBeInTheDocument();
+  });
+
   it('renders voice channel with volume icon and name', () => {
     const channel = createChannel({ name: 'voice-room', type: 'VOICE' });
     renderWithProviders(<Channel channel={channel} />, {

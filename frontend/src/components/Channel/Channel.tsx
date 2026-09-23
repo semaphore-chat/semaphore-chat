@@ -9,6 +9,7 @@ import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import TagIcon from "@mui/icons-material/Tag";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
+import LockIcon from "@mui/icons-material/Lock";
 import { styled } from "@mui/material/styles";
 import { useNavigate, useParams } from "react-router-dom";
 import { VoiceChannelUserList } from "../Voice";
@@ -150,13 +151,21 @@ export function Channel({ channel }: ChannelProps) {
         </ListItemIcon>
         <ChannelName
           primary={channel.name}
+          primaryTypographyProps={{ noWrap: true }}
           sx={{
+            minWidth: 0,
             "& .MuiListItemText-primary": {
               fontWeight: isUnread ? 700 : 500,
               color: isUnread ? "text.primary" : undefined,
             },
           }}
         />
+        {channel.isPrivate && (
+          <LockIcon
+            aria-label="Private channel"
+            sx={{ fontSize: 14, ml: 0.5, flexShrink: 0, color: "text.secondary" }}
+          />
+        )}
         {/* Mention count badge */}
         {mentions > 0 && !isSelected && (
           <Badge

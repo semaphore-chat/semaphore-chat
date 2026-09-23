@@ -7,6 +7,7 @@ import {
   Typography,
   CircularProgress,
   Alert,
+  Link,
 } from "@mui/material";
 import { LockOutlined } from "@mui/icons-material";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ import {
   authControllerLoginMutation,
   instanceControllerGetPublicSettingsOptions,
 } from "../api-client/@tanstack/react-query.gen";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
 
 const LoginPage: React.FC = () => {
@@ -49,6 +50,8 @@ const LoginPage: React.FC = () => {
         alignItems: "center",
         justifyContent: "center",
         padding: 2,
+        minHeight: "var(--full-dvh)",
+        boxSizing: "border-box",
       }}
     >
       <Box
@@ -119,14 +122,14 @@ const LoginPage: React.FC = () => {
         </Button>
         {publicSettings?.passwordResetEnabled && (
           <Typography variant="body2" color="textSecondary" sx={{ marginBottom: 1 }}>
-            <Link to="/forgot-password" aria-label="Forgot password?">
+            <Link component={RouterLink} underline="hover" to="/forgot-password" aria-label="Forgot password?">
               Forgot password?
             </Link>
           </Typography>
         )}
         <Typography variant="body2" color="textSecondary">
           Don't have an account?{" "}
-          <Link to="/register" aria-label="Register for an account">
+          <Link component={RouterLink} underline="hover" to="/register" aria-label="Register for an account">
             Register here
           </Link>
         </Typography>

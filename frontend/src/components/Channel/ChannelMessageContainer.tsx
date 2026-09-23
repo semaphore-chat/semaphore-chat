@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { Box, Typography, Paper, IconButton, Tooltip, Badge, Drawer } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import PushPinIcon from "@mui/icons-material/PushPin";
+import LockIcon from "@mui/icons-material/Lock";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
 import MessageSearch from "../Message/MessageSearch";
@@ -174,9 +175,17 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             justifyContent: 'space-between',
           }}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            # {channel?.name || 'Channel'}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+            <Typography variant="h6" noWrap sx={{ fontWeight: 600 }}>
+              # {channel?.name || 'Channel'}
+            </Typography>
+            {channel?.isPrivate && (
+              <LockIcon
+                aria-label="Private channel"
+                sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0 }}
+              />
+            )}
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Tooltip title={`Pinned messages (${pinnedMessages.length})`}>
               <IconButton size="small" onClick={() => setPinnedPanelOpen(true)}>
