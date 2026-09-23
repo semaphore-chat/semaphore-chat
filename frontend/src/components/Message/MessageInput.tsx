@@ -7,7 +7,17 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Box, IconButton, CircularProgress, Typography } from "@mui/material";
+import {
+  Box,
+  IconButton,
+  CircularProgress,
+  Typography,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import EmojiEmotionsOutlinedIcon from "@mui/icons-material/EmojiEmotionsOutlined";
@@ -21,6 +31,8 @@ import type { GifResultDto } from "../../api-client/types.gen";
 import { instanceControllerGetPublicSettingsOptions } from "../../api-client/@tanstack/react-query.gen";
 import GifBoxOutlinedIcon from "@mui/icons-material/GifBoxOutlined";
 import { useResponsive } from "../../hooks/useResponsive";
+import { MobileSheet } from "../Mobile/common/MobileSheet";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { FilePreview } from "./FilePreview";
 import { MentionDropdown } from "./MentionDropdown";
 import { MENTION_LISTBOX_ID, mentionOptionId } from "./mentionDropdownIds";
@@ -54,6 +66,7 @@ import { SpanType } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 import { useComposerAvailability } from "../../hooks/useComposerAvailability";
 import type { ComposerAvailability } from "../../hooks/useComposerAvailability";
+import { useComposerDraft } from "../../hooks/useComposerDraft";
 
 export interface MessageInputProps {
   contextType: VoiceSessionType;
@@ -137,7 +150,11 @@ export default function MessageInput({
   placeholder = "Type a message...",
   communityId,
 }: MessageInputProps) {
-  const [text, setText] = useState("");
+  // The unsent text is a per-conversation draft, so it survives this
+  // composer unmounting (e.g. switching screens on mobile).
+  const [text, setText, clearDraft] = useComposerDraft(
+    `${contextType === VoiceSessionType.Channel ? "channel" : "dm"}:${contextId}`,
+  );
   // LOAD-BEARING for optimistic-send correctness: `sending` serializes
   // composer submits until the current send's ack/timeout settles, which is
   // what makes two same-author PENDING rows with identical content
@@ -148,7 +165,12 @@ export default function MessageInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showNotification } = useNotification();
-  const { isTouchDevice } = useResponsive();
+  const { isTouchDevice, shouldUseTouchUI } = useResponsive();
+  // Touch layouts get the slim composer: one "+" (Attach / GIF / Emoji in a
+  // sheet), the text field, and send only once there's something to send.
+  const compactComposer = shouldUseTouchUI;
+  const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
+  const plusButtonRef = useRef<HTMLButtonElement>(null);
   const availability = useComposerAvailability({ contextType, contextId, communityId });
   const canCompose = availability.state === "ok";
 
@@ -307,7 +329,7 @@ export default function MessageInput({
     (mention: MentionSuggestion) => {
       insertMentionUtil(mention, text, setText, closeDmMentions);
     },
-    [insertMentionUtil, text, closeDmMentions]
+    [insertMentionUtil, text, setText, closeDmMentions]
   );
 
   // DM mention detection
@@ -465,7 +487,7 @@ export default function MessageInput({
     const sent = await sendMessageContent(text, selectedFiles);
     if (!sent) return;
 
-    setText("");
+    clearDraft();
     clearFiles();
     if (isChannel) {
       mentionHook.close();
@@ -501,9 +523,30 @@ export default function MessageInput({
     setEmojiAnchorEl(null);
     if (reason === "escapeKeyDown" || reason === "backdropClick") {
       requestAnimationFrame(() => {
-        emojiButtonRef.current?.focus();
+        (emojiButtonRef.current ?? plusButtonRef.current)?.focus();
       });
     }
+  };
+
+  // --- Touch "+" sheet (Attach / GIF / Emoji) ---
+  const handleOpenActionsSheet = () => {
+    captureSelection();
+    setActionsSheetOpen(true);
+  };
+  const handleCloseActionsSheet = () => setActionsSheetOpen(false);
+  const handleSheetAttach = () => {
+    setActionsSheetOpen(false);
+    // Still inside the tap's user activation, so the file dialog may open.
+    handleFileButtonClick();
+  };
+  const handleSheetEmoji = () => {
+    setActionsSheetOpen(false);
+    // Touch pickers render as their own sheet; the anchor only marks "open".
+    setEmojiAnchorEl(plusButtonRef.current);
+  };
+  const handleSheetGif = () => {
+    setActionsSheetOpen(false);
+    setGifAnchorEl(plusButtonRef.current);
   };
 
   // --- GIF picker handlers ---
@@ -551,7 +594,7 @@ export default function MessageInput({
       }
       emitTypingKeyPress();
     },
-    [isTouchDevice, emitTypingKeyPress]
+    [isTouchDevice, emitTypingKeyPress, setText]
   );
 
   // --- Rich-text formatting shortcut (Ctrl/Cmd+B, Ctrl/Cmd+I) ---
@@ -613,6 +656,11 @@ export default function MessageInput({
     }
   };
 
+  const hasContent = Boolean(text && text.trim()) || selectedFiles.length > 0;
+  // Desktop keeps a (disabled) send button at all times; touch shows it only
+  // when there's something to send, so the text field gets the width.
+  const showSendButton = !compactComposer || hasContent || sending;
+
   if (!canCompose) {
     return (
       <Box sx={{ position: "relative", width: "100%" }}>
@@ -656,7 +704,24 @@ export default function MessageInput({
         }}
         style={{ width: "100%" }}
       >
-        <StyledPaper elevation={2}>
+        <StyledPaper
+          elevation={2}
+          data-composer-layout={compactComposer ? "compact" : "full"}
+          sx={compactComposer ? { p: 1, gap: 0.5, alignItems: "flex-end" } : undefined}
+        >
+          {compactComposer && (
+            <IconButton
+              ref={plusButtonRef}
+              onClick={handleOpenActionsSheet}
+              disabled={sending}
+              aria-label="Add attachment, GIF or emoji"
+              aria-haspopup="dialog"
+              aria-expanded={actionsSheetOpen}
+              sx={{ width: TOUCH_TARGETS.MINIMUM, height: TOUCH_TARGETS.MINIMUM, flexShrink: 0 }}
+            >
+              <AddIcon />
+            </IconButton>
+          )}
           <StyledTextField
             fullWidth
             size="small"
@@ -679,7 +744,7 @@ export default function MessageInput({
               updateCursorPosition();
               captureSelection();
             }}
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, minWidth: 0 }}
             inputRef={inputRef}
             autoComplete="off"
             multiline
@@ -704,44 +769,87 @@ export default function MessageInput({
               },
             }}
           />
-          <IconButton
-            ref={emojiButtonRef}
-            onClick={handleEmojiButtonClick}
-            disabled={sending}
-            aria-label="add emoji"
-            aria-haspopup="true"
-            aria-expanded={emojiPickerOpen}
-          >
-            <EmojiEmotionsOutlinedIcon />
-          </IconButton>
-          {gifSearchEnabled && (
+          {!compactComposer && (
+            <>
+              <IconButton
+                ref={emojiButtonRef}
+                onClick={handleEmojiButtonClick}
+                disabled={sending}
+                aria-label="add emoji"
+                aria-haspopup="true"
+                aria-expanded={emojiPickerOpen}
+              >
+                <EmojiEmotionsOutlinedIcon />
+              </IconButton>
+              {gifSearchEnabled && (
+                <IconButton
+                  onClick={handleGifButtonClick}
+                  disabled={sending}
+                  aria-label="add gif"
+                  aria-haspopup="true"
+                  aria-expanded={gifPickerOpen}
+                >
+                  <GifBoxOutlinedIcon />
+                </IconButton>
+              )}
+              <IconButton
+                onClick={handleFileButtonClick}
+                disabled={sending}
+                aria-label="attach file"
+              >
+                <AttachFileIcon />
+              </IconButton>
+            </>
+          )}
+          {showSendButton && (
             <IconButton
-              onClick={handleGifButtonClick}
-              disabled={sending}
-              aria-label="add gif"
-              aria-haspopup="true"
-              aria-expanded={gifPickerOpen}
+              color="primary"
+              type="submit"
+              disabled={sending || !hasContent}
+              aria-label="send"
+              sx={
+                compactComposer
+                  ? { width: TOUCH_TARGETS.MINIMUM, height: TOUCH_TARGETS.MINIMUM, flexShrink: 0 }
+                  : undefined
+              }
             >
-              <GifBoxOutlinedIcon />
+              {sending ? <CircularProgress size={24} /> : <SendIcon />}
             </IconButton>
           )}
-          <IconButton
-            onClick={handleFileButtonClick}
-            disabled={sending}
-            aria-label="attach file"
-          >
-            <AttachFileIcon />
-          </IconButton>
-          <IconButton
-            color="primary"
-            type="submit"
-            disabled={sending || ((!text || !text.trim()) && selectedFiles.length === 0)}
-            aria-label="send"
-          >
-            {sending ? <CircularProgress size={24} /> : <SendIcon />}
-          </IconButton>
         </StyledPaper>
       </form>
+
+      {compactComposer && (
+        <MobileSheet
+          open={actionsSheetOpen}
+          onClose={handleCloseActionsSheet}
+          title="Add to message"
+          maxHeight="50vh"
+        >
+          <List data-testid="composer-actions-sheet" disablePadding sx={{ mx: -2, my: -2 }}>
+            <ListItemButton onClick={handleSheetAttach} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+              <ListItemIcon>
+                <AttachFileIcon />
+              </ListItemIcon>
+              <ListItemText primary="Attach file" />
+            </ListItemButton>
+            {gifSearchEnabled && (
+              <ListItemButton onClick={handleSheetGif} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+                <ListItemIcon>
+                  <GifBoxOutlinedIcon />
+                </ListItemIcon>
+                <ListItemText primary="GIF" />
+              </ListItemButton>
+            )}
+            <ListItemButton onClick={handleSheetEmoji} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+              <ListItemIcon>
+                <EmojiEmotionsOutlinedIcon />
+              </ListItemIcon>
+              <ListItemText primary="Emoji" />
+            </ListItemButton>
+          </List>
+        </MobileSheet>
+      )}
 
       <EmojiPickerPopover
         open={emojiPickerOpen}

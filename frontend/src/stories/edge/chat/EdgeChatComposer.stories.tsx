@@ -38,6 +38,14 @@ function story(channel: Channel, steps: DriverStep[], scenario = edgeChatScenari
 
 /** Steps: quote-reply the wall-of-text message, attach 5 files, type a 4-line draft. */
 const replyFilesDraft: DriverStep[] = [
+  // The wall-of-text row is taller than a phone screen and starts scrolled
+  // mostly off the top; bring its first line into view before long-pressing.
+  () => {
+    const row = findMessageRow('So here is the full write-up', { last: true });
+    if (!row) return false;
+    row.scrollIntoView({ block: 'start' });
+  },
+  wait(400),
   () => {
     const row = findMessageRow('So here is the full write-up', { last: true });
     if (!row) return false;
@@ -68,8 +76,36 @@ export const MentionDropdownManyMatches = story(
   edgeChatManyMembersScenario,
 );
 
-/** Composer emoji picker open (bottom sheet on touch, popover on desktop). */
-export const EmojiPickerOpen = story(runsChannel, [() => !!composerTextarea(), wait(300), () => clickButtonByLabel('add emoji')]);
+/** "+" button of the touch composer (absent on desktop). */
+const PLUS_LABEL = 'Add attachment, GIF or emoji';
+
+/** Tap a row of the touch composer's "+" sheet by its text. */
+function clickSheetItem(text: RegExp): boolean {
+  const sheet = document.querySelector('[data-testid="composer-actions-sheet"]');
+  const item = sheet && Array.from(sheet.querySelectorAll<HTMLElement>('[role="button"]')).find((b) => text.test(b.textContent ?? ''));
+  if (!item) return false;
+  item.click();
+  return true;
+}
+
+/**
+ * Composer emoji picker open (bottom sheet on touch, popover on desktop).
+ * Desktop clicks the inline emoji button; touch goes "+" → Emoji.
+ */
+export const EmojiPickerOpen = story(runsChannel, [
+  () => !!composerTextarea(),
+  wait(300),
+  () => clickButtonByLabel('add emoji') || clickButtonByLabel(PLUS_LABEL),
+  wait(500),
+  () => !document.querySelector('[data-testid="composer-actions-sheet"]') || clickSheetItem(/^Emoji$/),
+]);
+
+/** Touch composer's "+" sheet open (Attach / GIF / Emoji). Desktop has inline buttons, so nothing opens there. */
+export const ComposerActionsSheet = story(runsChannel, [
+  () => !!composerTextarea(),
+  wait(300),
+  () => clickButtonByLabel(PLUS_LABEL) || !!document.querySelector('button[aria-label="add emoji"]'),
+]);
 
 /** Long-press on a message (touch) → actions sheet; right-click on desktop → context menu. */
 export const MessageActionsOpen = story(runsChannel, [

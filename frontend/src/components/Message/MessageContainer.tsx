@@ -14,6 +14,35 @@ import { useAnchoredModeTransition } from "../../hooks/useAnchoredModeTransition
 import { useMessageListAnnouncer } from "../../hooks/useMessageListAnnouncer";
 import TypingIndicator from "./TypingIndicator";
 
+/** Gap between the composer's top edge and the FAB. */
+const FAB_GAP = 16;
+/** Before the composer is measured (or without ResizeObserver). */
+const FALLBACK_FAB_BOTTOM = 80;
+
+/**
+ * Tracks an element's height with a ResizeObserver. Returns 0 until measured
+ * (and stays 0 where ResizeObserver doesn't exist). Pass the element via
+ * state/callback ref so the observer follows remounts.
+ */
+function useElementHeight(el: HTMLElement | null): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const initial = el.getBoundingClientRect().height;
+    if (initial > 0) setHeight(Math.round(initial));
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const box = entry.borderBoxSize?.[0];
+      setHeight(Math.round(box ? box.blockSize : entry.contentRect.height));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return height;
+}
+
 interface MessageContainerProps {
   // Data
   messages: Message[];
@@ -151,6 +180,16 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // located via a DOM query relative to that Box rather than threading a
   // ref through every page that constructs a <MessageInput />.
   const messageInputBoxRef = useRef<HTMLDivElement>(null);
+  // The composer grows (reply banner, file tray, multi-line draft), so the
+  // floating FABs track its measured height instead of a fixed offset.
+  const [composerBoxEl, setComposerBoxEl] = useState<HTMLDivElement | null>(null);
+  const composerBoxRef = useCallback((el: HTMLDivElement | null) => {
+    messageInputBoxRef.current = el;
+    setComposerBoxEl(el);
+  }, []);
+  const composerHeight = useElementHeight(composerBoxEl);
+  const fabBottom = composerHeight > 0 ? composerHeight + FAB_GAP : FALLBACK_FAB_BOTTOM;
+
   const handleEscapeToInput = useCallback(() => {
     const root = messageInputBoxRef.current;
     const target = root?.querySelector<HTMLElement>(
@@ -333,6 +372,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           flexDirection: "column",
           height: "100%",
           position: "relative",
+          minWidth: 0,
         }}
       >
         {messages.length > 0 ? (
@@ -382,7 +422,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
         </Box>
 
         {/* Input rendered outside scroll container — stable DOM, never unmounted by message changes */}
-        <Box ref={messageInputBoxRef} sx={{ flexShrink: 0 }}>
+        <Box ref={composerBoxRef} sx={{ flexShrink: 0 }}>
           {messageInput}
         </Box>
 
@@ -405,9 +445,9 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             size="small"
             onClick={jumpToPresent}
             data-testid="jump-to-present-fab"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },
@@ -423,9 +463,9 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             size="small"
             onClick={handleDetachedJumpToPresent}
             data-testid="jump-to-present-fab"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },
@@ -439,9 +479,10 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           <Fab
             size="small"
             onClick={scrollToBottom}
+            aria-label="Scroll to latest messages"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },

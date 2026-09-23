@@ -542,6 +542,63 @@ describe('MessageContainer', () => {
     });
   });
 
+  // ── FAB follows the composer height (mobile UX overhaul, task 11) ──
+  describe('FAB offset from the measured composer', () => {
+    type ROCallback = (entries: Array<Partial<ResizeObserverEntry>>) => void;
+    let observers: Array<{ cb: ROCallback; targets: Element[] }> = [];
+    const OriginalRO = globalThis.ResizeObserver;
+
+    beforeEach(() => {
+      observers = [];
+      class FakeResizeObserver {
+        private entry: { cb: ROCallback; targets: Element[] };
+        constructor(cb: ROCallback) {
+          this.entry = { cb, targets: [] };
+          observers.push(this.entry);
+        }
+        observe(el: Element) { this.entry.targets.push(el); }
+        unobserve() {}
+        disconnect() { this.entry.targets = []; }
+      }
+      globalThis.ResizeObserver = FakeResizeObserver as unknown as typeof ResizeObserver;
+    });
+
+    afterEach(() => {
+      globalThis.ResizeObserver = OriginalRO;
+    });
+
+    function resizeComposer(height: number) {
+      const composerBox = screen.getByTestId('message-input').parentElement!;
+      const observer = observers.find((o) => o.targets.includes(composerBox));
+      expect(observer).toBeDefined();
+      act(() => {
+        observer!.cb([{ target: composerBox, contentRect: { height } as DOMRectReadOnly }]);
+      });
+    }
+
+    it('positions the scroll-to-bottom FAB just above the composer', () => {
+      renderWithProviders(<MessageContainer {...defaultProps} messages={[createMessage({ id: 'msg-1' })]} />);
+      act(() => {
+        (lastVirtualListProps!.onAtBottomChange as (b: boolean) => void)(false);
+      });
+
+      resizeComposer(120);
+      expect(screen.getByRole('button', { name: /scroll to latest/i })).toHaveStyle({ bottom: '136px' });
+
+      // Composer grows (4-line draft + file tray) — the FAB moves with it.
+      resizeComposer(300);
+      expect(screen.getByRole('button', { name: /scroll to latest/i })).toHaveStyle({ bottom: '316px' });
+    });
+
+    it('positions Jump to Present above the composer too', () => {
+      renderWithProviders(
+        <MessageContainer {...defaultProps} messages={[createMessage({ id: 'msg-1' })]} mode="anchored" jumpToPresent={vi.fn()} />,
+      );
+      resizeComposer(200);
+      expect(screen.getByTestId('jump-to-present-fab')).toHaveStyle({ bottom: '216px' });
+    });
+  });
+
   // ── Anchored mode (jump to message) ──────────────────────────────
   describe('anchored mode', () => {
     it('shows "Jump to Present" button in anchored mode', () => {
