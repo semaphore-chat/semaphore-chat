@@ -354,6 +354,7 @@ function MessageComponentInner({
             variant="caption"
             data-testid="message-hover-time"
             className="message-hover-time"
+            data-sheet-open={actionsSheetOpen ? "true" : undefined}
             noWrap
             sx={{
               width: AVATAR_GUTTER_PX,
@@ -483,7 +484,21 @@ function MessageComponentInner({
         ) : (
           <>
             {gifUrl ? (
-              <GifEmbed url={gifUrl} onError={() => setGifEmbedFailed(true)} />
+              <>
+                <GifEmbed url={gifUrl} onError={() => setGifEmbedFailed(true)} />
+                {grouped && (
+                  <Typography component="div" variant="body1">
+                    <MessageStatusMarks
+                      edited={!!message.editedAt}
+                      isPending={isPending}
+                      showSeenBy={contextType === VoiceSessionType.Dm && !!isAuthor && !!contextId}
+                      sentAt={message.sentAt}
+                      contextId={contextId}
+                      isPinned={isPinned}
+                    />
+                  </Typography>
+                )}
+              </>
             ) : (
               <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                 {renderMessageSpans(message.spans, emojiById)}

@@ -167,7 +167,13 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
         onTouchMove: longPress.onTouchMove,
         onTouchEnd: longPress.onTouchEnd,
         onTouchCancel: longPress.onTouchCancel,
-        onContextMenu: longPress.onContextMenu,
+        // Right-click also opens the sheet, so a mouse user on a touch-UI
+        // layout (e.g. tablet width without touch hardware) can still reach
+        // mark-read / dismiss. Idempotent with the long-press path.
+        onContextMenu: (e: React.MouseEvent) => {
+          e.preventDefault();
+          if (!longPress.isLongPressTriggered()) onOpenActions(notification);
+        },
       }
     : {};
 

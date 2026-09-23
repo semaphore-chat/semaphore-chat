@@ -115,6 +115,17 @@ describe('MessageComponent grouping and author line', () => {
     expect(screen.getByTestId('PushPinIcon')).toBeInTheDocument();
   });
 
+  it('still shows the pin on a grouped lone-GIF message', () => {
+    const gifUrl = 'https://media.giphy.com/media/abc123/giphy.gif';
+    renderWithProviders(
+      <MessageComponent
+        message={msg({ spans: [{ type: SpanType.PLAINTEXT, text: gifUrl }], pinned: true })}
+        grouped
+      />,
+    );
+    expect(screen.getByTestId('PushPinIcon')).toBeInTheDocument();
+  });
+
   it('marks grouped rows so styling can tighten spacing', () => {
     const { container } = renderWithProviders(<MessageComponent message={msg()} grouped />);
     expect(container.querySelector('[data-grouped="true"]')).not.toBeNull();

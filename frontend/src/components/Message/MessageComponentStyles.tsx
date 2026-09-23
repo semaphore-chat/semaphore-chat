@@ -110,6 +110,11 @@ export const Container = styled("div", {
     "&:hover .message-tools": {
       opacity: 0,
     },
+    // Same for the grouped-row time: on touch it shows only while the
+    // long-press actions sheet is open (see MessageComponent).
+    "&:hover .message-hover-time:not([data-sheet-open='true'])": {
+      opacity: 0,
+    },
   },
   // Roving-tabindex focus ring: mirrors the app's other themed
   // `outline: 2px solid` treatment (see TrimTimeline's trim-handle

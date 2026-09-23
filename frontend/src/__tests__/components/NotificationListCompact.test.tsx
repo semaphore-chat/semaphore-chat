@@ -190,6 +190,14 @@ describe('NotificationList (compact rows)', () => {
       expect(handleMarkAsRead).toHaveBeenCalledWith(n.id);
       await waitFor(() => expect(screen.queryByRole('presentation')).not.toBeInTheDocument());
     });
+
+    it('right-click opens the action sheet (mouse on a touch-UI layout)', async () => {
+      const [n] = mockNotifications;
+      renderWithProviders(<NotificationList />);
+      fireEvent.contextMenu(screen.getByTestId(`notification-row-${n.id}`));
+      const sheet = await screen.findByRole('presentation');
+      expect(within(sheet).getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
+    });
   });
 
   it('renders in every theme', () => {
