@@ -48,10 +48,10 @@ export const JumpFarBack = defineScreen(edgeChatScenario, channelPath(historyCha
 });
 
 /**
- * The same `?highlight=` link opened cold (channel not yet loaded): the
- * container clears the URL param before the first page arrives, so the jump
- * never happens and the user lands at the present.
+ * The same `?highlight=` link opened cold (channel not yet loaded): the jump
+ * waits for the first page, anchors on the target and highlights it, and
+ * only then clears the URL param.
  */
-export const ColdDeepLinkIgnored = defineScreen(edgeChatScenario, `${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`, {
+export const ColdDeepLink = defineScreen(edgeChatScenario, `${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`, {
   extraHandlers: chatHandlers(edgeChatScenario, { unread }),
 });

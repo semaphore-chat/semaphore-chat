@@ -55,17 +55,6 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const navigate = useNavigate();
   const highlightMessageId = searchParams.get("highlight");
 
-  // Clear highlight param from URL immediately after capturing it.
-  // useJumpToMessage stores it locally for scroll/flash (3s auto-clear).
-  // Immediate URL clear allows re-clicking the same pinned message.
-  React.useEffect(() => {
-    if (highlightMessageId) {
-      navigate(`/community/${communityId}/channel/${channelId}`, {
-        replace: true,
-      });
-    }
-  }, [highlightMessageId, communityId, channelId, navigate]);
-
   const { handleSendMessage } = useMessageFileUpload({
     contextType: VoiceSessionType.Channel,
     contextId: channelId,
@@ -135,6 +124,19 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
 
   // Get messages using the jump-to-message hook (supports anchored mode for pinned/search/notification links)
   const messagesHookResult = useJumpToMessage('channel', channelId, highlightMessageId || undefined);
+  const { isJumpPending } = messagesHookResult;
+
+  // Clear the highlight param from the URL once the jump has settled (target
+  // loaded, in the normal or anchored window). useJumpToMessage keeps the id
+  // locally for scroll/flash, and clearing lets the same pinned message be
+  // re-clicked. Clearing earlier would drop a cold deep link on the floor.
+  useEffect(() => {
+    if (highlightMessageId && !isJumpPending) {
+      navigate(`/community/${communityId}/channel/${channelId}`, {
+        replace: true,
+      });
+    }
+  }, [highlightMessageId, isJumpPending, communityId, channelId, navigate]);
 
   // When a pinned thread reply is clicked, we jump to the parent and then open the thread
   useEffect(() => {

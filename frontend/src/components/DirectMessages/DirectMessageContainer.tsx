@@ -41,14 +41,6 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
   const dmNavigate = useNavigate();
   const highlightMessageId = searchParams.get("highlight");
 
-  // Clear highlight param from URL immediately after capturing it.
-  // useJumpToMessage stores it locally for scroll/flash (3s auto-clear).
-  React.useEffect(() => {
-    if (highlightMessageId) {
-      dmNavigate(`/direct-messages?group=${dmGroupId}`, { replace: true });
-    }
-  }, [highlightMessageId, dmGroupId, dmNavigate]);
-
   // Convert DM group members to mention format
   const userMentions: UserMention[] = React.useMemo(() => {
     return dmGroup?.members?.map((member) => ({
@@ -60,6 +52,15 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
 
   // Get messages using the jump-to-message hook (supports anchored mode for notification deep links)
   const messagesHookResult = useJumpToMessage('dm', dmGroupId, highlightMessageId || undefined);
+  const { isJumpPending } = messagesHookResult;
+
+  // Clear the highlight param from the URL once the jump has settled.
+  // useJumpToMessage keeps the id locally for scroll/flash (3s auto-clear).
+  React.useEffect(() => {
+    if (highlightMessageId && !isJumpPending) {
+      dmNavigate(`/direct-messages?group=${dmGroupId}`, { replace: true });
+    }
+  }, [highlightMessageId, isJumpPending, dmGroupId, dmNavigate]);
 
   // Create member list component for the DM group
   const memberListComponent = (
