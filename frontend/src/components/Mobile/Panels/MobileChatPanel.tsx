@@ -34,7 +34,7 @@ import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
-import { MOBILE_CONSTANTS, TOUCH_TARGETS } from '../../../utils/breakpoints';
+import { BACK_SWIPE, TOUCH_TARGETS, getBackGestureEdgeZone } from '../../../utils/breakpoints';
 import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
 import { getDmDisplayName } from '../../../utils/dmHelpers';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
@@ -157,20 +157,63 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   // (inputs, code blocks, horizontally scrollable widgets), or that are mostly
   // vertical (scrolling) are ignored. The SwipeableDrawers render in portals, so
   // touches on them never reach this surface.
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipeGesture({
+  //
+  // In a browser tab the edge zone belongs to the browser's own back gesture.
+  // Installed as a PWA (standalone) there is none, so the dead zone is dropped
+  // and a swipe from the very edge works as back.
+  const backGestureEdgeZone = React.useMemo(() => getBackGestureEdgeZone(), []);
+
+  // Drag-following back swipe (phone only; on tablet swipe-right isn't back).
+  // The screen tracks the finger 1:1 via a direct style write on every
+  // touchmove, so no React re-render per frame, then settles on release. The
+  // transform is cleared entirely afterwards: a lingering transform would turn
+  // this box into the containing block for position:fixed descendants.
+  const swipeSurfaceRef = React.useRef<HTMLDivElement>(null);
+  const dragAxis = React.useRef<'x' | 'y' | null>(null);
+  const followBackSwipe = shouldUseTouchUI && isMobile;
+
+  const handleSwipeProgress = React.useCallback((deltaX: number, deltaY: number) => {
+    const el = swipeSurfaceRef.current;
+    if (!el || !followBackSwipe) return;
+    if (!dragAxis.current) {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (absX < BACK_SWIPE.AXIS_LOCK_DISTANCE && absY < BACK_SWIPE.AXIS_LOCK_DISTANCE) return;
+      // Lock the axis once so a scroll never starts dragging the screen sideways.
+      dragAxis.current = absX > absY * BACK_SWIPE.AXIS_RATIO ? 'x' : 'y';
+    }
+    if (dragAxis.current !== 'x') return;
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${Math.max(0, deltaX)}px)`;
+    // Leading-edge shadow so the screen reads as a sheet being pulled away.
+    el.style.boxShadow = deltaX > 0 ? '-8px 0 16px rgba(0, 0, 0, 0.25)' : '';
+  }, [followBackSwipe]);
+
+  const handleSwipeEnd = React.useCallback(() => {
+    dragAxis.current = null;
+    const el = swipeSurfaceRef.current;
+    if (!el || !el.style.transform) return;
+    el.style.transition = `transform ${BACK_SWIPE.SETTLE_DURATION}ms ease-out`;
+    el.style.transform = '';
+    el.style.boxShadow = '';
+  }, []);
+
+  const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useSwipeGesture({
     enabled: shouldUseTouchUI,
     onSwipeRight: isMobile ? () => goBack() : undefined,
     onSwipeLeft: () => {
       if (hasMemberList) setShowMemberDrawer(true);
     },
+    onProgress: handleSwipeProgress,
+    onSwipeEnd: handleSwipeEnd,
     isExempt: isSwipeExemptTarget,
     ignoreEdgeSwipes: true,
-    edgeZone: MOBILE_CONSTANTS.EDGE_BACK_GESTURE_ZONE,
+    edgeZone: backGestureEdgeZone,
     // Require horizontal displacement to clearly dominate vertical so ordinary
     // vertical scrolling never navigates.
     directionRatio: 1.5,
   });
-  const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd };
+  const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 
   // Determine title
   let title = '';
@@ -238,7 +281,11 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      ref={swipeSurfaceRef}
+      data-testid="mobile-chat-swipe-surface"
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
       {/* App bar with back button */}
       <MobileAppBar
         title={title}

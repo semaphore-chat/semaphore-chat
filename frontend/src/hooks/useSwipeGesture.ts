@@ -25,12 +25,18 @@ interface SwipeGestureOptions {
   onSwipeUp?: (velocity: number) => void;
   onSwipeDown?: (velocity: number) => void;
 
-  // Progress callback (called during swipe)
+  // Progress callback, called on every touchmove with the live deltas so the
+  // UI can follow the finger. Not called for gestures that are exempt or that
+  // started in an ignored edge zone.
   onProgress?: (deltaX: number, deltaY: number, progress: number) => void;
+  // Called once when a gesture ends (touchend or touchcancel) with the swipe
+  // direction that was committed, or null when it didn't commit. Pair with
+  // onProgress to reset or settle a drag-following transform.
+  onSwipeEnd?: (direction: SwipeDirection | null) => void;
 
   // Edge swipe detection
   onEdgeSwipeStart?: (edge: 'left' | 'right') => void;
-  edgeZone?: number; // Pixels from edge to detect edge swipe
+  edgeZone?: number; // Pixels from edge to detect edge swipe (0 = no edge zone)
   // When true, a swipe that STARTS within `edgeZone` of the left/right edge is
   // ignored entirely (no directional callbacks fire). Used to avoid fighting the
   // browser's native edge back-gesture.
@@ -69,6 +75,7 @@ export const useSwipeGesture = (options: SwipeGestureOptions = {}) => {
     onSwipeUp,
     onSwipeDown,
     onProgress,
+    onSwipeEnd,
     onEdgeSwipeStart,
     edgeZone = MOBILE_CONSTANTS.EDGE_SWIPE_ZONE,
     ignoreEdgeSwipes = false,
@@ -102,10 +109,12 @@ export const useSwipeGesture = (options: SwipeGestureOptions = {}) => {
 
     // Detect edge swipe
     let edge: 'left' | 'right' | null = null;
-    if (touch.clientX <= edgeZone) {
-      edge = 'left';
-    } else if (touch.clientX >= screenWidth - edgeZone) {
-      edge = 'right';
+    if (edgeZone > 0) {
+      if (touch.clientX <= edgeZone) {
+        edge = 'left';
+      } else if (touch.clientX >= screenWidth - edgeZone) {
+        edge = 'right';
+      }
     }
 
     swipeState.current = {
@@ -142,28 +151,40 @@ export const useSwipeGesture = (options: SwipeGestureOptions = {}) => {
       swipeState.current.isSwiping = true;
     }
 
-    // Call progress callback
-    if (onProgress) {
+    // Report live progress, unless this gesture will be ignored at touchend
+    // anyway (exempt content, or the browser's edge back-gesture zone).
+    const { isExempt: gestureExempt, startedFromEdge } = swipeState.current;
+    if (onProgress && !gestureExempt && !(ignoreEdgeSwipes && startedFromEdge)) {
       onProgress(deltaX, deltaY, progress);
     }
-  }, [enabled, threshold, onProgress]);
+  }, [enabled, threshold, onProgress, ignoreEdgeSwipes]);
+
+  const resetGesture = useCallback(() => {
+    touchStart.current = null;
+    touchEnd.current = null;
+    swipeState.current = { startedFromEdge: null, isSwiping: false, isExempt: false };
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
     const { startedFromEdge, isExempt: gestureExempt } = swipeState.current;
 
-    if (!enabled || !touchStart.current || !touchEnd.current) {
-      touchStart.current = null;
-      touchEnd.current = null;
-      swipeState.current = { startedFromEdge: null, isSwiping: false, isExempt: false };
+    // No active gesture (never started, disabled, or already cancelled).
+    if (!touchStart.current) {
+      resetGesture();
+      return;
+    }
+
+    if (!enabled || !touchEnd.current) {
+      resetGesture();
+      onSwipeEnd?.(null);
       return;
     }
 
     // Bail if the gesture started on exempt content, or (when configured) within
     // the edge back-gesture zone — no directional callbacks fire.
     if (gestureExempt || (ignoreEdgeSwipes && startedFromEdge)) {
-      touchStart.current = null;
-      touchEnd.current = null;
-      swipeState.current = { startedFromEdge: null, isSwiping: false, isExempt: false };
+      resetGesture();
+      onSwipeEnd?.(null);
       return;
     }
 
@@ -216,11 +237,17 @@ export const useSwipeGesture = (options: SwipeGestureOptions = {}) => {
       }
     }
 
-    // Reset state
-    touchStart.current = null;
-    touchEnd.current = null;
-    swipeState.current = { startedFromEdge: null, isSwiping: false, isExempt: false };
-  }, [enabled, threshold, velocityThreshold, directionRatio, ignoreEdgeSwipes, onSwipe, onSwipeLeft, onSwipeRight, onSwipeUp, onSwipeDown]);
+    resetGesture();
+    onSwipeEnd?.(direction);
+  }, [enabled, threshold, velocityThreshold, directionRatio, ignoreEdgeSwipes, onSwipe, onSwipeLeft, onSwipeRight, onSwipeUp, onSwipeDown, onSwipeEnd, resetGesture]);
+
+  // The system took the touch (scroll, call, multi-touch): end the gesture
+  // without firing a swipe.
+  const handleTouchCancel = useCallback(() => {
+    const wasActive = !!touchStart.current;
+    resetGesture();
+    if (wasActive) onSwipeEnd?.(null);
+  }, [onSwipeEnd, resetGesture]);
 
   // Getter for current swipe state
   const getSwipeState = useCallback(() => ({
@@ -233,6 +260,7 @@ export const useSwipeGesture = (options: SwipeGestureOptions = {}) => {
     onTouchStart: handleTouchStart,
     onTouchMove: handleTouchMove,
     onTouchEnd: handleTouchEnd,
+    onTouchCancel: handleTouchCancel,
     getSwipeState,
   };
 };

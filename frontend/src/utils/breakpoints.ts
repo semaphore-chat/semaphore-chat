@@ -61,6 +61,43 @@ export const MOBILE_CONSTANTS = {
 } as const;
 
 /**
+ * Whether the app runs as an installed PWA (`display-mode: standalone`, or the
+ * legacy iOS `navigator.standalone` flag). Side-effect free; safe where
+ * `matchMedia` is missing (SSR, jsdom).
+ */
+export const isStandaloneDisplayMode = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const mql = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(display-mode: standalone)')
+    : null;
+  if (mql?.matches) return true;
+  return (
+    typeof navigator !== 'undefined' &&
+    (navigator as Navigator & { standalone?: boolean }).standalone === true
+  );
+};
+
+/**
+ * Width of the left/right dead zone for in-app navigation swipes. In a browser
+ * tab the browser owns the edge back-gesture, so swipes starting there are left
+ * alone. An installed (standalone) PWA has no browser chrome and no competing
+ * edge gesture, so the dead zone is dropped and a swipe from the very edge
+ * works as "back".
+ */
+export const getBackGestureEdgeZone = (): number =>
+  isStandaloneDisplayMode() ? 0 : MOBILE_CONSTANTS.EDGE_BACK_GESTURE_ZONE;
+
+/**
+ * Drag-following back swipe (MobileChatPanel): how the screen settles once
+ * the finger lifts.
+ */
+export const BACK_SWIPE = {
+  SETTLE_DURATION: 200, // ms, snap-back / release animation
+  AXIS_LOCK_DISTANCE: 10, // px of movement before the drag commits to an axis
+  AXIS_RATIO: 1.5, // horizontal must beat vertical by this much to follow
+} as const;
+
+/**
  * Touch target sizes (accessibility)
  */
 export const TOUCH_TARGETS = {
