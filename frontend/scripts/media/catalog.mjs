@@ -45,7 +45,7 @@ export const SHOTS = [
   {
     name: 'community-roles-desktop', story: 'tour--community-roles', viewport: 'desktop', section: 'Communities & roles', readme: true,
     caption: 'Roles with granular permissions',
-    alt: 'The Roles tab of the Lumen Studio community settings, listing Owner, Moderator, Release Manager, Designer and Member roles with their permissions.',
+    alt: 'The Roles tab of the Lumen Studio community settings, listing the default Community Admin, Moderator and Member roles and the custom Release Manager and Designer roles, with their permissions.',
   },
   {
     name: 'chat-light-desktop', story: 'tour--chat-light', viewport: 'desktop', section: 'Themes', readme: true,
@@ -55,7 +55,7 @@ export const SHOTS = [
   {
     name: 'notifications-desktop', story: 'tour--notifications', viewport: 'desktop', section: 'Chat',
     caption: 'Mentions, replies and DMs in one notifications inbox',
-    alt: 'The notifications page listing mentions, a thread reply and a direct message.',
+    alt: 'The notifications page listing direct messages, a mention and a thread reply.',
   },
   {
     name: 'dms-light-desktop', story: 'tour--dms-light', viewport: 'desktop', section: 'Themes',
@@ -75,7 +75,7 @@ export const SHOTS = [
   {
     name: 'community-phone', story: 'tour--community', viewport: 'phone', section: 'Mobile & PWA',
     caption: 'Channel list with unread badges and who is in voice',
-    alt: 'The Lumen Studio channel list on a phone, with unread badges and the people currently in the Standup voice channel.',
+    alt: 'The Lumen Studio channel list on a phone, with unread badges and the people currently in the Lounge and Standup voice channels.',
   },
   {
     name: 'thread-phone', story: 'tour--thread', viewport: 'phone', section: 'Threads & replies',
@@ -95,7 +95,7 @@ export const SHOTS = [
   {
     name: 'members-phone', story: 'tour--members', viewport: 'phone', section: 'Communities & roles',
     caption: 'Members grouped by role and online status',
-    alt: 'The member list on a phone, grouped into owner, moderators, online and offline members.',
+    alt: 'The member list on a phone, grouped by role (Community Admin, Moderator, Release Manager, Designer) and online status.',
   },
 ];
 
@@ -108,6 +108,6 @@ export const VIDEOS = [
   {
     name: 'tour', file: 'video/tour.mp4', poster: 'video/tour-poster.webp', section: 'Tour',
     caption: 'A 40-second tour of Semaphore Chat',
-    alt: 'A guided tour: chatting and reacting in a channel, a thread, group DMs, a voice channel with people speaking, and the app on a phone.',
+    alt: 'A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, and the app on a phone.',
   },
 ];

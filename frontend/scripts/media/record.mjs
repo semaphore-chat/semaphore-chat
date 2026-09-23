@@ -137,6 +137,14 @@ function makeActor(page) {
       await sleep(pause);
       await actor.click();
     },
+    /** Touch: tap the centre of a locator without travelling across the page first. */
+    async tap(locator, { pause = 120 } = {}) {
+      const box = await locator.boundingBox();
+      if (!box) throw new Error(`tap: ${locator} has no box`);
+      await actor.place(box.x + box.width / 2, box.y + box.height / 2);
+      await sleep(pause);
+      await actor.click();
+    },
     /** Type like a person: 45–120 ms per key, longer after spaces and punctuation. */
     async type(text) {
       let i = 0;
@@ -160,6 +168,34 @@ function makeActor(page) {
 
 const DEV = { channelId: 'ch-dev' };
 
+/** What gets said in the tour's scenes (shared with the catch-up steps below). */
+const TOUR_TEXT = {
+  merged: 'Merged! Thanks for the quick reviews, everyone 🎉',
+  staging: 'Nice 🚀 deploying to staging now',
+  standup: 'On my way to standup 🏃',
+  seeYou: 'See you there!',
+};
+
+// The tour plays as one continuous session, but every scene is a fresh page.
+// These replay what earlier scenes did (through window.__showcase, before the
+// clip starts) so a later scene doesn't lose sent messages or show badges for
+// conversations already read. Ids: see src/stories/fixtures/showcase.ts.
+const afterTourChat = async (actor) => {
+  await actor.showcase('say', 'alex', DEV, TOUR_TEXT.merged, {
+    reactions: [
+      { emoji: '🎉', userIds: ['u-priya', 'u-aiko'] },
+      { emoji: '🙌', userIds: ['u-marcus'] },
+    ],
+  });
+  await actor.showcase('say', 'marcus', DEV, TOUR_TEXT.staging);
+  await actor.showcase('react', 'alex', 'sc-dev-ci-green', '💚', DEV);
+};
+const afterTourDms = (actor) => actor.showcase('read', { dmId: 'dm-priya' });
+const afterTourPhone = async (actor) => {
+  await actor.showcase('say', 'alex', DEV, TOUR_TEXT.standup);
+  await actor.showcase('say', 'aiko', DEV, TOUR_TEXT.seeYou);
+};
+
 /** #dev: type + send a message, teammates react and reply, +1 a reaction, open the thread (`long`: a longer message, for the tour). */
 async function chatScene({ page, actor, start }, { long = false } = {}) {
   const composer = page.locator('textarea').first();
@@ -171,7 +207,7 @@ async function chatScene({ page, actor, start }, { long = false } = {}) {
   await actor.clickOn(composer, { dx: -cbox.width * 0.3, moveMs: 700, pause: 120 });
   // Drift off the text like a person does before typing.
   await actor.move(actor.pos.x + 190, actor.pos.y + 14, 300);
-  await actor.type(long ? 'Merged! Thanks for the quick reviews, everyone 🎉' : 'Merged, thanks all 🎉');
+  await actor.type(long ? TOUR_TEXT.merged : 'Merged, thanks all 🎉');
   await sleep(200);
   await page.keyboard.press('Enter');
   await sleep(450);
@@ -190,7 +226,7 @@ async function chatScene({ page, actor, start }, { long = false } = {}) {
   await actor.showcase('typing', 'marcus', DEV, true);
   await sleep(900);
   await actor.showcase('typing', 'marcus', DEV, false);
-  await actor.showcase('say', 'marcus', DEV, 'Nice 🚀 deploying to staging now');
+  await actor.showcase('say', 'marcus', DEV, TOUR_TEXT.staging);
   await sleep(450);
   // +1 Grace's "CI is green" reaction.
   const green = page.locator('.MuiChip-root', { hasText: '💚' }).first();
@@ -207,7 +243,8 @@ async function chatScene({ page, actor, start }, { long = false } = {}) {
 /** Connected to the Lounge: people take turns talking; the cursor drifts over the stage. */
 async function voiceScene({ actor, start }, { ms = 5200 } = {}) {
   await actor.place(1000, 720);
-  await actor.showcase('conversation', ['priya', 'marcus', 'aiko'], 1100);
+  // The people already in the Lounge (`showcaseLoungeCrew` in src/stories/fixtures/showcase.ts).
+  await actor.showcase('conversation', ['priya', 'diego', 'chloe'], 1100);
   await sleep(300);
   await start();
   await sleep(600);
@@ -238,20 +275,22 @@ async function dmScene({ page, actor, start }) {
   await sleep(1700);
 }
 
-/** Phone: type and send in #dev, then open the thread. */
+/** Phone: tap the composer, send "on my way to standup" in #dev, Aiko answers. */
 async function phoneScene({ page, actor, start }) {
   const composer = page.locator('textarea').first();
-  await actor.place(200, 500);
+  // A finger doesn't hover: keep the (invisible) pointer on the app bar and
+  // jump straight to each tap, so no message row shows a hover highlight.
+  await actor.place(195, 20);
   await start();
   await sleep(500);
-  await actor.clickOn(composer, { moveMs: 600 });
+  await actor.tap(composer);
   await sleep(300);
-  await actor.type('On my way to standup 🏃');
+  await actor.type(TOUR_TEXT.standup);
   await sleep(250);
   // On touch layouts Enter inserts a newline; tap the send button like a person would.
-  await actor.clickOn(page.locator('button:has([data-testid="SendIcon"])').last(), { moveMs: 450 });
+  await actor.tap(page.locator('button:has([data-testid="SendIcon"])').last());
   await sleep(900);
-  await actor.showcase('say', 'aiko', DEV, 'See you there!');
+  await actor.showcase('say', 'aiko', DEV, TOUR_TEXT.seeYou);
   await sleep(1500);
 }
 
@@ -268,9 +307,13 @@ const SCENES = [
   { name: 'hero-voice', story: 'tour--voice', viewport: 'desktop', run: (c) => voiceScene(c, { ms: 4000 }) },
   { name: 'tour-chat', story: 'tour--chat', viewport: 'desktop', run: (c) => chatScene(c, { long: true }) },
   { name: 'tour-dms', story: 'tour--dm-list', viewport: 'desktop', run: dmScene },
-  { name: 'tour-voice', story: 'tour--voice', viewport: 'desktop', run: (c) => voiceScene(c, { ms: 5000 }) },
-  { name: 'tour-phone', story: 'tour--chat', viewport: 'phone', run: phoneScene },
-  { name: 'tour-light', story: 'tour--chat-light', viewport: 'desktop', run: lightScene },
+  // (#dev isn't on screen in the voice scene; replaying the chat there would only mark #dev unread.)
+  { name: 'tour-voice', story: 'tour--voice', viewport: 'desktop', before: [afterTourDms], run: (c) => voiceScene(c, { ms: 5000 }) },
+  { name: 'tour-phone', story: 'tour--chat', viewport: 'phone', before: [afterTourChat, afterTourDms], run: phoneScene },
+  {
+    name: 'tour-light', story: 'tour--chat-light', viewport: 'desktop',
+    before: [afterTourChat, afterTourDms, afterTourPhone], run: lightScene,
+  },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -312,6 +355,10 @@ async function recordScene(browser, scene) {
     await page.goto(storyUrl(scene.story), { waitUntil: 'networkidle', timeout: 45_000 });
     await waitForSettled(page, { settleMs: 1500 });
     await page.waitForFunction(() => !!window.__showcase, null, { timeout: 10_000 });
+    if (scene.before?.length) {
+      for (const step of scene.before) await step(actor);
+      await sleep(1200);
+    }
     await scene.run({
       page,
       actor,

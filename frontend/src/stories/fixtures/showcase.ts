@@ -96,7 +96,7 @@ const PERSONAS: Persona[] = [
     look: { skin: SKIN.olive, hair: 'bun', hairColor: HAIR.darkBrown, bg: ['#E4DAFF', '#B49CFF'], shirt: '#12B886', earrings: true },
   },
   {
-    id: 'u-diego', username: 'diego', displayName: 'Diego Alvarez', status: 'Writing landing page copy',
+    id: 'u-diego', username: 'diego', displayName: 'Diego Alvarez', status: 'Blog post graphics 🎨',
     look: { skin: SKIN.tan, hair: 'wavy', hairColor: HAIR.darkBrown, bg: ['#FFE7C2', '#FFC06B'], shirt: '#2D2446', beard: true },
   },
   {
@@ -221,8 +221,12 @@ export const showcaseChannels = {
 const C = showcaseChannels;
 
 const lumenMembers = [me, ...users];
-const trailMembers = [me, U.tomas, U.grace, U.noah, U.zara, U.mateo, U.chloe];
-const synthMembers = [me, U.kwame, U.diego, U.aiko, U.mateo];
+// Tomás runs the hiking community and Kwame the synth one; Alex just joined them.
+const trailMembers = [U.tomas, me, U.grace, U.noah, U.zara, U.mateo, U.chloe];
+const synthMembers = [U.kwame, me, U.diego, U.aiko, U.mateo];
+
+/** How long ago (days) each community was created — its creator joined that day. */
+const COMMUNITY_AGE_DAYS = 400;
 
 function community(
   id: string,
@@ -231,6 +235,7 @@ function community(
   glyph: 'lumen' | 'trail' | 'synth',
   banner: [string, string],
   channels: Channel[],
+  /** Creator first (the community's owner / Community Admin). */
   members: ScenarioUser[],
 ): ScenarioCommunity {
   return {
@@ -239,10 +244,10 @@ function community(
     description,
     avatar: registerShowcaseFile(`sc-community-${glyph}`, () => communityIconSvg(glyph)),
     banner: registerShowcaseFile(`sc-community-banner-${glyph}`, () => bannerSvg(banner[0], banner[1])),
-    createdAt: at('09:00', 400),
+    createdAt: at('09:00', COMMUNITY_AGE_DAYS),
     channels,
     memberIds: members.map((u) => u.id),
-    ownerId: me.id,
+    ownerId: members[0].id,
   };
 }
 
@@ -335,7 +340,10 @@ const devMessages: Message[] = [
     lastReplyAt: at('14:41'),
   }),
   msg(dev, me, at('14:43'), [mention(U.marcus), text(' approved ✅ merging as soon as CI is green')]),
-  msg(dev, U.grace, at('14:47'), 'CI is green on all three runners 🟢', { reactions: [react('💚', U.marcus, U.samira, U.priya)] }),
+  msg(dev, U.grace, at('14:47'), 'CI is green on all three runners 🟢', {
+    id: 'sc-dev-ci-green',
+    reactions: [react('💚', U.marcus, U.samira, U.priya)],
+  }),
 ];
 
 const threadReplies: Message[] = [
@@ -346,6 +354,7 @@ const threadReplies: Message[] = [
   }),
   msg(dev, U.aiko, at('14:29'), "I'll do a final QA pass on iOS and Android tonight 📱", { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
   msg(dev, U.samira, at('14:33'), "Perfect. I'll draft the changelog and tag the release Thursday morning", {
+    id: 'sc-thread-changelog',
     parentMessageId: SHOWCASE_THREAD_PARENT_ID,
   }),
   msg(dev, me, at('14:41'), 'Ship it 🚀', {
@@ -381,16 +390,51 @@ const designMessages: Message[] = [
     reactions: [react('🎨', U.diego, U.chloe)],
   }),
   msg(design, U.diego, at('11:12'), 'The coral + violet combo is 🔥 maybe a touch less saturation on the green?'),
-  msg(design, U.priya, at('11:20'), [mention(me), text(' can we use the violet as the default accent in the app too?')]),
+  msg(design, U.priya, at('11:20'), [mention(me), text(' can we use the violet as the default accent in the app too?')], {
+    id: 'sc-design-accent',
+  }),
 ];
 
 const announcements = { channelId: C.announcements.id };
-const announcementMessages: Message[] = [
-  msg(announcements, U.samira, at('09:30', 1), [
-    text('Lumen 2.3.2 is out 🎉', { bold: true }),
-    text(' Faster uploads, fixed notification sounds on Android, and a much nicer settings page. Full notes in #dev.'),
-  ], { reactions: [react('🎉', U.marcus, U.priya, U.aiko, U.grace, U.tomas, me)], pinned: true }),
-];
+const releaseAnnouncement = msg(announcements, U.samira, at('09:30', 1), [
+  text('Lumen 2.3.2 is out 🎉', { bold: true }),
+  text(' Faster uploads, fixed notification sounds on Android, and a much nicer settings page. Full notes are on the blog.'),
+], {
+  reactions: [react('🎉', U.marcus, U.priya, U.aiko, U.grace, U.tomas, me)],
+  pinned: true,
+  pinnedAt: at('09:31', 1),
+  pinnedBy: U.samira.id,
+});
+const announcementMessages: Message[] = [releaseAnnouncement];
+
+/** The pins panel's view of the pinned announcement (same message). */
+const pinnedByChannel: Scenario['pinnedByChannel'] = {
+  [C.announcements.id]: [
+    {
+      id: releaseAnnouncement.id,
+      channelId: C.announcements.id,
+      directMessageGroupId: null,
+      authorId: U.samira.id,
+      spans: releaseAnnouncement.spans as never,
+      reactions: releaseAnnouncement.reactions as never,
+      sentAt: releaseAnnouncement.sentAt,
+      editedAt: null,
+      deletedAt: null,
+      pinned: true,
+      pinnedAt: at('09:31', 1),
+      pinnedBy: U.samira.id,
+      replyCount: 0,
+      lastReplyAt: null,
+      searchText: null,
+      pendingAttachments: 0,
+      deletedBy: null,
+      deletedByReason: null,
+      parentMessageId: null,
+      attachments: [],
+      author: { id: U.samira.id, username: U.samira.username, displayName: U.samira.displayName, avatarUrl: U.samira.avatarUrl },
+    } as Scenario['pinnedByChannel'][string][number],
+  ],
+};
 
 const random = { channelId: C.random.id };
 const randomMessages: Message[] = [
@@ -406,7 +450,7 @@ const messagesByChannel: Record<string, Message[]> = {
   [C.random.id]: randomMessages,
   [C.lounge.id]: [],
   [C.standup.id]: [],
-  'tr-general': [msg({ channelId: 'tr-general' }, U.grace, at('10:10'), 'Who is in for the ridge loop on Saturday? 🥾')],
+  'tr-general': [msg({ channelId: 'tr-general' }, U.grace, at('10:10'), 'Who is in for the ridge loop on Saturday? 🥾', { id: 'sc-trail-ridge' })],
   'tr-trips': [],
   'tr-photos': [],
   'tr-campfire': [],
@@ -449,23 +493,41 @@ const dmKwame = { dmId: 'dm-kwame' };
 
 const messagesByDmGroup: Record<string, Message[]> = {
   [SHOWCASE_DM_LAUNCH]: [
-    msg(dmLaunch, U.samira, at('17:10', 1), 'Launch checklist is pinned in #announcements, shout if I missed anything'),
+    msg(dmLaunch, U.samira, at('17:10', 1), 'Launch checklist is in the release doc, shout if I missed anything'),
     msg(dmLaunch, U.aiko, at('17:24', 1), 'Looks complete to me 👌'),
     msg(dmLaunch, U.diego, at('17:31', 1), "Blog post draft is ready too, I'll share it in the morning ✍️"),
     msg(dmLaunch, U.samira, at('14:55'), 'Status check for Thursday: ✅ QA plan ✅ release notes ⏳ changelog sign-off'),
-    msg(dmLaunch, U.diego, at('15:02'), 'Landing page copy is final, preview link is in the doc', { reactions: [react('🎉', U.samira, U.aiko)] }),
-    msg(dmLaunch, U.aiko, at('15:05'), 'Store screenshots updated for 2.4 📸', { reactions: [react('🙌', U.samira, U.diego)] }),
-    msg(dmLaunch, U.samira, at('15:12'), [mention(me), text(' can you sign off on the changelog before Thursday?')]),
+    msg(dmLaunch, U.diego, at('15:02'), 'Landing page copy is final, preview link is in the doc', {
+      id: 'sc-dm-launch-copy',
+      reactions: [react('🎉', U.samira, U.aiko)],
+    }),
+    msg(dmLaunch, U.aiko, at('15:05'), 'Store screenshots updated for 2.4 📸', {
+      id: 'sc-dm-launch-screens',
+      reactions: [react('🙌', U.samira, U.diego)],
+    }),
+    msg(dmLaunch, U.samira, at('15:12'), [mention(me), text(' can you sign off on the changelog before Thursday?')], {
+      id: 'sc-dm-launch-signoff',
+    }),
   ],
   [SHOWCASE_DM_PRIYA]: [
+    // Yesterday: the empty states she shares in #dev today (13:40). Enough
+    // history that the conversation scrolls, like a real 1:1 would.
+    msg(dmPriya, U.priya, at('10:12', 1), 'morning! are we keeping the old onboarding illustrations for 2.4?'),
+    msg(dmPriya, me, at('10:20', 1), 'only the welcome one, the rest can go'),
+    msg(dmPriya, U.priya, at('10:21', 1), 'yesss 🎨'),
+    msg(dmPriya, U.priya, at('16:05', 1), 'first pass at the empty states, still rough but you get the idea'),
+    msg(dmPriya, me, at('16:30', 1), 'love the direction, the channel one especially'),
+    msg(dmPriya, U.priya, at('16:31', 1), 'that one took the longest 😅'),
+    msg(dmPriya, me, at('16:32', 1), 'can you share them in #dev tomorrow so the team can weigh in?'),
+    msg(dmPriya, U.priya, at('16:33', 1), 'will do 👍'),
     msg(dmPriya, U.priya, at('13:30'), 'hey! do you have 5 minutes later to look at the onboarding copy?'),
-    msg(dmPriya, me, at('13:32'), 'sure, right after standup?'),
+    msg(dmPriya, me, at('13:32'), 'sure, after standup this afternoon?'),
     msg(dmPriya, U.priya, at('13:33'), 'perfect 🙏'),
-    msg(dmPriya, U.priya, at('15:20'), 'sent you the Figma link, no rush'),
-    msg(dmPriya, U.priya, at('15:21'), 'also… I may have made three more illustrations 😅'),
+    msg(dmPriya, U.priya, at('15:20'), 'sent you the Figma link, no rush', { id: 'sc-dm-priya-figma' }),
+    msg(dmPriya, U.priya, at('15:21'), 'also… I may have made three more illustrations 😅', { id: 'sc-dm-priya-illustrations' }),
   ],
   'dm-marcus': [
-    msg(dmMarcus, U.marcus, at('11:02'), 'pairing tomorrow at 10 still good?'),
+    msg(dmMarcus, U.marcus, at('11:02'), 'pairing tomorrow at 10 still good?', { id: 'sc-dm-marcus-pairing' }),
     msg(dmMarcus, me, at('11:05'), '👍 I’ll bring coffee'),
   ],
   'dm-grace': [
@@ -487,45 +549,60 @@ const dmGroups: Scenario['dmGroups'] = [
 // Notifications, friends, roles, voice
 // ─────────────────────────────────────────────────────────────────────────
 
-function notification(
-  i: number,
-  type: NotificationDto['type'],
-  author: ScenarioUser,
-  time: string,
-  spans: Span[],
-  where: { channelId?: string; dmId?: string; communityId?: string },
-  read = false,
-): NotificationDto {
+const everyMessage = (): Message[] => [
+  ...Object.values(messagesByChannel).flat(),
+  ...threadReplies,
+  ...Object.values(messagesByDmGroup).flat(),
+];
+
+/** A notification for a message that exists in the scenario (same author, text, time and context). */
+function notification(type: NotificationDto['type'], messageId: string, read = false): NotificationDto {
+  const m = everyMessage().find((x) => x.id === messageId);
+  if (!m) throw new Error(`showcase notification: no message ${messageId}`);
+  const author = [me, ...users].find((u) => u.id === m.authorId)!;
+  const communityId = m.channelId ? (communities.find((c) => c.channels.some((ch) => ch.id === m.channelId))?.id ?? null) : null;
   return {
-    id: `sc-notif-${i}`,
+    id: `sc-notif-${m.id}`,
     type,
     userId: me.id,
-    messageId: `sc-notif-msg-${i}`,
-    channelId: where.channelId ?? null,
-    directMessageGroupId: where.dmId ?? null,
-    communityId: where.communityId ?? null,
+    messageId: m.id,
+    channelId: m.channelId ?? null,
+    directMessageGroupId: m.directMessageGroupId ?? null,
+    communityId,
     authorId: author.id,
-    parentMessageId: null,
+    parentMessageId: m.parentMessageId ?? null,
     read,
     dismissed: false,
-    createdAt: time,
+    createdAt: m.sentAt,
     author: { id: author.id, username: author.username, displayName: author.displayName, avatarUrl: author.avatarUrl },
     message: {
-      id: `sc-notif-msg-${i}`,
-      spans: spans as never,
-      channelId: where.channelId ?? null,
-      directMessageGroupId: where.dmId ?? null,
+      id: m.id,
+      spans: m.spans as never,
+      channelId: m.channelId ?? null,
+      directMessageGroupId: m.directMessageGroupId ?? null,
     },
   };
 }
 
+/**
+ * What the backend would have created (notifications.service.ts): one
+ * DIRECT_MESSAGE per DM message — a mention inside a DM is still
+ * DIRECT_MESSAGE — a USER_MENTION for the channel mention, a THREAD_REPLY for
+ * the watched release thread. Unread ones match the unread DMs/mention below
+ * (bell = 2 + 3 + 1); older read ones were cleared from the inbox. Newest
+ * first, like the API.
+ */
 const notifications: NotificationDto[] = [
-  notification(1, 'DIRECT_MESSAGE', U.priya, at('15:21'), [text('also… I may have made three more illustrations 😅')], { dmId: SHOWCASE_DM_PRIYA }),
-  notification(2, 'USER_MENTION', U.samira, at('15:12'), [mention(me), text(' can you sign off on the changelog before Thursday?')], { dmId: SHOWCASE_DM_LAUNCH }),
-  notification(3, 'USER_MENTION', U.priya, at('11:20'), [mention(me), text(' can we use the violet as the default accent in the app too?')], { channelId: C.design.id, communityId: LUMEN }),
-  notification(4, 'THREAD_REPLY', U.samira, at('14:33'), [text("Perfect. I'll draft the changelog and tag the release Thursday morning")], { channelId: C.dev.id, communityId: LUMEN }, true),
-  notification(5, 'CHANNEL_MESSAGE', U.grace, at('10:10'), [text('Who is in for the ridge loop on Saturday? 🥾')], { channelId: 'tr-general', communityId: TRAIL }, true),
-];
+  notification('DIRECT_MESSAGE', 'sc-dm-priya-illustrations'),
+  notification('DIRECT_MESSAGE', 'sc-dm-priya-figma'),
+  notification('DIRECT_MESSAGE', 'sc-dm-launch-signoff'),
+  notification('DIRECT_MESSAGE', 'sc-dm-launch-screens'),
+  notification('DIRECT_MESSAGE', 'sc-dm-launch-copy'),
+  notification('THREAD_REPLY', 'sc-thread-changelog', true),
+  notification('USER_MENTION', 'sc-design-accent'),
+  notification('DIRECT_MESSAGE', 'sc-dm-marcus-pairing', true),
+  notification('CHANNEL_MESSAGE', 'sc-trail-ridge', true),
+].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
 const friendships = [U.priya, U.marcus, U.aiko, U.grace, U.kwame, U.chloe].map((u, i) =>
   createFriendship({
@@ -539,59 +616,105 @@ const friendships = [U.priya, U.marcus, U.aiko, U.grace, U.kwame, U.chloe].map((
   }),
 );
 
-function role(communityId: string, name: string, actions: RoleDto['actions'], position: number): RoleDto {
-  return { id: `role-${name.toLowerCase().replace(/\W+/g, '-')}-${communityId}`, name, actions, createdAt: at('09:00', 400), isDefault: name === 'Member', position };
+/** `DEFAULT_MODERATOR_ROLE` (backend/src/roles/default-roles.config.ts). */
+const MODERATOR_ACTIONS: RoleDto['actions'] = [
+  'READ_COMMUNITY', 'READ_CHANNEL', 'READ_MEMBER', 'READ_MESSAGE', 'READ_ROLE', 'CREATE_MESSAGE', 'DELETE_MESSAGE',
+  'CREATE_CHANNEL', 'UPDATE_CHANNEL', 'JOIN_CHANNEL', 'CREATE_MEMBER', 'UPDATE_MEMBER', 'CREATE_REACTION',
+  'DELETE_REACTION', 'READ_ALIAS_GROUP', 'READ_ALIAS_GROUP_MEMBER', 'CAPTURE_REPLAY', 'KICK_USER', 'TIMEOUT_USER',
+  'PIN_MESSAGE', 'UNPIN_MESSAGE', 'DELETE_ANY_MESSAGE', 'VIEW_BAN_LIST', 'MUTE_PARTICIPANT', 'READ_SOUNDBOARD_SOUND',
+  'CREATE_SOUNDBOARD_SOUND', 'DELETE_SOUNDBOARD_SOUND',
+];
+
+/**
+ * Like the real backend: every community gets the default "Community Admin",
+ * "Moderator" and "Member" roles (isDefault, created with the community;
+ * `createDefaultCommunityRoles`), and the creator is its Community Admin.
+ * Lumen Studio added two custom roles later.
+ */
+function role(
+  communityId: string,
+  name: string,
+  actions: RoleDto['actions'],
+  position: number,
+  custom?: { createdDaysAgo: number },
+): RoleDto {
+  return {
+    id: `role-${name.toLowerCase().replace(/\W+/g, '-')}-${communityId}`,
+    name,
+    actions,
+    createdAt: at('09:00', custom?.createdDaysAgo ?? COMMUNITY_AGE_DAYS),
+    isDefault: !custom,
+    position,
+  };
 }
 
 const rolesByCommunity: Record<string, RoleDto[]> = {};
 const membershipsByCommunity: Record<string, MembershipResponseDto[]> = {};
 for (const c of communities) {
-  const owner = role(c.id, 'Owner', ADMIN_ACTIONS, 0);
-  const moderator = role(c.id, 'Moderator', ADMIN_ACTIONS.filter((a) => !/COMMUNITY|ROLE/.test(a)), 1);
-  const release = role(c.id, 'Release Manager', [...MEMBER_ACTIONS, 'PIN_MESSAGE', 'UNPIN_MESSAGE', 'CREATE_INVITE'], 2);
-  const designer = role(c.id, 'Designer', [...MEMBER_ACTIONS, 'MANAGE_EMOJIS', 'CREATE_SOUNDBOARD_SOUND'], 3);
-  const member = role(c.id, 'Member', MEMBER_ACTIONS, 4);
-  rolesByCommunity[c.id] = [owner, moderator, release, designer, member];
+  const admin = role(c.id, 'Community Admin', ADMIN_ACTIONS, 10);
+  const moderator = role(c.id, 'Moderator', MODERATOR_ACTIONS, 20);
+  const member = role(c.id, 'Member', MEMBER_ACTIONS, 100);
+  const isLumen = c.id === LUMEN;
+  const release = role(c.id, 'Release Manager', [...MEMBER_ACTIONS, 'PIN_MESSAGE', 'UNPIN_MESSAGE', 'CREATE_INVITE'], 30, { createdDaysAgo: 142 });
+  const designer = role(c.id, 'Designer', [...MEMBER_ACTIONS, 'MANAGE_EMOJIS', 'CREATE_SOUNDBOARD_SOUND'], 40, { createdDaysAgo: 96 });
+  rolesByCommunity[c.id] = isLumen ? [admin, moderator, release, designer, member] : [admin, moderator, member];
   membershipsByCommunity[c.id] = c.memberIds.map((id, i) => {
     const user = id === me.id ? me : users.find((u) => u.id === id)!;
     const roles =
-      id === me.id
-        ? [owner]
-        : id === U.grace.id || id === U.marcus.id
-          ? [moderator]
-          : id === U.samira.id
-            ? [release]
-            : id === U.priya.id || id === U.diego.id
-              ? [designer]
-              : [member];
+      id === c.ownerId
+        ? [admin]
+        : !isLumen
+          ? [member]
+          : id === U.grace.id || id === U.marcus.id
+            ? [moderator]
+            : id === U.samira.id
+              ? [release]
+              : id === U.priya.id || id === U.diego.id
+                ? [designer]
+                : [member];
     return {
       id: `sc-membership-${c.id}-${i}`,
       userId: id,
       communityId: c.id,
-      joinedAt: at('10:00', 300 - i * 9),
+      // The creator joined the day the community was made; everyone else after.
+      joinedAt: i === 0 ? c.createdAt : at('10:00', COMMUNITY_AGE_DAYS - 20 - i * 23),
       roles,
       user: user as never,
     };
   });
 }
 
-function presence(list: ScenarioUser[], since: string): VoicePresenceUserDto[] {
-  return list.map((u) => ({
+function presence(entries: [ScenarioUser, string][]): VoicePresenceUserDto[] {
+  return entries.map(([u, joinedAt]) => ({
     id: u.id,
     username: u.username,
     displayName: u.displayName ?? undefined,
     avatarUrl: u.avatarUrl ?? undefined,
-    joinedAt: since,
+    joinedAt,
     isDeafened: false,
     isServerMuted: false,
   }));
 }
 
-/** Who's in which voice channel when the viewer is NOT connected. */
+/**
+ * Who's in which voice channel, before Alex joins anything. Each person is in
+ * at most one channel, and everyone in voice is online. The Lounge is the
+ * design/writing crew co-working; the release crew is in Standup (Alex heads
+ * there at 3:42 in the phone clip). The Voice story adds Alex to the Lounge
+ * (`showcaseWithMeInVoice`) and keeps everyone else where they are.
+ */
+export const showcaseLoungeCrew: ScenarioUser[] = [U.priya, U.diego, U.chloe];
 const voicePresenceByChannel: Record<string, VoicePresenceUserDto[]> = {
-  [C.lounge.id]: presence([U.kwame, U.zara], at('15:05')),
-  [C.standup.id]: presence([U.marcus, U.samira, U.aiko], at('15:38')),
-  'tr-campfire': presence([U.noah], at('14:00')),
+  [C.lounge.id]: presence([
+    [U.priya, at('15:05')],
+    [U.diego, at('15:08')],
+    [U.chloe, at('15:21')],
+  ]),
+  [C.standup.id]: presence([
+    [U.samira, at('15:36')],
+    [U.marcus, at('15:38')],
+    [U.aiko, at('15:39')],
+  ]),
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -608,7 +731,7 @@ let assembled: Scenario = {
   communities,
   messagesByChannel,
   threadRepliesByParent: { [SHOWCASE_THREAD_PARENT_ID]: threadReplies },
-  pinnedByChannel: {},
+  pinnedByChannel,
   voicePresenceByChannel,
   dmGroups,
   messagesByDmGroup,
@@ -619,14 +742,43 @@ let assembled: Scenario = {
   rolesByCommunity,
   instanceName: 'Lumen Studio',
 };
+// Unread = the newest N messages of each context (the DM ones match the
+// unread DIRECT_MESSAGE notifications above; #design's mention is 11:20).
 assembled = withUnread(assembled, C.general.id, 4);
 assembled = withUnread(assembled, C.design.id, 3, 1);
 assembled = withUnread(assembled, C.announcements.id, 1);
-assembled = withUnread(assembled, 'tr-general', 6);
+assembled = withUnread(assembled, 'tr-general', 1);
 assembled = withUnread(assembled, SHOWCASE_DM_PRIYA, 2);
 assembled = withUnread(assembled, SHOWCASE_DM_LAUNCH, 3, 1);
 
 export const showcaseScenario: Scenario = assembled;
+
+/**
+ * The showcase as it is once Alex has read `contextId` (a channel or DM the
+ * story opens): no unread badge, and its notifications read. The app clears
+ * both itself when a conversation scrolls into view; stories that open a
+ * conversation short enough not to scroll start from this state instead.
+ */
+export function showcaseWithRead(contextId: string, scenario: Scenario = showcaseScenario): Scenario {
+  return {
+    ...withUnread(scenario, contextId, 0),
+    notifications: scenario.notifications.map((n) =>
+      n.channelId === contextId || n.directMessageGroupId === contextId ? { ...n, read: true } : n,
+    ),
+  };
+}
+
+/** The showcase with Alex connected to a voice channel: joins the people already there (last, just now). */
+export function showcaseWithMeInVoice(channelId: string, scenario: Scenario = showcaseScenario): Scenario {
+  const already = scenario.voicePresenceByChannel[channelId] ?? [];
+  return {
+    ...scenario,
+    voicePresenceByChannel: {
+      ...scenario.voicePresenceByChannel,
+      [channelId]: [...already, ...presence([[me, at('15:41')]])],
+    },
+  };
+}
 export const showcaseMe = me;
 /** Showcase users by username (`priya`, `marcus`, `aiko`, ...). */
 export const showcaseUsers = U;

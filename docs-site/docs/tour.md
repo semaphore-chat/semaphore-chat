@@ -9,7 +9,7 @@ A quick look at Semaphore Chat before you install it. Everything below was captu
 
 <video controls muted playsinline preload="metadata" width="100%"
   poster="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour-poster.webp"
-  aria-label="A guided tour: chatting and reacting in a channel, a thread, group DMs, a voice channel with people speaking, and the app on a phone.">
+  aria-label="A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, and the app on a phone.">
   <source src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour.mp4" type="video/mp4">
   Your browser can't play this video. <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour.mp4">Download the tour (MP4)</a>.
 </video>
@@ -24,7 +24,7 @@ Real-time text channels with mentions, reactions, link previews, code blocks, im
 
 ![The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block, an image of a design mock with emoji reactions, and the member list with online status.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-desktop.webp){ loading=lazy data-gallery="chat" data-title="Text channels with link previews, code blocks, images and reactions" }
 
-![The notifications page listing mentions, a thread reply and a direct message.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/notifications-desktop.webp){ loading=lazy data-gallery="chat" data-title="Mentions, replies and DMs in one notifications inbox" }
+![The notifications page listing direct messages, a mention and a thread reply.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/notifications-desktop.webp){ loading=lazy data-gallery="chat" data-title="Mentions, replies and DMs in one notifications inbox" }
 
 </div>
 
@@ -78,7 +78,7 @@ Communities with text and voice channels, private channels, custom emoji, modera
 
 <div class="grid tour-desktop" markdown>
 
-![The Roles tab of the Lumen Studio community settings, listing Owner, Moderator, Release Manager, Designer and Member roles with their permissions.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-roles-desktop.webp){ loading=lazy data-gallery="communities" data-title="Roles with granular permissions" }
+![The Roles tab of the Lumen Studio community settings, listing the default Community Admin, Moderator and Member roles and the custom Release Manager and Designer roles, with their permissions.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-roles-desktop.webp){ loading=lazy data-gallery="communities" data-title="Roles with granular permissions" }
 
 ![The Lumen Studio community settings page with its banner, name and description.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-settings-desktop.webp){ loading=lazy data-gallery="communities" data-title="Community settings, members and roles" }
 
@@ -98,7 +98,7 @@ The same app on your phone: install it to your home screen as a PWA and get push
 
 ![The #dev channel on a phone, with the message composer at the bottom.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-phone.webp){ loading=lazy data-gallery="mobile" data-title="The same chat, built for phones" }
 
-![The Lumen Studio channel list on a phone, with unread badges and the people currently in the Standup voice channel.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-phone.webp){ loading=lazy data-gallery="mobile" data-title="Channel list with unread badges and who is in voice" }
+![The Lumen Studio channel list on a phone, with unread badges and the people currently in the Lounge and Standup voice channels.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/community-phone.webp){ loading=lazy data-gallery="mobile" data-title="Channel list with unread badges and who is in voice" }
 
 </div>
 

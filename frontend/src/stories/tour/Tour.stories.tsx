@@ -8,12 +8,26 @@
  * typing and speaking — see `fixtures/showcaseStory.ts`). Story ids are
  * `tour--<name>`; add a story here, then list it in `scripts/media/shots.mjs`
  * (screenshots) or `scripts/media/record.mjs` (video scenes).
+ *
+ * All stories show the same moment (Tuesday 3:42 PM), so they must agree:
+ * a story that opens a conversation starts with it read (`showcaseWithRead`),
+ * and the Voice story adds Alex to the people already in the Lounge
+ * (`showcaseWithMeInVoice`) rather than inventing a different crowd.
  */
 import { ClickOnMount } from '../fixtures/interactions';
 import { findButtonByIconTestId, findButtonByText } from '../fixtures/domQueries';
-import { channelVoiceState, withChannelPresence } from '../fixtures/edge/voice';
+import { channelVoiceState } from '../fixtures/edge/voice';
 import { defineShowcase } from '../fixtures/showcaseStory';
-import { showcaseChannels, showcaseMe, showcasePaths, showcaseScenario, showcaseUsers as U } from '../fixtures/showcase';
+import {
+  SHOWCASE_DM_LAUNCH,
+  at,
+  showcaseChannels,
+  showcaseLoungeCrew,
+  showcaseMe,
+  showcasePaths,
+  showcaseWithMeInVoice,
+  showcaseWithRead,
+} from '../fixtures/showcase';
 
 const lightTheme = { mode: 'light', accentColor: 'purple', intensity: 'balanced' } as const;
 
@@ -33,30 +47,34 @@ export const Community = defineShowcase(showcasePaths.community);
 
 /** Member list open (desktop shows it anyway; phone/tablet open it from the app bar). */
 export const Members = defineShowcase(showcasePaths.general, {
+  scenario: showcaseWithRead(showcaseChannels.general.id),
   overlay: <ClickOnMount find={() => findButtonByIconTestId('PeopleIcon')} timeoutMs={8000} />,
 });
 
-const voiceCrew = {
-  me: { user: showcaseMe },
-  remotes: [
-    { user: U.priya, speaking: true },
-    { user: U.marcus, speaking: true },
-    { user: U.aiko },
-  ],
-};
-
-/** Connected to the "Lounge" voice channel: the stage with speaking rings, and the voice bar. */
+/**
+ * Connected to the "Lounge" voice channel with the people who were already
+ * there (Priya and Diego talking): the stage with speaking rings, and the voice bar.
+ */
+const [priya, diego, chloe] = showcaseLoungeCrew;
 export const Voice = defineShowcase(showcasePaths.lounge, {
-  scenario: withChannelPresence(showcaseScenario, showcaseChannels.lounge.id, [voiceCrew.me, ...voiceCrew.remotes]),
-  voiceState: channelVoiceState(showcaseChannels.lounge),
-  voice: voiceCrew,
+  scenario: showcaseWithMeInVoice(showcaseChannels.lounge.id),
+  voiceState: channelVoiceState(showcaseChannels.lounge, { createdAt: at('15:41') }),
+  voice: {
+    me: { user: showcaseMe },
+    remotes: [
+      { user: priya, speaking: true },
+      { user: diego, speaking: true },
+      { user: chloe },
+    ],
+  },
 });
 
 /** Group DM ("Launch crew") with the DM list. */
-export const Dms = defineShowcase(showcasePaths.dmLaunch);
+const launchCrewRead = showcaseWithRead(SHOWCASE_DM_LAUNCH);
+export const Dms = defineShowcase(showcasePaths.dmLaunch, { scenario: launchCrewRead });
 
 /** Group DM in light mode. */
-export const DmsLight = defineShowcase(showcasePaths.dmLaunch, { theme: lightTheme });
+export const DmsLight = defineShowcase(showcasePaths.dmLaunch, { scenario: launchCrewRead, theme: lightTheme });
 
 /** The DM list on its own (phone). */
 export const DmList = defineShowcase(showcasePaths.dms);
@@ -67,9 +85,9 @@ export const Notifications = defineShowcase(showcasePaths.notifications);
 /** Community settings — roles & members management. */
 export const CommunitySettings = defineShowcase(showcasePaths.communitySettings);
 
-
 /** Group DM with a different accent (teal, vibrant). */
 export const DmsAccent = defineShowcase(showcasePaths.dmLaunch, {
+  scenario: launchCrewRead,
   theme: { mode: 'dark', accentColor: 'teal', intensity: 'vibrant' },
 });
 
@@ -80,4 +98,3 @@ const findTab = (label: RegExp) => () =>
 export const CommunityRoles = defineShowcase(showcasePaths.communitySettings, {
   overlay: <ClickOnMount find={findTab(/^roles$/i)} timeoutMs={8000} />,
 });
-

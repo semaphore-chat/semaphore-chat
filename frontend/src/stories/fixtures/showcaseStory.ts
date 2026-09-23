@@ -14,6 +14,10 @@
  *   app listens for), optionally on an automatic "conversation" loop;
  * - stateful reaction endpoints (`POST/DELETE /api/messages/reactions`
  *   return the updated message, like the real controller);
+ * - live unread counts, notifications and DM-list previews (`LiveState`):
+ *   `markAsRead` is answered with the server's self-sync read receipt,
+ *   marking a notification read sticks, and a new DM moves the list preview,
+ *   so badges stay consistent while a recording runs;
  * - the showcase's own appearance settings (applied through the app's real
  *   `useThemeSync()` path, as `fixtures/edge/states.ts` does) and artwork.
  *
@@ -65,7 +69,7 @@ export interface ShowcaseSocket {
   fire: (event: string, payload: unknown) => void;
 }
 
-function createShowcaseSocket(me: ScenarioUser): ShowcaseSocket {
+function createShowcaseSocket(me: ScenarioUser, live: LiveState): ShowcaseSocket {
   const handlers = new Map<string, Set<Handler>>();
   let n = 0;
   const fire = (event: string, payload: unknown) => {
@@ -88,15 +92,30 @@ function createShowcaseSocket(me: ScenarioUser): ShowcaseSocket {
       handlers.get(event)!.add(wrapped);
     },
     emit(event, ...args) {
-      // Client → server. Only message sends need an answer: ack with a new
-      // id, then echo the stored message back like the gateway does.
+      // Client → server, answered the way the gateway does.
+      if (event === ClientEvents.MARK_AS_READ) {
+        // Store the watermark, then the self-sync receipt (no userId) that
+        // clears this user's badge on every open client.
+        const payload = args[0] as { lastReadMessageId: string; channelId?: string; directMessageGroupId?: string };
+        const contextId = payload.channelId ?? payload.directMessageGroupId;
+        if (contextId) live.unread.delete(contextId);
+        fire(ServerEvents.READ_RECEIPT_UPDATED, {
+          channelId: payload.channelId ?? null,
+          directMessageGroupId: payload.directMessageGroupId ?? null,
+          lastReadMessageId: payload.lastReadMessageId,
+          lastReadAt: new Date().toISOString(),
+        });
+        return;
+      }
+      // Message sends: ack with a new id, then echo the stored message back.
       if (event !== ClientEvents.SEND_MESSAGE && event !== ClientEvents.SEND_DM) return;
       const payload = args[0] as Omit<Message, 'id'>;
       const ack = args[1] as ((id: string) => void) | undefined;
       const id = `sc-sent-${++n}`;
       setTimeout(() => {
         ack?.(id);
-        const message = { ...payload, id, authorId: me.id, sentAt: new Date().toISOString(), reactions: [] };
+        const message = { ...payload, id, authorId: me.id, sentAt: new Date().toISOString(), reactions: [] } as Message;
+        live.sent.push(message);
         fire(event === ClientEvents.SEND_DM ? ServerEvents.NEW_DM : ServerEvents.NEW_MESSAGE, { message });
       }, 180);
     },
@@ -233,6 +252,83 @@ export function createShowcaseRoom(me: ShowcaseVoicer, remotes: ShowcaseVoicer[]
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Live server state
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * The bits of "server" state a recording changes, so refetches agree with
+ * what the viewer just did (the base handlers answer from the static
+ * scenario): messages sent during the story, read watermarks, and read or
+ * dismissed notifications.
+ */
+interface LiveState {
+  /** Messages posted while the story runs (Alex's sends and teammates' `say`). */
+  sent: Message[];
+  unread: Map<string, { unreadCount: number; mentionCount: number }>;
+  readNotifications: Set<string>;
+  dismissedNotifications: Set<string>;
+}
+
+function createLiveState(scenario: Scenario): LiveState {
+  return {
+    sent: [],
+    unread: new Map(Object.entries(scenario.unreadByContextId)),
+    readNotifications: new Set(),
+    dismissedNotifications: new Set(),
+  };
+}
+
+/** Unread counts, notifications and the DM list, answered from `LiveState`. */
+function liveHandlers(scenario: Scenario, live: LiveState): HttpHandler[] {
+  const isDm = (id: string) => scenario.dmGroups.some((g) => g.id === id);
+  const notifications = () =>
+    scenario.notifications
+      .filter((n) => !live.dismissedNotifications.has(n.id))
+      .map((n) => (live.readNotifications.has(n.id) ? { ...n, read: true } : n));
+  const unreadNotifications = () => notifications().filter((n) => !n.read).length;
+  return [
+    http.get('/api/read-receipts/unread-counts', () =>
+      HttpResponse.json(
+        Array.from(live.unread.entries()).map(([id, v]) => ({
+          directMessageGroupId: isDm(id) ? id : undefined,
+          channelId: isDm(id) ? undefined : id,
+          unreadCount: v.unreadCount,
+          mentionCount: v.mentionCount,
+        })),
+      )),
+    http.get('/api/notifications', () => {
+      const list = notifications();
+      return HttpResponse.json({ notifications: list, total: list.length, unreadCount: unreadNotifications() });
+    }),
+    http.get('/api/notifications/unread-count', () => HttpResponse.json({ count: unreadNotifications() })),
+    http.post('/api/notifications/read-all', () => {
+      for (const n of scenario.notifications) live.readNotifications.add(n.id);
+      return HttpResponse.json({ success: true });
+    }),
+    http.post('/api/notifications/:id/read', ({ params }) => {
+      live.readNotifications.add(String(params.id));
+      return HttpResponse.json({ success: true });
+    }),
+    http.post('/api/notifications/:id/dismiss', ({ params }) => {
+      live.dismissedNotifications.add(String(params.id));
+      return HttpResponse.json({ success: true });
+    }),
+    // The app refetches the DM list on every new DM for its preview line.
+    http.get('/api/direct-messages', () =>
+      HttpResponse.json(
+        scenario.dmGroups.map((g) => {
+          const last = [...(scenario.messagesByDmGroup[g.id] ?? []), ...live.sent.filter((m) => m.directMessageGroupId === g.id)]
+            .sort((a, b) => a.sentAt.localeCompare(b.sentAt))
+            .pop();
+          return last
+            ? { ...g, lastMessage: { id: last.id, authorId: last.authorId, spans: last.spans as never, sentAt: last.sentAt } }
+            : g;
+        }),
+      )),
+  ];
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Handlers
 // ─────────────────────────────────────────────────────────────────────────
 
@@ -287,9 +383,18 @@ function reactionHandlers(scenario: Scenario, extraMessages: () => Message[]): H
   ];
 }
 
-/** Each member's real roles (the base handler answers "no roles" for everyone). */
+/** Each member's real roles (the base handlers answer "no roles" for others, the first role for Alex). */
 function memberRoleHandlers(scenario: Scenario): HttpHandler[] {
   return [
+    http.get('/api/roles/my/community/:communityId', ({ params }) =>
+      HttpResponse.json({
+        resourceType: 'COMMUNITY',
+        userId: scenario.me.id,
+        resourceId: String(params.communityId),
+        roles:
+          (scenario.membershipsByCommunity[String(params.communityId)] ?? []).find((m) => m.userId === scenario.me.id)
+            ?.roles ?? [],
+      })),
     http.get('/api/roles/user/:userId/community/:communityId', ({ params }) => {
       const membership = (scenario.membershipsByCommunity[String(params.communityId)] ?? []).find(
         (m) => m.userId === String(params.userId),
@@ -316,12 +421,18 @@ const voiceHeartbeatHandlers: HttpHandler[] = [
 // ─────────────────────────────────────────────────────────────────────────
 
 export interface ShowcaseApi {
-  /** A teammate posts a message (channel id or DM group id). */
+  /** A teammate (or `alex`, e.g. replaying an earlier scene) posts a message (channel id or DM group id). */
   say: (username: string, where: { channelId?: string; dmId?: string }, text: string, extra?: Partial<Message>) => string;
   /** A teammate starts/stops typing in a channel or DM. */
   typing: (username: string, where: { channelId?: string; dmId?: string }, isTyping: boolean) => void;
-  /** A teammate reacts to a message. */
+  /** A teammate (or `alex`) reacts to a message; existing reactors are kept. */
   react: (username: string, messageId: string, emoji: string, where: { channelId?: string; dmId?: string }) => void;
+  /**
+   * Alex read a channel/DM elsewhere (another device, or an earlier scene of
+   * the same recording): the server's self-sync read receipt plus
+   * `notificationRead` for its notifications, so every badge drops.
+   */
+  read: (where: { channelId?: string; dmId?: string }) => void;
   speak: (username: string, speaking: boolean) => void;
   conversation: (usernames: string[], stepMs?: number) => void;
 }
@@ -336,15 +447,20 @@ function ShowcaseControls({
   scenario,
   socket,
   room,
-  sent,
+  live,
 }: {
   scenario: Scenario;
   socket: ShowcaseSocket;
   room?: ShowcaseRoom;
-  sent: Message[];
+  live: LiveState;
 }) {
   useEffect(() => {
+    const { sent } = live;
     const byName = (username: string) => [scenario.me, ...scenario.users].find((u) => u.username === username)!;
+    const messagesIn = (where: { channelId?: string; dmId?: string }) =>
+      [...allMessages(scenario), ...sent].filter((m) =>
+        where.dmId ? m.directMessageGroupId === where.dmId : m.channelId === where.channelId && !m.parentMessageId,
+      );
     let n = 0;
     const reactors = new Map<string, string[]>();
     let stopConversation: (() => void) | undefined;
@@ -377,9 +493,15 @@ function ShowcaseControls({
         });
       },
       react(username, messageId, emoji, where) {
-        // The server sends the reaction's full user list, so accumulate.
+        // The server sends the reaction's full user list, so accumulate
+        // (starting from whoever had already reacted).
         const key = `${messageId}|${emoji}`;
-        const userIds = [...(reactors.get(key) ?? []), byName(username).id];
+        const before =
+          reactors.get(key) ??
+          [...allMessages(scenario), ...sent].find((m) => m.id === messageId)?.reactions?.find((r) => r.emoji === emoji)
+            ?.userIds ??
+          [];
+        const userIds = [...before.filter((id) => id !== byName(username).id), byName(username).id];
         reactors.set(key, userIds);
         socket.fire(ServerEvents.REACTION_ADDED, {
           messageId,
@@ -387,6 +509,28 @@ function ShowcaseControls({
           channelId: where.channelId ?? null,
           directMessageGroupId: where.dmId ?? null,
         });
+      },
+      read(where) {
+        const contextId = where.channelId ?? where.dmId;
+        if (!contextId) return;
+        const last = messagesIn(where)
+          .sort((a, b) => a.sentAt.localeCompare(b.sentAt))
+          .pop();
+        live.unread.delete(contextId);
+        if (last) {
+          socket.fire(ServerEvents.READ_RECEIPT_UPDATED, {
+            channelId: where.channelId ?? null,
+            directMessageGroupId: where.dmId ?? null,
+            lastReadMessageId: last.id,
+            lastReadAt: new Date().toISOString(),
+          });
+        }
+        for (const note of scenario.notifications) {
+          const inContext = note.channelId === contextId || note.directMessageGroupId === contextId;
+          if (!inContext || note.read || live.readNotifications.has(note.id)) continue;
+          live.readNotifications.add(note.id);
+          socket.fire(ServerEvents.NOTIFICATION_READ, { notificationId: note.id });
+        }
       },
       speak(username, speaking) {
         room?.setSpeaking(byName(username).id, speaking);
@@ -401,7 +545,7 @@ function ShowcaseControls({
       stopConversation?.();
       if (window.__showcase === api) delete window.__showcase;
     };
-  }, [scenario, socket, room, sent]);
+  }, [scenario, socket, room, live]);
   return null;
 }
 
@@ -422,11 +566,12 @@ export interface ShowcaseOptions {
 export function defineShowcase(path: string, options: ShowcaseOptions = {}): LadleStoryComponent {
   const scenario = options.scenario ?? showcaseScenario;
   const theme = options.theme ?? SHOWCASE_THEME;
-  const sent: Message[] = [];
+  // One per story (MSW handlers are per story); every capture is a fresh page load.
+  const live = createLiveState(scenario);
 
   const Story: LadleStoryComponent = () => {
     // Fresh socket + room per mount, so re-visiting a story starts clean.
-    const [socket] = useStateOnce(() => createShowcaseSocket(scenario.me));
+    const [socket] = useStateOnce(() => createShowcaseSocket(scenario.me, live));
     const [room] = useStateOnce(() =>
       options.voice ? createShowcaseRoom(options.voice.me, options.voice.remotes) : undefined,
     );
@@ -442,7 +587,7 @@ export function defineShowcase(path: string, options: ShowcaseOptions = {}): Lad
       'div',
       { style: { display: 'contents' } },
       h(StoryRoutes),
-      h(ShowcaseControls, { scenario, socket, room, sent }),
+      h(ShowcaseControls, { scenario, socket, room, live }),
       options.overlay ?? null,
     );
     if (room) {
@@ -467,8 +612,9 @@ export function defineShowcase(path: string, options: ShowcaseOptions = {}): Lad
       ...(options.extraHandlers ?? []),
       ...showcaseFileHandlers(),
       appearanceHandler(scenario, theme),
-      ...reactionHandlers(scenario, () => sent),
+      ...reactionHandlers(scenario, () => live.sent),
       ...memberRoleHandlers(scenario),
+      ...liveHandlers(scenario, live),
       ...voiceHeartbeatHandlers,
     ],
   });
