@@ -11,8 +11,26 @@
  *   UX_SHOTS_FILTER     substring — only run stories whose id contains it
  *   UX_SHOTS_VIEWPORTS  comma list of viewport names to run (default: all)
  *   UX_SHOTS_OUT_DIR    output directory (default .ux-shots, relative to this file's frontend/ root)
+ *   UX_SHOTS_SETTLE_MS  wait after load before the screenshot (default 4500)
+ *
+ * Opt-in extras (used by the UI review tool, scripts/ui-review/; all unset by
+ * default, which keeps the sweep's behaviour exactly as above):
+ *   UX_SHOTS_IDS                exact story ids to shoot (comma/space/newline
+ *                               separated, or `@<file>` to read them from a
+ *                               file). Combines with UX_SHOTS_FILTER. Ids the
+ *                               running Ladle doesn't know are skipped and
+ *                               listed as `missingIds` in report.json.
+ *   UX_SHOTS_CONCURRENCY        stories shot in parallel (default 1)
+ *   UX_SHOTS_FREEZE_TIME        ISO timestamp — pins `Date.now()`/`new Date()`
+ *                               (timers keep running) so relative times render
+ *                               identically run to run
+ *   UX_SHOTS_QUIET_MS           after load, also wait until the DOM has had no
+ *                               mutation for this long (max 10s) before the
+ *                               settle sleep — steadier under concurrency
+ *   UX_SHOTS_DISABLE_ANIMATIONS `1` — screenshots with CSS animations and
+ *                               transitions stopped (spinners, skeletons)
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -33,6 +51,11 @@ const FILTER = process.env.UX_SHOTS_FILTER || '';
 const OUT_DIR = path.resolve(FRONTEND_ROOT, process.env.UX_SHOTS_OUT_DIR || '.ux-shots');
 const SETTLE_MS = Number(process.env.UX_SHOTS_SETTLE_MS || 4500);
 const NAV_TIMEOUT_MS = 30_000;
+const IDS_SPEC = process.env.UX_SHOTS_IDS || '';
+const CONCURRENCY = Math.max(1, Number(process.env.UX_SHOTS_CONCURRENCY || 1));
+const FREEZE_TIME = process.env.UX_SHOTS_FREEZE_TIME || '';
+const DISABLE_ANIMATIONS = process.env.UX_SHOTS_DISABLE_ANIMATIONS === '1';
+const QUIET_MS = Number(process.env.UX_SHOTS_QUIET_MS || 0);
 
 /** All available viewports. `short` only applies to "*keyboard*" stories (see below). */
 const VIEWPORTS = {
@@ -49,6 +72,34 @@ const requestedViewports = (process.env.UX_SHOTS_VIEWPORTS || 'phone,phone-short
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * UX_SHOTS_QUIET_MS: resolve once the DOM has gone `quietMs` without a
+ * mutation (data arrived, lazy routes mounted, lists measured) — max 10s. A
+ * fixed sleep after `networkidle` alone gets flaky with several pages in
+ * parallel. Keep in sync with scripts/ui-review/lib/settle.ts.
+ */
+function waitForDomQuiet(page, quietMs, maxMs = 10_000) {
+  return page.evaluate(
+    ({ quietMs, maxMs }) =>
+      new Promise((resolve) => {
+        let timer;
+        const finish = () => {
+          observer.disconnect();
+          clearTimeout(cap);
+          resolve();
+        };
+        const observer = new MutationObserver(() => {
+          clearTimeout(timer);
+          timer = setTimeout(finish, quietMs);
+        });
+        observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
+        timer = setTimeout(finish, quietMs);
+        const cap = setTimeout(finish, maxMs);
+      }),
+    { quietMs, maxMs },
+  );
 }
 
 async function fetchMeta() {
@@ -119,12 +170,18 @@ async function shootStory(browser, storyId, viewportName) {
   let ok = true;
   let errorMessage = null;
   try {
+    if (FREEZE_TIME) await page.clock.setFixedTime(new Date(FREEZE_TIME));
     await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
+    if (QUIET_MS > 0) await waitForDomQuiet(page, QUIET_MS);
     await sleep(SETTLE_MS);
 
     const outSubdir = path.join(OUT_DIR, viewportName);
     await mkdir(outSubdir, { recursive: true });
-    await page.screenshot({ path: path.join(outSubdir, `${storyId}.png`), fullPage: true });
+    await page.screenshot({
+      path: path.join(outSubdir, `${storyId}.png`),
+      fullPage: true,
+      ...(DISABLE_ANIMATIONS ? { animations: 'disabled' } : {}),
+    });
   } catch (err) {
     ok = false;
     errorMessage = String(err?.message || err);
@@ -144,10 +201,39 @@ async function shootStory(browser, storyId, viewportName) {
   };
 }
 
+/** UX_SHOTS_IDS → list of ids (`@path` reads the list from a file). */
+async function readRequestedIds() {
+  if (!IDS_SPEC) return null;
+  const text = IDS_SPEC.startsWith('@') ? await readFile(path.resolve(FRONTEND_ROOT, IDS_SPEC.slice(1)), 'utf8') : IDS_SPEC;
+  return [...new Set(text.split(/[\s,]+/).filter(Boolean))];
+}
+
+function describeResult(result) {
+  const hasIssues =
+    !result.ok || result.pageErrors.length > 0 || result.unhandledRequests.length > 0 || result.renderErrors.length > 0;
+  const text = result.ok
+    ? hasIssues
+      ? `done (${result.pageErrors.length} page error(s), ${result.renderErrors.length} render error(s), ${result.unhandledRequests.length} unhandled request(s))`
+      : 'ok'
+    : `FAILED: ${result.errorMessage}`;
+  return { hasIssues, text };
+}
+
 async function main() {
   console.log(`[ux-shots] Fetching story list from ${BASE_URL}/meta.json ...`);
   const meta = await fetchMeta();
   let storyIds = Object.keys(meta.stories).sort();
+  const requestedIds = await readRequestedIds();
+  let missingIds = [];
+  if (requestedIds) {
+    const known = new Set(storyIds);
+    missingIds = requestedIds.filter((id) => !known.has(id));
+    const wanted = new Set(requestedIds);
+    storyIds = storyIds.filter((id) => wanted.has(id));
+    if (missingIds.length > 0) {
+      console.log(`[ux-shots] ${missingIds.length} requested id(s) not in this Ladle instance: ${missingIds.join(', ')}`);
+    }
+  }
   if (FILTER) {
     storyIds = storyIds.filter((id) => id.includes(FILTER));
   }
@@ -160,26 +246,34 @@ async function main() {
   await mkdir(OUT_DIR, { recursive: true });
 
   const browser = await chromium.launch();
-  const results = [];
+  const tasks = storyIds.flatMap((storyId) => viewportsForStory(storyId).map((viewportName) => ({ storyId, viewportName })));
+  // Slot per task so report.json keeps story/viewport order at any concurrency.
+  const results = new Array(tasks.length);
   let failureCount = 0;
 
-  for (const storyId of storyIds) {
-    const viewportsToShoot = viewportsForStory(storyId);
-    for (const viewportName of viewportsToShoot) {
+  if (CONCURRENCY === 1) {
+    for (const [index, { storyId, viewportName }] of tasks.entries()) {
       process.stdout.write(`[ux-shots] ${storyId} @ ${viewportName} ... `);
       const result = await shootStory(browser, storyId, viewportName);
-      results.push(result);
-      const hasIssues =
-        !result.ok || result.pageErrors.length > 0 || result.unhandledRequests.length > 0 || result.renderErrors.length > 0;
+      results[index] = result;
+      const { hasIssues, text } = describeResult(result);
       if (hasIssues) failureCount++;
-      console.log(
-        result.ok
-          ? hasIssues
-            ? `done (${result.pageErrors.length} page error(s), ${result.renderErrors.length} render error(s), ${result.unhandledRequests.length} unhandled request(s))`
-            : 'ok'
-          : `FAILED: ${result.errorMessage}`,
-      );
+      console.log(text);
     }
+  } else {
+    let next = 0;
+    const worker = async () => {
+      while (next < tasks.length) {
+        const index = next++;
+        const { storyId, viewportName } = tasks[index];
+        const result = await shootStory(browser, storyId, viewportName);
+        results[index] = result;
+        const { hasIssues, text } = describeResult(result);
+        if (hasIssues) failureCount++;
+        console.log(`[ux-shots] ${storyId} @ ${viewportName} ... ${text}`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, tasks.length) }, worker));
   }
 
   await browser.close();
@@ -190,6 +284,7 @@ async function main() {
     storyCount: storyIds.length,
     shotCount: results.length,
     issueCount: failureCount,
+    ...(requestedIds ? { requestedIds, missingIds } : {}),
     results,
   };
   await writeFile(path.join(OUT_DIR, 'report.json'), JSON.stringify(report, null, 2));
