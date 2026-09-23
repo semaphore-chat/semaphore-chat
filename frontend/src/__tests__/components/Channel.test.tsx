@@ -64,6 +64,26 @@ vi.mock('react-router-dom', async (importOriginal) => {
   };
 });
 
+const mockIsElectron = vi.fn(() => false);
+vi.mock('../../utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectron: () => mockIsElectron(),
+}));
+
+/** Make every media query match (touch device, any width). */
+function stubTouchMediaQueries() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 // Import after mocking
 const { useVoiceConnection } = await import('../../hooks/useVoiceConnection');
 
@@ -71,6 +91,10 @@ describe('Channel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockParams = { communityId: 'c1', channelId: 'other' };
+    mockIsElectron.mockReturnValue(false);
+    mockUnreadCount.mockReturnValue(0);
+    mockMentionCount.mockReturnValue(0);
+    vi.unstubAllGlobals();
     // Reset useVoiceConnection to default (test overrides persist through clearAllMocks)
     vi.mocked(useVoiceConnection).mockReturnValue({
       state: {
@@ -290,5 +314,38 @@ describe('Channel', () => {
 
     // Voice channels should not display any mention badge
     expect(screen.queryByText('3')).not.toBeInTheDocument();
+  });
+
+  it('uses the compact desktop row on non-touch layouts', () => {
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'desktop');
+  });
+
+  it('uses the touch row on touch layouts', () => {
+    stubTouchMediaQueries();
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'touch');
+  });
+
+  it('stays on the desktop row in Electron even when media queries say touch', () => {
+    stubTouchMediaQueries();
+    mockIsElectron.mockReturnValue(true);
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'desktop');
   });
 });

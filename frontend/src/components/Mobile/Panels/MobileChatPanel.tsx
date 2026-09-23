@@ -42,6 +42,7 @@ import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
 import DirectMessageContainer from '../../DirectMessages/DirectMessageContainer';
 import { VideoTiles } from '../../Voice/VideoTiles';
 import { VoiceChannelJoinButton } from '../../Voice/VoiceChannelJoinButton';
+import { VoiceChannelUserList } from '../../Voice/VoiceChannelUserList';
 import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
 import { ErrorBoundary } from '../../ErrorBoundary';
 import MobileAppBar from '../MobileAppBar';
@@ -64,7 +65,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   channelId,
   dmGroupId,
 }) => {
-  const { goBack } = useMobileNavigation();
+  const { goBack, navigateToSearch } = useMobileNavigation();
   const navigate = useNavigate();
   const { shouldUseTouchUI, isMobile } = useResponsive();
   const { state: voiceState } = useVoiceConnection();
@@ -113,6 +114,10 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   // Community that owns this channel (prop takes precedence, fall back to the
   // channel's own communityId). Undefined for DMs.
   const effectiveCommunityId = communityId || channel?.communityId;
+
+  // Message search is scoped to a community (this channel or all channels),
+  // so it's offered in text channels only — not DMs or voice channels.
+  const canSearch = !!channelId && channel?.type === ChannelType.TEXT && !!effectiveCommunityId;
 
   const handleChannelSettings = () => {
     handleMenuClose();
@@ -192,6 +197,12 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             </Box>
             {channel && <VoiceChannelJoinButton channel={channel} />}
           </Box>
+          {/* Who's already in the channel. Phone only: on tablet the sidebar row lists them. */}
+          {channel && isMobile && (
+            <Box sx={{ width: '100%', maxWidth: 360, textAlign: 'left' }}>
+              <VoiceChannelUserList channel={channel} />
+            </Box>
+          )}
         </Box>
       );
     }
@@ -211,6 +222,10 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         title={title}
         showBack
         onBack={goBack}
+        showSearch={canSearch}
+        onSearchClick={() => {
+          if (channelId && effectiveCommunityId) navigateToSearch(effectiveCommunityId, channelId);
+        }}
         showMembers={channel?.type === ChannelType.TEXT || !!dmGroup?.isGroup}
         onMembersClick={handleShowMembers}
         showMore
