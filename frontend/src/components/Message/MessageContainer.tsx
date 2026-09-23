@@ -120,7 +120,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   channelId,
   directMessageGroupId,
 }) => {
-  const { isMobile } = useResponsive();
+  const { isMobile, isTabletPortrait } = useResponsive();
   const queryClient = useQueryClient();
 
   // The message query lives in the parent's hook; rather than plumbing a
@@ -292,8 +292,11 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
 
   const skeletonCount = 10;
 
-  // Hide member list on mobile or when explicitly disabled
-  const shouldShowMemberList = showMemberList && !isMobile && memberListComponent;
+  // Hide member list on mobile or when explicitly disabled. Below 1024px
+  // (tablet portrait) the split view keeps at most two columns, so the list
+  // isn't inline there either — the tablet app bar opens it as an overlay.
+  const shouldShowMemberList =
+    showMemberList && !isMobile && !isTabletPortrait && memberListComponent;
 
   if (isLoading) {
     return (

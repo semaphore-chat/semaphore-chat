@@ -153,6 +153,8 @@ export interface MobileNavigationState {
 interface MobileNavigationContextType {
   state: MobileNavigationState;
   activeTab: MobileTab;
+  /** The community last opened (persisted); the tablet sidebar keeps showing it on DM/notification screens. */
+  lastCommunityId: string | null;
 
   // Screen navigation
   navigateToChannels: (communityId: string) => void;
@@ -384,6 +386,7 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
   const value: MobileNavigationContextType = {
     state,
     activeTab,
+    lastCommunityId,
     navigateToChannels,
     navigateToChat,
     navigateToSearch,

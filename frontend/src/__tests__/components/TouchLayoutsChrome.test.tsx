@@ -162,18 +162,21 @@ afterEach(() => {
 describe.each([
   ['MobileLayout', MobileLayout],
   ['TabletLayout', TabletLayout],
-])('%s edge chrome', (_name, LayoutUnderTest) => {
-  it('stacks screen → voice bar → nav in normal flow (voice bar directly above the nav)', async () => {
+])('%s edge chrome', (name, LayoutUnderTest) => {
+  it('stacks screen → voice bar (→ nav on phone) in normal flow', async () => {
     voice.connected = true;
     inStore(<LayoutUnderTest />);
     const bar = await screen.findByTestId('voice-bottom-bar');
-    const navEl = screen.getByText('Home').closest('.MuiPaper-root') as HTMLElement;
     const content = screen.getByTestId('screen');
 
     expect(content.compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(bar.compareDocumentPosition(navEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(getComputedStyle(bar).position).not.toBe('fixed');
-    expect(getComputedStyle(navEl).position).not.toBe('fixed');
+    if (name === 'MobileLayout') {
+      // Phone: the voice bar sits directly above the nav.
+      const navEl = screen.getByText('Home').closest('.MuiPaper-root') as HTMLElement;
+      expect(bar.compareDocumentPosition(navEl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(getComputedStyle(navEl).position).not.toBe('fixed');
+    }
     // Above the floating video surfaces (FloatCard / phone overlay at 1200).
     expect(Number(getComputedStyle(bar).zIndex)).toBeGreaterThan(1200);
   });
@@ -210,11 +213,17 @@ describe('MobileLayout safe area', () => {
   });
 });
 
-describe('TabletLayout nav', () => {
-  it('keeps the nav on the chat screen (only the phone auto-hides it)', () => {
-    nav.currentScreen = 'chat';
+describe('TabletLayout nav (task 17: sidebar navigation only)', () => {
+  it.each(['channels', 'chat'])('has no bottom nav on the %s screen', (currentScreen) => {
+    nav.currentScreen = currentScreen;
     inStore(<TabletLayout />);
-    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(document.querySelector('.MuiBottomNavigation-root')).toBeNull();
+    expect(screen.getByTestId('tablet-sidebar')).toBeInTheDocument();
+  });
+
+  it('pads the home-indicator area on the column itself', () => {
+    inStore(<TabletLayout />);
+    expect(getComputedStyle(layoutColumn()).paddingBottom).toContain('safe-area-inset-bottom');
   });
 });
 

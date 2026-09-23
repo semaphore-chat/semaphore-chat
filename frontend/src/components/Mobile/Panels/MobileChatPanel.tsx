@@ -60,6 +60,8 @@ interface MobileChatPanelProps {
   communityId?: string;
   channelId?: string;
   dmGroupId?: string;
+  /** Tablet: the sidebar is always visible, so the app bar has no back button. */
+  hideBack?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   communityId,
   channelId,
   dmGroupId,
+  hideBack = false,
 }) => {
   const { goBack, navigateToSearch } = useMobileNavigation();
   const navigate = useNavigate();
@@ -239,7 +242,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
       {/* App bar with back button */}
       <MobileAppBar
         title={title}
-        showBack
+        showBack={!hideBack}
         onBack={goBack}
         showSearch={canSearch}
         onSearchClick={() => {

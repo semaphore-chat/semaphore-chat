@@ -2,8 +2,8 @@
  * TabletLayout Component
  *
  * Split-view layout for tablets (768-1199px).
- * Shows channel list on left, content on right.
- * Sidebar on left, main content on right.
+ * Sidebar on the left (navigation header + channel list), content on the
+ * right. Tablet navigates with the sidebar only — there is no bottom nav.
  */
 
 import React from 'react';
@@ -15,30 +15,31 @@ import { PersistentVideoOverlay } from '../../Voice/PersistentVideoOverlay';
 import { TrackSubscriptionProvider } from '../../Voice/TrackSubscriptionProvider';
 import { VoiceEventLogProvider } from '../../../hooks/useVoiceEventLog';
 import { MobileNavigationProvider, useMobileNavigation } from '../Navigation/MobileNavigationContext';
-import { MobileBottomNavigation } from '../Navigation/MobileBottomNavigation';
 import MobileCommunityDrawer from '../Navigation/MobileCommunityDrawer';
 import { TabletSidebar } from './TabletSidebar';
 import { TabletContentArea } from './TabletContentArea';
-import { SAFE_AREA_TOP, useTopChromeHost } from '../../../contexts/BottomChromeContext';
+import {
+  SAFE_AREA_BOTTOM,
+  SAFE_AREA_TOP,
+  useKeyboardInset,
+  useTopChromeHost,
+} from '../../../contexts/BottomChromeContext';
 
 /**
  * Inner layout component that has access to navigation context
  */
 const TabletLayoutInner: React.FC = () => {
-  const { state } = useMobileNavigation();
+  const { state, lastCommunityId } = useMobileNavigation();
 
   // Attempt to recover voice connection after page refresh
   useVoiceRecovery();
 
   // Edge chrome (BottomChromeContext): top padding for the offline strip /
-  // call banner; voice bar and nav in normal flow at the bottom (the nav
-  // pads the home-indicator area, and hides while the keyboard is open).
+  // call banner; the voice bar in normal flow at the bottom. With no bottom
+  // nav, the column itself pads the home-indicator area (not while the
+  // keyboard is open — it covers that area).
   const topChromeHeight = useTopChromeHost();
-
-  // Determine if we should show the sidebar
-  // Show sidebar when on home tab (channels/chat screens)
-  const showSidebar =
-    state.currentScreen === 'channels' || state.currentScreen === 'chat' || state.currentScreen === 'search';
+  const keyboardOpen = useKeyboardInset() > 0;
 
   return (
     <Box
@@ -54,6 +55,7 @@ const TabletLayoutInner: React.FC = () => {
         right: 0,
         bottom: 0,
         paddingTop: `calc(${SAFE_AREA_TOP} + ${topChromeHeight}px)`,
+        paddingBottom: keyboardOpen ? 0 : SAFE_AREA_BOTTOM,
       }}
     >
       {/* Community drawer - still available via swipe */}
@@ -70,16 +72,16 @@ const TabletLayoutInner: React.FC = () => {
               overflow: 'hidden',
             }}
           >
-            {/* Sidebar - channel list (only visible on home tab with community selected) */}
-            {showSidebar && state.communityId && (
-              <TabletSidebar communityId={state.communityId} />
-            )}
+            {/* Sidebar - navigation + channel list, visible on every screen.
+                On DM / notification / profile screens (no community in the
+                route) it keeps showing the last community's channels. */}
+            <TabletSidebar communityId={state.communityId ?? lastCommunityId} />
 
             {/* Content area */}
-            <TabletContentArea showSidebar={showSidebar && !!state.communityId} />
+            <TabletContentArea showSidebar />
           </Box>
 
-          {/* Voice bar (only shows when in call) — in flow, above the nav */}
+          {/* Voice bar (only shows when in call) — in flow at the bottom */}
           <VoiceBottomBar inline />
 
           {/* Audio renderer for remote participants */}
@@ -89,9 +91,6 @@ const TabletLayoutInner: React.FC = () => {
           <PersistentVideoOverlay />
         </VoiceEventLogProvider>
       </TrackSubscriptionProvider>
-
-      {/* Bottom navigation (hidden while the keyboard is open) */}
-      <MobileBottomNavigation />
     </Box>
   );
 };
