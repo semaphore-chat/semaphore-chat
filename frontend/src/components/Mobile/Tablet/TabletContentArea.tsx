@@ -153,7 +153,7 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: 'background.default',
+        backgroundColor: 'background.canvas',
       }}
     >
       {/* App bar for screens without sidebar */}

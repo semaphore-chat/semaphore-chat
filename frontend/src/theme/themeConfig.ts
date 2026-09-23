@@ -1,8 +1,28 @@
-import { createTheme, Theme, alpha } from '@mui/material/styles';
+import { createTheme, Theme, alpha, emphasize, getContrastRatio } from '@mui/material/styles';
 import type { ThemeMode, AccentColor, ThemeIntensity } from './constants';
 
 // Extend MUI theme with custom semantic colors
 declare module '@mui/material/styles' {
+  interface TypeBackground {
+    /**
+     * CSS `background` value for full-page grounds. In dark + balanced/vibrant
+     * this is a subtle accent gradient; otherwise it equals `default`.
+     *
+     * `default` itself is ALWAYS a solid colour: MUI runs colour maths on it
+     * (e.g. SnackbarContent calls `emphasize(background.default)`), which
+     * throws on a gradient. Use `ground` with the `background` shorthand
+     * (never `backgroundColor`) when you want the gradient.
+     */
+    ground: string;
+    /**
+     * `background-color` for full-screen app containers (mobile/tablet screen
+     * stacks, thread panel, admin main, onboarding, error fallback).
+     * `transparent` when the body carries the accent page gradient
+     * (dark + balanced/vibrant) so the gradient shows through; otherwise
+     * equals `default`. Not a parseable colour — never feed it to alpha() etc.
+     */
+    canvas: string;
+  }
   interface Palette {
     semantic: {
       status: {
@@ -188,6 +208,11 @@ export function generateTheme(
     },
   };
 
+  // Same formula MUI's SnackbarContent uses, computed from the solid ground.
+  const snackbarBackground = emphasize(base.background.default, isDark ? 0.98 : 0.8);
+  // Same rule as palette.getContrastText (contrastThreshold 3).
+  const snackbarText = getContrastRatio(snackbarBackground, '#fff') >= 3 ? '#fff' : 'rgba(0, 0, 0, 0.87)';
+
   return createTheme({
     palette: {
       mode,
@@ -197,11 +222,14 @@ export function generateTheme(
         dark: accent.dark,
       },
       background: {
-        default: isVibrant && isDark
+        // Solid colour only — see the TypeBackground.ground note above.
+        default: base.background.default,
+        ground: isVibrant && isDark
           ? `linear-gradient(180deg, ${alpha(accent.dark, 0.25)} 0%, ${base.background.default} 100%)`
           : isBalanced && isDark
           ? `linear-gradient(180deg, ${alpha(accent.dark, 0.12)} 0%, ${base.background.default} 100%)`
           : base.background.default,
+        canvas: isBalanced && isDark ? 'transparent' : base.background.default,
         // Tint paper background in vibrant/subtle modes
         paper: isVibrant
           ? blendColors(accent.primary, base.background.paper, isDark ? 0.2 : 0.22)
@@ -511,6 +539,19 @@ export function generateTheme(
         styleOverrides: {
           root: {
             color: accent.primary,
+          },
+        },
+      },
+
+      // Snackbars: a solid, high-contrast surface (MUI's own derivation from the
+      // solid base ground), pinned explicitly so every intensity matches and
+      // snackbars never depend on page-ground styling.
+      MuiSnackbarContent: {
+        styleOverrides: {
+          root: {
+            backgroundColor: snackbarBackground,
+            backgroundImage: 'none',
+            color: snackbarText,
           },
         },
       },

@@ -49,11 +49,13 @@ export const ReconnectingOnVoiceChannel = edgeScreen(
 // ── PWA chrome ───────────────────────────────────────────────────────────
 //
 // UpdateToast stories pin the product-default theme (dark / teal /
-// "minimal"). Under dark + "balanced" or "vibrant" intensity (the sandbox's
-// default appearance settings are dark/blue/balanced) `palette.background.default`
-// is a `linear-gradient(...)`, and MUI's `SnackbarContent` calls
-// `emphasize(background.default)` → throws "Unsupported linear-gradient color".
-// `UpdateToastCrashBalancedDark` below documents that crash as-is.
+// "minimal"). `UpdateToastCrashBalancedDark` below covers dark + "balanced"
+// (the sandbox default): that combination used to put a `linear-gradient(...)`
+// in `palette.background.default`, and MUI's `SnackbarContent` calls
+// `emphasize(background.default)` → threw "Unsupported linear-gradient color".
+// Fixed: `background.default` is always solid now (the gradient lives in
+// `background.ground`), and the toasts sit behind silent ErrorBoundaries
+// (`components/PWA/AppChrome.tsx`).
 const minimalDark = defaultSettings;
 
 /** A new service worker is waiting — "Update available / Reload" toast over the chat composer. */
@@ -62,10 +64,10 @@ export const UpdateToastChannelChat = edgeScreen(s, chatPath, { updateAvailable:
 export const UpdateToastDmList = edgeScreen(s, '/direct-messages', { updateAvailable: true, theme: minimalDark });
 
 /**
- * KNOWN CRASH (state under test): the same toast with dark + "balanced"
- * appearance — `UpdateToast` throws while rendering. In the real app it's
- * mounted outside every ErrorBoundary (App.tsx), so the whole UI unmounts
- * to a blank page the moment a new service worker is detected.
+ * Regression guard (story id kept for history): the same toast with dark +
+ * "balanced" appearance. It used to throw while rendering and, mounted
+ * outside every ErrorBoundary, blank the whole UI the moment a new service
+ * worker was detected. Must now show the toast over the chat.
  */
 export const UpdateToastCrashBalancedDark = edgeScreen(s, chatPath, {
   updateAvailable: true,

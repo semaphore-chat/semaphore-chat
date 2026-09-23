@@ -106,7 +106,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
-        backgroundColor: theme.palette.background.default,
+        backgroundColor: theme.palette.background.canvas,
         borderLeft: `1px solid ${theme.palette.divider}`,
       }}
     >

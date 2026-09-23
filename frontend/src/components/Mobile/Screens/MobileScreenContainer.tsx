@@ -170,7 +170,7 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
         position: 'relative',
         height: '100%',
         overflow: 'hidden',
-        backgroundColor: 'background.default',
+        backgroundColor: 'background.canvas',
       }}
     >
       <Slide
@@ -188,7 +188,7 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
             bottom: 0,
             overflow: 'auto',
             pb: `${totalBottomOffset}px`,
-            backgroundColor: 'background.default',
+            backgroundColor: 'background.canvas',
           }}
         >
           {renderScreen()}

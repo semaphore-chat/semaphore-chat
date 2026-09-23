@@ -152,7 +152,7 @@ const AdminLayout: React.FC = () => {
           minWidth: 0,
           p: 3,
           overflow: "auto",
-          backgroundColor: theme.palette.background.default,
+          backgroundColor: theme.palette.background.canvas,
         }}
       >
         {isMobile && (

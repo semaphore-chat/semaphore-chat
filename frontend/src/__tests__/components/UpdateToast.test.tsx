@@ -8,6 +8,7 @@ import {
   setUpdateDeferred,
   _resetSwUpdateForTests,
 } from '../../utils/swUpdate';
+import { renderInEveryTheme, withMatrixTheme } from '../test-utils/themeMatrix';
 
 describe('UpdateToast', () => {
   beforeEach(() => {
@@ -51,5 +52,27 @@ describe('UpdateToast', () => {
     // Leaving the call clears the deferral → the prompt reappears.
     act(() => setUpdateDeferred(false));
     expect(screen.getByText('Update available')).toBeInTheDocument();
+  });
+
+  describe('theme safety', () => {
+    // Regression: dark + balanced/vibrant used a linear-gradient for
+    // palette.background.default, and MUI SnackbarContent calls
+    // emphasize(background.default) → "Unsupported `linear-gradient(...)` color".
+    it.each([
+      { mode: 'dark', intensity: 'balanced' },
+      { mode: 'dark', intensity: 'vibrant' },
+    ] as const)('renders the open toast under $mode + $intensity', (entry) => {
+      act(() => setUpdateAvailable(true));
+      render(withMatrixTheme(<UpdateToast />, entry));
+      expect(screen.getByText('Update available')).toBeInTheDocument();
+    });
+
+    it('renders the open toast in every mode × intensity', () => {
+      act(() => setUpdateAvailable(true));
+      renderInEveryTheme(<UpdateToast />, () => {
+        expect(screen.getByText('Update available')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /reload/i })).toBeInTheDocument();
+      });
+    });
   });
 });

@@ -4,9 +4,7 @@ import { CircularProgress, Box } from "@mui/material";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import AutoUpdater from "./components/Electron/AutoUpdater";
 import { ConnectionWizard } from "./components/Electron/ConnectionWizard";
-import { PWAInstallPrompt } from "./components/PWA/PWAInstallPrompt";
-import { UpdateToast } from "./components/PWA/UpdateToast";
-import { OfflineBanner } from "./components/PWA/OfflineBanner";
+import { AppChrome } from "./components/PWA/AppChrome";
 import { hasServers } from "./utils/serverStorage";
 import { isElectron } from "./utils/platform";
 import { useDeepLinks } from "./hooks/useDeepLinks";
@@ -40,9 +38,6 @@ function App() {
         />
       ) : (
         <>
-          <PWAInstallPrompt />
-          <UpdateToast />
-          <OfflineBanner />
           {/*
             App-level boundary: the outermost safety net for render crashes that
             escape every closer boundary (e.g. RouteErrorBoundary below). It sits
@@ -54,6 +49,9 @@ function App() {
             this boundary firing means a full reload is the safest recovery.
           */}
           <ErrorBoundary fallback={(error) => <AppErrorFallback error={error} />}>
+            {/* PWA install / update / offline chrome — each piece also has its
+                own silent boundary, so a crash there never blanks the app. */}
+            <AppChrome />
             <Suspense fallback={
               <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 'var(--full-dvh)' }}>
                 <CircularProgress />

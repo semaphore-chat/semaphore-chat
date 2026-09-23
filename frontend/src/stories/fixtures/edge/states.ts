@@ -39,9 +39,7 @@ import { ThemeProvider } from '../../../contexts/ThemeContext';
 import type { ThemeSettings } from '../../../theme/constants';
 import { VoiceSessionType, type VoiceState } from '../../../contexts/VoiceContext';
 import { ConnectionStatusBanner } from '../../../components/ConnectionStatusBanner';
-import { OfflineBanner } from '../../../components/PWA/OfflineBanner';
-import { UpdateToast } from '../../../components/PWA/UpdateToast';
-import { PWAInstallPrompt } from '../../../components/PWA/PWAInstallPrompt';
+import { AppChrome } from '../../../components/PWA/AppChrome';
 import { setUpdateAvailable } from '../../../utils/swUpdate';
 import { SandboxShell } from '../SandboxShell';
 import { StoryRoutes } from '../StoryRoutes';
@@ -220,9 +218,9 @@ export function edgeScreen(scenario: Scenario, path: string, options: EdgeScreen
         // (StartOffline must render before OfflineBanner reads navigator.onLine.)
         options.offline ? h(StartOffline) : null,
         h(ConnectionStatusBanner),
-        h(PWAInstallPrompt),
-        h(UpdateToast),
-        h(OfflineBanner),
+        // PWAInstallPrompt + UpdateToast + OfflineBanner, each behind its own
+        // silent ErrorBoundary, exactly as App.tsx mounts them.
+        h(AppChrome),
         options.updateAvailable ? h(SignalUpdateAvailable) : null,
         options.installPrompt ? h(FireInstallPrompt) : null,
         options.overlay ?? null,
