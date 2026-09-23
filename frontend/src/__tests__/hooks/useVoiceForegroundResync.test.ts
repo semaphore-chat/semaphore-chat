@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { DisconnectReason, type Room } from 'livekit-client';
 import { useVoiceForegroundResync } from '../../hooks/useVoiceForegroundResync';
 import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { VideoLayoutMode } from '../../types/videoLayout';
 
 const mockDispatch = vi.fn();
 
@@ -52,8 +53,8 @@ function createVoiceState(overrides: Partial<VoiceState> = {}): VoiceState {
     dmGroupName: null,
     isDeafened: false,
     showVideoTiles: false,
+    pipCollapsed: false,
     screenShareAudioFailed: false,
-    requestMaximize: false,
     selectedAudioInputId: null,
     selectedAudioOutputId: null,
     selectedVideoInputId: null,
@@ -62,6 +63,10 @@ function createVoiceState(overrides: Partial<VoiceState> = {}): VoiceState {
     watchingCameras: new Set<string>(),
     watchingScreenShares: new Set<string>(),
     hiddenLocalTiles: new Set<string>(),
+    stageMounted: false,
+    layoutMode: VideoLayoutMode.Grid,
+    pinnedTileId: null,
+    spotlightTileId: null,
     ...overrides,
   };
 }

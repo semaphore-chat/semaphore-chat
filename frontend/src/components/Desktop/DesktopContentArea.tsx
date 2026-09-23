@@ -1,20 +1,16 @@
 import React from "react";
 import { Box } from "@mui/material";
 import { Outlet } from "react-router-dom";
-import { useVideoOverlay } from "../../contexts/VideoOverlayContext";
 import { APPBAR_HEIGHT, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "../../constants/layout";
 import { RouteErrorBoundary } from "../RouteErrorBoundary";
 
-/** Content area that registers itself as the fallback video overlay container */
+/** Content area that hosts the routed page content */
 export const DesktopContentArea: React.FC<{ voiceConnected: boolean; isMenuExpanded: boolean }> = ({
   voiceConnected,
   isMenuExpanded,
 }) => {
-  const { setDefaultContainer } = useVideoOverlay();
-
   return (
     <Box
-      ref={setDefaultContainer}
       sx={{
         position: "absolute",
         top: APPBAR_HEIGHT,

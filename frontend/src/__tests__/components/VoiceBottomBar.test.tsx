@@ -3,6 +3,7 @@ import { screen, fireEvent } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { VoiceBottomBar } from '../../components/Voice/VoiceBottomBar';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { VideoLayoutMode } from '../../types/videoLayout';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -19,10 +20,11 @@ const mockActions = {
   toggleVideo: vi.fn(),
   toggleScreenShare: vi.fn(),
   setShowVideoTiles: vi.fn(),
+  setPipCollapsed: vi.fn(),
+  revealVideoTiles: vi.fn(),
   leaveVoiceChannel: vi.fn(),
   switchAudioInputDevice: vi.fn(),
   switchVideoInputDevice: vi.fn(),
-  requestMaximize: vi.fn(),
   joinVoiceChannel: vi.fn(),
   joinDmVoice: vi.fn(),
   toggleAudio: vi.fn(),
@@ -44,8 +46,8 @@ const defaultVoiceState: VoiceState & { room: null } = {
   isDeafened: false,
   isServerMuted: false,
   showVideoTiles: false,
+  pipCollapsed: false,
   screenShareAudioFailed: false,
-  requestMaximize: false,
   selectedAudioInputId: null,
   selectedAudioOutputId: null,
   selectedVideoInputId: null,
@@ -53,6 +55,10 @@ const defaultVoiceState: VoiceState & { room: null } = {
   watchingCameras: new Set<string>(),
   watchingScreenShares: new Set<string>(),
   hiddenLocalTiles: new Set<string>(),
+  stageMounted: false,
+  layoutMode: VideoLayoutMode.Grid,
+  pinnedTileId: null,
+  spotlightTileId: null,
   room: null,
 };
 
@@ -486,6 +492,96 @@ describe('VoiceBottomBar', () => {
     renderWithProviders(<VoiceBottomBar />);
 
     expect(screen.queryByRole('button', { name: /show video tiles/i })).not.toBeInTheDocument();
+  });
+
+  it('"Show Video Tiles" button reveals (show + un-collapse) rather than just showing', async () => {
+    voiceState = { ...defaultVoiceState, showVideoTiles: false };
+    vi.mocked(useVoiceConnection).mockReturnValue({
+      state: voiceState,
+      actions: mockActions,
+    } as never);
+
+    const { user } = renderWithProviders(<VoiceBottomBar />);
+
+    await user.click(screen.getByRole('button', { name: /show video tiles/i }));
+
+    expect(mockActions.revealVideoTiles).toHaveBeenCalled();
+    expect(mockActions.setShowVideoTiles).not.toHaveBeenCalled();
+  });
+
+  describe('settings menu video-tiles toggle', () => {
+    async function openSettingsMenu(user: ReturnType<typeof renderWithProviders>['user']) {
+      const settingsIcon = screen.getByTestId('SettingsIcon');
+      await user.click(settingsIcon.closest('button')!);
+    }
+
+    it('expanded (shown, not collapsed): "Hide Video Tiles" collapses the pill', async () => {
+      voiceState = { ...defaultVoiceState, showVideoTiles: true, pipCollapsed: false };
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: voiceState,
+        actions: mockActions,
+      } as never);
+
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      await openSettingsMenu(user);
+
+      const item = await screen.findByText('Hide Video Tiles');
+      await user.click(item);
+
+      expect(mockActions.setPipCollapsed).toHaveBeenCalledWith(true);
+      expect(mockActions.revealVideoTiles).not.toHaveBeenCalled();
+      expect(mockActions.setShowVideoTiles).not.toHaveBeenCalled();
+    });
+
+    it('hidden (showVideoTiles false): "Show Video Tiles" reveals fully', async () => {
+      voiceState = { ...defaultVoiceState, showVideoTiles: false, pipCollapsed: false };
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: voiceState,
+        actions: mockActions,
+      } as never);
+
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      await openSettingsMenu(user);
+
+      const item = await screen.findByText('Show Video Tiles');
+      await user.click(item);
+
+      expect(mockActions.revealVideoTiles).toHaveBeenCalled();
+      expect(mockActions.setPipCollapsed).not.toHaveBeenCalled();
+    });
+
+    it('collapsed to a pill (showVideoTiles true, pipCollapsed true): "Show Video Tiles" reveals fully', async () => {
+      voiceState = { ...defaultVoiceState, showVideoTiles: true, pipCollapsed: true };
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: voiceState,
+        actions: mockActions,
+      } as never);
+
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      await openSettingsMenu(user);
+
+      const item = await screen.findByText('Show Video Tiles');
+      await user.click(item);
+
+      expect(mockActions.revealVideoTiles).toHaveBeenCalled();
+      expect(mockActions.setPipCollapsed).not.toHaveBeenCalled();
+    });
+
+    it('hides the video-tiles menu item entirely while the embedded stage is mounted (toggling pip state would have no visible effect)', async () => {
+      voiceState = { ...defaultVoiceState, showVideoTiles: true, pipCollapsed: false, stageMounted: true };
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: voiceState,
+        actions: mockActions,
+      } as never);
+
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      await openSettingsMenu(user);
+
+      expect(screen.queryByText('Hide Video Tiles')).not.toBeInTheDocument();
+      expect(screen.queryByText('Show Video Tiles')).not.toBeInTheDocument();
+      // The rest of the menu is unaffected.
+      expect(screen.getByText('Voice & Video Settings')).toBeInTheDocument();
+    });
   });
 
   describe('speakerphone toggle (#109)', () => {

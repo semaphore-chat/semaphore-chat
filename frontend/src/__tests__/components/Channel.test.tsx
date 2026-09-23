@@ -12,8 +12,7 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 });
 
 const mockJoinVoiceChannel = vi.fn();
-const mockSetShowVideoTiles = vi.fn();
-const mockRequestMaximize = vi.fn();
+const mockRevealVideoTiles = vi.fn();
 const mockLeaveVoiceChannel = vi.fn();
 
 vi.mock('../../hooks/useVoiceConnection', () => ({
@@ -25,8 +24,7 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
     },
     actions: {
       joinVoiceChannel: mockJoinVoiceChannel,
-      setShowVideoTiles: mockSetShowVideoTiles,
-      requestMaximize: mockRequestMaximize,
+      revealVideoTiles: mockRevealVideoTiles,
       leaveVoiceChannel: mockLeaveVoiceChannel,
     },
   })),
@@ -80,8 +78,7 @@ describe('Channel', () => {
       } as never,
       actions: {
         joinVoiceChannel: mockJoinVoiceChannel,
-        setShowVideoTiles: mockSetShowVideoTiles,
-        requestMaximize: mockRequestMaximize,
+        revealVideoTiles: mockRevealVideoTiles,
         leaveVoiceChannel: mockLeaveVoiceChannel,
       } as never,
     });
@@ -136,7 +133,7 @@ describe('Channel', () => {
     });
   });
 
-  it('shows video tiles when clicking already-connected voice channel', async () => {
+  it('reveals video tiles (show + un-collapse) when clicking already-connected voice channel', async () => {
     vi.mocked(useVoiceConnection).mockReturnValue({
       state: {
         isConnected: true,
@@ -145,8 +142,7 @@ describe('Channel', () => {
       } as never,
       actions: {
         joinVoiceChannel: mockJoinVoiceChannel,
-        setShowVideoTiles: mockSetShowVideoTiles,
-        requestMaximize: mockRequestMaximize,
+        revealVideoTiles: mockRevealVideoTiles,
         leaveVoiceChannel: mockLeaveVoiceChannel,
       } as never,
     });
@@ -158,8 +154,7 @@ describe('Channel', () => {
 
     await user.click(screen.getByText('voice'));
 
-    expect(mockSetShowVideoTiles).toHaveBeenCalledWith(true);
-    expect(mockRequestMaximize).toHaveBeenCalled();
+    expect(mockRevealVideoTiles).toHaveBeenCalled();
   });
 
   it('shows error notification when voice join fails', async () => {

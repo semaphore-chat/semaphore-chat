@@ -340,7 +340,7 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
               isSpeaking={isSpeaking}
               onContextMenu={handleContextMenu}
               onClickUser={openProfile}
-              onShowVideoTiles={() => voiceActions.setShowVideoTiles(true)}
+              onShowVideoTiles={() => voiceActions.revealVideoTiles()}
               isWatchingCamera={watchingCameras.has(user.id)}
               isWatchingScreenShare={watchingScreenShares.has(user.id)}
               onWatchCamera={trackActions?.watchCamera}

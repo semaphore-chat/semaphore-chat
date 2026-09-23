@@ -127,14 +127,14 @@ export const useScreenShare = (): UseScreenShareReturn => {
    * sees what they are broadcasting (remote viewers get the same via
    * useTrackSubscription's TrackPublished handler)
    */
-  const { setShowVideoTiles } = actions;
+  const { revealVideoTiles } = actions;
   const prevScreenShareEnabledRef = useRef(isScreenShareEnabled);
   useEffect(() => {
     if (isScreenShareEnabled && !prevScreenShareEnabledRef.current) {
-      setShowVideoTiles(true);
+      revealVideoTiles();
     }
     prevScreenShareEnabledRef.current = isScreenShareEnabled;
-  }, [isScreenShareEnabled, setShowVideoTiles]);
+  }, [isScreenShareEnabled, revealVideoTiles]);
 
   return {
     isScreenSharing: isScreenShareEnabled,

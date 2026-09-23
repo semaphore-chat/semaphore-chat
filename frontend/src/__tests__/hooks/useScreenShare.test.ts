@@ -11,13 +11,13 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 });
 
 const mockToggleScreenShare = vi.fn().mockResolvedValue(undefined);
-const mockSetShowVideoTiles = vi.fn();
+const mockRevealVideoTiles = vi.fn();
 vi.mock('../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: vi.fn(() => ({
     state: { isConnected: true },
     actions: {
       toggleScreenShare: mockToggleScreenShare,
-      setShowVideoTiles: mockSetShowVideoTiles,
+      revealVideoTiles: mockRevealVideoTiles,
     },
   })),
 }));
@@ -154,24 +154,24 @@ describe('useScreenShare', () => {
     expect(mockClearScreenShareConfig).toHaveBeenCalled();
   });
 
-  it('opens the video panel when own screen share starts', () => {
+  it('reveals the video panel (show + un-collapse) when own screen share starts', () => {
     const { rerender } = renderUseScreenShare();
-    expect(mockSetShowVideoTiles).not.toHaveBeenCalled();
+    expect(mockRevealVideoTiles).not.toHaveBeenCalled();
 
     // Simulate sharing starting
     mockIsScreenShareEnabled = true;
     rerender();
 
-    expect(mockSetShowVideoTiles).toHaveBeenCalledWith(true);
+    expect(mockRevealVideoTiles).toHaveBeenCalled();
   });
 
-  it('does not open the video panel when sharing stops', () => {
+  it('does not reveal the video panel when sharing stops', () => {
     mockIsScreenShareEnabled = true;
     const { rerender } = renderUseScreenShare();
 
     mockIsScreenShareEnabled = false;
     rerender();
 
-    expect(mockSetShowVideoTiles).not.toHaveBeenCalled();
+    expect(mockRevealVideoTiles).not.toHaveBeenCalled();
   });
 });

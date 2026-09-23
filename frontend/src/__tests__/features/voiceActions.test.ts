@@ -120,6 +120,7 @@ import {
   switchAudioOutputDevice,
 } from '../../features/voice/voiceActions';
 import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
 import { getCachedItem } from '../../utils/storage';
@@ -152,8 +153,8 @@ function createMockDeps(overrides: Partial<{
       isDeafened: overrides.isDeafened ?? false,
       isServerMuted: overrides.isServerMuted ?? false,
       showVideoTiles: false,
+      pipCollapsed: false,
       screenShareAudioFailed: false,
-      requestMaximize: false,
       selectedAudioInputId: null,
       selectedAudioOutputId: null,
       selectedVideoInputId: null,
@@ -161,6 +162,10 @@ function createMockDeps(overrides: Partial<{
       watchingCameras: new Set<string>(),
       watchingScreenShares: new Set<string>(),
       hiddenLocalTiles: new Set<string>(),
+      stageMounted: false,
+      layoutMode: VideoLayoutMode.Grid,
+      pinnedTileId: null,
+      spotlightTileId: null,
     }),
     getRoom: () => room as Room | null,
     setRoom: vi.fn(),

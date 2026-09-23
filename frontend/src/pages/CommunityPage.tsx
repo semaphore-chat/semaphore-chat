@@ -8,7 +8,7 @@ import {
 import { Avatar, Box, Typography } from "@mui/material";
 import ChannelList from "../components/Channel/ChannelList";
 import ChannelMessageContainer from "../components/Channel/ChannelMessageContainer";
-import { VoiceChannelUserList } from "../components/Voice";
+import { VideoTiles, VoiceChannelUserList } from "../components/Voice";
 import EditCommunityButton from "../components/Community/EditCommunityButton";
 import TwoColumnLayout from "../components/Common/TwoColumnLayout";
 import { styled } from "@mui/material/styles";
@@ -16,7 +16,7 @@ import { ChannelType } from "../types/channel.type";
 import { useVoiceConnection } from "../hooks/useVoiceConnection";
 import { useAuthenticatedImage } from "../hooks/useAuthenticatedImage";
 import { useResponsive } from "../hooks/useResponsive";
-import { useVideoOverlay } from "../contexts/VideoOverlayContext";
+import { useStagePresence } from "../hooks/useStagePresence";
 
 const CommunityPage: React.FC = () => {
   const { isMobile } = useResponsive();
@@ -45,7 +45,13 @@ const DesktopCommunityPage: React.FC = () => {
   });
   const { state: voiceState } = useVoiceConnection();
   const { blobUrl: communityAvatarUrl } = useAuthenticatedImage(data?.avatar);
-  const { setPageContainer } = useVideoOverlay();
+
+  const isConnectedToVoiceChannel = Boolean(
+    channelData?.type === ChannelType.VOICE &&
+    voiceState.isConnected &&
+    voiceState.currentChannelId === channelId
+  );
+  useStagePresence(isConnectedToVoiceChannel);
 
   if (!communityId) return <div>Community ID is required</div>;
   if (isLoading) return <div>Loading...</div>;
@@ -76,8 +82,13 @@ const DesktopCommunityPage: React.FC = () => {
     }
 
     if (channelData?.type === ChannelType.VOICE) {
-      const isConnectedToThisChannel = voiceState.isConnected &&
-        voiceState.currentChannelId === channelId;
+      if (isConnectedToVoiceChannel) {
+        return (
+          <Box sx={{ height: '100%', width: '100%', minHeight: 0, display: 'flex' }}>
+            <VideoTiles />
+          </Box>
+        );
+      }
 
       return (
         <Box
@@ -95,15 +106,9 @@ const DesktopCommunityPage: React.FC = () => {
             🔊 {channelData.name}
           </Typography>
 
-          {isConnectedToThisChannel ? (
-            <Typography variant="body1" color="success.main" textAlign="center">
-              Connected — Video tiles are in the floating overlay
-            </Typography>
-          ) : (
-            <Typography variant="body1" color="text.secondary" textAlign="center">
-              Click on this voice channel in the sidebar to join
-            </Typography>
-          )}
+          <Typography variant="body1" color="text.secondary" textAlign="center">
+            Click on this voice channel in the sidebar to join
+          </Typography>
 
           <Box sx={{ maxWidth: 600, width: '100%' }}>
             <VoiceChannelUserList channel={channelData} />
@@ -147,11 +152,14 @@ const DesktopCommunityPage: React.FC = () => {
           <ChannelList communityId={communityId} />
         </>
       }
-      contentRef={setPageContainer}
-      contentSx={{
-        flexDirection: "column-reverse",
-        alignItems: "center",
-      }}
+      contentSx={
+        isConnectedToVoiceChannel
+          ? undefined
+          : {
+              flexDirection: "column-reverse",
+              alignItems: "center",
+            }
+      }
     >
       {renderChannelContent()}
     </TwoColumnLayout>

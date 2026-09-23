@@ -1,7 +1,6 @@
 import React from "react";
 import CommunityToggle from "../CommunityList/CommunityToggle";
 import NotificationCenter from "../Notifications/NotificationCenter";
-import { VideoOverlayProvider } from "../../contexts/VideoOverlayContext";
 import { TrackSubscriptionProvider } from "../Voice/TrackSubscriptionProvider";
 import { VoiceEventLogProvider } from "../../hooks/useVoiceEventLog";
 import { VoiceTestHooks } from "../../features/voice/VoiceTestHooks";
@@ -32,7 +31,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
   const [notificationCenterOpen, setNotificationCenterOpen] = React.useState(false);
 
   return (
-    <VideoOverlayProvider>
+    <>
       <DesktopAppBar
         instanceName={instanceName}
         isLoading={isLoading}
@@ -60,7 +59,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
           <PersistentVideoOverlay />
         </VoiceEventLogProvider>
       </TrackSubscriptionProvider>
-    </VideoOverlayProvider>
+    </>
   );
 };
 

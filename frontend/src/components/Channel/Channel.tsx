@@ -86,10 +86,9 @@ export function Channel({ channel }: ChannelProps) {
       // For voice channels, join the voice channel and navigate
       try {
         if (voiceState.currentChannelId === channel.id && voiceState.isConnected) {
-          // Already connected to this channel, navigate and maximize video tiles
+          // Already connected to this channel, navigate to the stage
           navigate(`/community/${communityId}/channel/${channel.id}`);
-          voiceActions.setShowVideoTiles(true);
-          voiceActions.requestMaximize();
+          voiceActions.revealVideoTiles();
         } else {
           // Join the voice channel
           await voiceActions.joinVoiceChannel(

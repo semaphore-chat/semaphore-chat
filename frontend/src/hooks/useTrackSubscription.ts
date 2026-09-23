@@ -180,7 +180,10 @@ export function useTrackSubscription(): TrackSubscriptionActions {
         // the "Click to watch" tile (watching remains opt-in per subscription policy)
         if (publication.source === Track.Source.ScreenShare) {
           logger.info('[TrackSubscription] Screen share published, opening video panel', participant.identity);
+          // Reveal fully (show + un-collapse) so a viewer with the pill
+          // collapsed doesn't miss a screen share that just started.
           dispatch({ type: VoiceActionType.SetShowVideoTiles, payload: true });
+          dispatch({ type: VoiceActionType.SetPipCollapsed, payload: false });
         }
       }
     };

@@ -98,6 +98,7 @@ vi.mock('../../contexts/VoiceContext', () => ({
     WatchScreenShare: 'WATCH_SCREEN_SHARE',
     StopWatchingScreenShare2: 'STOP_WATCHING_SCREEN_SHARE',
     SetShowVideoTiles: 'SET_SHOW_VIDEO_TILES',
+    SetPipCollapsed: 'SET_PIP_COLLAPSED',
   },
 }));
 
@@ -208,6 +209,12 @@ describe('useTrackSubscription', () => {
         type: 'SET_SHOW_VIDEO_TILES',
         payload: true,
       });
+      // Both dispatched together — a show-true-only dispatch could surface
+      // only a collapsed pill, leaving a viewer looking at nothing new.
+      expect(mockDispatch).toHaveBeenCalledWith({
+        type: 'SET_PIP_COLLAPSED',
+        payload: false,
+      });
     });
 
     it('does not open the video panel for mic, camera, or screen share audio publishes', () => {
@@ -226,6 +233,9 @@ describe('useTrackSubscription', () => {
 
       expect(mockDispatch).not.toHaveBeenCalledWith(
         expect.objectContaining({ type: 'SET_SHOW_VIDEO_TILES' }),
+      );
+      expect(mockDispatch).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'SET_PIP_COLLAPSED' }),
       );
     });
 

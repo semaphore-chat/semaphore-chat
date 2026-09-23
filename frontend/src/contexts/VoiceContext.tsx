@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useReducer, useRef, useEffect, useMemo } from "react";
+import { VideoLayoutMode } from "../types/videoLayout";
+import { getCachedItem, setCachedItem } from "../utils/storage";
+import { defaultPlacement, isValidPlacement } from "../utils/pipPosition";
 
 export enum VoiceSessionType {
   Channel = 'channel',
@@ -19,8 +22,8 @@ export interface VoiceState {
   dmGroupName: string | null;
   isDeafened: boolean;
   showVideoTiles: boolean;
+  pipCollapsed: boolean;
   screenShareAudioFailed: boolean;
-  requestMaximize: boolean;
   selectedAudioInputId: string | null;
   selectedAudioOutputId: string | null;
   selectedVideoInputId: string | null;
@@ -29,6 +32,10 @@ export interface VoiceState {
   watchingCameras: Set<string>;
   watchingScreenShares: Set<string>;
   hiddenLocalTiles: Set<string>;
+  stageMounted: boolean;
+  layoutMode: VideoLayoutMode;
+  pinnedTileId: string | null;
+  spotlightTileId: string | null;
 }
 
 export enum VoiceActionType {
@@ -39,10 +46,10 @@ export enum VoiceActionType {
   SetConnectionError = 'SET_CONNECTION_ERROR',
   SetDeafened = 'SET_DEAFENED',
   SetShowVideoTiles = 'SET_SHOW_VIDEO_TILES',
+  SetPipCollapsed = 'SET_PIP_COLLAPSED',
   SetScreenShareAudioFailed = 'SET_SCREEN_SHARE_AUDIO_FAILED',
   SetSelectedAudioInputId = 'SET_SELECTED_AUDIO_INPUT_ID',
   SetSelectedAudioOutputId = 'SET_SELECTED_AUDIO_OUTPUT_ID',
-  SetRequestMaximize = 'SET_REQUEST_MAXIMIZE',
   SetSelectedVideoInputId = 'SET_SELECTED_VIDEO_INPUT_ID',
   SetWasMutedBeforeDeafen = 'SET_WAS_MUTED_BEFORE_DEAFEN',
   SetServerMuted = 'SET_SERVER_MUTED',
@@ -52,6 +59,10 @@ export enum VoiceActionType {
   StopWatchingScreenShare = 'STOP_WATCHING_SCREEN_SHARE',
   HideLocalTile = 'HIDE_LOCAL_TILE',
   ShowLocalTile = 'SHOW_LOCAL_TILE',
+  SetStageMounted = 'SET_STAGE_MOUNTED',
+  SetLayoutMode = 'SET_LAYOUT_MODE',
+  TogglePinTile = 'TOGGLE_PIN_TILE',
+  ToggleSpotlightTile = 'TOGGLE_SPOTLIGHT_TILE',
 }
 
 export type VoiceAction =
@@ -62,10 +73,10 @@ export type VoiceAction =
   | { type: VoiceActionType.SetConnectionError; payload: string }
   | { type: VoiceActionType.SetDeafened; payload: boolean }
   | { type: VoiceActionType.SetShowVideoTiles; payload: boolean }
+  | { type: VoiceActionType.SetPipCollapsed; payload: boolean }
   | { type: VoiceActionType.SetScreenShareAudioFailed; payload: boolean }
   | { type: VoiceActionType.SetSelectedAudioInputId; payload: string | null }
   | { type: VoiceActionType.SetSelectedAudioOutputId; payload: string | null }
-  | { type: VoiceActionType.SetRequestMaximize; payload: boolean }
   | { type: VoiceActionType.SetSelectedVideoInputId; payload: string | null }
   | { type: VoiceActionType.SetWasMutedBeforeDeafen; payload: boolean }
   | { type: VoiceActionType.SetServerMuted; payload: boolean }
@@ -74,7 +85,11 @@ export type VoiceAction =
   | { type: VoiceActionType.WatchScreenShare; payload: string }
   | { type: VoiceActionType.StopWatchingScreenShare; payload: string }
   | { type: VoiceActionType.HideLocalTile; payload: string }
-  | { type: VoiceActionType.ShowLocalTile; payload: string };
+  | { type: VoiceActionType.ShowLocalTile; payload: string }
+  | { type: VoiceActionType.SetStageMounted; payload: boolean }
+  | { type: VoiceActionType.SetLayoutMode; payload: VideoLayoutMode }
+  | { type: VoiceActionType.TogglePinTile; payload: string }
+  | { type: VoiceActionType.ToggleSpotlightTile; payload: string };
 
 const initialState: VoiceState = {
   isConnected: false,
@@ -90,8 +105,8 @@ const initialState: VoiceState = {
   dmGroupName: null,
   isDeafened: false,
   showVideoTiles: false,
+  pipCollapsed: false,
   screenShareAudioFailed: false,
-  requestMaximize: false,
   selectedAudioInputId: null,
   selectedAudioOutputId: null,
   selectedVideoInputId: null,
@@ -100,6 +115,10 @@ const initialState: VoiceState = {
   watchingCameras: new Set<string>(),
   watchingScreenShares: new Set<string>(),
   hiddenLocalTiles: new Set<string>(),
+  stageMounted: false,
+  layoutMode: VideoLayoutMode.Grid,
+  pinnedTileId: null,
+  spotlightTileId: null,
 };
 
 function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
@@ -141,9 +160,12 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
         createdAt: null,
       };
     case VoiceActionType.SetDisconnected:
+      // showVideoTiles and pipCollapsed are persisted-natured UI prefs (the
+      // pill/panel should stay however the user left it, not reset on hangup).
       return {
         ...initialState,
         showVideoTiles: state.showVideoTiles,
+        pipCollapsed: state.pipCollapsed,
       };
     case VoiceActionType.SetConnectionError:
       return { ...state, isConnecting: false, connectionError: action.payload };
@@ -151,10 +173,10 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
       return { ...state, isDeafened: action.payload };
     case VoiceActionType.SetShowVideoTiles:
       return { ...state, showVideoTiles: action.payload };
+    case VoiceActionType.SetPipCollapsed:
+      return { ...state, pipCollapsed: action.payload };
     case VoiceActionType.SetScreenShareAudioFailed:
       return { ...state, screenShareAudioFailed: action.payload };
-    case VoiceActionType.SetRequestMaximize:
-      return { ...state, requestMaximize: action.payload };
     case VoiceActionType.SetSelectedAudioInputId:
       return { ...state, selectedAudioInputId: action.payload };
     case VoiceActionType.SetSelectedAudioOutputId:
@@ -201,6 +223,26 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
       next.delete(action.payload);
       return { ...state, hiddenLocalTiles: next };
     }
+    case VoiceActionType.SetStageMounted:
+      return { ...state, stageMounted: action.payload };
+    case VoiceActionType.SetLayoutMode:
+      return {
+        ...state,
+        layoutMode: action.payload,
+        ...(action.payload !== VideoLayoutMode.Spotlight ? { spotlightTileId: null } : {}),
+      };
+    case VoiceActionType.TogglePinTile: {
+      if (state.pinnedTileId === action.payload) {
+        return { ...state, pinnedTileId: null };
+      }
+      return { ...state, pinnedTileId: action.payload, layoutMode: VideoLayoutMode.Sidebar };
+    }
+    case VoiceActionType.ToggleSpotlightTile: {
+      if (state.layoutMode === VideoLayoutMode.Spotlight && state.spotlightTileId === action.payload) {
+        return { ...state, spotlightTileId: null, layoutMode: VideoLayoutMode.Grid };
+      }
+      return { ...state, spotlightTileId: action.payload, layoutMode: VideoLayoutMode.Spotlight };
+    }
     default:
       return state;
   }
@@ -213,13 +255,44 @@ const VoiceDispatchContext = createContext<{
   stateRef: React.RefObject<VoiceState>;
 } | null>(null);
 
+// Same on-disk record FloatCard reads/writes (utils/pipPosition.ts's
+// PipPlacement); read narrowly here so the pill's collapsed state survives a
+// reload without pulling in the full placement geometry/validation.
+const PIP_PLACEMENT_KEY = 'semaphore_pip_placement';
+
+function initVoiceState(base: VoiceState): VoiceState {
+  const saved = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
+  const collapsed = !!saved && typeof saved === 'object' && typeof (saved as { collapsed?: unknown }).collapsed === 'boolean'
+    ? (saved as { collapsed: boolean }).collapsed
+    : base.pipCollapsed;
+  return { ...base, pipCollapsed: collapsed };
+}
+
 export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(voiceReducer, initialState);
+  const [state, dispatch] = useReducer(voiceReducer, initialState, initVoiceState);
   const stateRef = useRef(state);
+  // Tracks the last-persisted value so the mirror effect below only writes
+  // on an actual change, never on mount (initVoiceState already loaded it).
+  const persistedCollapsedRef = useRef(state.pipCollapsed);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // pipCollapsed can change while FloatCard isn't mounted at all — the
+  // VoiceBottomBar settings menu dispatches SetPipCollapsed directly, and
+  // useTrackSubscription's auto-reveal does too — so FloatCard's own mount
+  // lifecycle can't be the thing that persists it. Do it here instead, at
+  // the provider level, which is always mounted whenever voice state exists.
+  // Merges onto whatever's already on disk (falling back to defaultPlacement
+  // if it's missing/invalid) so anchor/size/docked survive untouched.
+  useEffect(() => {
+    if (persistedCollapsedRef.current === state.pipCollapsed) return;
+    persistedCollapsedRef.current = state.pipCollapsed;
+    const saved = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
+    const base = isValidPlacement(saved) ? saved : defaultPlacement();
+    setCachedItem(PIP_PLACEMENT_KEY, { ...base, collapsed: state.pipCollapsed });
+  }, [state.pipCollapsed]);
 
   // Memoize dispatch context value so consumers (like RoomProvider) that only
   // need dispatch/stateRef don't re-render on every VoiceState change.
