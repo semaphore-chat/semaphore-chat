@@ -25,8 +25,20 @@ vi.mock('virtua', async () => {
 });
 
 vi.mock('../../components/Message/MessageComponent', () => ({
-  default: ({ message, grouped }: { message: { id: string }; grouped?: boolean }) => (
-    <div data-testid={`msg-${message.id}`} data-grouped={grouped ? 'true' : 'false'} />
+  default: ({
+    message,
+    grouped,
+    dayShownAbove,
+  }: {
+    message: { id: string };
+    grouped?: boolean;
+    dayShownAbove?: boolean;
+  }) => (
+    <div
+      data-testid={`msg-${message.id}`}
+      data-grouped={grouped ? 'true' : 'false'}
+      data-day-shown-above={dayShownAbove ? 'true' : 'false'}
+    />
   ),
 }));
 vi.mock('../../components/Message/MessageSkeleton', () => ({
@@ -106,6 +118,36 @@ describe('VirtualMessageList grouping and day separators', () => {
     expect(within(a1Row).getByRole('separator')).toBeInTheDocument();
     expect(within(a3Row).getByRole('separator')).toBeInTheDocument();
     expect(within(document.querySelector('[data-message-id="a2"]') as HTMLElement).queryByRole('separator')).toBeNull();
+  });
+
+  it('only drops the day from a header when a separator above names that same day', () => {
+    // Window starts mid-day (older pages not loaded yet) and spans two days.
+    const msgs = [
+      createMessage({ id: 'w1', authorId: 'u1', sentAt: at(21, 15, 0) }),
+      createMessage({ id: 'w2', authorId: 'u2', sentAt: at(21, 16, 0) }),
+      createMessage({ id: 'w3', authorId: 'u1', sentAt: at(22, 9, 0) }),
+      createMessage({ id: 'w4', authorId: 'u2', sentAt: at(22, 9, 30) }),
+    ];
+    render(<VirtualMessageList {...baseProps} orderedMessages={msgs} />);
+
+    // Walk the rendered rows top to bottom, tracking the last separator's label.
+    const expectedLabel: Record<string, string> = {};
+    const labelFor = (iso: string) =>
+      new Date(iso).toLocaleDateString(undefined, { dateStyle: 'full' });
+    for (const m of msgs) expectedLabel[m.id] = labelFor(m.sentAt);
+
+    let lastSeparatorTitle: string | null = null;
+    for (const row of Array.from(document.querySelectorAll<HTMLElement>('[data-message-id]'))) {
+      const sep = within(row).queryByRole('separator');
+      if (sep) lastSeparatorTitle = sep.getAttribute('title');
+      const id = row.getAttribute('data-message-id')!;
+      const shown = screen.getByTestId(`msg-${id}`).getAttribute('data-day-shown-above') === 'true';
+      // Invariant: dayShownAbove is true exactly when the nearest separator
+      // above is for this row's own day — and with the list's separator rule
+      // that is every row, including the first (mid-day) one.
+      expect(shown).toBe(lastSeparatorTitle === expectedLabel[id]);
+      expect(shown).toBe(true);
+    }
   });
 
   it('does not group the first unread message with the one before the divider', () => {

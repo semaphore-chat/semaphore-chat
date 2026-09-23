@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   shouldGroupWithPrevious,
   startsNewDay,
+  dayMarkers,
   GROUP_WINDOW_MS,
 } from '../../utils/messageGrouping';
 import { createMessage } from '../test-utils/factories';
@@ -96,5 +97,46 @@ describe('startsNewDay', () => {
   it('is false on the same day', () => {
     const prev = createMessage({ sentAt: at(1, 0) });
     expect(startsNewDay(prev, createMessage({ sentAt: at(23, 0) }))).toBe(false);
+  });
+});
+
+describe('dayMarkers', () => {
+  it('returns nothing for an empty list', () => {
+    expect(dayMarkers([])).toEqual([]);
+  });
+
+  it('puts a separator on the first row even mid-day (window starts after older pages)', () => {
+    // The loaded window begins at 3 PM — earlier same-day messages are not
+    // loaded yet — so the first row still gets the day label above it.
+    const rows = dayMarkers([
+      createMessage({ sentAt: at(15, 0, 0, 21) }),
+      createMessage({ sentAt: at(15, 1, 0, 21) }),
+    ]);
+    expect(rows).toEqual([
+      { separator: true, dayShownAbove: true },
+      { separator: false, dayShownAbove: true },
+    ]);
+  });
+
+  it('marks each day change and keeps every row labelled by its own day', () => {
+    const msgs = [
+      createMessage({ sentAt: at(23, 50, 0, 20) }),
+      createMessage({ sentAt: at(9, 0, 0, 21) }),
+      createMessage({ sentAt: at(18, 0, 0, 21) }),
+      createMessage({ sentAt: at(0, 1, 0, 22) }),
+    ];
+    const rows = dayMarkers(msgs);
+    expect(rows.map((r) => r.separator)).toEqual([true, true, false, true]);
+    expect(rows.every((r) => r.dayShownAbove)).toBe(true);
+  });
+
+  it('holds when a row is out of order (e.g. an optimistic row with a skewed clock)', () => {
+    const rows = dayMarkers([
+      createMessage({ sentAt: at(10, 0, 0, 22) }),
+      createMessage({ sentAt: at(23, 0, 0, 21) }),
+      createMessage({ sentAt: at(10, 5, 0, 22) }),
+    ]);
+    expect(rows.map((r) => r.separator)).toEqual([true, true, true]);
+    expect(rows.every((r) => r.dayShownAbove)).toBe(true);
   });
 });

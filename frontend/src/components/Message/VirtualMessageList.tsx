@@ -14,7 +14,7 @@ import MessageComponent from "./MessageComponent";
 import MessageSkeleton from "./MessageSkeleton";
 import { UnreadMessageDivider } from "./UnreadMessageDivider";
 import { DaySeparator } from "./DaySeparator";
-import { shouldGroupWithPrevious, startsNewDay } from "../../utils/messageGrouping";
+import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 
@@ -687,6 +687,10 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       ],
     );
 
+    // Where DaySeparators go, and whether each row's day is already named by
+    // one above it (header then shows "4:12 PM", not "Yesterday 4:12 PM").
+    const dayRows = dayMarkers(orderedMessages);
+
     return (
       <Box
         ref={listContainerRef}
@@ -728,7 +732,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
             const showDividerBefore =
               unreadCount > 0 && lastReadIndex !== -1 && index === lastReadIndex + 1;
             const prevMessage = index > 0 ? orderedMessages[index - 1] : undefined;
-            const showDaySeparator = startsNewDay(prevMessage, message);
+            const { separator: showDaySeparator, dayShownAbove } = dayRows[index];
             // Same-author run within 5 min (see utils/messageGrouping); the
             // unread divider always starts a fresh header below it.
             const grouped =
@@ -759,7 +763,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
                 <MessageComponent
                   message={message}
                   grouped={grouped}
-                  dayShownAbove
+                  dayShownAbove={dayShownAbove}
                   isAuthor={message.authorId === authorId}
                   isSearchHighlight={isHighlighted}
                   contextId={contextId}

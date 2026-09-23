@@ -42,3 +42,33 @@ export function shouldGroupWithPrevious(prev: Message | undefined, curr: Message
 export function startsNewDay(prev: Message | undefined, curr: Message): boolean {
   return !prev || !isSameDay(prev.sentAt, curr.sentAt);
 }
+
+export interface DayMarkers {
+  /** Render a DaySeparator above this row. */
+  separator: boolean;
+  /** The nearest DaySeparator above this row names the row's own day, so its
+   * header can drop the day and show the time only. */
+  dayShownAbove: boolean;
+}
+
+/**
+ * Day-separator placement for a rendered message list (oldest first).
+ *
+ * The first row always gets a separator (`startsNewDay(undefined, m)`), and
+ * every later row either gets its own or shares the previous row's day, so
+ * `dayShownAbove` is true for every row of a list rendered this way —
+ * whatever window is loaded (older/newer pages, "around" loads, cap
+ * eviction, optimistic rows). It is still derived from the actual separator
+ * positions rather than assumed, so it stays honest if the rules change.
+ */
+export function dayMarkers(messages: readonly Message[]): DayMarkers[] {
+  let lastSeparatorAt: string | undefined;
+  return messages.map((curr, i) => {
+    const separator = startsNewDay(messages[i - 1], curr);
+    if (separator) lastSeparatorAt = curr.sentAt;
+    return {
+      separator,
+      dayShownAbove: lastSeparatorAt !== undefined && isSameDay(lastSeparatorAt, curr.sentAt),
+    };
+  });
+}
