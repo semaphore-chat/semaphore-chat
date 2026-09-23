@@ -160,6 +160,7 @@ const MemberRow: React.FC<{
         primary={
           <Typography
             variant="body2"
+            noWrap
             sx={{
               fontWeight: 500,
               fontSize: "14px",

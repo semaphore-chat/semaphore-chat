@@ -198,4 +198,16 @@ describe('MemberList', () => {
       expect(renderCount('user-c')).toBe(1);
     });
   });
+
+  describe('long names (Review Focus #3)', () => {
+    it.each([
+      ['32-character no-space', 'Maximilianalexanderfeatherstonex'],
+      ['Arabic', 'عبد الرحمن بن محمد الهاشمي القرشي'],
+    ])('keeps a %s name on one line with an ellipsis', (_label, name) => {
+      renderWithProviders(
+        <MemberList members={[createMember({ id: 'long', displayName: name, isOnline: true })]} title="Members" />,
+      );
+      expect(screen.getByText(name)).toHaveClass('MuiTypography-noWrap');
+    });
+  });
 });

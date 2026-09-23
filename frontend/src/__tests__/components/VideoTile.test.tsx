@@ -222,4 +222,14 @@ describe('VideoTile', () => {
       expect(getCard(/RemoteUser/)).not.toHaveStyle({ borderColor: positive });
     });
   });
+
+  it('keeps a long participant name on one line with an ellipsis (Review Focus #3)', () => {
+    const name = 'Maximilianalexanderfeatherstonex';
+    renderTile({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      participant: { ...createMockParticipant('long-id'), name } as any,
+    });
+    const label = screen.getAllByText(new RegExp(name))[0];
+    expect(label).toHaveClass('MuiTypography-noWrap');
+  });
 });

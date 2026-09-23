@@ -37,7 +37,8 @@ export const Container = styled("div", {
     prop !== "isHighlighted" &&
     prop !== "isSearchHighlight" &&
     prop !== "isPending" &&
-    prop !== "isFailed",
+    prop !== "isFailed" &&
+    prop !== "grouped",
 })<{
   stagedForDelete?: boolean;
   isDeleting?: boolean;
@@ -47,7 +48,9 @@ export const Container = styled("div", {
   isPending?: boolean;
   /** Optimistic send failed — error tint (PR-13). */
   isFailed?: boolean;
-}>(({ theme, stagedForDelete, isDeleting, isHighlighted, isSearchHighlight, isPending, isFailed }) => ({
+  /** Continuation of a same-author run — tighter top spacing, no header. */
+  grouped?: boolean;
+}>(({ theme, stagedForDelete, isDeleting, isHighlighted, isSearchHighlight, isPending, isFailed, grouped }) => ({
   padding: theme.spacing(0.5, 2),
   display: "flex",
   alignItems: "flex-start",
@@ -76,8 +79,10 @@ export const Container = styled("div", {
     : "translateY(0) scale(1)",
   maxHeight: isDeleting ? 0 : "none",
   overflow: isDeleting ? "hidden" : "visible",
-  paddingTop: isDeleting ? 0 : theme.spacing(0.5),
-  paddingBottom: isDeleting ? 0 : theme.spacing(0.5),
+  // A run's first row gets breathing room above it; continuation rows sit
+  // tight under the previous one so a run reads as one block.
+  paddingTop: isDeleting ? 0 : grouped ? "1px" : theme.spacing(1),
+  paddingBottom: isDeleting ? 0 : "1px",
   // Search highlight flash animation
   animation: isSearchHighlight ? `${searchHighlightFlash} 2.5s ease-in-out` : "none",
   "&:hover": {
@@ -91,6 +96,12 @@ export const Container = styled("div", {
     "& .message-tools": {
       opacity: 1,
     },
+    "& .message-hover-time": {
+      opacity: 1,
+    },
+  },
+  "&:focus-visible .message-hover-time": {
+    opacity: 1,
   },
   // On touch devices there is no real hover; a tap can produce a sticky :hover
   // state, so keep the hover toolbar hidden (actions come from the long-press

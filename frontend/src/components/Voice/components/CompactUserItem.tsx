@@ -194,10 +194,12 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
 
       <ListItemText
         primary={
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
             <Typography
               variant="body2"
+              noWrap
               sx={{
+                minWidth: 0,
                 fontWeight: 500,
                 color: userState.isMuted ? "text.secondary" : "text.primary",
                 fontSize: "14px"

@@ -247,13 +247,15 @@ const VideoTile: React.FC<VideoTileProps> = ({
             justifyContent: 'space-between',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1, mr: 1 }}>
             <Typography
               variant="caption"
+              noWrap
               sx={{
                 color: 'white',
                 fontWeight: 'bold',
                 textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                minWidth: 0,
               }}
             >
               {displayName} {isLocal && '(You)'} {isSharing && ' - Screen'}
