@@ -208,16 +208,16 @@ jobs:
 
       # S3-compatible object storage for storage-s3.e2e-spec.ts. GitHub
       # Actions service containers cannot override a container's CMD/args
-      # (only `options` flags are supported, appended to `docker create` —
-      # there is no way to pass positional `server /data` args the way
-      # docker-compose's `minio` service does). `minio/minio:latest`'s
-      # default CMD (`minio` with no subcommand) just prints --help and
-      # exits, so it can't run as a bare service — but MinIO publishes
-      # `edge-cicd` specifically for CI: its CMD is `minio server /data`
-      # (verified via docker inspect + a boot test with env vars only),
-      # so it works as a bare `services:` entry on the first-party image.
+      # (only `options` flags are supported, appended to `docker create`),
+      # so the image's default CMD must start a server by itself. The
+      # upstream `minio/minio` Docker Hub repo (incl. the `edge-cicd` tag
+      # used previously) is gone, and `quay.io/minio/minio` release tags
+      # default to `minio` with no subcommand (prints --help and exits).
+      # `bitnamilegacy/minio`'s entrypoint runs `minio server` with env-only
+      # config and ships curl for the healthcheck (verified by a local boot
+      # + storage-s3 e2e run). It is a frozen archive repo, so pin tag+digest.
       minio:
-        image: minio/minio:edge-cicd
+        image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin
