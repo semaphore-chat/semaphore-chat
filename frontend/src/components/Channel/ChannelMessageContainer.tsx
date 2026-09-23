@@ -24,6 +24,8 @@ import { useAutoMarkNotificationsRead } from "../../hooks/useAutoMarkNotificatio
 import { useThreadPanel } from "../../contexts/ThreadPanelContext";
 import { useVoice, VoiceSessionType } from "../../contexts/VoiceContext";
 import { VOICE_BAR_HEIGHT } from "../../constants/layout";
+import { useResponsive } from "../../hooks/useResponsive";
+import { useOverlayHistory } from "../../hooks/useOverlayHistory";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 import type { Message } from "../../types/message.type";
 
@@ -44,6 +46,10 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const authorId = user?.id || "";
 
   const { isConnected: voiceConnected } = useVoice();
+  // Phone: the thread is a full-screen layer. Touch layouts: back closes the
+  // thread / pinned layer before leaving the channel. (Both are false on
+  // Electron, which always uses the desktop layout.)
+  const { isMobile, shouldUseTouchUI } = useResponsive();
 
   // Get communityId from props (mobile) or URL params (desktop)
   const { communityId: communityIdParam } = useParams<{
@@ -90,6 +96,11 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     closeThread();
     setThreadParentMessage(null);
   }, [closeThread]);
+
+  const threadOpen = !!openThreadId && !!threadParentMessage;
+  useOverlayHistory(threadOpen, handleCloseThread, { enabled: shouldUseTouchUI });
+  const closePinnedPanel = useCallback(() => setPinnedPanelOpen(false), []);
+  useOverlayHistory(pinnedPanelOpen, closePinnedPanel, { enabled: shouldUseTouchUI });
 
   // Fetch channel data for header
   const { data: channel } = useQuery(channelsControllerFindOneOptions({ path: { id: channelId } }));
@@ -248,13 +259,16 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
           onClose={() => setPinnedPanelOpen(false)}
           onMessageClick={(messageId) => {
             setPinnedPanelOpen(false);
+            // On touch layouts the open panel owns the current history entry
+            // (useOverlayHistory); replace it so back doesn't land on a dead entry.
+            const navOptions = { replace: shouldUseTouchUI };
             const pinnedMsg = pinnedMessages.find(m => m.id === messageId);
             if (pinnedMsg?.parentMessageId) {
               // Thread reply: jump to parent message and open the thread panel
               setPendingThreadParentId(pinnedMsg.parentMessageId);
-              navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`);
+              navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
             } else {
-              navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`);
+              navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`, navOptions);
             }
           }}
         />
@@ -263,12 +277,12 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
       {/* Thread Panel Drawer */}
       <Drawer
         anchor="right"
-        open={!!openThreadId && !!threadParentMessage}
+        open={threadOpen}
         onClose={handleCloseThread}
         PaperProps={{
           sx: {
-            width: 'min(400px, 100vw)',
-            height: 'var(--full-dvh)',
+            width: isMobile ? '100vw' : 'min(400px, 100vw)',
+            height: 'var(--full-dvh, 100dvh)',
             overflow: 'hidden',
             paddingBottom: voiceConnected ? `${VOICE_BAR_HEIGHT}px` : 0,
           },
@@ -279,6 +293,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             parentMessage={threadParentMessage}
             channelId={channelId}
             communityId={communityId}
+            fullScreen={isMobile}
           />
         )}
       </Drawer>

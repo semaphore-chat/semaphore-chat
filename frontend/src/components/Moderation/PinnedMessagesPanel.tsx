@@ -35,6 +35,14 @@ import type { FileMetadata } from "../../types/message.type";
 import type { PinnedMessageAttachmentDto } from "../../api-client/types.gen";
 import { formatDistanceToNow } from "date-fns";
 import { logger } from "../../utils/logger";
+import { useResponsive } from "../../hooks/useResponsive";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
+
+/** Safe-area padding: the panel fills a full-height drawer on phones. */
+const safeAreaSx = {
+  paddingTop: "env(safe-area-inset-top)",
+  paddingBottom: "env(safe-area-inset-bottom)",
+} as const;
 
 interface PinnedMessagesPanelProps {
   channelId: string;
@@ -50,6 +58,10 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
   onClose,
 }) => {
   const theme = useTheme();
+  const { shouldUseTouchUI } = useResponsive();
+  const touchTargetSx = shouldUseTouchUI
+    ? { minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM }
+    : undefined;
   const queryClient = useQueryClient();
   const { data: pinnedMessages, isLoading, error } = useQuery(moderationControllerGetPinnedMessagesOptions({ path: { channelId } }));
   const { mutateAsync: unpinMessage } = useMutation({
@@ -73,16 +85,18 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
 
   if (isLoading) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-          <PushPinIcon sx={{ mr: 1 }} />
-          <Typography variant="h6">Pinned Messages</Typography>
-        </Box>
-        {[1, 2, 3].map((i) => (
-          <Box key={i} sx={{ mb: 2 }}>
-            <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+      <Box sx={safeAreaSx}>
+        <Box sx={{ p: 2 }}>
+          <Box sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+            <PushPinIcon sx={{ mr: 1 }} />
+            <Typography variant="h6">Pinned Messages</Typography>
           </Box>
-        ))}
+          {[1, 2, 3].map((i) => (
+            <Box key={i} sx={{ mb: 2 }}>
+              <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+            </Box>
+          ))}
+        </Box>
       </Box>
     );
   }
@@ -105,18 +119,23 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
 
   if (error) {
     return (
-      <Box sx={{ p: 2 }}>
-        <Alert severity="error">Failed to load pinned messages</Alert>
+      <Box sx={safeAreaSx}>
+        <Box sx={{ p: 2 }}>
+          <Alert severity="error">Failed to load pinned messages</Alert>
+        </Box>
       </Box>
     );
   }
 
   return (
     <Box
+      data-testid="pinned-messages-panel"
       sx={{
         height: "100%",
         display: "flex",
         flexDirection: "column",
+        boxSizing: "border-box",
+        ...safeAreaSx,
       }}
     >
       <Box
@@ -124,17 +143,24 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          p: 2,
+          px: 2,
+          py: shouldUseTouchUI ? 0.5 : 2,
+          minHeight: shouldUseTouchUI ? 56 : undefined,
           borderBottom: 1,
           borderColor: "divider",
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center" }}>
+        <Box sx={{ display: "flex", alignItems: "center", minWidth: 0 }}>
           <PushPinIcon sx={{ mr: 1, color: "primary.main" }} />
           <Typography variant="h6">Pinned Messages</Typography>
         </Box>
         {onClose && (
-          <IconButton size="small" onClick={onClose}>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            aria-label="Close pinned messages"
+            sx={shouldUseTouchUI ? { ...touchTargetSx, mr: -1 } : undefined}
+          >
             <CloseIcon />
           </IconButton>
         )}
@@ -180,6 +206,8 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
                         <IconButton
                           edge="end"
                           size="small"
+                          aria-label="Unpin message"
+                          sx={touchTargetSx}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleUnpin(message.id);

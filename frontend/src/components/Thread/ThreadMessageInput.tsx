@@ -21,6 +21,7 @@ import { SpanType } from "../../types/message.type";
 import { logger } from "../../utils/logger";
 import { EmojiPickerPopover } from "../Message/EmojiPicker";
 import { useResponsive } from "../../hooks/useResponsive";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { parseMessageWithMentions } from "../../utils/mentionParser";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
@@ -38,7 +39,9 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
 }) => {
   const theme = useTheme();
   const { socket } = useContext(SocketContext);
-  const { isTouchDevice } = useResponsive();
+  const { isTouchDevice, shouldUseTouchUI } = useResponsive();
+  // 44px touch targets on touch layouts (TOUCH_TARGETS.MINIMUM), 40px on desktop.
+  const actionButtonSize = shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 40;
   const [content, setContent] = useState("");
   const [isSending, setIsSending] = useState(false);
 
@@ -227,8 +230,8 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
           aria-haspopup="true"
           aria-expanded={emojiPickerOpen}
           sx={{
-            width: 40,
-            height: 40,
+            width: actionButtonSize,
+            height: actionButtonSize,
           }}
         >
           <EmojiEmotionsOutlinedIcon />
@@ -239,8 +242,8 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
           disabled={!content.trim() || isSending}
           aria-label="send"
           sx={{
-            width: 40,
-            height: 40,
+            width: actionButtonSize,
+            height: actionButtonSize,
           }}
         >
           {isSending ? (

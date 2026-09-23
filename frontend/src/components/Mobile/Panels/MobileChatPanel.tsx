@@ -34,7 +34,8 @@ import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
-import { MOBILE_CONSTANTS } from '../../../utils/breakpoints';
+import { MOBILE_CONSTANTS, TOUCH_TARGETS } from '../../../utils/breakpoints';
+import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
 import { getDmDisplayName } from '../../../utils/dmHelpers';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { ChannelType } from '../../../types/channel.type';
@@ -88,6 +89,13 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [showMemberDrawer, setShowMemberDrawer] = React.useState(false);
   const [showPinnedDrawer, setShowPinnedDrawer] = React.useState(false);
+
+  // Hardware/browser back closes the members / pinned drawer before it
+  // leaves the chat screen.
+  const closeMemberDrawer = React.useCallback(() => setShowMemberDrawer(false), []);
+  const closePinnedDrawer = React.useCallback(() => setShowPinnedDrawer(false), []);
+  useOverlayHistory(showMemberDrawer, closeMemberDrawer, { enabled: shouldUseTouchUI });
+  useOverlayHistory(showPinnedDrawer, closePinnedDrawer, { enabled: shouldUseTouchUI });
 
   // Fetch pinned messages count for badge
   const { data: pinnedMessages = [] } = useQuery({
@@ -302,6 +310,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             flexDirection: 'column',
             height: '100%',
             pt: 'env(safe-area-inset-top)',
+            pb: 'env(safe-area-inset-bottom)',
           }}
         >
           {/* Header */}
@@ -311,7 +320,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               px: 2,
-              py: 1.5,
+              py: 0.5,
+              minHeight: 56,
               borderBottom: 1,
               borderColor: 'divider',
             }}
@@ -323,6 +333,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               onClick={() => setShowMemberDrawer(false)}
               size="small"
               aria-label="Close members"
+              sx={{ minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM, mr: -1 }}
             >
               <CloseIcon />
             </IconButton>
