@@ -16,6 +16,7 @@ import {
   Typography,
 } from "@mui/material";
 import { Group as GroupIcon, Phone } from "@mui/icons-material";
+import { visuallyHidden } from "@mui/utils";
 
 import UserAvatar from "../Common/UserAvatar";
 import { getDmOtherUser, formatLastMessageTime } from "../../utils/dmHelpers";
@@ -96,6 +97,8 @@ const DmListItem: React.FC<DmListItemProps> = ({
               <Typography
                 component="span"
                 noWrap
+                // RTL names/previews truncate at their own end (keep the first word).
+                dir="auto"
                 sx={{ minWidth: 0, fontWeight: isUnread ? 700 : 500 }}
               >
                 {names}
@@ -113,7 +116,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
               )}
             </Box>
             {isInCall && (
-              <Phone aria-label="In call" sx={{ fontSize: 'icon.sm', color: "success.main", flexShrink: 0 }} />
+              <Phone aria-label="In call" titleAccess="In call" sx={{ fontSize: 'icon.sm', color: "success.main", flexShrink: 0 }} />
             )}
             {group.lastMessage && (
               <Typography
@@ -125,7 +128,9 @@ const DmListItem: React.FC<DmListItemProps> = ({
                   ml: "auto",
                   pl: 1,
                   flexShrink: 0,
-                  color: isUnread ? "primary.main" : "text.secondary",
+                  // Unread is carried by weight + the badge; the accent colour
+                  // fails AA contrast at caption size on light grounds.
+                  color: isUnread ? "text.primary" : "text.secondary",
                   fontWeight: isUnread ? 600 : undefined,
                 }}
               >
@@ -138,7 +143,8 @@ const DmListItem: React.FC<DmListItemProps> = ({
               component="span"
               variant="body2"
               noWrap
-              sx={{ flex: 1, minWidth: 0, color: isUnread ? "text.primary" : "text.secondary" }}
+              dir="auto"
+              sx={{ flex: 1, minWidth: 0, textAlign: "left", color: isUnread ? "text.primary" : "text.secondary" }}
             >
               {preview}
             </Typography>
@@ -149,7 +155,9 @@ const DmListItem: React.FC<DmListItemProps> = ({
                 variant={badgeCount === 1 ? "dot" : "standard"}
                 color="error"
                 max={99}
-                aria-label={`${badgeCount} unread`}
+                // aria-label on the Badge's plain span isn't announced; the
+                // visually hidden text below carries the count instead.
+                aria-hidden
                 sx={{
                   flexShrink: 0,
                   mr: badgeCount === 1 ? 0.5 : 0,
@@ -169,6 +177,11 @@ const DmListItem: React.FC<DmListItemProps> = ({
                   },
                 }}
               />
+            )}
+            {isUnread && (
+              <Box component="span" sx={visuallyHidden}>
+                {`${badgeCount} unread`}
+              </Box>
             )}
           </Box>
         </Box>

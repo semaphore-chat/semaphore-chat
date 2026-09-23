@@ -44,6 +44,8 @@ interface MemberListProps {
   onLoadMore?: () => void;
   /** Retry after a failed load (shown in the error state). */
   onRetry?: () => void;
+  /** Fill the parent's width instead of the fixed 240px side column. */
+  fullWidth?: boolean;
 }
 
 const MemberListSkeleton: React.FC = () => (
@@ -161,10 +163,14 @@ const MemberRow: React.FC<{
           <Typography
             variant="body2"
             noWrap
+            // dir="auto": an Arabic/Hebrew name truncates at its own end
+            // (visual left), keeping its first word; the row stays left-aligned.
+            dir="auto"
             sx={{
               fontWeight: 500,
               fontSize: 'scale.base',
               lineHeight: 1.2,
+              textAlign: 'left',
             }}
           >
             {member.displayName || member.username}
@@ -204,6 +210,7 @@ const MemberList: React.FC<MemberListProps> = ({
   isLoadingMore = false,
   onLoadMore,
   onRetry,
+  fullWidth = false,
 }) => {
   const { openProfile } = useUserProfile();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -300,9 +307,9 @@ const MemberList: React.FC<MemberListProps> = ({
   return (
     <Box
       sx={{
-        width: 240,
+        width: fullWidth ? "100%" : 240,
         height: "100%",
-        borderLeft: 1,
+        borderLeft: fullWidth ? 0 : 1,
         borderColor: "divider",
         backgroundColor: "background.paper",
         display: "flex",

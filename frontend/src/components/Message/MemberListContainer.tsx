@@ -20,6 +20,8 @@ interface MemberListContainerProps {
   contextId: string;
   communityId?: string;
   isPrivate?: boolean;
+  /** Fill the parent's width (e.g. the phone member drawer) instead of the 240px side column. */
+  fullWidth?: boolean;
 }
 
 /**
@@ -70,6 +72,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
   contextId,
   communityId,
   isPrivate: isPrivateProp,
+  fullWidth,
 }) => {
   // The parent passes `isPrivate` from its own channel query. Until that
   // resolves — or if it fails (403 on a private channel, 404) — it's
@@ -343,6 +346,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
       isLoadingMore={isFetchingNextPage}
       onLoadMore={handleLoadMoreMembers}
       onRetry={handleRetry}
+      fullWidth={fullWidth}
     />
   );
 };

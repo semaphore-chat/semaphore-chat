@@ -192,6 +192,23 @@ describe('TabletLayout: sidebar navigation only', () => {
     expect(within(sidebar).getByTestId('channel-list')).toBeInTheDocument();
   });
 
+  it('gives dedicated pages (admin, community settings, profile edit) the full width: no sidebar', () => {
+    nav.currentScreen = 'route';
+    nav.communityId = null;
+    nav.lastCommunityId = 'c-9';
+    inStore(<TabletLayout />);
+    expect(screen.queryByTestId('tablet-sidebar')).not.toBeInTheDocument();
+    // The page keeps its back button to return to the app.
+    expect(screen.getByRole('button', { name: 'Go back' })).toBeInTheDocument();
+  });
+
+  it('an Electron window at tablet width also drops the sidebar on dedicated pages', () => {
+    platform.electron = true;
+    nav.currentScreen = 'route';
+    inStore(<TabletLayout />);
+    expect(screen.queryByTestId('tablet-sidebar')).not.toBeInTheDocument();
+  });
+
   it('a narrow Electron window on the tablet layout gets no bottom nav either', () => {
     platform.electron = true;
     nav.currentScreen = 'chat';

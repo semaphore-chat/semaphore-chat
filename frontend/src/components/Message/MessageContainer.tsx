@@ -1,10 +1,21 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Typography, Fab } from "@mui/material";
+import { Box, Fab } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import { useQueryClient } from "@tanstack/react-query";
 import MessageSkeleton from "./MessageSkeleton";
 import ListState from "../Common/ListState";
+import EmptyState from "../Common/EmptyState";
+import { useNavigate } from "react-router-dom";
+import BlockIcon from "@mui/icons-material/Block";
+import SearchOffIcon from "@mui/icons-material/SearchOff";
+import { getHttpStatus } from "../../utils/httpError";
+
+/** "No messages yet. Start the conversation!" -> ["No messages yet", "Start the conversation!"] */
+function splitFirstSentence(text: string): [string, string] {
+  const match = /^(.+?)\.\s+(.+)$/.exec(text);
+  return match ? [match[1], match[2]] : [text, ""];
+}
 import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
@@ -122,6 +133,8 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
 }) => {
   const { isMobile, isTabletPortrait } = useResponsive();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [emptyTitle, emptyDescription] = splitFirstSentence(emptyStateMessage);
 
   // The message query lives in the parent's hook; rather than plumbing a
   // refetch through every container, "Try again" refetches whatever active
@@ -326,6 +339,8 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   }
 
   if (error) {
+    const errorStatus = getHttpStatus(error);
+    const isDm = !!directMessageGroupId && !channelId;
     return (
       <Box
         sx={{
@@ -344,13 +359,41 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             p: 2,
           }}
         >
-          <ListState
-            isLoading={false}
-            error={error}
-            onRetry={handleRetry}
-            isEmpty
-            errorTitle="Couldn't load messages"
-          />
+          {errorStatus === 404 || errorStatus === 403 ? (
+            // Retrying can't fix a missing or off-limits conversation, and
+            // it isn't a connection problem — say what happened and offer a
+            // way out instead of "Try again".
+            <EmptyState
+              icon={
+                errorStatus === 404 ? (
+                  <SearchOffIcon sx={{ fontSize: "icon.6xl" }} />
+                ) : (
+                  <BlockIcon sx={{ fontSize: "icon.6xl" }} />
+                )
+              }
+              title={
+                errorStatus === 404
+                  ? `${isDm ? "Conversation" : "Channel"} not found`
+                  : `You don't have access to this ${isDm ? "conversation" : "channel"}`
+              }
+              description={
+                errorStatus === 404
+                  ? "It may have been deleted, or the link is wrong."
+                  : isDm
+                    ? "You're not a member of this conversation."
+                    : "It may be private, or you may have been removed from this community."
+              }
+              action={{ label: "Go to home", onClick: () => navigate("/") }}
+            />
+          ) : (
+            <ListState
+              isLoading={false}
+              error={error}
+              onRetry={handleRetry}
+              isEmpty
+              errorTitle="Couldn't load messages"
+            />
+          )}
         </Box>
         {shouldShowMemberList && memberListComponent}
       </Box>
@@ -408,14 +451,20 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           <Box
             sx={{
               flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Typography color="text.secondary">
-              {emptyStateMessage}
-            </Typography>
+            {/* Same EmptyState as the other lists: the message's first
+                sentence is the title, the rest the description. */}
+            <EmptyState
+              variant={directMessageGroupId && !channelId ? "dm" : "messages"}
+              title={emptyTitle}
+              description={emptyDescription || " "}
+            />
           </Box>
         )}
 

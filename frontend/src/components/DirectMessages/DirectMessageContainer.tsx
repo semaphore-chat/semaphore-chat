@@ -1,5 +1,5 @@
 import React from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
 import { useJumpToMessage } from "../../hooks/useJumpToMessage";
@@ -39,6 +39,7 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
   // Get highlight message ID from URL params (for notification deep linking)
   const [searchParams] = useSearchParams();
   const dmNavigate = useNavigate();
+  const { pathname } = useLocation();
   const highlightMessageId = searchParams.get("highlight");
 
   // Convert DM group members to mention format
@@ -56,11 +57,17 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
 
   // Clear the highlight param from the URL once the jump has settled.
   // useJumpToMessage keeps the id locally for scroll/flash (3s auto-clear).
+  // Only `highlight` is dropped: the pathname stays as-is, because the
+  // phone/tablet navigation parser reads the DM from `/direct-messages/:id`
+  // and would fall back to the DM list on a bare `/direct-messages?group=`.
   React.useEffect(() => {
     if (highlightMessageId && !isJumpPending) {
-      dmNavigate(`/direct-messages?group=${dmGroupId}`, { replace: true });
+      const next = new URLSearchParams(searchParams);
+      next.delete("highlight");
+      const query = next.toString();
+      dmNavigate(`${pathname}${query ? `?${query}` : ""}`, { replace: true });
     }
-  }, [highlightMessageId, isJumpPending, dmGroupId, dmNavigate]);
+  }, [highlightMessageId, isJumpPending, searchParams, pathname, dmNavigate]);
 
   // Create member list component for the DM group
   const memberListComponent = (

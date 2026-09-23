@@ -759,6 +759,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
                 <MessageComponent
                   message={message}
                   grouped={grouped}
+                  dayShownAbove
                   isAuthor={message.authorId === authorId}
                   isSearchHighlight={isHighlighted}
                   contextId={contextId}

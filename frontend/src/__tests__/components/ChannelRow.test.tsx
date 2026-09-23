@@ -132,6 +132,9 @@ describe('ChannelRow', () => {
       <ChannelRow channel={secret} communityId="c1" selected={false} variant="touch" />,
     );
     expect(screen.getByLabelText('Private channel')).toBeInTheDocument();
+    // Exposed to assistive tech (MUI hides icons unless titleAccess is set);
+    // getByRole skips aria-hidden nodes, unlike getByLabelText.
+    expect(screen.getByRole('img', { name: 'Private channel' })).not.toHaveAttribute('aria-hidden');
   });
 
   it('does not render a lock for public channels', () => {

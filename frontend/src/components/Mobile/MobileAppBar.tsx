@@ -93,7 +93,10 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
       <Toolbar
         sx={{
           minHeight: LAYOUT_CONSTANTS.APPBAR_HEIGHT_MOBILE,
-          px: 1,
+          // With a leading icon button its own padding sets the inset; a bare
+          // title sits on the 16px gutter like the list content below it.
+          pl: showBack || showDrawerTrigger ? 1 : 2,
+          pr: 1,
           gap: 0.5,
         }}
       >

@@ -1,3 +1,4 @@
+import userEvent from '@testing-library/user-event';
 /**
  * NotificationList — compact rows (mobile UX overhaul, Task 15).
  *
@@ -189,6 +190,20 @@ describe('NotificationList (compact rows)', () => {
       fireEvent.click(markRead);
       expect(handleMarkAsRead).toHaveBeenCalledWith(n.id);
       await waitFor(() => expect(screen.queryByRole('presentation')).not.toBeInTheDocument());
+    });
+
+    it('exposes a "More actions" button for screen-reader and switch users', async () => {
+      renderWithProviders(<NotificationList />);
+      await userEvent.setup().click(screen.getByRole('button', { name: 'More actions' }));
+      const sheet = await screen.findByRole('presentation');
+      expect(within(sheet).getByRole('button', { name: /dismiss/i })).toBeInTheDocument();
+    });
+
+    it('announces unread state with real text, not aria-label on a bare span', () => {
+      renderWithProviders(<NotificationList />);
+      const row = screen.getByTestId(`notification-row-${mockNotifications[0].id}`);
+      expect(within(row).getByText('Unread')).toBeInTheDocument();
+      expect(screen.getByTestId('notification-unread-dot')).toHaveAttribute('aria-hidden', 'true');
     });
 
     it('right-click opens the action sheet (mouse on a touch-UI layout)', async () => {

@@ -210,4 +210,25 @@ describe('MemberList', () => {
       expect(screen.getByText(name)).toHaveClass('MuiTypography-noWrap');
     });
   });
+
+  describe('width', () => {
+    const root = () => screen.getByText(/^Members/).closest('.MuiBox-root')!.parentElement as HTMLElement;
+
+    it('is a fixed 240px side column by default', () => {
+      renderWithProviders(<MemberList members={[createMember({ username: 'a' })]} title="Members" />);
+      expect(root()).toHaveStyle({ width: '240px' });
+    });
+
+    it('fills its container with fullWidth (the 280px phone drawer)', () => {
+      renderWithProviders(<MemberList members={[createMember({ username: 'a' })]} title="Members" fullWidth />);
+      expect(root()).toHaveStyle({ width: '100%' });
+    });
+  });
+
+  it('member names use dir="auto" so RTL names keep their first word', () => {
+    renderWithProviders(
+      <MemberList members={[createMember({ username: 'layla', displayName: 'ليلى عبد الرحمن' })]} title="Members" />,
+    );
+    expect(screen.getByText('ليلى عبد الرحمن')).toHaveAttribute('dir', 'auto');
+  });
 });

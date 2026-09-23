@@ -147,6 +147,28 @@ describe('MobileSearchScreen', () => {
     expect(screen.queryByRole('list', { name: /search results/i })).not.toBeInTheDocument();
   });
 
+  it('shows an error with retry (not "No messages found") when the search fails', async () => {
+    let fail = true;
+    server.use(
+      http.get(`${BASE}/api/messages/search/channel/:channelId`, () =>
+        fail
+          ? HttpResponse.json({ statusCode: 500, message: 'Internal server error' }, { status: 500 })
+          : HttpResponse.json([deployMsg]),
+      ),
+    );
+    const { user } = renderMobileAt(SEARCH_PATH);
+    const input = await screen.findByRole('searchbox', { name: /search messages/i });
+    await user.type(input, 'deploy');
+
+    expect(await screen.findByText("Couldn't search messages")).toBeInTheDocument();
+    expect(screen.queryByText(/no messages found/i)).not.toBeInTheDocument();
+
+    fail = false;
+    await user.click(screen.getByRole('button', { name: /try again/i }));
+    const results = await screen.findByRole('list', { name: /search results/i });
+    expect(within(results).getByText('the deploy went out at noon')).toBeInTheDocument();
+  });
+
   it('runs the query from ?q= on load (so back from a result restores it)', async () => {
     renderMobileAt(`${SEARCH_PATH}?q=deploy`);
     const input = await screen.findByRole('searchbox', { name: /search messages/i });

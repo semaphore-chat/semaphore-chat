@@ -125,7 +125,7 @@ describe.each(panels)('%s', (_name, render) => {
     expect(screen.queryByText('No channels yet')).not.toBeInTheDocument();
 
     fail = false;
-    await user.click(screen.getByRole('button', { name: /retry/i }));
+    await user.click(screen.getByRole('button', { name: /try again/i }));
 
     await waitFor(() => expect(screen.getByText('general')).toBeInTheDocument());
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();

@@ -250,7 +250,7 @@ describe('ChannelCategoryList', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/couldn.t load channels/i);
     expect(screen.queryByText('No channels yet')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /retry/i }));
+    await user.click(screen.getByRole('button', { name: /try again/i }));
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 

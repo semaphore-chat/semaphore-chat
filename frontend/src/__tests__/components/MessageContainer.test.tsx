@@ -117,6 +117,46 @@ describe('MessageContainer', () => {
       await user.click(screen.getByRole('button', { name: /try again/i }));
       expect(refetchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'active' }));
     });
+
+    it('shows "Channel not found" with a way out (no retry) on a 404', () => {
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          channelId="ch-1"
+          error={{ statusCode: 404, message: 'Not Found', error: 'Not Found' }}
+        />,
+      );
+
+      expect(screen.getByText('Channel not found')).toBeInTheDocument();
+      expect(screen.queryByText(/check your connection/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /go to home/i })).toBeInTheDocument();
+    });
+
+    it('explains a 403 (private channel / banned) instead of blaming the connection', () => {
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          channelId="ch-1"
+          error={{ statusCode: 403, message: 'Forbidden resource', error: 'Forbidden' }}
+        />,
+      );
+
+      expect(screen.getByText("You don't have access to this channel")).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /try again/i })).not.toBeInTheDocument();
+    });
+
+    it('says "Conversation not found" for a missing DM', () => {
+      renderWithProviders(
+        <MessageContainer
+          {...defaultProps}
+          directMessageGroupId="dm-1"
+          error={{ statusCode: 404, message: 'Not Found' }}
+        />,
+      );
+
+      expect(screen.getByText('Conversation not found')).toBeInTheDocument();
+    });
   });
 
   describe('empty state', () => {
@@ -124,8 +164,9 @@ describe('MessageContainer', () => {
       renderWithProviders(<MessageContainer {...defaultProps} />);
 
       expect(
-        screen.getByText('No messages yet. Start the conversation!'),
+        screen.getByText('No messages yet'),
       ).toBeInTheDocument();
+      expect(screen.getByText('Start the conversation!')).toBeInTheDocument();
     });
 
     it('renders custom empty state message', () => {

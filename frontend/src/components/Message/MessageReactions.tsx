@@ -7,6 +7,7 @@ import { userControllerGetProfileOptions } from '../../api-client/@tanstack/reac
 import type { CustomEmojiDto } from '../../api-client/types.gen';
 import { getFileUrl } from '../../utils/fileHelpers';
 import { ReactionTooltip } from './ReactionTooltip';
+import { TOUCH_TARGETS } from '../../utils/breakpoints';
 
 interface MessageReactionsProps {
   messageId: string;
@@ -107,7 +108,23 @@ const SingleReactionChip: React.FC<{
             padding: '0 8px',
             fontSize: 'scale.md',
             fontWeight: userHasReacted ? 600 : 500,
-          }
+          },
+          // Touch: a taller chip plus an invisible 6px hit extension above
+          // and below, so each chip's tap target is 44px (TOUCH_TARGETS.MINIMUM).
+          '@media (pointer: coarse)': {
+            height: '32px',
+            minWidth: TOUCH_TARGETS.MINIMUM,
+            position: 'relative',
+            borderRadius: '16px',
+            '&::after': {
+              content: '""',
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: -((TOUCH_TARGETS.MINIMUM - 32) / 2),
+              bottom: -((TOUCH_TARGETS.MINIMUM - 32) / 2),
+            },
+          },
         }}
       />
     </ReactionTooltip>
@@ -124,7 +141,14 @@ export const MessageReactions: React.FC<MessageReactionsProps> = ({
   if (reactions.length === 0) return null;
 
   return (
-    <Box display="flex" gap={0.5} mt={0.5} flexWrap="wrap">
+    <Box
+      display="flex"
+      gap={0.5}
+      mt={0.5}
+      flexWrap="wrap"
+      // Touch: rows sit 12px apart so the chips' 44px hit areas don't overlap.
+      sx={{ '@media (pointer: coarse)': { columnGap: 1, rowGap: 1.5, py: 0.75 } }}
+    >
       {reactions.map((reaction) => {
         const userHasReacted = currentUser ? (reaction.userIds ?? []).includes(currentUser.id) : false;
 

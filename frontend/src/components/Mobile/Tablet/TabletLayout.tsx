@@ -40,6 +40,7 @@ const TabletLayoutInner: React.FC = () => {
   // keyboard is open — it covers that area).
   const topChromeHeight = useTopChromeHost();
   const keyboardOpen = useKeyboardInset() > 0;
+  const showSidebar = state.currentScreen !== 'route';
 
   return (
     <Box
@@ -72,13 +73,19 @@ const TabletLayoutInner: React.FC = () => {
               overflow: 'hidden',
             }}
           >
-            {/* Sidebar - navigation + channel list, visible on every screen.
-                On DM / notification / profile screens (no community in the
-                route) it keeps showing the last community's channels. */}
-            <TabletSidebar communityId={state.communityId ?? lastCommunityId} />
+            {/* Sidebar - navigation + channel list, visible on every app
+                screen. On DM / notification / profile screens (no community in
+                the route) it keeps showing the last community's channels.
+                Dedicated pages ('route': admin, community settings/create,
+                profile edit, friends) get the full width back, as they did
+                before the sidebar became persistent — they carry their own
+                navigation, and at 768–1199px a third column clips them. */}
+            {showSidebar && (
+              <TabletSidebar communityId={state.communityId ?? lastCommunityId} />
+            )}
 
             {/* Content area */}
-            <TabletContentArea showSidebar />
+            <TabletContentArea showSidebar={showSidebar} />
           </Box>
 
           {/* Voice bar (only shows when in call) — in flow at the bottom */}

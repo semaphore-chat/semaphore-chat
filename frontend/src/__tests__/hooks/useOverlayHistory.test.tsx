@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useOverlayHistory } from '../../hooks/useOverlayHistory';
+import { useOverlayHistory, navigateAfterOverlays } from '../../hooks/useOverlayHistory';
 
 const OVERLAY_KEY = '__overlayStack';
 
@@ -121,5 +121,51 @@ describe('useOverlayHistory', () => {
     // Clean up: pop the fake navigation entry, then the orphaned overlay entry.
     window.history.back();
     await settle();
+  });
+
+  describe('navigateAfterOverlays', () => {
+    it('navigates right away when no overlay entry is on top', () => {
+      const run = vi.fn();
+      navigateAfterOverlays(run);
+      expect(run).toHaveBeenCalledTimes(1);
+    });
+
+    it('unwinds the overlay entry before navigating, so no dead entry is left', async () => {
+      const onClose = vi.fn();
+      const { rerender } = renderHook(({ open }) => useOverlayHistory(open, onClose), {
+        initialProps: { open: true },
+      });
+      const baseLength = window.history.length - 1;
+      const run = vi.fn(() => window.history.pushState({ idx: 42 }, '', window.location.href));
+
+      // Same order as the sheet actions: navigate, then close from the UI.
+      act(() => navigateAfterOverlays(run));
+      expect(run).not.toHaveBeenCalled();
+      rerender({ open: false });
+
+      await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+      // The route replaced the overlay entry's slot: back goes to the screen.
+      expect(window.history.state).toEqual({ idx: 42 });
+      expect(window.history.length).toBe(baseLength + 1);
+      window.history.back();
+      await settle();
+      expect(overlayStack()).toHaveLength(0);
+    });
+
+    it('unwinds two stacked overlays (drawer + dialog) and closes both', async () => {
+      const closeDrawer = vi.fn();
+      const closeDialog = vi.fn();
+      renderHook(() => useOverlayHistory(true, closeDrawer));
+      renderHook(() => useOverlayHistory(true, closeDialog));
+      expect(overlayStack()).toHaveLength(2);
+      const run = vi.fn();
+
+      act(() => navigateAfterOverlays(run));
+
+      await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+      expect(closeDrawer).toHaveBeenCalledTimes(1);
+      expect(closeDialog).toHaveBeenCalledTimes(1);
+      expect(overlayStack()).toHaveLength(0);
+    });
   });
 });

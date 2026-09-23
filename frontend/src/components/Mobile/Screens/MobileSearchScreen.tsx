@@ -53,7 +53,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ communit
     enabled: !!channelId,
   });
 
-  const { results, isLoading } = useMessageSearch({
+  const { results, isLoading, isError, refetch } = useMessageSearch({
     channelId,
     communityId,
     query: debouncedQuery,
@@ -176,6 +176,8 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ communit
           scope={scope}
           query={query.trim()}
           isLoading={isPending}
+          isError={isError}
+          onRetry={() => void refetch()}
           onSelect={handleSelect}
           touch
           hintState={

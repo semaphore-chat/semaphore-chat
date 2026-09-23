@@ -34,7 +34,7 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
   const navigate = useNavigate();
 
   const debouncedQuery = useDebounce(query, 300);
-  const { results, isLoading } = useMessageSearch({
+  const { results, isLoading, isError, refetch } = useMessageSearch({
     channelId,
     communityId,
     query: debouncedQuery,
@@ -176,6 +176,8 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
             query={query}
             // Spinner (not "No messages found") while the debounce is pending.
             isLoading={isLoading || query.trim() !== debouncedQuery.trim()}
+            isError={isError}
+            onRetry={() => void refetch()}
             onSelect={handleResultClick}
             selectedIndex={selectedIndex}
           />

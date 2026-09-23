@@ -20,11 +20,14 @@ import AddFriendDialog from "./AddFriendDialog";
 interface FriendsPanelProps {
   onSelectDmGroup?: (dmGroupId: string) => void;
   compact?: boolean;
+  /** Hide the "Friends" heading (the mobile app bar already shows it). */
+  hideTitle?: boolean;
 }
 
 const FriendsPanel: React.FC<FriendsPanelProps> = ({
   onSelectDmGroup,
   compact = false,
+  hideTitle = false,
 }) => {
   const [tabValue, setTabValue] = useState<"all" | "pending">("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -44,12 +47,12 @@ const FriendsPanel: React.FC<FriendsPanelProps> = ({
           p: 2,
           display: "flex",
           alignItems: "center",
-          justifyContent: "space-between",
+          justifyContent: hideTitle ? "flex-end" : "space-between",
           borderBottom: 1,
           borderColor: "divider",
         }}
       >
-        <Typography variant="h6">Friends</Typography>
+        {!hideTitle && <Typography variant="h6">Friends</Typography>}
         <Button
           variant="contained"
           size="small"

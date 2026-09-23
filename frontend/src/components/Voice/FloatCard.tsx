@@ -29,6 +29,8 @@ import { getFloatNavigationTarget } from '../../utils/voiceNavigation';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { VOICE_BAR_HEIGHT } from '../../constants/layout';
 import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../contexts/BottomChromeContext';
+import { useResponsive } from '../../hooks/useResponsive';
+import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import {
   PipPlacement,
   Point,
@@ -57,6 +59,9 @@ const PILL_SIZE: Size = { width: 200, height: 52 };
 // becomes a drag. Below this, a pointerdown+pointerup is treated as a plain
 // click — no dock zones shown, no placement change.
 const DRAG_THRESHOLD_PX = 5;
+
+/** Visible size of the float card's control buttons on touch (hit area is 44px). */
+const FLOAT_TOUCH_BUTTON = 36;
 
 function loadInitialPlacement(): PipPlacement {
   const saved = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
@@ -102,7 +107,16 @@ export const FloatCard: React.FC = () => {
   const { isActive: isPTTActive } = usePushToTalk();
   const micGuarded = isPTTActive || state.isServerMuted;
   const selection = useFloatTileSelection();
-  const chromeBottom = useBottomChromeOffset(BOTTOM_CHROME_ORDER.COMPOSER).px;
+  // Phone/tablet layouts (incl. an Electron window at tablet width): the
+  // composer spans the content column right above the voice bar, so the card
+  // must clear it too — otherwise its default bottom-right spot sits on the
+  // text field. On desktop the card's corner is over the member list, so
+  // only the chrome below the composer (the voice bar) counts.
+  const { isMobile, isTablet } = useResponsive();
+  const touchLayout = isMobile || isTablet;
+  const chromeBottom = useBottomChromeOffset(
+    touchLayout ? BOTTOM_CHROME_ORDER.TOAST : BOTTOM_CHROME_ORDER.COMPOSER,
+  ).px;
   const [isCardHovered, setIsCardHovered] = useState(false);
 
   const [placement, setPlacement] = useState<PipPlacement>(loadInitialPlacement);
@@ -508,6 +522,19 @@ export const FloatCard: React.FC = () => {
               transition: 'opacity 0.15s ease',
               '@media (hover: none)': {
                 opacity: 1,
+              },
+              // Touch: 36px buttons plus a 4px invisible outset each (the gap
+              // is 8px), so every control is a 44px tap target.
+              '@media (pointer: coarse)': {
+                '& .MuiIconButton-root': {
+                  width: FLOAT_TOUCH_BUTTON,
+                  height: FLOAT_TOUCH_BUTTON,
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: -(TOUCH_TARGETS.MINIMUM - FLOAT_TOUCH_BUTTON) / 2,
+                  },
+                },
               },
             }}
           >

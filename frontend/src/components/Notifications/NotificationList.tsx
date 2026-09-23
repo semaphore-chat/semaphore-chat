@@ -30,8 +30,10 @@ import {
   Chat as DmIcon,
   Tag as ChannelIcon,
   Forum as ThreadIcon,
+  MoreVert as MoreIcon,
 } from '@mui/icons-material';
 import { useMutation } from '@tanstack/react-query';
+import { visuallyHidden } from '@mui/utils';
 import { useNavigate } from 'react-router-dom';
 import { notificationsControllerDismissNotificationMutation } from '../../api-client/@tanstack/react-query.gen';
 
@@ -177,9 +179,33 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
       }
     : {};
 
+  // Touch: the sheet opens on long-press, which screen-reader and switch
+  // users can't discover. A real "More actions" button stays in the focus
+  // order for them — visually hidden until it takes keyboard/switch focus, so
+  // the row layout for sighted touch users is unchanged.
+  const touchActions = (
+    <IconButton
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpenActions(notification);
+      }}
+      aria-label="More actions"
+      aria-haspopup="dialog"
+      sx={{
+        flexShrink: 0,
+        minWidth: TOUCH_TARGETS.MINIMUM,
+        minHeight: TOUCH_TARGETS.MINIMUM,
+        color: 'text.secondary',
+        '&:not(:focus-visible)': visuallyHidden,
+      }}
+    >
+      <MoreIcon />
+    </IconButton>
+  );
+
   // Sibling of the row button (not nested inside it, not an absolutely
   // positioned secondaryAction that would overlap the time column).
-  const actions = touch ? null : (
+  const actions = touch ? touchActions : (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, pr: 1, flexShrink: 0 }}>
       {unread && (
         <IconButton
@@ -241,6 +267,8 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
             <Typography
               component="span"
               noWrap
+              // RTL names/previews truncate at their own end (keep the first word).
+              dir="auto"
               sx={{ flex: '0 1 auto', minWidth: 0, fontWeight: unread ? 600 : 500, fontSize: 'scale.base' }}
             >
               {getNotificationAuthorName(notification)}
@@ -264,7 +292,8 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
                 ml: 'auto',
                 pl: 1,
                 flexShrink: 0,
-                color: unread ? 'primary.main' : 'text.secondary',
+                // Weight carries unread; the accent colour fails AA at caption size.
+                color: unread ? 'text.primary' : 'text.secondary',
                 fontWeight: unread ? 600 : undefined,
               }}
             >
@@ -276,23 +305,30 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
               component="span"
               variant="body2"
               noWrap
-              sx={{ flex: 1, minWidth: 0, color: unread ? 'text.primary' : 'text.secondary' }}
+              dir="auto"
+              sx={{ flex: 1, minWidth: 0, textAlign: 'left', color: unread ? 'text.primary' : 'text.secondary' }}
             >
               {preview || '\u00A0'}
             </Typography>
             {unread && (
-              <Box
-                component="span"
-                data-testid="notification-unread-dot"
-                aria-label="Unread"
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  bgcolor: 'primary.main',
-                  flexShrink: 0,
-                }}
-              />
+              <>
+                <Box
+                  component="span"
+                  data-testid="notification-unread-dot"
+                  aria-hidden
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: 'primary.main',
+                    flexShrink: 0,
+                  }}
+                />
+                {/* aria-label on a role-less span isn't announced; real text is. */}
+                <Box component="span" sx={visuallyHidden}>
+                  Unread
+                </Box>
+              </>
             )}
           </Box>
         </Box>

@@ -78,4 +78,14 @@ describe('DirectMessageContainer — ?highlight deep link', () => {
     );
     expect(screen.getByTestId('location')).not.toHaveTextContent('highlight');
   });
+
+  it('keeps the /direct-messages/:id path when clearing ?highlight (touch layouts parse the path)', async () => {
+    vi.mocked(useJumpToMessage).mockReturnValue(jumpResult(false) as never);
+    renderAt('/direct-messages/dm-123?highlight=target-msg');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('location')).not.toHaveTextContent('highlight'),
+    );
+    expect(screen.getByTestId('location')).toHaveTextContent(/^\/direct-messages\/dm-123$/);
+  });
 });

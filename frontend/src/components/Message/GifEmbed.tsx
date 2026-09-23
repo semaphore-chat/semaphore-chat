@@ -31,7 +31,8 @@ export const GifEmbed: React.FC<GifEmbedProps> = React.memo(({ url, onError }) =
       sx={{
         display: "block",
         mt: 0.5,
-        maxWidth: 400,
+        // Never wider than the message column (phones are < 400px).
+        maxWidth: "min(400px, 100%)",
         maxHeight: 300,
         width: "auto",
         height: "auto",

@@ -1,8 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
   Box,
-  Button,
-  Typography,
   List,
   ListItem,
   ListItemButton,
@@ -14,14 +12,13 @@ import {
 import {
   ExpandLess,
   ExpandMore,
-  ErrorOutline as ErrorIcon,
-  Refresh as RefreshIcon,
 } from "@mui/icons-material";
 import { ChannelType } from "../../types/channel.type";
 import type { Channel } from "../../types/channel.type";
 import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import EmptyState from "../Common/EmptyState";
+import ListState from "../Common/ListState";
 import CreateChannelDialog from "../Community/CreateChannelDialog";
 import { ChannelRow } from "./ChannelRow";
 
@@ -57,39 +54,6 @@ const ChannelListSkeleton: React.FC = () => (
         ))}
       </Box>
     ))}
-  </Box>
-);
-
-const ChannelListError: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => (
-  <Box
-    role="alert"
-    sx={{
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 1.5,
-      px: 3,
-      py: 6,
-      textAlign: "center",
-    }}
-  >
-    <ErrorIcon sx={{ fontSize: 'icon.4xl', color: "error.main" }} />
-    <Typography variant="subtitle1" fontWeight={600}>
-      Couldn't load channels
-    </Typography>
-    <Typography variant="body2" color="text.secondary">
-      Check your connection and try again.
-    </Typography>
-    {onRetry && (
-      <Button
-        variant="outlined"
-        startIcon={<RefreshIcon />}
-        onClick={onRetry}
-        sx={{ minHeight: TOUCH_TARGETS.MINIMUM, mt: 0.5 }}
-      >
-        Retry
-      </Button>
-    )}
   </Box>
 );
 
@@ -142,7 +106,19 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
 
   if (channels.length === 0) {
     if (isLoading) return <ChannelListSkeleton />;
-    if (error) return <ChannelListError onRetry={onRetry} />;
+    // Same error state as every other list (DMs, members, notifications).
+    if (error) {
+      return (
+        <ListState
+          isLoading={false}
+          error={error}
+          onRetry={onRetry}
+          isEmpty
+          errorTitle="Couldn't load channels"
+          size={compact ? "compact" : "regular"}
+        />
+      );
+    }
 
     return (
       <>

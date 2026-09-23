@@ -84,8 +84,12 @@ const MobileLayoutColumn: React.FC = () => {
             <MobileScreenContainer />
           </Box>
 
-          {/* Voice bar (only shows when in call) — in flow, above the nav */}
-          <VoiceBottomBar inline />
+          {/* Voice bar (only shows when in call) — in flow, above the nav.
+              Collapsed (not unmounted) while the on-screen keyboard is up, so
+              typing gets the room back; the call itself is unaffected. */}
+          <Box data-testid="mobile-voice-bar-slot" sx={{ display: keyboardOpen ? 'none' : 'block', flexShrink: 0 }}>
+            <VoiceBottomBar inline />
+          </Box>
 
           {/* Audio renderer for remote participants */}
           <AudioRenderer />

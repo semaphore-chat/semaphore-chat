@@ -13,21 +13,30 @@ import React from "react";
 import { Box, IconButton, Chip } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import InsertDriveFileOutlinedIcon from "@mui/icons-material/InsertDriveFileOutlined";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 
 export interface FilePreviewProps {
   files: File[];
   previews: Map<number, string>;
   onRemoveFile: (index: number) => void;
+  /** Smaller thumbnails (e.g. while the on-screen keyboard is open). */
+  compact?: boolean;
 }
 
 const THUMB_SIZE = 64;
+const COMPACT_THUMB_SIZE = 48;
+/** Visible size of the remove button on touch; its hit area is extended to 44px. */
+const TOUCH_REMOVE_SIZE = 28;
+const TOUCH_REMOVE_OUTSET = (TOUCH_TARGETS.MINIMUM - TOUCH_REMOVE_SIZE) / 2;
 
 export const FilePreview: React.FC<FilePreviewProps> = ({
   files,
   previews,
   onRemoveFile,
+  compact = false,
 }) => {
   if (files.length === 0) return null;
+  const thumbSize = compact ? COMPACT_THUMB_SIZE : THUMB_SIZE;
 
   return (
     <Box
@@ -66,10 +75,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
               sx={{
                 position: 'relative',
                 flexShrink: 0,
-                width: THUMB_SIZE,
-                height: THUMB_SIZE,
+                width: thumbSize,
+                height: thumbSize,
                 borderRadius: 1,
-                overflow: 'hidden',
+                // Not overflow:hidden — the touch remove button's hit area
+                // reaches past the thumbnail's corner (the image rounds itself).
                 border: '1px solid',
                 borderColor: 'divider',
               }}
@@ -78,9 +88,11 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
                 src={preview}
                 alt={file.name}
                 style={{
+                  display: 'block',
                   width: '100%',
                   height: '100%',
                   objectFit: 'cover',
+                  borderRadius: 'inherit',
                 }}
               />
               <IconButton
@@ -98,6 +110,19 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
                   },
                   width: 22,
                   height: 22,
+                  // Touch: a bigger button in the corner plus an invisible
+                  // outset so the tap target is 44px (TOUCH_TARGETS.MINIMUM).
+                  '@media (pointer: coarse)': {
+                    top: 0,
+                    right: 0,
+                    width: TOUCH_REMOVE_SIZE,
+                    height: TOUCH_REMOVE_SIZE,
+                    '&::after': {
+                      content: '""',
+                      position: 'absolute',
+                      inset: -TOUCH_REMOVE_OUTSET,
+                    },
+                  },
                 }}
               >
                 <CloseIcon sx={{ fontSize: 'icon.sm' }} />

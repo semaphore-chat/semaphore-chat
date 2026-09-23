@@ -81,11 +81,11 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const { user: currentUser } = useCurrentUser();
 
   // Fetch channel or DM data
-  const { data: channel } = useQuery({
+  const { data: channel, isError: channelError } = useQuery({
     ...channelsControllerFindOneOptions({ path: { id: channelId || '' } }),
     enabled: !!channelId,
   });
-  const { data: dmGroup } = useQuery({
+  const { data: dmGroup, isError: dmGroupError } = useQuery({
     ...directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId || '' } }),
     enabled: !!dmGroupId,
   });
@@ -229,6 +229,11 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     title = `${prefix}${channel.name}`;
   } else if (dmGroup) {
     title = getDmDisplayName(dmGroup, currentUser?.id);
+  } else if (channelId && channelError) {
+    // 403 / 404 / banned: the body explains; keep the app bar from going blank.
+    title = 'Channel unavailable';
+  } else if (dmGroupId && dmGroupError) {
+    title = 'Conversation unavailable';
   }
 
   // Render content based on channel type
@@ -255,6 +260,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             justifyContent: 'center',
             height: '100%',
             px: 3,
+            py: 3,
             textAlign: 'center',
             gap: 3,
           }}
@@ -271,8 +277,19 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
           </Box>
           {/* Who's already in the channel. Phone only: on tablet the sidebar row lists them. */}
           {channel && isMobile && (
-            <Box sx={{ width: '100%', maxWidth: 360, textAlign: 'left' }}>
-              <VoiceChannelUserList channel={channel} />
+            <Box
+              sx={{
+                width: '100%',
+                maxWidth: 360,
+                textAlign: 'left',
+                // Take whatever height is left (and scroll) rather than a fixed 300px cap.
+                flex: '0 1 auto',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <VoiceChannelUserList channel={channel} fill />
             </Box>
           )}
         </Box>
@@ -409,12 +426,14 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
                 contextId={channelId}
                 communityId={channel.communityId}
                 isPrivate={channel.isPrivate}
+                fullWidth
               />
             )}
             {dmGroupId && (
               <MemberListContainer
                 contextType={VoiceSessionType.Dm}
                 contextId={dmGroupId}
+                fullWidth
               />
             )}
           </Box>

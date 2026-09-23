@@ -21,6 +21,12 @@ vi.mock('../../hooks/useSpeaking', () => ({
   useSpeaking: () => ({ speakingMap: new Map(), isSpeaking: mockIsSpeaking }),
 }));
 
+// Touch-layout flag from useResponsive (other fields unused by VideoTile)
+const mockTouch = vi.fn(() => false);
+vi.mock('../../hooks/useResponsive', () => ({
+  useResponsive: () => ({ shouldUseTouchUI: mockTouch() }),
+}));
+
 // jsdom doesn't implement HTMLMediaElement.play() — stub it to return a resolved promise
 beforeAll(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue();
@@ -59,6 +65,8 @@ describe('VideoTile', () => {
     // clearAllMocks does not undo mockReturnValue — reset explicitly
     mockIsSpeaking.mockReset();
     mockIsSpeaking.mockReturnValue(false);
+    mockTouch.mockReset();
+    mockTouch.mockReturnValue(false);
   });
 
   it('renders no pin or fullscreen buttons (#320)', () => {
@@ -231,5 +239,27 @@ describe('VideoTile', () => {
     });
     const label = screen.getAllByText(new RegExp(name))[0];
     expect(label).toHaveClass('MuiTypography-noWrap');
+  });
+
+  describe('name/status strip on camera tiles', () => {
+    const renderCamera = () =>
+      renderTile({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        videoTrack: createMockTrackPublication('camera') as any,
+      });
+    const strip = () =>
+      screen.getAllByText('RemoteUser')[0].closest('.MuiBox-root')!.parentElement as HTMLElement;
+
+    it('is hidden until hover on pointer (desktop) layouts', () => {
+      renderCamera();
+      expect(strip()).toHaveStyle({ visibility: 'hidden' });
+    });
+
+    it('stays visible on touch layouts, which never hover', () => {
+      mockTouch.mockReturnValue(true);
+      renderCamera();
+      expect(strip()).not.toHaveStyle({ visibility: 'hidden' });
+      expect(strip()).toHaveStyle({ opacity: '1' });
+    });
   });
 });

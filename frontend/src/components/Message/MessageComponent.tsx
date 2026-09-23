@@ -92,6 +92,9 @@ interface MessageProps {
   /** Continues the previous message's same-author run: hides the avatar and
    * author line, and shows the time in the gutter on hover / long-press. */
   grouped?: boolean;
+  /** A day separator above already names the day, so the header shows the
+   * time only ("5:47 PM", not "Yesterday 5:47 PM"). */
+  dayShownAbove?: boolean;
   isAuthor?: boolean;
   isSearchHighlight?: boolean;
   contextId?: string;
@@ -126,6 +129,7 @@ interface MessageProps {
 function MessageComponentInner({
   message,
   grouped = false,
+  dayShownAbove = false,
   isAuthor,
   isSearchHighlight,
   contextId,
@@ -413,6 +417,8 @@ function MessageComponentInner({
               component="button"
               variant="body2"
               noWrap
+              // RTL names truncate at their own end (see MemberList).
+              dir="auto"
               onClick={() => openProfile(message.authorId!)}
               sx={{
                 display: "block",
@@ -452,7 +458,7 @@ function MessageComponentInner({
               data-testid="message-time"
               sx={{ flexShrink: 0 }}
             >
-              {formatMessageTime(message.sentAt)}
+              {dayShownAbove ? formatClockTime(message.sentAt) : formatMessageTime(message.sentAt)}
             </Typography>
           </Tooltip>
           <MessageStatusMarks

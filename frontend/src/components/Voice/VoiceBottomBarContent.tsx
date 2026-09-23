@@ -39,6 +39,7 @@ import {
   OpenInNew,
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
+import { navigateAfterOverlays } from "../../hooks/useOverlayHistory";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useScreenShare } from "../../hooks/useScreenShare";
 import { useLocalMediaState } from "../../hooks/useLocalMediaState";
@@ -373,8 +374,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     : state.isServerMuted
                       ? "warning.contrastText"
                       : (!isMicrophoneEnabled ? "error.contrastText" : "text.primary"),
-                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   border: (isMicrophoneEnabled && isCurrentUserSpeaking) || isPTTKeyHeld
                     ? `2px solid ${theme.palette.semantic.status.positive}`
                     : "2px solid transparent",
@@ -410,8 +411,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color: state.isDeafened
                     ? "error.contrastText"
                     : "text.primary",
-                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   "&:hover": {
                     backgroundColor: state.isDeafened
                       ? "error.dark"
@@ -443,8 +444,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color: isCameraEnabled
                     ? "primary.contrastText"
                     : "text.primary",
-                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   "&:hover": {
                     backgroundColor: isCameraEnabled
                       ? "primary.dark"
@@ -498,8 +499,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     color: screenShare.isScreenSharing
                       ? "primary.contrastText"
                       : "text.primary",
-                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: screenShare.isScreenSharing
                         ? "primary.dark"
@@ -523,8 +524,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color="success"
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "success.main",
                       color: "success.contrastText",
@@ -552,8 +553,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   onClick={() => actions.revealVideoTiles()}
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                    minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "action.hover",
                     },
@@ -610,8 +611,8 @@ const VoiceBottomBarContent: React.FC = () => {
                 color="error"
                 size={isMobile ? "medium" : "medium"}
                 sx={{
-                  minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
-                  minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   // Phone: a filled red hang-up so it reads as the call's
                   // primary destructive action at a glance.
                   ...(isMobile && {
@@ -794,7 +795,9 @@ const VoiceBottomBarContent: React.FC = () => {
                 component="button"
                 onClick={() => {
                   closeMoreSheet();
-                  navigate("/settings");
+                  // Unwind the sheet's history entry first, so back from
+                  // Settings returns to the call screen (not a dead entry).
+                  navigateAfterOverlays(() => navigate("/settings"));
                 }}
                 sx={moreItemSx}
               >

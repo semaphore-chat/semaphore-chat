@@ -96,6 +96,28 @@ describe('MessageComponent grouping and author line', () => {
     expect(screen.getByText('hello there')).toBeInTheDocument();
   });
 
+  it('shows "Yesterday" in the header only when no day separator is above', () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    yesterday.setHours(17, 47, 0, 0);
+    const m = msg({ sentAt: yesterday.toISOString() });
+
+    renderWithProviders(<MessageComponent message={m} />);
+    expect(screen.getByTestId('message-time').textContent).toMatch(/^Yesterday /);
+    cleanup();
+
+    // In the message list a DaySeparator already says "Yesterday".
+    renderWithProviders(<MessageComponent message={m} dayShownAbove />);
+    expect(screen.getByTestId('message-time').textContent).not.toMatch(/Yesterday/);
+    expect(screen.getByTestId('message-time').textContent).toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it('lets an RTL author name pick its own direction (dir="auto")', async () => {
+    displayName = ARABIC_NAME;
+    renderWithProviders(<MessageComponent message={msg()} />, withAuthor());
+    expect(await screen.findByRole('button', { name: ARABIC_NAME })).toHaveAttribute('dir', 'auto');
+  });
+
   it('hides the avatar and author on a grouped message but keeps a hover time', () => {
     renderWithProviders(<MessageComponent message={msg()} grouped />);
 

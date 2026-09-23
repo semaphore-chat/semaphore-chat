@@ -942,6 +942,28 @@ describe('VideoTiles', () => {
       expect(document.querySelector('video')).not.toBeNull();
     });
 
+    it('stacks the pinned tile full-width above the others on a portrait phone', () => {
+      phone();
+      remoteParticipants.set('cam', createMockParticipant('CamUser', [createMockTrackPublication('camera')]));
+      mockWatchingCameras = new Set(['CamUser']);
+      mockLayoutMode = VideoLayoutMode.Sidebar;
+      mockCommitLayoutSnapshot();
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-sidebar')).toHaveAttribute('data-stacked', 'true');
+      expect(screen.getByTestId('video-tiles-sidebar')).toHaveStyle({ flexDirection: 'column' });
+    });
+
+    it('keeps the side-by-side pinned split on desktop', () => {
+      remoteParticipants.set('cam', createMockParticipant('CamUser', [createMockTrackPublication('camera')]));
+      mockWatchingCameras = new Set(['CamUser']);
+      mockLayoutMode = VideoLayoutMode.Sidebar;
+      mockCommitLayoutSnapshot();
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-sidebar')).toHaveAttribute('data-stacked', 'false');
+    });
+
     it('desktop keeps the regular grid with 25 people', () => {
       withVoiceOnlyRemotes(24);
       renderWithProviders(<VideoTiles />);

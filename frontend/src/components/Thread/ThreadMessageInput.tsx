@@ -188,6 +188,42 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
     }
   };
 
+  const hasContent = content.trim().length > 0;
+  const emojiButton = (
+    <IconButton
+      ref={emojiButtonRef}
+      onClick={handleEmojiButtonClick}
+      disabled={isSending}
+      aria-label="add emoji"
+      aria-haspopup="true"
+      aria-expanded={emojiPickerOpen}
+      sx={{
+        width: actionButtonSize,
+        height: actionButtonSize,
+      }}
+    >
+      <EmojiEmotionsOutlinedIcon />
+    </IconButton>
+  );
+  const sendButton = (
+    <IconButton
+      color="primary"
+      onClick={handleSend}
+      disabled={!content.trim() || isSending}
+      aria-label="send"
+      sx={{
+        width: actionButtonSize,
+        height: actionButtonSize,
+      }}
+    >
+      {isSending ? (
+        <CircularProgress size={20} />
+      ) : (
+        <SendIcon />
+      )}
+    </IconButton>
+  );
+
   return (
     <Box
       sx={{
@@ -199,6 +235,9 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
       }}
     >
       <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
+        {/* Touch: same shape as the main composer — the extra action sits
+            on the left and the send button only appears once there's text. */}
+        {shouldUseTouchUI && emojiButton}
         <TextField
           fullWidth
           multiline
@@ -222,36 +261,8 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
             },
           }}
         />
-        <IconButton
-          ref={emojiButtonRef}
-          onClick={handleEmojiButtonClick}
-          disabled={isSending}
-          aria-label="add emoji"
-          aria-haspopup="true"
-          aria-expanded={emojiPickerOpen}
-          sx={{
-            width: actionButtonSize,
-            height: actionButtonSize,
-          }}
-        >
-          <EmojiEmotionsOutlinedIcon />
-        </IconButton>
-        <IconButton
-          color="primary"
-          onClick={handleSend}
-          disabled={!content.trim() || isSending}
-          aria-label="send"
-          sx={{
-            width: actionButtonSize,
-            height: actionButtonSize,
-          }}
-        >
-          {isSending ? (
-            <CircularProgress size={20} />
-          ) : (
-            <SendIcon />
-          )}
-        </IconButton>
+        {!shouldUseTouchUI && emojiButton}
+        {(!shouldUseTouchUI || hasContent || isSending) && sendButton}
       </Box>
 
       <EmojiPickerPopover

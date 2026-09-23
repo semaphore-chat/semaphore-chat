@@ -31,6 +31,7 @@ import type { GifResultDto } from "../../api-client/types.gen";
 import { instanceControllerGetPublicSettingsOptions } from "../../api-client/@tanstack/react-query.gen";
 import GifBoxOutlinedIcon from "@mui/icons-material/GifBoxOutlined";
 import { useResponsive } from "../../hooks/useResponsive";
+import { useKeyboardInset } from "../../contexts/BottomChromeContext";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { FilePreview } from "./FilePreview";
@@ -166,6 +167,7 @@ export default function MessageInput({
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showNotification } = useNotification();
   const { isTouchDevice, shouldUseTouchUI } = useResponsive();
+  const keyboardOpen = useKeyboardInset() > 0;
   // Touch layouts get the slim composer: one "+" (Attach / GIF / Emoji in a
   // sheet), the text field, and send only once there's something to send.
   const compactComposer = shouldUseTouchUI;
@@ -685,6 +687,7 @@ export default function MessageInput({
         files={selectedFiles}
         previews={filePreviews}
         onRemoveFile={handleRemoveFile}
+        compact={keyboardOpen}
       />
 
       {/* Hidden File Input */}
@@ -748,7 +751,9 @@ export default function MessageInput({
             inputRef={inputRef}
             autoComplete="off"
             multiline
-            maxRows={4}
+            // With the on-screen keyboard up, the viewport is roughly halved;
+            // cap the field lower so reply + files + draft leave room for messages.
+            maxRows={keyboardOpen ? 2 : 4}
             slotProps={{
               // Note: no `role="combobox"` and no `aria-expanded` here — this
               // field is `multiline` (renders a <textarea>), and ARIA 1.2's

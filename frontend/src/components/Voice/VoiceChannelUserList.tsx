@@ -31,12 +31,18 @@ interface VoiceChannelUserListProps {
   channel: Channel;
   showInline?: boolean;
   showCompact?: boolean;
+  /**
+   * Grow to the parent's available height (the parent must be a flex column)
+   * instead of the default 300px cap — used by the phone pre-join screen.
+   */
+  fill?: boolean;
 }
 
 export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
   channel,
   showInline = false,
   showCompact = false,
+  fill = false,
 }) => {
   const theme = useTheme();
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
@@ -362,7 +368,8 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
         tabIndex={-1}
         elevation={2}
         sx={{
-          maxHeight: 300,
+          maxHeight: fill ? "none" : 300,
+          ...(fill && { flex: "0 1 auto", minHeight: 0 }),
           overflow: "auto",
           "&::-webkit-scrollbar": {
             width: 6,

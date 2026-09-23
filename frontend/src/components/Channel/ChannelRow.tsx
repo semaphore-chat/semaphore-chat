@@ -210,6 +210,7 @@ export function ChannelRow({
         {channel.isPrivate && (
           <LockIcon
             aria-label="Private channel"
+            titleAccess="Private channel"
             sx={{ fontSize: 'icon.sm', ml: 0.5, flexShrink: 0, color: "text.secondary" }}
           />
         )}

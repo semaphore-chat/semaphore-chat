@@ -17,6 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import { userControllerGetUserByIdOptions } from "../../api-client/@tanstack/react-query.gen";
 import { SearchScope, type SearchResult } from "../../hooks/useMessageSearch";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
+import ListState from "../Common/ListState";
 
 function getMessagePreview(result: SearchResult, maxLength = 100): string {
   const text = result.spans
@@ -50,6 +51,9 @@ interface MessageSearchResultListProps {
   /** Current (raw) query text — decides between the hint and "no results". */
   query: string;
   isLoading: boolean;
+  /** The search request failed — shows an error with retry, never "No messages found". */
+  isError?: boolean;
+  onRetry?: () => void;
   onSelect: (result: SearchResult) => void;
   /** Keyboard-highlighted row (desktop). */
   selectedIndex?: number;
@@ -66,6 +70,8 @@ export const MessageSearchResultList: React.FC<MessageSearchResultListProps> = (
   scope,
   query,
   isLoading,
+  isError = false,
+  onRetry,
   onSelect,
   selectedIndex,
   touch = false,
@@ -89,6 +95,19 @@ export const MessageSearchResultList: React.FC<MessageSearchResultListProps> = (
       <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
         <CircularProgress size={24} aria-label="Searching" />
       </Box>
+    );
+  }
+
+  if (isError && results.length === 0) {
+    return (
+      <ListState
+        isLoading={false}
+        error
+        onRetry={onRetry}
+        isEmpty
+        errorTitle="Couldn't search messages"
+        size={touch ? "regular" : "compact"}
+      />
     );
   }
 

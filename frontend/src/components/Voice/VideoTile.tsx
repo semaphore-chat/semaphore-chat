@@ -26,6 +26,7 @@ import type {
 import UserAvatar from '../Common/UserAvatar';
 import ScreenShareVolumeControl from './ScreenShareVolumeControl';
 import { useSpeaking } from '../../hooks/useSpeaking';
+import { useResponsive } from '../../hooks/useResponsive';
 
 export interface VideoTileProps {
   participant: RemoteParticipant | LocalParticipant;
@@ -61,6 +62,8 @@ const VideoTile: React.FC<VideoTileProps> = ({
   const screenRef = useRef<HTMLVideoElement>(null);
   const [isHovered, setIsHovered] = useState(false);
   const { isSpeaking } = useSpeaking();
+  // Touch layouts never hover, so the name/status strip stays visible there.
+  const { shouldUseTouchUI } = useResponsive();
 
   // Discord-style speaking ring: constant transparent border swapped to the
   // positive status color while speaking, so the ring never shifts layout.
@@ -233,7 +236,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
       )}
 
       {/* Overlay Controls */}
-      <Fade in={isHovered || !hasVideo}>
+      <Fade in={isHovered || !hasVideo || shouldUseTouchUI}>
         <Box
           sx={{
             position: 'absolute',

@@ -4,6 +4,7 @@ import { VolumeUp, VolumeOff, VideoCall } from '@mui/icons-material';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useLocalMediaState } from '../../hooks/useLocalMediaState';
 import { ChannelType, type Channel } from '../../types/channel.type';
+import { TOUCH_TARGETS } from '../../utils/breakpoints';
 
 interface VoiceChannelJoinButtonProps {
   channel: Channel;
@@ -63,14 +64,17 @@ export const VoiceChannelJoinButton: React.FC<VoiceChannelJoinButtonProps> = ({
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Tooltip title={isCurrentChannel ? 'Leave voice channel' : 'Join voice channel'}>
         <Button
-          variant={isCurrentChannel ? 'contained' : 'outlined'}
+          // The pre-join screen's primary action: a full-size contained
+          // button with a 44px touch target.
+          variant="contained"
           color={getButtonColor()}
-          size="small"
+          size="large"
           startIcon={getButtonIcon()}
           onClick={handleJoinLeave}
           disabled={disabled || isConnecting}
           sx={{
-            minWidth: 120,
+            minWidth: 160,
+            minHeight: TOUCH_TARGETS.MINIMUM,
             transition: 'all 0.2s ease',
             '&:hover': {
               transform: 'translateY(-1px)',

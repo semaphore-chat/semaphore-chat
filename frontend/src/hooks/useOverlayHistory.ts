@@ -13,7 +13,10 @@
  * Closing the overlay any other way (close button, backdrop, action) removes
  * its entry again with `history.back()`, but only when that entry is still
  * the current one. If a route navigation was pushed on top of it, we leave
- * history alone rather than undo the navigation.
+ * history alone rather than undo the navigation — which strands the overlay
+ * entry under the new route (a dead back press later). Actions inside an
+ * overlay that navigate should therefore go through `navigateAfterOverlays`,
+ * which unwinds the overlay entries first and then navigates.
  *
  * `history.back()` is asynchronous, so a push requested while a back is still
  * in flight (sheet closes → thread opens in the same tick) is queued until
@@ -34,6 +37,8 @@ const subscribers = new Map<string, Subscriber>();
 let pendingBacks = 0;
 let queuedPushes: Array<{ id: string; run: () => void }> = [];
 let listening = false;
+/** A navigation waiting for the overlay entries to be unwound (see navigateAfterOverlays). */
+let pendingNavigation: (() => void) | null = null;
 
 function readStack(state: unknown = window.history.state): string[] {
   const value = (state as HistoryState)?.[STACK_KEY];
@@ -60,6 +65,12 @@ function handlePopState(event: PopStateEvent) {
       subscribers.delete(sub.id);
       sub.onPopClose();
     }
+  }
+
+  if (pendingBacks === 0 && pendingNavigation) {
+    const navigate = pendingNavigation;
+    pendingNavigation = null;
+    navigate();
   }
 
   if (pendingBacks === 0 && queuedPushes.length > 0) {
@@ -94,10 +105,39 @@ function releaseOverlay(id: string) {
     queuedPushes.splice(queuedIndex, 1);
     return;
   }
+  // navigateAfterOverlays is already unwinding every overlay entry.
+  if (pendingNavigation) return;
   const stack = readStack();
   if (stack[stack.length - 1] === id) {
     pendingBacks += 1;
     window.history.back();
+  }
+}
+
+/**
+ * Run a route navigation from inside an overlay (sheet, drawer, dialog)
+ * without stranding its history entry. With no overlay entry on top, `run`
+ * is called right away. Otherwise every overlay entry is popped first (one
+ * `history.go(-n)`; the overlays close through the usual popstate path) and
+ * `run` is called once that traversal has landed on the underlying screen,
+ * so the new route is pushed on top of the screen, not the overlay.
+ */
+export function navigateAfterOverlays(run: () => void): void {
+  if (typeof window === 'undefined') {
+    run();
+    return;
+  }
+  // Entries a pending back() is already removing don't need popping again.
+  const depth = Math.max(0, readStack().length - pendingBacks);
+  if (depth === 0 && pendingBacks === 0) {
+    run();
+    return;
+  }
+  ensureListener();
+  pendingNavigation = run;
+  if (depth > 0) {
+    pendingBacks += 1;
+    window.history.go(-depth);
   }
 }
 
