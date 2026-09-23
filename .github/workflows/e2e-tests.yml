@@ -47,10 +47,49 @@ jobs:
               - 'scripts/run-voice-e2e.sh'
               - '.github/workflows/e2e-tests.yml'
 
+  # Builds no images. Postgres and Redis run as service containers; the backend
+  # and frontend run from the checkout on the runner, as the same processes
+  # the backend-test and frontend-test containers in docker-compose.e2e.yml
+  # run. Keep the env below in sync with that file. Only the addresses change:
+  # the compose hostnames become localhost. docker-compose.e2e.yml and
+  # scripts/run-e2e.sh are still how to run this suite locally.
   e2e:
     name: Playwright E2E Tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: semaphore
+          POSTGRES_PASSWORD: semaphore
+          POSTGRES_DB: semaphore_e2e_test
+        options: >-
+          --health-cmd "pg_isready -U semaphore"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+
+      redis:
+        image: redis:latest
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 10s
+          --health-retries 10
+        ports:
+          - 6379:6379
+
+    env:
+      # Read by the backend, `prisma migrate deploy` and the seed script.
+      DATABASE_URL: postgresql://semaphore:semaphore@localhost:5432/semaphore_e2e_test
+      # The host ports docker-compose.e2e.yml publishes the backend (3001) and
+      # frontend (5174) on, so the health checks and E2E_BASE_URL are unchanged.
+      BACKEND_URL: http://localhost:3001
+      E2E_BASE_URL: http://localhost:5174
 
     steps:
       - name: Checkout code
@@ -66,17 +105,52 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
 
+      # The whole workspace, like the images: the root `prepare` script builds
+      # shared/ and backend's `postinstall` generates the Prisma client.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Started early so the Nest compile overlaps the next few steps. The
+      # order matches the compose flow: the backend boots against the empty
+      # database and is healthy before migrations and the seed run.
+      - name: Start backend
+        working-directory: backend
+        env:
+          # backend-test's environment in docker-compose.e2e.yml
+          NODE_ENV: test
+          PORT: '3001'
+          REDIS_HOST: localhost
+          REDIS_PORT: '6379'
+          JWT_SECRET: e2e-test-jwt-secret-change-in-production
+          JWT_REFRESH_SECRET: e2e-test-refresh-secret-change-in-production
+          SKIP_INVITE_CODE: 'true'
+          # LiveKit placeholders (voice/video is not tested here)
+          LIVEKIT_URL: wss://e2e-test.livekit.cloud
+          LIVEKIT_API_KEY: e2e-test-api-key
+          LIVEKIT_API_SECRET: e2e-test-api-secret
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-logs"
+          nohup pnpm run start:dev > "$RUNNER_TEMP/e2e-logs/backend.log" 2>&1 < /dev/null &
+
+      # frontend-test's entrypoint generates the client on first start.
+      - name: Generate API client
+        working-directory: frontend
+        run: pnpm exec openapi-ts
+
+      - name: Get Playwright version
+        id: pw-version
+        working-directory: frontend
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+
       # Cache the downloaded browser so most runs skip the ~167 MiB download
-      # entirely. Keyed on the lockfile (which pins the Playwright version).
+      # entirely. Keyed on the Playwright version, which is all the browser
+      # build depends on, so unrelated lockfile changes still hit the cache.
       - name: Cache Playwright browser
         id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-chromium-${{ steps.pw-version.outputs.version }}
       # NOTE: no `--with-deps`. The ubuntu-latest image already ships chromium's
       # system libs (apt reported every dep "already the newest version"), and
       # `--with-deps` shells out to apt-get which intermittently HANGS on the
@@ -97,90 +171,61 @@ jobs:
           done
           echo "Playwright browser install failed after 3 attempts"; exit 1
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build E2E images with cache
-        uses: docker/bake-action@v6
-        with:
-          files: docker-compose.e2e.yml
-          load: true
-          set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
-
-      - name: Start E2E services
-        run: |
-          docker compose -f docker-compose.e2e.yml up -d postgres-test redis-test
-          echo "Waiting for PostgreSQL..."
-          for i in {1..30}; do
-            if docker compose -f docker-compose.e2e.yml exec -T postgres-test pg_isready -U semaphore > /dev/null 2>&1; then
-              echo "PostgreSQL is ready!"
-              break
-            fi
-            sleep 2
-          done
-          echo "Waiting for Redis..."
-          for i in {1..15}; do
-            if docker compose -f docker-compose.e2e.yml exec -T redis-test redis-cli ping > /dev/null 2>&1; then
-              echo "Redis is ready!"
-              break
-            fi
-            sleep 1
-          done
-          docker compose -f docker-compose.e2e.yml up -d backend-test
-
       - name: Wait for backend
         run: |
           echo "Waiting for backend..."
-          for i in {1..60}; do
-            if curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
+          for _ in {1..90}; do
+            if curl -s "$BACKEND_URL/api/health" > /dev/null 2>&1; then
               echo "Backend is ready!"
-              break
-            fi
-            if [ $i -eq 60 ]; then
-              echo "Backend failed to start"
-              docker compose -f docker-compose.e2e.yml logs backend-test --tail=100
-              exit 1
+              exit 0
             fi
             sleep 2
           done
+          echo "Backend failed to start"
+          tail -n 100 "$RUNNER_TEMP/e2e-logs/backend.log"
+          exit 1
 
       - name: Run database migrations
-        run: |
-          echo "Running database migrations..."
-          docker compose -f docker-compose.e2e.yml exec -T backend-test pnpm run prisma:migrate
+        working-directory: backend
+        run: pnpm run prisma:migrate
 
       - name: Seed test database
-        run: |
-          echo "Seeding test database..."
-          docker compose -f docker-compose.e2e.yml exec -T backend-test pnpm exec ts-node prisma/seed-e2e.ts
+        working-directory: backend
+        run: pnpm exec ts-node prisma/seed-e2e.ts
 
       - name: Start frontend
+        working-directory: frontend
+        env:
+          # frontend-test's environment in docker-compose.e2e.yml, which also
+          # swaps in vite.config.e2e.ts. E2E_BACKEND_URL points its proxy at the
+          # backend above instead of the backend-test container.
+          NODE_ENV: test
+          E2E_BACKEND_URL: ${{ env.BACKEND_URL }}
         run: |
-          docker compose -f docker-compose.e2e.yml up -d --no-recreate frontend-test
+          nohup pnpm exec vite --config vite.config.e2e.ts --host 0.0.0.0 --port 5174 --strictPort \
+            > "$RUNNER_TEMP/e2e-logs/frontend.log" 2>&1 < /dev/null &
           echo "Verifying backend is still healthy..."
           for i in {1..60}; do
-            if curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
+            if curl -s "$BACKEND_URL/api/health" > /dev/null 2>&1; then
               echo "Backend is healthy!"
               break
             fi
-            if [ $i -eq 60 ]; then
+            if [ "$i" -eq 60 ]; then
               echo "Backend lost after frontend start"
-              docker compose -f docker-compose.e2e.yml logs backend-test --tail=100
+              tail -n 100 "$RUNNER_TEMP/e2e-logs/backend.log"
               exit 1
             fi
             sleep 2
           done
           echo "Waiting for frontend..."
           for i in {1..30}; do
-            if curl -s http://localhost:5174 > /dev/null 2>&1; then
+            if curl -s "$E2E_BASE_URL" > /dev/null 2>&1; then
               echo "Frontend is ready!"
               break
             fi
-            if [ $i -eq 30 ]; then
+            if [ "$i" -eq 30 ]; then
               echo "Frontend failed to start"
-              docker compose -f docker-compose.e2e.yml logs frontend-test --tail=50
+              tail -n 50 "$RUNNER_TEMP/e2e-logs/frontend.log"
               exit 1
             fi
             sleep 2
@@ -202,7 +247,6 @@ jobs:
             pnpm exec playwright test --project=chromium --project=auth-tests
           fi
         env:
-          E2E_BASE_URL: http://localhost:5174
           CI: true
 
       - name: Upload Playwright report
@@ -221,9 +265,22 @@ jobs:
           path: frontend/test-results/
           retention-days: 7
 
-      - name: Stop Docker services
-        if: always()
-        run: docker compose -f docker-compose.e2e.yml down -v
+      - name: Show backend and frontend logs
+        if: failure()
+        run: |
+          for f in backend frontend; do
+            echo "::group::$f.log (last 200 lines)"
+            tail -n 200 "$RUNNER_TEMP/e2e-logs/$f.log" 2>/dev/null || echo "(no $f.log)"
+            echo "::endgroup::"
+          done
+
+      - name: Upload backend and frontend logs
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-server-logs
+          path: ${{ runner.temp }}/e2e-logs/
+          retention-days: 7
 
   voice-e2e:
     name: Voice E2E (real LiveKit)
@@ -264,12 +321,16 @@ jobs:
       # localhost is a secure context, which getUserMedia/mic-publish requires.
       # Cache + retry, same as the e2e job above (no --with-deps: apt hangs on the
       # runner; the CDN download can stall, so retry on a cache miss).
+      - name: Get Playwright version
+        id: pw-version
+        working-directory: frontend
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browser
         id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          key: playwright-${{ runner.os }}-chromium-${{ steps.pw-version.outputs.version }}
       - name: Install Playwright browser
         if: steps.pw-cache.outputs.cache-hit != 'true'
         timeout-minutes: 15
@@ -287,26 +348,33 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # One cache scope per image. With the default shared `buildkit` scope,
+      # these two images and every other workflow's buildx builds overwrite
+      # each other's cache index, so almost every layer was rebuilt. The cache
+      # is written only outside PRs. This job never runs on PRs today; the
+      # guard keeps PR runs from adding cache churn if that changes.
       - name: Build E2E images with cache
         uses: docker/bake-action@v6
         with:
           files: docker-compose.e2e.yml
           load: true
           set: |
-            *.cache-from=type=gha
-            *.cache-to=type=gha,mode=max
+            backend-test.cache-from=type=gha,scope=e2e-backend-test
+            frontend-test.cache-from=type=gha,scope=e2e-frontend-test
+            ${{ github.event_name != 'pull_request' && 'backend-test.cache-to=type=gha,scope=e2e-backend-test,mode=max' || '' }}
+            ${{ github.event_name != 'pull_request' && 'frontend-test.cache-to=type=gha,scope=e2e-frontend-test,mode=max' || '' }}
 
       - name: Start infra (postgres, redis, real LiveKit)
         run: |
           $COMPOSE up -d postgres-test redis-test livekit-e2e
           echo "Waiting for PostgreSQL..."
-          for i in {1..30}; do
+          for _ in {1..30}; do
             if $COMPOSE exec -T postgres-test pg_isready -U semaphore > /dev/null 2>&1; then
               echo "PostgreSQL ready"; break; fi
             sleep 2
           done
           echo "Waiting for Redis..."
-          for i in {1..15}; do
+          for _ in {1..15}; do
             if $COMPOSE exec -T redis-test redis-cli ping > /dev/null 2>&1; then
               echo "Redis ready"; break; fi
             sleep 1
@@ -319,7 +387,7 @@ jobs:
           for i in {1..60}; do
             if curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
               echo "Backend ready"; break; fi
-            if [ $i -eq 60 ]; then
+            if [ "$i" -eq 60 ]; then
               echo "Backend failed to start"; $COMPOSE logs backend-test --tail=100; exit 1; fi
             sleep 2
           done
@@ -336,7 +404,7 @@ jobs:
           for i in {1..30}; do
             if curl -s http://localhost:5174 > /dev/null 2>&1; then
               echo "Frontend ready"; break; fi
-            if [ $i -eq 30 ]; then
+            if [ "$i" -eq 30 ]; then
               echo "Frontend failed to start"; $COMPOSE logs frontend-test --tail=50; exit 1; fi
             sleep 2
           done

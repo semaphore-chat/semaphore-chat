@@ -109,8 +109,15 @@ Reports are saved to `playwright-report/` and `test-results/`.
 ## CI/CD
 
 Tests run automatically on:
-- Push to `main`
-- All pull requests
+- All pull requests: `@smoke` tests only, or the full suite if the PR has the `e2e-full` label
+- Push to `main`, the nightly schedule and manual dispatch: the full suite
+
+CI builds no Docker images for this. Postgres and Redis run as GitHub Actions
+service containers, and the backend (`pnpm run start:dev`) and frontend (Vite
+with `vite.config.e2e.ts`) run directly on the runner, with the same
+environment, ports (3001 / 5174), migrations and seed as
+`docker-compose.e2e.yml`. If you change that file's backend-test or
+frontend-test environment, update the `e2e` job to match.
 
 See `.github/workflows/e2e-tests.yml` for configuration.
 

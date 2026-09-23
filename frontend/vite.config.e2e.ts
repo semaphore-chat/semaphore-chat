@@ -12,7 +12,14 @@ import path from "path";
  * Served over plain HTTP. The voice E2E runs the browser against
  * http://localhost:<port>, which browsers treat as a *secure context* (so
  * getUserMedia works) without any TLS — see frontend/e2e/voice/README.md.
+ *
+ * E2E_BACKEND_URL overrides the proxy target. It defaults to the backend-test
+ * container on the docker-compose.e2e.yml network; the CI Playwright job runs
+ * the backend directly on the runner and points this at localhost instead.
  */
+const backendUrl = process.env.E2E_BACKEND_URL || "http://backend-test:3000";
+const backendWsUrl = backendUrl.replace(/^http/, "ws");
+
 export default defineConfig({
   plugins: [
     react(),
@@ -72,14 +79,14 @@ export default defineConfig({
     // runner; Vite otherwise 403s unknown Hosts.
     allowedHosts: ["frontend-test", "localhost"],
     proxy: {
-      // Proxy to backend-test container in Docker E2E network
+      // Proxy to backend-test container in Docker E2E network (or E2E_BACKEND_URL)
       "/api": {
-        target: "http://backend-test:3000",
+        target: backendUrl,
         changeOrigin: true,
         secure: false,
       },
       "/socket.io": {
-        target: "ws://backend-test:3000",
+        target: backendWsUrl,
         ws: true,
         changeOrigin: true,
         secure: false,
