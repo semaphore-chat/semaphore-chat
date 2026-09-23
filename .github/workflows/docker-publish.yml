@@ -10,6 +10,21 @@ on:
   pull_request:
     branches:
       - main
+    # Deny-list, deliberately not an allow-list: skip only PRs that cannot
+    # change either image or its Trivy result (docs, the Helm chart, root-level
+    # Markdown, other CI config). Everything else — Dockerfiles, lockfile,
+    # package.json files, patches/, shared/, .npmrc, .trivyignore, and any file
+    # a Dockerfile starts COPYing in the future — still triggers a build + scan,
+    # so a Dockerfile or dependency change can't slip through. Pushes to main
+    # and release tags are unfiltered and always build, scan and publish.
+    paths:
+      - '**'
+      - '!docs/**'
+      - '!docs-site/**'
+      - '!helm/**'
+      - '!*.md'
+      - '!.github/**'
+      - '.github/workflows/docker-publish.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -17,10 +32,37 @@ on:
         type: string
         required: false
 
+# PRs: one in-flight run per PR; a newer push cancels the superseded run.
+# Every other event (main/tag publish, manual dispatch) gets a unique group
+# (run_id), so it is never cancelled — and never queued behind, or replaced
+# while pending by, a newer run, which a shared group would still do even with
+# cancel-in-progress: false. That keeps publish runs exactly as before.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REGISTRY: ghcr.io
   # Will be set to github.repository (owner/repo)
   IMAGE_NAME: ${{ github.repository }}
+
+# Buildx layer cache (GitHub Actions cache backend):
+# - One scope per image (backend-prod / frontend-prod). Previously every build
+#   here and in e2e-tests.yml exported into the shared default `buildkit`
+#   scope, so each export overwrote the others' cache index (near-constant
+#   misses) while still uploading hundreds of MB of blobs per run.
+# - Read everywhere, write only from main. Cache entries written on a PR ref
+#   are visible to that PR alone, so PR exports were pure churn: they pushed
+#   the repo past the 10 GB Actions cache limit and evicted the small caches
+#   (pnpm store, Playwright browsers). Writing only from main also means a PR
+#   can never seed layers that the release build later reuses. Tag pushes
+#   don't write either: tag-ref entries are unusable by any other run.
+# - mode=max, not min: the expensive work (pnpm install incl. dev deps,
+#   prisma generate, nest/vite build) lives in the `builder` stage, and
+#   mode=min exports only the final stage's layers, so every build would redo
+#   the builder stage from scratch. The extra export cost (~1-3 min when
+#   layers changed) is paid on main pushes only, off the PR critical path.
+# - ignore-error=true: a cache-service hiccup must never fail a publish.
 
 jobs:
   build-backend:
@@ -84,25 +126,28 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
+      # which build exactly once (the load-only step below) and scan that.
       - name: Build and push Backend image
         id: push-backend
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./backend/Dockerfile.prod
-          # Push on main branch, release tags, and manual dispatch (not PRs)
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=backend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=backend-prod,mode=max,ignore-error=true' || '' }}
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}
 
-      # On PRs the image isn't pushed, so rebuild a local-loadable single-platform
-      # image (cheap: fully cached from the step above) for vulnerability scanning.
+      # Local single-platform image for the Trivy scan. On PRs this is the only
+      # build (reads main's cache, exports nothing). After a publish it is a
+      # local builder cache hit that just loads the pushed image into Docker.
       - name: Build Backend image for scan
         uses: docker/build-push-action@v6
         with:
@@ -112,7 +157,7 @@ jobs:
           push: false
           tags: scan-target-backend:latest
           platforms: linux/amd64
-          cache-from: type=gha
+          cache-from: type=gha,scope=backend-prod
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}
@@ -189,27 +234,30 @@ jobs:
             type=sha,prefix=sha-
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
 
+      # Push on main branch, release tags, and manual dispatch. Skipped on PRs,
+      # which build exactly once (the load-only step below) and scan that.
       - name: Build and push Frontend image
         id: push-frontend
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./frontend/Dockerfile.prod
-          # Push on main branch, release tags, and manual dispatch (not PRs)
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=frontend-prod
+          cache-to: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=frontend-prod,mode=max,ignore-error=true' || '' }}
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}
             VITE_API_URL=/api
             VITE_WS_URL=
 
-      # On PRs the image isn't pushed, so rebuild a local-loadable single-platform
-      # image (cheap: fully cached from the step above) for vulnerability scanning.
+      # Local single-platform image for the Trivy scan. On PRs this is the only
+      # build (reads main's cache, exports nothing). After a publish it is a
+      # local builder cache hit that just loads the pushed image into Docker.
       - name: Build Frontend image for scan
         uses: docker/build-push-action@v6
         with:
@@ -219,7 +267,7 @@ jobs:
           push: false
           tags: scan-target-frontend:latest
           platforms: linux/amd64
-          cache-from: type=gha
+          cache-from: type=gha,scope=frontend-prod
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}
