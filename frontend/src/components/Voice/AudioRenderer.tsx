@@ -1,11 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { RemoteParticipant, RemoteTrackPublication, Track, AudioTrack, RoomEvent } from 'livekit-client';
+import type { RemoteParticipant, RemoteTrackPublication, AudioTrack } from 'livekit-client';
 import { useRoom } from '../../hooks/useRoom';
 import { useVoice } from '../../contexts/VoiceContext';
 import { audioBoostManager, boostKey } from '../../features/voice/audioBoostManager';
 import { isBoostableAudioTrack } from '../../features/voice/isBoostableAudioTrack';
 import { getStoredVolumePercent } from '../../features/voice/volumeStorage';
 import { SOUNDBOARD_TRACK_NAME } from '../../features/voice/soundboardPlayer';
+import { ROOM_EVENT, TRACK_SOURCE } from '../../features/voice/livekitEvents';
 import { logger } from '../../utils/logger';
 
 /**
@@ -120,8 +121,8 @@ export const AudioRenderer: React.FC = () => {
     room.remoteParticipants.forEach((participant) => {
       participant.audioTrackPublications.forEach((publication) => {
         // Include microphone tracks always; screen share audio only when watching that participant's screen share
-        const isMic = publication.source === Track.Source.Microphone;
-        const isScreenShareAudio = publication.source === Track.Source.ScreenShareAudio && currentWatching.has(participant.identity);
+        const isMic = publication.source === TRACK_SOURCE.Microphone;
+        const isScreenShareAudio = publication.source === TRACK_SOURCE.ScreenShareAudio && currentWatching.has(participant.identity);
         // Soundboard tracks are Source.Unknown, identified by name — always audible.
         const isSoundboard = publication.trackName === SOUNDBOARD_TRACK_NAME;
         if ((isMic || isScreenShareAudio || isSoundboard) && publication.track) {
@@ -145,10 +146,10 @@ export const AudioRenderer: React.FC = () => {
 
     // Subscribe to relevant room events
     const events = [
-      RoomEvent.TrackSubscribed,
-      RoomEvent.TrackUnsubscribed,
-      RoomEvent.ParticipantConnected,
-      RoomEvent.ParticipantDisconnected,
+      ROOM_EVENT.TrackSubscribed,
+      ROOM_EVENT.TrackUnsubscribed,
+      ROOM_EVENT.ParticipantConnected,
+      ROOM_EVENT.ParticipantDisconnected,
     ] as const;
 
     events.forEach((event) => room.on(event, updateAudioTracks));

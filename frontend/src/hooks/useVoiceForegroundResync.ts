@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Room, RoomEvent, ConnectionState, DisconnectReason } from 'livekit-client';
+import type { Room, DisconnectReason } from 'livekit-client';
 import { useVoiceDispatch, VoiceActionType, VoiceSessionType, type VoiceState } from '../contexts/VoiceContext';
 import { setUpdateDeferred } from '../utils/swUpdate';
 import { logger } from '../utils/logger';
+import { ROOM_EVENT, CONNECTION_STATE, DISCONNECT_REASON_CLIENT_INITIATED } from '../features/voice/livekitEvents';
 
 interface ResyncActions {
   joinVoiceChannel: (
@@ -58,7 +59,7 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
       return;
     }
 
-    const roomDead = !room || room.state === ConnectionState.Disconnected;
+    const roomDead = !room || room.state === CONNECTION_STATE.Disconnected;
     if (roomDead) {
       resyncInProgressRef.current = true;
       logger.warn(`[Voice] Room dead while context connected (${trigger}) — rejoining`);
@@ -101,7 +102,7 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
       return;
     }
 
-    if (room.state === ConnectionState.Connected && !room.canPlaybackAudio) {
+    if (room.state === CONNECTION_STATE.Connected && !room.canPlaybackAudio) {
       logger.info(`[Voice] Audio playback blocked after ${trigger} — calling startAudio()`);
       try {
         await room.startAudio();
@@ -144,7 +145,7 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
     }
 
     const handleDisconnected = (reason?: DisconnectReason) => {
-      if (reason === DisconnectReason.CLIENT_INITIATED) {
+      if (reason === DISCONNECT_REASON_CLIENT_INITIATED) {
         // User hangup or livekit's freeze-listener; the freeze case is
         // reconciled on the next foreground transition instead.
         return;
@@ -154,9 +155,9 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
       }
     };
 
-    room.on(RoomEvent.Disconnected, handleDisconnected);
+    room.on(ROOM_EVENT.Disconnected, handleDisconnected);
     return () => {
-      room.off(RoomEvent.Disconnected, handleDisconnected);
+      room.off(ROOM_EVENT.Disconnected, handleDisconnected);
     };
   }, [room]);
 }

@@ -1,6 +1,13 @@
-import { Room, RemoteTrackPublication, Track } from 'livekit-client';
-import type { RemoteParticipant, LocalParticipant } from 'livekit-client';
+import type { Room, RemoteTrackPublication, RemoteParticipant, LocalParticipant, Track } from 'livekit-client';
 import type { VoiceEventEntry } from '../../hooks/useVoiceEventLogDef';
+import { TRACK_SOURCE } from './livekitEvents';
+
+/**
+ * IMPORTANT: this module is imported (statically, as VALUES — `captureDiagnostics`
+ * et al.) by features/voice/VoiceTestHooks.tsx, which is rendered unconditionally
+ * from the always-mounted Layout.tsx. `Track` is therefore a type-only import
+ * here — see livekitEvents.ts for why.
+ */
 
 /**
  * Voice diagnostics — a single source of truth for capturing the current state
@@ -125,7 +132,7 @@ export interface DiagnosticsSnapshot {
 
 function findMicPublication(p: RemoteParticipant): RemoteTrackPublication | undefined {
   for (const [, pub] of p.trackPublications) {
-    if (pub.source === Track.Source.Microphone) return pub as RemoteTrackPublication;
+    if (pub.source === TRACK_SOURCE.Microphone) return pub as RemoteTrackPublication;
   }
   return undefined;
 }
@@ -290,8 +297,8 @@ export function parseInboundVideo(
   return out;
 }
 
-function videoSourceEnum(source: 'camera' | 'screenshare'): Track.Source {
-  return source === 'screenshare' ? Track.Source.ScreenShare : Track.Source.Camera;
+function videoSourceEnum(source: 'camera' | 'screenshare'): `${Track.Source}` {
+  return source === 'screenshare' ? TRACK_SOURCE.ScreenShare : TRACK_SOURCE.Camera;
 }
 
 /**
@@ -346,13 +353,13 @@ export function getSubscriptionState(
     screenShareAudio: { published: false, subscribed: false },
   };
   for (const [, pub] of remote.trackPublications) {
-    if (pub.source === Track.Source.Microphone) {
+    if (pub.source === TRACK_SOURCE.Microphone) {
       state.mic = { published: true, subscribed: pub.isSubscribed, muted: pub.isMuted };
-    } else if (pub.source === Track.Source.Camera) {
+    } else if (pub.source === TRACK_SOURCE.Camera) {
       state.camera = { published: true, subscribed: pub.isSubscribed };
-    } else if (pub.source === Track.Source.ScreenShare) {
+    } else if (pub.source === TRACK_SOURCE.ScreenShare) {
       state.screenShare = { published: true, subscribed: pub.isSubscribed };
-    } else if (pub.source === Track.Source.ScreenShareAudio) {
+    } else if (pub.source === TRACK_SOURCE.ScreenShareAudio) {
       state.screenShareAudio = { published: true, subscribed: pub.isSubscribed };
     }
   }

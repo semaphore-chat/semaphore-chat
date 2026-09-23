@@ -1,11 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRoom } from './useRoom';
-import {
-  Track,
-  RoomEvent,
-  Participant,
-  RemoteParticipant,
-} from 'livekit-client';
+import { Track, RoomEvent } from 'livekit-client';
+import type { Participant, RemoteParticipant } from 'livekit-client';
 
 export interface ParticipantMediaState {
   isCameraEnabled: boolean;

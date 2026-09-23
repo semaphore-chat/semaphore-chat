@@ -1,15 +1,15 @@
 import { useEffect, useCallback, createContext, useContext } from 'react';
-import {
-  RoomEvent,
+import type {
   Track,
   RemoteTrackPublication,
   RemoteParticipant,
-  type SubscriptionError,
+  SubscriptionError,
 } from 'livekit-client';
 import { useRoom } from './useRoom';
 import { useVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';
 import { logger } from '../utils/logger';
 import { SOUNDBOARD_TRACK_NAME } from '../features/voice/soundboardPlayer';
+import { ROOM_EVENT, TRACK_SOURCE } from '../features/voice/livekitEvents';
 
 /**
  * Soundboard tracks are published as Track.Source.Unknown (the enum is fixed and
@@ -52,9 +52,9 @@ function unsubscribePublication(publication: RemoteTrackPublication, reason: str
  */
 function isOptInSource(source: Track.Source | string): boolean {
   return (
-    source === Track.Source.Camera ||
-    source === Track.Source.ScreenShare ||
-    source === Track.Source.ScreenShareAudio
+    source === TRACK_SOURCE.Camera ||
+    source === TRACK_SOURCE.ScreenShare ||
+    source === TRACK_SOURCE.ScreenShareAudio
   );
 }
 
@@ -110,7 +110,7 @@ function applySubscriptionPolicy(participant: RemoteParticipant, force = false) 
   for (const [, publication] of participant.trackPublications) {
     if (!isRemotePublication(publication)) continue;
     if (
-      publication.source === Track.Source.Microphone ||
+      publication.source === TRACK_SOURCE.Microphone ||
       isSoundboardPublication(publication)
     ) {
       if (force) {
@@ -170,7 +170,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
       if (!isRemotePublication(publication)) return;
       logger.info('[TrackSubscription] TrackPublished', participant.identity, publication.source, publication.trackSid, publication.trackName);
       if (
-        publication.source === Track.Source.Microphone ||
+        publication.source === TRACK_SOURCE.Microphone ||
         isSoundboardPublication(publication)
       ) {
         subscribePublication(publication, `published-audio:${participant.identity}`);
@@ -178,7 +178,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
         unsubscribePublication(publication, `published:${participant.identity}`);
         // Surface new screen shares: open the video panel so the viewer sees
         // the "Click to watch" tile (watching remains opt-in per subscription policy)
-        if (publication.source === Track.Source.ScreenShare) {
+        if (publication.source === TRACK_SOURCE.ScreenShare) {
           logger.info('[TrackSubscription] Screen share published, opening video panel', participant.identity);
           // Reveal fully (show + un-collapse) so a viewer with the pill
           // collapsed doesn't miss a screen share that just started.
@@ -194,9 +194,9 @@ export function useTrackSubscription(): TrackSubscriptionActions {
     ) => {
       logger.info('[TrackSubscription] TrackUnpublished', participant.identity, publication.source, publication.trackSid);
       // Clean up watching state when a participant stops sharing
-      if (publication.source === Track.Source.Camera) {
+      if (publication.source === TRACK_SOURCE.Camera) {
         dispatch({ type: VoiceActionType.StopWatchingCamera, payload: participant.identity });
-      } else if (publication.source === Track.Source.ScreenShare) {
+      } else if (publication.source === TRACK_SOURCE.ScreenShare) {
         dispatch({ type: VoiceActionType.StopWatchingScreenShare, payload: participant.identity });
       }
     };
@@ -229,7 +229,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
       status: string,
       participant: RemoteParticipant,
     ) => {
-      if (publication.source !== Track.Source.Microphone) return;
+      if (publication.source !== TRACK_SOURCE.Microphone) return;
       logger.info(
         '[TrackSubscription] SubscriptionStatusChanged',
         participant.identity,
@@ -266,20 +266,20 @@ export function useTrackSubscription(): TrackSubscriptionActions {
       applySubscriptionPolicy(participant);
     }
 
-    room.on(RoomEvent.TrackPublished, handleTrackPublished);
-    room.on(RoomEvent.TrackUnpublished, handleTrackUnpublished);
-    room.on(RoomEvent.ParticipantConnected, handleParticipantConnected);
-    room.on(RoomEvent.Reconnected, handleReconnected);
-    room.on(RoomEvent.TrackSubscriptionStatusChanged, handleSubscriptionStatusChanged);
-    room.on(RoomEvent.TrackSubscriptionFailed, handleSubscriptionFailed);
+    room.on(ROOM_EVENT.TrackPublished, handleTrackPublished);
+    room.on(ROOM_EVENT.TrackUnpublished, handleTrackUnpublished);
+    room.on(ROOM_EVENT.ParticipantConnected, handleParticipantConnected);
+    room.on(ROOM_EVENT.Reconnected, handleReconnected);
+    room.on(ROOM_EVENT.TrackSubscriptionStatusChanged, handleSubscriptionStatusChanged);
+    room.on(ROOM_EVENT.TrackSubscriptionFailed, handleSubscriptionFailed);
 
     return () => {
-      room.off(RoomEvent.TrackPublished, handleTrackPublished);
-      room.off(RoomEvent.TrackUnpublished, handleTrackUnpublished);
-      room.off(RoomEvent.ParticipantConnected, handleParticipantConnected);
-      room.off(RoomEvent.Reconnected, handleReconnected);
-      room.off(RoomEvent.TrackSubscriptionStatusChanged, handleSubscriptionStatusChanged);
-      room.off(RoomEvent.TrackSubscriptionFailed, handleSubscriptionFailed);
+      room.off(ROOM_EVENT.TrackPublished, handleTrackPublished);
+      room.off(ROOM_EVENT.TrackUnpublished, handleTrackUnpublished);
+      room.off(ROOM_EVENT.ParticipantConnected, handleParticipantConnected);
+      room.off(ROOM_EVENT.Reconnected, handleReconnected);
+      room.off(ROOM_EVENT.TrackSubscriptionStatusChanged, handleSubscriptionStatusChanged);
+      room.off(ROOM_EVENT.TrackSubscriptionFailed, handleSubscriptionFailed);
     };
   }, [room, dispatch]);
 
@@ -297,7 +297,13 @@ export function useTrackSubscription(): TrackSubscriptionActions {
   );
 
   const setSubscribedForSource = useCallback(
-    (identity: string, sources: Track.Source[], subscribed: boolean) => {
+    // `Track.Source[]` (the nominal enum type) can't be constructed from the
+    // TRACK_SOURCE string constants above (string enums are nominal — a
+    // matching string literal isn't assignable to the enum type itself).
+    // The template-literal type is the string-literal union of every member,
+    // which both TRACK_SOURCE's constants and real `Track.Source` values
+    // (assignable to their own literal representation) satisfy.
+    (identity: string, sources: `${Track.Source}`[], subscribed: boolean) => {
       const participant = findParticipant(identity);
       if (!participant) {
         logger.warn('[TrackSubscription] Participant not found:', identity);
@@ -305,7 +311,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
       }
       for (const [, publication] of participant.trackPublications) {
         if (
-          sources.includes(publication.source as Track.Source) &&
+          sources.includes(publication.source) &&
           isRemotePublication(publication)
         ) {
           logger.info(
@@ -324,7 +330,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
 
   const watchCamera = useCallback(
     (identity: string) => {
-      setSubscribedForSource(identity, [Track.Source.Camera], true);
+      setSubscribedForSource(identity, [TRACK_SOURCE.Camera], true);
       dispatch({ type: VoiceActionType.WatchCamera, payload: identity });
     },
     [setSubscribedForSource, dispatch],
@@ -332,7 +338,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
 
   const stopWatchingCamera = useCallback(
     (identity: string) => {
-      setSubscribedForSource(identity, [Track.Source.Camera], false);
+      setSubscribedForSource(identity, [TRACK_SOURCE.Camera], false);
       dispatch({ type: VoiceActionType.StopWatchingCamera, payload: identity });
     },
     [setSubscribedForSource, dispatch],
@@ -342,7 +348,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
     (identity: string) => {
       setSubscribedForSource(
         identity,
-        [Track.Source.ScreenShare, Track.Source.ScreenShareAudio],
+        [TRACK_SOURCE.ScreenShare, TRACK_SOURCE.ScreenShareAudio],
         true,
       );
       dispatch({ type: VoiceActionType.WatchScreenShare, payload: identity });
@@ -354,7 +360,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
     (identity: string) => {
       setSubscribedForSource(
         identity,
-        [Track.Source.ScreenShare, Track.Source.ScreenShareAudio],
+        [TRACK_SOURCE.ScreenShare, TRACK_SOURCE.ScreenShareAudio],
         false,
       );
       dispatch({ type: VoiceActionType.StopWatchingScreenShare, payload: identity });
@@ -371,7 +377,7 @@ export function useTrackSubscription(): TrackSubscriptionActions {
       }
       for (const [, publication] of participant.trackPublications) {
         if (
-          publication.source === Track.Source.Microphone &&
+          publication.source === TRACK_SOURCE.Microphone &&
           isRemotePublication(publication)
         ) {
           forceResubscribePublication(publication, `manual-resubscribe:${identity}`);

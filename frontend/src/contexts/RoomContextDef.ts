@@ -1,5 +1,5 @@
 import { createContext } from "react";
-import { Room } from "livekit-client";
+import type { Room } from "livekit-client";
 
 export interface RoomContextType {
   room: Room | null;

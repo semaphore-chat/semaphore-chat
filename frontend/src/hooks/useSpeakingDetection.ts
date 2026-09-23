@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRoom } from "./useRoom";
-import { Participant, Track } from "livekit-client";
-import type { TrackPublication } from "livekit-client";
+import type { Participant, TrackPublication, Track } from "livekit-client";
 import { getCachedItem } from "../utils/storage";
 import { computeVoiceLevel } from "../utils/audioLevel";
+import { TRACK_SOURCE } from "../features/voice/livekitEvents";
 
 const VOICE_SETTINGS_KEY = 'semaphore_voice_settings';
 const HOLD_OPEN_MS = 300;
@@ -139,7 +139,9 @@ export const useSpeakingDetection = () => {
 
     const startLocalAnalysis = () => {
       // Find the local microphone track's MediaStream
-      const micPub = local.getTrackPublication(Track.Source.Microphone);
+      // getTrackPublication expects the nominal Track.Source enum, not a
+      // string literal — see the cast note in livekitEvents.ts.
+      const micPub = local.getTrackPublication(TRACK_SOURCE.Microphone as Track.Source);
       const mediaStreamTrack = micPub?.track?.mediaStreamTrack;
       if (!mediaStreamTrack) return;
 
@@ -206,7 +208,7 @@ export const useSpeakingDetection = () => {
           // Mute wins: while the mic publication is muted, never touch
           // track.enabled (LiveKit's mute owns enabled=false) and force the
           // local speaking indicator off. Skips both VA-gate and PTT branches.
-          const currentMicPub = local.getTrackPublication(Track.Source.Microphone);
+          const currentMicPub = local.getTrackPublication(TRACK_SOURCE.Microphone as Track.Source);
           if (currentMicPub?.isMuted) {
             gateOpenRef.current = false;
             gateDisabledTrackRef.current = false;
@@ -376,7 +378,7 @@ export const useSpeakingDetection = () => {
       // Only re-enable track if OUR gate disabled it — don't override
       // explicit user mute/deafen/PTT state (mute wins over the gate)
       if (gateDisabledTrackRef.current) {
-        const micPub = local.getTrackPublication(Track.Source.Microphone);
+        const micPub = local.getTrackPublication(TRACK_SOURCE.Microphone as Track.Source);
         if (!micPub?.isMuted) {
           const track = micPub?.track?.mediaStreamTrack;
           if (track) {
@@ -413,7 +415,7 @@ export const useSpeakingDetection = () => {
     // with the publication still live. The gate must never fight that —
     // never write track.enabled from these handlers.
     const handleTrackMuted = (pub: TrackPublication) => {
-      if (pub.source !== Track.Source.Microphone) return;
+      if (pub.source !== TRACK_SOURCE.Microphone) return;
       gateDisabledTrackRef.current = false; // LiveKit's mute owns enabled=false now
       gateOpenRef.current = false;
       setSpeakingMap((prev) => {
@@ -424,7 +426,7 @@ export const useSpeakingDetection = () => {
       });
     };
     const handleTrackUnmuted = (pub: TrackPublication) => {
-      if (pub.source !== Track.Source.Microphone) return;
+      if (pub.source !== TRACK_SOURCE.Microphone) return;
       // Restart analysis so it picks up the fresh MediaStreamTrack that
       // LiveKit may swap in on unmute (e.g. a device switch performed while
       // muted defers the real track restart to unmute, and no further track

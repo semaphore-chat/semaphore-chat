@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, act } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { PersistentVideoOverlay } from '../../components/Voice/PersistentVideoOverlay';
+import { FloatCard } from '../../components/Voice/FloatCard';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { toAbsolute, defaultPlacement, dockZoneRects, EDGE_PADDING, type PipPlacement } from '../../utils/pipPosition';
@@ -233,7 +234,7 @@ describe('PersistentVideoOverlay', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('renders mobile full-screen overlay on mobile', () => {
+  it('renders mobile full-screen overlay on mobile', async () => {
     vi.mocked(useResponsive).mockReturnValue({
       isMobile: true,
       isTablet: false,
@@ -244,8 +245,8 @@ describe('PersistentVideoOverlay', () => {
 
     renderWithProviders(<PersistentVideoOverlay />);
 
-    // Mobile overlay should render VideoTiles
-    expect(screen.getByTestId('video-tiles')).toBeInTheDocument();
+    // Mobile overlay should render VideoTiles (React.lazy — see PR-11)
+    expect(await screen.findByTestId('video-tiles')).toBeInTheDocument();
     // Mobile overlay should NOT have the float card's drag/minimize chrome
     expect(screen.queryByTestId('DragIndicatorIcon')).not.toBeInTheDocument();
     expect(screen.queryByTestId('MinimizeIcon')).not.toBeInTheDocument();
@@ -262,14 +263,14 @@ describe('PersistentVideoOverlay', () => {
 
     const { user } = renderWithProviders(<PersistentVideoOverlay />);
 
-    const closeIcon = screen.getByTestId('CloseIcon');
+    const closeIcon = await screen.findByTestId('CloseIcon');
     const closeButton = closeIcon.closest('button')!;
     await user.click(closeButton);
 
     expect(mockActions.setShowVideoTiles).toHaveBeenCalledWith(false);
   });
 
-  it('still renders the mobile overlay when the embedded stage is mounted', () => {
+  it('still renders the mobile overlay when the embedded stage is mounted', async () => {
     mockVoiceState = { ...defaultVoiceState, stageMounted: true };
     vi.mocked(useVoice).mockReturnValue(mockVoiceState as never);
     vi.mocked(useResponsive).mockReturnValue({
@@ -282,12 +283,23 @@ describe('PersistentVideoOverlay', () => {
 
     renderWithProviders(<PersistentVideoOverlay />);
 
-    expect(screen.getByTestId('video-tiles')).toBeInTheDocument();
+    // VideoTiles is React.lazy-loaded (PR-11 bundle splitting)
+    expect(await screen.findByTestId('video-tiles')).toBeInTheDocument();
   });
 
+  it('renders the (lazy-loaded) float card on desktop', async () => {
+    renderWithProviders(<PersistentVideoOverlay />);
+    // FloatCard is React.lazy-loaded (PR-11 bundle splitting), so it
+    // resolves asynchronously.
+    expect(await screen.findByTestId('float-card-body')).toBeInTheDocument();
+  });
+
+  // FloatCard is React.lazy'd inside PersistentVideoOverlay (PR-11 bundle
+  // splitting), so these tests render it directly to keep the assertions
+  // synchronous; the overlay-level gating is covered above.
   describe('desktop float card', () => {
     it('renders the drag header with the channel name', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       expect(screen.getByTestId('DragIndicatorIcon')).toBeInTheDocument();
       expect(screen.getByText('General Voice')).toBeInTheDocument();
@@ -305,7 +317,7 @@ describe('PersistentVideoOverlay', () => {
         collapsed: false,
       });
 
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const vp = { width: window.innerWidth, height: window.innerHeight, bottomInset: VOICE_BAR_HEIGHT };
       const expectedAbs = toAbsolute(defaultPlacement(), vp);
@@ -332,14 +344,14 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('no longer has a close button (replaced by collapse-to-pill)', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       expect(screen.queryByTestId('CloseIcon')).not.toBeInTheDocument();
       expect(screen.getByTestId('MinimizeIcon')).toBeInTheDocument();
     });
 
     it('clicking the card body navigates to the channel stage path', async () => {
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       await user.click(screen.getByTestId('float-card-body'));
 
@@ -362,7 +374,7 @@ describe('PersistentVideoOverlay', () => {
         actions: mockActions,
       } as never);
 
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       await user.click(screen.getByTestId('float-card-body'));
 
@@ -370,7 +382,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('clicks on the control strip do not navigate', async () => {
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       const micIcon = screen.getByTestId('MicIcon');
       await user.click(micIcon.closest('button')!);
@@ -380,7 +392,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('camera control in the strip toggles the camera without navigating', async () => {
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       const camIcon = screen.getByTestId('VideocamOffIcon');
       await user.click(camIcon.closest('button')!);
@@ -400,7 +412,7 @@ describe('PersistentVideoOverlay', () => {
         actions: mockActions,
       } as never);
 
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       expect(screen.getByTestId('float-card-pill')).toBeInTheDocument();
       // 2 remote participants + local participant
@@ -408,7 +420,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('collapse control dispatches SetPipCollapsed(true); context flipping it shows the pill', async () => {
-      const { user, rerender } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user, rerender } = renderWithProviders(<FloatCard />);
 
       expect(screen.queryByTestId('float-card-pill')).not.toBeInTheDocument();
 
@@ -427,7 +439,7 @@ describe('PersistentVideoOverlay', () => {
         state: mockConnectionState,
         actions: mockActions,
       } as never);
-      rerender(<PersistentVideoOverlay />);
+      rerender(<FloatCard />);
 
       expect(screen.getByTestId('float-card-pill')).toBeInTheDocument();
     });
@@ -436,7 +448,7 @@ describe('PersistentVideoOverlay', () => {
       const camParticipant = { identity: 'remote-1', name: 'RemoteUser' };
       mockSelection = { kind: 'camera', participant: camParticipant, publication: { source: 'camera' } };
 
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const tile = screen.getByTestId('video-tile');
       expect(tile).toHaveAttribute('data-identity', 'remote-1');
@@ -448,7 +460,7 @@ describe('PersistentVideoOverlay', () => {
       const sharer = { identity: 'remote-2', name: 'Sharer' };
       mockSelection = { kind: 'screen', participant: sharer, publication: { source: 'screen_share' } };
 
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const tile = screen.getByTestId('video-tile');
       expect(tile).toHaveAttribute('data-identity', 'remote-2');
@@ -462,7 +474,7 @@ describe('PersistentVideoOverlay', () => {
         actions: mockActions,
       } as never);
 
-      const { user, rerender } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user, rerender } = renderWithProviders(<FloatCard />);
 
       await user.click(screen.getByTestId('float-card-pill'));
 
@@ -473,14 +485,14 @@ describe('PersistentVideoOverlay', () => {
         state: mockConnectionState,
         actions: mockActions,
       } as never);
-      rerender(<PersistentVideoOverlay />);
+      rerender(<FloatCard />);
 
       expect(screen.queryByTestId('float-card-pill')).not.toBeInTheDocument();
       expect(screen.getByTestId('float-card-body')).toBeInTheDocument();
     });
 
     it('dragging the header into a dock zone persists a docked placement at that anchor', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const vp = { width: window.innerWidth, height: window.innerHeight, bottomInset: VOICE_BAR_HEIGHT };
       const startAbs = toAbsolute(defaultPlacement(), vp);
@@ -501,7 +513,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('dragging the header outside every dock zone persists the exact free drop position', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const vp = { width: window.innerWidth, height: window.innerHeight, bottomInset: VOICE_BAR_HEIGHT };
       const { size } = defaultPlacement();
@@ -534,7 +546,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('a plain click on the header (pointerdown+pointerup with no movement) does not dock and shows no dock zones', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const before = getCachedItem<PipPlacement>('semaphore_pip_placement');
       const vp = { width: window.innerWidth, height: window.innerHeight, bottomInset: VOICE_BAR_HEIGHT };
@@ -557,7 +569,7 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('movement below the drag threshold does not start a drag, but continuing past it does', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const header = screen.getByTestId('DragIndicatorIcon');
       fireEvent.pointerDown(header, { pointerId: 1, clientX: 500, clientY: 500 });
@@ -580,13 +592,13 @@ describe('PersistentVideoOverlay', () => {
     });
 
     it('does not render dock zones before any drag gesture starts', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       expect(screen.queryByTestId('dock-zone-bottom-right')).not.toBeInTheDocument();
     });
 
     it('keeps dock zones mounted through pointerup so the exit fade can play, instead of vanishing instantly', () => {
-      renderWithProviders(<PersistentVideoOverlay />);
+      renderWithProviders(<FloatCard />);
 
       const header = screen.getByTestId('DragIndicatorIcon');
       fireEvent.pointerDown(header, { pointerId: 1, clientX: 500, clientY: 500 });
@@ -615,7 +627,7 @@ describe('PersistentVideoOverlay', () => {
         pttRelease: vi.fn(),
       } as never);
 
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       const micIcon = screen.getByTestId('MicIcon');
       await user.click(micIcon.closest('button')!);
@@ -630,7 +642,7 @@ describe('PersistentVideoOverlay', () => {
         actions: mockActions,
       } as never);
 
-      const { user } = renderWithProviders(<PersistentVideoOverlay />);
+      const { user } = renderWithProviders(<FloatCard />);
 
       const micIcon = screen.getByTestId('MicIcon');
       await user.click(micIcon.closest('button')!);

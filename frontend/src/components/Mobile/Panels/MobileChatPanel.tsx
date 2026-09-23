@@ -5,7 +5,7 @@
  * Uses the new screen-based navigation with MobileAppBar.
  */
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import {
   Box,
   Menu,
@@ -38,7 +38,6 @@ import { MOBILE_CONSTANTS } from '../../../utils/breakpoints';
 import { ChannelType } from '../../../types/channel.type';
 import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
 import DirectMessageContainer from '../../DirectMessages/DirectMessageContainer';
-import { VideoTiles } from '../../Voice/VideoTiles';
 import { VoiceChannelJoinButton } from '../../Voice/VoiceChannelJoinButton';
 import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
 import { ErrorBoundary } from '../../ErrorBoundary';
@@ -46,6 +45,11 @@ import MobileAppBar from '../MobileAppBar';
 import MemberListContainer from '../../Message/MemberListContainer';
 import { PinnedMessagesPanel } from '../../Moderation';
 import { VoiceSessionType } from '../../../contexts/VoiceContext';
+
+// VideoTiles pulls in livekit-client runtime enums; lazy-load it so it's
+// only fetched once the user is actually connected to this voice channel
+// (see PR-11 bundle splitting).
+const VideoTiles = lazy(() => import('../../Voice/VideoTiles').then((m) => ({ default: m.VideoTiles })));
 
 interface MobileChatPanelProps {
   communityId?: string;
@@ -157,7 +161,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
         return (
           <Box sx={{ height: '100%', width: '100%' }}>
             <ErrorBoundary>
-              <VideoTiles />
+              <Suspense fallback={null}>
+                <VideoTiles />
+              </Suspense>
             </ErrorBoundary>
           </Box>
         );

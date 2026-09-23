@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, Suspense, lazy } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -31,11 +31,14 @@ import { invalidateClipQueries } from '../../utils/queryInvalidation';
 import { useParams } from 'react-router-dom';
 import { getApiUrl } from '../../config/env';
 import { getAccessToken } from '../../utils/tokenService';
-import { TrimPreview } from './TrimPreview';
 import type { Channel } from '../../types/channel.type';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
 import { logger } from '../../utils/logger';
 import { useResponsive } from '../../hooks/useResponsive';
+
+// TrimPreview is the sole hls.js importer in the app; lazy-load it so hls.js
+// is only fetched when the user opens the custom-trim UI (see PR-11).
+const TrimPreview = lazy(() => import('./TrimPreview').then((m) => ({ default: m.TrimPreview })));
 
 interface CaptureReplayModalProps {
   open: boolean;
@@ -281,7 +284,9 @@ export const CaptureReplayModal: React.FC<CaptureReplayModalProps> = ({
             </Button>
 
             <Collapse in={useCustomTrim} unmountOnExit>
-              <TrimPreview onRangeChange={handleCustomRangeChange} />
+              <Suspense fallback={<CircularProgress size={24} />}>
+                <TrimPreview onRangeChange={handleCustomRangeChange} />
+              </Suspense>
             </Collapse>
           </Box>
 
