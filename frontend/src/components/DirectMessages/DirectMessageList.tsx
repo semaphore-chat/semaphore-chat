@@ -2,7 +2,6 @@ import React, { useMemo } from "react";
 import {
   Box,
   List,
-  CircularProgress,
 } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -18,6 +17,7 @@ import { getDmOtherUser } from "../../utils/dmHelpers";
 import DmListItem from "./DmListItem";
 import CreateDmDialog from "./CreateDmDialog";
 import EmptyState from "../Common/EmptyState";
+import ListState, { ListSkeleton } from "../Common/ListState";
 
 interface DirectMessageListProps {
   selectedDmGroupId?: string;
@@ -32,7 +32,7 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
   showCreateDialog,
   setShowCreateDialog,
 }) => {
-  const { data: dmGroups = [], isLoading } = useQuery(directMessagesControllerFindUserDmGroupsOptions());
+  const { data: dmGroups = [], isLoading, error, refetch } = useQuery(directMessagesControllerFindUserDmGroupsOptions());
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
   const { state: voiceState } = useVoiceConnection();
   const { unreadCount, mentionCount } = useReadReceipts();
@@ -55,36 +55,18 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
     staleTime: 60_000,
   });
 
-  if (isLoading) {
-    return (
-      <Box sx={{ p: 2, textAlign: "center" }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <>
       <Box sx={{ flex: 1, overflow: "auto" }}>
-        <List>
-          {dmGroups.map((dmGroup) => {
-            const otherUser = !dmGroup.isGroup ? getDmOtherUser(dmGroup, currentUser?.id) : null;
-            const isOnline = otherUser?.id ? presenceData?.presence?.[otherUser.id] ?? false : false;
-            return (
-              <DmListItem
-                key={dmGroup.id}
-                group={dmGroup}
-                currentUserId={currentUser?.id}
-                isSelected={selectedDmGroupId === dmGroup.id}
-                onClick={() => onSelectDmGroup(dmGroup.id)}
-                isInCall={voiceState.isConnected && voiceState.contextType === VoiceSessionType.Dm && voiceState.currentDmGroupId === dmGroup.id}
-                unreadCount={unreadCount(dmGroup.id)}
-                mentionCount={mentionCount(dmGroup.id)}
-                isOnline={isOnline}
-              />
-            );
-          })}
-          {dmGroups.length === 0 && (
+        <ListState
+          isLoading={isLoading}
+          error={error}
+          onRetry={() => void refetch()}
+          isEmpty={dmGroups.length === 0}
+          skeleton={<ListSkeleton rows={8} label="Loading conversations" />}
+          size="compact"
+          errorTitle="Couldn't load conversations"
+          empty={
             <EmptyState
               variant="dm"
               action={{
@@ -92,8 +74,28 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
                 onClick: () => setShowCreateDialog(true),
               }}
             />
-          )}
-        </List>
+          }
+        >
+          <List>
+            {dmGroups.map((dmGroup) => {
+              const otherUser = !dmGroup.isGroup ? getDmOtherUser(dmGroup, currentUser?.id) : null;
+              const isOnline = otherUser?.id ? presenceData?.presence?.[otherUser.id] ?? false : false;
+              return (
+                <DmListItem
+                  key={dmGroup.id}
+                  group={dmGroup}
+                  currentUserId={currentUser?.id}
+                  isSelected={selectedDmGroupId === dmGroup.id}
+                  onClick={() => onSelectDmGroup(dmGroup.id)}
+                  isInCall={voiceState.isConnected && voiceState.contextType === VoiceSessionType.Dm && voiceState.currentDmGroupId === dmGroup.id}
+                  unreadCount={unreadCount(dmGroup.id)}
+                  mentionCount={mentionCount(dmGroup.id)}
+                  isOnline={isOnline}
+                />
+              );
+            })}
+          </List>
+        </ListState>
       </Box>
 
       <CreateDmDialog

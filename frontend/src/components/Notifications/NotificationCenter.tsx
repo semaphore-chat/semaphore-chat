@@ -16,7 +16,6 @@ import {
   ListItemButton,
   ListItemText,
   ListItemAvatar,
-  Avatar,
   Button,
   Divider,
   CircularProgress,
@@ -30,6 +29,7 @@ import {
   notificationsControllerDeleteNotificationMutation,
 } from '../../api-client/@tanstack/react-query.gen';
 
+import { AuthenticatedImage } from '../Common/AuthenticatedImage';
 import { Notification } from '../../types/notification.type';
 import { useNavigate } from 'react-router-dom';
 import { logger } from '../../utils/logger';
@@ -201,9 +201,11 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                     onClick={() => handleNotificationClick(notification)}
                   >
                     <ListItemAvatar>
-                      <Avatar
-                        src={notification.author?.avatarUrl ?? undefined}
-                        alt={notification.author?.username}
+                      <AuthenticatedImage
+                        fileId={notification.author?.avatarUrl}
+                        alt={notification.author?.displayName || notification.author?.username || '?'}
+                        component="avatar"
+                        sx={{ width: 40, height: 40 }}
                       />
                     </ListItemAvatar>
                     <ListItemText

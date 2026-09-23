@@ -13,6 +13,15 @@ import {
   PhoneIphone as IPhoneIcon,
 } from '@mui/icons-material';
 import { useInstallPrompt } from '../../hooks/useInstallPrompt';
+import {
+  BOTTOM_CHROME_ORDER,
+  TOAST_PRIORITY,
+  snackbarBottomSx,
+  useBottomChromeOffset,
+  useMeasuredChromeItem,
+  useSnackbarGap,
+  useToastQueue,
+} from '../../contexts/BottomChromeContext';
 
 /**
  * PWA Install Prompt Component
@@ -22,11 +31,23 @@ import { useInstallPrompt } from '../../hooks/useInstallPrompt';
  * - On iOS: Shows instructions for "Add to Home Screen"
  * - Dismissed for 7 days if user closes it
  * - Hidden if app is already installed
+ * - Queues behind the "Update available" toast (one snackbar at a time) and
+ *   sits above the nav / voice bar / composer (BottomChromeContext)
  */
 export const PWAInstallPrompt: React.FC = () => {
   const { isInstallable, isIOS, install, dismiss } = useInstallPrompt();
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
+  const isMyTurn = useToastQueue('install', TOAST_PRIORITY.INSTALL, isInstallable);
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST);
+  const snackbarGap = useSnackbarGap();
+  const measureRef = useMeasuredChromeItem({
+    extraHeight: snackbarGap,
+    id: 'toast-install',
+    order: BOTTOM_CHROME_ORDER.TOAST,
+    fallbackHeight: 72,
+    enabled: isInstallable && isMyTurn,
+  });
 
   const handleInstall = async () => {
     if (isIOS) {
@@ -44,16 +65,18 @@ export const PWAInstallPrompt: React.FC = () => {
     }
   };
 
-  if (!isInstallable) {
+  if (!isInstallable || !isMyTurn) {
     return null;
   }
 
   return (
     <>
       <Snackbar
-        open={isInstallable && !showIOSInstructions}
+        ref={showIOSInstructions ? undefined : measureRef}
+        open={!showIOSInstructions}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        sx={{ mb: 2 }}
+        data-chrome-offset={offset.px}
+        sx={snackbarBottomSx(offset, snackbarGap)}
       >
         <Box
           sx={{
@@ -94,9 +117,11 @@ export const PWAInstallPrompt: React.FC = () => {
 
       {/* iOS Instructions Dialog */}
       <Snackbar
+        ref={showIOSInstructions ? measureRef : undefined}
         open={showIOSInstructions}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-        sx={{ mb: 2 }}
+        data-chrome-offset={offset.px}
+        sx={snackbarBottomSx(offset, snackbarGap)}
       >
         <Box
           sx={{

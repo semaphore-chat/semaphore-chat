@@ -115,7 +115,7 @@ const MessageActionsSheet: React.FC<MessageActionsSheetProps> = ({
                 sx={{
                   minWidth: TOUCH_TARGETS.MINIMUM,
                   minHeight: TOUCH_TARGETS.MINIMUM,
-                  fontSize: '1.5rem',
+                  fontSize: 'icon.2xl',
                 }}
               >
                 {emoji}
@@ -153,7 +153,7 @@ const MessageActionsSheet: React.FC<MessageActionsSheetProps> = ({
               {action.icon}
             </ListItemIcon>
             <ListItemText
-              primaryTypographyProps={{ fontSize: '1rem' }}
+              primaryTypographyProps={{ sx: { fontSize: 'scale.lg' } }}
             >
               {action.label}
             </ListItemText>

@@ -16,8 +16,15 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { notificationsControllerGetUnreadCountOptions } from '../../../api-client/@tanstack/react-query.gen';
 import { useMobileNavigation, type MobileTab } from './MobileNavigationContext';
+import { useBottomNavHidden } from './useBottomNavHidden';
 import { useReadReceipts } from '../../../hooks/useReadReceipts';
 import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from '../../../utils/breakpoints';
+import { BOTTOM_CHROME_ORDER, SAFE_AREA_BOTTOM, useChromeItem } from '../../../contexts/BottomChromeContext';
+
+interface MobileBottomNavigationProps {
+  /** Phone layout: hide on chat, DM chat and search screens. */
+  hideOnDetailScreens?: boolean;
+}
 
 /**
  * Bottom navigation bar with 4 tabs:
@@ -26,8 +33,19 @@ import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from '../../../utils/breakpoints';
  * - Notifications: Mentions and activity
  * - Profile: User settings
  */
-export const MobileBottomNavigation: React.FC = () => {
+export const MobileBottomNavigation: React.FC<MobileBottomNavigationProps> = ({
+  hideOnDetailScreens = false,
+}) => {
   const { activeTab, setActiveTab } = useMobileNavigation();
+  const hidden = useBottomNavHidden(hideOnDetailScreens);
+  // Registers the bar height (the safe-area padding below it is added by
+  // the context) so floating chrome — toasts, the FAB — sits above it.
+  useChromeItem({
+    id: 'bottom-nav',
+    order: BOTTOM_CHROME_ORDER.NAV,
+    height: LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE,
+    enabled: !hidden,
+  });
   const { data: unreadData } = useQuery({
     ...notificationsControllerGetUnreadCountOptions(),
     refetchOnWindowFocus: true,
@@ -39,17 +57,20 @@ export const MobileBottomNavigation: React.FC = () => {
     setActiveTab(newValue);
   };
 
+  if (hidden) return null;
+
   return (
     <Paper
       elevation={8}
       sx={{
-        position: 'fixed',
-        bottom: 0,
-        left: 0,
-        right: 0,
+        // Normal flow at the bottom of the layout column — it can never
+        // cover content, and content never needs padding for it.
+        position: 'relative',
+        flexShrink: 0,
+        borderRadius: 0,
         zIndex: (theme) => theme.zIndex.appBar,
         // Safe area padding for devices with home indicator
-        paddingBottom: 'env(safe-area-inset-bottom)',
+        paddingBottom: SAFE_AREA_BOTTOM,
       }}
     >
       <BottomNavigation
@@ -65,16 +86,16 @@ export const MobileBottomNavigation: React.FC = () => {
             gap: '4px',
           },
           '& .MuiBottomNavigationAction-label': {
-            fontSize: '0.6875rem',
+            fontSize: 'scale.xs',
             fontWeight: 500,
             marginTop: '2px',
             '&.Mui-selected': {
-              fontSize: '0.6875rem',
+              fontSize: 'scale.xs',
               fontWeight: 600,
             },
           },
           '& .MuiSvgIcon-root': {
-            fontSize: '1.375rem',
+            fontSize: 'icon.2xl',
           },
         }}
       >

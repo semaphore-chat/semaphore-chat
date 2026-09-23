@@ -650,4 +650,76 @@ describe('PersistentVideoOverlay', () => {
       expect(mockActions.toggleMute).not.toHaveBeenCalled();
     });
   });
+  describe('long names and touch layouts (Task 16)', () => {
+    const LONG = 'FatimaSatoTheUnbreakableNameWithNoSpacesAtAll — Senior Principal Staff Engineer';
+
+    function expectEllipsis(el: HTMLElement) {
+      expect(el).toHaveClass('MuiTypography-noWrap');
+      const style = getComputedStyle(el);
+      expect(style.textOverflow).toBe('ellipsis');
+      expect(style.whiteSpace).toBe('nowrap');
+    }
+
+    it('truncates a long session name in the float card header', () => {
+      mockConnectionState = { ...defaultConnectionState, channelName: LONG, room: mockRoom };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: mockConnectionState, actions: mockActions } as never);
+
+      renderWithProviders(<FloatCard />);
+
+      expectEllipsis(screen.getByText(LONG));
+    });
+
+    it('truncates a long session name in the collapsed pill', () => {
+      mockConnectionState = { ...defaultConnectionState, channelName: LONG, pipCollapsed: true, room: mockRoom };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: mockConnectionState, actions: mockActions } as never);
+
+      renderWithProviders(<FloatCard />);
+
+      expectEllipsis(screen.getByText(LONG));
+    });
+
+    it('truncates a long participant name on the avatar selection and keeps it clear of the controls', () => {
+      mockSelection = { kind: 'avatar', participant: { identity: 'long-user', name: LONG } };
+
+      renderWithProviders(<FloatCard />);
+
+      const name = screen.getByText(LONG);
+      expectEllipsis(name);
+      // The name sits in the tile body, not in the bottom strip the controls overlay.
+      expect(screen.getByTestId('float-card-controls').contains(name)).toBe(false);
+      expect(name.closest('[data-testid="float-card-avatar-label"]')).not.toBeNull();
+    });
+
+    it('hides the float card on tablet while the chat panel stage is mounted', () => {
+      mockVoiceState = { ...defaultVoiceState, stageMounted: true };
+      vi.mocked(useVoice).mockReturnValue(mockVoiceState as never);
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: false,
+        isTablet: true,
+        isDesktop: false,
+        isPortrait: true,
+        deviceType: 'tablet',
+      } as never);
+
+      const { container } = renderWithProviders(<PersistentVideoOverlay />);
+      expect(container.innerHTML).toBe('');
+    });
+
+    it('phone "show tiles" sheet has a 44px close button', async () => {
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: true,
+        isTablet: false,
+        isDesktop: false,
+        isPortrait: true,
+        deviceType: 'phone',
+      } as never);
+
+      renderWithProviders(<PersistentVideoOverlay />);
+
+      const close = await screen.findByRole('button', { name: /close video tiles/i });
+      const style = getComputedStyle(close);
+      expect(style.minWidth).toBe('44px');
+      expect(style.minHeight).toBe('44px');
+    });
+  });
 });

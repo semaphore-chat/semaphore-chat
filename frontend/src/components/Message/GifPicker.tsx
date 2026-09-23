@@ -105,7 +105,7 @@ const GifPickerContent: React.FC<{
           fullWidth
           sx={{
             "& .MuiOutlinedInput-root": {
-              fontSize: "0.85rem",
+              fontSize: 'scale.base',
               borderRadius: "8px",
               backgroundColor: "action.hover",
               "& fieldset": {
@@ -126,7 +126,7 @@ const GifPickerContent: React.FC<{
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: "1rem", color: "text.disabled" }} />
+                <SearchIcon sx={{ fontSize: 'icon.md', color: "text.disabled" }} />
               </InputAdornment>
             ),
             endAdornment: searchQuery && (
@@ -136,7 +136,7 @@ const GifPickerContent: React.FC<{
                   onClick={() => setSearchQuery("")}
                   sx={{ p: 0.5 }}
                 >
-                  <ClearIcon sx={{ fontSize: "0.9rem" }} />
+                  <ClearIcon sx={{ fontSize: 'icon.sm' }} />
                 </IconButton>
               </InputAdornment>
             ),

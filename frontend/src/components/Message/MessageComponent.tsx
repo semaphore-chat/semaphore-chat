@@ -39,9 +39,62 @@ import { useLongPress } from "../../hooks/useSwipeGesture";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
 import { useContextMenuFocusRestore } from "../../hooks/useContextMenuFocusRestore";
 import { OptimisticMessageActions } from "./OptimisticMessageActions";
+import { formatClockTime, formatFullTimestamp, formatMessageTime } from "../../utils/messageTime";
+
+/** Avatar column width (32px avatar + 12px gap) — grouped rows keep it empty
+ * (or show the hover time) so their text lines up with the header row. */
+const AVATAR_GUTTER_PX = 44;
+
+interface MessageStatusMarksProps {
+  edited: boolean;
+  isPending: boolean;
+  showSeenBy: boolean;
+  sentAt: string;
+  contextId?: string;
+  isPinned: boolean;
+}
+
+/** "(edited)", the sending clock, DM seen-by and the pin marker — shown after
+ * the time on a header row, or inline after the text on a grouped row. */
+function MessageStatusMarks({ edited, isPending, showSeenBy, sentAt, contextId, isPinned }: MessageStatusMarksProps) {
+  if (!edited && !isPending && !showSeenBy && !isPinned) return null;
+  return (
+    <Typography
+      component="span"
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: "inline-flex", alignItems: "center", flexShrink: 0, whiteSpace: "nowrap", verticalAlign: "baseline" }}
+    >
+      {edited && <span>(edited)</span>}
+      {isPending && (
+        <Tooltip title="Sending...">
+          <ScheduleIcon
+            data-testid="message-pending-icon"
+            sx={{ fontSize: 'icon.sm', ml: 0.5, verticalAlign: "text-bottom" }}
+          />
+        </Tooltip>
+      )}
+      {/* Read status for own messages in DMs with "seen by" tooltip */}
+      {showSeenBy && contextId && (
+        <SeenByTooltip sentAt={sentAt} directMessageGroupId={contextId} />
+      )}
+      {isPinned && (
+        <Tooltip title="Pinned message">
+          <PushPinIcon sx={{ fontSize: 'icon.sm', color: "primary.main", ml: 0.5 }} />
+        </Tooltip>
+      )}
+    </Typography>
+  );
+}
 
 interface MessageProps {
   message: MessageType;
+  /** Continues the previous message's same-author run: hides the avatar and
+   * author line, and shows the time in the gutter on hover / long-press. */
+  grouped?: boolean;
+  /** A day separator above already names the day, so the header shows the
+   * time only ("5:47 PM", not "Yesterday 5:47 PM"). */
+  dayShownAbove?: boolean;
   isAuthor?: boolean;
   isSearchHighlight?: boolean;
   contextId?: string;
@@ -75,6 +128,8 @@ interface MessageProps {
 
 function MessageComponentInner({
   message,
+  grouped = false,
+  dayShownAbove = false,
   isAuthor,
   isSearchHighlight,
   contextId,
@@ -285,6 +340,8 @@ function MessageComponentInner({
       isSearchHighlight={isSearchHighlight}
       isPending={isPending}
       isFailed={isFailed}
+      grouped={grouped}
+      data-grouped={grouped ? "true" : undefined}
       // Roving tabindex: only the current roving-focus row is in the natural
       // Tab order (0); every other row is -1 — still focusable
       // programmatically (context-menu restore, arrow-key navigation).
@@ -294,40 +351,80 @@ function MessageComponentInner({
       onFocus={handleContainerFocus}
       {...containerInteractionProps}
     >
-      <div style={{ marginRight: 12, marginTop: 4 }}>
-        {isWebhookMessage ? (
-          <Avatar
-            src={message.webhook?.avatarUrl ?? undefined}
-            sx={{ width: 32, height: 32 }}
+      {grouped ? (
+        <Tooltip title={formatFullTimestamp(message.sentAt)} placement="left" enterDelay={500}>
+          <Typography
+            component="span"
+            variant="caption"
+            data-testid="message-hover-time"
+            className="message-hover-time"
+            data-sheet-open={actionsSheetOpen ? "true" : undefined}
+            noWrap
+            sx={{
+              width: AVATAR_GUTTER_PX,
+              flexShrink: 0,
+              pr: 1,
+              // Vertically centred on the first line of body1 text.
+              lineHeight: 1.5,
+              pt: "3px",
+              fontSize: 'scale.2xs',
+              textAlign: "right",
+              color: "text.secondary",
+              opacity: actionsSheetOpen ? 1 : 0,
+              transition: "opacity 0.15s",
+            }}
           >
-            {message.webhook!.name.charAt(0).toUpperCase()}
-          </Avatar>
-        ) : (
-          <UserAvatar
-            userId={message.authorId ?? undefined}
-            size="small"
-            clickable={!!message.authorId}
-          />
-        )}
-      </div>
+            {formatClockTime(message.sentAt)}
+          </Typography>
+        </Tooltip>
+      ) : (
+        <div style={{ width: 32, marginRight: 12, marginTop: 4, flexShrink: 0 }}>
+          {isWebhookMessage ? (
+            <Avatar
+              src={message.webhook?.avatarUrl ?? undefined}
+              sx={{ width: 32, height: 32 }}
+            >
+              {message.webhook!.name.charAt(0).toUpperCase()}
+            </Avatar>
+          ) : (
+            <UserAvatar
+              userId={message.authorId ?? undefined}
+              size="small"
+              clickable={!!message.authorId}
+            />
+          )}
+        </div>
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+        {!grouped && (
+        <Box
+          data-testid="message-author-line"
+          sx={{ display: "flex", alignItems: "baseline", gap: 0.75, minWidth: 0, flexWrap: "nowrap" }}
+        >
           {isWebhookMessage ? (
             <>
               <Typography
                 variant="body2"
-                sx={{ fontWeight: 700, color: "text.primary" }}
+                noWrap
+                sx={{ fontWeight: 700, color: "text.primary", minWidth: 0 }}
               >
                 {message.webhook!.name}
               </Typography>
-              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 10 }} />
+              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 'scale.2xs', flexShrink: 0, alignSelf: "center" }} />
             </>
           ) : message.authorId ? (
             <Link
               component="button"
               variant="body2"
+              noWrap
+              // RTL names truncate at their own end (see MemberList).
+              dir="auto"
               onClick={() => openProfile(message.authorId!)}
               sx={{
+                display: "block",
+                minWidth: 0,
+                maxWidth: "100%",
+                textAlign: "start",
                 fontWeight: 700,
                 color: "text.primary",
                 textDecoration: "none",
@@ -342,52 +439,38 @@ function MessageComponentInner({
           ) : (
             <Typography
               variant="body2"
+              noWrap
               sx={{
                 fontWeight: 700,
                 color: "text.secondary",
                 fontStyle: "italic",
+                minWidth: 0,
               }}
             >
               [Deleted User]
             </Typography>
           )}
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: "inline-flex", alignItems: "center" }}
-          >
-            {new Date(message.sentAt).toLocaleString()}
-            {message.editedAt && (
-              <span style={{ marginLeft: 4 }}>(edited)</span>
-            )}
-            {isPending && (
-              <Tooltip title="Sending...">
-                <ScheduleIcon
-                  data-testid="message-pending-icon"
-                  sx={{ fontSize: 13, ml: 0.5, verticalAlign: "text-bottom" }}
-                />
-              </Tooltip>
-            )}
-            {/* Show read status for own messages in DMs with "seen by" tooltip */}
-            {contextType === VoiceSessionType.Dm && isAuthor && contextId && (
-              <SeenByTooltip
-                sentAt={message.sentAt}
-                directMessageGroupId={contextId}
-              />
-            )}
-          </Typography>
-          {isPinned && (
-            <Tooltip title="Pinned message">
-              <PushPinIcon
-                sx={{
-                  fontSize: 14,
-                  color: "primary.main",
-                  ml: 0.5,
-                }}
-              />
-            </Tooltip>
-          )}
+          <Tooltip title={formatFullTimestamp(message.sentAt)} enterDelay={500}>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              noWrap
+              data-testid="message-time"
+              sx={{ flexShrink: 0 }}
+            >
+              {dayShownAbove ? formatClockTime(message.sentAt) : formatMessageTime(message.sentAt)}
+            </Typography>
+          </Tooltip>
+          <MessageStatusMarks
+            edited={!!message.editedAt}
+            isPending={isPending}
+            showSeenBy={contextType === VoiceSessionType.Dm && !!isAuthor && !!contextId}
+            sentAt={message.sentAt}
+            contextId={contextId}
+            isPinned={isPinned}
+          />
         </Box>
+        )}
         {message.replyTo && (
           <QuotePreview
             replyTo={message.replyTo}
@@ -407,10 +490,37 @@ function MessageComponentInner({
         ) : (
           <>
             {gifUrl ? (
-              <GifEmbed url={gifUrl} onError={() => setGifEmbedFailed(true)} />
+              <>
+                <GifEmbed url={gifUrl} onError={() => setGifEmbedFailed(true)} />
+                {grouped && (
+                  <Typography component="div" variant="body1">
+                    <MessageStatusMarks
+                      edited={!!message.editedAt}
+                      isPending={isPending}
+                      showSeenBy={contextType === VoiceSessionType.Dm && !!isAuthor && !!contextId}
+                      sentAt={message.sentAt}
+                      contextId={contextId}
+                      isPinned={isPinned}
+                    />
+                  </Typography>
+                )}
+              </>
             ) : (
               <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                 {renderMessageSpans(message.spans, emojiById)}
+                {grouped && (
+                  <>
+                    {" "}
+                    <MessageStatusMarks
+                      edited={!!message.editedAt}
+                      isPending={isPending}
+                      showSeenBy={contextType === VoiceSessionType.Dm && !!isAuthor && !!contextId}
+                      sentAt={message.sentAt}
+                      contextId={contextId}
+                      isPinned={isPinned}
+                    />
+                  </>
+                )}
               </Typography>
             )}
             <MessageAttachments attachments={message.attachments} />
@@ -541,6 +651,7 @@ const MessageComponent = React.memo(MessageComponentInner, (prevProps, nextProps
     prevMsg.replyToId === nextMsg.replyToId &&
     prevMsg.deletedAt === nextMsg.deletedAt &&
     prevMsg.sendStatus === nextMsg.sendStatus &&
+    prevProps.grouped === nextProps.grouped &&
     prevProps.isSearchHighlight === nextProps.isSearchHighlight &&
     prevProps.isThreadParent === nextProps.isThreadParent &&
     prevProps.isThreadReply === nextProps.isThreadReply &&

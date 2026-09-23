@@ -6,6 +6,7 @@ import { disconnectSocket } from "../utils/socketSingleton";
 import { clearSavedConnection } from "../features/voice/voiceActions";
 import { clearTokens, getElectronRefreshToken } from "../utils/tokenService";
 import { isElectron } from "../utils/platform";
+import { clearComposerDrafts } from "./useComposerDraft";
 
 /**
  * Encapsulates the app's logout flow: leave voice (best effort), tear down
@@ -40,6 +41,9 @@ export function useLogout() {
       // complete: clear tokens and leave the authenticated UI regardless.
     } finally {
       clearTokens();
+      // Unsent drafts are per browser tab, not per user: drop them so the
+      // next account signed in on this tab never sees them.
+      clearComposerDrafts();
       navigate("/login");
     }
   };

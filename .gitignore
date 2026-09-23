@@ -69,6 +69,10 @@ frontend/playwright/.cache/
 
 # Vite PWA dev artifacts
 frontend/dev-dist/
+
+# Ladle UX sandbox
+frontend/.ux-shots/
+frontend/.ladle/public/
 .env.*
 backend/coverage
 frontend/coverage

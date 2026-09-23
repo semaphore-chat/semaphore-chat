@@ -52,9 +52,9 @@ describe('MobileMessagesPanel pull-to-refresh', () => {
     const { queryClient } = renderWithProviders(<MobileMessagesPanel />);
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    // Wait for the list (not the loading spinner) to render.
-    const list = await screen.findByRole('list');
-    const scrollBox = list.parentElement as HTMLElement;
+    // Wait for the loaded (empty) state, not the loading skeleton.
+    await screen.findByText('No messages yet');
+    const scrollBox = screen.getByTestId('dm-list-scroll');
 
     fireEvent.touchStart(scrollBox, { touches: [{ clientY: 0 }] });
     fireEvent.touchMove(scrollBox, { touches: [{ clientY: 140 }] }); // past 80px threshold
@@ -71,8 +71,8 @@ describe('MobileMessagesPanel pull-to-refresh', () => {
     const { queryClient } = renderWithProviders(<MobileMessagesPanel />);
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
 
-    const list = await screen.findByRole('list');
-    const scrollBox = list.parentElement as HTMLElement;
+    await screen.findByText('No messages yet');
+    const scrollBox = screen.getByTestId('dm-list-scroll');
 
     fireEvent.touchStart(scrollBox, { touches: [{ clientY: 0 }] });
     fireEvent.touchMove(scrollBox, { touches: [{ clientY: 30 }] }); // under 80px
@@ -83,5 +83,16 @@ describe('MobileMessagesPanel pull-to-refresh', () => {
     expect(invalidateSpy).not.toHaveBeenCalledWith(
       expect.objectContaining({ queryKey: ['dm-groups'] }),
     );
+  });
+});
+
+describe('MobileMessagesPanel new-DM button', () => {
+  it('leaves room below the list so the FAB never covers the last conversation', async () => {
+    renderWithProviders(<MobileMessagesPanel />);
+    await screen.findByText('No messages yet');
+    // FAB is 56px tall and sits 16px above the bottom chrome; the scroll box
+    // pads its end by at least that much.
+    const scrollBox = screen.getByTestId('dm-list-scroll');
+    expect(scrollBox).toHaveStyle({ paddingBottom: '88px' });
   });
 });

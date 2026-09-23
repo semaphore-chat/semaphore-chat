@@ -71,24 +71,36 @@ describe('moderationHandlers', () => {
   });
 
   describe('handleUserTimedOut', () => {
-    it('invalidates the members list only', () => {
+    it('invalidates the members list', () => {
       handleUserTimedOut({} as never, queryClient);
 
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           queryKey: [{ _id: 'membershipControllerGetMembers' }],
+        }),
+      );
+    });
+
+    it('invalidates the timeout status so the composer shows the timeout', () => {
+      handleUserTimedOut({} as never, queryClient);
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }],
         }),
       );
     });
 
     it('does NOT invalidate communities (timeout is not removal)', () => {
       handleUserTimedOut({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(invalidateSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
+      );
     });
   });
 
   describe('handleTimeoutRemoved', () => {
-    it('invalidates the members list only', () => {
+    it('invalidates the members list', () => {
       handleTimeoutRemoved({} as never, queryClient);
 
       expect(invalidateSpy).toHaveBeenCalledWith(
@@ -98,9 +110,21 @@ describe('moderationHandlers', () => {
       );
     });
 
+    it('invalidates the timeout status so the composer comes back', () => {
+      handleTimeoutRemoved({} as never, queryClient);
+      expect(invalidateSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }],
+        }),
+      );
+    });
+
     it('does NOT invalidate communities', () => {
       handleTimeoutRemoved({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(1);
+      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(invalidateSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
+      );
     });
   });
 });

@@ -31,7 +31,7 @@ function toWarnOnly(rules) {
 }
 
 export default tseslint.config(
-  { ignores: ['dist', 'src/api-client', 'coverage'] },
+  { ignores: ['dist', 'src/api-client', 'coverage', '.ladle/public', '.ux-shots'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

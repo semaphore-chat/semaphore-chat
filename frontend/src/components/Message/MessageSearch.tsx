@@ -2,11 +2,6 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import {
   Box,
   TextField,
-  Typography,
-  List,
-  ListItemButton,
-  ListItemText,
-  CircularProgress,
   ToggleButtonGroup,
   ToggleButton,
   InputAdornment,
@@ -15,31 +10,16 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import CloseIcon from "@mui/icons-material/Close";
-import { useQueryClient } from "@tanstack/react-query";
-import {
-  messagesControllerSearchChannelMessagesOptions,
-  messagesControllerSearchCommunityMessagesOptions,
-} from "../../api-client/@tanstack/react-query.gen";
-import { Message } from "../../types/message.type";
-import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "../../hooks/useDebounce";
-import { logger } from "../../utils/logger";
-
-enum SearchScope {
-  Channel = "channel",
-  Community = "community",
-}
+import { SearchScope, useMessageSearch, type SearchResult } from "../../hooks/useMessageSearch";
+import { MessageSearchResultList } from "./MessageSearchResults";
 
 interface MessageSearchProps {
   channelId: string;
   communityId: string;
   anchorEl: HTMLElement | null;
   onClose: () => void;
-}
-
-interface SearchResult extends Message {
-  channelName?: string;
 }
 
 const MessageSearch: React.FC<MessageSearchProps> = ({
@@ -50,15 +30,24 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
 }) => {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SearchScope>(SearchScope.Channel);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   const debouncedQuery = useDebounce(query, 300);
-  const queryClient = useQueryClient();
+  const { results, isLoading, isError, refetch } = useMessageSearch({
+    channelId,
+    communityId,
+    query: debouncedQuery,
+    scope,
+  });
 
-  const [isLoading, setIsLoading] = useState(false);
+  // Keyboard selection resets to the first row whenever the search changes.
+  const searchKey = `${scope}:${debouncedQuery}`;
+  const [selection, setSelection] = useState({ key: searchKey, index: 0 });
+  const selectedIndex = selection.key === searchKey ? selection.index : 0;
+  const setSelectedIndex = (update: (prev: number) => number) =>
+    setSelection({ key: searchKey, index: update(selectedIndex) });
+
   const isOpen = Boolean(anchorEl);
 
   // Focus input when popover opens
@@ -68,56 +57,10 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
     }
   }, [isOpen]);
 
-  // Search when debounced query changes
-  useEffect(() => {
-    const performSearch = async () => {
-      if (!debouncedQuery || debouncedQuery.trim().length === 0) {
-        setResults([]);
-        return;
-      }
-
-      setIsLoading(true);
-      try {
-        if (scope === SearchScope.Channel) {
-          const data = await queryClient.fetchQuery(
-            messagesControllerSearchChannelMessagesOptions({
-              path: { channelId },
-              query: { q: debouncedQuery, limit: 20 },
-            })
-          );
-          setResults((data as SearchResult[]) || []);
-        } else {
-          const data = await queryClient.fetchQuery(
-            messagesControllerSearchCommunityMessagesOptions({
-              path: { communityId },
-              query: { q: debouncedQuery, limit: 20 },
-            })
-          );
-          setResults((data as SearchResult[]) || []);
-        }
-        setSelectedIndex(0);
-      } catch (error) {
-        logger.error("Search failed:", error);
-        setResults([]);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    performSearch();
-  }, [
-    debouncedQuery,
-    scope,
-    channelId,
-    communityId,
-    queryClient,
-  ]);
-
   const handleScopeChange = useCallback(
     (_: React.MouseEvent<HTMLElement>, newScope: SearchScope | null) => {
       if (newScope) {
         setScope(newScope);
-        setResults([]);
       }
     },
     []
@@ -137,43 +80,29 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
     [communityId, navigate, onClose]
   );
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (results.length === 0) return;
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (results.length === 0) return;
 
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
-          break;
-        case "ArrowUp":
-          e.preventDefault();
-          setSelectedIndex((prev) => Math.max(prev - 1, 0));
-          break;
-        case "Enter":
-          e.preventDefault();
-          if (results[selectedIndex]) {
-            handleResultClick(results[selectedIndex]);
-          }
-          break;
-        case "Escape":
-          e.preventDefault();
-          onClose();
-          break;
-      }
-    },
-    [results, selectedIndex, handleResultClick, onClose]
-  );
-
-  const getMessagePreview = (result: SearchResult): string => {
-    // Extract text from spans
-    const text = result.spans
-      .filter((span) => span.text)
-      .map((span) => span.text)
-      .join(" ");
-
-    // Truncate to 100 chars
-    return text.length > 100 ? text.substring(0, 100) + "..." : text;
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.min(prev + 1, results.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (results[selectedIndex]) {
+          handleResultClick(results[selectedIndex]);
+        }
+        break;
+      case "Escape":
+        e.preventDefault();
+        onClose();
+        break;
+    }
   };
 
   return (
@@ -241,92 +170,17 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
 
         {/* Results */}
         <Box sx={{ maxHeight: 350, overflow: "auto" }}>
-          {isLoading && (
-            <Box sx={{ display: "flex", justifyContent: "center", py: 2 }}>
-              <CircularProgress size={24} />
-            </Box>
-          )}
-
-          {!isLoading && query && results.length === 0 && (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ textAlign: "center", py: 2 }}
-            >
-              No messages found
-            </Typography>
-          )}
-
-          {!isLoading && results.length > 0 && (
-            <List disablePadding>
-              {results.map((result, index) => (
-                <ListItemButton
-                  key={result.id}
-                  selected={index === selectedIndex}
-                  onClick={() => handleResultClick(result)}
-                  sx={{
-                    borderRadius: 1,
-                    mb: 0.5,
-                    "&.Mui-selected": {
-                      backgroundColor: "action.selected",
-                    },
-                  }}
-                >
-                  <ListItemText
-                    primary={
-                      <Box
-                        sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 1,
-                          mb: 0.5,
-                        }}
-                      >
-                        {scope === SearchScope.Community && result.channelName && (
-                          <Typography
-                            variant="caption"
-                            sx={{
-                              backgroundColor: "action.hover",
-                              px: 0.75,
-                              py: 0.25,
-                              borderRadius: 0.5,
-                            }}
-                          >
-                            #{result.channelName}
-                          </Typography>
-                        )}
-                        <Typography variant="caption" color="text.secondary">
-                          {formatDistanceToNow(new Date(result.sentAt), {
-                            addSuffix: true,
-                          })}
-                        </Typography>
-                      </Box>
-                    }
-                    secondary={getMessagePreview(result)}
-                    secondaryTypographyProps={{
-                      sx: {
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        display: "-webkit-box",
-                        WebkitLineClamp: 2,
-                        WebkitBoxOrient: "vertical",
-                      },
-                    }}
-                  />
-                </ListItemButton>
-              ))}
-            </List>
-          )}
-
-          {!query && (
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ textAlign: "center", py: 2 }}
-            >
-              Type to search messages
-            </Typography>
-          )}
+          <MessageSearchResultList
+            results={results}
+            scope={scope}
+            query={query}
+            // Spinner (not "No messages found") while the debounce is pending.
+            isLoading={isLoading || query.trim() !== debouncedQuery.trim()}
+            isError={isError}
+            onRetry={() => void refetch()}
+            onSelect={handleResultClick}
+            selectedIndex={selectedIndex}
+          />
         </Box>
       </Box>
     </Popover>

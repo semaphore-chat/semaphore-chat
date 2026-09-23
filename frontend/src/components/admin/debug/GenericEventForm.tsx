@@ -25,7 +25,7 @@ const GenericEventForm: React.FC<GenericEventFormProps> = ({
       helperText={error || "Enter a valid JSON object for the event payload"}
       slotProps={{
         input: {
-          sx: { fontFamily: "monospace", fontSize: 13 },
+          sx: { fontFamily: "monospace", fontSize: 'scale.md' },
         },
       }}
     />

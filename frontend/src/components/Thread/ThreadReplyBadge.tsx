@@ -47,7 +47,7 @@ export const ThreadReplyBadge: React.FC<ThreadReplyBadgeProps> = ({
         },
       }}
     >
-      <ChatBubbleOutlineIcon sx={{ fontSize: 16 }} />
+      <ChatBubbleOutlineIcon sx={{ fontSize: 'icon.md' }} />
       <Typography
         variant="caption"
         sx={{

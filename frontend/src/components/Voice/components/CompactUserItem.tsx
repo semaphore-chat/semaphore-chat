@@ -148,7 +148,7 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
                 borderColor: "background.paper",
               }}
             >
-              <VolumeOff sx={{ fontSize: 10, color: "white" }} />
+              <VolumeOff sx={{ fontSize: 'icon.2xs', color: "white" }} />
             </Box>
           ) : userState.isServerMuted ? (
             <Box
@@ -167,7 +167,7 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
                 borderColor: "background.paper",
               }}
             >
-              <MicOff sx={{ fontSize: 10, color: "white" }} />
+              <MicOff sx={{ fontSize: 'icon.2xs', color: "white" }} />
             </Box>
           ) : userState.isMuted ? (
             <Box
@@ -186,7 +186,7 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
                 borderColor: "background.paper",
               }}
             >
-              <MicOff sx={{ fontSize: 10, color: "white" }} />
+              <MicOff sx={{ fontSize: 'icon.2xs', color: "white" }} />
             </Box>
           ) : null}
         </Box>
@@ -194,13 +194,15 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
 
       <ListItemText
         primary={
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
             <Typography
               variant="body2"
+              noWrap
               sx={{
+                minWidth: 0,
                 fontWeight: 500,
                 color: userState.isMuted ? "text.secondary" : "text.primary",
-                fontSize: "14px"
+                fontSize: 'scale.base'
               }}
             >
               {user.displayName || user.username}
@@ -210,21 +212,21 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
             <Box sx={{ display: "flex", gap: 0.5, ml: "auto", alignItems: "center" }}>
               {userState.isDeafened ? (
                 <Tooltip title="Deafened">
-                  <VolumeOff sx={{ fontSize: 16, color: theme.palette.semantic.status.negative }} />
+                  <VolumeOff sx={{ fontSize: 'icon.md', color: theme.palette.semantic.status.negative }} />
                 </Tooltip>
               ) : userState.isServerMuted ? (
                 <Tooltip title="Server Muted">
-                  <MicOff sx={{ fontSize: 16, color: "warning.main" }} />
+                  <MicOff sx={{ fontSize: 'icon.md', color: "warning.main" }} />
                 </Tooltip>
               ) : userState.isMuted ? (
                 <Tooltip title="Muted">
-                  <MicOff sx={{ fontSize: 16, color: theme.palette.semantic.status.negative }} />
+                  <MicOff sx={{ fontSize: 'icon.md', color: theme.palette.semantic.status.negative }} />
                 </Tooltip>
               ) : null}
 
               {isLocallyMuted && (
                 <Tooltip title="Muted for you">
-                  <VolumeOff sx={{ fontSize: 16, color: "text.disabled" }} />
+                  <VolumeOff sx={{ fontSize: 'icon.md', color: "text.disabled" }} />
                 </Tooltip>
               )}
 
@@ -251,14 +253,14 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
                       sx={{ p: 0.25 }}
                     >
                       <Videocam sx={{
-                        fontSize: 16,
+                        fontSize: 'icon.md',
                         color: isWatchingCamera
                           ? theme.palette.semantic.status.positive
                           : theme.palette.text.secondary,
                       }} />
                     </IconButton>
                   ) : (
-                    <Videocam sx={{ fontSize: 16, color: theme.palette.semantic.status.positive }} />
+                    <Videocam sx={{ fontSize: 'icon.md', color: theme.palette.semantic.status.positive }} />
                   )}
                 </Tooltip>
               )}
@@ -286,14 +288,14 @@ const CompactUserItem: React.FC<CompactUserItemProps> = React.memo(({
                       sx={{ p: 0.25 }}
                     >
                       <ScreenShare sx={{
-                        fontSize: 16,
+                        fontSize: 'icon.md',
                         color: isWatchingScreenShare
                           ? theme.palette.primary.main
                           : theme.palette.text.secondary,
                       }} />
                     </IconButton>
                   ) : (
-                    <ScreenShare sx={{ fontSize: 16, color: theme.palette.primary.main }} />
+                    <ScreenShare sx={{ fontSize: 'icon.md', color: theme.palette.primary.main }} />
                   )}
                 </Tooltip>
               )}

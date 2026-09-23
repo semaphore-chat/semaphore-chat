@@ -17,7 +17,7 @@ const Root = styled(Box)(({ theme }) => ({
   alignItems: "center",
   minHeight: "var(--full-dvh)",
   padding: theme.spacing(2),
-  background: theme.palette.background.default,
+  background: theme.palette.background.ground,
 }));
 
 const FormContainer = styled(Paper)(({ theme }) => ({

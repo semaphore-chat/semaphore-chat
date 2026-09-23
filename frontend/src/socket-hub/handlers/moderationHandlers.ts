@@ -23,6 +23,8 @@ export const handleUserTimedOut: SocketEventHandler<typeof ServerEvents.USER_TIM
   queryClient: QueryClient,
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  // The composer reads this to show / clear its timeout notice.
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
 };
 
 export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOUT_REMOVED> = (
@@ -30,4 +32,6 @@ export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOU
   queryClient: QueryClient,
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  // The composer reads this to show / clear its timeout notice.
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
 };

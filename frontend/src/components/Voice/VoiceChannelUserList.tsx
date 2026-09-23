@@ -15,7 +15,7 @@ import { ChannelType, type Channel } from "../../types/channel.type";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import VoiceUserContextMenu from "./VoiceUserContextMenu";
-import { RoomEvent } from "livekit-client";
+import { ROOM_EVENT } from "../../features/voice/livekitEvents";
 import { getUserInfo } from "../../features/users/userApiHelpers";
 import { useServerEvent } from "../../socket-hub/useServerEvent";
 import { ServerEvents } from "@semaphore-chat/shared";
@@ -31,12 +31,18 @@ interface VoiceChannelUserListProps {
   channel: Channel;
   showInline?: boolean;
   showCompact?: boolean;
+  /**
+   * Grow to the parent's available height (the parent must be a flex column)
+   * instead of the default 300px cap — used by the phone pre-join screen.
+   */
+  fill?: boolean;
 }
 
 export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
   channel,
   showInline = false,
   showCompact = false,
+  fill = false,
 }) => {
   const theme = useTheme();
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
@@ -203,10 +209,10 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
 
     // Listen for participant changes (debounced)
     const events = [
-      RoomEvent.ParticipantConnected,
-      RoomEvent.ParticipantDisconnected,
-      RoomEvent.Connected,
-      RoomEvent.ParticipantMetadataChanged,
+      ROOM_EVENT.ParticipantConnected,
+      ROOM_EVENT.ParticipantDisconnected,
+      ROOM_EVENT.Connected,
+      ROOM_EVENT.ParticipantMetadataChanged,
     ] as const;
 
     events.forEach((event) => room.on(event, debouncedUpdate));
@@ -318,7 +324,7 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
             <Chip
               label={`+${presence.users.length - 3}`}
               size="small"
-              sx={{ height: 24, fontSize: "0.75rem" }}
+              sx={{ height: 24, fontSize: 'scale.sm' }}
             />
           )}
         </Box>
@@ -362,7 +368,8 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
         tabIndex={-1}
         elevation={2}
         sx={{
-          maxHeight: 300,
+          maxHeight: fill ? "none" : 300,
+          ...(fill && { flex: "0 1 auto", minHeight: 0 }),
           overflow: "auto",
           "&::-webkit-scrollbar": {
             width: 6,

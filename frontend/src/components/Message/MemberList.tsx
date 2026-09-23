@@ -10,10 +10,10 @@ import {
   ListItemButton,
   Divider,
   Skeleton,
-  Alert,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
 import UserAvatar from "../Common/UserAvatar";
+import ListState from "../Common/ListState";
 import { UserModerationMenu } from "../Moderation";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import { useResponsive } from "../../hooks/useResponsive";
@@ -42,6 +42,10 @@ interface MemberListProps {
   isLoadingMore?: boolean;
   /** Load the next page of members. */
   onLoadMore?: () => void;
+  /** Retry after a failed load (shown in the error state). */
+  onRetry?: () => void;
+  /** Fill the parent's width instead of the fixed 240px side column. */
+  fullWidth?: boolean;
 }
 
 const MemberListSkeleton: React.FC = () => (
@@ -77,7 +81,7 @@ const SectionHeader: React.FC<{ label: string; count: number }> = ({ label, coun
     <Typography
       variant="overline"
       sx={{
-        fontSize: "11px",
+        fontSize: 'scale.xs',
         fontWeight: 600,
         letterSpacing: "0.05em",
         color: "text.secondary",
@@ -158,10 +162,15 @@ const MemberRow: React.FC<{
         primary={
           <Typography
             variant="body2"
+            noWrap
+            // dir="auto": an Arabic/Hebrew name truncates at its own end
+            // (visual left), keeping its first word; the row stays left-aligned.
+            dir="auto"
             sx={{
               fontWeight: 500,
-              fontSize: "14px",
+              fontSize: 'scale.base',
               lineHeight: 1.2,
+              textAlign: 'left',
             }}
           >
             {member.displayName || member.username}
@@ -173,7 +182,7 @@ const MemberRow: React.FC<{
               variant="caption"
               sx={{
                 color: "text.secondary",
-                fontSize: "11px",
+                fontSize: 'scale.xs',
                 lineHeight: 1.2,
                 display: "block",
                 overflow: "hidden",
@@ -200,6 +209,8 @@ const MemberList: React.FC<MemberListProps> = ({
   hasMore = false,
   isLoadingMore = false,
   onLoadMore,
+  onRetry,
+  fullWidth = false,
 }) => {
   const { openProfile } = useUserProfile();
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
@@ -293,24 +304,12 @@ const MemberList: React.FC<MemberListProps> = ({
     />
   );
 
-  if (error) {
-    return (
-      <Box sx={{ width: 240, p: 2 }}>
-        <Alert severity="error">
-          Failed to load members
-        </Alert>
-      </Box>
-    );
-  }
-
-  const hasRoleGroups = roleGroups.length > 0;
-
   return (
     <Box
       sx={{
-        width: 240,
+        width: fullWidth ? "100%" : 240,
         height: "100%",
-        borderLeft: 1,
+        borderLeft: fullWidth ? 0 : 1,
         borderColor: "divider",
         backgroundColor: "background.paper",
         display: "flex",
@@ -319,8 +318,9 @@ const MemberList: React.FC<MemberListProps> = ({
     >
       {/* Header */}
       <Box sx={{ p: 2, pb: 1 }}>
-        <Typography variant="h6" sx={{ fontSize: "14px", fontWeight: 600 }}>
-          {title} — {isLoading ? "..." : `${members.length}${hasMore ? "+" : ""}`}
+        <Typography variant="h6" sx={{ fontSize: 'scale.base', fontWeight: 600 }}>
+          {title}
+          {!error && ` — ${isLoading ? "..." : `${members.length}${hasMore ? "+" : ""}`}`}
         </Typography>
       </Box>
       <Divider />
@@ -341,72 +341,75 @@ const MemberList: React.FC<MemberListProps> = ({
           },
         }}
       >
-        <List disablePadding>
-          {isLoading
-            ? Array.from({ length: 6 }).map((_, index) => (
+        <ListState
+          isLoading={isLoading}
+          error={error}
+          onRetry={onRetry}
+          isEmpty={members.length === 0}
+          size="compact"
+          errorTitle="Couldn't load members"
+          skeleton={
+            <List disablePadding role="progressbar" aria-label="Loading members" aria-busy="true">
+              {Array.from({ length: 6 }).map((_, index) => (
                 <MemberListSkeleton key={index} />
-              ))
-            : (
+              ))}
+            </List>
+          }
+          empty={
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                py: 4,
+              }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                No members
+              </Typography>
+            </Box>
+          }
+        >
+          <List disablePadding>
+            {/* Role groups */}
+            {roleGroups.map((group) => (
+              <React.Fragment key={group.roleId}>
+                <SectionHeader label={group.roleName} count={group.members.length} />
+                {group.members.map(renderMember)}
+              </React.Fragment>
+            ))}
+
+            {/* Online members without special roles */}
+            {onlineMembers.length > 0 && (
               <>
-                {/* Role groups */}
-                {roleGroups.map((group) => (
-                  <React.Fragment key={group.roleId}>
-                    <SectionHeader label={group.roleName} count={group.members.length} />
-                    {group.members.map(renderMember)}
-                  </React.Fragment>
-                ))}
-
-                {/* Online members without special roles */}
-                {onlineMembers.length > 0 && (
-                  <>
-                    <SectionHeader
-                      label={hasRoleGroups ? "Online" : "Online"}
-                      count={onlineMembers.length}
-                    />
-                    {onlineMembers.map(renderMember)}
-                  </>
-                )}
-
-                {/* Offline members without special roles */}
-                {offlineMembers.length > 0 && (
-                  <>
-                    <SectionHeader label="Offline" count={offlineMembers.length} />
-                    {offlineMembers.map(renderMember)}
-                  </>
-                )}
-
-                {/* Load next page of the paginated community member list */}
-                {hasMore && onLoadMore && (
-                  <ListItem sx={{ px: 2, py: 1 }}>
-                    <Button
-                      size="small"
-                      fullWidth
-                      onClick={onLoadMore}
-                      disabled={isLoadingMore}
-                    >
-                      {isLoadingMore ? "Loading..." : "Show more"}
-                    </Button>
-                  </ListItem>
-                )}
+                <SectionHeader label="Online" count={onlineMembers.length} />
+                {onlineMembers.map(renderMember)}
               </>
             )}
-        </List>
 
-        {/* Empty State */}
-        {!isLoading && members.length === 0 && (
-          <Box
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              py: 4,
-            }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              No members
-            </Typography>
-          </Box>
-        )}
+            {/* Offline members without special roles */}
+            {offlineMembers.length > 0 && (
+              <>
+                <SectionHeader label="Offline" count={offlineMembers.length} />
+                {offlineMembers.map(renderMember)}
+              </>
+            )}
+
+            {/* Load next page of the paginated community member list */}
+            {hasMore && onLoadMore && (
+              <ListItem sx={{ px: 2, py: 1 }}>
+                <Button
+                  size="small"
+                  fullWidth
+                  onClick={onLoadMore}
+                  disabled={isLoadingMore}
+                >
+                  {isLoadingMore ? "Loading..." : "Show more"}
+                </Button>
+              </ListItem>
+            )}
+          </List>
+        </ListState>
       </Box>
 
       {/* Moderation Context Menu */}

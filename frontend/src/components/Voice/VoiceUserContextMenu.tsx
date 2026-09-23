@@ -20,7 +20,7 @@ import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useParticipantTracks } from "../../hooks/useParticipantTracks";
-import { Track } from "livekit-client";
+import { TRACK_SOURCE } from "../../features/voice/livekitEvents";
 import BanDialog from "../Moderation/BanDialog";
 import TimeoutDialog from "../Moderation/TimeoutDialog";
 import KickConfirmDialog from "../Moderation/KickConfirmDialog";
@@ -115,7 +115,7 @@ const VoiceUserContextMenu: React.FC<VoiceUserContextMenuProps> = ({
       participant.audioTrackPublications.forEach((pub) => {
         if (
           pub.track &&
-          pub.source === Track.Source.Microphone &&
+          pub.source === TRACK_SOURCE.Microphone &&
           isBoostableAudioTrack(pub.track)
         ) {
           audioBoostManager.applyVolume(pub.track, boostKey(user.id, pub.source), vol);

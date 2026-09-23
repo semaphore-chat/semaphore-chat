@@ -210,7 +210,7 @@ const TimeoutListPanel: React.FC<TimeoutListPanelProps> = ({ communityId }) => {
             backgroundColor: theme.palette.semantic.overlay.light,
           }}
         >
-          <CheckCircleIcon sx={{ fontSize: 48, color: "success.main", mb: 2 }} />
+          <CheckCircleIcon sx={{ fontSize: 'icon.5xl', color: "success.main", mb: 2 }} />
           <Typography variant="body2" color="text.secondary" textAlign="center">
             No active timeouts
           </Typography>
@@ -226,6 +226,8 @@ const TimeoutListPanel: React.FC<TimeoutListPanelProps> = ({ communityId }) => {
                 border: 1,
                 borderColor: "divider",
                 backgroundColor: theme.palette.semantic.overlay.light,
+                // Room for the outlined action button (wider than the 48px default).
+                ...(canRemoveTimeout && { pr: 12 }),
               }}
               secondaryAction={
                 canRemoveTimeout && (
@@ -248,8 +250,8 @@ const TimeoutListPanel: React.FC<TimeoutListPanelProps> = ({ communityId }) => {
               </ListItemAvatar>
               <ListItemText
                 primary={
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Typography variant="subtitle2">
+                  <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 1, rowGap: 0.5, minWidth: 0 }}>
+                    <Typography variant="subtitle2" noWrap sx={{ minWidth: 0, maxWidth: "100%" }}>
                       {timeout.user?.displayName || timeout.user?.username || `User ${timeout.userId.slice(0, 8)}...`}
                     </Typography>
                     <Chip

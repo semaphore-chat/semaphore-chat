@@ -20,6 +20,7 @@ import {
 import { MentionSuggestion } from '../../hooks/useMentionAutocomplete';
 import UserAvatar from '../Common/UserAvatar';
 import { MENTION_LISTBOX_ID, mentionOptionId } from './mentionDropdownIds';
+import { useResponsive } from '../../hooks/useResponsive';
 
 const DropdownPaper = styled(Paper)(({ theme }) => ({
   position: 'absolute',
@@ -54,25 +55,43 @@ interface MentionDropdownProps {
   selectedIndex: number;
   isLoading: boolean;
   onSelectSuggestion: (index: number) => void;
-  position?: { top?: number; bottom?: number; left: number };
+  /**
+   * Override placement. By default the dropdown sits directly above the
+   * composer (its positioned parent), whatever height the composer has grown
+   * to (reply banner, file tray, multi-line draft).
+   */
+  position?: { top?: number | string; bottom?: number | string; left: number | string; right?: number | string };
 }
+
+/** Directly above the composer box, 8px gap (room for the arrow). */
+const ABOVE_COMPOSER = { bottom: 'calc(100% + 8px)', left: 20 };
+/** Phone: full composer width, so names and subtitles fit on one line. */
+const ABOVE_COMPOSER_PHONE = { bottom: 'calc(100% + 8px)', left: 8, right: 8 };
 
 export const MentionDropdown: React.FC<MentionDropdownProps> = ({
   suggestions,
   selectedIndex,
   isLoading,
   onSelectSuggestion,
-  position = { bottom: 60, left: 20 },
+  position,
 }) => {
   const theme = useTheme();
+  const { isMobile } = useResponsive();
+  const placement = position ?? (isMobile ? ABOVE_COMPOSER_PHONE : ABOVE_COMPOSER);
+  // On phone the dropdown is full width and drops the keyboard-hint footer so
+  // at least 5 rows fit inside 40% of the viewport (even a short one with the
+  // on-screen keyboard up).
+  const phoneSx = isMobile ? { minWidth: 0, maxWidth: 'none' } : {};
 
   if (isLoading) {
     return (
       <DropdownPaper
         elevation={8}
         role="status"
+        data-testid="mention-dropdown"
         sx={{
-          ...position,
+          ...placement,
+          ...phoneSx,
           p: 3,
           display: 'flex',
           alignItems: 'center',
@@ -94,10 +113,15 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
   return (
     <DropdownPaper
       elevation={8}
+      data-testid="mention-dropdown"
+      data-placement={position ? 'custom' : 'above-composer'}
+      data-layout={isMobile ? 'phone' : 'desktop'}
       sx={{
-        ...position,
-        // Cap height so the dropdown can never overflow the top of small screens.
-        maxHeight: 'min(320px, 40vh)',
+        ...placement,
+        ...phoneSx,
+        // Cap height so the dropdown can never overflow the top of small
+        // screens: at most 40% of the viewport.
+        maxHeight: isMobile ? '40vh' : 'min(320px, 40vh)',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -107,7 +131,7 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
       <Box
         sx={{
           px: 2,
-          py: 1.5,
+          py: isMobile ? 0.75 : 1.5,
           flexShrink: 0,
           borderBottom: `1px solid ${alpha(theme.palette.divider, 0.08)}`,
           background: alpha(theme.palette.primary.main, 0.02),
@@ -143,7 +167,7 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
           p: 0.5,
           flex: 1,
           minHeight: 0,
-          maxHeight: 260,
+          maxHeight: isMobile ? 'none' : 260,
           overflow: 'auto',
           '&::-webkit-scrollbar': {
             width: 4,
@@ -166,7 +190,8 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
             onClick={() => onSelectSuggestion(index)}
             sx={{
               borderRadius: 2,
-              mb: 0.25,
+              mb: isMobile ? 0 : 0.25,
+              py: isMobile ? 0 : undefined,
               // Comfortable touch target (desktop rows already sit ~48px, so no
               // visible density change there).
               minHeight: 44,
@@ -270,9 +295,21 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
                 )
               }
               sx={{
+                my: isMobile ? 0 : undefined,
+                minWidth: 0,
+                // Phone: name and @handle on one line so every row is 44px.
+                ...(isMobile && {
+                  display: 'flex',
+                  alignItems: 'baseline',
+                  gap: 1,
+                  overflow: 'hidden',
+                  whiteSpace: 'nowrap',
+                  '& > *': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                  '& > :first-of-type': { flexShrink: 0, maxWidth: '60%' },
+                }),
                 '& .MuiListItemText-primary': {
                   lineHeight: 1.3,
-                  mb: suggestion.subtitle ? 0.25 : 0,
+                  mb: suggestion.subtitle && !isMobile ? 0.25 : 0,
                 },
                 '& .MuiListItemText-secondary': {
                   lineHeight: 1.2,
@@ -283,7 +320,8 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
         ))}
       </List>
 
-      {/* Footer hint */}
+      {/* Footer hint (keyboard only — meaningless on a phone) */}
+      {!isMobile && (
       <Box
         sx={{
           px: 2,
@@ -297,13 +335,14 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
           variant="caption"
           sx={{
             color: 'text.secondary',
-            fontSize: '0.7rem',
+            fontSize: 'scale.xs',
             opacity: 0.6,
           }}
         >
           ↑↓ Navigate • Enter/Tab Select • Esc Close
         </Typography>
       </Box>
+      )}
     </DropdownPaper>
   );
 };

@@ -96,7 +96,7 @@ const CompletionStep: React.FC<CompletionStepProps> = ({
   if (isCompleted) {
     return (
       <Box sx={{ textAlign: 'center' }}>
-        <CheckCircleIcon sx={{ fontSize: 64, color: 'success.main', mb: 2 }} />
+        <CheckCircleIcon sx={{ fontSize: 'icon.6xl', color: 'success.main', mb: 2 }} />
         <Typography variant="h4" gutterBottom>
           🎉 Setup Complete!
         </Typography>

@@ -1,8 +1,21 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Box, Typography, Fab } from "@mui/material";
+import { Box, Fab } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import { useQueryClient } from "@tanstack/react-query";
 import MessageSkeleton from "./MessageSkeleton";
+import ListState from "../Common/ListState";
+import EmptyState from "../Common/EmptyState";
+import { useNavigate } from "react-router-dom";
+import BlockIcon from "@mui/icons-material/Block";
+import SearchOffIcon from "@mui/icons-material/SearchOff";
+import { getHttpStatus } from "../../utils/httpError";
+
+/** "No messages yet. Start the conversation!" -> ["No messages yet", "Start the conversation!"] */
+function splitFirstSentence(text: string): [string, string] {
+  const match = /^(.+?)\.\s+(.+)$/.exec(text);
+  return match ? [match[1], match[2]] : [text, ""];
+}
 import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
@@ -11,6 +24,35 @@ import { useResponsive } from "../../hooks/useResponsive";
 import { useAnchoredModeTransition } from "../../hooks/useAnchoredModeTransition";
 import { useMessageListAnnouncer } from "../../hooks/useMessageListAnnouncer";
 import TypingIndicator from "./TypingIndicator";
+
+/** Gap between the composer's top edge and the FAB. */
+const FAB_GAP = 16;
+/** Before the composer is measured (or without ResizeObserver). */
+const FALLBACK_FAB_BOTTOM = 80;
+
+/**
+ * Tracks an element's height with a ResizeObserver. Returns 0 until measured
+ * (and stays 0 where ResizeObserver doesn't exist). Pass the element via
+ * state/callback ref so the observer follows remounts.
+ */
+function useElementHeight(el: HTMLElement | null): number {
+  const [height, setHeight] = useState(0);
+  useLayoutEffect(() => {
+    if (!el) return;
+    const initial = el.getBoundingClientRect().height;
+    if (initial > 0) setHeight(Math.round(initial));
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const box = entry.borderBoxSize?.[0];
+      setHeight(Math.round(box ? box.blockSize : entry.contentRect.height));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [el]);
+  return height;
+}
 
 interface MessageContainerProps {
   // Data
@@ -89,7 +131,20 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   channelId,
   directMessageGroupId,
 }) => {
-  const { isMobile } = useResponsive();
+  const { isMobile, isTabletPortrait } = useResponsive();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [emptyTitle, emptyDescription] = splitFirstSentence(emptyStateMessage);
+
+  // The message query lives in the parent's hook; rather than plumbing a
+  // refetch through every container, "Try again" refetches whatever active
+  // query is in an error state (i.e. the one that produced `error`).
+  const handleRetry = useCallback(() => {
+    void queryClient.refetchQueries({
+      type: "active",
+      predicate: (query) => query.state.status === "error",
+    });
+  }, [queryClient]);
 
   // Context identity (channel or DM group) — used for read receipts and to
   // reset scroll positioning when switching contexts.
@@ -138,6 +193,16 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // located via a DOM query relative to that Box rather than threading a
   // ref through every page that constructs a <MessageInput />.
   const messageInputBoxRef = useRef<HTMLDivElement>(null);
+  // The composer grows (reply banner, file tray, multi-line draft), so the
+  // floating FABs track its measured height instead of a fixed offset.
+  const [composerBoxEl, setComposerBoxEl] = useState<HTMLDivElement | null>(null);
+  const composerBoxRef = useCallback((el: HTMLDivElement | null) => {
+    messageInputBoxRef.current = el;
+    setComposerBoxEl(el);
+  }, []);
+  const composerHeight = useElementHeight(composerBoxEl);
+  const fabBottom = composerHeight > 0 ? composerHeight + FAB_GAP : FALLBACK_FAB_BOTTOM;
+
   const handleEscapeToInput = useCallback(() => {
     const root = messageInputBoxRef.current;
     const target = root?.querySelector<HTMLElement>(
@@ -240,8 +305,11 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
 
   const skeletonCount = 10;
 
-  // Hide member list on mobile or when explicitly disabled
-  const shouldShowMemberList = showMemberList && !isMobile && memberListComponent;
+  // Hide member list on mobile or when explicitly disabled. Below 1024px
+  // (tablet portrait) the split view keeps at most two columns, so the list
+  // isn't inline there either — the tablet app bar opens it as an overlay.
+  const shouldShowMemberList =
+    showMemberList && !isMobile && !isTabletPortrait && memberListComponent;
 
   if (isLoading) {
     return (
@@ -271,6 +339,8 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   }
 
   if (error) {
+    const errorStatus = getHttpStatus(error);
+    const isDm = !!directMessageGroupId && !channelId;
     return (
       <Box
         sx={{
@@ -289,7 +359,41 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             p: 2,
           }}
         >
-          <Typography color="error">Error loading messages</Typography>
+          {errorStatus === 404 || errorStatus === 403 ? (
+            // Retrying can't fix a missing or off-limits conversation, and
+            // it isn't a connection problem — say what happened and offer a
+            // way out instead of "Try again".
+            <EmptyState
+              icon={
+                errorStatus === 404 ? (
+                  <SearchOffIcon sx={{ fontSize: "icon.6xl" }} />
+                ) : (
+                  <BlockIcon sx={{ fontSize: "icon.6xl" }} />
+                )
+              }
+              title={
+                errorStatus === 404
+                  ? `${isDm ? "Conversation" : "Channel"} not found`
+                  : `You don't have access to this ${isDm ? "conversation" : "channel"}`
+              }
+              description={
+                errorStatus === 404
+                  ? "It may have been deleted, or the link is wrong."
+                  : isDm
+                    ? "You're not a member of this conversation."
+                    : "It may be private, or you may have been removed from this community."
+              }
+              action={{ label: "Go to home", onClick: () => navigate("/") }}
+            />
+          ) : (
+            <ListState
+              isLoading={false}
+              error={error}
+              onRetry={handleRetry}
+              isEmpty
+              errorTitle="Couldn't load messages"
+            />
+          )}
         </Box>
         {shouldShowMemberList && memberListComponent}
       </Box>
@@ -314,6 +418,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           flexDirection: "column",
           height: "100%",
           position: "relative",
+          minWidth: 0,
         }}
       >
         {messages.length > 0 ? (
@@ -346,14 +451,20 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           <Box
             sx={{
               flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
             }}
           >
-            <Typography color="text.secondary">
-              {emptyStateMessage}
-            </Typography>
+            {/* Same EmptyState as the other lists: the message's first
+                sentence is the title, the rest the description. */}
+            <EmptyState
+              variant={directMessageGroupId && !channelId ? "dm" : "messages"}
+              title={emptyTitle}
+              description={emptyDescription || " "}
+            />
           </Box>
         )}
 
@@ -363,7 +474,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
         </Box>
 
         {/* Input rendered outside scroll container — stable DOM, never unmounted by message changes */}
-        <Box ref={messageInputBoxRef} sx={{ flexShrink: 0 }}>
+        <Box ref={composerBoxRef} sx={{ flexShrink: 0 }}>
           {messageInput}
         </Box>
 
@@ -386,9 +497,9 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             size="small"
             onClick={jumpToPresent}
             data-testid="jump-to-present-fab"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },
@@ -404,9 +515,9 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             size="small"
             onClick={handleDetachedJumpToPresent}
             data-testid="jump-to-present-fab"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },
@@ -420,9 +531,10 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
           <Fab
             size="small"
             onClick={scrollToBottom}
+            aria-label="Scroll to latest messages"
+            style={{ bottom: fabBottom }}
             sx={{
               position: "absolute",
-              bottom: 80,
               right: 16,
               backgroundColor: "primary.main",
               "&:hover": { backgroundColor: "primary.dark" },

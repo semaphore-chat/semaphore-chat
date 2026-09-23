@@ -9,6 +9,7 @@ import { createContext, useContext, useState, useEffect, useMemo, useCallback, u
 import { logger } from '../utils/logger';
 import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles';
 import { generateTheme } from '../theme/themeConfig';
+import { useThemeColorMeta } from '../hooks/useThemeColorMeta';
 import {
   type ThemeMode,
   type AccentColor,
@@ -126,6 +127,9 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     () => generateTheme(settings.mode, settings.accentColor, settings.intensity),
     [settings.mode, settings.accentColor, settings.intensity]
   );
+
+  // Browser/OS chrome colour follows the app bar surface (always a solid colour).
+  useThemeColorMeta(theme.palette.background.paper);
 
   const contextValue = useMemo(
     () => ({

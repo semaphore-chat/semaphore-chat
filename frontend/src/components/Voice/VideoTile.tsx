@@ -26,6 +26,7 @@ import type {
 import UserAvatar from '../Common/UserAvatar';
 import ScreenShareVolumeControl from './ScreenShareVolumeControl';
 import { useSpeaking } from '../../hooks/useSpeaking';
+import { useResponsive } from '../../hooks/useResponsive';
 
 export interface VideoTileProps {
   participant: RemoteParticipant | LocalParticipant;
@@ -61,6 +62,8 @@ const VideoTile: React.FC<VideoTileProps> = ({
   const screenRef = useRef<HTMLVideoElement>(null);
   const [isHovered, setIsHovered] = useState(false);
   const { isSpeaking } = useSpeaking();
+  // Touch layouts never hover, so the name/status strip stays visible there.
+  const { shouldUseTouchUI } = useResponsive();
 
   // Discord-style speaking ring: constant transparent border swapped to the
   // positive status color while speaking, so the ring never shifts layout.
@@ -161,12 +164,12 @@ const VideoTile: React.FC<VideoTileProps> = ({
               {displayName}
             </Typography>
             {placeholderType === 'screen' ? (
-              <ScreenShare sx={{ fontSize: 14, color: 'grey.500' }} />
+              <ScreenShare sx={{ fontSize: 'icon.sm', color: 'grey.500' }} />
             ) : (
-              <Videocam sx={{ fontSize: 14, color: 'grey.500' }} />
+              <Videocam sx={{ fontSize: 'icon.sm', color: 'grey.500' }} />
             )}
           </Box>
-          <Typography variant="caption" sx={{ color: 'grey.600', fontSize: '0.7rem' }}>
+          <Typography variant="caption" sx={{ color: 'grey.600', fontSize: 'scale.xs' }}>
             {isLocal ? 'Click to show' : 'Click to watch'}
           </Typography>
         </Box>
@@ -233,7 +236,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
       )}
 
       {/* Overlay Controls */}
-      <Fade in={isHovered || !hasVideo}>
+      <Fade in={isHovered || !hasVideo || shouldUseTouchUI}>
         <Box
           sx={{
             position: 'absolute',
@@ -247,13 +250,15 @@ const VideoTile: React.FC<VideoTileProps> = ({
             justifyContent: 'space-between',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1, mr: 1 }}>
             <Typography
               variant="caption"
+              noWrap
               sx={{
                 color: 'white',
                 fontWeight: 'bold',
                 textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
+                minWidth: 0,
               }}
             >
               {displayName} {isLocal && '(You)'} {isSharing && ' - Screen'}
@@ -274,9 +279,9 @@ const VideoTile: React.FC<VideoTileProps> = ({
               }}
             >
               {hasAudio ? (
-                <Mic sx={{ fontSize: 12, color: 'white' }} />
+                <Mic sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : (
-                <MicOff sx={{ fontSize: 12, color: 'white' }} />
+                <MicOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
               )}
             </Box>
 
@@ -293,11 +298,11 @@ const VideoTile: React.FC<VideoTileProps> = ({
               }}
             >
               {hasScreen ? (
-                <ScreenShare sx={{ fontSize: 12, color: 'white' }} />
+                <ScreenShare sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : hasVideo ? (
-                <Videocam sx={{ fontSize: 12, color: 'white' }} />
+                <Videocam sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : (
-                <VideocamOff sx={{ fontSize: 12, color: 'white' }} />
+                <VideocamOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
               )}
             </Box>
           </Box>
@@ -380,7 +385,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
             sx={{
               color: 'white',
               fontWeight: 'bold',
-              fontSize: '0.75rem',
+              fontSize: 'scale.sm',
               textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
             }}
           >

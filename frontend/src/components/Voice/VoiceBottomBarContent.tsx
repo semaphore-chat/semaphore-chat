@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, Suspense, lazy } from "react";
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from "react";
 import {
   Box,
   Paper,
@@ -10,6 +10,12 @@ import {
   Menu,
   MenuItem,
   Badge,
+  Portal,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -29,8 +35,11 @@ import {
   VideoCall,
   SpeakerPhone,
   PhoneInTalk,
+  MoreHoriz,
+  OpenInNew,
 } from "@mui/icons-material";
 import { useNavigate } from "react-router-dom";
+import { navigateAfterOverlays } from "../../hooks/useOverlayHistory";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useScreenShare } from "../../hooks/useScreenShare";
 import { useLocalMediaState } from "../../hooks/useLocalMediaState";
@@ -46,7 +55,7 @@ import { useResponsive } from "../../hooks/useResponsive";
 import { useHapticFeedback } from "../../hooks/useHapticFeedback";
 import { useWakeLock } from "../../hooks/useWakeLock";
 import { logger } from "../../utils/logger";
-import { LAYOUT_CONSTANTS } from "../../utils/breakpoints";
+import { LAYOUT_CONSTANTS, TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useSpeaking } from "../../hooks/useSpeaking";
 import { useVoicePresenceHeartbeat } from "../../hooks/useVoicePresenceHeartbeat";
 import { useBackgroundVoiceKeepAlive } from "../../hooks/useBackgroundVoiceKeepAlive";
@@ -55,12 +64,23 @@ import { useServerMuteEffect } from "../../hooks/useServerMuteEffect";
 import { useRemoteVolumeEffect } from "../../hooks/useRemoteVolumeEffect";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { MobileSheet } from "../Mobile/common/MobileSheet";
+import { soundboardPlayer } from "../../features/voice/soundboardPlayer";
 
 // Debug panel is opt-in (Ctrl+Shift+D) and rarely used — keep it out of this
 // already-lazy chunk until actually toggled on.
 const VoiceDebugPanel = lazy(() =>
   import("./VoiceDebugPanel").then((m) => ({ default: m.VoiceDebugPanel }))
 );
+
+/** Rows in the phone "more" sheet: full-width, 48px touch targets. */
+const moreItemSx = {
+  width: "100%",
+  minHeight: 48,
+  px: 2,
+  textAlign: "left",
+  font: "inherit",
+} as const;
 
 /**
  * The actual bottom-bar UI + all of its voice-session hooks (device state,
@@ -88,6 +108,8 @@ const VoiceBottomBarContent: React.FC = () => {
   const [showDeviceSettings, setShowDeviceSettings] = useState(false);
   const [showCaptureModal, setShowCaptureModal] = useState(false);
   const [isSpeakerphone, setIsSpeakerphone] = useState(false);
+  const [showMoreSheet, setShowMoreSheet] = useState(false);
+  const closeMoreSheet = useCallback(() => setShowMoreSheet(false), []);
 
   // Use extracted hooks for cleaner organization
   const { showDebugPanel } = useDebugPanelShortcut();
@@ -141,6 +163,15 @@ const VoiceBottomBarContent: React.FC = () => {
 
   // Reapply per-user volume from localStorage when remote tracks change
   useRemoteVolumeEffect();
+
+  // On phone the soundboard button lives in the (unmounted-when-closed) "more"
+  // sheet, so warm its track up here instead — SoundboardButton does this on
+  // mount on desktop, so remote clients have subscribed before the first clip.
+  const hasSoundboard = Boolean(state.isConnected && state.communityId && actions.playSoundboard);
+  useEffect(() => {
+    if (!isMobile || !hasSoundboard || !state.room) return;
+    void soundboardPlayer.warmup(state.room);
+  }, [isMobile, hasSoundboard, state.room]);
 
   // Automatically manage replay buffer when screen sharing
   const { isReplayBufferActive } = useReplayBufferState();
@@ -251,14 +282,11 @@ const VoiceBottomBarContent: React.FC = () => {
   return (
     <>
       {/* Main Bottom Bar */}
+      {/* Positioned by the VoiceBottomBar shell (fixed on desktop, in flow
+          above the bottom nav on touch layouts). */}
       <Paper
         elevation={8}
         sx={{
-          position: "fixed",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          zIndex: 1300,
           borderRadius: 0,
           backgroundColor: "background.paper",
           borderTop: 1,
@@ -270,16 +298,16 @@ const VoiceBottomBarContent: React.FC = () => {
             display: "flex",
             alignItems: "center",
             justifyContent: "space-between",
-            px: isMobile ? 1 : 3,
+            px: isMobile ? 0.5 : 3,
             py: isMobile ? 1 : 1.5,
             minHeight: isMobile ? LAYOUT_CONSTANTS.VOICE_BAR_HEIGHT_MOBILE : 64,
-            gap: isMobile ? 0.5 : 1,
+            gap: isMobile ? 0 : 1,
           }}
         >
           {/* Channel/DM Info */}
           <Box sx={{ display: "flex", alignItems: "center", gap: isMobile ? 0.5 : 2, flex: 1, minWidth: 0 }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
-              <VolumeUp color="primary" sx={{ flexShrink: 0 }} />
+            <Box sx={{ display: "flex", alignItems: "center", gap: isMobile ? 0.5 : 1, minWidth: 0, pl: isMobile ? 1 : 0 }}>
+              <VolumeUp color="primary" fontSize={isMobile ? "small" : "medium"} sx={{ flexShrink: 0 }} />
               <Box sx={{ minWidth: 0 }}>
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
@@ -305,7 +333,10 @@ const VoiceBottomBarContent: React.FC = () => {
           </Box>
 
           {/* Voice Controls */}
-          <Box sx={{ display: "flex", alignItems: "center", gap: isMobile ? 0.5 : 1 }}>
+          <Box
+            data-testid="voice-bar-controls"
+            sx={{ display: "flex", alignItems: "center", flexShrink: 0, gap: isMobile ? 0.25 : 1 }}
+          >
             {/* Microphone */}
             <Tooltip
               title={
@@ -343,8 +374,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     : state.isServerMuted
                       ? "warning.contrastText"
                       : (!isMicrophoneEnabled ? "error.contrastText" : "text.primary"),
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   border: (isMicrophoneEnabled && isCurrentUserSpeaking) || isPTTKeyHeld
                     ? `2px solid ${theme.palette.semantic.status.positive}`
                     : "2px solid transparent",
@@ -368,59 +399,32 @@ const VoiceBottomBarContent: React.FC = () => {
               </IconButton>
             </Tooltip>
 
-            {/* Headphones/Deafen - hide on mobile */}
-            {!isMobile && (
-              <Tooltip title={state.isDeafened ? "Undeafen" : "Deafen"}>
-                <IconButton
-                  onClick={actions.toggleDeafen}
-                  color={state.isDeafened ? "error" : "default"}
-                  sx={{
+            {/* Headphones/Deafen - a primary control on every layout */}
+            <Tooltip title={state.isDeafened ? "Undeafen" : "Deafen"} arrow={!isMobile}>
+              <IconButton
+                onClick={actions.toggleDeafen}
+                color={state.isDeafened ? "error" : "default"}
+                sx={{
+                  backgroundColor: state.isDeafened
+                    ? "error.main"
+                    : "transparent",
+                  color: state.isDeafened
+                    ? "error.contrastText"
+                    : "text.primary",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  "&:hover": {
                     backgroundColor: state.isDeafened
-                      ? "error.main"
-                      : "transparent",
-                    color: state.isDeafened
-                      ? "error.contrastText"
-                      : "text.primary",
-                    "&:hover": {
-                      backgroundColor: state.isDeafened
-                        ? "error.dark"
-                        : "action.hover",
-                    },
-                  }}
-                >
-                  {state.isDeafened ? <HeadsetOff /> : <Headset />}
-                </IconButton>
-              </Tooltip>
-            )}
+                      ? "error.dark"
+                      : "action.hover",
+                  },
+                }}
+              >
+                {state.isDeafened ? <HeadsetOff /> : <Headset />}
+              </IconButton>
+            </Tooltip>
 
-            {/* Speakerphone toggle - mobile only, when browser supports setSinkId */}
-            {supportsSpeakerToggle && (
-              <Tooltip title={isSpeakerphone ? "Switch to earpiece" : "Switch to speaker"}>
-                <IconButton
-                  onClick={handleToggleSpeakerphone}
-                  size="medium"
-                  sx={{
-                    backgroundColor: isSpeakerphone
-                      ? "primary.main"
-                      : "transparent",
-                    color: isSpeakerphone
-                      ? "primary.contrastText"
-                      : "text.primary",
-                    minWidth: 48,
-                    minHeight: 48,
-                    "&:hover": {
-                      backgroundColor: isSpeakerphone
-                        ? "primary.dark"
-                        : "action.hover",
-                    },
-                  }}
-                >
-                  {isSpeakerphone ? <SpeakerPhone /> : <PhoneInTalk />}
-                </IconButton>
-              </Tooltip>
-            )}
-
-            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.5 : 1 }} />
+            {!isMobile && <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />}
 
             {/* Video */}
             <Tooltip
@@ -440,8 +444,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color: isCameraEnabled
                     ? "primary.contrastText"
                     : "text.primary",
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                   "&:hover": {
                     backgroundColor: isCameraEnabled
                       ? "primary.dark"
@@ -453,6 +457,10 @@ const VoiceBottomBarContent: React.FC = () => {
               </IconButton>
             </Tooltip>
 
+            {/* Secondary actions: inline on desktop/tablet; in the "more"
+                sheet on phone so the bar fits 320px. */}
+            {!isMobile && (
+              <>
             {/* Screen Share */}
             <Tooltip
               title={
@@ -491,8 +499,8 @@ const VoiceBottomBarContent: React.FC = () => {
                     color: screenShare.isScreenSharing
                       ? "primary.contrastText"
                       : "text.primary",
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: screenShare.isScreenSharing
                         ? "primary.dark"
@@ -516,8 +524,8 @@ const VoiceBottomBarContent: React.FC = () => {
                   color="success"
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "success.main",
                       color: "success.contrastText",
@@ -545,14 +553,39 @@ const VoiceBottomBarContent: React.FC = () => {
                   onClick={() => actions.revealVideoTiles()}
                   size={isMobile ? "medium" : "medium"}
                   sx={{
-                    minWidth: isMobile ? 48 : "auto",
-                    minHeight: isMobile ? 48 : "auto",
+                    minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                    minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
                     "&:hover": {
                       backgroundColor: "action.hover",
                     },
                   }}
                 >
                   <VideoCall />
+                </IconButton>
+              </Tooltip>
+            )}
+              </>
+            )}
+
+            {/* Phone: everything else lives in the "more" sheet */}
+            {isMobile && (
+              <Tooltip title="More voice options">
+                <IconButton
+                  onClick={() => setShowMoreSheet(true)}
+                  aria-haspopup="dialog"
+                  sx={{
+                    minWidth: TOUCH_TARGETS.MINIMUM,
+                    minHeight: TOUCH_TARGETS.MINIMUM,
+                    color: "text.primary",
+                  }}
+                >
+                  <Badge
+                    variant="dot"
+                    color="primary"
+                    invisible={!screenShare.isScreenSharing && !isReplayBufferActive}
+                  >
+                    <MoreHoriz />
+                  </Badge>
                 </IconButton>
               </Tooltip>
             )}
@@ -569,7 +602,7 @@ const VoiceBottomBarContent: React.FC = () => {
               </>
             )}
 
-            <Divider orientation="vertical" flexItem sx={{ mx: isMobile ? 0.5 : 1 }} />
+            {!isMobile && <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />}
 
             {/* Disconnect */}
             <Tooltip title="Disconnect" arrow={!isMobile}>
@@ -578,10 +611,16 @@ const VoiceBottomBarContent: React.FC = () => {
                 color="error"
                 size={isMobile ? "medium" : "medium"}
                 sx={{
-                  minWidth: isMobile ? 48 : "auto",
-                  minHeight: isMobile ? 48 : "auto",
-                  "&:hover": {
+                  minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : "auto",
+                  // Phone: a filled red hang-up so it reads as the call's
+                  // primary destructive action at a glance.
+                  ...(isMobile && {
                     backgroundColor: "error.main",
+                    color: "error.contrastText",
+                  }),
+                  "&:hover": {
+                    backgroundColor: isMobile ? "error.dark" : "error.main",
                     color: "error.contrastText",
                   },
                 }}
@@ -653,6 +692,124 @@ const VoiceBottomBarContent: React.FC = () => {
           onSelect={screenShare.handleSourceSelect}
         />
 
+        {/* Phone "more" sheet: the secondary call actions that don't fit in
+            the 320px bar. Each action closes the sheet (except soundboard,
+            which opens its own picker). */}
+        {isMobile && (
+          <MobileSheet open={showMoreSheet} onClose={closeMoreSheet} title={displayName} maxHeight="75vh">
+            <List data-testid="voice-more-sheet" disablePadding sx={{ mx: -2, my: -1 }}>
+              <ListItemButton
+                component="button"
+                onClick={() => {
+                  closeMoreSheet();
+                  handleToggleScreenShare();
+                }}
+                sx={moreItemSx}
+              >
+                <ListItemIcon>
+                  {screenShare.isScreenSharing ? <StopScreenShare color="primary" /> : <ScreenShare />}
+                </ListItemIcon>
+                <ListItemText primary={screenShare.isScreenSharing ? "Stop sharing screen" : "Share screen"} />
+              </ListItemButton>
+
+              {isReplayBufferActive && (
+                <ListItemButton
+                  component="button"
+                  onClick={() => {
+                    closeMoreSheet();
+                    setShowCaptureModal(true);
+                  }}
+                  sx={moreItemSx}
+                >
+                  <ListItemIcon>
+                    <MovieCreation color="success" />
+                  </ListItemIcon>
+                  <ListItemText primary="Capture replay" />
+                </ListItemButton>
+              )}
+
+              {supportsSpeakerToggle && (
+                <ListItemButton
+                  component="button"
+                  onClick={() => {
+                    closeMoreSheet();
+                    void handleToggleSpeakerphone();
+                  }}
+                  sx={moreItemSx}
+                >
+                  <ListItemIcon>
+                    {isSpeakerphone ? <SpeakerPhone color="primary" /> : <PhoneInTalk />}
+                  </ListItemIcon>
+                  <ListItemText primary={isSpeakerphone ? "Switch to earpiece" : "Switch to speaker"} />
+                </ListItemButton>
+              )}
+
+              {!state.showVideoTiles && (
+                <ListItemButton
+                  component="button"
+                  onClick={() => {
+                    closeMoreSheet();
+                    actions.revealVideoTiles();
+                  }}
+                  sx={moreItemSx}
+                >
+                  <ListItemIcon>
+                    <VideoCall />
+                  </ListItemIcon>
+                  <ListItemText primary="Show video tiles" />
+                </ListItemButton>
+              )}
+
+              {hasSoundboard && state.communityId && actions.playSoundboard && (
+                <ListItem sx={{ ...moreItemSx, py: 0 }}>
+                  {/* SoundboardButton is a 48px icon button; pull it left so
+                      its glyph and the label line up with the other rows. */}
+                  <ListItemIcon sx={{ minWidth: 0, ml: "-12px", mr: "20px" }}>
+                    <SoundboardButton
+                      communityId={state.communityId}
+                      onPlay={actions.playSoundboard}
+                      isMobile
+                    />
+                  </ListItemIcon>
+                  <ListItemText primary="Soundboard" />
+                </ListItem>
+              )}
+
+              <Divider sx={{ my: 0.5 }} />
+
+              <ListItemButton
+                component="button"
+                onClick={() => {
+                  closeMoreSheet();
+                  setShowDeviceSettings(true);
+                }}
+                sx={moreItemSx}
+              >
+                <ListItemIcon>
+                  <Settings />
+                </ListItemIcon>
+                <ListItemText primary="Voice & video settings" />
+              </ListItemButton>
+
+              <ListItemButton
+                component="button"
+                onClick={() => {
+                  closeMoreSheet();
+                  // Unwind the sheet's history entry first, so back from
+                  // Settings returns to the call screen (not a dead entry).
+                  navigateAfterOverlays(() => navigate("/settings"));
+                }}
+                sx={moreItemSx}
+              >
+                <ListItemIcon>
+                  <OpenInNew />
+                </ListItemIcon>
+                <ListItemText primary="All settings" />
+              </ListItemButton>
+            </List>
+          </MobileSheet>
+        )}
+
         {/* Capture Replay Dialog */}
         <CaptureReplayModal
           open={showCaptureModal}
@@ -660,11 +817,14 @@ const VoiceBottomBarContent: React.FC = () => {
         />
       </Paper>
 
-      {/* Debug Panel - Toggle with Ctrl+Shift+D */}
+      {/* Debug Panel - Toggle with Ctrl+Shift+D. Portaled so its own
+          z-index isn't capped by the bar wrapper's stacking context. */}
       {showDebugPanel && (
-        <Suspense fallback={null}>
-          <VoiceDebugPanel />
-        </Suspense>
+        <Portal>
+          <Suspense fallback={null}>
+            <VoiceDebugPanel />
+          </Suspense>
+        </Portal>
       )}
     </>
   );

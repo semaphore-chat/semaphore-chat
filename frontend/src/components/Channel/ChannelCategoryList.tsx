@@ -1,49 +1,84 @@
 import React, { useMemo, useState } from "react";
 import {
   Box,
-  Typography,
   List,
   ListItem,
   ListItemButton,
-  ListItemIcon,
   ListItemText,
   Collapse,
   IconButton,
+  Skeleton,
 } from "@mui/material";
 import {
   ExpandLess,
   ExpandMore,
-  Tag as TagIcon,
-  VolumeUp as VoiceIcon,
-  Lock as LockIcon,
 } from "@mui/icons-material";
 import { ChannelType } from "../../types/channel.type";
 import type { Channel } from "../../types/channel.type";
+import { useCanPerformAction } from "../../features/roles/useUserPermissions";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
+import EmptyState from "../Common/EmptyState";
+import ListState from "../Common/ListState";
+import CreateChannelDialog from "../Community/CreateChannelDialog";
+import { ChannelRow } from "./ChannelRow";
 
 interface ChannelCategoryListProps {
   channels: Channel[];
+  communityId: string;
   onChannelSelect: (channelId: string) => void;
   selectedChannelId?: string;
-  /** Denser layout for tablet sidebar */
+  /** Denser category headers for the tablet sidebar */
   compact?: boolean;
-  /** Minimum touch target height (px) for mobile/tablet */
-  touchTargetHeight?: number;
+  /** Channel query is loading (shows a skeleton instead of the empty state) */
+  isLoading?: boolean;
+  /** Channel query error (shows an error with retry when there's nothing to show) */
+  error?: unknown;
+  onRetry?: () => void;
 }
 
+const CATEGORY_TEXT = "Text Channels";
+const CATEGORY_VOICE = "Voice Channels";
+
+const ChannelListSkeleton: React.FC = () => (
+  <Box data-testid="channel-list-skeleton" aria-busy="true" sx={{ px: 2, py: 1.5 }}>
+    {[0, 1].map((section) => (
+      <Box key={section} sx={{ mb: 2 }}>
+        <Skeleton variant="text" width="40%" height={16} sx={{ mb: 1 }} />
+        {Array.from({ length: section === 0 ? 6 : 2 }, (_, i) => (
+          <Skeleton
+            key={i}
+            variant="rounded"
+            height={TOUCH_TARGETS.MINIMUM - 8}
+            sx={{ mb: 1 }}
+          />
+        ))}
+      </Box>
+    ))}
+  </Box>
+);
+
 /**
- * Shared channel list grouped into collapsible Text/Voice categories.
- * Sorts channels by position. Used by MobileChannelsPanel and TabletSidebar.
+ * Shared channel list grouped into collapsible Text/Voice categories, built
+ * from the same `ChannelRow` as the desktop sidebar (unread, mentions, lock,
+ * voice participants). Sorts channels by position and renders the list states
+ * (loading, error with retry, empty with "Create channel" for users who may
+ * create channels). Used by MobileChannelsPanel and TabletSidebar.
  */
 const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
   channels,
+  communityId,
   onChannelSelect,
   selectedChannelId,
   compact = false,
-  touchTargetHeight,
+  isLoading = false,
+  error,
+  onRetry,
 }) => {
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-    new Set(["Text Channels", "Voice Channels"])
+    new Set([CATEGORY_TEXT, CATEGORY_VOICE])
   );
+  const [createOpen, setCreateOpen] = useState(false);
+  const canCreateChannel = useCanPerformAction("COMMUNITY", communityId, "CREATE_CHANNEL");
 
   const { textChannels, voiceChannels } = useMemo(() => {
     const text = channels
@@ -70,35 +105,53 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
   };
 
   if (channels.length === 0) {
+    if (isLoading) return <ChannelListSkeleton />;
+    // Same error state as every other list (DMs, members, notifications).
+    if (error) {
+      return (
+        <ListState
+          isLoading={false}
+          error={error}
+          onRetry={onRetry}
+          isEmpty
+          errorTitle="Couldn't load channels"
+          size={compact ? "compact" : "regular"}
+        />
+      );
+    }
+
     return (
-      <Box sx={{ px: 2, py: 4, textAlign: "center" }}>
-        <Typography variant="body2" color="text.secondary">
-          No channels yet
-        </Typography>
-      </Box>
+      <>
+        <EmptyState
+          variant="channels"
+          title="No channels yet"
+          description={
+            canCreateChannel
+              ? "Create a channel to start conversations."
+              : "Channels will show up here once they're created."
+          }
+          action={
+            canCreateChannel
+              ? { label: "Create channel", onClick: () => setCreateOpen(true) }
+              : undefined
+          }
+        />
+        {canCreateChannel && (
+          <CreateChannelDialog
+            open={createOpen}
+            onClose={() => setCreateOpen(false)}
+            communityId={communityId}
+          />
+        )}
+      </>
     );
   }
 
-  const itemSx = {
-    pl: compact ? 2 : 4,
-    py: compact ? 0.75 : undefined,
-    ...(touchTargetHeight ? { minHeight: touchTargetHeight } : {}),
-    ...(selectedChannelId
-      ? { "&.Mui-selected": { backgroundColor: "action.selected" } }
-      : {}),
-  };
-
   const headerFontSize = compact ? "0.6875rem" : undefined;
-  const itemFontSize = compact ? "0.875rem" : "0.9375rem";
-  const iconMinWidth = compact ? 28 : 36;
-  const iconFontSize = compact ? "1.125rem" : "small";
 
-  const renderCategory = (
-    label: string,
-    items: Channel[],
-    Icon: typeof TagIcon
-  ) => {
+  const renderCategory = (label: string, items: Channel[]) => {
     if (items.length === 0) return null;
+    const expanded = expandedCategories.has(label);
 
     return (
       <React.Fragment key={label}>
@@ -109,8 +162,9 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
               edge="end"
               size="small"
               onClick={() => toggleCategory(label)}
+              aria-label={expanded ? `Collapse ${label}` : `Expand ${label}`}
             >
-              {expandedCategories.has(label) ? (
+              {expanded ? (
                 <ExpandLess fontSize={compact ? "small" : "medium"} />
               ) : (
                 <ExpandMore fontSize={compact ? "small" : "medium"} />
@@ -120,6 +174,7 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
         >
           <ListItemButton
             onClick={() => toggleCategory(label)}
+            aria-expanded={expanded}
             sx={compact ? { py: 0.5 } : undefined}
           >
             <ListItemText
@@ -134,38 +189,17 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
           </ListItemButton>
         </ListItem>
 
-        <Collapse in={expandedCategories.has(label)} timeout="auto">
+        <Collapse in={expanded} timeout="auto">
           <List component="div" disablePadding>
             {items.map((channel) => (
-              <ListItem key={channel.id} disablePadding>
-                <ListItemButton
-                  selected={selectedChannelId === channel.id}
-                  onClick={() => onChannelSelect(channel.id)}
-                  sx={itemSx}
-                >
-                  <ListItemIcon sx={{ minWidth: iconMinWidth }}>
-                    <Icon sx={{ fontSize: iconFontSize }} />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary={channel.name}
-                    primaryTypographyProps={{
-                      fontSize: itemFontSize,
-                      fontWeight:
-                        selectedChannelId === channel.id ? 600 : 500,
-                      noWrap: true,
-                    }}
-                  />
-                  {channel.isPrivate && (
-                    <LockIcon
-                      sx={{
-                        fontSize: compact ? "0.875rem" : "small",
-                        color: "text.secondary",
-                        ml: compact ? 0.5 : 1,
-                      }}
-                    />
-                  )}
-                </ListItemButton>
-              </ListItem>
+              <ChannelRow
+                key={channel.id}
+                channel={channel}
+                communityId={communityId}
+                selected={selectedChannelId === channel.id}
+                variant="touch"
+                onSelect={(c) => onChannelSelect(c.id)}
+              />
             ))}
           </List>
         </Collapse>
@@ -175,8 +209,8 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
 
   return (
     <List disablePadding={compact}>
-      {renderCategory("Text Channels", textChannels, TagIcon)}
-      {renderCategory("Voice Channels", voiceChannels, VoiceIcon)}
+      {renderCategory(CATEGORY_TEXT, textChannels)}
+      {renderCategory(CATEGORY_VOICE, voiceChannels)}
     </List>
   );
 };

@@ -7,17 +7,33 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { Box, IconButton, CircularProgress } from "@mui/material";
+import {
+  Box,
+  IconButton,
+  CircularProgress,
+  Typography,
+  List,
+  ListItemButton,
+  ListItemIcon,
+  ListItemText,
+} from "@mui/material";
+import AddIcon from "@mui/icons-material/Add";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import EmojiEmotionsOutlinedIcon from "@mui/icons-material/EmojiEmotionsOutlined";
-import { StyledPaper, StyledTextField } from "./MessageInputStyles";
+import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
+import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
+import BlockIcon from "@mui/icons-material/Block";
+import { StyledNoticePaper, StyledPaper, StyledTextField } from "./MessageInputStyles";
 import { EmojiPickerPopover } from "./EmojiPicker";
 import { GifPickerPopover } from "./GifPicker";
 import type { GifResultDto } from "../../api-client/types.gen";
 import { instanceControllerGetPublicSettingsOptions } from "../../api-client/@tanstack/react-query.gen";
 import GifBoxOutlinedIcon from "@mui/icons-material/GifBoxOutlined";
 import { useResponsive } from "../../hooks/useResponsive";
+import { useKeyboardInset } from "../../contexts/BottomChromeContext";
+import { MobileSheet } from "../Mobile/common/MobileSheet";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { FilePreview } from "./FilePreview";
 import { MentionDropdown } from "./MentionDropdown";
 import { MENTION_LISTBOX_ID, mentionOptionId } from "./mentionDropdownIds";
@@ -49,6 +65,9 @@ import { useTypingEmitter } from "../../hooks/useTypingEmitter";
 import type { Span } from "../../types/message.type";
 import { SpanType } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { useComposerAvailability } from "../../hooks/useComposerAvailability";
+import type { ComposerAvailability } from "../../hooks/useComposerAvailability";
+import { useComposerDraft } from "../../hooks/useComposerDraft";
 
 export interface MessageInputProps {
   contextType: VoiceSessionType;
@@ -58,6 +77,59 @@ export interface MessageInputProps {
   onSendMessage: (messageContent: string, spans: Span[], files?: File[]) => void;
   placeholder?: string;
   communityId?: string;
+}
+
+/** "12 min", "2 h 5 min", "42 s" — rounded up so it never reads "0". */
+function formatTimeLeft(ms: number): string {
+  const totalSeconds = Math.max(1, Math.ceil(ms / 1000));
+  if (totalSeconds < 60) return `${totalSeconds} s`;
+  const totalMinutes = Math.ceil(totalSeconds / 60);
+  if (totalMinutes < 60) return `${totalMinutes} min`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return minutes === 0 ? `${hours} h` : `${hours} h ${minutes} min`;
+}
+
+function noticeCopy(availability: ComposerAvailability): string {
+  switch (availability.state) {
+    case "no-permission":
+      return availability.channelName
+        ? `You can't send messages in #${availability.channelName}`
+        : "You can't send messages in this channel";
+    case "timed-out":
+      return availability.remainingMs !== undefined
+        ? `Timed out, ${formatTimeLeft(availability.remainingMs)} left`
+        : "You're timed out in this community";
+    case "banned":
+      return "You're banned from this community";
+    default:
+      return "";
+  }
+}
+
+/** Non-editable stand-in for the composer when the user can't post here. */
+export function ComposerUnavailableNotice({ availability }: { availability: ComposerAvailability }) {
+  const Icon =
+    availability.state === "timed-out"
+      ? TimerOutlinedIcon
+      : availability.state === "banned"
+        ? BlockIcon
+        : LockOutlinedIcon;
+  return (
+    <StyledNoticePaper elevation={2} role="status" data-testid="composer-unavailable">
+      <Icon fontSize="small" aria-hidden />
+      <Box sx={{ minWidth: 0 }}>
+        <Typography variant="body2" sx={{ color: "text.secondary", overflowWrap: "anywhere" }}>
+          {noticeCopy(availability)}
+        </Typography>
+        {availability.reason && (
+          <Typography variant="caption" sx={{ color: "text.secondary", display: "block", overflowWrap: "anywhere" }}>
+            Reason: {availability.reason}
+          </Typography>
+        )}
+      </Box>
+    </StyledNoticePaper>
+  );
 }
 
 // --- Local mention state for DM context ---
@@ -79,7 +151,11 @@ export default function MessageInput({
   placeholder = "Type a message...",
   communityId,
 }: MessageInputProps) {
-  const [text, setText] = useState("");
+  // The unsent text is a per-conversation draft, so it survives this
+  // composer unmounting (e.g. switching screens on mobile).
+  const [text, setText, clearDraft] = useComposerDraft(
+    `${contextType === VoiceSessionType.Channel ? "channel" : "dm"}:${contextId}`,
+  );
   // LOAD-BEARING for optimistic-send correctness: `sending` serializes
   // composer submits until the current send's ack/timeout settles, which is
   // what makes two same-author PENDING rows with identical content
@@ -90,7 +166,15 @@ export default function MessageInput({
   const inputRef = useRef<HTMLInputElement>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { showNotification } = useNotification();
-  const { isTouchDevice } = useResponsive();
+  const { isTouchDevice, shouldUseTouchUI } = useResponsive();
+  const keyboardOpen = useKeyboardInset() > 0;
+  // Touch layouts get the slim composer: one "+" (Attach / GIF / Emoji in a
+  // sheet), the text field, and send only once there's something to send.
+  const compactComposer = shouldUseTouchUI;
+  const [actionsSheetOpen, setActionsSheetOpen] = useState(false);
+  const plusButtonRef = useRef<HTMLButtonElement>(null);
+  const availability = useComposerAvailability({ contextType, contextId, communityId });
+  const canCompose = availability.state === "ok";
 
   // Emoji picker state + last-known selection (captured before the picker steals focus)
   const [emojiAnchorEl, setEmojiAnchorEl] = useState<HTMLElement | null>(null);
@@ -190,11 +274,13 @@ export default function MessageInput({
 
   useEffect(() => {
     setupCursorTracking(inputRef);
-  }, [setupCursorTracking]);
+  }, [setupCursorTracking, canCompose]);
 
+  // Focus on mount, and again if posting becomes possible (e.g. a timeout
+  // expires) since the input only mounts then.
   useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+    if (canCompose) inputRef.current?.focus();
+  }, [canCompose]);
 
   // --- Mention system: server-backed (channels) or local (DMs) ---
   const mentionHook = useMentionAutocomplete({
@@ -245,7 +331,7 @@ export default function MessageInput({
     (mention: MentionSuggestion) => {
       insertMentionUtil(mention, text, setText, closeDmMentions);
     },
-    [insertMentionUtil, text, closeDmMentions]
+    [insertMentionUtil, text, setText, closeDmMentions]
   );
 
   // DM mention detection
@@ -403,7 +489,7 @@ export default function MessageInput({
     const sent = await sendMessageContent(text, selectedFiles);
     if (!sent) return;
 
-    setText("");
+    clearDraft();
     clearFiles();
     if (isChannel) {
       mentionHook.close();
@@ -439,9 +525,30 @@ export default function MessageInput({
     setEmojiAnchorEl(null);
     if (reason === "escapeKeyDown" || reason === "backdropClick") {
       requestAnimationFrame(() => {
-        emojiButtonRef.current?.focus();
+        (emojiButtonRef.current ?? plusButtonRef.current)?.focus();
       });
     }
+  };
+
+  // --- Touch "+" sheet (Attach / GIF / Emoji) ---
+  const handleOpenActionsSheet = () => {
+    captureSelection();
+    setActionsSheetOpen(true);
+  };
+  const handleCloseActionsSheet = () => setActionsSheetOpen(false);
+  const handleSheetAttach = () => {
+    setActionsSheetOpen(false);
+    // Still inside the tap's user activation, so the file dialog may open.
+    handleFileButtonClick();
+  };
+  const handleSheetEmoji = () => {
+    setActionsSheetOpen(false);
+    // Touch pickers render as their own sheet; the anchor only marks "open".
+    setEmojiAnchorEl(plusButtonRef.current);
+  };
+  const handleSheetGif = () => {
+    setActionsSheetOpen(false);
+    setGifAnchorEl(plusButtonRef.current);
   };
 
   // --- GIF picker handlers ---
@@ -489,7 +596,7 @@ export default function MessageInput({
       }
       emitTypingKeyPress();
     },
-    [isTouchDevice, emitTypingKeyPress]
+    [isTouchDevice, emitTypingKeyPress, setText]
   );
 
   // --- Rich-text formatting shortcut (Ctrl/Cmd+B, Ctrl/Cmd+I) ---
@@ -551,6 +658,19 @@ export default function MessageInput({
     }
   };
 
+  const hasContent = Boolean(text && text.trim()) || selectedFiles.length > 0;
+  // Desktop keeps a (disabled) send button at all times; touch shows it only
+  // when there's something to send, so the text field gets the width.
+  const showSendButton = !compactComposer || hasContent || sending;
+
+  if (!canCompose) {
+    return (
+      <Box sx={{ position: "relative", width: "100%" }}>
+        <ComposerUnavailableNotice availability={availability} />
+      </Box>
+    );
+  }
+
   return (
     <Box sx={{ position: "relative", width: "100%" }} {...dropZoneProps}>
       <DropZoneOverlay visible={isDragOver} />
@@ -567,6 +687,7 @@ export default function MessageInput({
         files={selectedFiles}
         previews={filePreviews}
         onRemoveFile={handleRemoveFile}
+        compact={keyboardOpen}
       />
 
       {/* Hidden File Input */}
@@ -586,7 +707,24 @@ export default function MessageInput({
         }}
         style={{ width: "100%" }}
       >
-        <StyledPaper elevation={2}>
+        <StyledPaper
+          elevation={2}
+          data-composer-layout={compactComposer ? "compact" : "full"}
+          sx={compactComposer ? { p: 1, gap: 0.5, alignItems: "flex-end" } : undefined}
+        >
+          {compactComposer && (
+            <IconButton
+              ref={plusButtonRef}
+              onClick={handleOpenActionsSheet}
+              disabled={sending}
+              aria-label="Add attachment, GIF or emoji"
+              aria-haspopup="dialog"
+              aria-expanded={actionsSheetOpen}
+              sx={{ width: TOUCH_TARGETS.MINIMUM, height: TOUCH_TARGETS.MINIMUM, flexShrink: 0 }}
+            >
+              <AddIcon />
+            </IconButton>
+          )}
           <StyledTextField
             fullWidth
             size="small"
@@ -609,11 +747,13 @@ export default function MessageInput({
               updateCursorPosition();
               captureSelection();
             }}
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, minWidth: 0 }}
             inputRef={inputRef}
             autoComplete="off"
             multiline
-            maxRows={4}
+            // With the on-screen keyboard up, the viewport is roughly halved;
+            // cap the field lower so reply + files + draft leave room for messages.
+            maxRows={keyboardOpen ? 2 : 4}
             slotProps={{
               // Note: no `role="combobox"` and no `aria-expanded` here — this
               // field is `multiline` (renders a <textarea>), and ARIA 1.2's
@@ -634,44 +774,87 @@ export default function MessageInput({
               },
             }}
           />
-          <IconButton
-            ref={emojiButtonRef}
-            onClick={handleEmojiButtonClick}
-            disabled={sending}
-            aria-label="add emoji"
-            aria-haspopup="true"
-            aria-expanded={emojiPickerOpen}
-          >
-            <EmojiEmotionsOutlinedIcon />
-          </IconButton>
-          {gifSearchEnabled && (
+          {!compactComposer && (
+            <>
+              <IconButton
+                ref={emojiButtonRef}
+                onClick={handleEmojiButtonClick}
+                disabled={sending}
+                aria-label="add emoji"
+                aria-haspopup="true"
+                aria-expanded={emojiPickerOpen}
+              >
+                <EmojiEmotionsOutlinedIcon />
+              </IconButton>
+              {gifSearchEnabled && (
+                <IconButton
+                  onClick={handleGifButtonClick}
+                  disabled={sending}
+                  aria-label="add gif"
+                  aria-haspopup="true"
+                  aria-expanded={gifPickerOpen}
+                >
+                  <GifBoxOutlinedIcon />
+                </IconButton>
+              )}
+              <IconButton
+                onClick={handleFileButtonClick}
+                disabled={sending}
+                aria-label="attach file"
+              >
+                <AttachFileIcon />
+              </IconButton>
+            </>
+          )}
+          {showSendButton && (
             <IconButton
-              onClick={handleGifButtonClick}
-              disabled={sending}
-              aria-label="add gif"
-              aria-haspopup="true"
-              aria-expanded={gifPickerOpen}
+              color="primary"
+              type="submit"
+              disabled={sending || !hasContent}
+              aria-label="send"
+              sx={
+                compactComposer
+                  ? { width: TOUCH_TARGETS.MINIMUM, height: TOUCH_TARGETS.MINIMUM, flexShrink: 0 }
+                  : undefined
+              }
             >
-              <GifBoxOutlinedIcon />
+              {sending ? <CircularProgress size={24} /> : <SendIcon />}
             </IconButton>
           )}
-          <IconButton
-            onClick={handleFileButtonClick}
-            disabled={sending}
-            aria-label="attach file"
-          >
-            <AttachFileIcon />
-          </IconButton>
-          <IconButton
-            color="primary"
-            type="submit"
-            disabled={sending || ((!text || !text.trim()) && selectedFiles.length === 0)}
-            aria-label="send"
-          >
-            {sending ? <CircularProgress size={24} /> : <SendIcon />}
-          </IconButton>
         </StyledPaper>
       </form>
+
+      {compactComposer && (
+        <MobileSheet
+          open={actionsSheetOpen}
+          onClose={handleCloseActionsSheet}
+          title="Add to message"
+          maxHeight="50vh"
+        >
+          <List data-testid="composer-actions-sheet" disablePadding sx={{ mx: -2, my: -2 }}>
+            <ListItemButton onClick={handleSheetAttach} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+              <ListItemIcon>
+                <AttachFileIcon />
+              </ListItemIcon>
+              <ListItemText primary="Attach file" />
+            </ListItemButton>
+            {gifSearchEnabled && (
+              <ListItemButton onClick={handleSheetGif} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+                <ListItemIcon>
+                  <GifBoxOutlinedIcon />
+                </ListItemIcon>
+                <ListItemText primary="GIF" />
+              </ListItemButton>
+            )}
+            <ListItemButton onClick={handleSheetEmoji} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+              <ListItemIcon>
+                <EmojiEmotionsOutlinedIcon />
+              </ListItemIcon>
+              <ListItemText primary="Emoji" />
+            </ListItemButton>
+          </List>
+        </MobileSheet>
+      )}
 
       <EmojiPickerPopover
         open={emojiPickerOpen}

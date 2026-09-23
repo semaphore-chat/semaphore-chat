@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from "react";
 import { Box, Typography, Paper, IconButton, Tooltip, Badge, Drawer } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 import PushPinIcon from "@mui/icons-material/PushPin";
+import LockIcon from "@mui/icons-material/Lock";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
 import MessageSearch from "../Message/MessageSearch";
@@ -23,6 +24,8 @@ import { useAutoMarkNotificationsRead } from "../../hooks/useAutoMarkNotificatio
 import { useThreadPanel } from "../../contexts/ThreadPanelContext";
 import { useVoice, VoiceSessionType } from "../../contexts/VoiceContext";
 import { VOICE_BAR_HEIGHT } from "../../constants/layout";
+import { useResponsive } from "../../hooks/useResponsive";
+import { useOverlayHistory } from "../../hooks/useOverlayHistory";
 import type { UserMention, ChannelMention } from "../../utils/mentionParser";
 import type { Message } from "../../types/message.type";
 
@@ -43,6 +46,10 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const authorId = user?.id || "";
 
   const { isConnected: voiceConnected } = useVoice();
+  // Phone: the thread is a full-screen layer. Touch layouts: back closes the
+  // thread / pinned layer before leaving the channel. (Both are false on
+  // Electron, which always uses the desktop layout.)
+  const { isMobile, shouldUseTouchUI } = useResponsive();
 
   // Get communityId from props (mobile) or URL params (desktop)
   const { communityId: communityIdParam } = useParams<{
@@ -54,17 +61,6 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const highlightMessageId = searchParams.get("highlight");
-
-  // Clear highlight param from URL immediately after capturing it.
-  // useJumpToMessage stores it locally for scroll/flash (3s auto-clear).
-  // Immediate URL clear allows re-clicking the same pinned message.
-  React.useEffect(() => {
-    if (highlightMessageId) {
-      navigate(`/community/${communityId}/channel/${channelId}`, {
-        replace: true,
-      });
-    }
-  }, [highlightMessageId, communityId, channelId, navigate]);
 
   const { handleSendMessage } = useMessageFileUpload({
     contextType: VoiceSessionType.Channel,
@@ -101,6 +97,11 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     setThreadParentMessage(null);
   }, [closeThread]);
 
+  const threadOpen = !!openThreadId && !!threadParentMessage;
+  useOverlayHistory(threadOpen, handleCloseThread, { enabled: shouldUseTouchUI });
+  const closePinnedPanel = useCallback(() => setPinnedPanelOpen(false), []);
+  useOverlayHistory(pinnedPanelOpen, closePinnedPanel, { enabled: shouldUseTouchUI });
+
   // Fetch channel data for header
   const { data: channel } = useQuery(channelsControllerFindOneOptions({ path: { id: channelId } }));
 
@@ -135,6 +136,19 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
 
   // Get messages using the jump-to-message hook (supports anchored mode for pinned/search/notification links)
   const messagesHookResult = useJumpToMessage('channel', channelId, highlightMessageId || undefined);
+  const { isJumpPending } = messagesHookResult;
+
+  // Clear the highlight param from the URL once the jump has settled (target
+  // loaded, in the normal or anchored window). useJumpToMessage keeps the id
+  // locally for scroll/flash, and clearing lets the same pinned message be
+  // re-clicked. Clearing earlier would drop a cold deep link on the floor.
+  useEffect(() => {
+    if (highlightMessageId && !isJumpPending) {
+      navigate(`/community/${communityId}/channel/${channelId}`, {
+        replace: true,
+      });
+    }
+  }, [highlightMessageId, isJumpPending, communityId, channelId, navigate]);
 
   // When a pinned thread reply is clicked, we jump to the parent and then open the thread
   useEffect(() => {
@@ -172,9 +186,18 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             justifyContent: 'space-between',
           }}
         >
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            # {channel?.name || 'Channel'}
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+            <Typography variant="h6" noWrap sx={{ fontWeight: 600 }}>
+              # {channel?.name || 'Channel'}
+            </Typography>
+            {channel?.isPrivate && (
+              <LockIcon
+                aria-label="Private channel"
+                titleAccess="Private channel"
+                sx={{ fontSize: 'icon.lg', color: 'text.secondary', flexShrink: 0 }}
+              />
+            )}
+          </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             <Tooltip title={`Pinned messages (${pinnedMessages.length})`}>
               <IconButton size="small" onClick={() => setPinnedPanelOpen(true)}>
@@ -237,13 +260,16 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
           onClose={() => setPinnedPanelOpen(false)}
           onMessageClick={(messageId) => {
             setPinnedPanelOpen(false);
+            // On touch layouts the open panel owns the current history entry
+            // (useOverlayHistory); replace it so back doesn't land on a dead entry.
+            const navOptions = { replace: shouldUseTouchUI };
             const pinnedMsg = pinnedMessages.find(m => m.id === messageId);
             if (pinnedMsg?.parentMessageId) {
               // Thread reply: jump to parent message and open the thread panel
               setPendingThreadParentId(pinnedMsg.parentMessageId);
-              navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`);
+              navigate(`/community/${communityId}/channel/${channelId}?highlight=${pinnedMsg.parentMessageId}`, navOptions);
             } else {
-              navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`);
+              navigate(`/community/${communityId}/channel/${channelId}?highlight=${messageId}`, navOptions);
             }
           }}
         />
@@ -252,12 +278,12 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
       {/* Thread Panel Drawer */}
       <Drawer
         anchor="right"
-        open={!!openThreadId && !!threadParentMessage}
+        open={threadOpen}
         onClose={handleCloseThread}
         PaperProps={{
           sx: {
-            width: 'min(400px, 100vw)',
-            height: 'var(--full-dvh)',
+            width: isMobile ? '100vw' : 'min(400px, 100vw)',
+            height: 'var(--full-dvh, 100dvh)',
             overflow: 'hidden',
             paddingBottom: voiceConnected ? `${VOICE_BAR_HEIGHT}px` : 0,
           },
@@ -268,6 +294,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             parentMessage={threadParentMessage}
             channelId={channelId}
             communityId={communityId}
+            fullScreen={isMobile}
           />
         )}
       </Drawer>

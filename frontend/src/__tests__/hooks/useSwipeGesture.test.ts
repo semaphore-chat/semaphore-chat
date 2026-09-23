@@ -118,4 +118,98 @@ describe('useSwipeGesture', () => {
 
     expect(onSwipeRight).not.toHaveBeenCalled();
   });
+
+  describe('live progress (drag-following)', () => {
+    it('reports the live horizontal delta on every move', () => {
+      const onProgress = vi.fn();
+      const { result } = renderHook(() => useSwipeGesture({ onProgress, threshold: 50 }));
+
+      act(() => result.current.onTouchStart(touch(200, 100)));
+      act(() => result.current.onTouchMove(touch(230, 102)));
+      act(() => result.current.onTouchMove(touch(300, 104)));
+
+      expect(onProgress).toHaveBeenNthCalledWith(1, 30, 2, 0.6);
+      expect(onProgress).toHaveBeenNthCalledWith(2, 100, 4, 1);
+    });
+
+    it('does not report progress for a gesture that started in the ignored edge zone', () => {
+      const onProgress = vi.fn();
+      const { result } = renderHook(() =>
+        useSwipeGesture({ onProgress, ignoreEdgeSwipes: true, edgeZone: 24 }),
+      );
+
+      act(() => result.current.onTouchStart(touch(10, 100)));
+      act(() => result.current.onTouchMove(touch(150, 100)));
+
+      expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it('does not report progress for a gesture that started on exempt content', () => {
+      const onProgress = vi.fn();
+      const { result } = renderHook(() =>
+        useSwipeGesture({ onProgress, isExempt: () => true }),
+      );
+
+      act(() => result.current.onTouchStart(touch(200, 100)));
+      act(() => result.current.onTouchMove(touch(300, 100)));
+
+      expect(onProgress).not.toHaveBeenCalled();
+    });
+
+    it('calls onSwipeEnd with the committed direction', () => {
+      const onSwipeEnd = vi.fn();
+      const { result } = renderHook(() =>
+        useSwipeGesture({ onSwipeEnd, directionRatio: 1.5 }),
+      );
+
+      swipe(result, [200, 100], [360, 100]);
+
+      expect(onSwipeEnd).toHaveBeenCalledWith('right');
+    });
+
+    it('calls onSwipeEnd with null when the drag does not commit', () => {
+      const onSwipeEnd = vi.fn();
+      const onSwipeRight = vi.fn();
+      const nowSpy = vi.spyOn(Date, 'now');
+      nowSpy.mockReturnValueOnce(0).mockReturnValueOnce(1000);
+      const { result } = renderHook(() =>
+        useSwipeGesture({ onSwipeEnd, onSwipeRight, threshold: 50 }),
+      );
+
+      // Short, slow drag: below both distance and velocity thresholds.
+      swipe(result, [200, 100], [220, 100]);
+      nowSpy.mockRestore();
+
+      expect(onSwipeRight).not.toHaveBeenCalled();
+      expect(onSwipeEnd).toHaveBeenCalledWith(null);
+    });
+
+    it('touch cancel ends the gesture without firing a swipe', () => {
+      const onSwipeEnd = vi.fn();
+      const onSwipeRight = vi.fn();
+      const { result } = renderHook(() => useSwipeGesture({ onSwipeEnd, onSwipeRight }));
+
+      act(() => result.current.onTouchStart(touch(200, 100)));
+      act(() => result.current.onTouchMove(touch(360, 100)));
+      act(() => result.current.onTouchCancel());
+      act(() => result.current.onTouchEnd());
+
+      expect(onSwipeRight).not.toHaveBeenCalled();
+      expect(onSwipeEnd).toHaveBeenCalledTimes(1);
+      expect(onSwipeEnd).toHaveBeenCalledWith(null);
+    });
+
+    it('treats an edge zone of 0 as "no edge zone" (standalone PWA)', () => {
+      const onSwipeRight = vi.fn();
+      const onProgress = vi.fn();
+      const { result } = renderHook(() =>
+        useSwipeGesture({ onSwipeRight, onProgress, ignoreEdgeSwipes: true, edgeZone: 0 }),
+      );
+
+      swipe(result, [0, 100], [200, 100]);
+
+      expect(onProgress).toHaveBeenCalled();
+      expect(onSwipeRight).toHaveBeenCalledTimes(1);
+    });
+  });
 });

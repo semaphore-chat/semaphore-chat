@@ -24,3 +24,19 @@ export const StyledTextField = styled(TextField)(({ theme }) => ({
     borderColor: theme.palette.primary.main,
   },
 }));
+
+/**
+ * Stands in for the composer when the user can't post (no permission,
+ * timed out, banned). Same padding as StyledPaper so the chat doesn't jump
+ * when the state changes; the inner row matches the small text field height.
+ */
+export const StyledNoticePaper = styled(Paper)(({ theme }) => ({
+  padding: theme.spacing(2),
+  display: "flex",
+  alignItems: "center",
+  gap: theme.spacing(1.5),
+  minHeight: 40,
+  boxSizing: "content-box",
+  background: theme.palette.background.paper,
+  color: theme.palette.text.secondary,
+}));

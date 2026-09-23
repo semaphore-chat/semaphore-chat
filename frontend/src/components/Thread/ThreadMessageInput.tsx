@@ -21,6 +21,7 @@ import { SpanType } from "../../types/message.type";
 import { logger } from "../../utils/logger";
 import { EmojiPickerPopover } from "../Message/EmojiPicker";
 import { useResponsive } from "../../hooks/useResponsive";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { parseMessageWithMentions } from "../../utils/mentionParser";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
@@ -38,7 +39,9 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
 }) => {
   const theme = useTheme();
   const { socket } = useContext(SocketContext);
-  const { isTouchDevice } = useResponsive();
+  const { isTouchDevice, shouldUseTouchUI } = useResponsive();
+  // 44px touch targets on touch layouts (TOUCH_TARGETS.MINIMUM), 40px on desktop.
+  const actionButtonSize = shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 40;
   const [content, setContent] = useState("");
   const [isSending, setIsSending] = useState(false);
 
@@ -185,6 +188,42 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
     }
   };
 
+  const hasContent = content.trim().length > 0;
+  const emojiButton = (
+    <IconButton
+      ref={emojiButtonRef}
+      onClick={handleEmojiButtonClick}
+      disabled={isSending}
+      aria-label="add emoji"
+      aria-haspopup="true"
+      aria-expanded={emojiPickerOpen}
+      sx={{
+        width: actionButtonSize,
+        height: actionButtonSize,
+      }}
+    >
+      <EmojiEmotionsOutlinedIcon />
+    </IconButton>
+  );
+  const sendButton = (
+    <IconButton
+      color="primary"
+      onClick={handleSend}
+      disabled={!content.trim() || isSending}
+      aria-label="send"
+      sx={{
+        width: actionButtonSize,
+        height: actionButtonSize,
+      }}
+    >
+      {isSending ? (
+        <CircularProgress size={20} />
+      ) : (
+        <SendIcon />
+      )}
+    </IconButton>
+  );
+
   return (
     <Box
       sx={{
@@ -196,6 +235,9 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
       }}
     >
       <Box sx={{ display: "flex", gap: 1, alignItems: "flex-end" }}>
+        {/* Touch: same shape as the main composer — the extra action sits
+            on the left and the send button only appears once there's text. */}
+        {shouldUseTouchUI && emojiButton}
         <TextField
           fullWidth
           multiline
@@ -219,36 +261,8 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
             },
           }}
         />
-        <IconButton
-          ref={emojiButtonRef}
-          onClick={handleEmojiButtonClick}
-          disabled={isSending}
-          aria-label="add emoji"
-          aria-haspopup="true"
-          aria-expanded={emojiPickerOpen}
-          sx={{
-            width: 40,
-            height: 40,
-          }}
-        >
-          <EmojiEmotionsOutlinedIcon />
-        </IconButton>
-        <IconButton
-          color="primary"
-          onClick={handleSend}
-          disabled={!content.trim() || isSending}
-          aria-label="send"
-          sx={{
-            width: 40,
-            height: 40,
-          }}
-        >
-          {isSending ? (
-            <CircularProgress size={20} />
-          ) : (
-            <SendIcon />
-          )}
-        </IconButton>
+        {!shouldUseTouchUI && emojiButton}
+        {(!shouldUseTouchUI || hasContent || isSending) && sendButton}
       </Box>
 
       <EmojiPickerPopover

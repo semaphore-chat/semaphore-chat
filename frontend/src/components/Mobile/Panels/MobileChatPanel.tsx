@@ -34,12 +34,17 @@ import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
-import { MOBILE_CONSTANTS } from '../../../utils/breakpoints';
+import { BACK_SWIPE, TOUCH_TARGETS, getBackGestureEdgeZone } from '../../../utils/breakpoints';
+import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
+import { getDmDisplayName } from '../../../utils/dmHelpers';
+import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { ChannelType } from '../../../types/channel.type';
 import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
 import DirectMessageContainer from '../../DirectMessages/DirectMessageContainer';
 import { VoiceChannelJoinButton } from '../../Voice/VoiceChannelJoinButton';
+import { VoiceChannelUserList } from '../../Voice/VoiceChannelUserList';
 import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
+import { useStagePresence } from '../../../hooks/useStagePresence';
 import { ErrorBoundary } from '../../ErrorBoundary';
 import MobileAppBar from '../MobileAppBar';
 import MemberListContainer from '../../Message/MemberListContainer';
@@ -55,6 +60,8 @@ interface MobileChatPanelProps {
   communityId?: string;
   channelId?: string;
   dmGroupId?: string;
+  /** Tablet: the sidebar is always visible, so the app bar has no back button. */
+  hideBack?: boolean;
 }
 
 /**
@@ -65,18 +72,20 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   communityId,
   channelId,
   dmGroupId,
+  hideBack = false,
 }) => {
-  const { goBack } = useMobileNavigation();
+  const { goBack, navigateToSearch } = useMobileNavigation();
   const navigate = useNavigate();
   const { shouldUseTouchUI, isMobile } = useResponsive();
   const { state: voiceState } = useVoiceConnection();
+  const { user: currentUser } = useCurrentUser();
 
   // Fetch channel or DM data
-  const { data: channel } = useQuery({
+  const { data: channel, isError: channelError } = useQuery({
     ...channelsControllerFindOneOptions({ path: { id: channelId || '' } }),
     enabled: !!channelId,
   });
-  const { data: dmGroup } = useQuery({
+  const { data: dmGroup, isError: dmGroupError } = useQuery({
     ...directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId || '' } }),
     enabled: !!dmGroupId,
   });
@@ -84,6 +93,13 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [showMemberDrawer, setShowMemberDrawer] = React.useState(false);
   const [showPinnedDrawer, setShowPinnedDrawer] = React.useState(false);
+
+  // Hardware/browser back closes the members / pinned drawer before it
+  // leaves the chat screen.
+  const closeMemberDrawer = React.useCallback(() => setShowMemberDrawer(false), []);
+  const closePinnedDrawer = React.useCallback(() => setShowPinnedDrawer(false), []);
+  useOverlayHistory(showMemberDrawer, closeMemberDrawer, { enabled: shouldUseTouchUI });
+  useOverlayHistory(showPinnedDrawer, closePinnedDrawer, { enabled: shouldUseTouchUI });
 
   // Fetch pinned messages count for badge
   const { data: pinnedMessages = [] } = useQuery({
@@ -94,6 +110,10 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const isVoiceChannel = channel?.type === ChannelType.VOICE;
   const isConnectedToThisChannel =
     voiceState.isConnected && voiceState.currentChannelId === channelId;
+  // On tablet this panel IS the stage for a joined voice channel, so report it
+  // (like the desktop CommunityPage does) — the float card then hides instead
+  // of repeating a tile over it. Phone keeps its own full-screen tile sheet.
+  useStagePresence(isVoiceChannel && isConnectedToThisChannel && !isMobile);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchor(event.currentTarget);
@@ -103,6 +123,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     setMenuAnchor(null);
   };
 
+  // Channels and group DMs have a member list; 1:1 DMs don't.
+  const hasMemberList = !!channelId || !!dmGroup?.isGroup;
+
   const handleShowMembers = () => {
     setShowMemberDrawer(true);
     handleMenuClose();
@@ -111,6 +134,10 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   // Community that owns this channel (prop takes precedence, fall back to the
   // channel's own communityId). Undefined for DMs.
   const effectiveCommunityId = communityId || channel?.communityId;
+
+  // Message search is scoped to a community (this channel or all channels),
+  // so it's offered in text channels only — not DMs or voice channels.
+  const canSearch = !!channelId && channel?.type === ChannelType.TEXT && !!effectiveCommunityId;
 
   const handleChannelSettings = () => {
     handleMenuClose();
@@ -124,26 +151,76 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   //    dm-chat → dm list; both handled by the nav context's goBack()). On
   //    tablet the channel list is already visible in the split-view sidebar
   //    (TabletContentArea), so swipe-right must NOT navigate there.
-  //  - Swipe LEFT → open the members drawer (channel chat only). Keeps
+  //  - Swipe LEFT → open the members drawer (channels + group DMs). Keeps
   //    working on tablet as well as phone.
   // Gestures starting within the edge back-gesture zone, on exempt content
   // (inputs, code blocks, horizontally scrollable widgets), or that are mostly
   // vertical (scrolling) are ignored. The SwipeableDrawers render in portals, so
   // touches on them never reach this surface.
-  const { onTouchStart, onTouchMove, onTouchEnd } = useSwipeGesture({
+  //
+  // In a browser tab the edge zone belongs to the browser's own back gesture.
+  // Installed as a PWA (standalone) there is none, so the dead zone is dropped
+  // and a swipe from the very edge works as back.
+  const backGestureEdgeZone = React.useMemo(() => getBackGestureEdgeZone(), []);
+
+  // Drag-following back swipe (phone only; on tablet swipe-right isn't back).
+  // The screen tracks the finger 1:1 via a direct style write on every
+  // touchmove, so no React re-render per frame, then settles on release. The
+  // transform is cleared entirely afterwards: a lingering transform would turn
+  // this box into the containing block for position:fixed descendants.
+  const swipeSurfaceRef = React.useRef<HTMLDivElement>(null);
+  const dragAxis = React.useRef<'x' | 'y' | null>(null);
+  const followBackSwipe = shouldUseTouchUI && isMobile;
+
+  const handleSwipeProgress = React.useCallback((deltaX: number, deltaY: number) => {
+    const el = swipeSurfaceRef.current;
+    if (!el || !followBackSwipe) return;
+    if (!dragAxis.current) {
+      const absX = Math.abs(deltaX);
+      const absY = Math.abs(deltaY);
+      if (absX < BACK_SWIPE.AXIS_LOCK_DISTANCE && absY < BACK_SWIPE.AXIS_LOCK_DISTANCE) return;
+      // Lock the axis once so a scroll never starts dragging the screen sideways.
+      dragAxis.current = absX > absY * BACK_SWIPE.AXIS_RATIO ? 'x' : 'y';
+    }
+    if (dragAxis.current !== 'x') return;
+    el.style.transition = 'none';
+    el.style.transform = `translateX(${Math.max(0, deltaX)}px)`;
+    // Leading-edge shadow so the screen reads as a sheet being pulled away.
+    el.style.boxShadow = deltaX > 0 ? '-8px 0 16px rgba(0, 0, 0, 0.25)' : '';
+  }, [followBackSwipe]);
+
+  const handleSwipeEnd = React.useCallback(() => {
+    dragAxis.current = null;
+    const el = swipeSurfaceRef.current;
+    if (!el || !el.style.transform) return;
+    el.style.transition = `transform ${BACK_SWIPE.SETTLE_DURATION}ms ease-out`;
+    el.style.transform = '';
+    el.style.boxShadow = '';
+  }, []);
+
+  const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useSwipeGesture({
     enabled: shouldUseTouchUI,
-    onSwipeRight: isMobile ? () => goBack() : undefined,
+    // A gesture the drag locked as vertical (a scroll) never navigates back,
+    // even if it drifts sideways before release.
+    onSwipeRight: isMobile
+      ? () => {
+          if (dragAxis.current === 'y') return;
+          goBack();
+        }
+      : undefined,
     onSwipeLeft: () => {
-      if (channelId) setShowMemberDrawer(true);
+      if (hasMemberList) setShowMemberDrawer(true);
     },
+    onProgress: handleSwipeProgress,
+    onSwipeEnd: handleSwipeEnd,
     isExempt: isSwipeExemptTarget,
     ignoreEdgeSwipes: true,
-    edgeZone: MOBILE_CONSTANTS.EDGE_BACK_GESTURE_ZONE,
+    edgeZone: backGestureEdgeZone,
     // Require horizontal displacement to clearly dominate vertical so ordinary
     // vertical scrolling never navigates.
     directionRatio: 1.5,
   });
-  const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd };
+  const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 
   // Determine title
   let title = '';
@@ -151,7 +228,12 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     const prefix = channel.type === ChannelType.VOICE ? '🔊 ' : '# ';
     title = `${prefix}${channel.name}`;
   } else if (dmGroup) {
-    title = dmGroup.name || 'Direct Message';
+    title = getDmDisplayName(dmGroup, currentUser?.id);
+  } else if (channelId && channelError) {
+    // 403 / 404 / banned: the body explains; keep the app bar from going blank.
+    title = 'Channel unavailable';
+  } else if (dmGroupId && dmGroupError) {
+    title = 'Conversation unavailable';
   }
 
   // Render content based on channel type
@@ -178,6 +260,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             justifyContent: 'center',
             height: '100%',
             px: 3,
+            py: 3,
             textAlign: 'center',
             gap: 3,
           }}
@@ -192,6 +275,23 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             </Box>
             {channel && <VoiceChannelJoinButton channel={channel} />}
           </Box>
+          {/* Who's already in the channel. Phone only: on tablet the sidebar row lists them. */}
+          {channel && isMobile && (
+            <Box
+              sx={{
+                width: '100%',
+                maxWidth: 360,
+                textAlign: 'left',
+                // Take whatever height is left (and scroll) rather than a fixed 300px cap.
+                flex: '0 1 auto',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <VoiceChannelUserList channel={channel} fill />
+            </Box>
+          )}
         </Box>
       );
     }
@@ -205,13 +305,21 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   };
 
   return (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+    <Box
+      ref={swipeSurfaceRef}
+      data-testid="mobile-chat-swipe-surface"
+      sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+    >
       {/* App bar with back button */}
       <MobileAppBar
         title={title}
-        showBack
+        showBack={!hideBack}
         onBack={goBack}
-        showMembers={channel?.type === ChannelType.TEXT}
+        showSearch={canSearch}
+        onSearchClick={() => {
+          if (channelId && effectiveCommunityId) navigateToSearch(effectiveCommunityId, channelId);
+        }}
+        showMembers={channel?.type === ChannelType.TEXT || !!dmGroup?.isGroup}
         onMembersClick={handleShowMembers}
         showMore
         onMoreClick={handleMenuOpen}
@@ -223,7 +331,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
           >
-            {channelId && (
+            {hasMemberList && (
               <MenuItem onClick={handleShowMembers}>
                 <ListItemIcon>
                   <PeopleIcon fontSize="small" />
@@ -281,6 +389,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             flexDirection: 'column',
             height: '100%',
             pt: 'env(safe-area-inset-top)',
+            pb: 'env(safe-area-inset-bottom)',
           }}
         >
           {/* Header */}
@@ -290,7 +399,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               alignItems: 'center',
               justifyContent: 'space-between',
               px: 2,
-              py: 1.5,
+              py: 0.5,
+              minHeight: 56,
               borderBottom: 1,
               borderColor: 'divider',
             }}
@@ -302,6 +412,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               onClick={() => setShowMemberDrawer(false)}
               size="small"
               aria-label="Close members"
+              sx={{ minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM, mr: -1 }}
             >
               <CloseIcon />
             </IconButton>
@@ -315,12 +426,14 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
                 contextId={channelId}
                 communityId={channel.communityId}
                 isPrivate={channel.isPrivate}
+                fullWidth
               />
             )}
             {dmGroupId && (
               <MemberListContainer
                 contextType={VoiceSessionType.Dm}
                 contextId={dmGroupId}
+                fullWidth
               />
             )}
           </Box>

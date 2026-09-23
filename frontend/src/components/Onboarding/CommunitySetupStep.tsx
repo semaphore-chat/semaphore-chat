@@ -65,7 +65,7 @@ const CommunitySetupStep: React.FC<CommunitySetupStepProps> = ({
   return (
     <Box>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <GroupsIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        <GroupsIcon sx={{ fontSize: 'icon.5xl', color: 'primary.main', mb: 2 }} />
         <Typography variant="h4" gutterBottom>
           Create Your First Community
         </Typography>

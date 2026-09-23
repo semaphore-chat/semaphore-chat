@@ -20,5 +20,14 @@ import { server } from './msw/server';
 configure({ asyncUtilTimeout: 5000 });
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
-afterEach(() => server.resetHandlers());
+afterEach(() => {
+  server.resetHandlers();
+  // Composer drafts (useComposerDraft) live in sessionStorage; don't let one
+  // test's unsent text show up in the next test's composer.
+  try {
+    sessionStorage.clear();
+  } catch {
+    // ignore: storage may be stubbed by a test
+  }
+});
 afterAll(() => server.close());

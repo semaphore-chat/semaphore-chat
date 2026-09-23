@@ -4,6 +4,7 @@ import {
   getNotificationTypeLabel,
   getNotificationText,
   getMessagePreview,
+  getNotificationAuthorName,
 } from '../../utils/notificationHelpers';
 import { NotificationType } from '../../types/notification.type';
 import type { Notification } from '../../types/notification.type';
@@ -40,8 +41,18 @@ describe('getNotificationTypeLabel', () => {
     expect(getNotificationTypeLabel(NotificationType.USER_MENTION)).toBe('Mentioned you');
   });
 
-  it('returns "Mentioned @everyone/@here" for SPECIAL_MENTION', () => {
-    expect(getNotificationTypeLabel(NotificationType.SPECIAL_MENTION)).toBe('Mentioned @everyone/@here');
+  it('returns "Mentioned everyone" for SPECIAL_MENTION', () => {
+    expect(getNotificationTypeLabel(NotificationType.SPECIAL_MENTION)).toBe('Mentioned everyone');
+  });
+
+  it('returns "Replied in a thread" for THREAD_REPLY', () => {
+    expect(getNotificationTypeLabel(NotificationType.THREAD_REPLY)).toBe('Replied in a thread');
+  });
+
+  it('has a real label (not the generic fallback) for every notification type', () => {
+    for (const type of Object.values(NotificationType)) {
+      expect(getNotificationTypeLabel(type)).not.toBe('Notification');
+    }
   });
 
   it('returns "Sent a message" for DIRECT_MESSAGE', () => {
@@ -134,6 +145,46 @@ describe('getNotificationText', () => {
       author: { id: 'a1', username: 'heidi' },
     });
     expect(getNotificationText(notification)).toBe('heidi mentioned everyone');
+  });
+});
+
+describe('getNotificationAuthorName', () => {
+  it('prefers the display name', () => {
+    const notification = createNotification({
+      author: { id: 'a1', username: 'priya_d', displayName: 'Priya Diallo' },
+    });
+    expect(getNotificationAuthorName(notification)).toBe('Priya Diallo');
+  });
+
+  it('falls back to the username when there is no display name', () => {
+    const notification = createNotification({
+      author: { id: 'a1', username: 'priya_d', displayName: null },
+    });
+    expect(getNotificationAuthorName(notification)).toBe('priya_d');
+  });
+
+  it('falls back to "Someone" when there is no author', () => {
+    expect(getNotificationAuthorName(createNotification())).toBe('Someone');
+  });
+});
+
+describe('getNotificationText (display names and thread replies)', () => {
+  it('uses the display name rather than the username', () => {
+    const notification = createNotification({
+      type: NotificationType.DIRECT_MESSAGE,
+      author: { id: 'a1', username: 'priya_d', displayName: 'Priya Diallo' },
+      message: { id: 'm1', spans: [{ type: 'PLAINTEXT', text: 'hi' }] },
+    });
+    expect(getNotificationText(notification)).toBe('Priya Diallo: hi');
+  });
+
+  it('describes thread replies', () => {
+    const notification = createNotification({
+      type: NotificationType.THREAD_REPLY,
+      author: { id: 'a1', username: 'ivan' },
+      message: { id: 'm1', spans: [{ type: 'PLAINTEXT', text: 'agreed' }] },
+    });
+    expect(getNotificationText(notification)).toBe('ivan replied in a thread: agreed');
   });
 });
 

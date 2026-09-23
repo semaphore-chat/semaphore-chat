@@ -22,6 +22,7 @@ import CloseIcon from "@mui/icons-material/Close";
 import ChatIcon from "@mui/icons-material/Chat";
 import PersonIcon from "@mui/icons-material/Person";
 import { useNavigate } from "react-router-dom";
+import { navigateAfterOverlays } from "../../hooks/useOverlayHistory";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { userControllerGetUserByIdOptions, directMessagesControllerCreateDmGroupMutation } from "../../api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
@@ -93,7 +94,9 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
   const handleViewFullProfile = () => {
     onClose();
-    navigate(`/profile/${userId}`);
+    // Opened from a drawer/sheet (e.g. the phone member list): drop those
+    // overlays' history entries before pushing the new route.
+    navigateAfterOverlays(() => navigate(`/profile/${userId}`));
   };
 
   const handleSendMessage = async () => {
@@ -103,7 +106,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         body: { userIds: [userId], isGroup: false },
       });
       onClose();
-      navigate(`/direct-messages?group=${result.id}`);
+      navigateAfterOverlays(() => navigate(`/direct-messages/${result.id}`));
     } catch (err) {
       logger.error("Failed to create DM:", err);
     }
@@ -140,7 +143,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   border: "4px solid",
                   borderColor: "background.paper",
                   bgcolor: "primary.main",
-                  fontSize: 32,
+                  fontSize: 'scale.4xl',
                   fontWeight: 600,
                 }}
               >

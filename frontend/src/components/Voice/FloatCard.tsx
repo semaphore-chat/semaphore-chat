@@ -28,6 +28,9 @@ import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { getFloatNavigationTarget } from '../../utils/voiceNavigation';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { VOICE_BAR_HEIGHT } from '../../constants/layout';
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../contexts/BottomChromeContext';
+import { useResponsive } from '../../hooks/useResponsive';
+import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import {
   PipPlacement,
   Point,
@@ -57,16 +60,25 @@ const PILL_SIZE: Size = { width: 200, height: 52 };
 // click — no dock zones shown, no placement change.
 const DRAG_THRESHOLD_PX = 5;
 
+/** Visible size of the float card's control buttons on touch (hit area is 44px). */
+const FLOAT_TOUCH_BUTTON = 36;
+
 function loadInitialPlacement(): PipPlacement {
   const saved = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
   return isValidPlacement(saved) ? saved : defaultPlacement();
 }
 
-function computeViewport(isConnected: boolean): Viewport {
+/**
+ * `chromeBottom` is everything registered in BottomChromeContext below the
+ * composer level — the voice bar, plus the in-flow bottom nav on tablet — so
+ * the card never covers the bar's controls. VOICE_BAR_HEIGHT stays as a floor
+ * while connected, for the moment before the bar has measured itself.
+ */
+function computeViewport(isConnected: boolean, chromeBottom: number): Viewport {
   return {
     width: window.innerWidth,
     height: window.innerHeight,
-    bottomInset: isConnected ? VOICE_BAR_HEIGHT : 0,
+    bottomInset: Math.max(chromeBottom, isConnected ? VOICE_BAR_HEIGHT : 0),
   };
 }
 
@@ -95,10 +107,20 @@ export const FloatCard: React.FC = () => {
   const { isActive: isPTTActive } = usePushToTalk();
   const micGuarded = isPTTActive || state.isServerMuted;
   const selection = useFloatTileSelection();
+  // Phone/tablet layouts (incl. an Electron window at tablet width): the
+  // composer spans the content column right above the voice bar, so the card
+  // must clear it too — otherwise its default bottom-right spot sits on the
+  // text field. On desktop the card's corner is over the member list, so
+  // only the chrome below the composer (the voice bar) counts.
+  const { isMobile, isTablet } = useResponsive();
+  const touchLayout = isMobile || isTablet;
+  const chromeBottom = useBottomChromeOffset(
+    touchLayout ? BOTTOM_CHROME_ORDER.TOAST : BOTTOM_CHROME_ORDER.COMPOSER,
+  ).px;
   const [isCardHovered, setIsCardHovered] = useState(false);
 
   const [placement, setPlacement] = useState<PipPlacement>(loadInitialPlacement);
-  const [viewport, setViewport] = useState<Viewport>(() => computeViewport(state.isConnected));
+  const [viewport, setViewport] = useState<Viewport>(() => computeViewport(state.isConnected, chromeBottom));
 
   // Transient gesture state — absolute pixel position/size while a
   // drag/resize is in progress. null when idle, so rendered position/size
@@ -135,7 +157,7 @@ export const FloatCard: React.FC = () => {
   // Position is derived (toAbsolute), so viewport changes only need to
   // re-clamp size — the old dedicated position-clamp effect is gone.
   const recomputeViewport = useCallback(() => {
-    const vp = computeViewport(state.isConnected);
+    const vp = computeViewport(state.isConnected, chromeBottom);
     setViewport(vp);
     setPlacement(prev => {
       const clampedSize = clampSizeToViewport(prev.size, vp);
@@ -146,9 +168,10 @@ export const FloatCard: React.FC = () => {
       setCachedItem(PIP_PLACEMENT_KEY, next);
       return next;
     });
-  }, [state.isConnected]);
+  }, [state.isConnected, chromeBottom]);
 
-  // Re-derive on mount and whenever the voice bar's presence changes.
+  // Re-derive on mount and whenever the voice bar's presence (or the
+  // bottom chrome's height) changes.
   useEffect(() => {
     recomputeViewport();
   }, [recomputeViewport]);
@@ -365,7 +388,7 @@ export const FloatCard: React.FC = () => {
           <Badge badgeContent={participantCount} color="primary">
             <People />
           </Badge>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" fontWeight="medium" noWrap sx={{ minWidth: 0, maxWidth: 140 }}>
             {displayName}
           </Typography>
           <Tooltip title="Expand">
@@ -425,7 +448,7 @@ export const FloatCard: React.FC = () => {
           onPointerDown={handleDragStart}
         >
           <DragIndicator fontSize="small" sx={{ color: 'text.secondary' }} />
-          <Typography variant="caption" fontWeight="medium" noWrap sx={{ maxWidth: 200 }}>
+          <Typography variant="caption" fontWeight="medium" noWrap sx={{ minWidth: 0, flex: 1 }}>
             {displayName}
           </Typography>
         </Box>
@@ -437,33 +460,33 @@ export const FloatCard: React.FC = () => {
           onClick={handleCardClick}
         >
           {!selection ? null : selection.kind === 'avatar' ? (
+            // Avatar + name stacked in the middle of the tile; the bottom
+            // padding keeps the name clear of the control strip, which is
+            // always visible on touch.
             <Box
               sx={{
                 width: '100%',
                 height: '100%',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
+                gap: 1,
+                px: 1.5,
+                pb: 6,
+                pt: 1,
+                boxSizing: 'border-box',
                 backgroundColor: 'grey.800',
-                position: 'relative',
               }}
             >
               <Box sx={{ height: 'min(120px, 60%)', aspectRatio: '1 / 1', flexShrink: 1, minHeight: 32 }}>
                 <UserAvatar userId={selection.participant.identity} displayName={selection.participant.name} size="fluid" />
               </Box>
-              <Box
-                sx={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  backgroundImage: `linear-gradient(transparent, ${alpha(theme.palette.background.paper, 0.85)})`,
-                  p: 1,
-                }}
-              >
+              <Box data-testid="float-card-avatar-label" sx={{ maxWidth: '100%', minWidth: 0, display: 'flex' }}>
                 <Typography
                   variant="caption"
-                  sx={{ color: 'white', fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+                  noWrap
+                  sx={{ color: 'white', fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.8)', minWidth: 0 }}
                 >
                   {selection.participant.name || selection.participant.identity}
                   {isLocalSelection && ' (You)'}
@@ -499,6 +522,19 @@ export const FloatCard: React.FC = () => {
               transition: 'opacity 0.15s ease',
               '@media (hover: none)': {
                 opacity: 1,
+              },
+              // Touch: 36px buttons plus a 4px invisible outset each (the gap
+              // is 8px), so every control is a 44px tap target.
+              '@media (pointer: coarse)': {
+                '& .MuiIconButton-root': {
+                  width: FLOAT_TOUCH_BUTTON,
+                  height: FLOAT_TOUCH_BUTTON,
+                  '&::after': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: -(TOUCH_TARGETS.MINIMUM - FLOAT_TOUCH_BUTTON) / 2,
+                  },
+                },
               },
             }}
           >

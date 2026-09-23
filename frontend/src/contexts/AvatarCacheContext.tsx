@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useRef, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useRef, useCallback, useEffect, useMemo } from "react";
 import { getApiUrl } from "../config/env";
 import { getAccessToken } from "../utils/tokenService";
 import { logger } from "../utils/logger";
@@ -180,13 +180,12 @@ export const FileCacheProvider: React.FC<FileCacheProviderProps> = ({
     };
   }, []);
 
-  const value: FileCacheContextType = {
-    getBlob,
-    setBlob,
-    hasBlob,
-    fetchBlob,
-    fetchThumbnail,
-  };
+  // Stable identity: every useAuthenticatedFile effect depends on it, so a
+  // new object per provider render would restart every file fetch effect.
+  const value = useMemo<FileCacheContextType>(
+    () => ({ getBlob, setBlob, hasBlob, fetchBlob, fetchThumbnail }),
+    [getBlob, setBlob, hasBlob, fetchBlob, fetchThumbnail],
+  );
 
   return (
     <FileCacheContext.Provider value={value}>

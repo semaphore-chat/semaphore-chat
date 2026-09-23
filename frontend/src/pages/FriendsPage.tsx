@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 import { Box, Paper } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { FriendsPanel } from "../components/Friends";
+import { useResponsive } from "../hooks/useResponsive";
 
+// Desktop: a centred card floating over the page.
 const Root = styled(Box)({
   display: "flex",
   height: "100%",
@@ -30,11 +32,31 @@ const Container = styled(Paper)(({ theme }) => ({
 
 const FriendsPage: React.FC = () => {
   const navigate = useNavigate();
+  const { isMobile, isTablet } = useResponsive();
 
   const handleSelectDmGroup = (dmGroupId: string) => {
-    // Navigate to DM page with the selected group
-    navigate(`/dm?group=${dmGroupId}`);
+    navigate(`/direct-messages/${dmGroupId}`);
   };
+
+  // Phone / tablet: the page renders inside the screen's scroll area below
+  // the app bar (which already says "Friends"), so fill it in normal flow
+  // instead of floating an absolutely positioned card over the whole layer.
+  if (isMobile || isTablet) {
+    return (
+      <Paper
+        square
+        elevation={0}
+        sx={{
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+      >
+        <FriendsPanel onSelectDmGroup={handleSelectDmGroup} hideTitle />
+      </Paper>
+    );
+  }
 
   return (
     <Root>

@@ -192,4 +192,15 @@ describe('useLogout', () => {
     const { result } = renderUseLogout();
     expect(result.current.logoutLoading).toBe(false);
   });
+
+  it('clears saved composer drafts so the next user on this tab does not see them', async () => {
+    sessionStorage.setItem('semaphore:composerDraft:channel:c1', 'secret draft');
+    sessionStorage.setItem('unrelated', 'keep');
+    const { result } = renderUseLogout();
+    await act(async () => {
+      await result.current.handleLogout();
+    });
+    expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
+    expect(sessionStorage.getItem('unrelated')).toBe('keep');
+  });
 });

@@ -75,11 +75,11 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
             >
               <Avatar
                 src={reader.avatarUrl ?? undefined}
-                sx={{ width: 18, height: 18, fontSize: 10 }}
+                sx={{ width: 18, height: 18, fontSize: 'scale.2xs' }}
               >
                 {(reader.displayName || reader.username)?.[0]?.toUpperCase()}
               </Avatar>
-              <Typography variant="body2" sx={{ fontSize: 12 }}>
+              <Typography variant="body2" sx={{ fontSize: 'scale.sm' }}>
                 {reader.displayName || reader.username}
               </Typography>
             </Box>
@@ -88,7 +88,7 @@ export const SeenByTooltip: React.FC<SeenByTooltipProps> = ({
             <Typography
               variant="body2"
               sx={{
-                fontSize: 12,
+                fontSize: 'scale.sm',
                 fontStyle: "italic",
                 color: "text.secondary",
                 mt: 0.5,

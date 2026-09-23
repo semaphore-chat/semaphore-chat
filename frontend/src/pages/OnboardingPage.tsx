@@ -72,7 +72,7 @@ const OnboardingPage: React.FC = () => {
   }
 
   return (
-    <Box sx={{ minHeight: 'var(--full-dvh)', bgcolor: 'background.default' }}>
+    <Box sx={{ minHeight: 'var(--full-dvh)', bgcolor: 'background.canvas' }}>
       <OnboardingWizard
         setupToken={status.setupToken}
         onComplete={handleComplete}

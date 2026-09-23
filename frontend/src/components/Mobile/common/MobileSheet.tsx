@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { Close as CloseIcon } from '@mui/icons-material';
 import { MOBILE_ANIMATIONS, TOUCH_TARGETS } from '../../../utils/breakpoints';
+import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
 
 interface MobileSheetProps {
   open: boolean;
@@ -42,6 +43,10 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
 }) => {
   // iOS detection for swipe hints
   const iOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+  // Hardware/browser back closes the sheet instead of leaving the screen.
+  // Sheets are only rendered on touch layouts, so this is always on.
+  useOverlayHistory(open, onClose);
 
   return (
     <SwipeableDrawer
@@ -105,7 +110,7 @@ export const MobileSheet: React.FC<MobileSheetProps> = ({
               <IconButton
                 onClick={onClose}
                 size="small"
-                sx={{ mr: -1 }}
+                sx={{ mr: -1, minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM }}
                 aria-label="Close"
               >
                 <CloseIcon />

@@ -33,7 +33,7 @@ export const UnreadMessageDivider: React.FC<UnreadMessageDividerProps> = ({
         sx={{
           color: "error.main",
           fontWeight: 600,
-          fontSize: "0.75rem",
+          fontSize: 'scale.sm',
           letterSpacing: "0.5px",
           whiteSpace: "nowrap",
         }}

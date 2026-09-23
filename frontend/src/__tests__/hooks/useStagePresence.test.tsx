@@ -5,18 +5,27 @@ import { useStagePresence } from '../../hooks/useStagePresence';
 import { VoiceActionType } from '../../contexts/VoiceContext';
 
 const mockDispatch = vi.fn();
+let mockNoProvider = false;
 
 vi.mock('../../contexts/VoiceContext', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../contexts/VoiceContext')>();
   return {
     ...actual,
     useVoiceDispatch: vi.fn(() => ({ dispatch: mockDispatch })),
+    useOptionalVoiceDispatch: vi.fn(() => (mockNoProvider ? null : { dispatch: mockDispatch })),
   };
 });
 
 describe('useStagePresence', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockNoProvider = false;
+  });
+
+  it('is a no-op (does not throw) outside a VoiceProvider', () => {
+    mockNoProvider = true;
+    expect(() => renderHook(() => useStagePresence(true)).unmount()).not.toThrow();
+    expect(mockDispatch).not.toHaveBeenCalled();
   });
 
   it('dispatches SetStageMounted(true) on mount when active', () => {

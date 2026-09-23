@@ -266,122 +266,139 @@ describe('DmListItem', () => {
     });
   });
 
-  describe('unread indicators', () => {
-    it('shows unread badge when unreadCount > 0', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
-
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          onClick={onClick}
-          unreadCount={3}
-        />,
+  describe('unread indicators (one indicator per state)', () => {
+    const renderUnread = (props: { unreadCount?: number; mentionCount?: number; isSelected?: boolean }) => {
+      const group = createDmGroup({ isGroup: false, members: [currentMember, otherMember] });
+      return renderWithProviders(
+        <DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={onClick} {...props} />,
       );
+    };
 
-      expect(screen.getByTestId('unread-badge')).toBeInTheDocument();
+    it('shows a dot for exactly one unread message', () => {
+      renderUnread({ unreadCount: 1 });
+      const badges = screen.getAllByTestId('unread-badge');
+      expect(badges).toHaveLength(1);
+      expect(badges[0].querySelector('.MuiBadge-dot')).toBeInTheDocument();
+      expect(badges[0]).not.toHaveTextContent(/\d/);
     });
 
-    it('shows mention count in badge when mentionCount > 0', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
-
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          onClick={onClick}
-          unreadCount={5}
-          mentionCount={2}
-        />,
-      );
-
-      const badge = screen.getByTestId('unread-badge');
-      expect(badge).toBeInTheDocument();
-      expect(badge.querySelector('.MuiBadge-badge')).toHaveTextContent('2');
+    it('shows a count for more than one unread message (no separate dot)', () => {
+      renderUnread({ unreadCount: 3 });
+      const badges = screen.getAllByTestId('unread-badge');
+      expect(badges).toHaveLength(1);
+      expect(badges[0].querySelector('.MuiBadge-dot')).not.toBeInTheDocument();
+      expect(badges[0].querySelector('.MuiBadge-badge')).toHaveTextContent('3');
     });
 
-    it('shows dot badge when unread but no mentions', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
+    it('shows a single count when there are mentions too', () => {
+      renderUnread({ unreadCount: 5, mentionCount: 2 });
+      const badges = screen.getAllByTestId('unread-badge');
+      expect(badges).toHaveLength(1);
+      expect(badges[0].querySelector('.MuiBadge-badge')).toHaveTextContent('5');
+    });
 
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          onClick={onClick}
-          unreadCount={3}
-          mentionCount={0}
-        />,
-      );
-
-      const badge = screen.getByTestId('unread-badge');
-      expect(badge).toBeInTheDocument();
-      expect(badge.querySelector('.MuiBadge-dot')).toBeInTheDocument();
+    it('caps the count at 99+', () => {
+      renderUnread({ unreadCount: 150 });
+      expect(screen.getByTestId('unread-badge').querySelector('.MuiBadge-badge')).toHaveTextContent('99+');
     });
 
     it('does not show badge when unreadCount is 0', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
-
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          onClick={onClick}
-          unreadCount={0}
-        />,
-      );
-
+      renderUnread({ unreadCount: 0 });
       expect(screen.queryByTestId('unread-badge')).not.toBeInTheDocument();
     });
 
     it('does not show badge when item is selected even if unread', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
-
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          isSelected
-          onClick={onClick}
-          unreadCount={5}
-          mentionCount={2}
-        />,
-      );
-
+      renderUnread({ unreadCount: 5, mentionCount: 2, isSelected: true });
       expect(screen.queryByTestId('unread-badge')).not.toBeInTheDocument();
     });
 
     it('bolds DM name when unread', () => {
-      const group = createDmGroup({
-        isGroup: false,
-        members: [currentMember, otherMember],
-      });
-
-      renderWithProviders(
-        <DmListItem
-          group={group}
-          currentUserId={CURRENT_USER_ID}
-          onClick={onClick}
-          unreadCount={3}
-        />,
-      );
-
-      const nameElement = screen.getByText('Alice Smith');
-      expect(nameElement).toHaveStyle({ fontWeight: 700 });
+      renderUnread({ unreadCount: 3 });
+      expect(screen.getByText('Alice Smith')).toHaveStyle({ fontWeight: 700 });
     });
+  });
+
+  describe('layout', () => {
+    const lastMessage = {
+      id: 'msg-1',
+      authorId: 'other-user',
+      spans: [{ type: 'PLAINTEXT' as const, text: 'Hey there!', userId: null, specialKind: null, communityId: null, aliasId: null }],
+      sentAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    };
+
+    it.each([[0], [1], [7]])('keeps the timestamp on the name row (unread=%s)', (unreadCount) => {
+      const group = createDmGroup({ isGroup: false, members: [currentMember, otherMember], lastMessage });
+      renderWithProviders(
+        <DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={onClick} unreadCount={unreadCount} />,
+      );
+      const time = screen.getByTestId('dm-last-time');
+      expect(time).toHaveTextContent('5m');
+      expect(time.parentElement).toContainElement(screen.getByText('Alice Smith'));
+    });
+
+    it('keeps 32-character no-space and Arabic names on one line with an ellipsis', () => {
+      for (const name of ['x'.repeat(32), 'عبد الرحمن بن محمد الهاشمي']) {
+        const other = createDmGroupMember({
+          id: `m-${name.length}`,
+          userId: 'o',
+          user: { id: 'o', username: 'o', displayName: name, avatarUrl: null },
+        });
+        const group = createDmGroup({ isGroup: false, members: [currentMember, other], lastMessage });
+        const { unmount } = renderWithProviders(
+          <DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={onClick} />,
+        );
+        expect(screen.getByText(name)).toHaveStyle({
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        });
+        unmount();
+      }
+    });
+
+    it('shows unnamed group DMs as "A, B + N"', () => {
+      const others = Array.from({ length: 15 }, (_, i) =>
+        createDmGroupMember({
+          id: `gm-${i}`,
+          userId: `g-${i}`,
+          user: { id: `g-${i}`, username: `user${i}`, displayName: `Person ${i}`, avatarUrl: null },
+        }),
+      );
+      const group = createDmGroup({ isGroup: true, members: [currentMember, ...others] });
+      renderWithProviders(<DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={onClick} />);
+      expect(screen.getByTestId('dm-name')).toHaveTextContent(/^Person 0, Person 1 \+ 13$/);
+      // Only the names ellipsise; the "+ 13" count always stays visible.
+      expect(screen.getByText('Person 0, Person 1')).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
+      expect(screen.getByText('+ 13')).toHaveStyle({ flexShrink: '0' });
+    });
+
+    it('exposes the full group member list as a title tooltip', () => {
+      const others = Array.from({ length: 5 }, (_, i) =>
+        createDmGroupMember({
+          id: `gm-${i}`,
+          userId: `g-${i}`,
+          user: { id: `g-${i}`, username: `user${i}`, displayName: `Person ${i}`, avatarUrl: null },
+        }),
+      );
+      const group = createDmGroup({ isGroup: true, members: [currentMember, ...others] });
+      renderWithProviders(<DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={onClick} />);
+      expect(screen.getByTestId('dm-name')).toHaveAttribute(
+        'title',
+        'Person 0, Person 1, Person 2, Person 3, Person 4',
+      );
+    });
+  });
+});
+
+describe('DmListItem theme matrix', () => {
+  it('renders in every theme', async () => {
+    const { renderInEveryTheme } = await import('../test-utils/themeMatrix');
+    const group = createDmGroup({ isGroup: false, members: [currentMember, otherMember] });
+    renderInEveryTheme(
+      () => <DmListItem group={group} currentUserId={CURRENT_USER_ID} onClick={() => {}} unreadCount={4} />,
+      () => {
+        expect(screen.getByText('Alice Smith')).toBeInTheDocument();
+      },
+    );
   });
 });

@@ -84,6 +84,9 @@ export const ROOM_EVENT = {
   TrackSubscriptionStatusChanged:
     'trackSubscriptionStatusChanged' satisfies `${RoomEvent.TrackSubscriptionStatusChanged}`,
   ParticipantConnected: 'participantConnected' satisfies `${RoomEvent.ParticipantConnected}`,
+  ParticipantMetadataChanged:
+    'participantMetadataChanged' satisfies `${RoomEvent.ParticipantMetadataChanged}`,
+  Connected: 'connected' satisfies `${RoomEvent.Connected}`,
   ParticipantDisconnected:
     'participantDisconnected' satisfies `${RoomEvent.ParticipantDisconnected}`,
   LocalTrackPublished: 'localTrackPublished' satisfies `${RoomEvent.LocalTrackPublished}`,

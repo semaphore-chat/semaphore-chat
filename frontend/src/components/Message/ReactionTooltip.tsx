@@ -12,12 +12,12 @@ interface ReactionTooltipProps {
 const UserName: React.FC<{ userId: string }> = ({ userId }) => {
   const { data: user, isLoading } = useQuery(userControllerGetUserByIdOptions({ path: { id: userId } }));
   
-  if (isLoading) return <Typography variant="body2" sx={{ fontSize: '12px' }}>Loading...</Typography>;
+  if (isLoading) return <Typography variant="body2" sx={{ fontSize: 'scale.sm' }}>Loading...</Typography>;
   
   const displayName = user?.displayName || user?.username || `User ${userId.slice(-4)}`;
   
   return (
-    <Typography variant="body2" sx={{ fontSize: '12px' }}>
+    <Typography variant="body2" sx={{ fontSize: 'scale.sm' }}>
       {displayName}
     </Typography>
   );
@@ -34,7 +34,7 @@ export const ReactionTooltip: React.FC<ReactionTooltipProps> = ({ userIds, child
         <UserName key={userId} userId={userId} />
       ))}
       {remainingCount > 0 && (
-        <Typography variant="body2" sx={{ fontSize: '12px', fontStyle: 'italic', mt: 0.5 }}>
+        <Typography variant="body2" sx={{ fontSize: 'scale.sm', fontStyle: 'italic', mt: 0.5 }}>
           +{remainingCount} more
         </Typography>
       )}

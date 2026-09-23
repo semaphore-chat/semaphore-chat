@@ -32,42 +32,42 @@ interface EmptyStateProps {
 
 const variantConfig: Record<EmptyStateVariant, { icon: React.ReactNode; title: string; description: string }> = {
   messages: {
-    icon: <ForumIcon sx={{ fontSize: 64 }} />,
+    icon: <ForumIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No messages yet',
     description: 'Start the conversation by sending a message!',
   },
   dm: {
-    icon: <ChatIcon sx={{ fontSize: 64 }} />,
+    icon: <ChatIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No conversations',
     description: 'Start a direct message to connect with others.',
   },
   clips: {
-    icon: <VideoIcon sx={{ fontSize: 64 }} />,
+    icon: <VideoIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No clips yet',
     description: 'Capture a replay while screen sharing to save your best moments.',
   },
   notifications: {
-    icon: <NotificationsIcon sx={{ fontSize: 64 }} />,
+    icon: <NotificationsIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'All caught up!',
     description: "You don't have any notifications right now.",
   },
   search: {
-    icon: <SearchIcon sx={{ fontSize: 64 }} />,
+    icon: <SearchIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No results found',
     description: 'Try adjusting your search terms or filters.',
   },
   members: {
-    icon: <GroupIcon sx={{ fontSize: 64 }} />,
+    icon: <GroupIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No members',
     description: 'Invite people to join this community.',
   },
   channels: {
-    icon: <ForumIcon sx={{ fontSize: 64 }} />,
+    icon: <ForumIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'No channels',
     description: 'Create a channel to start conversations.',
   },
   generic: {
-    icon: <ForumIcon sx={{ fontSize: 64 }} />,
+    icon: <ForumIcon sx={{ fontSize: 'icon.6xl' }} />,
     title: 'Nothing here yet',
     description: 'Content will appear here once available.',
   },

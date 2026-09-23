@@ -17,19 +17,25 @@ export const getNotificationTypeLabel = (type: NotificationType): string => {
     case NotificationType.USER_MENTION:
       return 'Mentioned you';
     case NotificationType.SPECIAL_MENTION:
-      return 'Mentioned @everyone/@here';
+      return 'Mentioned everyone';
     case NotificationType.DIRECT_MESSAGE:
       return 'Sent a message';
     case NotificationType.CHANNEL_MESSAGE:
       return 'New message';
+    case NotificationType.THREAD_REPLY:
+      return 'Replied in a thread';
     default:
       return 'Notification';
   }
 };
 
+/** Author's display name, falling back to the username, then "Someone". */
+export const getNotificationAuthorName = (notification: Notification): string =>
+  notification.author?.displayName || notification.author?.username || 'Someone';
+
 /** Single-line notification summary combining author + action + preview */
 export const getNotificationText = (notification: Notification): string => {
-  const authorName = notification.author?.username || 'Someone';
+  const authorName = getNotificationAuthorName(notification);
   const messageText = getMessagePreview(notification);
 
   switch (notification.type) {
@@ -41,6 +47,10 @@ export const getNotificationText = (notification: Notification): string => {
       return `${authorName}: ${messageText || 'New message'}`;
     case NotificationType.CHANNEL_MESSAGE:
       return `${authorName}: ${messageText || 'New message'}`;
+    case NotificationType.THREAD_REPLY:
+      return messageText
+        ? `${authorName} replied in a thread: ${messageText}`
+        : `${authorName} replied in a thread`;
     default:
       return 'New notification';
   }

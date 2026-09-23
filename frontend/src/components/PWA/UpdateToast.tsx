@@ -6,6 +6,15 @@ import {
   shouldShowUpdate,
   applyUpdate,
 } from '../../utils/swUpdate';
+import {
+  BOTTOM_CHROME_ORDER,
+  TOAST_PRIORITY,
+  snackbarBottomSx,
+  useBottomChromeOffset,
+  useMeasuredChromeItem,
+  useSnackbarGap,
+  useToastQueue,
+} from '../../contexts/BottomChromeContext';
 
 /**
  * "Update available" toast.
@@ -17,10 +26,25 @@ import {
  * It stays hidden while the update is deferred — the voice layer raises the
  * deferral flag during a call (see swUpdate.setUpdateDeferred) so an update
  * never reloads the page mid-call. Once the call ends the toast reappears.
+ *
+ * It queues with the other snackbars (only one shows at a time; the update
+ * goes ahead of the install prompt) and sits above the nav / voice bar /
+ * composer via BottomChromeContext.
  */
 export const UpdateToast: React.FC = () => {
   const show = useSyncExternalStore(subscribeSwUpdate, shouldShowUpdate);
   const [isReloading, setIsReloading] = useState(false);
+  const isMyTurn = useToastQueue('update', TOAST_PRIORITY.UPDATE, show);
+  const open = show && isMyTurn;
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST);
+  const snackbarGap = useSnackbarGap();
+  const measureRef = useMeasuredChromeItem({
+    extraHeight: snackbarGap,
+    id: 'toast-update',
+    order: BOTTOM_CHROME_ORDER.TOAST,
+    fallbackHeight: 48,
+    enabled: open,
+  });
 
   const handleReload = () => {
     setIsReloading(true);
@@ -31,8 +55,11 @@ export const UpdateToast: React.FC = () => {
 
   return (
     <Snackbar
-      open={show}
+      ref={measureRef}
+      open={open}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      data-chrome-offset={offset.px}
+      sx={snackbarBottomSx(offset, snackbarGap)}
       message="Update available"
       action={
         <Button

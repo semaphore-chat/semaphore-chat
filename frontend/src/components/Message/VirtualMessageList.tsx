@@ -13,6 +13,8 @@ import { VList, type VListHandle } from "virtua";
 import MessageComponent from "./MessageComponent";
 import MessageSkeleton from "./MessageSkeleton";
 import { UnreadMessageDivider } from "./UnreadMessageDivider";
+import { DaySeparator } from "./DaySeparator";
+import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 
@@ -685,6 +687,10 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       ],
     );
 
+    // Where DaySeparators go, and whether each row's day is already named by
+    // one above it (header then shows "4:12 PM", not "Yesterday 4:12 PM").
+    const dayRows = dayMarkers(orderedMessages);
+
     return (
       <Box
         ref={listContainerRef}
@@ -725,6 +731,12 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
             const isHighlighted = highlightMessageId === message.id;
             const showDividerBefore =
               unreadCount > 0 && lastReadIndex !== -1 && index === lastReadIndex + 1;
+            const prevMessage = index > 0 ? orderedMessages[index - 1] : undefined;
+            const { separator: showDaySeparator, dayShownAbove } = dayRows[index];
+            // Same-author run within 5 min (see utils/messageGrouping); the
+            // unread divider always starts a fresh header below it.
+            const grouped =
+              !showDividerBefore && shouldGroupWithPrevious(prevMessage, message);
             // Key by clientId when present so an optimistic message's row
             // survives the id swap (pending-<uuid> -> real id) on
             // reconciliation without remounting (PR-13 fix round 1, Minor
@@ -744,11 +756,14 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
 
             return (
               <div key={key} data-message-id={message.id} role="listitem">
+                {showDaySeparator && <DaySeparator date={message.sentAt} />}
                 {showDividerBefore && (
                   <UnreadMessageDivider unreadCount={unreadCount} />
                 )}
                 <MessageComponent
                   message={message}
+                  grouped={grouped}
+                  dayShownAbove={dayShownAbove}
                   isAuthor={message.authorId === authorId}
                   isSearchHighlight={isHighlighted}
                   contextId={contextId}

@@ -113,8 +113,8 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
 
         <ListItemText
           primary={
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-              <Typography variant="body2" fontWeight="medium">
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1, minWidth: 0 }}>
+              <Typography variant="body2" fontWeight="medium" noWrap sx={{ minWidth: 0 }}>
                 {user.displayName || user.username}
               </Typography>
               <Box

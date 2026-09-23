@@ -310,7 +310,7 @@ const EmojiPickerContent: React.FC<{
           fullWidth
           sx={{
             '& .MuiOutlinedInput-root': {
-              fontSize: '0.85rem',
+              fontSize: 'scale.base',
               borderRadius: '8px',
               backgroundColor: 'action.hover',
               '& fieldset': {
@@ -331,7 +331,7 @@ const EmojiPickerContent: React.FC<{
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
-                <SearchIcon sx={{ fontSize: '1rem', color: 'text.disabled' }} />
+                <SearchIcon sx={{ fontSize: 'icon.md', color: 'text.disabled' }} />
               </InputAdornment>
             ),
             endAdornment: searchQuery && (
@@ -341,7 +341,7 @@ const EmojiPickerContent: React.FC<{
                   onClick={() => setSearchQuery('')}
                   sx={{ p: 0.5 }}
                 >
-                  <ClearIcon sx={{ fontSize: '0.9rem' }} />
+                  <ClearIcon sx={{ fontSize: 'icon.sm' }} />
                 </IconButton>
               </InputAdornment>
             ),
@@ -383,7 +383,7 @@ const EmojiPickerContent: React.FC<{
               sx={{
                 display: 'block',
                 mb: 0.75,
-                fontSize: '0.7rem',
+                fontSize: 'scale.xs',
                 fontWeight: 500,
                 color: 'text.disabled',
                 textTransform: 'uppercase',
@@ -448,7 +448,7 @@ const EmojiPickerContent: React.FC<{
                   display: 'block',
                   mb: 0.75,
                   mt: index === 0 ? 0 : 1,
-                  fontSize: '0.7rem',
+                  fontSize: 'scale.xs',
                   fontWeight: 500,
                   color: 'text.disabled',
                   textTransform: 'uppercase',

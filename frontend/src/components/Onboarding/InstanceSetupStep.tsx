@@ -56,7 +56,7 @@ const InstanceSetupStep: React.FC<InstanceSetupStepProps> = ({
   return (
     <Box>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <SettingsIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        <SettingsIcon sx={{ fontSize: 'icon.5xl', color: 'primary.main', mb: 2 }} />
         <Typography variant="h4" gutterBottom>
           Configure Your Instance
         </Typography>

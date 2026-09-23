@@ -13,8 +13,8 @@ import { MobileChatPanel } from '../Panels/MobileChatPanel';
 import { MobileMessagesPanel } from '../Panels/MobileMessagesPanel';
 import { MobileProfilePanel } from '../Panels/MobileProfilePanel';
 import { NotificationsScreen } from '../Screens/NotificationsScreen';
+import { MobileSearchScreen } from '../Screens/MobileSearchScreen';
 import SettingsPage from '../../../pages/SettingsPage';
-import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
 import MobileAppBar from '../MobileAppBar';
 
 interface TabletContentAreaProps {
@@ -30,15 +30,17 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
   bottomOffset = 0,
 }) => {
   const { state } = useMobileNavigation();
-  const { currentScreen, communityId, channelId, dmGroupId } = state;
+  const { currentScreen, communityId, channelId, dmGroupId, userId } = state;
 
-  const totalBottomOffset = LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE + bottomOffset;
+  // The bottom nav and voice bar are in normal flow below the content row
+  // (TabletLayout), so only an explicit extra offset needs padding here.
+  const totalBottomOffset = bottomOffset;
 
   const renderContent = () => {
     switch (currentScreen) {
       case 'channels':
         // On tablet with sidebar, show welcome message if no channel selected
-        if (showSidebar && !channelId) {
+        if (showSidebar && communityId && !channelId) {
           return (
             <Box
               sx={{
@@ -61,7 +63,7 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
             </Box>
           );
         }
-        // If no sidebar (no community), show empty state
+        // No community yet: the sidebar offers "Choose a community".
         if (!communityId) {
           return (
             <Box
@@ -79,7 +81,7 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
                 No Community Selected
               </Typography>
               <Typography variant="body2" color="text.secondary" textAlign="center">
-                Swipe from the left edge or tap the menu icon to select a community.
+                Choose a community from the sidebar to see its channels.
               </Typography>
             </Box>
           );
@@ -90,15 +92,22 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
         if (!communityId || !channelId) {
           return null;
         }
-        // On tablet, chat is shown without back button (sidebar is visible)
+        // The sidebar (channel list + nav) is visible, so no back button.
         return (
           <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
             <MobileChatPanel
               communityId={communityId}
               channelId={channelId}
+              hideBack={showSidebar}
             />
           </Box>
         );
+
+      case 'search':
+        if (!communityId || !channelId) {
+          return null;
+        }
+        return <MobileSearchScreen communityId={communityId} channelId={channelId} />;
 
       case 'dm-list':
         return <MobileMessagesPanel />;
@@ -107,13 +116,17 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
         if (!dmGroupId) {
           return null;
         }
-        return <MobileChatPanel dmGroupId={dmGroupId} />;
+        // Messages in the sidebar nav returns to the DM list, so no back button.
+        return <MobileChatPanel dmGroupId={dmGroupId} hideBack={showSidebar} />;
 
       case 'notifications':
         return <NotificationsScreen />;
 
       case 'profile':
         return <MobileProfilePanel />;
+
+      case 'user-profile':
+        return userId ? <MobileProfilePanel userId={userId} /> : null;
 
       case 'settings':
         // Previously fell through to null, leaving a blank pane on tablets.
@@ -142,9 +155,6 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
     }
   };
 
-  // For non-home tabs, we don't show sidebar so need full-width content with app bar
-  const needsOwnAppBar = !showSidebar && currentScreen !== 'chat' && currentScreen !== 'dm-chat';
-
   return (
     <Box
       sx={{
@@ -153,14 +163,9 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',
-        backgroundColor: 'background.default',
+        backgroundColor: 'background.canvas',
       }}
     >
-      {/* App bar for screens without sidebar */}
-      {needsOwnAppBar && currentScreen === 'channels' && !communityId && (
-        <MobileAppBar title="Home" showDrawerTrigger />
-      )}
-
       {/* Content */}
       <Box
         sx={{

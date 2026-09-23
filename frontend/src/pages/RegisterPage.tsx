@@ -7,9 +7,10 @@ import {
   Typography,
   Alert,
   CircularProgress,
+  Link,
 } from "@mui/material";
 import { styled } from "@mui/system";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, Link as RouterLink } from "react-router-dom";
 import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
 import { useMutation } from "@tanstack/react-query";
 import { userControllerRegisterMutation, authControllerLoginMutation } from "../api-client/@tanstack/react-query.gen";
@@ -20,6 +21,8 @@ const FormContainer = styled(Box)({
   alignItems: "center",
   justifyContent: "center",
   padding: "16px",
+  minHeight: "var(--full-dvh)",
+  boxSizing: "border-box",
 });
 
 const FormBox = styled(Box)({
@@ -146,7 +149,7 @@ const RegisterPage: React.FC = () => {
         </Button>
         <Typography variant="body2" color="textSecondary" sx={{ marginTop: 2 }}>
           Already have an account?{" "}
-          <Link to="/login" aria-label="Go to login page">
+          <Link component={RouterLink} underline="hover" to="/login" aria-label="Go to login page">
             Login here
           </Link>
         </Typography>

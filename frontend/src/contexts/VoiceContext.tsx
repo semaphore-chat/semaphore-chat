@@ -268,8 +268,21 @@ function initVoiceState(base: VoiceState): VoiceState {
   return { ...base, pipCollapsed: collapsed };
 }
 
-export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(voiceReducer, initialState, initVoiceState);
+export const VoiceProvider: React.FC<{
+  children: React.ReactNode;
+  /**
+   * Test/sandbox-only seam: seeds the reducer's initial state instead of the
+   * default disconnected state (e.g. Ladle stories rendering a "connected"
+   * voice bar without a real LiveKit connection). Applied on top of the
+   * persisted state, so it wins. Unused in production — AuthGate never
+   * passes it.
+   */
+  initialState?: Partial<VoiceState>;
+}> = ({ children, initialState: initialStateOverride }) => {
+  const [state, dispatch] = useReducer(voiceReducer, initialState, (base: VoiceState) => {
+    const loaded = initVoiceState(base);
+    return initialStateOverride ? { ...loaded, ...initialStateOverride } : loaded;
+  });
   const stateRef = useRef(state);
   // Tracks the last-persisted value so the mirror effect below only writes
   // on an actual change, never on mount (initVoiceState already loaded it).
@@ -319,4 +332,12 @@ export function useVoiceDispatch() {
   const ctx = useContext(VoiceDispatchContext);
   if (!ctx) throw new Error('useVoiceDispatch must be used within a VoiceProvider');
   return ctx;
+}
+
+/**
+ * Like `useVoiceDispatch`, but returns null outside a VoiceProvider instead of
+ * throwing — for hooks used by panels that are also rendered standalone.
+ */
+export function useOptionalVoiceDispatch() {
+  return useContext(VoiceDispatchContext);
 }

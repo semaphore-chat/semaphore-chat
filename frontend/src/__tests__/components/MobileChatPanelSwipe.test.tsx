@@ -5,6 +5,19 @@ import { MobileChatPanel } from '../../components/Mobile/Panels/MobileChatPanel'
 import { isSwipeExemptTarget } from '../../utils/swipeExempt';
 import { MOBILE_CONSTANTS } from '../../utils/breakpoints';
 
+// Standalone (installed PWA) display mode is read through the breakpoints
+// helper; mocked so each test can flip it.
+const { mockIsStandalone } = vi.hoisted(() => ({ mockIsStandalone: vi.fn(() => false) }));
+vi.mock('../../utils/breakpoints', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../utils/breakpoints')>();
+  return {
+    ...actual,
+    isStandaloneDisplayMode: mockIsStandalone,
+    getBackGestureEdgeZone: () =>
+      mockIsStandalone() ? 0 : actual.MOBILE_CONSTANTS.EDGE_BACK_GESTURE_ZONE,
+  };
+});
+
 // Stable goBack mock so we can assert it was invoked.
 const goBack = vi.hoisted(() => vi.fn());
 
@@ -39,6 +52,7 @@ vi.mock('../../hooks/useSwipeGesture', async (importOriginal) => {
         onTouchStart: vi.fn(),
         onTouchMove: vi.fn(),
         onTouchEnd: vi.fn(),
+        onTouchCancel: vi.fn(),
         getSwipeState: vi.fn(),
       };
     },
@@ -49,6 +63,10 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
   useVoiceConnection: () => ({
     state: { isConnected: false, currentChannelId: null },
   }),
+}));
+
+vi.mock('../../hooks/useCurrentUser', () => ({
+  useCurrentUser: () => ({ user: { id: 'me', username: 'me' } }),
 }));
 
 vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
@@ -92,6 +110,7 @@ describe('MobileChatPanel swipe navigation wiring', () => {
     vi.clearAllMocks();
     captured.opts = null;
     mockUseResponsive.mockReturnValue({ shouldUseTouchUI: true, isMobile: true });
+    mockIsStandalone.mockReturnValue(false);
   });
 
   it('configures the swipe hook with edge/exempt/direction guards', () => {
@@ -159,5 +178,105 @@ describe('MobileChatPanel swipe navigation wiring', () => {
     rerender(<MobileChatPanel dmGroupId="dm1" />);
 
     expect(membersDrawerOpen()).toBe(false);
+  });
+
+  describe('drag-following back swipe', () => {
+    const surface = () => screen.getByTestId('mobile-chat-swipe-surface');
+
+    it('progress callbacks drive the live transform on phone', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(40, 2, 0.8));
+      expect(surface().style.transform).toBe('translateX(40px)');
+
+      act(() => captured.opts?.onProgress?.(120, 4, 1));
+      expect(surface().style.transform).toBe('translateX(120px)');
+      // No animation while the finger is down: it tracks 1:1.
+      expect(surface().style.transition).toBe('none');
+    });
+
+    it('does not follow a leftward drag past the origin', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(30, 0, 0.6));
+      act(() => captured.opts?.onProgress?.(-60, 0, 1));
+
+      expect(surface().style.transform).toBe('translateX(0px)');
+    });
+
+    it('does not move for a vertical (scroll) gesture', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(4, 40, 0.1));
+      act(() => captured.opts?.onProgress?.(80, 60, 1));
+
+      expect(surface().style.transform).toBe('');
+    });
+
+    it('does not navigate back when a scroll-locked gesture drifts sideways', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(4, 40, 0.1));
+      act(() => captured.opts?.onSwipeRight?.(1));
+      act(() => captured.opts?.onSwipeEnd?.('right'));
+
+      expect(goBack).not.toHaveBeenCalled();
+    });
+
+    it('snaps back when the gesture ends without committing', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(40, 0, 0.8));
+      act(() => captured.opts?.onSwipeEnd?.(null));
+
+      expect(surface().style.transform).toBe('');
+      expect(surface().style.transition).toContain('transform');
+      expect(goBack).not.toHaveBeenCalled();
+    });
+
+    it('clears the transform after a committed back swipe', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(160, 0, 1));
+      act(() => captured.opts?.onSwipeRight?.(1));
+      act(() => captured.opts?.onSwipeEnd?.('right'));
+
+      expect(goBack).toHaveBeenCalledTimes(1);
+      expect(surface().style.transform).toBe('');
+    });
+
+    it('does not follow the finger on tablet (swipe right is not "back" there)', () => {
+      mockUseResponsive.mockReturnValue({ shouldUseTouchUI: true, isMobile: false });
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(120, 0, 1));
+
+      expect(surface().style.transform).toBe('');
+    });
+
+    it('is disabled on the desktop / Electron layout (no touch UI)', () => {
+      mockUseResponsive.mockReturnValue({ shouldUseTouchUI: false, isMobile: false });
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      expect(captured.opts?.enabled).toBe(false);
+      act(() => captured.opts?.onProgress?.(120, 0, 1));
+      expect(surface().style.transform).toBe('');
+    });
+  });
+
+  describe('standalone display mode', () => {
+    it('keeps the 24px edge dead zone in a browser tab', () => {
+      mockIsStandalone.mockReturnValue(false);
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      expect(captured.opts?.edgeZone).toBe(MOBILE_CONSTANTS.EDGE_BACK_GESTURE_ZONE);
+    });
+
+    it('drops the edge dead zone when installed (no browser edge-back to fight)', () => {
+      mockIsStandalone.mockReturnValue(true);
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      expect(captured.opts?.edgeZone).toBe(0);
+    });
   });
 });

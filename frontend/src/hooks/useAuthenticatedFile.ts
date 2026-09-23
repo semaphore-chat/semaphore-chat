@@ -5,6 +5,8 @@ import { getApiUrl } from "../config/env";
 import type { FileMetadata } from "../types/message.type";
 
 interface FileState {
+  /** Which request this state belongs to (see `requestKeyOf`). */
+  key: string | null;
   blobUrl: string | null;
   metadata: FileMetadata | null;
   isLoadingBlob: boolean;
@@ -12,13 +14,11 @@ interface FileState {
   error: Error | null;
 }
 
-const initialState: FileState = {
-  blobUrl: null,
-  metadata: null,
-  isLoadingBlob: false,
-  isLoadingMetadata: false,
-  error: null,
-};
+const requestKeyOf = (
+  fileId: string | null | undefined,
+  fetchBlob: boolean,
+  fetchMetadata: boolean,
+): string | null => (fileId ? `${fileId}|${fetchBlob ? 1 : 0}|${fetchMetadata ? 1 : 0}` : null);
 
 /**
  * Hook to fetch file metadata and/or blob URL with authentication
@@ -26,6 +26,15 @@ const initialState: FileState = {
  * @param fileId - The file ID to fetch
  * @param options - Optional configuration
  * @returns Object with blobUrl, metadata, loading states, and errors
+ *
+ * The starting state for a file id (loading, or an already-cached blob) is
+ * derived during render, not set from the effect: the effect only ever
+ * updates state after an `await`. Setting state synchronously inside the
+ * effect meant every avatar that got its file id during a burst of
+ * store-driven (Sync-lane) commits — e.g. 60 `useUser` queries resolving
+ * together on a long member list — left a Default-lane update pending after
+ * each commit, and React threw "Maximum update depth exceeded" once more
+ * than 50 commits in a row did that.
  */
 export const useAuthenticatedFile = (
   fileId: string | null | undefined,
@@ -36,35 +45,55 @@ export const useAuthenticatedFile = (
 ) => {
   const { fetchBlob = true, fetchMetadata = false } = options || {};
   const fileCache = useFileCache();
+  const key = requestKeyOf(fileId, fetchBlob, fetchMetadata);
 
-  const [state, setState] = useState<FileState>(initialState);
+  const startState = (): FileState => {
+    const cachedUrl = fileId && fetchBlob ? fileCache.getBlob(fileId) : null;
+    return {
+      key,
+      blobUrl: cachedUrl,
+      metadata: null,
+      isLoadingBlob: !!fileId && fetchBlob && !cachedUrl,
+      isLoadingMetadata: !!fileId && fetchMetadata,
+      error: null,
+    };
+  };
+
+  const [storedState, setState] = useState<FileState>(startState);
+
+  // New request: reset during render ("adjusting state when a prop
+  // changes"). React re-renders this component immediately, before
+  // committing, so this schedules no separate update.
+  let state = storedState;
+  if (storedState.key !== key) {
+    state = startState();
+    setState(state);
+  }
 
   useEffect(() => {
-    if (!fileId) {
-      setState(initialState);
-      return;
-    }
+    if (!fileId) return;
 
     let isCancelled = false;
+    // Only apply an update while this request is still the current one.
+    const update = (patch: Partial<FileState>) => {
+      if (isCancelled) return;
+      setState(prev => {
+        if (prev.key !== key) return prev;
+        const changed = (Object.keys(patch) as (keyof FileState)[]).some(k => prev[k] !== patch[k]);
+        return changed ? { ...prev, ...patch } : prev;
+      });
+    };
 
     const fetchData = async () => {
-      setState(prev => ({ ...prev, error: null }));
-
       try {
         // Fetch blob using centralized fetchBlob (handles caching and deduplication)
         if (fetchBlob) {
-          setState(prev => ({ ...prev, isLoadingBlob: true }));
-          const url = await fileCache.fetchBlob(fileId);
-
-          if (!isCancelled) {
-            setState(prev => ({ ...prev, blobUrl: url, isLoadingBlob: false }));
-          }
+          const url = fileCache.getBlob(fileId) ?? (await fileCache.fetchBlob(fileId));
+          update({ blobUrl: url, isLoadingBlob: false });
         }
 
         // Fetch metadata if requested
         if (fetchMetadata) {
-          setState(prev => ({ ...prev, isLoadingMetadata: true }));
-
           const token = getAccessToken();
           if (!token) {
             throw new Error("No authentication token found");
@@ -81,15 +110,11 @@ export const useAuthenticatedFile = (
           }
 
           const metadataData = await metadataResponse.json();
-          if (!isCancelled) {
-            setState(prev => ({ ...prev, metadata: metadataData, isLoadingMetadata: false }));
-          }
+          update({ metadata: metadataData, isLoadingMetadata: false });
         }
       } catch (err) {
-        if (!isCancelled) {
-          const error = err instanceof Error ? err : new Error("Failed to fetch file");
-          setState({ ...initialState, error });
-        }
+        const error = err instanceof Error ? err : new Error("Failed to fetch file");
+        update({ blobUrl: null, metadata: null, isLoadingBlob: false, isLoadingMetadata: false, error });
       }
     };
 
@@ -98,7 +123,7 @@ export const useAuthenticatedFile = (
     return () => {
       isCancelled = true;
     };
-  }, [fileId, fetchBlob, fetchMetadata, fileCache]);
+  }, [key, fileId, fetchBlob, fetchMetadata, fileCache]);
 
   return {
     blobUrl: state.blobUrl,

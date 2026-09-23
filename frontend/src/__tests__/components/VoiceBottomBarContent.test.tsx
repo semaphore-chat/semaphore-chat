@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { VoiceBottomBarContent as VoiceBottomBar } from '../../components/Voice/VoiceBottomBarContent';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
@@ -177,6 +177,18 @@ vi.mock('../../components/Voice/VoiceDebugPanel', () => ({
 
 vi.mock('../../components/Voice/CaptureReplayModal', () => ({
   CaptureReplayModal: () => null,
+}));
+
+vi.mock('../../components/Voice/SoundboardButton', () => ({
+  SoundboardButton: () => <button aria-label="Open soundboard">sb</button>,
+}));
+
+// Electron flag for the real-useResponsive tests below (Review Focus 1).
+const platform = vi.hoisted(() => ({ electron: false }));
+vi.mock('../../utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectron: () => platform.electron,
+  isWeb: () => !platform.electron,
 }));
 
 // Import mocked hooks for overriding in specific tests
@@ -371,7 +383,7 @@ describe('VoiceBottomBarContent', () => {
     expect(screen.getByText('Connected')).toBeInTheDocument();
   });
 
-  it('hides deafen and settings on mobile', () => {
+  it('keeps deafen on phone but moves settings into "more"', () => {
     vi.mocked(useResponsive).mockReturnValue({
       isMobile: true,
       isTablet: false,
@@ -381,8 +393,9 @@ describe('VoiceBottomBarContent', () => {
 
     renderWithProviders(<VoiceBottomBar />);
 
-    expect(screen.queryByRole('button', { name: /deafen/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /deafen/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /voice settings/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
   });
 
   it('screen share toggle calls handler', async () => {
@@ -637,7 +650,7 @@ describe('VoiceBottomBarContent', () => {
       expect(screen.queryByTestId('PhoneInTalkIcon')).not.toBeInTheDocument();
     });
 
-    it('shows speakerphone button on mobile when setSinkId is supported', () => {
+    it('shows speakerphone button on mobile (in "more") when setSinkId is supported', async () => {
       vi.mocked(useResponsive).mockReturnValue({
         isMobile: true,
         isTablet: false,
@@ -646,9 +659,12 @@ describe('VoiceBottomBarContent', () => {
       } as never);
       enableSetSinkId();
 
-      renderWithProviders(<VoiceBottomBar />);
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      // Phone: the speaker toggle lives in the "more" sheet, not the bar.
+      expect(screen.queryByTestId('PhoneInTalkIcon')).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
 
-      expect(screen.getByTestId('PhoneInTalkIcon')).toBeInTheDocument();
+      expect(await screen.findByTestId('PhoneInTalkIcon')).toBeInTheDocument();
     });
 
     it('calls switchAudioOutputDevice with default device ID when toggled to speaker', async () => {
@@ -661,15 +677,16 @@ describe('VoiceBottomBarContent', () => {
       enableSetSinkId();
 
       const { user } = renderWithProviders(<VoiceBottomBar />);
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
 
-      const speakerButton = screen.getByTestId('PhoneInTalkIcon').closest('button')!;
+      const speakerButton = (await screen.findByTestId('PhoneInTalkIcon')).closest('button')!;
       await user.click(speakerButton);
 
       // Toggling to speaker should select the default device
       expect(mockActions.switchAudioOutputDevice).toHaveBeenCalledWith('default');
     });
 
-    it('does not show speakerphone button when setSinkId is not supported', () => {
+    it('does not show speakerphone button when setSinkId is not supported', async () => {
       vi.mocked(useResponsive).mockReturnValue({
         isMobile: true,
         isTablet: false,
@@ -678,7 +695,9 @@ describe('VoiceBottomBarContent', () => {
       } as never);
       disableSetSinkId();
 
-      renderWithProviders(<VoiceBottomBar />);
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
+      await screen.findByRole('button', { name: /all settings/i });
 
       expect(screen.queryByTestId('SpeakerPhoneIcon')).not.toBeInTheDocument();
       expect(screen.queryByTestId('PhoneInTalkIcon')).not.toBeInTheDocument();
@@ -794,5 +813,141 @@ describe('VoiceBottomBarContent', () => {
     await user.click(allSettingsItem);
 
     expect(mockNavigate).toHaveBeenCalledWith('/settings');
+  });
+  describe('phone layout: 4 primary controls + "more" sheet (Task 16)', () => {
+    const phone = () =>
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: true,
+        isTablet: false,
+        isDesktop: false,
+        deviceType: 'phone',
+        shouldUseTouchUI: true,
+      } as never);
+
+    beforeEach(() => {
+      platform.electron = false;
+      voiceState = { ...defaultVoiceState };
+      vi.mocked(useVoiceConnection).mockReturnValue({
+        state: voiceState,
+        actions: { ...mockActions, playSoundboard: vi.fn() },
+      } as never);
+    });
+
+    it('renders exactly mic, deafen, camera, hang-up and "more" in the bar', () => {
+      phone();
+      renderWithProviders(<VoiceBottomBar />);
+
+      const controls = screen.getByTestId('voice-bar-controls');
+      const buttons = within(controls).getAllByRole('button');
+      expect(buttons).toHaveLength(5);
+      expect(within(controls).getByRole('button', { name: /^mute$/i })).toBeInTheDocument();
+      expect(within(controls).getByRole('button', { name: /^deafen$/i })).toBeInTheDocument();
+      expect(within(controls).getByRole('button', { name: /turn on camera/i })).toBeInTheDocument();
+      expect(within(controls).getByRole('button', { name: /disconnect/i })).toBeInTheDocument();
+      expect(within(controls).getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
+      // Secondary actions are not in the bar.
+      expect(screen.queryByTestId('ScreenShareIcon')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /open soundboard/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /show video tiles/i })).not.toBeInTheDocument();
+    });
+
+    it('"more" holds screen share, show tiles, soundboard and settings', async () => {
+      phone();
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
+
+      const sheet = await screen.findByTestId('voice-more-sheet');
+      expect(within(sheet).getByRole('button', { name: /share screen/i })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: /show video tiles/i })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: /open soundboard/i })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: /voice & video settings/i })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: /all settings/i })).toBeInTheDocument();
+    });
+
+    it('actions in "more" run and close the sheet', async () => {
+      phone();
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
+      const sheet = await screen.findByTestId('voice-more-sheet');
+      await user.click(within(sheet).getByRole('button', { name: /show video tiles/i }));
+
+      expect(mockActions.revealVideoTiles).toHaveBeenCalled();
+      await vi.waitFor(() => expect(screen.queryByTestId('voice-more-sheet')).not.toBeInTheDocument());
+    });
+
+    it('shows capture replay in "more" while the replay buffer is active', async () => {
+      phone();
+      vi.mocked(useReplayBufferState).mockReturnValue({ isReplayBufferActive: true });
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+
+      expect(within(screen.getByTestId('voice-bar-controls')).getAllByRole('button')).toHaveLength(5);
+      await user.click(screen.getByRole('button', { name: /more voice options/i }));
+      const sheet = await screen.findByTestId('voice-more-sheet');
+      expect(within(sheet).getByRole('button', { name: /capture replay/i })).toBeInTheDocument();
+    });
+
+    it('desktop bar is unchanged: no "more", secondary actions inline', () => {
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(screen.queryByRole('button', { name: /more voice options/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId('ScreenShareIcon')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /open soundboard/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /voice settings/i })).toBeInTheDocument();
+    });
+
+    describe('with the real useResponsive', () => {
+      function stubViewportWidth(width: number) {
+        vi.stubGlobal(
+          'matchMedia',
+          vi.fn((query: string) => {
+            const min = /min-width:\s*(\d+)px/.exec(query);
+            const max = /max-width:\s*(\d+)px/.exec(query);
+            const matches =
+              (min || max) && !query.includes('pointer') && !query.includes('hover')
+                ? (!min || width >= Number(min[1])) && (!max || width <= Number(max[1]))
+                : false;
+            return {
+              matches: !!matches,
+              media: query,
+              onchange: null,
+              addListener: vi.fn(),
+              removeListener: vi.fn(),
+              addEventListener: vi.fn(),
+              removeEventListener: vi.fn(),
+              dispatchEvent: vi.fn(),
+            };
+          }),
+        );
+      }
+
+      beforeEach(async () => {
+        const actual = await vi.importActual<typeof import('../../hooks/useResponsive')>('../../hooks/useResponsive');
+        vi.mocked(useResponsive).mockImplementation(actual.useResponsive);
+      });
+
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      it('uses the phone bar at 320px in a browser', () => {
+        stubViewportWidth(320);
+        renderWithProviders(<VoiceBottomBar />);
+
+        expect(screen.getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
+        expect(within(screen.getByTestId('voice-bar-controls')).getAllByRole('button')).toHaveLength(5);
+      });
+
+      it('keeps the desktop bar in a narrow Electron window', () => {
+        platform.electron = true;
+        stubViewportWidth(320);
+        renderWithProviders(<VoiceBottomBar />);
+
+        expect(screen.queryByRole('button', { name: /more voice options/i })).not.toBeInTheDocument();
+        expect(screen.getByTestId('ScreenShareIcon')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /voice settings/i })).toBeInTheDocument();
+      });
+    });
   });
 });

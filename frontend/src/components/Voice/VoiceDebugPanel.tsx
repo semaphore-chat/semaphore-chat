@@ -476,7 +476,7 @@ const EventLogSection: React.FC = () => {
       <Box
         sx={{
           fontFamily: 'monospace',
-          fontSize: 11,
+          fontSize: 'scale.xs',
           backgroundColor: 'grey.900',
           color: 'grey.100',
           borderRadius: 1,

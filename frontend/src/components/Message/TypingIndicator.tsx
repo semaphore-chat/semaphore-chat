@@ -36,9 +36,8 @@ const TypingIndicator: React.FC<TypingIndicatorProps> = ({
   return (
     <Box
       sx={(theme) => {
-        // Always use background.paper (a solid color) — background.default
-        // can be a linear-gradient in vibrant/balanced themes, which MUI's
-        // alpha() cannot parse.
+        // Use background.paper (a solid color) so alpha() can parse it;
+        // the page ground (background.ground) can be a linear-gradient.
         const bg = theme.palette.background.paper;
         return {
           position: 'absolute',

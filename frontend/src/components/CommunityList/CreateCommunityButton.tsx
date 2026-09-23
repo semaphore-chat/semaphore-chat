@@ -49,7 +49,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
             transition: "box-shadow 0.2s",
           }}
         >
-          <AddIcon sx={{ color: "text.primary", fontSize: 24 }} />
+          <AddIcon sx={{ color: "text.primary", fontSize: 'icon.2xl' }} />
         </Avatar>
         {isExpanded && (
           <Box
@@ -67,7 +67,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
               variant="subtitle1"
               noWrap
               sx={{
-                fontSize: 14,
+                fontSize: 'scale.base',
                 fontWeight: 600,
                 color: "text.secondary",
                 alignItems: "left",
@@ -80,7 +80,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
               noWrap
               sx={{
                 opacity: 0.6,
-                fontSize: 12,
+                fontSize: 'scale.sm',
                 color: "text.secondary",
                 fontStyle: "italic",
               }}

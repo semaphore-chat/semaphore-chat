@@ -1,33 +1,17 @@
 /**
  * MobileChannelsPanel Component
  *
- * Shows channels for a selected community.
+ * Shows channels for a selected community on phone.
  * Uses the new screen-based navigation.
  */
 
 import React from 'react';
-import {
-  Box,
-  ListItemIcon,
-  ListItemText,
-  Menu,
-  MenuItem,
-} from '@mui/material';
-import {
-  Settings as SettingsIcon,
-  ExitToApp as LeaveIcon,
-} from '@mui/icons-material';
+import { Box } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import {
-  communityControllerFindOneOptions,
-  channelsControllerFindAllForCommunityOptions,
-} from '../../../api-client/@tanstack/react-query.gen';
+import { channelsControllerFindAllForCommunityOptions } from '../../../api-client/@tanstack/react-query.gen';
 import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
-import { TOUCH_TARGETS } from '../../../utils/breakpoints';
-import { useNavigate } from 'react-router-dom';
-import { useCanPerformAction } from '../../../features/roles/useUserPermissions';
-import MobileAppBar from '../MobileAppBar';
 import ChannelCategoryList from '../../Channel/ChannelCategoryList';
+import CommunityHeader from '../CommunityHeader';
 
 interface MobileChannelsPanelProps {
   communityId: string;
@@ -40,82 +24,27 @@ interface MobileChannelsPanelProps {
 export const MobileChannelsPanel: React.FC<MobileChannelsPanelProps> = ({
   communityId,
 }) => {
-  const navigate = useNavigate();
   const { navigateToChat } = useMobileNavigation();
-  const { data: community } = useQuery(communityControllerFindOneOptions({ path: { id: communityId } }));
-  const { data: channels = [] } = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
-  const canEditCommunity = useCanPerformAction('COMMUNITY', communityId, 'UPDATE_COMMUNITY');
-
-  const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
-
-  const handleChannelClick = (channelId: string) => {
-    navigateToChat(communityId, channelId);
-  };
-
-  const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
-    setMenuAnchor(event.currentTarget);
-  };
-
-  const handleMenuClose = () => {
-    setMenuAnchor(null);
-  };
-
-  const handleEditCommunity = () => {
-    navigate(`/community/${communityId}/edit`);
-    handleMenuClose();
-  };
-
-  const handleLeaveCommunity = () => {
-    // TODO: Implement leave community
-    navigate('/');
-    handleMenuClose();
-  };
+  const {
+    data: channels = [],
+    isLoading,
+    error,
+    refetch,
+  } = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* App bar with community name and menu */}
-      <MobileAppBar
-        title={community?.name || 'Community'}
-        showDrawerTrigger
-        showMore
-        onMoreClick={handleMenuOpen}
-        actions={
-          <Menu
-            anchorEl={menuAnchor}
-            open={Boolean(menuAnchor)}
-            onClose={handleMenuClose}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
-            transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-          >
-            {canEditCommunity && (
-              <MenuItem onClick={handleEditCommunity}>
-                <ListItemIcon>
-                  <SettingsIcon fontSize="small" />
-                </ListItemIcon>
-                <ListItemText>Community Settings</ListItemText>
-              </MenuItem>
-            )}
-            <MenuItem onClick={handleLeaveCommunity}>
-              <ListItemIcon>
-                <LeaveIcon fontSize="small" sx={{ color: 'error.main' }} />
-              </ListItemIcon>
-              <ListItemText sx={{ color: 'error.main' }}>Leave Community</ListItemText>
-            </MenuItem>
-          </Menu>
-        }
-      />
+      <CommunityHeader communityId={communityId} />
 
       {/* Channel list */}
-      <Box
-        sx={{
-          flex: 1,
-          overflowY: 'auto',
-        }}
-      >
+      <Box sx={{ flex: 1, overflowY: 'auto', py: 0.5 }}>
         <ChannelCategoryList
           channels={channels}
-          onChannelSelect={handleChannelClick}
-          touchTargetHeight={TOUCH_TARGETS.RECOMMENDED}
+          communityId={communityId}
+          onChannelSelect={(channelId) => navigateToChat(communityId, channelId)}
+          isLoading={isLoading}
+          error={error}
+          onRetry={() => void refetch()}
         />
       </Box>
     </Box>

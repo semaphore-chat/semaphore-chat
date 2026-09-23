@@ -30,7 +30,7 @@ vi.mock('../../hooks/useVoiceConnection', () => ({
   })),
 }));
 
-vi.mock('../../components/Voice', () => ({
+vi.mock('../../components/Voice/VoiceChannelUserList', () => ({
   VoiceChannelUserList: () => <div data-testid="voice-user-list" />,
 }));
 
@@ -62,6 +62,26 @@ vi.mock('react-router-dom', async (importOriginal) => {
   };
 });
 
+const mockIsElectron = vi.fn(() => false);
+vi.mock('../../utils/platform', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isElectron: () => mockIsElectron(),
+}));
+
+/** Make every media query match (touch device, any width). */
+function stubTouchMediaQueries() {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: true,
+    media: query,
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }));
+}
+
 // Import after mocking
 const { useVoiceConnection } = await import('../../hooks/useVoiceConnection');
 
@@ -69,6 +89,10 @@ describe('Channel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockParams = { communityId: 'c1', channelId: 'other' };
+    mockIsElectron.mockReturnValue(false);
+    mockUnreadCount.mockReturnValue(0);
+    mockMentionCount.mockReturnValue(0);
+    vi.unstubAllGlobals();
     // Reset useVoiceConnection to default (test overrides persist through clearAllMocks)
     vi.mocked(useVoiceConnection).mockReturnValue({
       state: {
@@ -93,6 +117,39 @@ describe('Channel', () => {
     expect(screen.getByText('general')).toBeInTheDocument();
     // TagIcon is rendered (MUI renders as svg with data-testid)
     expect(screen.getByTestId('TagIcon')).toBeInTheDocument();
+  });
+
+  it('shows a lock icon for private channels', () => {
+    const channel = createChannel({ name: 'secret', type: 'TEXT', isPrivate: true });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    expect(screen.getByTestId('LockIcon')).toBeInTheDocument();
+    expect(screen.getByLabelText('Private channel')).toBeInTheDocument();
+  });
+
+  it('does not show a lock icon for public channels', () => {
+    const channel = createChannel({ name: 'general', type: 'TEXT', isPrivate: false });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    expect(screen.queryByTestId('LockIcon')).not.toBeInTheDocument();
+  });
+
+  it('keeps a long channel name on one line so it truncates', () => {
+    const longName = 'a-very-long-channel-name-no-spaces'.slice(0, 32);
+    const channel = createChannel({ name: longName, type: 'TEXT', isPrivate: true });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const name = screen.getByText(longName);
+    expect(name).toHaveClass('MuiTypography-noWrap');
+    // ListItemText must be allowed to shrink so the lock icon stays visible.
+    expect(name.closest('.MuiListItemText-root')).toHaveStyle({ minWidth: '0' });
+    expect(screen.getByLabelText('Private channel')).toBeInTheDocument();
   });
 
   it('renders voice channel with volume icon and name', () => {
@@ -252,5 +309,38 @@ describe('Channel', () => {
 
     // Voice channels should not display any mention badge
     expect(screen.queryByText('3')).not.toBeInTheDocument();
+  });
+
+  it('uses the compact desktop row on non-touch layouts', () => {
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'desktop');
+  });
+
+  it('uses the touch row on touch layouts', () => {
+    stubTouchMediaQueries();
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'touch');
+  });
+
+  it('stays on the desktop row in Electron even when media queries say touch', () => {
+    stubTouchMediaQueries();
+    mockIsElectron.mockReturnValue(true);
+    const channel = createChannel({ name: 'general', type: 'TEXT' });
+    renderWithProviders(<Channel channel={channel} />, {
+      routerProps: { initialEntries: ['/community/c1/channel/other'] },
+    });
+
+    const row = screen.getByText('general').closest('.MuiListItemButton-root');
+    expect(row).toHaveAttribute('data-variant', 'desktop');
   });
 });

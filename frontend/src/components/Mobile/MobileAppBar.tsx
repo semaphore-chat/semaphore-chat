@@ -93,7 +93,10 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
       <Toolbar
         sx={{
           minHeight: LAYOUT_CONSTANTS.APPBAR_HEIGHT_MOBILE,
-          px: 1,
+          // With a leading icon button its own padding sets the inset; a bare
+          // title sits on the 16px gutter like the list content below it.
+          pl: showBack || showDrawerTrigger ? 1 : 2,
+          pr: 1,
           gap: 0.5,
         }}
       >
@@ -136,7 +139,7 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
             variant="h6"
             noWrap
             sx={{
-              fontSize: '1.125rem',
+              fontSize: 'scale.xl',
               fontWeight: 600,
               lineHeight: 1.2,
             }}
@@ -149,7 +152,7 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
               noWrap
               sx={{
                 color: 'text.secondary',
-                fontSize: '0.75rem',
+                fontSize: 'scale.sm',
                 lineHeight: 1.2,
               }}
             >

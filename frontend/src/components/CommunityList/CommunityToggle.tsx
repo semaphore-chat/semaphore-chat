@@ -149,7 +149,7 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
                   </Avatar>
                 </Badge>
                 <Box sx={{ textAlign: "left", textTransform: "none" }}>
-                  <Box sx={{ fontSize: 14, fontWeight: 600, color: "text.primary" }}>
+                  <Box sx={{ fontSize: 'scale.base', fontWeight: 600, color: "text.primary" }}>
                     Direct Messages
                   </Box>
                 </Box>
@@ -195,7 +195,7 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
               />
             ))
           : !isLoading && (
-              <Box color="grey.500" fontSize={12}>
+              <Box sx={{ color: "grey.500", fontSize: "scale.sm" }}>
                 No communities
               </Box>
             )}

@@ -113,12 +113,18 @@ describe('MemberList', () => {
     expect(screen.queryByText(/Offline/)).not.toBeInTheDocument();
   });
 
-  it('shows error state', () => {
-    renderWithProviders(
-      <MemberList members={[]} error={new Error('fail')} title="Members" />,
+  it('shows error state with a retry, keeping the panel header', async () => {
+    const onRetry = vi.fn();
+    const { user } = renderWithProviders(
+      <MemberList members={[]} error={new Error('fail')} title="Members" onRetry={onRetry} />,
     );
 
-    expect(screen.getByText('Failed to load members')).toBeInTheDocument();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.getByText('Members')).toBeInTheDocument();
+    expect(screen.queryByText('No members')).not.toBeInTheDocument();
+    await user.click(within(alert).getByRole('button', { name: /try again/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('shows empty state when no members', () => {
@@ -191,5 +197,38 @@ describe('MemberList', () => {
       expect(renderCount('user-b')).toBe(1);
       expect(renderCount('user-c')).toBe(1);
     });
+  });
+
+  describe('long names (Review Focus #3)', () => {
+    it.each([
+      ['32-character no-space', 'Maximilianalexanderfeatherstonex'],
+      ['Arabic', 'عبد الرحمن بن محمد الهاشمي القرشي'],
+    ])('keeps a %s name on one line with an ellipsis', (_label, name) => {
+      renderWithProviders(
+        <MemberList members={[createMember({ id: 'long', displayName: name, isOnline: true })]} title="Members" />,
+      );
+      expect(screen.getByText(name)).toHaveClass('MuiTypography-noWrap');
+    });
+  });
+
+  describe('width', () => {
+    const root = () => screen.getByText(/^Members/).closest('.MuiBox-root')!.parentElement as HTMLElement;
+
+    it('is a fixed 240px side column by default', () => {
+      renderWithProviders(<MemberList members={[createMember({ username: 'a' })]} title="Members" />);
+      expect(root()).toHaveStyle({ width: '240px' });
+    });
+
+    it('fills its container with fullWidth (the 280px phone drawer)', () => {
+      renderWithProviders(<MemberList members={[createMember({ username: 'a' })]} title="Members" fullWidth />);
+      expect(root()).toHaveStyle({ width: '100%' });
+    });
+  });
+
+  it('member names use dir="auto" so RTL names keep their first word', () => {
+    renderWithProviders(
+      <MemberList members={[createMember({ username: 'layla', displayName: 'ليلى عبد الرحمن' })]} title="Members" />,
+    );
+    expect(screen.getByText('ليلى عبد الرحمن')).toHaveAttribute('dir', 'auto');
   });
 });

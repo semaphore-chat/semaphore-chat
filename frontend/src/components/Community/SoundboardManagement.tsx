@@ -265,9 +265,9 @@ const SoundboardManagement: React.FC<SoundboardManagementProps> = ({
                     <TableRow key={sound.id}>
                       <TableCell>
                         <Box display="flex" alignItems="center" gap={1}>
-                          <span aria-hidden style={{ fontSize: "1.25rem" }}>
+                          <Box component="span" aria-hidden sx={{ fontSize: "icon.xl" }}>
                             {sound.emoji || "🔊"}
-                          </span>
+                          </Box>
                           <Typography variant="body2" fontWeight="medium">
                             {sound.name}
                           </Typography>
@@ -303,7 +303,7 @@ const SoundboardManagement: React.FC<SoundboardManagementProps> = ({
               py={4}
             >
               <MusicNoteIcon
-                sx={{ fontSize: 48, color: "text.secondary", mb: 2 }}
+                sx={{ fontSize: 'icon.5xl', color: "text.secondary", mb: 2 }}
               />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No sounds yet
