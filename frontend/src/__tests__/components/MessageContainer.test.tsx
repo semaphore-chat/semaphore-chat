@@ -103,7 +103,19 @@ describe('MessageContainer', () => {
         <MessageContainer {...defaultProps} error={new Error('fail')} />,
       );
 
-      expect(screen.getByText('Error loading messages')).toBeInTheDocument();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent("Couldn't load messages");
+      expect(screen.queryByText(/no messages yet/i)).not.toBeInTheDocument();
+    });
+
+    it('retries the failed (errored, active) queries from the Try again button', async () => {
+      const { user, queryClient } = renderWithProviders(
+        <MessageContainer {...defaultProps} error={new Error('fail')} />,
+      );
+      const refetchSpy = vi.spyOn(queryClient, 'refetchQueries').mockResolvedValue();
+
+      await user.click(screen.getByRole('button', { name: /try again/i }));
+      expect(refetchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'active' }));
     });
   });
 

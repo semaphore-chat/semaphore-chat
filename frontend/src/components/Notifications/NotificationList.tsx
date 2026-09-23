@@ -35,6 +35,7 @@ import { useNavigate } from 'react-router-dom';
 import { notificationsControllerDismissNotificationMutation } from '../../api-client/@tanstack/react-query.gen';
 
 import { AuthenticatedImage } from '../Common/AuthenticatedImage';
+import ListState, { ListSkeleton } from '../Common/ListState';
 import { useAuthenticatedImage } from '../../hooks/useAuthenticatedImage';
 import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import { NotificationType, Notification } from '../../types/notification.type';
@@ -226,6 +227,7 @@ export const NotificationList: React.FC = () => {
     notifications,
     unreadCount,
     isLoading,
+    error,
     isMarkingAllRead,
     refetch,
     handleMarkAsRead,
@@ -276,34 +278,38 @@ export const NotificationList: React.FC = () => {
 
       {unreadCount > 0 && <Divider />}
 
-      {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1, py: 6 }}>
-          <CircularProgress />
-        </Box>
-      ) : notifications.length === 0 ? (
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flex: 1,
-            gap: 2,
-            p: 3,
-          }}
-        >
-          <Box sx={{ fontSize: 64, opacity: 0.5 }}>🔔</Box>
-          <Typography variant="h6" color="text.secondary">
-            No notifications
-          </Typography>
-          <Typography variant="body2" color="text.secondary" textAlign="center">
-            You'll see mentions, replies, and direct messages here.
-          </Typography>
-          <Button variant="outlined" onClick={() => refetch()}>
-            Refresh
-          </Button>
-        </Box>
-      ) : (
+      <ListState
+        isLoading={isLoading}
+        error={error}
+        onRetry={() => void refetch()}
+        isEmpty={notifications.length === 0}
+        skeleton={<ListSkeleton rows={8} avatarSize={NOTIFICATION_AVATAR_SIZE} label="Loading notifications" />}
+        errorTitle="Couldn't load notifications"
+        empty={
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flex: 1,
+              gap: 2,
+              p: 3,
+            }}
+          >
+            <Box sx={{ fontSize: 64, opacity: 0.5 }}>🔔</Box>
+            <Typography variant="h6" color="text.secondary">
+              No notifications
+            </Typography>
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              You'll see mentions, replies, and direct messages here.
+            </Typography>
+            <Button variant="outlined" onClick={() => refetch()}>
+              Refresh
+            </Button>
+          </Box>
+        }
+      >
         <Box sx={{ flex: 1, overflowY: 'auto' }}>
           <List disablePadding>
             {notifications.map((notification) => (
@@ -317,7 +323,7 @@ export const NotificationList: React.FC = () => {
             ))}
           </List>
         </Box>
-      )}
+      </ListState>
     </>
   );
 };

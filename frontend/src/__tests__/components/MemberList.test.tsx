@@ -113,12 +113,18 @@ describe('MemberList', () => {
     expect(screen.queryByText(/Offline/)).not.toBeInTheDocument();
   });
 
-  it('shows error state', () => {
-    renderWithProviders(
-      <MemberList members={[]} error={new Error('fail')} title="Members" />,
+  it('shows error state with a retry, keeping the panel header', async () => {
+    const onRetry = vi.fn();
+    const { user } = renderWithProviders(
+      <MemberList members={[]} error={new Error('fail')} title="Members" onRetry={onRetry} />,
     );
 
-    expect(screen.getByText('Failed to load members')).toBeInTheDocument();
+    const alert = screen.getByRole('alert');
+    expect(within(alert).getByText("Couldn't load members")).toBeInTheDocument();
+    expect(screen.getByText('Members')).toBeInTheDocument();
+    expect(screen.queryByText('No members')).not.toBeInTheDocument();
+    await user.click(within(alert).getByRole('button', { name: /try again/i }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
   it('shows empty state when no members', () => {

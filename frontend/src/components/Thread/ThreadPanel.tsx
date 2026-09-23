@@ -31,6 +31,7 @@ import { useThreadPanel } from "../../contexts/ThreadPanelContext";
 import { useThreadReplies } from "../../hooks/useThreadReplies";
 import { useThreadSubscription } from "../../hooks/useThreadSubscription";
 import { logger } from "../../utils/logger";
+import ListState from "../Common/ListState";
 
 interface ThreadPanelProps {
   parentMessage: Message;
@@ -52,7 +53,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   const { closeThread } = useThreadPanel();
 
   // Thread replies via TanStack Query
-  const { replies, continuationToken, isLoading, isFetched } = useThreadReplies(parentMessageId);
+  const { replies, continuationToken, isLoading, error, refetch } = useThreadReplies(parentMessageId);
 
   // Subscription status via TanStack Query
   const { isSubscribed, toggleSubscription } = useThreadSubscription(parentMessageId);
@@ -186,51 +187,55 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
           </Box>
         )}
 
-        {/* Loading state */}
-        {isLoading && replies.length === 0 && (
-          <Box sx={{ p: 2 }}>
-            {[1, 2, 3].map((i) => (
-              <Box key={i} sx={{ mb: 2 }}>
-                <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
-              </Box>
-            ))}
-          </Box>
-        )}
-
-        {/* No replies state */}
-        {!isLoading && isFetched && replies.length === 0 && (
-          <Box
-            sx={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "center",
-              justifyContent: "center",
-              py: 4,
-              px: 2,
-            }}
-          >
-            <ChatBubbleOutlineIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
-            <Typography variant="body2" color="text.secondary" textAlign="center">
-              No replies yet
-            </Typography>
-            <Typography variant="caption" color="text.secondary" textAlign="center">
-              Be the first to reply to this message
-            </Typography>
-          </Box>
-        )}
-
-        {/* Replies list */}
-        {replies.map((reply, index) => (
-          <React.Fragment key={reply.id}>
-            {index > 0 && <Divider sx={{ my: 1 }} />}
-            <MessageComponent
-              message={reply}
-              contextId={contextId}
-              communityId={communityId}
-              isThreadReply
-            />
-          </React.Fragment>
-        ))}
+        <ListState
+          isLoading={isLoading}
+          error={error}
+          onRetry={() => void refetch()}
+          isEmpty={replies.length === 0}
+          size="compact"
+          errorTitle="Couldn't load replies"
+          skeleton={
+            <Box sx={{ p: 2 }} role="progressbar" aria-label="Loading replies" aria-busy="true">
+              {[1, 2, 3].map((i) => (
+                <Box key={i} sx={{ mb: 2 }}>
+                  <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+                </Box>
+              ))}
+            </Box>
+          }
+          empty={
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                py: 4,
+                px: 2,
+              }}
+            >
+              <ChatBubbleOutlineIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
+              <Typography variant="body2" color="text.secondary" textAlign="center">
+                No replies yet
+              </Typography>
+              <Typography variant="caption" color="text.secondary" textAlign="center">
+                Be the first to reply to this message
+              </Typography>
+            </Box>
+          }
+        >
+          {replies.map((reply, index) => (
+            <React.Fragment key={reply.id}>
+              {index > 0 && <Divider sx={{ my: 1 }} />}
+              <MessageComponent
+                message={reply}
+                contextId={contextId}
+                communityId={communityId}
+                isThreadReply
+              />
+            </React.Fragment>
+          ))}
+        </ListState>
 
         <div ref={messagesEndRef} />
       </Box>

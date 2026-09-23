@@ -9,7 +9,7 @@ import type { Message } from "../types/message.type";
  * Replaces manual Redux setThreadReplies/appendThreadReplies/loading management.
  */
 export function useThreadReplies(parentMessageId: string) {
-  const { data, isLoading, isFetched } = useQuery(
+  const { data, isLoading, isFetched, error, refetch } = useQuery(
     threadsControllerGetRepliesOptions({
       path: { parentMessageId },
       query: { limit: 50, continuationToken: '' },
@@ -21,5 +21,7 @@ export function useThreadReplies(parentMessageId: string) {
     continuationToken: data?.continuationToken,
     isLoading,
     isFetched,
+    error,
+    refetch,
   };
 }

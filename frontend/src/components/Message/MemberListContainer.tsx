@@ -5,6 +5,7 @@ import {
   presenceControllerGetMultipleUserPresenceOptions,
   directMessagesControllerFindDmGroupOptions,
   channelMembershipControllerFindAllForChannelOptions,
+  channelsControllerFindOneOptions,
 } from "../../api-client/@tanstack/react-query.gen";
 import { membershipControllerFindAllForCommunity } from "../../api-client/sdk.gen";
 import type { RoleDto, MembershipResponseDto } from "../../api-client/types.gen";
@@ -68,13 +69,33 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
   contextType,
   contextId,
   communityId,
-  isPrivate,
+  isPrivate: isPrivateProp,
 }) => {
+  // The parent passes `isPrivate` from its own channel query. Until that
+  // resolves — or if it fails (403 on a private channel, 404) — it's
+  // undefined, and we can't pick which member endpoint to use. Subscribe to
+  // the same channel query (shared cache key, so no duplicate request on the
+  // happy path) so a failure surfaces as an error instead of an endless
+  // skeleton.
+  const isChannelContext = contextType === VoiceSessionType.Channel;
+  const {
+    data: channel,
+    error: channelError,
+    refetch: refetchChannel,
+  } = useQuery({
+    ...channelsControllerFindOneOptions({ path: { id: contextId } }),
+    enabled: isChannelContext && isPrivateProp === undefined,
+  });
+  const isPrivate = isPrivateProp ?? channel?.isPrivate;
+  // Only matters while we still don't know which list to load.
+  const unresolvedChannelError = isChannelContext && isPrivate === undefined ? channelError : null;
+
   // For private channels, fetch channel-specific members
   const {
     data: channelMembers,
     isLoading: isChannelMembersLoading,
     error: channelMembersError,
+    refetch: refetchChannelMembers,
   } = useQuery({
     ...channelMembershipControllerFindAllForChannelOptions({ path: { channelId: contextId } }),
     enabled: contextType === VoiceSessionType.Channel && !!isPrivate,
@@ -86,6 +107,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     data: communityMembersData,
     isLoading: isCommunityLoading,
     error: communityError,
+    refetch: refetchCommunityMembers,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -138,6 +160,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     data: dmGroup,
     isLoading: isDmLoading,
     error: dmError,
+    refetch: refetchDm,
   } = useQuery({
     ...directMessagesControllerFindDmGroupOptions({ path: { id: contextId } }),
     enabled: contextType === VoiceSessionType.Dm,
@@ -196,6 +219,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     data: presenceData,
     isLoading: isPresenceLoading,
     error: presenceError,
+    refetch: refetchPresence,
   } = useQuery({
     ...presenceControllerGetMultipleUserPresenceOptions({ path: { userIds: userIds.join(',') } }),
     enabled: userIds.length > 0,
@@ -239,11 +263,15 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     memberIdentityCacheRef.current = nextCache;
 
     const combinedLoading = contextType === VoiceSessionType.Channel
-      ? (isPrivate === undefined ? true : isPrivate ? isChannelMembersLoading : isCommunityLoading) || isPresenceLoading
+      ? (isPrivate === undefined
+          ? !unresolvedChannelError
+          : isPrivate ? isChannelMembersLoading : isCommunityLoading) || isPresenceLoading
       : isDmLoading || isPresenceLoading;
 
     const combinedError = contextType === VoiceSessionType.Channel
-      ? (isPrivate ? channelMembersError : communityError) || presenceError
+      ? (isPrivate === undefined
+          ? unresolvedChannelError
+          : isPrivate ? channelMembersError : communityError) || presenceError
       : dmError || presenceError;
 
     const listTitle = contextType === VoiceSessionType.Channel
@@ -269,7 +297,32 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
     communityError,
     dmError,
     presenceError,
+    unresolvedChannelError,
     dmGroup?.isGroup,
+  ]);
+
+  // Retry whichever request actually failed.
+  const handleRetry = React.useCallback(() => {
+    if (contextType === VoiceSessionType.Channel) {
+      if (isPrivate === undefined) void refetchChannel();
+      else if (isPrivate && channelMembersError) void refetchChannelMembers();
+      else if (!isPrivate && communityError) void refetchCommunityMembers();
+    } else if (dmError) {
+      void refetchDm();
+    }
+    if (presenceError) void refetchPresence();
+  }, [
+    contextType,
+    isPrivate,
+    channelMembersError,
+    communityError,
+    dmError,
+    presenceError,
+    refetchChannel,
+    refetchChannelMembers,
+    refetchCommunityMembers,
+    refetchDm,
+    refetchPresence,
   ]);
 
   // Only the community members query is paginated; private-channel and DM
@@ -289,6 +342,7 @@ const MemberListContainer: React.FC<MemberListContainerProps> = ({
       hasMore={showLoadMore}
       isLoadingMore={isFetchingNextPage}
       onLoadMore={handleLoadMoreMembers}
+      onRetry={handleRetry}
     />
   );
 };

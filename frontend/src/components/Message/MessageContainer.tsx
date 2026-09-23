@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Box, Typography, Fab } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import { useQueryClient } from "@tanstack/react-query";
 import MessageSkeleton from "./MessageSkeleton";
+import ListState from "../Common/ListState";
 import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
@@ -90,6 +92,17 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   directMessageGroupId,
 }) => {
   const { isMobile } = useResponsive();
+  const queryClient = useQueryClient();
+
+  // The message query lives in the parent's hook; rather than plumbing a
+  // refetch through every container, "Try again" refetches whatever active
+  // query is in an error state (i.e. the one that produced `error`).
+  const handleRetry = useCallback(() => {
+    void queryClient.refetchQueries({
+      type: "active",
+      predicate: (query) => query.state.status === "error",
+    });
+  }, [queryClient]);
 
   // Context identity (channel or DM group) — used for read receipts and to
   // reset scroll positioning when switching contexts.
@@ -289,7 +302,13 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
             p: 2,
           }}
         >
-          <Typography color="error">Error loading messages</Typography>
+          <ListState
+            isLoading={false}
+            error={error}
+            onRetry={handleRetry}
+            isEmpty
+            errorTitle="Couldn't load messages"
+          />
         </Box>
         {shouldShowMemberList && memberListComponent}
       </Box>
