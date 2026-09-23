@@ -161,12 +161,12 @@ const VideoTile: React.FC<VideoTileProps> = ({
               {displayName}
             </Typography>
             {placeholderType === 'screen' ? (
-              <ScreenShare sx={{ fontSize: 14, color: 'grey.500' }} />
+              <ScreenShare sx={{ fontSize: 'icon.sm', color: 'grey.500' }} />
             ) : (
-              <Videocam sx={{ fontSize: 14, color: 'grey.500' }} />
+              <Videocam sx={{ fontSize: 'icon.sm', color: 'grey.500' }} />
             )}
           </Box>
-          <Typography variant="caption" sx={{ color: 'grey.600', fontSize: '0.7rem' }}>
+          <Typography variant="caption" sx={{ color: 'grey.600', fontSize: 'scale.xs' }}>
             {isLocal ? 'Click to show' : 'Click to watch'}
           </Typography>
         </Box>
@@ -276,9 +276,9 @@ const VideoTile: React.FC<VideoTileProps> = ({
               }}
             >
               {hasAudio ? (
-                <Mic sx={{ fontSize: 12, color: 'white' }} />
+                <Mic sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : (
-                <MicOff sx={{ fontSize: 12, color: 'white' }} />
+                <MicOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
               )}
             </Box>
 
@@ -295,11 +295,11 @@ const VideoTile: React.FC<VideoTileProps> = ({
               }}
             >
               {hasScreen ? (
-                <ScreenShare sx={{ fontSize: 12, color: 'white' }} />
+                <ScreenShare sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : hasVideo ? (
-                <Videocam sx={{ fontSize: 12, color: 'white' }} />
+                <Videocam sx={{ fontSize: 'icon.xs', color: 'white' }} />
               ) : (
-                <VideocamOff sx={{ fontSize: 12, color: 'white' }} />
+                <VideocamOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
               )}
             </Box>
           </Box>
@@ -382,7 +382,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
             sx={{
               color: 'white',
               fontWeight: 'bold',
-              fontSize: '0.75rem',
+              fontSize: 'scale.sm',
               textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
             }}
           >

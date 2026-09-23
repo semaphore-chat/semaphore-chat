@@ -115,7 +115,7 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
       {textChannels.length > 0 && (
         <>
           <CategoryHeader
-            icon={<TextIcon sx={{ fontSize: 16 }} />}
+            icon={<TextIcon sx={{ fontSize: 'icon.md' }} />}
             label="Text Channels"
           />
           <List sx={{ padding: 0 }}>
@@ -130,7 +130,7 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
       {voiceChannels.length > 0 && (
         <>
           <CategoryHeader
-            icon={<VoiceIcon sx={{ fontSize: 16 }} />}
+            icon={<VoiceIcon sx={{ fontSize: 'icon.md' }} />}
             label="Voice Channels"
           />
           <List sx={{ padding: 0 }}>

@@ -68,7 +68,7 @@ const CommunityDrawerItem: React.FC<{
               width: 40,
               height: 40,
               bgcolor: !community.avatar ? stringToColor(community.id).bg : undefined,
-              fontSize: '1rem',
+              fontSize: 'scale.lg',
               fontWeight: 600,
             }}
           >
@@ -84,7 +84,7 @@ const CommunityDrawerItem: React.FC<{
           }}
           secondaryTypographyProps={{
             noWrap: true,
-            fontSize: '0.75rem',
+            sx: { fontSize: 'scale.sm' },
           }}
         />
       </ListItemButton>

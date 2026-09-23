@@ -117,9 +117,9 @@ export const SoundboardButton: React.FC<SoundboardButtonProps> = ({
                     px: 1,
                   }}
                 >
-                  <span aria-hidden style={{ fontSize: "1.3rem" }}>
+                  <Box component="span" aria-hidden sx={{ fontSize: "icon.xl" }}>
                     {sound.emoji || "🔊"}
-                  </span>
+                  </Box>
                   <Typography
                     variant="caption"
                     noWrap

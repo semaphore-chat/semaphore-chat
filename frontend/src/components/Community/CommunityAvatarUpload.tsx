@@ -50,7 +50,7 @@ const CommunityAvatarUpload: React.FC<CommunityAvatarUploadProps> = React.memo((
             width: 80,
             height: 80,
             bgcolor: "primary.main",
-            fontSize: 32,
+            fontSize: 'scale.4xl',
             fontWeight: 600,
           }}
         >

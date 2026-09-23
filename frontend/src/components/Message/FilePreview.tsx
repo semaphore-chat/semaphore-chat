@@ -100,7 +100,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
                   height: 22,
                 }}
               >
-                <CloseIcon sx={{ fontSize: 14 }} />
+                <CloseIcon sx={{ fontSize: 'icon.sm' }} />
               </IconButton>
             </Box>
           );

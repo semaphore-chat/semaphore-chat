@@ -104,7 +104,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
               />
             ) : (
               <FallbackDot>
-                <LinkIcon sx={{ fontSize: 10 }} />
+                <LinkIcon sx={{ fontSize: 'icon.2xs' }} />
               </FallbackDot>
             )}
             <Typography variant="caption" color="text.secondary" noWrap>

@@ -60,7 +60,7 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
               color: stringToColor(community.id).text,
             }),
             fontWeight: 700,
-            fontSize: 24,
+            fontSize: 'scale.3xl',
             ml: isExpanded ? 0 : "auto",
             mr: isExpanded ? 2 : "auto",
             zIndex: 1,
@@ -87,7 +87,7 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
               variant="subtitle1"
               noWrap
               sx={{
-                fontSize: 14,
+                fontSize: 'scale.base',
                 fontWeight: 600,
                 color: "text.primary",
                 alignItems: "left",
@@ -99,7 +99,7 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
               <Typography
                 variant="body2"
                 noWrap
-                sx={{ opacity: 0.8, fontSize: 12, color: "text.secondary" }}
+                sx={{ opacity: 0.8, fontSize: 'scale.sm', color: "text.secondary" }}
               >
                 {community.description}
               </Typography>

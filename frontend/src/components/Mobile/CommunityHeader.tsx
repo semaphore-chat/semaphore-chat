@@ -82,7 +82,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ communityId })
         <Avatar
           src={avatarUrl || undefined}
           alt=""
-          sx={{ width: 32, height: 32, fontSize: '0.875rem', flexShrink: 0 }}
+          sx={{ width: 32, height: 32, fontSize: 'scale.base', flexShrink: 0 }}
         >
           {name.charAt(0).toUpperCase()}
         </Avatar>
@@ -90,7 +90,7 @@ export const CommunityHeader: React.FC<CommunityHeaderProps> = ({ communityId })
         <Typography
           variant="h6"
           noWrap
-          sx={{ flex: 1, minWidth: 0, fontSize: '1.0625rem', fontWeight: 600, lineHeight: 1.2 }}
+          sx={{ flex: 1, minWidth: 0, fontSize: 'scale.xl', fontWeight: 600, lineHeight: 1.2 }}
         >
           {name}
         </Typography>

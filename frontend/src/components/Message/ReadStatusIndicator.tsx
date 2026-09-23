@@ -29,7 +29,7 @@ export const ReadStatusIndicator: React.FC<ReadStatusIndicatorProps> = ({
         ml: 0.5,
       }}
     >
-      <VisibilityIcon sx={{ fontSize: 14, color: "primary.main" }} />
+      <VisibilityIcon sx={{ fontSize: 'icon.sm', color: "primary.main" }} />
     </Box>
   );
 

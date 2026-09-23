@@ -1,8 +1,29 @@
 import { createTheme, Theme, alpha, emphasize, getContrastRatio } from '@mui/material/styles';
 import type { ThemeMode, AccentColor, ThemeIntensity } from './constants';
+import { FONT_FAMILY, HTML_FONT_SIZE, TYPE_SCALE, ICON_SCALE, RADIUS_UNIT } from './tokens';
+import type { TypeScale, IconScale } from './tokens';
+// Self-hosted UI font (see tokens.ts for why). Loaded here so it is present
+// wherever the theme is: app, Electron and the Ladle sandbox.
+import '@fontsource/roboto/400.css';
+import '@fontsource/roboto/500.css';
+import '@fontsource/roboto/600.css';
+import '@fontsource/roboto/700.css';
 
 // Extend MUI theme with custom semantic colors
 declare module '@mui/material/styles' {
+  /**
+   * Named font-size scales (see theme/tokens.ts). Not Typography variants:
+   * they exist so `sx={{ fontSize: 'scale.sm' }}` / `'icon.md'` resolve
+   * against the theme.
+   */
+  interface TypographyVariants {
+    scale: TypeScale;
+    icon: IconScale;
+  }
+  interface TypographyVariantsOptions {
+    scale?: TypeScale;
+    icon?: IconScale;
+  }
   interface TypeBackground {
     /**
      * CSS `background` value for full-page grounds. In dark + balanced/vibrant
@@ -214,6 +235,37 @@ export function generateTheme(
   const snackbarText = getContrastRatio(snackbarBackground, '#fff') >= 3 ? '#fff' : 'rgba(0, 0, 0, 0.87)';
 
   return createTheme({
+    shape: {
+      borderRadius: RADIUS_UNIT,
+    },
+    typography: {
+      fontFamily: FONT_FAMILY,
+      htmlFontSize: HTML_FONT_SIZE,
+      fontSize: 14,
+      fontWeightLight: 400, // 300 isn't loaded; never ask for it
+      fontWeightRegular: 400,
+      fontWeightMedium: 500,
+      fontWeightBold: 700,
+      scale: TYPE_SCALE,
+      icon: ICON_SCALE,
+      // Every variant takes its size from the scale. h3–overline keep the MUI
+      // default sizes the app was laid out with, so this is a naming change,
+      // not a relayout. h1/h2 (MUI 96px/60px, only the 404 page uses h1) are
+      // pulled onto the scale. h1–h3 were MUI "light" (300), never loaded.
+      h1: { fontSize: TYPE_SCALE['7xl'], fontWeight: 700 },
+      h2: { fontSize: TYPE_SCALE['6xl'], fontWeight: 700 },
+      h3: { fontSize: TYPE_SCALE['6xl'], fontWeight: 400 },
+      h4: { fontSize: TYPE_SCALE['4xl'], fontWeight: 400 },
+      h5: { fontSize: TYPE_SCALE['3xl'], fontWeight: 400 },
+      h6: { fontSize: TYPE_SCALE['2xl'], fontWeight: 500 },
+      subtitle1: { fontSize: TYPE_SCALE.lg, fontWeight: 400 },
+      subtitle2: { fontSize: TYPE_SCALE.base, fontWeight: 500 },
+      body1: { fontSize: TYPE_SCALE.lg, fontWeight: 400 },
+      body2: { fontSize: TYPE_SCALE.base, fontWeight: 400 },
+      button: { fontSize: TYPE_SCALE.base, fontWeight: 500 },
+      caption: { fontSize: TYPE_SCALE.sm, fontWeight: 400 },
+      overline: { fontSize: TYPE_SCALE.sm, fontWeight: 400 },
+    },
     palette: {
       mode,
       primary: {
@@ -335,7 +387,7 @@ export function generateTheme(
       MuiListItemButton: {
         styleOverrides: {
           root: {
-            borderRadius: 8,
+            borderRadius: RADIUS_UNIT * 2,
             marginBottom: 2,
             transition: 'background-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out',
             '&:hover': {

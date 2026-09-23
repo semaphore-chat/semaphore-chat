@@ -193,7 +193,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             {channel?.isPrivate && (
               <LockIcon
                 aria-label="Private channel"
-                sx={{ fontSize: 18, color: 'text.secondary', flexShrink: 0 }}
+                sx={{ fontSize: 'icon.lg', color: 'text.secondary', flexShrink: 0 }}
               />
             )}
           </Box>

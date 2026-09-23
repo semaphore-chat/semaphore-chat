@@ -109,7 +109,7 @@ const ReplyComposerBanner: React.FC<ReplyComposerBannerProps> = ({
             : { flexShrink: 0 }
         }
       >
-        <CloseIcon sx={{ fontSize: 16 }} />
+        <CloseIcon sx={{ fontSize: 'icon.md' }} />
       </IconButton>
     </Box>
   );

@@ -276,7 +276,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
                 px: 2,
               }}
             >
-              <ChatBubbleOutlineIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
+              <ChatBubbleOutlineIcon sx={{ fontSize: 'icon.5xl', color: "text.disabled", mb: 2 }} />
               <Typography variant="body2" color="text.secondary" textAlign="center">
                 No replies yet
               </Typography>

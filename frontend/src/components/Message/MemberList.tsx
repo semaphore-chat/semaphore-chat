@@ -79,7 +79,7 @@ const SectionHeader: React.FC<{ label: string; count: number }> = ({ label, coun
     <Typography
       variant="overline"
       sx={{
-        fontSize: "11px",
+        fontSize: 'scale.xs',
         fontWeight: 600,
         letterSpacing: "0.05em",
         color: "text.secondary",
@@ -163,7 +163,7 @@ const MemberRow: React.FC<{
             noWrap
             sx={{
               fontWeight: 500,
-              fontSize: "14px",
+              fontSize: 'scale.base',
               lineHeight: 1.2,
             }}
           >
@@ -176,7 +176,7 @@ const MemberRow: React.FC<{
               variant="caption"
               sx={{
                 color: "text.secondary",
-                fontSize: "11px",
+                fontSize: 'scale.xs',
                 lineHeight: 1.2,
                 display: "block",
                 overflow: "hidden",
@@ -311,7 +311,7 @@ const MemberList: React.FC<MemberListProps> = ({
     >
       {/* Header */}
       <Box sx={{ p: 2, pb: 1 }}>
-        <Typography variant="h6" sx={{ fontSize: "14px", fontWeight: 600 }}>
+        <Typography variant="h6" sx={{ fontSize: 'scale.base', fontWeight: 600 }}>
           {title}
           {!error && ` — ${isLoading ? "..." : `${members.length}${hasMore ? "+" : ""}`}`}
         </Typography>

@@ -57,7 +57,7 @@ const ProfileHeader: React.FC<ProfileHeaderProps> = ({ user }) => {
               border: "4px solid",
               borderColor: "background.paper",
               bgcolor: "primary.main",
-              fontSize: 48,
+              fontSize: 'scale.6xl',
               fontWeight: 600,
             }}
           >

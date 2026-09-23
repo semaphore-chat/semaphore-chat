@@ -140,7 +140,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                   border: "4px solid",
                   borderColor: "background.paper",
                   bgcolor: "primary.main",
-                  fontSize: 32,
+                  fontSize: 'scale.4xl',
                   fontWeight: 600,
                 }}
               >

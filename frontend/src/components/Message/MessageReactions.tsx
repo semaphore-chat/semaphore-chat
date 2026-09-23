@@ -77,7 +77,7 @@ const SingleReactionChip: React.FC<{
         onClick={() => onReactionClick(reaction.emoji)}
         sx={{
           height: '26px',
-          fontSize: '13px',
+          fontSize: 'scale.md',
           fontWeight: 500,
           cursor: 'pointer',
           backgroundColor: userHasReacted
@@ -105,7 +105,7 @@ const SingleReactionChip: React.FC<{
           },
           '& .MuiChip-label': {
             padding: '0 8px',
-            fontSize: '13px',
+            fontSize: 'scale.md',
             fontWeight: userHasReacted ? 600 : 500,
           }
         }}

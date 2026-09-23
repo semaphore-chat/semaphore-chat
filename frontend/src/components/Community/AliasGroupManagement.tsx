@@ -263,7 +263,7 @@ const AliasGroupManagement: React.FC<AliasGroupManagementProps> = ({ communityId
               justifyContent="center"
               py={4}
             >
-              <GroupIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <GroupIcon sx={{ fontSize: 'icon.5xl', color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No mention groups yet
               </Typography>

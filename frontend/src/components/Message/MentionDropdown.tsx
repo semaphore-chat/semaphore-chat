@@ -335,7 +335,7 @@ export const MentionDropdown: React.FC<MentionDropdownProps> = ({
           variant="caption"
           sx={{
             color: 'text.secondary',
-            fontSize: '0.7rem',
+            fontSize: 'scale.xs',
             opacity: 0.6,
           }}
         >

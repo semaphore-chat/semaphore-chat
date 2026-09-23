@@ -86,7 +86,7 @@ const NotificationAvatar: React.FC<{ notification: Notification }> = ({ notifica
         bgcolor: notification.read ? 'grey.500' : 'primary.main',
         width: NOTIFICATION_AVATAR_SIZE,
         height: NOTIFICATION_AVATAR_SIZE,
-        '& .MuiSvgIcon-root': { fontSize: 20 },
+        '& .MuiSvgIcon-root': { fontSize: 'icon.xl' },
       }}
     >
       {getNotificationIcon(notification.type)}
@@ -114,7 +114,7 @@ const NotificationAvatar: React.FC<{ notification: Notification }> = ({ notifica
             bgcolor: notification.read ? 'grey.500' : 'primary.main',
             border: 2,
             borderColor: 'background.paper',
-            '& .MuiSvgIcon-root': { fontSize: 11 },
+            '& .MuiSvgIcon-root': { fontSize: 'icon.xs' },
           }}
         >
           {getNotificationIcon(notification.type)}
@@ -241,7 +241,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
             <Typography
               component="span"
               noWrap
-              sx={{ flex: '0 1 auto', minWidth: 0, fontWeight: unread ? 600 : 500, fontSize: '0.9375rem' }}
+              sx={{ flex: '0 1 auto', minWidth: 0, fontWeight: unread ? 600 : 500, fontSize: 'scale.base' }}
             >
               {getNotificationAuthorName(notification)}
             </Typography>
@@ -438,7 +438,7 @@ export const NotificationList: React.FC = () => {
               p: 3,
             }}
           >
-            <Box sx={{ fontSize: 64, opacity: 0.5 }}>🔔</Box>
+            <Box sx={{ fontSize: 'icon.6xl', opacity: 0.5 }}>🔔</Box>
             <Typography variant="h6" color="text.secondary">
               No notifications
             </Typography>

@@ -70,7 +70,7 @@ function MessageStatusMarks({ edited, isPending, showSeenBy, sentAt, contextId, 
         <Tooltip title="Sending...">
           <ScheduleIcon
             data-testid="message-pending-icon"
-            sx={{ fontSize: 13, ml: 0.5, verticalAlign: "text-bottom" }}
+            sx={{ fontSize: 'icon.sm', ml: 0.5, verticalAlign: "text-bottom" }}
           />
         </Tooltip>
       )}
@@ -80,7 +80,7 @@ function MessageStatusMarks({ edited, isPending, showSeenBy, sentAt, contextId, 
       )}
       {isPinned && (
         <Tooltip title="Pinned message">
-          <PushPinIcon sx={{ fontSize: 14, color: "primary.main", ml: 0.5 }} />
+          <PushPinIcon sx={{ fontSize: 'icon.sm', color: "primary.main", ml: 0.5 }} />
         </Tooltip>
       )}
     </Typography>
@@ -363,7 +363,7 @@ function MessageComponentInner({
               // Vertically centred on the first line of body1 text.
               lineHeight: 1.5,
               pt: "3px",
-              fontSize: "0.625rem",
+              fontSize: 'scale.2xs',
               textAlign: "right",
               color: "text.secondary",
               opacity: actionsSheetOpen ? 1 : 0,
@@ -406,7 +406,7 @@ function MessageComponentInner({
               >
                 {message.webhook!.name}
               </Typography>
-              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 10, flexShrink: 0, alignSelf: "center" }} />
+              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 'scale.2xs', flexShrink: 0, alignSelf: "center" }} />
             </>
           ) : message.authorId ? (
             <Link

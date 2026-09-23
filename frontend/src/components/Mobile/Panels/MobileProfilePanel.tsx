@@ -95,7 +95,7 @@ const ProfileCard: React.FC<{ user: UserEntity }> = ({ user }) => {
             sx={{
               width: 96,
               height: 96,
-              fontSize: '2.5rem',
+              fontSize: 'scale.5xl',
               border: '4px solid',
               borderColor: 'background.paper',
               bgcolor: 'primary.main',
@@ -181,7 +181,7 @@ const OtherUserProfile: React.FC<{ userId: string }> = ({ userId }) => {
   } else if (isNotFoundError(error)) {
     body = (
       <EmptyState
-        icon={<PersonOffIcon sx={{ fontSize: 64 }} />}
+        icon={<PersonOffIcon sx={{ fontSize: 'icon.6xl' }} />}
         title="User not found"
         description="This account may have been deleted, or the link is wrong."
       />
@@ -189,7 +189,7 @@ const OtherUserProfile: React.FC<{ userId: string }> = ({ userId }) => {
   } else if (error || !user) {
     body = (
       <EmptyState
-        icon={<ErrorIcon sx={{ fontSize: 64 }} />}
+        icon={<ErrorIcon sx={{ fontSize: 'icon.6xl' }} />}
         title="Couldn't load this profile"
         description="Something went wrong. Check your connection and try again."
         action={{ label: 'Try again', onClick: () => void refetch() }}

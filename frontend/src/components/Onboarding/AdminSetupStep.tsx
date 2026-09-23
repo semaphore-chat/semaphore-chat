@@ -74,7 +74,7 @@ const AdminSetupStep: React.FC<AdminSetupStepProps> = ({
   return (
     <Box>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
-        <AdminIcon sx={{ fontSize: 48, color: 'primary.main', mb: 2 }} />
+        <AdminIcon sx={{ fontSize: 'icon.5xl', color: 'primary.main', mb: 2 }} />
         <Typography variant="h4" gutterBottom>
           Create Your Admin Account
         </Typography>

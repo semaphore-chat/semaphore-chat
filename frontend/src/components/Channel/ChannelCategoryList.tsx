@@ -73,7 +73,7 @@ const ChannelListError: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => (
       textAlign: "center",
     }}
   >
-    <ErrorIcon sx={{ fontSize: 40, color: "error.main" }} />
+    <ErrorIcon sx={{ fontSize: 'icon.4xl', color: "error.main" }} />
     <Typography variant="subtitle1" fontWeight={600}>
       Couldn't load channels
     </Typography>

@@ -454,7 +454,7 @@ const RoleManagement: React.FC<RoleManagementProps> = ({ communityId }) => {
               justifyContent="center" 
               py={4}
             >
-              <SecurityIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <SecurityIcon sx={{ fontSize: 'icon.5xl', color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No custom roles yet
               </Typography>

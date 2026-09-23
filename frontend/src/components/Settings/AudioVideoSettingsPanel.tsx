@@ -332,7 +332,7 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Typography variant="body2">Voice Isolation</Typography>
-                    <Chip label="Experimental" size="small" variant="outlined" color="warning" sx={{ height: 20, fontSize: '0.65rem' }} />
+                    <Chip label="Experimental" size="small" variant="outlined" color="warning" sx={{ height: 20, fontSize: 'scale.2xs' }} />
                   </Box>
                   <Typography variant="caption" color="text.secondary">
                     Uses AI to isolate your voice
@@ -343,7 +343,7 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
           />
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1, ml: 1 }}>
-          <InfoOutlined sx={{ fontSize: 16, color: 'text.secondary' }} />
+          <InfoOutlined sx={{ fontSize: 'icon.md', color: 'text.secondary' }} />
           <Typography variant="caption" color="text.secondary">
             Changes take effect the next time you join a voice channel.
           </Typography>
@@ -598,7 +598,7 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
             />
           ) : (
             <Box sx={{ textAlign: 'center', color: 'text.secondary' }}>
-              <Videocam sx={{ fontSize: 48, mb: 1 }} />
+              <Videocam sx={{ fontSize: 'icon.5xl', mb: 1 }} />
               <Typography variant="body2">
                 Click "Test" to preview your camera
               </Typography>

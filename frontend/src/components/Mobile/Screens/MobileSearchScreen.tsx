@@ -135,7 +135,7 @@ export const MobileSearchScreen: React.FC<MobileSearchScreenProps> = ({ communit
               px: 1.5,
               borderRadius: 2,
               bgcolor: 'action.hover',
-              fontSize: '1rem', // ≥16px so iOS doesn't zoom on focus
+              fontSize: 'scale.lg', // ≥16px so iOS doesn't zoom on focus
               '& input::-webkit-search-cancel-button': { display: 'none' },
             }}
           />

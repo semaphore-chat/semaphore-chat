@@ -193,7 +193,7 @@ const BanListPanel: React.FC<BanListPanelProps> = ({ communityId }) => {
             backgroundColor: theme.palette.semantic.overlay.light,
           }}
         >
-          <CheckCircleIcon sx={{ fontSize: 48, color: "success.main", mb: 2 }} />
+          <CheckCircleIcon sx={{ fontSize: 'icon.5xl', color: "success.main", mb: 2 }} />
           <Typography variant="body2" color="text.secondary" textAlign="center">
             No banned users
           </Typography>

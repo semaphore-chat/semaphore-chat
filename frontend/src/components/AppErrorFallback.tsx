@@ -28,7 +28,7 @@ export const AppErrorFallback: React.FC<AppErrorFallbackProps> = ({ error }) => 
       bgcolor: 'background.canvas',
     }}
   >
-    <ErrorIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
+    <ErrorIcon sx={{ fontSize: 'icon.6xl', color: 'error.main', mb: 2 }} />
     <Typography variant="h5" gutterBottom color="text.primary">
       Something went wrong
     </Typography>

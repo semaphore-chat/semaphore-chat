@@ -32,7 +32,7 @@ export const DropZoneOverlay: React.FC<DropZoneOverlayProps> = ({ visible }) => 
       }}
     >
       <UploadFileIcon
-        sx={{ fontSize: 40, color: theme.palette.primary.main, mb: 1 }}
+        sx={{ fontSize: 'icon.4xl', color: theme.palette.primary.main, mb: 1 }}
       />
       <Typography variant="body2" color="primary" fontWeight={600}>
         Drop files to upload

@@ -136,7 +136,7 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
             variant="h6"
             noWrap
             sx={{
-              fontSize: '1.125rem',
+              fontSize: 'scale.xl',
               fontWeight: 600,
               lineHeight: 1.2,
             }}
@@ -149,7 +149,7 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
               noWrap
               sx={{
                 color: 'text.secondary',
-                fontSize: '0.75rem',
+                fontSize: 'scale.sm',
                 lineHeight: 1.2,
               }}
             >

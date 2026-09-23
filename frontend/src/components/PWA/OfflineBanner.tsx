@@ -74,7 +74,7 @@ export const OfflineBanner: React.FC = () => {
           color: 'warning.contrastText',
         }}
       >
-        <WifiOffIcon sx={{ fontSize: 16 }} />
+        <WifiOffIcon sx={{ fontSize: 'icon.md' }} />
         <Typography variant="caption" fontWeight={600} noWrap>
           You're offline
         </Typography>

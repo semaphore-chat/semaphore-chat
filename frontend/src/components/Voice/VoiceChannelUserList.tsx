@@ -318,7 +318,7 @@ export const VoiceChannelUserList: React.FC<VoiceChannelUserListProps> = ({
             <Chip
               label={`+${presence.users.length - 3}`}
               size="small"
-              sx={{ height: 24, fontSize: "0.75rem" }}
+              sx={{ height: 24, fontSize: 'scale.sm' }}
             />
           )}
         </Box>

@@ -173,7 +173,7 @@ const ModerationLogsPanel: React.FC<ModerationLogsPanelProps> = ({ communityId }
             backgroundColor: theme.palette.semantic.overlay.light,
           }}
         >
-          <HistoryIcon sx={{ fontSize: 48, color: "text.disabled", mb: 2 }} />
+          <HistoryIcon sx={{ fontSize: 'icon.5xl', color: "text.disabled", mb: 2 }} />
           <Typography variant="body2" color="text.secondary" textAlign="center">
             No moderation logs found
           </Typography>

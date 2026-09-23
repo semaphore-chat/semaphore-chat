@@ -210,7 +210,7 @@ export function ChannelRow({
         {channel.isPrivate && (
           <LockIcon
             aria-label="Private channel"
-            sx={{ fontSize: 14, ml: 0.5, flexShrink: 0, color: "text.secondary" }}
+            sx={{ fontSize: 'icon.sm', ml: 0.5, flexShrink: 0, color: "text.secondary" }}
           />
         )}
         {mentions > 0 && (

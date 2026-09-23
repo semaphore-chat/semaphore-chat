@@ -86,16 +86,16 @@ export const MobileBottomNavigation: React.FC<MobileBottomNavigationProps> = ({
             gap: '4px',
           },
           '& .MuiBottomNavigationAction-label': {
-            fontSize: '0.6875rem',
+            fontSize: 'scale.xs',
             fontWeight: 500,
             marginTop: '2px',
             '&.Mui-selected': {
-              fontSize: '0.6875rem',
+              fontSize: 'scale.xs',
               fontWeight: 600,
             },
           },
           '& .MuiSvgIcon-root': {
-            fontSize: '1.375rem',
+            fontSize: 'icon.2xl',
           },
         }}
       >

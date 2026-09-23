@@ -63,7 +63,7 @@ const SizeBadge = styled(Typography)(({ theme }) => ({
   color: "#fff",
   padding: "2px 8px",
   borderRadius: theme.spacing(0.5),
-  fontSize: "0.75rem",
+  fontSize: theme.typography.scale.sm,
 }));
 
 const GenericPlaceholder = styled(Box)(({ theme }) => ({
@@ -180,7 +180,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({ metadata }) => {
           <ThumbnailImage src={thumbnailUrl} alt={metadata.filename} />
         ) : (
           <GenericPlaceholder>
-            <VideocamIcon sx={{ fontSize: 48, opacity: 0.5 }} />
+            <VideocamIcon sx={{ fontSize: 'icon.5xl', opacity: 0.5 }} />
             <Typography variant="caption" sx={{ opacity: 0.7 }}>
               {metadata.filename}
             </Typography>
@@ -201,7 +201,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({ metadata }) => {
             }}
             size="large"
           >
-            <PlayArrowIcon sx={{ fontSize: 48 }} />
+            <PlayArrowIcon sx={{ fontSize: 'icon.5xl' }} />
           </IconButton>
         </PlayOverlay>
 

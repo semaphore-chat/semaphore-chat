@@ -77,7 +77,7 @@ const UserBannerUpload: React.FC<UserBannerUploadProps> = React.memo(({
             alignItems="center"
             gap={1}
           >
-            <Upload sx={{ fontSize: 48, color: "text.secondary" }} />
+            <Upload sx={{ fontSize: 'icon.5xl', color: "text.secondary" }} />
             <Typography variant="body2" color="text.secondary">
               Click to upload banner image
             </Typography>

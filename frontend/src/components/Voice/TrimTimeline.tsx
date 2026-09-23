@@ -53,7 +53,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
               left: `${(t / maxDuration) * 100}%`,
               transform: 'translateX(-50%)',
               color: 'text.secondary',
-              fontSize: '0.65rem',
+              fontSize: 'scale.2xs',
             }}
           >
             {formatTime(t)}

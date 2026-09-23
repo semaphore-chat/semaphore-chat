@@ -113,7 +113,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
               )}
             </Box>
             {isInCall && (
-              <Phone aria-label="In call" sx={{ fontSize: 14, color: "success.main", flexShrink: 0 }} />
+              <Phone aria-label="In call" sx={{ fontSize: 'icon.sm', color: "success.main", flexShrink: 0 }} />
             )}
             {group.lastMessage && (
               <Typography
@@ -163,7 +163,7 @@ const DmListItem: React.FC<DmListItemProps> = ({
                     borderRadius: "50%",
                   },
                   "& .MuiBadge-standard": {
-                    fontSize: 11,
+                    fontSize: 'scale.xs',
                     height: 18,
                     minWidth: 18,
                   },
