@@ -30,7 +30,7 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
   bottomOffset = 0,
 }) => {
   const { state } = useMobileNavigation();
-  const { currentScreen, communityId, channelId, dmGroupId } = state;
+  const { currentScreen, communityId, channelId, dmGroupId, userId } = state;
 
   const totalBottomOffset = LAYOUT_CONSTANTS.BOTTOM_NAV_HEIGHT_MOBILE + bottomOffset;
 
@@ -114,6 +114,9 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
 
       case 'profile':
         return <MobileProfilePanel />;
+
+      case 'user-profile':
+        return userId ? <MobileProfilePanel userId={userId} /> : null;
 
       case 'settings':
         // Previously fell through to null, leaving a blank pane on tablets.

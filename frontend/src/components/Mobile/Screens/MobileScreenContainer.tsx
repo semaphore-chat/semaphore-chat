@@ -10,7 +10,8 @@
  * - dm-list: DM conversations list (messages tab)
  * - dm-chat: DM chat view
  * - notifications: Notification list
- * - profile: Profile/settings
+ * - profile: Own profile/settings
+ * - user-profile: Another user's profile (/profile/:userId)
  */
 
 import React from 'react';
@@ -34,7 +35,13 @@ interface MobileScreenContainerProps {
 
 // Helper to determine if a screen is a "detail" view (slides in from right)
 const isDetailScreen = (screen: ScreenType): boolean => {
-  return screen === 'chat' || screen === 'dm-chat' || screen === 'settings' || screen === 'route';
+  return (
+    screen === 'chat' ||
+    screen === 'dm-chat' ||
+    screen === 'settings' ||
+    screen === 'user-profile' ||
+    screen === 'route'
+  );
 };
 
 // Generic title for routed ('route' screen) pages, derived from the path.
@@ -56,7 +63,7 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
 }) => {
   const { state } = useMobileNavigation();
   const location = useLocation();
-  const { currentScreen, communityId, channelId, dmGroupId } = state;
+  const { currentScreen, communityId, channelId, dmGroupId, userId } = state;
 
   // Track previous screen for transition direction
   const [prevScreen, setPrevScreen] = React.useState<ScreenType>(currentScreen);
@@ -137,6 +144,9 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
       case 'profile':
         return <MobileProfilePanel />;
 
+      case 'user-profile':
+        return userId ? <MobileProfilePanel userId={userId} /> : null;
+
       case 'settings':
         return (
           <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -174,7 +184,7 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
       }}
     >
       <Slide
-        key={currentScreen === 'route' ? location.pathname : currentScreen}
+        key={currentScreen === 'route' || currentScreen === 'user-profile' ? location.pathname : currentScreen}
         direction={slideIn ? 'left' : 'right'}
         in={true}
         timeout={MOBILE_ANIMATIONS.NORMAL}

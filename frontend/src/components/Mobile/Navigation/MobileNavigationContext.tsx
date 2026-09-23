@@ -18,6 +18,7 @@ import React, {
   useMemo,
 } from 'react';
 import { useNavigate, useLocation, matchPath } from 'react-router-dom';
+import { useCurrentUser } from '../../../hooks/useCurrentUser';
 
 const LAST_COMMUNITY_KEY = 'semaphore:lastCommunityId';
 
@@ -31,7 +32,8 @@ export type ScreenType =
   | 'dm-list'       // DM conversations list (messages tab default)
   | 'dm-chat'       // DM chat view
   | 'notifications' // Notifications list (notifications tab default)
-  | 'profile'       // Profile (profile tab default)
+  | 'profile'       // Own profile (profile tab default)
+  | 'user-profile'  // Another user's profile (/profile/:userId, not the current user)
   | 'settings'      // Settings detail view (from profile tab)
   | 'route';        // Fallthrough: render matched router Outlet (edit/create/admin/etc.)
 
@@ -40,6 +42,7 @@ export interface ParsedScreen {
   communityId: string | null;
   channelId: string | null;
   dmGroupId: string | null;
+  userId: string | null;
 }
 
 /**
@@ -48,7 +51,7 @@ export interface ParsedScreen {
  * matched React Router element renders via `<Outlet/>`.
  */
 export function parseScreenFromPath(pathname: string): ParsedScreen {
-  const empty = { communityId: null, channelId: null, dmGroupId: null };
+  const empty = { communityId: null, channelId: null, dmGroupId: null, userId: null };
 
   // /community/:communityId/channel/:channelId -> chat
   const chat = matchPath('/community/:communityId/channel/:channelId', pathname);
@@ -58,6 +61,7 @@ export function parseScreenFromPath(pathname: string): ParsedScreen {
       communityId: chat.params.communityId ?? null,
       channelId: chat.params.channelId ?? null,
       dmGroupId: null,
+      userId: null,
     };
   }
 
@@ -70,13 +74,13 @@ export function parseScreenFromPath(pathname: string): ParsedScreen {
   // /community/:communityId (exactly) -> channels
   const channels = matchPath('/community/:communityId', pathname);
   if (channels) {
-    return { screen: 'channels', communityId: channels.params.communityId ?? null, channelId: null, dmGroupId: null };
+    return { ...empty, screen: 'channels', communityId: channels.params.communityId ?? null };
   }
 
   // /direct-messages/:dmGroupId -> dm-chat
   const dmChat = matchPath('/direct-messages/:dmGroupId', pathname);
   if (dmChat) {
-    return { screen: 'dm-chat', communityId: null, channelId: null, dmGroupId: dmChat.params.dmGroupId ?? null };
+    return { ...empty, screen: 'dm-chat', dmGroupId: dmChat.params.dmGroupId ?? null };
   }
 
   // /direct-messages -> dm-list
@@ -99,9 +103,16 @@ export function parseScreenFromPath(pathname: string): ParsedScreen {
     return { screen: 'route', ...empty };
   }
 
-  // /profile and /profile/:userId -> profile
-  if (matchPath('/profile', pathname) || matchPath('/profile/:userId', pathname)) {
+  // /profile -> own profile
+  if (matchPath('/profile', pathname)) {
     return { screen: 'profile', ...empty };
+  }
+
+  // /profile/:userId -> user-profile. This parser is pure and doesn't know who
+  // the current user is; the provider folds /profile/<me> back into 'profile'.
+  const userProfile = matchPath('/profile/:userId', pathname);
+  if (userProfile) {
+    return { ...empty, screen: 'user-profile', userId: userProfile.params.userId ?? null };
   }
 
   // / (home) -> channels with no community selected; the Home tab handler
@@ -120,6 +131,8 @@ export interface MobileNavigationState {
   communityId: string | null;
   channelId: string | null;
   dmGroupId: string | null;
+  /** Set only on the 'user-profile' screen (another user's profile). */
+  userId: string | null;
   isDrawerOpen: boolean;
 }
 
@@ -150,15 +163,17 @@ interface MobileNavigationContextType {
   toggleDrawer: () => void;
 
   // Legacy compatibility - get current screen info
-  getCurrentScreen: () => { type: ScreenType; communityId?: string; channelId?: string; dmGroupId?: string };
+  getCurrentScreen: () => { type: ScreenType; communityId?: string; channelId?: string; dmGroupId?: string; userId?: string };
 }
 
 const MobileNavigationContext = createContext<MobileNavigationContextType | undefined>(
   undefined
 );
 
-// Helper to determine active tab from screen (+ pathname for 'route' screens)
-const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab => {
+// Helper to determine active tab from screen (+ pathname for 'route' screens).
+// Returns null for 'user-profile': someone else's profile belongs to whichever
+// tab the user came from (chat, DMs, notifications), not to the Profile tab.
+const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | null => {
   switch (screen) {
     case 'channels':
     case 'chat':
@@ -171,6 +186,8 @@ const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab => {
     case 'profile':
     case 'settings':
       return 'profile';
+    case 'user-profile':
+      return null;
     case 'route':
       if (pathname.startsWith('/community')) return 'home';
       if (pathname.startsWith('/profile') || pathname.startsWith('/settings')) return 'profile';
@@ -180,7 +197,7 @@ const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab => {
 };
 
 const isDetailScreen = (screen: ScreenType): boolean =>
-  screen === 'chat' || screen === 'dm-chat' || screen === 'settings';
+  screen === 'chat' || screen === 'dm-chat' || screen === 'settings' || screen === 'user-profile';
 
 export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -209,8 +226,17 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     }
   }, []);
 
-  // Derived screen state
-  const parsed = useMemo(() => parseScreenFromPath(location.pathname), [location.pathname]);
+  const { user: currentUser } = useCurrentUser();
+  const currentUserId = currentUser?.id ?? null;
+
+  // Derived screen state. /profile/<my id> is the own profile, not 'user-profile'.
+  const parsed = useMemo((): ParsedScreen => {
+    const p = parseScreenFromPath(location.pathname);
+    if (p.screen === 'user-profile' && currentUserId && p.userId === currentUserId) {
+      return { ...p, screen: 'profile', userId: null };
+    }
+    return p;
+  }, [location.pathname, currentUserId]);
 
   // Keep lastCommunityId in sync when we land on a community screen
   useEffect(() => {
@@ -225,12 +251,21 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
       communityId: parsed.communityId,
       channelId: parsed.channelId,
       dmGroupId: parsed.dmGroupId,
+      userId: parsed.userId,
       isDrawerOpen,
     }),
     [parsed, isDrawerOpen]
   );
 
-  const activeTab = getTabFromScreen(parsed.screen, location.pathname);
+  // Screens without a tab of their own ('user-profile') keep the last real tab
+  // highlighted. Adjusting state during render (not in an effect) is the
+  // React-recommended way to remember a value from a previous render.
+  const screenTab = getTabFromScreen(parsed.screen, location.pathname);
+  const [lastTab, setLastTab] = useState<MobileTab>(screenTab ?? 'home');
+  if (screenTab && screenTab !== lastTab) {
+    setLastTab(screenTab);
+  }
+  const activeTab: MobileTab = screenTab ?? lastTab;
 
   // Navigation actions
   const navigateToChannels = useCallback((communityId: string) => {
@@ -322,6 +357,7 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     communityId: parsed.communityId || undefined,
     channelId: parsed.channelId || undefined,
     dmGroupId: parsed.dmGroupId || undefined,
+    userId: parsed.userId || undefined,
   }), [parsed]);
 
   const value: MobileNavigationContextType = {
