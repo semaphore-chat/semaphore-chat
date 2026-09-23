@@ -48,7 +48,18 @@ export const Narrow320 = defineComponent(
   bigCommunityScenario,
   () => (
     <ReplayBufferProvider>
-      <Box sx={{ width: 320, outline: '1px dashed', outlineColor: 'divider' }}>
+      {/* The bar is position:fixed; the transform makes this box its
+          containing block so it really is laid out at 320px. */}
+      <Box
+        sx={{
+          width: 320,
+          height: 160,
+          position: 'relative',
+          transform: 'translateZ(0)',
+          outline: '1px dashed',
+          outlineColor: 'divider',
+        }}
+      >
         <VoiceBottomBar />
       </Box>
     </ReplayBufferProvider>

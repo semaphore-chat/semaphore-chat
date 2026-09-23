@@ -68,14 +68,17 @@ export const TabletNavHeader: React.FC = () => {
             aria-current={selected ? 'page' : undefined}
             focusRipple
             sx={{
-              flex: 1,
+              // Size to content so the bold active label ("Notifications")
+              // gets the room it needs instead of an equal quarter.
+              flex: '1 1 auto',
               minWidth: TOUCH_TARGETS.MINIMUM,
+              px: 0.5,
               minHeight: TOUCH_TARGETS.MINIMUM,
               flexDirection: 'column',
               gap: '2px',
               borderRadius: 1,
               color: selected ? 'primary.main' : 'text.secondary',
-              '& .MuiSvgIcon-root': { fontSize: '1.375rem' },
+              '& .MuiSvgIcon-root': { fontSize: 'icon.2xl' },
               '&:hover': { backgroundColor: 'action.hover' },
               '&.Mui-focusVisible': { backgroundColor: 'action.focus' },
             }}
@@ -90,7 +93,7 @@ export const TabletNavHeader: React.FC = () => {
                   height: 16,
                   minWidth: 16,
                   px: 0.5,
-                  fontSize: '0.625rem',
+                  fontSize: 'scale.2xs',
                   top: 3,
                 },
               }}
@@ -101,7 +104,7 @@ export const TabletNavHeader: React.FC = () => {
               component="span"
               noWrap
               sx={{
-                fontSize: '0.6875rem',
+                fontSize: 'scale.xs',
                 fontWeight: selected ? 600 : 500,
                 lineHeight: 1.2,
                 maxWidth: '100%',

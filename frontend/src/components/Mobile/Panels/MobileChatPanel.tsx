@@ -200,7 +200,14 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
 
   const { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel } = useSwipeGesture({
     enabled: shouldUseTouchUI,
-    onSwipeRight: isMobile ? () => goBack() : undefined,
+    // A gesture the drag locked as vertical (a scroll) never navigates back,
+    // even if it drifts sideways before release.
+    onSwipeRight: isMobile
+      ? () => {
+          if (dragAxis.current === 'y') return;
+          goBack();
+        }
+      : undefined,
     onSwipeLeft: () => {
       if (hasMemberList) setShowMemberDrawer(true);
     },

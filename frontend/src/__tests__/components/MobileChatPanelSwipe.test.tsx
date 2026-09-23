@@ -213,6 +213,16 @@ describe('MobileChatPanel swipe navigation wiring', () => {
       expect(surface().style.transform).toBe('');
     });
 
+    it('does not navigate back when a scroll-locked gesture drifts sideways', () => {
+      renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
+
+      act(() => captured.opts?.onProgress?.(4, 40, 0.1));
+      act(() => captured.opts?.onSwipeRight?.(1));
+      act(() => captured.opts?.onSwipeEnd?.('right'));
+
+      expect(goBack).not.toHaveBeenCalled();
+    });
+
     it('snaps back when the gesture ends without committing', () => {
       renderWithProviders(<MobileChatPanel communityId="c1" channelId="ch1" />);
 
