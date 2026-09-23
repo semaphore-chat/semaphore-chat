@@ -51,16 +51,20 @@ jobs:
         working-directory: ./backend
         run: pnpm run prisma:generate
 
-      - name: Run ESLint
-        working-directory: ./backend
-        run: pnpm run lint
-
-      # Still runs when ESLint fails, so one run reports both kinds of errors
-      # (as the separate jobs did) — but not if setup itself failed.
+      # Type check runs BEFORE ESLint: `pnpm run lint` is `eslint --fix`, which
+      # rewrites files in place, so tsc must see the untouched checkout (as it
+      # did in its own job) — e.g. a prettier reflow could otherwise move which
+      # line a `// @ts-expect-error` applies to.
       - name: Type check
-        if: ${{ !cancelled() && steps.prisma.outcome == 'success' }}
         working-directory: ./backend
         run: pnpm run type-check
+
+      # Still runs when tsc fails, so one run reports both kinds of errors
+      # (as the separate jobs did) — but not if setup itself failed.
+      - name: Run ESLint
+        if: ${{ !cancelled() && steps.prisma.outcome == 'success' }}
+        working-directory: ./backend
+        run: pnpm run lint
 
   test:
     name: Unit Tests
@@ -296,15 +300,21 @@ jobs:
 
       # Checksums are verified on every run, cache hit or not (a failed check
       # also keeps a bad download out of the cache: actions/cache only saves
-      # on job success).
+      # on job success). Only the two verified binaries are copied into a
+      # fresh directory that goes on PATH — never the restored cache dir
+      # itself, so nothing else in it can shadow a command in later steps.
       - name: Verify and install static ffmpeg
         run: |
           set -euo pipefail
-          dir="$HOME/.cache/ffmpeg-static"
-          echo "${FFMPEG_SHA256}  $dir/ffmpeg" | sha256sum -c -
-          echo "${FFPROBE_SHA256}  $dir/ffprobe" | sha256sum -c -
-          chmod +x "$dir/ffmpeg" "$dir/ffprobe"
-          echo "$dir" >> "$GITHUB_PATH"
+          src="$HOME/.cache/ffmpeg-static"
+          bin="$RUNNER_TEMP/ffmpeg-static-bin"
+          rm -rf "$bin"
+          mkdir -p "$bin"
+          cp "$src/ffmpeg" "$src/ffprobe" "$bin/"
+          echo "${FFMPEG_SHA256}  $bin/ffmpeg" | sha256sum -c -
+          echo "${FFPROBE_SHA256}  $bin/ffprobe" | sha256sum -c -
+          chmod 0755 "$bin/ffmpeg" "$bin/ffprobe"
+          echo "$bin" >> "$GITHUB_PATH"
 
       # Hard-fail (via pipefail) if ffmpeg is somehow still missing after the
       # install step above, instead of silently continuing like the old
