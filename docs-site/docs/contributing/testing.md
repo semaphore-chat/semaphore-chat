@@ -73,6 +73,22 @@ docker compose run --rm frontend pnpm run test
 docker compose run --rm frontend pnpm run test:cov
 ```
 
+### In CI
+
+`.github/workflows/frontend-tests.yml` splits the unit tests across three parallel
+`Unit Tests (shard k/3)` jobs. A `Unit Tests` job then merges their results into
+one summary, along with the coverage table and the coverage badge. Lint, type
+check, build and the bundle budget run in their own `Lint, Type Check & Build`
+job. To reproduce one shard locally:
+
+```bash
+docker compose run --rm frontend pnpm exec vitest run --shard=2/3
+```
+
+The shards' coverage is merged by `frontend/scripts/merge-coverage-shards.mjs`,
+not by `vitest --merge-reports --coverage`, so the totals match an unsharded
+`pnpm run test:cov`. The script explains why.
+
 ### Test Infrastructure
 
 Located in `frontend/src/__tests__/test-utils/`:
