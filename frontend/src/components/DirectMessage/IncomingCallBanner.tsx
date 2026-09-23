@@ -5,6 +5,7 @@ import { useIncomingCall } from "../../contexts/IncomingCallContext";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { logger } from "../../utils/logger";
 import { playSound, Sounds } from "../../hooks/useSound";
+import { AuthenticatedImage } from "../Common/AuthenticatedImage";
 
 const pulseKeyframes = {
   "@keyframes incomingCallPulse": {
@@ -57,13 +58,18 @@ export const IncomingCallBanner: React.FC = () => {
         ...pulseKeyframes,
       }}
     >
-      <Avatar
-        src={incomingCall.callerAvatar ?? undefined}
+      {/* callerAvatar is a file id — resolve it through the authenticated file cache */}
+      <AuthenticatedImage
+        fileId={incomingCall.callerAvatar}
         alt={incomingCall.callerName}
-        sx={{ width: 40, height: 40 }}
-      >
-        {incomingCall.callerName.charAt(0).toUpperCase()}
-      </Avatar>
+        component="avatar"
+        sx={{ width: 40, height: 40, flexShrink: 0 }}
+        fallback={
+          <Avatar alt={incomingCall.callerName} sx={{ width: 40, height: 40, flexShrink: 0 }}>
+            {incomingCall.callerName.charAt(0).toUpperCase()}
+          </Avatar>
+        }
+      />
 
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="subtitle1" fontWeight="bold" noWrap>

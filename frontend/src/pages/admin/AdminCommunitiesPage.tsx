@@ -25,6 +25,7 @@ import {
   OpenInNew as OpenIcon,
 } from "@mui/icons-material";
 import ConfirmDialog from "../../components/Common/ConfirmDialog";
+import { AuthenticatedImage } from "../../components/Common/AuthenticatedImage";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -133,12 +134,18 @@ const AdminCommunitiesPage: React.FC = () => {
                 <TableRow key={community.id} hover>
                   <TableCell>
                     <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-                      <Avatar
-                        src={community.avatar || undefined}
-                        sx={{ width: 40, height: 40 }}
-                      >
-                        {community.name[0].toUpperCase()}
-                      </Avatar>
+                      {/* community.avatar is a file id — resolve it through the authenticated file cache */}
+                      <AuthenticatedImage
+                        fileId={community.avatar}
+                        alt={community.name}
+                        component="avatar"
+                        sx={{ width: 40, height: 40, flexShrink: 0 }}
+                        fallback={
+                          <Avatar sx={{ width: 40, height: 40, flexShrink: 0 }}>
+                            {community.name.charAt(0).toUpperCase()}
+                          </Avatar>
+                        }
+                      />
                       <Box>
                         <Typography variant="body2" fontWeight="medium">
                           {community.name}

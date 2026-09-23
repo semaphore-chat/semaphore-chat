@@ -17,6 +17,7 @@ import {
   ListItemAvatar,
   ListItemText,
   Avatar,
+  Badge,
   IconButton,
   CircularProgress,
   Button,
@@ -33,6 +34,8 @@ import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { notificationsControllerDismissNotificationMutation } from '../../api-client/@tanstack/react-query.gen';
 
+import { AuthenticatedImage } from '../Common/AuthenticatedImage';
+import { useAuthenticatedImage } from '../../hooks/useAuthenticatedImage';
 import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import { NotificationType, Notification } from '../../types/notification.type';
 import { logger } from '../../utils/logger';
@@ -51,6 +54,66 @@ const getNotificationIcon = (type: Notification['type']) => {
     default:
       return <MentionIcon />;
   }
+};
+
+const NOTIFICATION_AVATAR_SIZE = 44;
+const TYPE_BADGE_SIZE = 20;
+
+/**
+ * Author avatar with a small notification-type badge. `author.avatarUrl` is a
+ * file id, so it goes through the authenticated file cache
+ * (AuthenticatedImage). With no avatar, the type icon itself is the avatar.
+ */
+const NotificationAvatar: React.FC<{ notification: Notification }> = ({ notification }) => {
+  const iconAvatar = (
+    <Avatar
+      sx={{
+        bgcolor: notification.read ? 'grey.500' : 'primary.main',
+        width: NOTIFICATION_AVATAR_SIZE,
+        height: NOTIFICATION_AVATAR_SIZE,
+      }}
+    >
+      {getNotificationIcon(notification.type)}
+    </Avatar>
+  );
+
+  const avatarFileId = notification.author?.avatarUrl;
+  // Shares AuthenticatedImage's cache entry; only used to hide the type badge
+  // when the avatar can't be shown and the type icon is already the avatar.
+  const { blobUrl } = useAuthenticatedImage(avatarFileId);
+  if (!avatarFileId) {
+    return iconAvatar;
+  }
+
+  return (
+    <Badge
+      invisible={!blobUrl}
+      overlap="circular"
+      anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      badgeContent={
+        <Avatar
+          sx={{
+            width: TYPE_BADGE_SIZE,
+            height: TYPE_BADGE_SIZE,
+            bgcolor: notification.read ? 'grey.500' : 'primary.main',
+            border: 2,
+            borderColor: 'background.paper',
+            '& .MuiSvgIcon-root': { fontSize: 12 },
+          }}
+        >
+          {getNotificationIcon(notification.type)}
+        </Avatar>
+      }
+    >
+      <AuthenticatedImage
+        fileId={avatarFileId}
+        alt={notification.author?.displayName || notification.author?.username || 'Author'}
+        component="avatar"
+        fallback={iconAvatar}
+        sx={{ width: NOTIFICATION_AVATAR_SIZE, height: NOTIFICATION_AVATAR_SIZE }}
+      />
+    </Badge>
+  );
 };
 
 interface NotificationItemProps {
@@ -110,16 +173,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
         }}
       >
         <ListItemAvatar>
-          <Avatar
-            src={notification.author?.avatarUrl || undefined}
-            sx={{
-              bgcolor: notification.read ? 'grey.500' : 'primary.main',
-              width: 44,
-              height: 44,
-            }}
-          >
-            {getNotificationIcon(notification.type)}
-          </Avatar>
+          <NotificationAvatar notification={notification} />
         </ListItemAvatar>
         <ListItemText
           primary={
