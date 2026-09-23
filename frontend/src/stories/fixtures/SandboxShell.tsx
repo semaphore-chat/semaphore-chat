@@ -17,6 +17,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { AuthenticatedShell } from './AuthenticatedShell';
 import { StoryRoutes } from './StoryRoutes';
 import type { VoiceState } from '../../contexts/VoiceContext';
+import { clearComposerDrafts } from '../../hooks/useComposerDraft';
 
 function createStoryQueryClient(): QueryClient {
   return new QueryClient({
@@ -50,6 +51,9 @@ export interface SandboxShellProps {
 
 export const SandboxShell: React.FC<SandboxShellProps> = ({ path = '/', voiceState, isSocketConnected, children, overlay }) => {
   const [queryClient] = useState(createStoryQueryClient);
+  // Composer drafts persist in sessionStorage; start every story without the
+  // text a previous story typed (runs before the story's composer mounts).
+  useState(clearComposerDrafts);
   return (
     <QueryClientProvider client={queryClient}>
       <MemoryRouter initialEntries={[path]}>
