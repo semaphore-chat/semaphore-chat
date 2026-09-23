@@ -8,6 +8,16 @@ on:
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
+# Serialize gh-pages deploys. `mkdocs gh-deploy --force` force-pushes the
+# whole site, so two overlapping runs race and the slower one — possibly the
+# older commit — wins. cancel-in-progress: false never interrupts a running
+# deploy; GitHub only skips a deploy that is still *pending* when an even newer
+# one queues behind it, and that newer full-site build supersedes it anyway
+# (same pattern as GitHub's own Pages starter workflows).
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
