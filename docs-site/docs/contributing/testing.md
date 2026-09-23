@@ -77,9 +77,10 @@ docker compose run --rm frontend pnpm run test:cov
 
 `.github/workflows/frontend-tests.yml` splits the unit tests across three parallel
 `Unit Tests (shard k/3)` jobs. A `Unit Tests` job then merges their results into
-one summary, along with the coverage table and the coverage badge. Lint, type
-check, build and the bundle budget run in their own `Lint, Type Check & Build`
-job. To reproduce one shard locally:
+one summary and prints the coverage table. Lint, type check, build and the
+bundle budget run in their own `Lint, Type Check & Build` job. On `main`, a
+`Coverage Badge` job pushes the badge once all of these have passed. To
+reproduce one shard locally:
 
 ```bash
 docker compose run --rm frontend pnpm exec vitest run --shard=2/3

@@ -10,11 +10,13 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
-# One in-flight run per ref; a newer push/dispatch cancels the older run instead
-# of letting duplicates pile up (and avoids confusing "cancelled" noise).
+# A newer push to a PR cancels that PR's in-flight run. Every other run (push
+# to main, the nightly schedule, manual dispatch) gets its own group (run_id),
+# so none of them cancels another: a push to main never cancels the nightly
+# run and its Voice E2E job, or the reverse.
 concurrency:
-  group: e2e-${{ github.ref }}
-  cancel-in-progress: true
+  group: e2e-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   changes:
@@ -50,9 +52,11 @@ jobs:
   # Builds no images. Postgres and Redis run as service containers; the backend
   # and frontend run from the checkout on the runner, as the same processes
   # the backend-test and frontend-test containers in docker-compose.e2e.yml
-  # run. Keep the env below in sync with that file. Only the addresses change:
-  # the compose hostnames become localhost. docker-compose.e2e.yml and
-  # scripts/run-e2e.sh are still how to run this suite locally.
+  # run. Keep the env below in sync with that file; scripts/check-e2e-env.sh
+  # fails the start steps if it drifts. Only the addresses change: the compose
+  # hostnames become localhost. docker-compose.e2e.yml and scripts/run-e2e.sh
+  # are still how to run this suite locally. The dev Dockerfiles that file
+  # builds are no longer built here, only by the nightly Voice E2E job.
   e2e:
     name: Playwright E2E Tests
     runs-on: ubuntu-latest
@@ -129,6 +133,7 @@ jobs:
           LIVEKIT_API_KEY: e2e-test-api-key
           LIVEKIT_API_SECRET: e2e-test-api-secret
         run: |
+          ../scripts/check-e2e-env.sh backend-test
           mkdir -p "$RUNNER_TEMP/e2e-logs"
           nohup pnpm run start:dev > "$RUNNER_TEMP/e2e-logs/backend.log" 2>&1 < /dev/null &
 
@@ -140,7 +145,13 @@ jobs:
       - name: Get Playwright version
         id: pw-version
         working-directory: frontend
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        # A failing command inside an echo argument would not fail the step,
+        # and an empty version gives a cache key shared by every Playwright
+        # version. A plain assignment does fail it.
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Cache the downloaded browser so most runs skip the ~167 MiB download
       # entirely. Keyed on the Playwright version, which is all the browser
@@ -202,6 +213,7 @@ jobs:
           NODE_ENV: test
           E2E_BACKEND_URL: ${{ env.BACKEND_URL }}
         run: |
+          ../scripts/check-e2e-env.sh frontend-test
           nohup pnpm exec vite --config vite.config.e2e.ts --host 0.0.0.0 --port 5174 --strictPort \
             > "$RUNNER_TEMP/e2e-logs/frontend.log" 2>&1 < /dev/null &
           echo "Verifying backend is still healthy..."
@@ -239,15 +251,18 @@ jobs:
           # Voice specs are excluded: they need the real-LiveKit harness and run
           # in the separate voice-e2e job (nightly/dispatch). Project selection
           # keeps the `voice` project out; `setup` runs as a chromium dependency.
-          if [ "${{ github.event_name }}" = "pull_request" ] && ! echo "${{ join(github.event.pull_request.labels.*.name, ',') }}" | grep -q "e2e-full"; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ] && ! echo "$PR_LABELS" | grep -q "e2e-full"; then
             echo "Running smoke tests only (PR without e2e-full label)"
             pnpm exec playwright test --project=chromium --project=auth-tests --grep @smoke
           else
-            echo "Running full E2E suite (${{ github.event_name }} trigger)"
+            echo "Running full E2E suite ($GITHUB_EVENT_NAME trigger)"
             pnpm exec playwright test --project=chromium --project=auth-tests
           fi
         env:
           CI: true
+          # Passed through env, not interpolated into the script: label names
+          # are free text.
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
 
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
@@ -324,7 +339,13 @@ jobs:
       - name: Get Playwright version
         id: pw-version
         working-directory: frontend
-        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+        # A failing command inside an echo argument would not fail the step,
+        # and an empty version gives a cache key shared by every Playwright
+        # version. A plain assignment does fail it.
+        run: |
+          version=$(node -p "require('@playwright/test/package.json').version")
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Cache Playwright browser
         id: pw-cache
         uses: actions/cache@v4
@@ -351,8 +372,11 @@ jobs:
       # One cache scope per image. With the default shared `buildkit` scope,
       # these two images and every other workflow's buildx builds overwrite
       # each other's cache index, so almost every layer was rebuilt. The cache
-      # is written only outside PRs. This job never runs on PRs today; the
-      # guard keeps PR runs from adding cache churn if that changes.
+      # is written only on main (the nightly run, or a dispatch on main), the
+      # only ref whose cache every other ref can read. A dispatch on a feature
+      # branch reads main's cache and writes nothing, so it does not leave
+      # hundreds of MB of layers that no other ref can use.
+      # ignore-error=true: a cache-service hiccup must not fail the run.
       - name: Build E2E images with cache
         uses: docker/bake-action@v6
         with:
@@ -361,8 +385,8 @@ jobs:
           set: |
             backend-test.cache-from=type=gha,scope=e2e-backend-test
             frontend-test.cache-from=type=gha,scope=e2e-frontend-test
-            ${{ github.event_name != 'pull_request' && 'backend-test.cache-to=type=gha,scope=e2e-backend-test,mode=max' || '' }}
-            ${{ github.event_name != 'pull_request' && 'frontend-test.cache-to=type=gha,scope=e2e-frontend-test,mode=max' || '' }}
+            ${{ github.ref == 'refs/heads/main' && 'backend-test.cache-to=type=gha,scope=e2e-backend-test,mode=max,ignore-error=true' || '' }}
+            ${{ github.ref == 'refs/heads/main' && 'frontend-test.cache-to=type=gha,scope=e2e-frontend-test,mode=max,ignore-error=true' || '' }}
 
       - name: Start infra (postgres, redis, real LiveKit)
         run: |

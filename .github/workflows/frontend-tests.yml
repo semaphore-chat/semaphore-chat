@@ -114,24 +114,25 @@ jobs:
           --coverage --coverage.reporter=json
           --coverage.reportsDirectory=vitest-shards/coverage/shard-${{ matrix.shard }}
 
+      # Kept for 7 days (about 2 MB each) so that "Re-run failed jobs" on one
+      # shard can still merge with the other shards' results from the first
+      # attempt.
       - name: Upload shard results
         uses: actions/upload-artifact@v4
         with:
           name: vitest-shard-${{ matrix.shard }}
           path: frontend/vitest-shards/
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
 
   # Keeps the check name used before sharding ("Unit Tests"). It fails unless
-  # every shard passed, prints the merged Vitest summary and coverage table,
-  # and pushes the coverage badge on main.
+  # every shard passed, and prints the merged Vitest summary and coverage
+  # table. On main it hands coverage-summary.json to the `badge` job.
   coverage:
     name: Unit Tests
     runs-on: ubuntu-latest
     needs: test
     if: ${{ !cancelled() }}
-    permissions:
-      contents: write
 
     steps:
       - name: Check shard results
@@ -156,14 +157,32 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Every shard job succeeded and each one uploads with
-      # if-no-files-found: error, so this downloads all of them.
       - name: Download shard results
         uses: actions/download-artifact@v4
         with:
           pattern: vitest-shard-*
           path: frontend/vitest-shards
           merge-multiple: true
+
+      # Every shard job passing does not guarantee every shard's results are
+      # here: after "Re-run failed jobs", the shards that passed the first time
+      # are not re-run, and their artifacts may have expired. Merging fewer
+      # shards would pass with fewer tests and report wrong coverage (and push
+      # a wrong badge on main), so fail instead. EXPECTED_SHARDS is the number
+      # of entries in the `test` job's matrix.
+      - name: Check all shard results are present
+        working-directory: ./frontend
+        env:
+          EXPECTED_SHARDS: 3
+        run: |
+          shopt -s nullglob
+          blobs=(vitest-shards/blobs/blob-*.json)
+          coverage=(vitest-shards/coverage/shard-*/coverage-final.json)
+          echo "Blob reports: ${#blobs[@]}, coverage files: ${#coverage[@]} (expected $EXPECTED_SHARDS of each)"
+          if [ "${#blobs[@]}" -ne "$EXPECTED_SHARDS" ] || [ "${#coverage[@]}" -ne "$EXPECTED_SHARDS" ]; then
+            echo "::error::Expected results from $EXPECTED_SHARDS shards, got ${#blobs[@]} blob reports and ${#coverage[@]} coverage files. Re-run all jobs."
+            exit 1
+          fi
 
       # Replays the shards' results as one run. It prints the combined
       # "Test Files / Tests" summary and fails if any test failed.
@@ -177,11 +196,40 @@ jobs:
         working-directory: ./frontend
         run: node scripts/merge-coverage-shards.mjs vitest-shards/coverage/*/coverage-final.json
 
-      - name: Generate coverage badge
+      - name: Upload coverage summary for the badge
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        working-directory: ./frontend
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-summary
+          path: frontend/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # Pushes the coverage badge on main. Like the single job before sharding, it
+  # waits for the tests and for lint, type check, build and the bundle budget,
+  # so a failure in any of them leaves the badge unchanged. It is the only job
+  # with a write token, and it never runs on PRs.
+  badge:
+    name: Coverage Badge
+    runs-on: ubuntu-latest
+    needs: [coverage, checks]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download coverage summary
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage-summary
+          path: ${{ runner.temp }}/coverage
+
+      - name: Generate coverage badge
         run: |
-          COVERAGE=$(jq '.total.lines.pct' coverage/coverage-summary.json)
+          COVERAGE=$(jq '.total.lines.pct' "$RUNNER_TEMP/coverage/coverage-summary.json")
           if (( $(echo "$COVERAGE < 50" | bc -l) )); then COLOR=red
           elif (( $(echo "$COVERAGE < 70" | bc -l) )); then COLOR=yellow
           elif (( $(echo "$COVERAGE < 80" | bc -l) )); then COLOR=orange
@@ -190,7 +238,6 @@ jobs:
           curl -sf "https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}" > /tmp/frontend-coverage.svg
 
       - name: Push badge to badges branch
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"

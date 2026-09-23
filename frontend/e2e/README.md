@@ -117,7 +117,8 @@ service containers, and the backend (`pnpm run start:dev`) and frontend (Vite
 with `vite.config.e2e.ts`) run directly on the runner, with the same
 environment, ports (3001 / 5174), migrations and seed as
 `docker-compose.e2e.yml`. If you change that file's backend-test or
-frontend-test environment, update the `e2e` job to match.
+frontend-test environment, update the `e2e` job to match: the job runs
+`scripts/check-e2e-env.sh`, which fails it if the two differ.
 
 See `.github/workflows/e2e-tests.yml` for configuration.
 
