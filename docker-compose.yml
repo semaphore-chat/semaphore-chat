@@ -130,6 +130,47 @@ services:
       npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
       cd /app/frontend && node scripts/ux-shots.mjs"
 
+  # README / docs media (screenshots + video) generated from the Ladle
+  # `tour--*` stories. One command does everything (Ladle must be up):
+  #   docker compose --profile tools up -d ladle
+  #   docker compose --profile tools run --rm media
+  # Output: frontend/.media-out/ (gitignored). `media` (ffmpeg encode) runs
+  # after `media-capture` (Playwright screenshots + scene recordings) has
+  # completed. See docs-site/docs/contributing/regenerating-screenshots.md.
+  media-capture:
+    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    profiles: ["tools"]
+    working_dir: /app/frontend
+    # Same reason as ux-shots: talk to Ladle as "localhost" (secure context).
+    network_mode: "service:ladle"
+    depends_on:
+      ladle:
+        condition: service_started
+    volumes:
+      - ./frontend:/app/frontend
+    environment:
+      - MEDIA_BASE_URL=http://localhost:61000
+      - MEDIA_FILTER
+      - MEDIA_STEPS
+      - NODE_PATH=/opt/uxshots/node_modules
+    command: >
+      sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
+      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      cd /app/frontend && bash scripts/media/capture.sh"
+
+  media:
+    image: linuxserver/ffmpeg:9.0-cli-ls82
+    profiles: ["tools"]
+    depends_on:
+      media-capture:
+        condition: service_completed_successfully
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend
+    environment:
+      - MEDIA_STEPS
+    entrypoint: ["bash", "scripts/media/encode.sh"]
+
   # NOTE: near-duplicate of the postgres service in docker-compose.prod.yml and docker-compose.e2e.yml — keep image/healthcheck/env keys in sync.
   postgres:
     image: postgres:17
