@@ -14,9 +14,19 @@ on:
       - 'shared/**'
       - '.github/workflows/backend-tests.yml'
 
+# PRs: a newer push cancels the superseded run. Pushes to main get a unique
+# group (run_id), so they are never cancelled, queued or replaced — every main
+# commit still gets its own run and coverage badge update, as before.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
+  # ESLint and tsc share one job so the install + prisma generate happens once
+  # (they were separate jobs doing identical setup). Neither is on the critical
+  # path — Unit Tests / E2E Tests take ~2x longer.
   lint:
-    name: Lint
+    name: Lint & Type Check
     runs-on: ubuntu-latest
 
     steps:
@@ -37,6 +47,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma Client
+        id: prisma
         working-directory: ./backend
         run: pnpm run prisma:generate
 
@@ -44,32 +55,10 @@ jobs:
         working-directory: ./backend
         run: pnpm run lint
 
-  typecheck:
-    name: Type Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: 'pnpm'
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Prisma Client
-        working-directory: ./backend
-        run: pnpm run prisma:generate
-
+      # Still runs when ESLint fails, so one run reports both kinds of errors
+      # (as the separate jobs did) — but not if setup itself failed.
       - name: Type check
+        if: ${{ !cancelled() && steps.prisma.outcome == 'success' }}
         working-directory: ./backend
         run: pnpm run type-check
 
@@ -181,6 +170,14 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-latest
 
+    env:
+      # Static ffmpeg for storage-s3.e2e-spec.ts, see "Restore static ffmpeg".
+      # Bumping the release requires updating both SHA-256s (GitHub shows each
+      # release asset's digest; these are the *uncompressed* binaries').
+      FFMPEG_STATIC_RELEASE: b6.1.1
+      FFMPEG_SHA256: e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99
+      FFPROBE_SHA256: 4f231a1960d83e403d08f7971e271707bec278a9ae18e21b8b5b03186668450d
+
     services:
       postgres:
         image: postgres:17
@@ -268,8 +265,46 @@ jobs:
       # only checks the exit code of the *last* command in a pipe, i.e.
       # `head`, which exits 0 even on empty input). Install it explicitly
       # rather than assuming the runner image provides it.
-      - name: Install ffmpeg
-        run: sudo apt-get update -y && sudo apt-get install -y ffmpeg
+      #
+      # `apt-get install ffmpeg` cost ~28 s per run, so instead use a pinned,
+      # checksum-verified static build, cached by release. eugeneware/
+      # ffmpeg-static release b6.1.1 hosts johnvansickle.com's fully static
+      # linux-x64 FFmpeg 7.0.2 (the tag names the npm package line, not the
+      # FFmpeg version). It has everything the thumbnail path uses (native
+      # H.264 decoder, scale filter, mjpeg encoder, image2 muxer) plus the same
+      # external codec libs as Ubuntu's build (libx264/x265/vpx/aom/dav1d/...).
+      # For reference: apt on ubuntu-24.04 gave 6.1.1; the production backend
+      # image (node:24-alpine) ships Alpine's ffmpeg 8.x.
+      - name: Restore static ffmpeg from cache
+        id: ffmpeg-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ffmpeg-static
+          key: ffmpeg-static-${{ runner.os }}-${{ runner.arch }}-${{ env.FFMPEG_STATIC_RELEASE }}
+
+      - name: Download static ffmpeg
+        if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          dir="$HOME/.cache/ffmpeg-static"
+          base="https://github.com/eugeneware/ffmpeg-static/releases/download/${FFMPEG_STATIC_RELEASE}"
+          mkdir -p "$dir"
+          for bin in ffmpeg ffprobe; do
+            curl -fsSL --retry 3 -o "$dir/$bin.gz" "$base/$bin-linux-x64.gz"
+            gunzip -f "$dir/$bin.gz"
+          done
+
+      # Checksums are verified on every run, cache hit or not (a failed check
+      # also keeps a bad download out of the cache: actions/cache only saves
+      # on job success).
+      - name: Verify and install static ffmpeg
+        run: |
+          set -euo pipefail
+          dir="$HOME/.cache/ffmpeg-static"
+          echo "${FFMPEG_SHA256}  $dir/ffmpeg" | sha256sum -c -
+          echo "${FFPROBE_SHA256}  $dir/ffprobe" | sha256sum -c -
+          chmod +x "$dir/ffmpeg" "$dir/ffprobe"
+          echo "$dir" >> "$GITHUB_PATH"
 
       # Hard-fail (via pipefail) if ffmpeg is somehow still missing after the
       # install step above, instead of silently continuing like the old
@@ -277,6 +312,7 @@ jobs:
       - name: Verify ffmpeg is available
         run: |
           set -euo pipefail
+          command -v ffmpeg
           ffmpeg -version | head -1
 
       - name: Run E2E tests
