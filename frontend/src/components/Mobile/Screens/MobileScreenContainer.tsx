@@ -7,6 +7,7 @@
  * Screen hierarchy (max 2 levels deep):
  * - channels: Community channel list (home tab default)
  * - chat: Channel chat view
+ * - search: Full-screen message search for a channel
  * - dm-list: DM conversations list (messages tab)
  * - dm-chat: DM chat view
  * - notifications: Notification list
@@ -26,6 +27,7 @@ import { MobileChatPanel } from '../Panels/MobileChatPanel';
 import { MobileMessagesPanel } from '../Panels/MobileMessagesPanel';
 import { MobileProfilePanel } from '../Panels/MobileProfilePanel';
 import { NotificationsScreen } from './NotificationsScreen';
+import { MobileSearchScreen } from './MobileSearchScreen';
 import MobileAppBar from '../MobileAppBar';
 import SettingsPage from '../../../pages/SettingsPage';
 
@@ -37,6 +39,7 @@ interface MobileScreenContainerProps {
 const isDetailScreen = (screen: ScreenType): boolean => {
   return (
     screen === 'chat' ||
+    screen === 'search' ||
     screen === 'dm-chat' ||
     screen === 'settings' ||
     screen === 'user-profile' ||
@@ -128,6 +131,12 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
             channelId={channelId}
           />
         );
+
+      case 'search':
+        if (!communityId || !channelId) {
+          return null;
+        }
+        return <MobileSearchScreen communityId={communityId} channelId={channelId} />;
 
       case 'dm-list':
         return <MobileMessagesPanel />;

@@ -82,6 +82,8 @@ export const AppRoutes: React.FC = () => (
           <Route index element={<CommunityPage />} />
           <Route path="edit" element={<EditCommunityPage />} />
           <Route path="channel/:channelId" element={<CommunityPage />} />
+          {/* Phone full-screen message search; wider layouts just show the channel. */}
+          <Route path="channel/:channelId/search" element={<CommunityPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />
       </Route>

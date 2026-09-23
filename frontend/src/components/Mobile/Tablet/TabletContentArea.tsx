@@ -13,6 +13,7 @@ import { MobileChatPanel } from '../Panels/MobileChatPanel';
 import { MobileMessagesPanel } from '../Panels/MobileMessagesPanel';
 import { MobileProfilePanel } from '../Panels/MobileProfilePanel';
 import { NotificationsScreen } from '../Screens/NotificationsScreen';
+import { MobileSearchScreen } from '../Screens/MobileSearchScreen';
 import SettingsPage from '../../../pages/SettingsPage';
 import { LAYOUT_CONSTANTS } from '../../../utils/breakpoints';
 import MobileAppBar from '../MobileAppBar';
@@ -99,6 +100,12 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
             />
           </Box>
         );
+
+      case 'search':
+        if (!communityId || !channelId) {
+          return null;
+        }
+        return <MobileSearchScreen communityId={communityId} channelId={channelId} />;
 
       case 'dm-list':
         return <MobileMessagesPanel />;

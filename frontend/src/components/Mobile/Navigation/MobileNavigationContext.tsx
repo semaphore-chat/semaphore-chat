@@ -29,6 +29,7 @@ export type MobileTab = 'home' | 'messages' | 'notifications' | 'profile';
 export type ScreenType =
   | 'channels'      // Community channel list (home tab default)
   | 'chat'          // Channel chat view
+  | 'search'        // Full-screen message search for a channel (/community/:cid/channel/:chid/search)
   | 'dm-list'       // DM conversations list (messages tab default)
   | 'dm-chat'       // DM chat view
   | 'notifications' // Notifications list (notifications tab default)
@@ -60,6 +61,18 @@ export function parseScreenFromPath(pathname: string): ParsedScreen {
       screen: 'chat',
       communityId: chat.params.communityId ?? null,
       channelId: chat.params.channelId ?? null,
+      dmGroupId: null,
+      userId: null,
+    };
+  }
+
+  // /community/:communityId/channel/:channelId/search -> search
+  const search = matchPath('/community/:communityId/channel/:channelId/search', pathname);
+  if (search) {
+    return {
+      screen: 'search',
+      communityId: search.params.communityId ?? null,
+      channelId: search.params.channelId ?? null,
       dmGroupId: null,
       userId: null,
     };
@@ -144,6 +157,7 @@ interface MobileNavigationContextType {
   // Screen navigation
   navigateToChannels: (communityId: string) => void;
   navigateToChat: (communityId: string, channelId: string) => void;
+  navigateToSearch: (communityId: string, channelId: string) => void;
   navigateToDmList: () => void;
   navigateToDmChat: (dmGroupId: string) => void;
   navigateToNotifications: () => void;
@@ -177,6 +191,7 @@ const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | nul
   switch (screen) {
     case 'channels':
     case 'chat':
+    case 'search':
       return 'home';
     case 'dm-list':
     case 'dm-chat':
@@ -197,7 +212,7 @@ const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | nul
 };
 
 const isDetailScreen = (screen: ScreenType): boolean =>
-  screen === 'chat' || screen === 'dm-chat' || screen === 'settings' || screen === 'user-profile';
+  screen === 'chat' || screen === 'search' || screen === 'dm-chat' || screen === 'settings' || screen === 'user-profile';
 
 export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
@@ -278,6 +293,10 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     navigate(`/community/${communityId}/channel/${channelId}`);
   }, [navigate, persistLastCommunity]);
 
+  const navigateToSearch = useCallback((communityId: string, channelId: string) => {
+    navigate(`/community/${communityId}/channel/${channelId}/search`);
+  }, [navigate]);
+
   const navigateToDmList = useCallback(() => {
     navigate('/direct-messages');
   }, [navigate]);
@@ -313,6 +332,8 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     // Fallback hierarchical targets for hard entry points (deep links, PWA launch).
     if (parsed.screen === 'chat' && parsed.communityId) {
       navigate(`/community/${parsed.communityId}`);
+    } else if (parsed.screen === 'search' && parsed.communityId && parsed.channelId) {
+      navigate(`/community/${parsed.communityId}/channel/${parsed.channelId}`);
     } else if (parsed.screen === 'dm-chat') {
       navigate('/direct-messages');
     } else if (parsed.screen === 'settings') {
@@ -320,7 +341,7 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     } else {
       navigate('/');
     }
-  }, [parsed.screen, parsed.communityId, navigate]);
+  }, [parsed.screen, parsed.communityId, parsed.channelId, navigate]);
 
   // Tab switching
   const setActiveTab = useCallback((tab: MobileTab) => {
@@ -365,6 +386,7 @@ export const MobileNavigationProvider: React.FC<{ children: React.ReactNode }> =
     activeTab,
     navigateToChannels,
     navigateToChat,
+    navigateToSearch,
     navigateToDmList,
     navigateToDmChat,
     navigateToNotifications,

@@ -16,6 +16,11 @@ describe('parseScreenFromPath', () => {
       expected: { screen: 'chat', communityId: 'c1', channelId: 'ch1', dmGroupId: null, userId: null },
     },
     {
+      desc: 'channel search',
+      pathname: '/community/c1/channel/ch1/search',
+      expected: { screen: 'search', communityId: 'c1', channelId: 'ch1', dmGroupId: null, userId: null },
+    },
+    {
       desc: 'community channels list',
       pathname: '/community/c1',
       expected: { screen: 'channels', communityId: 'c1', channelId: null, dmGroupId: null, userId: null },

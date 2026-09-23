@@ -36,7 +36,8 @@ const TabletLayoutInner: React.FC = () => {
 
   // Determine if we should show the sidebar
   // Show sidebar when on home tab (channels/chat screens)
-  const showSidebar = state.currentScreen === 'channels' || state.currentScreen === 'chat';
+  const showSidebar =
+    state.currentScreen === 'channels' || state.currentScreen === 'chat' || state.currentScreen === 'search';
 
   return (
     <Box
