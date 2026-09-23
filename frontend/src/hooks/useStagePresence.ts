@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';
+import { useOptionalVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';
 
 /**
  * Tracks whether the embedded voice stage is currently mounted, so other UI
@@ -10,12 +10,16 @@ import { useVoiceDispatch, VoiceActionType } from '../contexts/VoiceContext';
  * VoiceState changes. Only one stage can exist at a time (a session is
  * Channel xor Dm), so a plain boolean set/clear is correct — StrictMode's
  * mount -> cleanup -> mount sequence still ends with `stageMounted: true`.
+ *
+ * Used by the desktop CommunityPage / DirectMessagesPage and the tablet chat
+ * panel (MobileChatPanel). Outside a VoiceProvider (a panel rendered on its
+ * own) there is no float card to hide, so it's a no-op.
  */
 export function useStagePresence(active: boolean): void {
-  const { dispatch } = useVoiceDispatch();
+  const dispatch = useOptionalVoiceDispatch()?.dispatch;
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !dispatch) return;
 
     dispatch({ type: VoiceActionType.SetStageMounted, payload: true });
 

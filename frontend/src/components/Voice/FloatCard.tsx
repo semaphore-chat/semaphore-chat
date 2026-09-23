@@ -374,7 +374,7 @@ export const FloatCard: React.FC = () => {
           <Badge badgeContent={participantCount} color="primary">
             <People />
           </Badge>
-          <Typography variant="body2" fontWeight="medium">
+          <Typography variant="body2" fontWeight="medium" noWrap sx={{ minWidth: 0, maxWidth: 140 }}>
             {displayName}
           </Typography>
           <Tooltip title="Expand">
@@ -434,7 +434,7 @@ export const FloatCard: React.FC = () => {
           onPointerDown={handleDragStart}
         >
           <DragIndicator fontSize="small" sx={{ color: 'text.secondary' }} />
-          <Typography variant="caption" fontWeight="medium" noWrap sx={{ maxWidth: 200 }}>
+          <Typography variant="caption" fontWeight="medium" noWrap sx={{ minWidth: 0, flex: 1 }}>
             {displayName}
           </Typography>
         </Box>
@@ -446,33 +446,33 @@ export const FloatCard: React.FC = () => {
           onClick={handleCardClick}
         >
           {!selection ? null : selection.kind === 'avatar' ? (
+            // Avatar + name stacked in the middle of the tile; the bottom
+            // padding keeps the name clear of the control strip, which is
+            // always visible on touch.
             <Box
               sx={{
                 width: '100%',
                 height: '100%',
                 display: 'flex',
+                flexDirection: 'column',
                 alignItems: 'center',
                 justifyContent: 'center',
+                gap: 1,
+                px: 1.5,
+                pb: 6,
+                pt: 1,
+                boxSizing: 'border-box',
                 backgroundColor: 'grey.800',
-                position: 'relative',
               }}
             >
               <Box sx={{ height: 'min(120px, 60%)', aspectRatio: '1 / 1', flexShrink: 1, minHeight: 32 }}>
                 <UserAvatar userId={selection.participant.identity} displayName={selection.participant.name} size="fluid" />
               </Box>
-              <Box
-                sx={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  backgroundImage: `linear-gradient(transparent, ${alpha(theme.palette.background.paper, 0.85)})`,
-                  p: 1,
-                }}
-              >
+              <Box data-testid="float-card-avatar-label" sx={{ maxWidth: '100%', minWidth: 0, display: 'flex' }}>
                 <Typography
                   variant="caption"
-                  sx={{ color: 'white', fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.8)' }}
+                  noWrap
+                  sx={{ color: 'white', fontWeight: 'bold', textShadow: '1px 1px 2px rgba(0,0,0,0.8)', minWidth: 0 }}
                 >
                   {selection.participant.name || selection.participant.identity}
                   {isLocalSelection && ' (You)'}

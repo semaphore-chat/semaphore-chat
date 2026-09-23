@@ -17,6 +17,7 @@ import { useReplayBufferState } from '../../contexts/ReplayBufferContext';
 import { useVoice, useVoiceDispatch, VoiceActionType } from '../../contexts/VoiceContext';
 import { useTrackSubscriptionActions } from '../../hooks/useTrackSubscription';
 import VideoTile from './VideoTile';
+import CompactVoiceTile, { COMPACT_TILE_HEIGHT } from './CompactVoiceTile';
 import { VideoLayoutMode } from '../../types/videoLayout';
 
 // Re-exported so existing importers of VideoLayoutMode from this module keep working.
@@ -29,6 +30,15 @@ const GRID_CONSTANTS = {
   HEADER_HEIGHT: 48,
   MAX_SIDEBAR_TILES: 6,
 } as const;
+
+/**
+ * On the phone, more tiles than this switch the grid to compact avatar tiles
+ * (a scrolling multi-column grid) so a 25-person call stays legible instead
+ * of squeezing every tile into one screen.
+ */
+export const PHONE_COMPACT_TILE_THRESHOLD = 6;
+/** Minimum compact-tile width: 3 columns at 320-390px, more in landscape. */
+const COMPACT_TILE_MIN_WIDTH = 96;
 import { Track, RoomEvent } from 'livekit-client';
 import type {
   TrackPublication,
@@ -332,20 +342,98 @@ export const VideoTiles: React.FC = () => {
   }
 
   // Layout rendering functions
+  const renderGridTile = (tile: VideoTileData) => (
+    <VideoTile
+      participant={tile.participant}
+      videoTrack={tile.videoTrack}
+      audioTrack={tile.audioTrack}
+      screenTrack={tile.screenTrack}
+      isLocal={tile.isLocal}
+      isReplayBufferActive={isReplayBufferActive}
+      onToggleFullscreen={tile.tileType.startsWith('placeholder') ? undefined : () => handleTileSpotlight(tile.tileId)}
+      isSpotlighted={spotlightTileId === tile.tileId}
+      isPlaceholder={tile.tileType.startsWith('placeholder')}
+      placeholderType={tile.tileType === 'placeholder-camera' ? 'camera' : tile.tileType === 'placeholder-screen' ? 'screen' : undefined}
+      onWatch={tile.tileType === 'avatar' ? undefined : () => handleWatchTile(tile)}
+      onStopWatching={
+        tile.tileType.startsWith('placeholder') || tile.tileType === 'avatar' ? undefined :
+        tile.isLocal ? () => handleHideLocalTile(tile) :
+        () => handleStopWatchingTile(tile)
+      }
+    />
+  );
+
+  // Phone, big call: a scrolling grid of fixed-size compact tiles. Voice-only
+  // people get a small avatar tile; watched video spans the full row so it's
+  // still worth watching; unwatched streams keep their "tap to watch" tile.
+  const renderCompactGridLayout = () => (
+    <Box
+      data-testid="video-tiles-grid"
+      data-density="compact"
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(auto-fill, minmax(${COMPACT_TILE_MIN_WIDTH}px, 1fr))`,
+        gridAutoFlow: 'row dense',
+        alignContent: 'start',
+        gap: 0.75,
+        height: '100%',
+        width: '100%',
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        overscrollBehavior: 'contain',
+        boxSizing: 'border-box',
+      }}
+    >
+      {videoTiles.map((tile) => {
+        if (tile.tileType === 'avatar') {
+          return (
+            <CompactVoiceTile
+              key={tile.tileId}
+              participant={tile.participant}
+              audioTrack={tile.audioTrack}
+              isLocal={tile.isLocal}
+            />
+          );
+        }
+        const isLiveVideo = tile.tileType === 'camera' || tile.tileType === 'screen';
+        return (
+          <Box
+            key={tile.tileId}
+            sx={
+              isLiveVideo
+                ? { gridColumn: '1 / -1', aspectRatio: '16 / 9', minWidth: 0 }
+                : { height: COMPACT_TILE_HEIGHT, minWidth: 0 }
+            }
+          >
+            {renderGridTile(tile)}
+          </Box>
+        );
+      })}
+    </Box>
+  );
+
   const renderGridLayout = () => {
+    if (isMobile && videoTiles.length > PHONE_COMPACT_TILE_THRESHOLD) {
+      return renderCompactGridLayout();
+    }
+
     const cols = getGridCols(videoTiles.length);
     const rows = Math.ceil(videoTiles.length / cols);
     const tileWidth = `${100 / cols}%`;
     const tileHeight = `${100 / rows}%`;
 
     return (
-      <Box sx={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        height: '100%',
-        width: '100%',
-        overflow: 'hidden',
-      }}>
+      <Box
+        data-testid="video-tiles-grid"
+        data-density="regular"
+        sx={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          height: '100%',
+          width: '100%',
+          overflow: 'hidden',
+        }}
+      >
         {videoTiles.map((tile) => (
           <Box
             key={tile.tileId}
@@ -356,24 +444,7 @@ export const VideoTiles: React.FC = () => {
               boxSizing: 'border-box',
             }}
           >
-            <VideoTile
-              participant={tile.participant}
-              videoTrack={tile.videoTrack}
-              audioTrack={tile.audioTrack}
-              screenTrack={tile.screenTrack}
-              isLocal={tile.isLocal}
-              isReplayBufferActive={isReplayBufferActive}
-              onToggleFullscreen={tile.tileType.startsWith('placeholder') ? undefined : () => handleTileSpotlight(tile.tileId)}
-              isSpotlighted={spotlightTileId === tile.tileId}
-              isPlaceholder={tile.tileType.startsWith('placeholder')}
-              placeholderType={tile.tileType === 'placeholder-camera' ? 'camera' : tile.tileType === 'placeholder-screen' ? 'screen' : undefined}
-              onWatch={tile.tileType === 'avatar' ? undefined : () => handleWatchTile(tile)}
-              onStopWatching={
-                tile.tileType.startsWith('placeholder') || tile.tileType === 'avatar' ? undefined :
-                tile.isLocal ? () => handleHideLocalTile(tile) :
-                () => handleStopWatchingTile(tile)
-              }
-            />
+            {renderGridTile(tile)}
           </Box>
         ))}
       </Box>

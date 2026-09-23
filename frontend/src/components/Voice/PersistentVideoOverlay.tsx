@@ -6,6 +6,7 @@ import { useVoice } from '../../contexts/VoiceContext';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useResponsive } from '../../hooks/useResponsive';
 import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from '../../contexts/BottomChromeContext';
+import { TOUCH_TARGETS } from '../../utils/breakpoints';
 
 // VideoTiles and FloatCard pull in livekit-client runtime enums; lazy-load
 // them so they're only fetched once video is actually shown (see PR-11 bundle
@@ -50,6 +51,8 @@ export const PersistentVideoOverlay: React.FC = () => {
           bottom: chromeBottom.css,
           zIndex: 1200,
           backgroundColor: 'grey.900',
+          // Keep the tiles out from under the notch / status bar.
+          pt: 'env(safe-area-inset-top, 0px)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
@@ -59,15 +62,19 @@ export const PersistentVideoOverlay: React.FC = () => {
         <Box
           sx={{
             position: 'absolute',
-            top: 8,
-            right: 8,
+            // Clear the status bar / notch when installed full-screen.
+            top: 'calc(env(safe-area-inset-top, 0px) + 8px)',
+            right: 'calc(env(safe-area-inset-right, 0px) + 8px)',
             zIndex: 1,
           }}
         >
           <IconButton
             size="small"
+            aria-label="Close video tiles"
             onClick={() => actions.setShowVideoTiles(false)}
             sx={{
+              minWidth: TOUCH_TARGETS.MINIMUM,
+              minHeight: TOUCH_TARGETS.MINIMUM,
               backgroundColor: alpha(theme.palette.background.paper, 0.7),
               color: theme.palette.text.primary,
               '&:hover': {

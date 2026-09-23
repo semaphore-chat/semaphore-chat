@@ -44,6 +44,7 @@ import DirectMessageContainer from '../../DirectMessages/DirectMessageContainer'
 import { VoiceChannelJoinButton } from '../../Voice/VoiceChannelJoinButton';
 import { VoiceChannelUserList } from '../../Voice/VoiceChannelUserList';
 import { useVoiceConnection } from '../../../hooks/useVoiceConnection';
+import { useStagePresence } from '../../../hooks/useStagePresence';
 import { ErrorBoundary } from '../../ErrorBoundary';
 import MobileAppBar from '../MobileAppBar';
 import MemberListContainer from '../../Message/MemberListContainer';
@@ -106,6 +107,10 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   const isVoiceChannel = channel?.type === ChannelType.VOICE;
   const isConnectedToThisChannel =
     voiceState.isConnected && voiceState.currentChannelId === channelId;
+  // On tablet this panel IS the stage for a joined voice channel, so report it
+  // (like the desktop CommunityPage does) — the float card then hides instead
+  // of repeating a tile over it. Phone keeps its own full-screen tile sheet.
+  useStagePresence(isVoiceChannel && isConnectedToThisChannel && !isMobile);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setMenuAnchor(event.currentTarget);

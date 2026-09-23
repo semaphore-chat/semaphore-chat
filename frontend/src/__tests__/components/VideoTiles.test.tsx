@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, act, within } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { renderWithProviders } from '../test-utils';
-import { VideoTiles } from '../../components/Voice/VideoTiles';
+import { VideoTiles, PHONE_COMPACT_TILE_THRESHOLD } from '../../components/Voice/VideoTiles';
 import { VoiceSessionType, VoiceActionType } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
 
@@ -323,6 +323,7 @@ vi.mock('../../contexts/ReplayBufferContext', () => ({
 // Import mocked hooks for overriding in tests
 const { useVoiceConnection } = await import('../../hooks/useVoiceConnection');
 const { useLocalMediaState } = await import('../../hooks/useLocalMediaState');
+const { useResponsive } = await import('../../hooks/useResponsive');
 
 describe('VideoTiles', () => {
   beforeEach(() => {
@@ -855,6 +856,107 @@ describe('VideoTiles', () => {
 
       expect(mockLocalParticipant.off).toHaveBeenCalledWith('trackPublished', expect.any(Function));
       expect(mockLocalParticipant.off).toHaveBeenCalledWith('trackUnpublished', expect.any(Function));
+    });
+  });
+  describe('phone density (Task 16)', () => {
+    const phone = () =>
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: true,
+        isTablet: false,
+        isDesktop: false,
+        isPortrait: true,
+        deviceType: 'phone',
+      } as never);
+
+    /** Local participant + `n` remote voice-only participants (buildMockRoom adds 2 remotes with cameras). */
+    function withVoiceOnlyRemotes(n: number) {
+      remoteParticipants.clear();
+      for (let i = 0; i < n; i++) {
+        remoteParticipants.set(`r-${i}`, createMockParticipant(`Person ${i}`, [], [createMockTrackPublication('microphone', i % 2 === 0)]));
+      }
+    }
+
+    beforeEach(() => {
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: false,
+        isTablet: false,
+        isDesktop: true,
+        isPortrait: false,
+        deviceType: 'desktop',
+      } as never);
+    });
+
+    it('keeps the regular grid on phone at the threshold', () => {
+      phone();
+      withVoiceOnlyRemotes(PHONE_COMPACT_TILE_THRESHOLD - 1); // + local = threshold
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-grid')).toHaveAttribute('data-density', 'regular');
+      expect(screen.queryAllByTestId('compact-participant-tile')).toHaveLength(0);
+    });
+
+    it('switches to compact avatar tiles on phone above the threshold', () => {
+      phone();
+      withVoiceOnlyRemotes(24); // 25 people
+      renderWithProviders(<VideoTiles />);
+
+      const grid = screen.getByTestId('video-tiles-grid');
+      expect(grid).toHaveAttribute('data-density', 'compact');
+      expect(screen.getAllByTestId('compact-participant-tile')).toHaveLength(25);
+      expect(screen.getByText('Person 23')).toBeInTheDocument();
+    });
+
+    it('compact tiles keep names on one line with an ellipsis', () => {
+      phone();
+      withVoiceOnlyRemotes(10);
+      remoteParticipants.set('long', createMockParticipant('FatimaSatoTheUnbreakableNameWithNoSpacesAtAll'));
+      renderWithProviders(<VideoTiles />);
+
+      const name = screen.getByText('FatimaSatoTheUnbreakableNameWithNoSpacesAtAll');
+      expect(name).toHaveClass('MuiTypography-noWrap');
+      const style = getComputedStyle(name);
+      expect(style.textOverflow).toBe('ellipsis');
+      expect(style.whiteSpace).toBe('nowrap');
+    });
+
+    it('compact tiles flag muted participants', () => {
+      phone();
+      withVoiceOnlyRemotes(8);
+      renderWithProviders(<VideoTiles />);
+
+      const tile = screen.getByText('Person 0').closest('[data-testid="compact-participant-tile"]') as HTMLElement;
+      expect(within(tile).getByTestId('MicOffIcon')).toBeInTheDocument();
+      const unmuted = screen.getByText('Person 1').closest('[data-testid="compact-participant-tile"]') as HTMLElement;
+      expect(within(unmuted).queryByTestId('MicOffIcon')).not.toBeInTheDocument();
+    });
+
+    it('keeps watched video as a full tile inside the compact grid', () => {
+      phone();
+      withVoiceOnlyRemotes(8);
+      remoteParticipants.set('cam', createMockParticipant('CamUser', [createMockTrackPublication('camera')]));
+      mockWatchingCameras = new Set(['CamUser']);
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-grid')).toHaveAttribute('data-density', 'compact');
+      expect(screen.getByText('CamUser').closest('[data-testid="compact-participant-tile"]')).toBeNull();
+      expect(document.querySelector('video')).not.toBeNull();
+    });
+
+    it('desktop keeps the regular grid with 25 people', () => {
+      withVoiceOnlyRemotes(24);
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-grid')).toHaveAttribute('data-density', 'regular');
+      expect(screen.queryAllByTestId('compact-participant-tile')).toHaveLength(0);
+    });
+
+    it('regular tile names use noWrap with an ellipsis everywhere', () => {
+      remoteParticipants.set('long', createMockParticipant('FatimaSatoTheUnbreakableNameWithNoSpacesAtAll'));
+      renderWithProviders(<VideoTiles />);
+
+      const name = screen.getByText(/FatimaSatoTheUnbreakableNameWithNoSpacesAtAll/);
+      expect(name).toHaveClass('MuiTypography-noWrap');
+      expect(getComputedStyle(name).textOverflow).toBe('ellipsis');
     });
   });
 });

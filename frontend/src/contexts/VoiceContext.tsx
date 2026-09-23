@@ -333,3 +333,11 @@ export function useVoiceDispatch() {
   if (!ctx) throw new Error('useVoiceDispatch must be used within a VoiceProvider');
   return ctx;
 }
+
+/**
+ * Like `useVoiceDispatch`, but returns null outside a VoiceProvider instead of
+ * throwing — for hooks used by panels that are also rendered standalone.
+ */
+export function useOptionalVoiceDispatch() {
+  return useContext(VoiceDispatchContext);
+}
