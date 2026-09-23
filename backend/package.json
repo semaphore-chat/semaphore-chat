@@ -61,7 +61,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.6.1",
     "livekit-server-sdk": "^2.15.0",
-    "nodemailer": "^9.0.3",
+    "nodemailer": "^9.1.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
