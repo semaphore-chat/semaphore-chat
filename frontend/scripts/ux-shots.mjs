@@ -86,7 +86,8 @@ function sleep(ms) {
  * UX_SHOTS_QUIET_MS: resolve once the DOM has gone `quietMs` without a
  * mutation (data arrived, lazy routes mounted, lists measured). A fixed sleep
  * after `networkidle` alone gets flaky with several pages in parallel. Keep in
- * sync with scripts/ui-review/lib/settle.ts.
+ * sync with scripts/ui-review/lib/settle.ts (the `maxMs` defaults must equal its
+ * SETTLE_MAX_MS; a unit test checks).
  */
 function waitForDomQuiet(page, quietMs, maxMs = 10_000) {
   return page.evaluate(

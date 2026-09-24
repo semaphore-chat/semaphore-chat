@@ -1,6 +1,7 @@
 /**
  * "Rendered" heuristic for a Ladle story (keep in sync with the copy in
- * `scripts/ux-shots.mjs`, which stays self-contained). A story counts as
+ * `scripts/ux-shots.mjs`, which stays self-contained; a unit test checks the
+ * shared defaults, `SETTLE_MAX_MS`). A story counts as
  * settled once, for `quietMs` in a row:
  *   - the DOM had no mutation (data arrived, lazy routes mounted, lists measured),
  *   - no request started or finished, and
@@ -13,6 +14,9 @@
  * `maxMs`.
  */
 import type { Page, Request } from 'playwright-core';
+
+/** Default cap (ms) of `waitForDomQuiet`/`waitForSettled`; ux-shots.mjs uses the same. */
+export const SETTLE_MAX_MS = 10_000;
 
 const BLOCKING = new Set(['document', 'script', 'stylesheet', 'font']);
 
@@ -50,7 +54,7 @@ export function trackNetwork(page: Page): NetworkTracker {
   };
 }
 
-export async function waitForDomQuiet(page: Page, quietMs = 500, maxMs = 8000): Promise<void> {
+export async function waitForDomQuiet(page: Page, quietMs = 500, maxMs = SETTLE_MAX_MS): Promise<void> {
   await page.evaluate(
     ({ quietMs, maxMs }) =>
       new Promise<void>((resolve) => {
@@ -75,7 +79,7 @@ export async function waitForDomQuiet(page: Page, quietMs = 500, maxMs = 8000): 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Waits until the page is settled (see above); resolves `false` if `maxMs` ran out first. */
-export async function waitForSettled(page: Page, net: NetworkTracker, quietMs = 500, maxMs = 10_000): Promise<boolean> {
+export async function waitForSettled(page: Page, net: NetworkTracker, quietMs = 500, maxMs = SETTLE_MAX_MS): Promise<boolean> {
   const started = Date.now();
   const left = () => maxMs - (Date.now() - started);
   while (left() > 0) {

@@ -100,16 +100,14 @@ UIR="$REPO_ROOT/.ui-review"
 WORK="$UIR/work"
 OUT="$UIR/out"
 BASE_DIR="$UIR/base"
-PROJECT="uir-$(printf '%s' "$REPO_ROOT" | sha1sum | cut -c1-10)"
+# shellcheck source=lib/hash.sh
+source "$SCRIPT_DIR/lib/hash.sh"
+PROJECT="uir-$(printf '%s' "$REPO_ROOT" | digest 1 | cut -c1-10)"
 COMPOSE=(docker compose -p "$PROJECT" --project-directory "$REPO_ROOT" -f "$SCRIPT_DIR/compose.yml")
 
 # ---------------------------------------------------------------- images
 
-# Content-addressed image tag: same deps → same image, shared across checkouts.
-image_tag() {
-  (cd "$1" && cat frontend/Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc shared/package.json frontend/package.json patches/* 2>/dev/null) |
-    sha256sum | cut -c1-12
-}
+# image_tag <checkout>: content-addressed dependency image tag (lib/hash.sh).
 ensure_image() {
   local image="$1" context="$2"
   if ! docker image inspect "$image" >/dev/null 2>&1; then
@@ -268,7 +266,7 @@ probe_cache_key() {
     return 1
   fi
   rm -f "$index"
-  { echo "$HEAD_IMAGE"; echo "$tree"; cat "$WORK/probe-plan.json"; } | sha256sum | cut -c1-16
+  { echo "$HEAD_IMAGE"; echo "$tree"; cat "$WORK/probe-plan.json"; } | digest 256 | cut -c1-16
 }
 
 capture() {
