@@ -62,6 +62,7 @@ rm -f "$TMP_INDEX" # git wants to create it itself
 cleanup() { rm -f "$TMP_INDEX" "$TMP_INDEX.lock"; git update-ref -d "$PRIVATE_REF" 2>/dev/null || true; }
 trap cleanup EXIT
 
+# shellcheck disable=SC2016 # backticks are Markdown, not command substitution
 README='# PR screenshots
 
 Generated before/after UI screenshots referenced from pull request
