@@ -455,6 +455,14 @@ export function generateTheme(
         styleOverrides: {
           root: {
             backgroundColor: isDark ? '#151820' : '#ffffff',
+            // The bar is repainted below as a neutral / pale accent-tinted
+            // surface, so its content (and every color="inherit" icon in it,
+            // e.g. the notification bell) must use the surface's text token.
+            // MUI's default for color="primary" is primary.contrastText,
+            // which it applies in light mode only: white for most accents,
+            // i.e. white icons on a white bar. Dark mode already resolves to
+            // text.primary (MUI drops the colour, Paper supplies it).
+            color: base.text.primary,
             ...(isVibrant && {
               background: isDark
                 ? `linear-gradient(90deg, ${blendColors(accent.dark, '#151820', 0.4)} 0%, ${blendColors(accent.primary, '#151820', 0.55)} 50%, ${blendColors(accent.dark, '#151820', 0.4)} 100%)`
