@@ -176,8 +176,9 @@ jobs:
 
     env:
       # Static ffmpeg for storage-s3.e2e-spec.ts, see "Restore static ffmpeg".
-      # Bumping the release requires updating both SHA-256s (GitHub shows each
-      # release asset's digest; these are the *uncompressed* binaries').
+      # Bumping the release requires updating both SHA-256s. GitHub shows each
+      # release asset's digest, but these are of the *uncompressed* binaries,
+      # not of the .gz assets.
       FFMPEG_STATIC_RELEASE: b6.1.1
       FFMPEG_SHA256: e7e7fb30477f717e6f55f9180a70386c62677ef8a4d4d1a5d948f4098aa3eb99
       FFPROBE_SHA256: 4f231a1960d83e403d08f7971e271707bec278a9ae18e21b8b5b03186668450d
@@ -279,12 +280,23 @@ jobs:
       # external codec libs as Ubuntu's build (libx264/x265/vpx/aom/dav1d/...).
       # For reference: apt on ubuntu-24.04 gave 6.1.1; the production backend
       # image (node:24-alpine) ships Alpine's ffmpeg 8.x.
+      #
+      # The pinned assets and SHA-256s are linux-x64 only, so the cache key
+      # names that platform literally and this guard fails fast (before a
+      # restore could hand x64 binaries to another arch) if runs-on changes.
+      - name: Check runner is linux-x64
+        run: |
+          if [ "${RUNNER_OS}-${RUNNER_ARCH}" != "Linux-X64" ]; then
+            echo "::error::Static ffmpeg pin is linux-x64 only (runner is ${RUNNER_OS}-${RUNNER_ARCH})"
+            exit 1
+          fi
+
       - name: Restore static ffmpeg from cache
         id: ffmpeg-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ffmpeg-static
-          key: ffmpeg-static-${{ runner.os }}-${{ runner.arch }}-${{ env.FFMPEG_STATIC_RELEASE }}
+          key: ffmpeg-static-linux-x64-${{ env.FFMPEG_STATIC_RELEASE }}
 
       - name: Download static ffmpeg
         if: steps.ffmpeg-cache.outputs.cache-hit != 'true'
