@@ -89,7 +89,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
-    "@hey-api/openapi-ts": "^0.92.3",
+    "@hey-api/openapi-ts": "^0.99.0",
     "@ladle/react": "^5.1.1",
     "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
@@ -118,7 +118,7 @@
     "msw": "^2.12.10",
     "pixelmatch": "^7.2.0",
     "rimraf": "^6.0.1",
-    "sharp": "^0.34.4",
+    "sharp": "^0.35.4",
     "typescript": "~5.7.2",
     "typescript-eslint": "^8.26.1",
     "vite": "^6.4.1",
