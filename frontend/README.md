@@ -91,4 +91,13 @@ docker compose stop ladle && docker compose rm -f ladle
 ```
 
 Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`. A story that only makes sense at some widths limits itself with `MyStory.meta = { viewports: ['phone'] };` (a top-level statement, read statically by Ladle); the sweep and the UI review honour it.
+
+**README / docs media** — the `tour--*` stories (`src/stories/tour/`, backed by the hand-written showcase scenario in `src/stories/fixtures/showcase.ts`) are what the README hero loop, screenshot grid and the docs Tour page are generated from:
+
+```bash
+docker compose --profile tools up -d ladle
+docker compose --profile tools run --rm media      # → frontend/.media-out/ (gitignored)
+```
+
+See [Regenerating Screenshots](https://docs.semaphorechat.app/contributing/regenerating-screenshots/) for reviewing and publishing (to the orphan `media` branch).
 ```

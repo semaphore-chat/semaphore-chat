@@ -9,6 +9,10 @@ hide:
 
 Semaphore Chat is an open-source communication platform that gives you full control over your data. Built with a modern stack — NestJS, React, PostgreSQL, and LiveKit — it provides real-time messaging, voice and video calls, and community management out of the box.
 
+[![Semaphore Chat in action: a message is typed and sent in a community channel, a reaction is added, a thread opens, and then a voice channel shows people talking.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/hero.webp){ .no-lightbox loading=lazy }](tour.md)
+
+[:material-play-circle: Take the tour](tour.md){ .md-button .md-button--primary }
+
 ---
 
 ## Features

@@ -17,6 +17,10 @@ import type { GlobalProvider } from '@ladle/react';
 import { ThemeState } from '@ladle/react';
 import CssBaseline from '@mui/material/CssBaseline';
 import { ThemeProvider, useTheme, type ThemeMode } from '../src/contexts/ThemeContext';
+// The app's global stylesheet (main.tsx imports it too): defines `--full-dvh`,
+// which the desktop community rail and other full-height panes size from —
+// without it they collapse to their content height.
+import '../src/index.css';
 
 const ThemeBridge: React.FC<{ ladleMode: ThemeMode; children: React.ReactNode }> = ({ ladleMode, children }) => {
   const { settings, setMode } = useTheme();
