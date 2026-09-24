@@ -1,5 +1,7 @@
 # Mobile UX Overhaul Implementation Plan
 
+> **Status: done** (merged as PR #447 on 2026-09-23). Kept for reference. Its `docker compose run` commands predate `scripts/test-stack.sh`: from a git worktree, run checks as `scripts/test-stack.sh <ticket> run-frontend <cmd>`, never `docker compose run` (see CLAUDE.md).
+
 > **For agentic workers:** Executed through an ultracode Workflow: waves of parallel implementers with disjoint file ownership. Each task has an adversarial reviewer that checks it against the sandbox screenshots. Tasks use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Fix every finding in the screenshot-backed mobile review, from confirmed bugs through the visual system, without regressing desktop or Electron.

@@ -31,7 +31,7 @@ Thanks for your interest in contributing to Semaphore Chat! Whether it's a bug r
 
 - **Backend**: TypeScript with NestJS conventions, ESLint + Prettier
 - **Frontend**: TypeScript with React, ESLint + Prettier
-- Run `docker compose run --rm backend npm run lint` and `docker compose run --rm frontend npm run lint` before submitting
+- Run `docker compose run --rm backend npm run lint` and `docker compose run --rm frontend npm run lint` before submitting (from a git worktree: `scripts/test-stack.sh <ticket> run-backend pnpm run lint` and `run-frontend pnpm run lint`; see [Test Stacks](testing.md#test-stacks-and-the-shared-docker-network))
 
 ## Reporting issues
 

@@ -210,11 +210,15 @@ both the UI export and the tests get it.
   a fresh headless tab. Mirrors a user unmuting; the product's join-time enable
   is unchanged.
 - Playwright in the container vs host: `run-voice-e2e.sh` and CI run it on the
-  host. A fully-in-Docker run also works: the compose `playwright` service
-  shares the frontend container's network namespace, so the app is
-  `http://localhost:5173` (a secure context) while LiveKit is reached as
-  `<stack>-livekit` over `semaphore-test`. See the usage at the top of
-  `docker-compose.voice-e2e.yml`.
+  host, and that is the path they keep tested. A fully-in-Docker run works
+  too (checked by hand with `mute.spec.ts`: 3 passed, with the stack on
+  `semaphore-test`): the compose `playwright` service shares the frontend
+  container's network namespace, so the app is `http://localhost:5173` (a
+  secure context), while LiveKit is reached as `<stack>-livekit` over
+  `semaphore-test`. Nothing runs it automatically, so if it breaks, fall back
+  to the host path. The commands are at the top of
+  `docker-compose.voice-e2e.yml` (wait for the backend to answer
+  `/api/health` before the migrate step).
 
 ## Regenerating the fake-audio samples
 

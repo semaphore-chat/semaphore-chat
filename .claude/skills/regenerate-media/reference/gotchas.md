@@ -4,8 +4,8 @@ Each one cost real time. The fix is already in the code; this list explains why 
 
 ## Running the pipeline
 
-1. **Ladle only discovers new `*.stories.tsx` files on restart.** After adding a file, run `docker compose --profile tools restart ladle`. Otherwise the capture shows "Story not found", which the pipeline flags as forbidden text. Edits to existing files hot-reload.
-2. **`compose run` doesn't stream the dependency's output.** `media-capture` runs as a dependency of `media`, so its log goes to `frontend/.media-out/capture.log`, which `encode.sh` prints at the start of its own output.
+1. **Ladle only discovers new `*.stories.tsx` files on restart.** After adding a file, run `docker compose --profile tools restart ladle` (from a worktree: `docker restart <ticket>-ladle`). Otherwise the capture shows "Story not found", which the pipeline flags as forbidden text. Edits to existing files hot-reload.
+2. **`compose run` doesn't stream the dependency's output.** `media-capture` runs as a dependency of `media`, so its log goes to `frontend/.media-out/capture.log`, which `encode.sh` prints at the start of its own output. (`scripts/test-stack.sh <ticket> media` does stream it, so there the log appears twice.)
 3. **`--rm` doesn't remove the dependency container.** After a run, remove the exited one: `docker ps -a --filter name=media-capture`, then `docker rm -f <name>` (or `docker compose rm -f media-capture`).
 4. **To re-encode only, use `MEDIA_STEPS=encode … run --rm --no-deps media`.** Without `--no-deps`, the capture container starts anyway, reinstalls `playwright-core` and empties `capture.log`.
 5. **A `MEDIA_FILTER` shots run overwrites `report.json` with only the filtered shots**, and sets its `"filter"`. Then `issueCount: 0` says nothing about the rest, so `publish-media.sh` refuses a report that doesn't cover every shot in the catalog. Finish with an unfiltered shots run. Filtered scene runs are different: they merge into `raw/scenes/scenes.json`. The filter never applies to encoding (gotcha 30).

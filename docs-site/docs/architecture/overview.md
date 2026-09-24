@@ -37,6 +37,10 @@ The backend exposes an OpenAPI spec. The frontend uses a **generated TypeScript 
 ```bash
 docker compose run --rm backend pnpm run generate:openapi
 docker compose run --rm frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
+
+# From a git worktree (no dev stack):
+scripts/test-stack.sh <ticket> run-backend pnpm run generate:openapi
+scripts/test-stack.sh <ticket> run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
 ```
 
 ### WebSocket Events

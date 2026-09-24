@@ -11,6 +11,17 @@ docker compose --profile tools up -d ladle          # the sandbox (first start c
 docker compose --profile tools run --rm media       # screenshots + scenes, then encode
 ```
 
+!!! note "From a git worktree"
+    The commands on this page use the dev stack, so run them in the main
+    checkout. For media work on a branch in a git worktree, run the same
+    pipeline with `scripts/test-stack.sh <ticket> media` (the same
+    `MEDIA_STEPS` and `MEDIA_FILTER` variables). It serves the worktree's
+    Ladle as `<ticket>-ladle`, with no host port, on the shared
+    `semaphore-test` Docker network, and never creates a network (see
+    [Test Stacks](testing.md#test-stacks-and-the-shared-docker-network)).
+    Restart it with `docker restart <ticket>-ladle` and remove it with
+    `scripts/test-stack.sh <ticket> down`.
+
 `media` waits for `media-capture` to finish (Playwright screenshots and scene recordings) and then encodes the results. Everything is written to `frontend/.media-out/`, which is gitignored:
 
 | Path | What |

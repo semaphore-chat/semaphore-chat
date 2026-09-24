@@ -27,6 +27,13 @@ This starts all services with hot reload — changes to `backend/` and `frontend
 
 ## Common commands
 
+!!! note "Git worktrees"
+    These `docker compose` commands drive the dev stack and belong in the main
+    checkout. In a git worktree they would start a second compose project named
+    after its directory, with its own `<dir>_default` Docker network. From a
+    worktree, use `scripts/test-stack.sh <ticket> run-backend|run-frontend <cmd>`
+    instead; see [Test Stacks and the Shared Docker Network](testing.md#test-stacks-and-the-shared-docker-network).
+
 ### Backend
 
 ```bash
@@ -87,8 +94,9 @@ docker compose run --rm -p 5555:5555 backend npx prisma studio
 # Start all services in background
 docker-compose up -d
 
-# Stop all services
-docker-compose down
+# Stop all services (`stop`, not `down`: `down` also removes the
+# semaphore-chat_default network, and the next `up` creates it again)
+docker compose stop
 
 # View logs for a specific service
 docker-compose logs backend -f
@@ -96,8 +104,10 @@ docker-compose logs backend -f
 # Rebuild containers (after Dockerfile changes)
 docker-compose build --no-cache
 
-# Full reset (removes all data)
-docker-compose down -v && docker-compose build --no-cache && docker-compose up
+# Full reset (removes all data; keeps the network)
+docker compose rm -s -f -v
+docker volume rm $(docker volume ls -q --filter label=com.docker.compose.project=semaphore-chat)
+docker-compose build --no-cache && docker-compose up
 ```
 
 ## Regenerating the API client
@@ -163,7 +173,7 @@ semaphore-chat/
 ### Services not starting
 
 ```bash
-docker-compose down
+docker compose rm -s -f
 docker-compose build --no-cache
 docker-compose up
 ```

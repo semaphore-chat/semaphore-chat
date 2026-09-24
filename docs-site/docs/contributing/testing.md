@@ -1,5 +1,12 @@
 # Testing Guide
 
+!!! note "Main checkout or git worktree?"
+    The `docker compose run` commands on this page (and elsewhere in these docs)
+    use the dev stack's compose project, so run them from the main checkout.
+    From a git worktree, use the `scripts/test-stack.sh` equivalents in
+    [Test Stacks and the Shared Docker Network](#test-stacks-and-the-shared-docker-network),
+    e.g. `scripts/test-stack.sh <ticket> run-backend pnpm run test`.
+
 ## Backend Tests
 
 **Stack**: Jest + `@suites/unit` TestBed automocks
@@ -178,9 +185,11 @@ it('shows error on failure', async () => {
 
 ## Test Stacks and the Shared Docker Network
 
-The commands above use the dev stack's compose project, so run them from the
-main checkout. For a git worktree, a ticket's own database or several branches
-side by side, use `scripts/test-stack.sh`.
+Every dev-stack `docker compose` command in these docs (on this page, in
+[Development Setup](development-setup.md), [Code Patterns](code-patterns.md) and
+elsewhere) uses the dev stack's compose project, so run it from the main
+checkout. For a git worktree, a ticket's own database or several branches side
+by side, use `scripts/test-stack.sh`. A worktree needs no `backend/.env`.
 
 **Why:** a compose project creates its own network (`<project>_default`) on its
 first `up` or `run`, and `down` removes it. Every network create or remove adds
@@ -188,9 +197,23 @@ or removes a `br-*` bridge with an IPv4 address on the host, and Chromium-based
 browsers on the same machine treat that as a network change and drop their open
 connections. So `docker compose -p <name> ...` from worktrees (or plain
 `docker compose run` there, which names the project after the directory) must
-not be used. All ephemeral test containers join one long-lived network,
+not be used, and the dev stack is stopped with `docker compose stop`, not
+`down`. All ephemeral test containers join one long-lived network,
 `semaphore-test`, which `scripts/test-net.sh` creates once and nothing removes
-(don't `docker network rm` or `docker network prune` it).
+(don't `docker network rm`, `docker network prune` or `docker system prune`
+it). It also keeps an idle `semaphore-test-anchor` container attached, so the
+network is never unused and a prune can't delete it.
+
+| Task | Main checkout (dev stack) | Worktree / any other checkout |
+|------|---------------------------|-------------------------------|
+| Backend unit tests | `docker compose run --rm backend pnpm run test` | `scripts/test-stack.sh <ticket> run-backend pnpm run test` |
+| Frontend tests | `docker compose run --rm frontend pnpm run test` | `scripts/test-stack.sh <ticket> run-frontend pnpm run test` |
+| Lint, type check, build | `docker compose run --rm frontend pnpm run lint` | `scripts/test-stack.sh <ticket> run-frontend pnpm run lint` |
+| Backend e2e | `docker compose run --rm backend pnpm run test:e2e` | `scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e'` |
+| New migration | `docker compose run --rm backend pnpm run prisma:migrate:dev` | `scripts/test-stack.sh <ticket> run pnpm exec prisma migrate dev --name <name>` |
+| OpenAPI spec | `docker compose run --rm backend pnpm run generate:openapi` | `scripts/test-stack.sh <ticket> run-backend pnpm run generate:openapi` |
+| API client | `docker compose run --rm frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'` | `scripts/test-stack.sh <ticket> run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'` |
+| README/docs media | `docker compose --profile tools run --rm media` | `scripts/test-stack.sh <ticket> media` |
 
 ```bash
 scripts/test-stack.sh <ticket> up                                # <ticket>-pg, <ticket>-redis, <ticket>-minio
@@ -200,6 +223,7 @@ scripts/test-stack.sh <ticket> run pnpm run test:e2e             # backend e2e s
 scripts/test-stack.sh <ticket> run -e KEY=VALUE -- <cmd...>        # extra or overriding environment
 scripts/test-stack.sh <ticket> run-backend pnpm run type-check   # no services: type-check, lint, unit tests, build
 scripts/test-stack.sh <ticket> run-frontend pnpm run type-check  # frontend: type-check, lint, test, build
+scripts/test-stack.sh <ticket> media                             # README/docs media (MEDIA_STEPS, MEDIA_FILTER from the env)
 scripts/test-stack.sh <ticket> env                               # the environment `run` sets
 scripts/test-stack.sh <ticket> down                              # removes the ticket's containers, never a network
 scripts/test-stack.sh ls                                         # all tickets' containers
@@ -220,7 +244,15 @@ scripts/test-stack.sh ls                                         # all tickets' 
   `uir-frontend:<hash>` image the UI review tool also uses) built on first use.
   A Prisma schema that differs from the image's is generated at run time, and
   `shared/dist` is built when it is missing or stale. Files the containers
-  write as root are handed back to you.
+  write as root are handed back to you, also after Ctrl-C or a SIGTERM (which
+  remove the running container). A SIGKILL can leave it running: `down`
+  removes it.
+- `media` runs the README/docs media pipeline
+  ([Regenerating Screenshots](regenerating-screenshots.md)) on this checkout:
+  `<ticket>-ladle` serves its Ladle with no host port (it stays up between
+  runs; restart it with `docker restart <ticket>-ladle` after adding a
+  `*.stories.tsx` file), and the capture and encode containers write to
+  `frontend/.media-out/`.
 - Playwright E2E (`scripts/run-e2e.sh`, Playwright itself in Docker), voice
   E2E (`scripts/run-voice-e2e.sh`) and the UI review tool also use
   `semaphore-test`, with per-checkout container names, so they never create

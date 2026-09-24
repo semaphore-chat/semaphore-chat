@@ -63,6 +63,6 @@ Display names are per user: the backend has no per-community nicknames. So every
 Change the data, then regenerate everything it touches. A change to `showcase.ts` affects every story, so run the full pipeline (all steps). Then review everything `changed-media.sh` lists ([review.md](review.md)): usually most screenshots, and always the videos, because they were re-recorded. Type-check and lint the stories in Docker:
 
 ```bash
-scripts/test-stack.sh media run-frontend pnpm run type-check
-scripts/test-stack.sh media run-frontend pnpm exec eslint src/stories/fixtures/showcase.ts src/stories/fixtures/showcaseGifs.ts src/stories/tour/Tour.stories.tsx
+scripts/test-stack.sh <ticket> run-frontend pnpm run type-check
+scripts/test-stack.sh <ticket> run-frontend pnpm exec eslint src/stories/fixtures/showcase.ts src/stories/fixtures/showcaseGifs.ts src/stories/tour/Tour.stories.tsx
 ```

@@ -84,7 +84,7 @@ Compare "before" and "after" inside every outline, then scan the whole "after" p
    - `rechecks` in `report.json` gives the differing pixels inside the region on each re-capture. A 0 there is what made the shot unstable.
    - Remember that a targeted run replaces `.ui-review/out`, so do the full run again before publishing.
 10. **Blind spots:**
-    - Files listed as "not visible in Ladle" (`index.html`, `vite.config.ts`, `main.tsx`, `index.css`, `public/`) need a check in the real app (`docker compose up`) or a note in the PR.
+    - Files listed as "not visible in Ladle" (`index.html`, `vite.config.ts`, `main.tsx`, `index.css`, `public/`) need a check in the real app or a note in the PR. The real app is the dev stack in the main checkout (`docker compose up` there). Never run `docker compose up` in a worktree: it starts a second stack named after the directory, with its own `<worktree>_default` network (see CLAUDE.md), and its ports clash with the dev stack.
     - In a capped or sampled run, check that the stories you care about were captured.
     - "No probed story executes" and "no visible change" mean the screenshots don't show that code yet (see [stories.md](stories.md)).
 

@@ -169,14 +169,16 @@ import { isElectron, hasElectronFeature } from './utils/platform';
 
 **🐳 ALL DEVELOPMENT SHOULD BE DONE WITH DOCKER**
 
+**Main checkout vs worktrees:** every `docker compose ...` command in this file (in this section, in Testing, in Database Operations, anywhere) drives the long-running dev stack (`docker-compose.yml`, project `semaphore-chat`) and is for the **main checkout only**. In a git worktree or any other checkout, use the `scripts/test-stack.sh` equivalent from the table in **Test stacks, worktrees and the shared `semaphore-test` network** below. `docker compose run/up` in a worktree starts a new project named after the directory, which creates a `<dir>_default` network (and a later `down` removes it). A worktree needs no `backend/.env`: don't create one to make `docker compose` work there.
+
 ### Essential Docker Commands
 
 - **Start development**: `docker-compose up` (starts all services with hot reload)
 - **Start in background**: `docker-compose up -d`
-- **Stop all services**: `docker-compose down`
+- **Stop all services**: `docker compose stop` (not `down`: it removes the `semaphore-chat_default` network, and the next `up` creates it again)
 - **View logs**: `docker-compose logs [service-name]` (e.g., `docker-compose logs backend`)
 - **Rebuild containers**: `docker-compose build --no-cache`
-- **Clean up**: `docker-compose down -v` (removes volumes)
+- **Clean up** (containers and volumes, keeps the network): `docker compose rm -s -f -v && docker volume rm $(docker volume ls -q --filter label=com.docker.compose.project=semaphore-chat)`
 
 ### Backend Development (NestJS in Docker)
 
@@ -212,9 +214,13 @@ docker compose run --rm backend pnpm run generate:openapi
 
 # 2. Regenerate the frontend SDK (must run inside frontend container)
 docker compose run --rm frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
+
+# The same from a worktree (no dev stack, no compose project):
+scripts/test-stack.sh <ticket> run-backend pnpm run generate:openapi
+scripts/test-stack.sh <ticket> run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
 ```
 
-The backend dir is mounted at `/spec` inside the frontend container (see `docker-compose.yml`). The generated client goes to `frontend/src/api-client/`. Always use generated SDK functions (`voicePresenceControllerJoinPresence(...)`) instead of raw `client.post()` calls.
+The backend dir is mounted at `/spec` inside the frontend container (see `docker-compose.yml`; `test-stack.sh run-frontend` does the same). The generated client goes to `frontend/src/api-client/`. Always use generated SDK functions (`voicePresenceControllerJoinPresence(...)`) instead of raw `client.post()` calls.
 
 ### 📹 **LiveKit (Voice/Video & Egress)**
 
@@ -235,9 +241,10 @@ LiveKit Server and LiveKit Egress are included in the dev Docker Compose and sta
 
 Every network create/remove adds/removes a `br-*` bridge with an IPv4 address on the host, and Chromium-based browsers on this machine drop their open connections on each one. So:
 
-- **Don't use `docker compose -p <name> ...` from a worktree** (or plain `docker compose run/up` there, which names the project after the directory): the project's first `up`/`run` creates `<name>_default` and `down` removes it. Use `scripts/test-stack.sh <ticket> run-backend|run-frontend <cmd...>` instead. The dev-stack `docker compose` commands above are for the main checkout only (project `semaphore-chat`, network `semaphore-chat_default`, which stays up).
-- `scripts/test-net.sh` creates `semaphore-test` once (idempotent). Nothing removes it: no `docker network rm`/`docker network prune`.
-- Per-ticket services and commands (`<ticket>`: `[a-z0-9-]`, e.g. the branch or issue name):
+- **Don't use `docker compose -p <name> ...` from a worktree** (or plain `docker compose run/up` there, which names the project after the directory): the project's first `up`/`run` creates `<name>_default` and `down` removes it. Use `scripts/test-stack.sh` instead. **All** dev-stack `docker compose` commands in this file are for the main checkout only (project `semaphore-chat`, network `semaphore-chat_default`, which stays up).
+- `scripts/test-net.sh` creates `semaphore-test` once (idempotent), plus an idle `semaphore-test-anchor` container that keeps it in use so a prune can't delete it. Nothing removes either: no `docker network rm`/`docker network prune`/`docker system prune`.
+- Never `docker compose down` the dev stack either: stop it with `docker compose stop` (keeps `semaphore-chat_default`).
+- Per-ticket services and commands (`<ticket>`: `[a-z0-9-]`, unique to your worktree, e.g. the branch or issue name):
 
 ```bash
 scripts/test-stack.sh <ticket> up                                  # <ticket>-pg, <ticket>-redis, <ticket>-minio on semaphore-test
@@ -246,43 +253,59 @@ scripts/test-stack.sh <ticket> run pnpm exec jest <pattern>
 scripts/test-stack.sh <ticket> run pnpm run test:e2e               # backend e2e (migrate first)
 scripts/test-stack.sh <ticket> run-backend pnpm run type-check     # no services needed: type-check, lint, unit tests, build
 scripts/test-stack.sh <ticket> run-frontend pnpm run type-check    # likewise for the frontend (lint, test, build)
+scripts/test-stack.sh <ticket> media                               # README/docs media (MEDIA_STEPS/MEDIA_FILTER from the env)
 scripts/test-stack.sh <ticket> down                                # containers only; never a network
 scripts/test-stack.sh ls                                           # every ticket's containers (don't `down` another session's)
 ```
 
+| Task | Main checkout (dev stack) | Worktree / any other checkout |
+|------|---------------------------|-------------------------------|
+| Backend unit tests (pre-push) | `docker compose run --rm backend pnpm run test` | `scripts/test-stack.sh <ticket> run-backend pnpm run test` |
+| Frontend tests (pre-push) | `docker compose run --rm frontend pnpm run test` | `scripts/test-stack.sh <ticket> run-frontend pnpm run test` |
+| Lint / type-check / build | `docker compose run --rm backend\|frontend pnpm run lint` | `scripts/test-stack.sh <ticket> run-backend\|run-frontend pnpm run lint` |
+| Backend e2e (jest) | `docker compose run --rm backend pnpm run test:e2e` | `scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e'` |
+| Apply migrations | `docker compose run --rm backend pnpm run prisma:migrate` | `scripts/test-stack.sh <ticket> run pnpm run prisma:migrate` |
+| New migration | `docker compose run --rm backend pnpm run prisma:migrate:dev` | `scripts/test-stack.sh <ticket> run pnpm exec prisma migrate dev --name <name>` |
+| Prisma client | `docker compose run --rm backend pnpm run prisma:generate` | automatic: `run`/`run-backend` regenerate it when the schema differs from the image |
+| OpenAPI spec + client | see OpenAPI SDK Client Regeneration | `run-backend pnpm run generate:openapi`, then `run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'` |
+| README/docs media | `docker compose --profile tools run --rm media` | `scripts/test-stack.sh <ticket> media` |
+| Playwright / voice E2E, UI review | `scripts/run-e2e.sh`, `scripts/run-voice-e2e.sh`, `frontend/scripts/ui-review/ui-review.sh` | the same scripts: they already use `semaphore-test` |
+
 - Services address each other by the ticket-prefixed container name (`<ticket>-pg`), never by generic names like `postgres`/`redis`: several tickets share the network.
 - Playwright E2E (`scripts/run-e2e.sh`), voice E2E (`scripts/run-voice-e2e.sh`) and the UI review tool also run on `semaphore-test`, with per-checkout container names.
-- To stop the long-running dev stack, prefer `docker compose stop` (keeps `semaphore-chat_default`) over `docker compose down`.
+- A run killed with SIGKILL (e.g. a tool timeout) can leave its container running: `scripts/test-stack.sh <ticket> down` (or `ls` to find it) cleans up. INT/TERM are handled.
 
 ### 📋 **Daily Development Workflow**
+
+In the main checkout (in a worktree, use the `scripts/test-stack.sh` column of the table above):
 
 ```bash
 # 1. Start development environment
 docker-compose up
 
 # 2. In separate terminal: Run backend tests
-docker compose run backend pnpm run test
+docker compose run --rm backend pnpm run test
 
 # 3. In separate terminal: Check backend linting
-docker compose run backend pnpm run lint
+docker compose run --rm backend pnpm run lint
 
 # 4. In separate terminal: Run database migrations
-docker compose run backend pnpm run prisma:migrate
+docker compose run --rm backend pnpm run prisma:migrate
 
 # 5. View logs for specific service
 docker-compose logs backend -f
 
-# 6. Stop everything when done
-docker-compose down
+# 6. Stop everything when done (stop, not down: keeps the network)
+docker compose stop
 ```
 
 ### 🔧 **Troubleshooting**
 
-- **Services not starting**: Try `docker-compose down` then `docker-compose build --no-cache`
+- **Services not starting**: Try `docker compose rm -s -f` then `docker-compose build --no-cache`
 - **Database connection issues**: Ensure PostgreSQL container is healthy with `docker-compose ps`
 - **Port conflicts**: Check if ports 3000, 5173, 5432, 6379, 7880 are available
-- **Permission issues**: Use `docker compose run --rm backend bash` to debug
-- **Fresh start**: `docker-compose down -v && docker-compose build --no-cache && docker-compose up`
+- **Permission issues**: Use `docker compose run --rm backend bash` to debug (main checkout; elsewhere `scripts/test-stack.sh <ticket> run-backend bash`)
+- **Fresh start** (wipes the dev data, keeps the network): `docker compose rm -s -f -v && docker volume rm $(docker volume ls -q --filter label=com.docker.compose.project=semaphore-chat) && docker-compose build --no-cache && docker-compose up`
 
 ## Architecture Overview
 
@@ -418,11 +441,11 @@ Always import `PartialType` from `@nestjs/swagger`, **not** `@nestjs/mapped-type
 
 - PostgreSQL uses Prisma migrations (`prisma migrate deploy` for production, `prisma migrate dev` for development)
 - Always run `prisma generate` after schema changes
-- To create a new migration after schema changes: `docker compose run backend pnpm run prisma:migrate:dev`
+- To create a new migration after schema changes: `docker compose run --rm backend pnpm run prisma:migrate:dev` (main checkout); in a worktree `scripts/test-stack.sh <ticket> run pnpm exec prisma migrate dev --name <name>` (applies the existing migrations to the ticket's empty database, then writes the new one into `backend/prisma/migrations/`)
 
 ### Environment Variables
 
-Copy `backend/env.sample` to `backend/.env` and configure:
+For the dev stack in the main checkout, copy `backend/env.sample` to `backend/.env` and configure (worktrees don't need one: `scripts/test-stack.sh` sets the environment itself, and a `backend/.env` there only lets `docker compose` create a network per worktree):
 
 - `DATABASE_URL` PostgreSQL connection string
 - JWT secrets (change defaults!)
@@ -437,13 +460,13 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 - Uses Jest with `@suites/unit` TestBed automocks
 - Test files follow `*.spec.ts` pattern alongside source files
 - E2E tests in `backend/test/` directory
-- Run: `docker compose run --rm backend pnpm run test`
+- Run: `docker compose run --rm backend pnpm run test` (main checkout); in a worktree `scripts/test-stack.sh <ticket> run-backend pnpm run test`
 
 #### Frontend Tests
 
 - Uses Vitest + jsdom + `@testing-library/react` + MSW v2
 - Test files live in `frontend/src/__tests__/` organized by type: `components/`, `hooks/`, `features/`
-- Run: `docker compose run --rm frontend pnpm run test` (or `pnpm run test:cov` for coverage)
+- Run: `docker compose run --rm frontend pnpm run test` (or `pnpm run test:cov` for coverage) in the main checkout; in a worktree `scripts/test-stack.sh <ticket> run-frontend pnpm run test`
 - CI runs automatically on PRs touching `frontend/**` or `shared/**`
 
 **Test infrastructure** (in `frontend/src/__tests__/test-utils/`):
@@ -459,9 +482,9 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 - Mock `useParams`/`useNavigate`: mock `react-router-dom` with `importOriginal` spread + overrides
 - Test async error flows: rejected promises from mocked functions trigger catch blocks; use `findByRole`/`waitFor` to assert on resulting DOM changes
 
-**Pre-push requirement**: Always run the full test suite locally before pushing to remote or opening a PR. This catches failures early and avoids wasting CI minutes:
-- Frontend: `docker compose run --rm frontend pnpm run test`
-- Backend: `docker compose run --rm backend pnpm run test`
+**Pre-push requirement**: Always run the full test suite locally before pushing to remote or opening a PR. This catches failures early and avoids wasting CI minutes. From a worktree (where branches are usually pushed from), never `docker compose run` (it creates a `<worktree>_default` network):
+- Frontend: `scripts/test-stack.sh <ticket> run-frontend pnpm run test` (main checkout: `docker compose run --rm frontend pnpm run test`)
+- Backend: `scripts/test-stack.sh <ticket> run-backend pnpm run test` (main checkout: `docker compose run --rm backend pnpm run test`)
 
 **UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
 

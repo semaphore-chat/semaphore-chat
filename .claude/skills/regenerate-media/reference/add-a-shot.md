@@ -24,7 +24,7 @@ export const Pinned = defineShowcase(showcasePaths.dev, {
 - `overlay`: a component that acts once the story has mounted. It uses the helpers in `fixtures/interactions.tsx` (`ClickOnMount`, `TypeIntoTextareaOnMount`, `AttachFileOnMount`) and the finders in `fixtures/domQueries.ts` (`findButtonByText`, `findButtonByIconTestId`, `findMenuItemByText`). Use it to open a thread, a tab, a drawer or a menu.
 - `extraHandlers`: MSW handlers for any endpoint the screen needs that the showcase doesn't answer yet. Unhandled requests show up in `report.json`.
 
-**New story file?** Only needed if you don't add to `Tour.stories.tsx`. Restart Ladle: `docker compose --profile tools restart ladle`.
+**New story file?** Only needed if you don't add to `Tour.stories.tsx`. Restart Ladle: `docker compose --profile tools restart ladle` (worktree: `docker restart <ticket>-ladle`).
 
 **New data?** Add it to `fixtures/showcase.ts` and follow the continuity rules in [demo-data.md](demo-data.md).
 
@@ -54,6 +54,8 @@ Add an entry to `SHOTS`. The order of `SHOTS` is the capture order and the order
 ## 3. Generate and review
 
 Take the snapshot first, unless you already took one at the start of this task, so that you can see what your change did to the outputs:
+(From a worktree, run each `docker compose --profile tools run --rm media` below as `scripts/test-stack.sh <ticket> media` with the same variables; see SKILL.md.)
+
 
 ```bash
 .claude/skills/regenerate-media/scripts/changed-media.sh snapshot
