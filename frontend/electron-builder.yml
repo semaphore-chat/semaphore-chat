@@ -73,6 +73,10 @@ mac:
         - x64
         - arm64
   category: public.app-category.social-networking
+  # Electron 39+: desktopCapturer (screen share / loopback audio) requires this
+  # usage string on macOS >= 14.2
+  extendInfo:
+    NSAudioCaptureUsageDescription: Semaphore Chat captures system audio when you share your screen with sound.
   # Code signing (requires Apple Developer account)
   # identity: "Developer ID Application: Your Name (TEAM_ID)"
   # hardenedRuntime: true
@@ -94,7 +98,7 @@ dmg:
 # NOTE (#349): electron-builder derives the Linux install directory from
 # productName, and "/opt/Semaphore Chat/" (with a space) breaks Electron's
 # zygote re-exec ("LaunchProcess: failed to execvp: /opt/Semaphore").
-# electron-builder 24.x has no per-platform productName, so EVERY Linux build
+# electron-builder (24.x at the time) has no per-platform productName, so EVERY Linux build
 # must pass -c.productName=semaphore-chat — see the "electron-builder:linux"
 # script in package.json and .github/workflows/electron-build.yml. The
 # user-visible name on Linux is unaffected: the launcher entry comes from
@@ -117,12 +121,14 @@ linux:
       arch:
         - x64
   category: Network
+  # electron-builder 26: .desktop keys live under desktop.entry
   desktop:
-    Name: Semaphore Chat
-    GenericName: Voice Chat Application
-    Comment: Self-hosted voice and text chat application
-    Categories: Network;InstantMessaging;AudioVideo;
-    Keywords: chat;voice;video;messaging;
+    entry:
+      Name: Semaphore Chat
+      GenericName: Voice Chat Application
+      Comment: Self-hosted voice and text chat application
+      Categories: Network;InstantMessaging;AudioVideo;
+      Keywords: chat;voice;video;messaging;
 
 # AppImage configuration
 appImage:

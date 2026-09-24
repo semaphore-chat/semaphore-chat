@@ -23,17 +23,6 @@ CVE-2026-44496
 CVE-2026-35209
 # effect
 CVE-2026-32887
-# electron (present in the image because the build copies the full workspace
-# node_modules — slimming the prod image would also clear these)
-CVE-2026-34769
-CVE-2026-34770
-CVE-2026-34771
-CVE-2026-34774
-# electron: new advisories 2026-08; fix requires the 38->39+ major bump
-# (tracked by the dependabot electron PR) or prod-image slimming
-CVE-2026-70601
-CVE-2026-70604
-CVE-2026-70608
 # lodash (via @nestjs/config)
 CVE-2026-4800
 # minimatch
