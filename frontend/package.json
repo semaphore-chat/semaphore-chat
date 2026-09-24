@@ -125,7 +125,7 @@
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6",
     "vite-plugin-pwa": "^1.2.0",
-    "vitest": "^4.0.18",
+    "vitest": "^4.1.0",
     "vitest-axe": "^0.1.0",
     "wait-on": "^8.0.3"
   }
