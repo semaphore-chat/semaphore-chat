@@ -173,7 +173,13 @@ run() {
       log "nothing to change"
       return 0
     fi
-    if [[ "$cmd" == publish ]]; then message="Publish $FOLDER"; else message="Prune closed PR screenshots"; fi
+    if [[ "$cmd" == publish ]]; then
+      message="Publish $FOLDER"
+    elif [[ -n "$PR" ]]; then
+      message="Remove pr-$PR/"
+    else
+      message="Prune closed PR screenshots"
+    fi
     commit="$(git commit-tree "$tree" -m "$message")"
     if push_out="$(git push --porcelain --force-with-lease="refs/heads/$BRANCH:$tip" "$REMOTE" "$commit:refs/heads/$BRANCH" 2>&1)"; then
       log "pushed $BRANCH ($message) as ${commit:0:7}"

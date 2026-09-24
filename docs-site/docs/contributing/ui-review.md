@@ -195,8 +195,14 @@ re-applies. It never checks anything out or touches another branch. Images are
 referenced as `https://raw.githubusercontent.com/<owner>/<repo>/pr-screenshots/...`.
 
 The PR section is spliced between its markers byte-for-byte (CRLF bodies
-included); running it again replaces it in place, and if the markers are
-missing it is appended.
+included); running it again replaces it in place. If the markers are missing
+it is appended to the end — to put it somewhere else (e.g. above a footer),
+add the two marker lines there first:
+
+```markdown
+<!-- ui-review:start -->
+<!-- ui-review:end -->
+```
 
 ## Pruning
 
