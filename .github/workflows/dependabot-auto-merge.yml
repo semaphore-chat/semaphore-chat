@@ -10,7 +10,9 @@ permissions:
 jobs:
   auto-merge:
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    # Keyed on the PR author, not github.actor: the actor changes when a
+    # maintainer re-runs the job or pushes to the branch.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:
       - name: Fetch Dependabot metadata
@@ -19,8 +21,26 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
+      # Needs the repo setting "Allow GitHub Actions to create and approve pull
+      # requests" (Settings -> Actions -> General). While it's off, `gh pr review
+      # --approve` exits 1, and that used to fail this whole job and skip the
+      # auto-merge step. Non-fatal now: with the setting off, auto-merge is still
+      # queued and the PR merges once a maintainer approves (the main ruleset
+      # requires 1 approving review) and CI is green.
+      #
+      # Approval additionally requires Dependabot to be the one who triggered
+      # this run (github.actor covers the push that fired the event,
+      # github.triggering_actor covers a re-run). If a maintainer pushes to the
+      # Dependabot branch or re-runs the job, the PR author is still Dependabot
+      # but the code may not be, so skip the approval and leave review to a
+      # human; enabling auto-merge below still keys on the PR author.
       - name: Auto-approve patch and minor updates
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        if: >-
+          github.actor == 'dependabot[bot]' &&
+          github.triggering_actor == 'dependabot[bot]' &&
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+          steps.metadata.outputs.update-type == 'version-update:semver-minor')
+        continue-on-error: true
         run: gh pr review --approve "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
