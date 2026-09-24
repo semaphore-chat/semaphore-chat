@@ -57,7 +57,13 @@ Images are published per PR number, so publishing needs `--pr`; before the PR
 exists, review locally. `--pr` must be the open PR of the branch you are on
 (a typo would otherwise write into someone else's PR); `--force-pr` overrides
 that check. `--reuse` only works when base and head haven't changed since the
-capture.
+capture, so commit before the run you intend to publish with `--reuse`.
+
+Agents (Claude Code) follow the project skill
+[`ui-pr-review`](https://github.com/semaphore-chat/semaphore-chat/blob/main/.claude/skills/ui-pr-review/SKILL.md),
+which wraps this workflow: when it applies, adding stories for uncovered or new
+states, a detailed screenshot checklist, and where the section goes in the PR
+description.
 
 ### Review checklist
 
