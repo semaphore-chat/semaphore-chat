@@ -152,6 +152,11 @@ export class CapturingLogger implements LoggerService {
  * and processes them against the DEV database, so e2e assertions on job
  * outcomes never see their results. CI's dedicated Redis service has no
  * other consumers, so it doesn't need this.
+ *
+ * From a worktree (or to keep the dev database out of it entirely), use a
+ * per-ticket stack instead: its own Postgres (database `semaphore_test`),
+ * Redis and MinIO on the shared semaphore-test network, no REDIS_DB needed:
+ *   scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e'
  */
 export async function resetDatabase(app: E2eApp): Promise<void> {
   let dbName: string;

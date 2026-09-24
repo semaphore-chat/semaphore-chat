@@ -173,3 +173,55 @@ it('shows error on failure', async () => {
 - **Hooks**: State changes, side effects, return values
 - **Action functions**: API calls, error handling, cache updates
 - **Mock external dependencies** to isolate the unit under test
+
+---
+
+## Test Stacks and the Shared Docker Network
+
+The commands above use the dev stack's compose project, so run them from the
+main checkout. For a git worktree, a ticket's own database or several branches
+side by side, use `scripts/test-stack.sh`.
+
+**Why:** a compose project creates its own network (`<project>_default`) on its
+first `up` or `run`, and `down` removes it. Every network create or remove adds
+or removes a `br-*` bridge with an IPv4 address on the host, and Chromium-based
+browsers on the same machine treat that as a network change and drop their open
+connections. So `docker compose -p <name> ...` from worktrees (or plain
+`docker compose run` there, which names the project after the directory) must
+not be used. All ephemeral test containers join one long-lived network,
+`semaphore-test`, which `scripts/test-net.sh` creates once and nothing removes
+(don't `docker network rm` or `docker network prune` it).
+
+```bash
+scripts/test-stack.sh <ticket> up                                # <ticket>-pg, <ticket>-redis, <ticket>-minio
+scripts/test-stack.sh <ticket> run pnpm run prisma:migrate       # backend container on semaphore-test
+scripts/test-stack.sh <ticket> run pnpm exec jest <test-pattern>
+scripts/test-stack.sh <ticket> run pnpm run test:e2e             # backend e2e suite (migrate first)
+scripts/test-stack.sh <ticket> run -e KEY=VALUE -- <cmd...>        # extra or overriding environment
+scripts/test-stack.sh <ticket> run-backend pnpm run type-check   # no services: type-check, lint, unit tests, build
+scripts/test-stack.sh <ticket> run-frontend pnpm run type-check  # frontend: type-check, lint, test, build
+scripts/test-stack.sh <ticket> env                               # the environment `run` sets
+scripts/test-stack.sh <ticket> down                              # removes the ticket's containers, never a network
+scripts/test-stack.sh ls                                         # all tickets' containers
+```
+
+- `<ticket>` is 1–32 characters of `[a-z0-9-]`, such as the branch or issue
+  name. Names starting with `semaphore`, `e2e-`, `uir-` or `kraken` are
+  reserved.
+- The services publish no host ports and are addressed by their
+  ticket-prefixed container names (`DATABASE_URL=...@<ticket>-pg:5432/semaphore_test`,
+  `REDIS_HOST=<ticket>-redis`, `S3_ENDPOINT=http://<ticket>-minio:9000`),
+  never by generic names such as `postgres` or `redis`: other tickets share the
+  network. Every container is labelled with its ticket, so tickets can run at
+  the same time and `down` only removes its own.
+- `run`, `run-backend` and `run-frontend` bind-mount this checkout's
+  `backend/`, `frontend/` and `shared/` the way `docker-compose.yml` does, on
+  content-addressed dependency images (`semaphore-test-backend:<hash>`, and the
+  `uir-frontend:<hash>` image the UI review tool also uses) built on first use.
+  A Prisma schema that differs from the image's is generated at run time, and
+  `shared/dist` is built when it is missing or stale. Files the containers
+  write as root are handed back to you.
+- Playwright E2E (`scripts/run-e2e.sh`, Playwright itself in Docker), voice
+  E2E (`scripts/run-voice-e2e.sh`) and the UI review tool also use
+  `semaphore-test`, with per-checkout container names, so they never create
+  or remove a network either.

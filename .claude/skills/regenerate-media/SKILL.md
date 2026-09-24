@@ -15,6 +15,7 @@ The human-facing guide is `docs-site/docs/contributing/regenerating-screenshots.
 - **Never commit image or video files.** The media lives only on the orphan `media` branch. `frontend/.media-out/` is gitignored.
 - **Don't change product code** (`frontend/src` outside `stories/`) to make the media look better. If the media shows a product bug, report it with the frame or screenshot.
 - **Publishing force-pushes a shared branch.** Run `publish-media.sh` without `--dry-run` only when the user asks. Only publish UI that is on `main`, or that is merging with this change.
+- **The `docker compose` commands below run in the main checkout only.** They use the dev project (`semaphore-chat`, network `semaphore-chat_default`, which stays up). Run from a worktree, or with `-p <name>`, compose creates a `<name>_default` network, and every network create/remove makes Chromium-based browsers on the host drop their connections (see CLAUDE.md). In a worktree, run checks with `scripts/test-stack.sh <ticket> run-frontend <cmd>` instead.
 
 ## Map
 
@@ -121,8 +122,8 @@ frontend/scripts/media/publish-media.sh             # force-pushes one orphan co
 
   | Files | Check |
   |-------|-------|
-  | `frontend/src/stories/**/*.ts(x)` | `docker compose run --rm frontend pnpm run type-check`, then `docker compose run --rm frontend pnpm exec eslint <the files>` |
-  | `frontend/scripts/media/*.mjs` | Not covered by type-check. ESLint only parses them (no rules apply to `.mjs`), so `docker compose run --rm --no-deps frontend pnpm exec eslint scripts/media/` catches syntax errors. The pipeline run is the real test. |
+  | `frontend/src/stories/**/*.ts(x)` | `scripts/test-stack.sh media run-frontend pnpm run type-check`, then `scripts/test-stack.sh media run-frontend pnpm exec eslint <the files>` |
+  | `frontend/scripts/media/*.mjs` | Not covered by type-check. ESLint only parses them (no rules apply to `.mjs`), so `scripts/test-stack.sh media run-frontend pnpm exec eslint scripts/media/` catches syntax errors. The pipeline run is the real test. |
   | `*.sh` | `bash -n <file>` |
   | `docs-site/**` | `preview-docs.sh` (it prints mkdocs warnings; there should be none) |
 

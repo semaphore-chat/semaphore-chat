@@ -229,6 +229,31 @@ LiveKit Server and LiveKit Egress are included in the dev Docker Compose and sta
 - **Ports**: Frontend (5173), Backend (3000), PostgreSQL (5432), Redis (6379), LiveKit (7880)
 - **Data persistence**: PostgreSQL and Redis data is persisted in Docker volumes
 
+### 🌐 **Test stacks, worktrees and the shared `semaphore-test` network**
+
+**Never create per-ticket Docker networks or use `docker compose down` in a way that removes networks. Use `scripts/test-stack.sh`; all test containers go on `semaphore-test`.**
+
+Every network create/remove adds/removes a `br-*` bridge with an IPv4 address on the host, and Chromium-based browsers on this machine drop their open connections on each one. So:
+
+- **Don't use `docker compose -p <name> ...` from a worktree** (or plain `docker compose run/up` there, which names the project after the directory): the project's first `up`/`run` creates `<name>_default` and `down` removes it. Use `scripts/test-stack.sh <ticket> run-backend|run-frontend <cmd...>` instead. The dev-stack `docker compose` commands above are for the main checkout only (project `semaphore-chat`, network `semaphore-chat_default`, which stays up).
+- `scripts/test-net.sh` creates `semaphore-test` once (idempotent). Nothing removes it: no `docker network rm`/`docker network prune`.
+- Per-ticket services and commands (`<ticket>`: `[a-z0-9-]`, e.g. the branch or issue name):
+
+```bash
+scripts/test-stack.sh <ticket> up                                  # <ticket>-pg, <ticket>-redis, <ticket>-minio on semaphore-test
+scripts/test-stack.sh <ticket> run pnpm run prisma:migrate         # backend container, DATABASE_URL/REDIS_*/S3_* -> the ticket's containers
+scripts/test-stack.sh <ticket> run pnpm exec jest <pattern>
+scripts/test-stack.sh <ticket> run pnpm run test:e2e               # backend e2e (migrate first)
+scripts/test-stack.sh <ticket> run-backend pnpm run type-check     # no services needed: type-check, lint, unit tests, build
+scripts/test-stack.sh <ticket> run-frontend pnpm run type-check    # likewise for the frontend (lint, test, build)
+scripts/test-stack.sh <ticket> down                                # containers only; never a network
+scripts/test-stack.sh ls                                           # every ticket's containers (don't `down` another session's)
+```
+
+- Services address each other by the ticket-prefixed container name (`<ticket>-pg`), never by generic names like `postgres`/`redis`: several tickets share the network.
+- Playwright E2E (`scripts/run-e2e.sh`), voice E2E (`scripts/run-voice-e2e.sh`) and the UI review tool also run on `semaphore-test`, with per-checkout container names.
+- To stop the long-running dev stack, prefer `docker compose stop` (keeps `semaphore-chat_default`) over `docker compose down`.
+
 ### 📋 **Daily Development Workflow**
 
 ```bash
