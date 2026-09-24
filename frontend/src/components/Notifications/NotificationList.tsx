@@ -278,8 +278,9 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
               variant="body2"
               color="text.secondary"
               noWrap
-              // Shrinks before the name does.
-              sx={{ flex: '0 1000 auto', minWidth: 0 }}
+              // Never shrinks: the labels are short fixed strings, so the name
+              // (above) is what truncates when the row runs out of room.
+              sx={{ flexShrink: 0 }}
             >
               {getNotificationTypeLabel(notification.type as NotificationType)}
             </Typography>
