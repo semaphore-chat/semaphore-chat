@@ -196,7 +196,7 @@ function shotLabel(shot: ShotResult): string {
   return `${shot.viewport} — ${shot.status}`;
 }
 
-function storyDetails(story: StoryResult, opts: BlockOptions, detail: Detail, open: boolean): string[] {
+function storyDetails(story: StoryResult, opts: BlockOptions, detail: Detail, open: boolean, globals: Set<string>): string[] {
   const changedOn = story.shots.filter((s) => s.status !== 'unchanged').map((s) => s.viewport);
   const what = story.status === 'changed' || story.status === 'unstable' ? `${story.status} on ${changedOn.join(', ')}` : story.status;
   const withImages = story.shots.filter((s) => s.composite);
@@ -206,8 +206,10 @@ function storyDetails(story: StoryResult, opts: BlockOptions, detail: Detail, op
   }
   // Markdown isn't rendered inside <summary>: HTML only.
   const lines = [`<details${open ? ' open' : ''}><summary><b>${html(story.id)}</b> — ${what} · <code>${html(rel(story.file))}</code></summary>`, ''];
-  if (story.reasons.length > 0 && !story.direct) {
-    lines.push(`Renders: ${story.reasons.slice(0, 5).map((r) => code(rel(r))).join(', ')}`, '');
+  // Global files are named once at the top; list only what else this story renders.
+  const reasons = story.reasons.filter((r) => !globals.has(r));
+  if (reasons.length > 0 && !story.direct) {
+    lines.push(`Renders: ${reasons.slice(0, 5).map((r) => code(rel(r))).join(', ')}`, '');
   }
   if (detail.images === 'links') {
     const links = story.shots.map((s) =>
@@ -239,6 +241,7 @@ function render(report: ReviewReport, opts: BlockOptions, detail: Detail, shorte
   const unstable = by('unstable');
   const errored = by('error');
   const { selection } = report;
+  const globals = new Set(selection.global?.files ?? []);
 
   const out: string[] = [START_MARKER, '## UI review', ''];
   const counts = [
@@ -296,7 +299,7 @@ function render(report: ReviewReport, opts: BlockOptions, detail: Detail, shorte
     if (!stories.length) return;
     out.push(`### ${title} (${stories.length})`, '');
     if (intro) out.push(intro, '');
-    stories.slice(0, detail.maxStories).forEach((s, i) => out.push(...storyDetails(s, opts, detail, i < openFirst)));
+    stories.slice(0, detail.maxStories).forEach((s, i) => out.push(...storyDetails(s, opts, detail, i < openFirst, globals)));
     if (stories.length > detail.maxStories) {
       out.push(`- ... and ${stories.length - detail.maxStories} more${opts.imagesUrl ? ` ([all images](${opts.imagesUrl}))` : ''}`);
     }

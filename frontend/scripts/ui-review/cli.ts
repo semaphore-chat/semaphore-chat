@@ -247,7 +247,7 @@ function stepSelect(flags: Flags) {
   console.log(
     `[ui-review] selected ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'}` +
       (capped ? ` (capped at ${max}; ${dropped.length} not captured)` : '') +
-      (selection.targeted ? `, ${selection.targeted.captured}/${selection.targeted.total} of them render the non-global changes` : '') +
+      (selection.targeted?.total ? `, ${selection.targeted.captured}/${selection.targeted.total} of them render the non-global changes` : '') +
       `; head shots: ${selected.length}, base shots: ${baseWanted.length}`,
   );
 }

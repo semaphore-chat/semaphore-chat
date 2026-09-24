@@ -196,6 +196,21 @@ describe('renderBlock', () => {
     expect(md2).toMatch(/first the 2 of 2 that render the other changed files, then a sample spread across areas, covering 38 of 53 story files/);
   });
 
+  it('names the global files once at the top, not as what each sampled story "renders"', () => {
+    const base = report();
+    const md3 = renderBlock(
+      report({
+        selection: { ...base.selection, global: { files: ['frontend/package.json'] } },
+        stories: base.stories.map((s) =>
+          s.id === 'message-reactions--default' ? { ...s, reasons: ['frontend/src/components/Message/MessageReactions.tsx', 'frontend/package.json'] } : s.id === 'menu--flaky' ? { ...s, reasons: ['frontend/package.json'] } : s,
+        ),
+      }),
+      opts,
+    );
+    expect(md3).toContain('Renders: `src/components/Message/MessageReactions.tsx`\n');
+    expect(md3).not.toMatch(/Renders:[^\n]*package\.json/);
+  });
+
   it('lists app-only files as not visible in Ladle', () => {
     const appOnly = renderBlock(report({ appOnly: ['frontend/src/index.css'] }), opts);
     expect(appOnly).toMatch(/\*\*Not visible in Ladle\*\*/);
