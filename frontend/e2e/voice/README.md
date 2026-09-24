@@ -81,9 +81,11 @@ mismatched global playwright that can't see the `voice` project) and
 
 ### Running in CI
 
-A dedicated `voice-e2e` job lives in `.github/workflows/e2e-tests.yml`. It mirrors
-the main e2e job (browser on the runner against `localhost:5174`) but layers the
-real-LiveKit overlays and runs `--project=voice --workers=1`. It runs on
+A dedicated `voice-e2e` job lives in `.github/workflows/e2e-tests.yml`. Like the
+main e2e job, it runs the browser on the runner against `localhost:5174`. Unlike
+that job, which runs the backend and frontend directly on the runner, it builds
+and starts the dockerized e2e stack with the real-LiveKit overlays, then runs
+`--project=voice --workers=1`. It runs on
 **nightly cron + manual dispatch only** — not on PRs, and not on push to main.
 
 > ⚠️ **Runner-WebRTC caveat (unverified).** This job has **not yet completed a

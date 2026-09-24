@@ -76,6 +76,7 @@ frontend/.ladle/public/
 .env.*
 backend/coverage
 frontend/coverage
+frontend/vitest-shards/
 
 # Docker Compose local overrides
 docker-compose.override.yml

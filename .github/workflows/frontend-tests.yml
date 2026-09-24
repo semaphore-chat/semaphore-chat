@@ -14,12 +14,20 @@ on:
       - 'shared/**'
       - '.github/workflows/frontend-tests.yml'
 
+# A newer push to a PR cancels that PR's in-flight run. Each push to main gets
+# its own group (run_id), so no main commit is cancelled or left pending: all
+# of them are tested and badged.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Unit Tests
+  checks:
+    name: Lint, Type Check & Build
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout code
@@ -52,10 +60,6 @@ jobs:
         # nothing (#356) — `type-check` runs reference-aware `tsc -b`
         run: pnpm run type-check
 
-      - name: Run unit tests with coverage
-        working-directory: ./frontend
-        run: pnpm run test:cov
-
       - name: Build frontend
         working-directory: ./frontend
         run: pnpm run build
@@ -64,11 +68,168 @@ jobs:
         working-directory: ./frontend
         run: pnpm run check:bundle-budget
 
-      - name: Generate coverage badge
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+  test:
+    name: Unit Tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate API client
         working-directory: ./frontend
+        run: pnpm exec openapi-ts
+
+      # Vitest splits the test files across the shards. Each shard writes a
+      # blob report, which the `Unit Tests` job merges into one pass/fail
+      # summary. It also writes its raw coverage-final.json, which
+      # scripts/merge-coverage-shards.mjs merges (that file explains why
+      # `vitest --merge-reports --coverage` is not used). Passing --reporter
+      # replaces the reporters Vitest picks by itself in CI, so `default` and
+      # `github-actions` are listed explicitly.
+      - name: Run unit tests with coverage
+        working-directory: ./frontend
+        run: >-
+          pnpm exec vitest run
+          --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          --reporter=default --reporter=github-actions --reporter=blob
+          --outputFile.blob=vitest-shards/blobs/blob-${{ matrix.shard }}.json
+          --coverage --coverage.reporter=json
+          --coverage.reportsDirectory=vitest-shards/coverage/shard-${{ matrix.shard }}
+
+      # Kept for 7 days (about 2 MB each) so that "Re-run failed jobs" on one
+      # shard can still merge with the other shards' results from the first
+      # attempt.
+      - name: Upload shard results
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-shard-${{ matrix.shard }}
+          path: frontend/vitest-shards/
+          if-no-files-found: error
+          retention-days: 7
+
+  # Keeps the check name used before sharding ("Unit Tests"). It fails unless
+  # every shard passed, and prints the merged Vitest summary and coverage
+  # table. On main it hands coverage-summary.json to the `badge` job.
+  coverage:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ !cancelled() }}
+
+    steps:
+      - name: Check shard results
+        if: needs.test.result != 'success'
         run: |
-          COVERAGE=$(jq '.total.lines.pct' coverage/coverage-summary.json)
+          echo "::error::Not every unit test shard passed (result: ${{ needs.test.result }}). See the 'Unit Tests (shard k/n)' jobs."
+          exit 1
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download shard results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vitest-shard-*
+          path: frontend/vitest-shards
+          merge-multiple: true
+
+      # Every shard job passing does not guarantee every shard's results are
+      # here: after "Re-run failed jobs", the shards that passed the first time
+      # are not re-run, and their artifacts may have expired. Merging fewer
+      # shards would pass with fewer tests and report wrong coverage (and push
+      # a wrong badge on main), so fail instead. EXPECTED_SHARDS is the number
+      # of entries in the `test` job's matrix.
+      - name: Check all shard results are present
+        working-directory: ./frontend
+        env:
+          EXPECTED_SHARDS: 3
+        run: |
+          shopt -s nullglob
+          blobs=(vitest-shards/blobs/blob-*.json)
+          coverage=(vitest-shards/coverage/shard-*/coverage-final.json)
+          echo "Blob reports: ${#blobs[@]}, coverage files: ${#coverage[@]} (expected $EXPECTED_SHARDS of each)"
+          if [ "${#blobs[@]}" -ne "$EXPECTED_SHARDS" ] || [ "${#coverage[@]}" -ne "$EXPECTED_SHARDS" ]; then
+            echo "::error::Expected results from $EXPECTED_SHARDS shards, got ${#blobs[@]} blob reports and ${#coverage[@]} coverage files. Re-run all jobs."
+            exit 1
+          fi
+
+      # Replays the shards' results as one run. It prints the combined
+      # "Test Files / Tests" summary and fails if any test failed.
+      - name: Merge test reports
+        working-directory: ./frontend
+        run: pnpm exec vitest run --merge-reports=vitest-shards/blobs --reporter=default
+
+      # Prints the coverage table and writes coverage/coverage-summary.json,
+      # both identical to what an unsharded `pnpm run test:cov` produces.
+      - name: Merge coverage
+        working-directory: ./frontend
+        run: node scripts/merge-coverage-shards.mjs vitest-shards/coverage/*/coverage-final.json
+
+      - name: Upload coverage summary for the badge
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage-summary
+          path: frontend/coverage/coverage-summary.json
+          if-no-files-found: error
+          retention-days: 1
+
+  # Pushes the coverage badge on main. Like the single job before sharding, it
+  # waits for the tests and for lint, type check, build and the bundle budget,
+  # so a failure in any of them leaves the badge unchanged. It is the only job
+  # with a write token, and it never runs on PRs.
+  badge:
+    name: Coverage Badge
+    runs-on: ubuntu-latest
+    needs: [coverage, checks]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download coverage summary
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage-summary
+          path: ${{ runner.temp }}/coverage
+
+      - name: Generate coverage badge
+        run: |
+          COVERAGE=$(jq '.total.lines.pct' "$RUNNER_TEMP/coverage/coverage-summary.json")
           if (( $(echo "$COVERAGE < 50" | bc -l) )); then COLOR=red
           elif (( $(echo "$COVERAGE < 70" | bc -l) )); then COLOR=yellow
           elif (( $(echo "$COVERAGE < 80" | bc -l) )); then COLOR=orange
@@ -77,7 +238,6 @@ jobs:
           curl -sf "https://img.shields.io/badge/coverage-${COVERAGE}%25-${COLOR}" > /tmp/frontend-coverage.svg
 
       - name: Push badge to badges branch
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         continue-on-error: true
         run: |
           git config user.name "github-actions[bot]"
