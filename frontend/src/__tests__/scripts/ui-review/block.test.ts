@@ -211,6 +211,27 @@ describe('renderBlock', () => {
     expect(md3).not.toMatch(/Renders:[^\n]*package\.json/);
   });
 
+  it('says what else a story whose own file changed renders, without repeating its file', () => {
+    const section = (text: string, id: string) => {
+      const start = text.indexOf(`<b>${id}</b>`);
+      return text.slice(start, text.indexOf('</details>', start));
+    };
+    // Only its own file among the reasons: no Renders line.
+    expect(section(renderBlock(report(), opts), 'chip--brand-new')).not.toContain('Renders:');
+
+    const base = report();
+    const md = renderBlock(
+      report({
+        stories: base.stories.map((s) =>
+          s.id === 'chip--brand-new' ? { ...s, reasons: [`${F}/components/Chip.stories.tsx`, 'frontend/src/components/Common/Chip.tsx'] } : s,
+        ),
+      }),
+      opts,
+    );
+    expect(section(md, 'chip--brand-new')).toContain('Renders: `src/components/Common/Chip.tsx`\n');
+    expect(section(md, 'chip--brand-new')).not.toMatch(/Renders:[^\n]*Chip\.stories/);
+  });
+
   it('lists app-only files as not visible in Ladle', () => {
     const appOnly = renderBlock(report({ appOnly: ['frontend/src/index.css'] }), opts);
     expect(appOnly).toMatch(/\*\*Not visible in Ladle\*\*/);

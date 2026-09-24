@@ -9,13 +9,14 @@
  * on NODE_PATH):
  *   node scripts/ui-review/probe.ts <plan.json> <out.json>
  * plan.json: { baseUrl, stories: string[], targets: { [file]: number[] | 'all' },
- *              importers?: { [file]: string[] }, concurrency?: number,
- *              quietMs?: number, freezeTime?: string }
+ *              viewports?: { [storyId]: string[] }, importers?: { [file]: string[] },
+ *              concurrency?: number, quietMs?: number, freezeTime?: string }
  * out.json:  { hits: { [storyId]: { [viewport]: string[] } }, errors: [...], durationMs }
  *
  * Per story, stopping at the first viewport where a target ran: desktop →
  * tablet → phone, each a fresh load with that viewport's touch/mobile emulation;
- * "*keyboard*" stories only get phone-short. A story whose load fails is kept
+ * "*keyboard*" stories only get phone-short, and a story with its own viewports
+ * (`meta.viewports`, in `plan.viewports`) only those. A story whose load fails is kept
  * (every target counted as hit) so the capture shows why.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -32,6 +33,8 @@ const { chromium } = require('playwright-core') as typeof import('playwright-cor
 interface Plan {
   baseUrl: string;
   stories: string[];
+  /** Stories with their own viewports (`meta.viewports`). */
+  viewports?: Record<string, string[]>;
   targets: Record<string, TargetLines>;
   importers?: Record<string, string[]>;
   concurrency?: number;
@@ -112,7 +115,7 @@ async function probeStory(browser: Browser, storyId: string): Promise<Record<str
   // Each viewport is a fresh load with that viewport's touch/mobile emulation —
   // resizing one page instead re-mounts layouts in ways a real load never does
   // (it made the probe report changes the phone capture then didn't show).
-  for (const viewport of viewportsForStory(storyId, PROBE_ORDER)) {
+  for (const viewport of viewportsForStory(storyId, PROBE_ORDER, plan.viewports?.[storyId])) {
     const p = await openPage(browser, VIEWPORTS[viewport], storyId);
     try {
       hits[viewport] = await p.take();

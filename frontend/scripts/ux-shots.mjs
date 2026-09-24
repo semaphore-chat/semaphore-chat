@@ -156,12 +156,19 @@ async function fetchMeta() {
 }
 
 /**
- * "*keyboard*" stories exist specifically to approximate an on-screen
- * keyboard covering the lower half of a phone (see design doc) — they only
- * get the short viewport. Every other story gets everything except
- * "phone-short".
+ * A story can name its own viewports in its Ladle meta
+ * (`Story.meta = { viewports: ['phone'] }`, copied into meta.json), e.g. a
+ * 320 px column is a phone layout that tablet and desktop never show.
+ * Otherwise "*keyboard*" stories exist specifically to approximate an
+ * on-screen keyboard covering the lower half of a phone (see design doc) —
+ * they only get the short viewport. Every other story gets everything except
+ * "phone-short". Keep in sync with scripts/ui-review/lib/viewports.ts.
  */
-function viewportsForStory(storyId) {
+function viewportsForStory(storyId, storyMeta) {
+  const own = storyMeta?.viewports;
+  if (Array.isArray(own) && own.length > 0) {
+    return requestedViewports.filter((name) => own.includes(name));
+  }
   const isKeyboardStory = storyId.toLowerCase().includes('keyboard');
   if (isKeyboardStory) {
     return requestedViewports.filter((name) => name === 'phone-short');
@@ -308,7 +315,9 @@ async function main() {
   const available = new Set(storyIds);
   const tasks = requestedTasks
     ? requestedTasks.filter((t) => available.has(t.storyId) && VIEWPORTS[t.viewportName])
-    : storyIds.flatMap((storyId) => viewportsForStory(storyId).map((viewportName) => ({ storyId, viewportName })));
+    : storyIds.flatMap((storyId) =>
+        viewportsForStory(storyId, meta.stories[storyId]?.meta).map((viewportName) => ({ storyId, viewportName })),
+      );
   console.log(
     requestedTasks
       ? `[ux-shots] ${tasks.length} story × viewport task(s)`

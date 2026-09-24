@@ -372,11 +372,14 @@ export interface ProbePlan {
 /**
  * Probe only when the non-direct targeted candidates are too many to just
  * capture. In global mode those are the stories the non-global files reach.
+ * When it probes, the direct stories (changed story files) go along: they are
+ * captured anyway, but the probe tells which changed files they render.
  */
 export function planProbe(affected: AffectedResult, { threshold }: { threshold: number }): ProbePlan {
   const candidates = affected.stories.filter((s) => !s.direct && s.targeted !== false).map((s) => s.id);
   if (candidates.length <= threshold || affected.probeTargets.length === 0) return { probe: false, stories: [] };
-  return { probe: true, stories: candidates };
+  const direct = affected.stories.filter((s) => s.direct).map((s) => s.id);
+  return { probe: true, stories: [...candidates, ...direct].sort() };
 }
 
 /** Probe output: story id → viewport → targets that executed. */
@@ -385,26 +388,42 @@ export type ProbeHits = Record<string, Record<string, string[]>>;
 /**
  * Keep direct stories, plus probed ones that executed a target on some
  * viewport. In global mode (`globalFiles` given) every story stays a
- * candidate: the probe only decides which ones are `targeted`.
+ * candidate: the probe only decides which ones are `targeted`. A probed
+ * direct story is kept either way; its reasons become its own file plus the
+ * targets it executed (instead of every changed file its file can reach).
  */
 export function applyProbe(stories: AffectedStory[], hits: ProbeHits, { globalFiles = [] }: { globalFiles?: string[] } = {}): AffectedStory[] {
   const global = globalFiles.length > 0;
   const out: AffectedStory[] = [];
   for (const story of stories) {
-    if (story.direct) {
-      out.push(story);
-      continue;
-    }
     const byViewport = hits[story.id] ?? {};
     const exercisedOn = Object.keys(byViewport).filter((vp) => byViewport[vp].length > 0).sort();
+    const exercised = [...new Set(Object.values(byViewport).flat())].sort();
+    if (story.direct) {
+      if (!hits[story.id]) out.push(story);
+      else out.push({ ...story, reasons: [story.file, ...exercised.filter((f) => f !== story.file)], ...(exercisedOn.length ? { exercisedOn } : {}) });
+      continue;
+    }
     if (exercisedOn.length === 0) {
       if (global) out.push({ ...story, targeted: false, reasons: globalFiles });
       continue;
     }
-    const exercised = [...new Set(Object.values(byViewport).flat())].sort();
     out.push({ ...story, targeted: true, reasons: global ? [...exercised, ...globalFiles] : exercised, exercisedOn });
   }
   return sortById(out);
+}
+
+/**
+ * Known story ids an unknown one (a `--stories` typo) probably meant: the same
+ * id with other dashes (`narrow-320` for `narrow320`), else the ids of the same
+ * story file (the part before `--`).
+ */
+export function suggestStoryIds(unknown: string, known: string[]): string[] {
+  const squash = (id: string) => id.toLowerCase().replace(/-/g, '');
+  const same = known.filter((id) => squash(id) === squash(unknown));
+  if (same.length) return same;
+  const file = unknown.toLowerCase().split('--')[0];
+  return known.filter((id) => id.startsWith(`${file}--`));
 }
 
 export interface CapResult {

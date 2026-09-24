@@ -19,9 +19,26 @@ export interface DefineScreenOptions extends MakeHandlersOptions {
   overlay?: ReactNode;
 }
 
+/**
+ * Ladle story meta. Ladle reads it statically: set it in the story file as a
+ * top-level `MyStory.meta = { ... };` with an object literal (no variables,
+ * no `as const`), and it lands in Ladle's meta.json.
+ */
+export interface StoryMeta {
+  /**
+   * Viewports the screenshot tools (`scripts/ux-shots.mjs`, the UI review)
+   * capture this story at, for a story that only makes sense at some widths —
+   * e.g. a 320 px column is a phone layout that tablet and desktop never show.
+   * Default: phone, tablet and desktop (only `phone-short` for `*keyboard*` stories).
+   */
+  viewports?: ('phone' | 'phone-short' | 'tablet' | 'desktop')[];
+  [key: string]: unknown;
+}
+
 export interface LadleStoryComponent {
   (): ReactElement;
   msw?: HttpHandler[];
+  meta?: StoryMeta;
 }
 
 export function defineScreen(scenario: Scenario, path: string, options: DefineScreenOptions = {}): LadleStoryComponent {

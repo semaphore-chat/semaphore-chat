@@ -206,9 +206,10 @@ function storyDetails(story: StoryResult, opts: BlockOptions, detail: Detail, op
   }
   // Markdown isn't rendered inside <summary>: HTML only.
   const lines = [`<details${open ? ' open' : ''}><summary><b>${html(story.id)}</b> — ${what} · <code>${html(rel(story.file))}</code></summary>`, ''];
-  // Global files are named once at the top; list only what else this story renders.
-  const reasons = story.reasons.filter((r) => !globals.has(r));
-  if (reasons.length > 0 && !story.direct) {
+  // Global files are named once at the top, and the story's own file in the
+  // summary line; list only what else this story renders.
+  const reasons = story.reasons.filter((r) => !globals.has(r) && r !== story.file);
+  if (reasons.length > 0) {
     lines.push(`Renders: ${reasons.slice(0, 5).map((r) => code(rel(r))).join(', ')}`, '');
   }
   if (detail.images === 'links') {

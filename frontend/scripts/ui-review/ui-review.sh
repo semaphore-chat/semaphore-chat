@@ -25,6 +25,13 @@
 #   --force-pr          publish for a PR that is not this branch's open PR
 #   --keep              leave containers and the base worktree up afterwards
 #
+#   --exec '<command>'  instead of a review: run <command> in this checkout's review
+#                       image (dependencies installed, API client generated from
+#                       backend/openapi.json) and exit with its status. Works in any
+#                       checkout or worktree, e.g. --exec 'pnpm run type-check',
+#                       --exec 'pnpm exec eslint src/stories/x.stories.tsx',
+#                       --exec 'pnpm run test'
+#
 # The working tree is what gets reviewed (uncommitted edits included); the base
 # is a temporary git worktree at the merge-base under .ui-review/base.
 # Output (gitignored): .ui-review/out/{report.json,pr-block.md,composites/*.webp}
@@ -42,6 +49,7 @@ MAX_STORIES="${UI_REVIEW_MAX_STORIES:-40}"
 ALLOW_DIRTY=0
 FORCE_PR=0
 KEEP=0
+EXEC=""
 PROBE_THRESHOLD="${UI_REVIEW_PROBE_THRESHOLD:-12}"
 # Pages per side while capturing: CPU-bound (two Vite dev servers + Chromium).
 CONCURRENCY="${UI_REVIEW_CONCURRENCY:-$(( $(nproc 2>/dev/null || echo 8) >= 24 ? 4 : 3 ))}"
@@ -74,6 +82,7 @@ while [[ $# -gt 0 ]]; do
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
     --force-pr) FORCE_PR=1; shift ;;
     --keep) KEEP=1; shift ;;
+    --exec) EXEC="$2"; shift 2 ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -e 's/^# \{0,1\}//' -e '/^set -euo/d'; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
@@ -93,6 +102,70 @@ OUT="$UIR/out"
 BASE_DIR="$UIR/base"
 PROJECT="uir-$(printf '%s' "$REPO_ROOT" | sha1sum | cut -c1-10)"
 COMPOSE=(docker compose -p "$PROJECT" --project-directory "$REPO_ROOT" -f "$SCRIPT_DIR/compose.yml")
+
+# ---------------------------------------------------------------- images
+
+# Content-addressed image tag: same deps → same image, shared across checkouts.
+image_tag() {
+  (cd "$1" && cat frontend/Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc shared/package.json frontend/package.json patches/* 2>/dev/null) |
+    sha256sum | cut -c1-12
+}
+ensure_image() {
+  local image="$1" context="$2"
+  if ! docker image inspect "$image" >/dev/null 2>&1; then
+    log "building $image (dependencies changed or first run) ..."
+    docker build -q -f "$context/frontend/Dockerfile" -t "$image" "$context" >/dev/null
+  fi
+}
+
+HEAD_IMAGE="uir-frontend:$(image_tag "$REPO_ROOT")"
+export UI_REVIEW_IMAGE="$HEAD_IMAGE" UI_REVIEW_BASE_IMAGE="$HEAD_IMAGE" UI_REVIEW_BASE_DIR="$BASE_DIR"
+
+# ---------------------------------------------------------------- cleanup
+
+as_root() { # rm/chown things containers created as root, via a throwaway container
+  docker run --rm --entrypoint sh -v "$REPO_ROOT:/repo" "$HEAD_IMAGE" -c "$1"
+}
+# Hand what the containers generated as root back to the invoking user. (The
+# empty frontend/ and shared/node_modules dirs Docker leaves as mount points
+# stay root's: empty, they don't stop `git worktree remove`.)
+hand_back() {
+  as_root "chown -R $(id -u):$(id -g) /repo/.ui-review $(printf '/repo/frontend/%s ' .ladle/public src/api-client) 2>/dev/null; true" \
+    >/dev/null 2>&1 || true
+}
+remove_base() {
+  if [[ -e "$BASE_DIR" ]]; then
+    as_root "rm -rf /repo/.ui-review/base"
+  fi
+  git worktree prune
+}
+cleanup() {
+  local code=$?
+  if (( KEEP )); then
+    log "--keep: containers ($PROJECT) and $BASE_DIR left in place"
+  else
+    "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+    remove_base 2>/dev/null || true
+  fi
+  hand_back
+  exit $code
+}
+
+# ---------------------------------------------------------------- --exec
+
+# Same mounts as the tool's containers (compose.yml); the image's entrypoint
+# generates src/api-client from /spec/openapi.json when it is missing.
+if [[ -n "$EXEC" ]]; then
+  ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
+  tty=()
+  if [[ -t 0 && -t 1 ]]; then tty=(-it); fi
+  status=0
+  docker run --rm "${tty[@]}" -v "$REPO_ROOT/frontend:/app/frontend" -v "$REPO_ROOT/shared:/app/shared" \
+    -v /app/frontend/node_modules -v /app/shared/node_modules -v "$REPO_ROOT/backend:/spec:ro" \
+    "$HEAD_IMAGE" sh -c "$EXEC" || status=$?
+  hand_back
+  exit "$status"
+fi
 
 MERGE_BASE="$(git merge-base "$BASE_REF" HEAD)" || die "no merge-base between $BASE_REF and HEAD"
 HEAD_SHA="$(git rev-parse HEAD)"
@@ -139,71 +212,26 @@ for var in UI_REVIEW_PROBE_THRESHOLD UI_REVIEW_RECHECKS UI_REVIEW_PIXEL_THRESHOL
 done
 REGEN+="${regen[*]}"
 
-# ---------------------------------------------------------------- images
-
-# Content-addressed image tag: same deps → same image, shared across checkouts.
-image_tag() {
-  (cd "$1" && cat frontend/Dockerfile package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc shared/package.json frontend/package.json patches/* 2>/dev/null) |
-    sha256sum | cut -c1-12
-}
-ensure_image() {
-  local image="$1" context="$2"
-  if ! docker image inspect "$image" >/dev/null 2>&1; then
-    log "building $image (dependencies changed or first run) ..."
-    docker build -q -f "$context/frontend/Dockerfile" -t "$image" "$context" >/dev/null
-  fi
-}
-
-HEAD_IMAGE="uir-frontend:$(image_tag "$REPO_ROOT")"
-export UI_REVIEW_IMAGE="$HEAD_IMAGE" UI_REVIEW_BASE_IMAGE="$HEAD_IMAGE" UI_REVIEW_BASE_DIR="$BASE_DIR"
-
-# ---------------------------------------------------------------- cleanup
-
-as_root() { # rm/chown things containers created as root, via a throwaway container
-  docker run --rm --entrypoint sh -v "$REPO_ROOT:/repo" "$HEAD_IMAGE" -c "$1"
-}
-remove_base() {
-  if [[ -e "$BASE_DIR" ]]; then
-    as_root "rm -rf /repo/.ui-review/base"
-  fi
-  git worktree prune
-}
-cleanup() {
-  local code=$?
-  if (( KEEP )); then
-    log "--keep: containers ($PROJECT) and $BASE_DIR left in place"
-  else
-    "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
-    remove_base 2>/dev/null || true
-  fi
-  # Hand generated files back to the invoking user.
-  as_root "chown -R $(id -u):$(id -g) /repo/.ui-review $(printf '/repo/frontend/%s ' .ladle/public src/api-client) 2>/dev/null; true" \
-    >/dev/null 2>&1 || true
-  exit $code
-}
-
 tool() { "${COMPOSE[@]}" exec -T tool node scripts/ui-review/cli.ts "$@"; }
 cexec() { "${COMPOSE[@]}" exec -T "$@"; } # cexec [-e VAR=x ...] <service> <cmd...>
 
 # ---------------------------------------------------------------- capture
 
-# shoot_pair <ids|tasks> <head list> <base list> <out dir suffix>: screenshots
-# on both Ladle instances, in parallel, into .ui-review/shots/{head,base}<suffix>/.
-# `ids` lists story ids (every viewport); `tasks` lists "<id> <viewport>" pairs.
+# shoot_pair <head tasks> <base tasks> <out dir suffix>: screenshots on both
+# Ladle instances, in parallel, into .ui-review/shots/{head,base}<suffix>/.
+# Task files list "<story id> <viewport>" pairs (written by `select` / `diff`).
 shoot_pair() {
-  local mode="$1" head_list="$2" base_list="$3" suffix="$4" pids=() pid failed=0 spec
-  spec=UX_SHOTS_IDS
-  [[ "$mode" == ids ]] || spec=UX_SHOTS_TASKS
-  local env=(-e "UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop" -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
+  local head_list="$1" base_list="$2" suffix="$3" pids=() pid failed=0
+  local env=(-e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
     -e "UX_SHOTS_SETTLE_MS=$SETTLE_MS" -e "UX_SHOTS_QUIET_MS=$QUIET_MS" -e "UX_SHOTS_FREEZE_TIME=$FREEZE_TIME"
     -e UX_SHOTS_DISABLE_ANIMATIONS=1)
   if grep -q . "$head_list"; then
-    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e "$spec=@/ui-review/work/$(basename "$head_list")" \
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e "UX_SHOTS_TASKS=@/ui-review/work/$(basename "$head_list")" \
       -e "UX_SHOTS_OUT_DIR=/ui-review/shots/head$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-head$suffix.log" 2>&1 &
     pids+=($!)
   fi
   if (( HAS_BASE )) && grep -q . "$base_list"; then
-    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e "$spec=@/ui-review/work/$(basename "$base_list")" \
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e "UX_SHOTS_TASKS=@/ui-review/work/$(basename "$base_list")" \
       -e "UX_SHOTS_OUT_DIR=/ui-review/shots/base$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-base$suffix.log" 2>&1 &
     pids+=($!)
   fi
@@ -228,16 +256,19 @@ warm_both() {
   for pid in "${pids[@]}"; do wait "$pid" || log "warning: warm-up failed (see .ui-review/work/warmup-*.log); capturing anyway"; done
 }
 
-# Key of the render probe's result: the plan plus everything the head renders
-# (tracked tree, uncommitted edits, untracked files, dependency image).
+# Key of the render probe's result: the plan, the dependency image, and the
+# content of frontend/ and shared/ as the head Ladle serves it (the git tree of
+# the working tree, untracked files included, via a throwaway index). Content
+# only: committing the reviewed edits doesn't change it; any edit does.
 probe_cache_key() {
-  {
-    echo "$HEAD_IMAGE"
-    git ls-tree -r HEAD -- frontend shared
-    git diff HEAD --binary --no-ext-diff -- frontend shared
-    git ls-files --others --exclude-standard -z -- frontend shared | xargs -0 -r sha1sum
-    cat "$WORK/probe-plan.json"
-  } | sha256sum | cut -c1-16
+  local index="$WORK/probe-key.index" tree
+  rm -f "$index"
+  if ! GIT_INDEX_FILE="$index" git add -A -- frontend shared || ! tree="$(GIT_INDEX_FILE="$index" git write-tree)"; then
+    rm -f "$index"
+    return 1
+  fi
+  rm -f "$index"
+  { echo "$HEAD_IMAGE"; echo "$tree"; cat "$WORK/probe-plan.json"; } | sha256sum | cut -c1-16
 }
 
 capture() {
@@ -277,24 +308,31 @@ capture() {
   wait_ladle 61000 head
   if (( HAS_BASE )); then wait_ladle 61001 base; fi
 
-  tool affected --work /ui-review/work --probe-threshold "$PROBE_THRESHOLD" --freeze-time "$FREEZE_TIME"
+  local affected_args=(--work /ui-review/work --probe-threshold "$PROBE_THRESHOLD" --freeze-time "$FREEZE_TIME")
+  if [[ -n "$STORIES" ]]; then affected_args+=(--explicit); fi
+  tool affected "${affected_args[@]}"
   cexec shots node scripts/ui-review/warmup.ts http://localhost:61000
   local select_args=(--work /ui-review/work --max "$MAX_STORIES")
   if [[ -z "$STORIES" && -f "$WORK/probe-plan.json" ]]; then
-    local key cache
-    key="$(probe_cache_key)"
-    cache="$UIR/cache/probe-$key.json"
-    if [[ -f "$cache" ]]; then
-      log "render probe: reusing the result of an earlier run of the same code (.ui-review/cache/probe-$key.json)"
+    local key="" cache=""
+    if key="$(probe_cache_key)"; then
+      cache="$UIR/cache/probe-$key.json"
+    else
+      log "warning: could not hash the working tree for the probe cache; probing without it"
+    fi
+    if [[ -n "$cache" && -f "$cache" ]]; then
+      log "render probe: reusing the result of an earlier run on the same content (.ui-review/cache/probe-$key.json)"
       cp "$cache" "$WORK/probe-out.json"
       select_args+=(--probe-cached)
     else
       cexec shots node scripts/ui-review/probe.ts /ui-review/work/probe-plan.json /ui-review/work/probe-out.json
-      mkdir -p "$UIR/cache"
-      cp "$WORK/probe-out.json" "$cache"
-      # Keep the 10 most recent results.
-      # shellcheck disable=SC2012 # names are probe-<hex>.json
-      ls -1t "$UIR"/cache/probe-*.json | tail -n +11 | xargs -r rm -f
+      if [[ -n "$cache" ]]; then
+        mkdir -p "$UIR/cache"
+        cp "$WORK/probe-out.json" "$cache"
+        # Keep the 10 most recent results.
+        # shellcheck disable=SC2012 # names are probe-<hex>.json
+        ls -1t "$UIR"/cache/probe-*.json | tail -n +11 | xargs -r rm -f
+      fi
     fi
   fi
   if (( ALL )); then select_args+=(--all); fi
@@ -303,7 +341,7 @@ capture() {
 
   warm_both
   log "capturing $(grep -c . "$WORK/head-ids.txt" || true) head / $(grep -c . "$WORK/base-ids.txt" || true) base stories, $CONCURRENCY pages per side (logs: .ui-review/work/shots-*.log) ..."
-  shoot_pair ids "$WORK/head-ids.txt" "$WORK/base-ids.txt" ""
+  shoot_pair "$WORK/head-tasks.txt" "$WORK/base-tasks.txt" ""
   tool diff "${diff_args[@]}"
 
   # Stability re-checks: capture each changed shot (that story, that viewport)
@@ -314,7 +352,7 @@ capture() {
     grep -q . "$WORK/recheck-tasks.txt" || break
     cp "$WORK/recheck-tasks.txt" "$WORK/recheck-tasks-$pass.txt"
     log "stability re-check $pass/$RECHECKS: capturing the $(grep -c . "$WORK/recheck-tasks-$pass.txt") changed shot(s) again on both sides ..."
-    shoot_pair tasks "$WORK/recheck-tasks-$pass.txt" "$WORK/recheck-tasks-$pass.txt" "-recheck-$pass"
+    shoot_pair "$WORK/recheck-tasks-$pass.txt" "$WORK/recheck-tasks-$pass.txt" "-recheck-$pass"
     tool diff "${diff_args[@]}"
   done
   cexec shots node scripts/ui-review/composite.ts /ui-review/work/composite-jobs.json

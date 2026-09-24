@@ -7,6 +7,7 @@ import {
   applyProbe,
   capStories,
   probeImporters,
+  suggestStoryIds,
   type ModuleGraph,
   type StoryRef,
 } from '../../../../scripts/ui-review/lib/affected.ts';
@@ -342,12 +343,15 @@ describe('planProbe / applyProbe', () => {
     baseStories: headStories,
   });
 
-  it('probes only the non-direct candidates, and only above the threshold', () => {
-    expect(planProbe(affected, { threshold: 100 }).probe).toBe(false);
-    const plan = planProbe(affected, { threshold: 2 });
+  it('probes only above the threshold of non-direct candidates, and then takes the direct stories along', () => {
+    // 6 non-direct candidates (every story but the changed Settings one).
+    expect(planProbe(affected, { threshold: 6 }).probe).toBe(false);
+    const plan = planProbe(affected, { threshold: 5 });
     expect(plan.probe).toBe(true);
-    expect(plan.stories).not.toContain('settings--settings');
     expect(plan.stories).toContain('channel-chat--busy');
+    // Captured anyway, but probed to learn which changed files it renders.
+    expect(plan.stories).toContain('settings--settings');
+    expect(plan.stories).toEqual([...plan.stories].sort());
   });
 
   it('never probes a global change', () => {
@@ -363,6 +367,45 @@ describe('planProbe / applyProbe', () => {
     });
     expect(ids(narrowed)).toEqual(['edge-chat--reactions', 'message-reactions--few', 'settings--settings']);
     expect(narrowed.find((s) => s.id === 'edge-chat--reactions')?.exercisedOn).toEqual(['desktop']);
+  });
+
+  it('narrows the reasons of a probed direct story to its own file plus what it ran', () => {
+    const settings = `${F}/stories/screens/Settings.stories.tsx`;
+    const chip = `${F}/components/Common/Chip.tsx`;
+    // Statically, the changed story file reaches the changed Chip (through the lazy pages).
+    expect(affected.stories.find((s) => s.id === 'settings--settings')?.reasons).toEqual([chip, settings]);
+
+    const didNotRun = applyProbe(affected.stories, { 'settings--settings': { desktop: [], tablet: [], phone: [] } });
+    expect(didNotRun.find((s) => s.id === 'settings--settings')).toMatchObject({ direct: true, reasons: [settings] });
+
+    const ran = applyProbe(affected.stories, { 'settings--settings': { desktop: [chip] } });
+    expect(ran.find((s) => s.id === 'settings--settings')).toMatchObject({ direct: true, reasons: [settings, chip], exercisedOn: ['desktop'] });
+
+    // Not probed (no probe ran): the static reasons stay.
+    expect(applyProbe(affected.stories, {}).find((s) => s.id === 'settings--settings')?.reasons).toEqual([chip, settings]);
+  });
+});
+
+describe('suggestStoryIds', () => {
+  const known = [
+    'edge-nav-notifications--long-names-narrow320',
+    'edge-nav-notifications--one',
+    'edge-nav-notifications--hundred-fifty',
+    'edge-chat-dm--dm-composer-loaded',
+  ];
+
+  it('finds the id spelled with other dashes (digits stay attached to the word before them)', () => {
+    expect(suggestStoryIds('edge-nav-notifications--long-names-narrow-320', known)).toEqual(['edge-nav-notifications--long-names-narrow320']);
+    expect(suggestStoryIds('edge-chat-dm--d-m-composer-loaded', known)).toEqual(['edge-chat-dm--dm-composer-loaded']);
+  });
+
+  it('else lists the ids of the same story file', () => {
+    expect(suggestStoryIds('edge-nav-notifications--long-names', known)).toEqual([
+      'edge-nav-notifications--long-names-narrow320',
+      'edge-nav-notifications--one',
+      'edge-nav-notifications--hundred-fifty',
+    ]);
+    expect(suggestStoryIds('no-such-file--story', known)).toEqual([]);
   });
 });
 

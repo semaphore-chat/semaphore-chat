@@ -4,7 +4,7 @@
  * writes files under the work dir (`/ui-review`, i.e. `<repo>/.ui-review`):
  *
  *   affected  changed files → candidate stories (+ probe plan)     work/affected.json, work/probe-plan.json
- *   select    apply probe hits, cap                                 work/selection.json, work/{head,base}-ids.txt
+ *   select    apply probe hits, cap                                 work/selection.json, work/{head,base}-{ids,tasks}.txt
  *   diff      pixel-diff head vs base shots, plan composites        work/diff-report.json, work/composite-jobs.json,
  *             (run again after each re-capture of work/recheck-     work/recheck-tasks.txt
  *             tasks.txt into shots/{head,base}-recheck-<n>)
@@ -25,9 +25,11 @@ import {
   applyProbe,
   capStories,
   probeImporters,
+  suggestStoryIds,
   type AffectedResult,
   type AffectedStory,
   type ProbeHits,
+  type ProbePlan,
   type StoryRef,
 } from './lib/affected.ts';
 import { parseChangedLines, parseNameStatusZ } from './lib/gitdiff.ts';
@@ -57,7 +59,7 @@ import {
   type StoryResult,
 } from './lib/block.ts';
 import { spliceBlock, START_MARKER, END_MARKER } from './lib/body.ts';
-import { REVIEW_VIEWPORTS, viewportsForStory } from './lib/viewports.ts';
+import { REVIEW_VIEWPORTS, storyViewports, viewportsForStory } from './lib/viewports.ts';
 
 type Flags = Record<string, string | true>;
 
@@ -95,7 +97,26 @@ const writeJson = (file: string, data: unknown) => {
 };
 
 interface LadleMeta {
-  stories: Record<string, { filePath: string }>;
+  stories: Record<string, { filePath: string; meta?: unknown }>;
+}
+
+/**
+ * Stories that set their own viewports (`Story.meta = { viewports: [...] }`) →
+ * those viewports. `strict`: an invalid list is an error (the head's stories);
+ * otherwise it is ignored (the base's, which the branch can't fix).
+ */
+function viewportsFromMeta(file: string, { strict }: { strict: boolean }): Record<string, string[]> {
+  if (!existsSync(file)) return {};
+  const out: Record<string, string[]> = {};
+  for (const [id, story] of Object.entries(readJson<LadleMeta>(file).stories)) {
+    try {
+      const own = storyViewports(story.meta);
+      if (own) out[id] = own;
+    } catch (err) {
+      if (strict) throw new Error(`story ${id} (${story.filePath}): ${(err as Error).message}`);
+    }
+  }
+  return out;
 }
 
 function storiesFromMeta(file: string): StoryRef[] | null {
@@ -117,9 +138,13 @@ interface AffectedFile extends AffectedResult {
 async function stepAffected(flags: Flags) {
   const work = str(flags, 'work');
   const threshold = num(flags, 'probe-threshold', 12);
+  // --stories given: the ids to capture are fixed, so no probe.
+  const explicit = flags.explicit === true;
   const headStories = storiesFromMeta(path.join(work, 'head-meta.json'));
   if (!headStories) throw new Error('head-meta.json missing (is the head Ladle up?)');
   const baseStories = storiesFromMeta(path.join(work, 'base-meta.json'));
+  // Fail early on a story's invalid `meta.viewports`, before any probe or capture.
+  const headViewports = viewportsFromMeta(path.join(work, 'head-meta.json'), { strict: true });
 
   const changed = parseNameStatusZ(readFileSync(path.join(work, 'changed.z'), 'utf8'));
   const untracked = readFileSync(path.join(work, 'untracked.z'), 'utf8').split('\0').filter(Boolean);
@@ -142,16 +167,18 @@ async function stepAffected(flags: Flags) {
   };
   writeJson(path.join(work, 'affected.json'), out);
 
-  const plan = planProbe(affected, { threshold });
+  const plan: ProbePlan = explicit ? { probe: false, stories: [] } : planProbe(affected, { threshold });
   const planFile = path.join(work, 'probe-plan.json');
   rmSync(planFile, { force: true });
   rmSync(path.join(work, 'probe-out.json'), { force: true });
   if (plan.probe) {
     const targets: Record<string, TargetLines> = {};
     for (const file of affected.probeTargets) targets[file] = lines.get(file) ?? 'all';
+    const viewports = Object.fromEntries(plan.stories.filter((id) => headViewports[id]).map((id) => [id, headViewports[id]]));
     writeJson(planFile, {
       baseUrl: 'http://localhost:61000',
       stories: plan.stories,
+      ...(Object.keys(viewports).length ? { viewports } : {}),
       targets,
       importers: probeImporters(graph, affected.probeTargets, IMPORTER_DEPTH),
       ...(typeof flags.concurrency === 'string' ? { concurrency: Number(flags.concurrency) } : {}),
@@ -169,7 +196,7 @@ async function stepAffected(flags: Flags) {
         : `${affected.stories.length} candidate stor${affected.stories.length === 1 ? 'y' : 'ies'} (${direct} direct)`) +
       `, ${affected.removed.length} removed, ${affected.uncovered.length} uncovered file(s)` +
       (affected.appOnly.length ? `, ${affected.appOnly.length} app-only file(s) Ladle never loads` : '') +
-      (plan.probe ? ` → probing ${plan.stories.length} stories` : ''),
+      (explicit ? ' → --stories given: capturing exactly those ids, no probe' : plan.probe ? ` → probing ${plan.stories.length} stories` : ''),
   );
 }
 
@@ -208,7 +235,14 @@ function stepSelect(flags: Flags) {
     const wanted = new Set(flags.ids.split(/[\s,]+/).filter(Boolean));
     const head = storiesFromMeta(path.join(work, 'head-meta.json')) ?? [];
     const unknown = [...wanted].filter((id) => !head.some((s) => s.id === id));
-    if (unknown.length) throw new Error(`unknown story id(s): ${unknown.join(', ')}`);
+    if (unknown.length) {
+      const known = head.map((s) => s.id);
+      const hint = (id: string) => {
+        const near = suggestStoryIds(id, known);
+        return near.length ? `\n  ${id}: did you mean ${near.slice(0, 12).join(', ')}${near.length > 12 ? ', ...' : ''}?` : `\n  ${id}: no story file with that id prefix`;
+      };
+      throw new Error(`unknown story id(s):${unknown.map(hint).join('')}\n  (every id: jq -r '.stories | keys[]' .ui-review/work/head-meta.json)`);
+    }
     stories = head.filter((s) => wanted.has(s.id)).map((s) => ({ ...s, direct: true, targeted: true, reasons: ['--stories'] }));
   } else if (existsSync(probeOut)) {
     const { hits, durationMs } = readJson<{ hits: ProbeHits; durationMs: number }>(probeOut);
@@ -241,15 +275,36 @@ function stepSelect(flags: Flags) {
   const baseStories = storiesFromMeta(path.join(work, 'base-meta.json')) ?? [];
   const baseIds = new Set(baseStories.map((s) => s.id));
   const selectedIds = new Set(selected.map((s) => s.id));
-  writeFileSync(path.join(work, 'head-ids.txt'), `${[...selectedIds].join('\n')}\n`);
   const baseWanted = [...new Set([...[...selectedIds].filter((id) => baseIds.has(id)), ...selection.removed.map((s) => s.id)])];
-  writeFileSync(path.join(work, 'base-ids.txt'), `${baseWanted.join('\n')}\n`);
+  // Ids (for the warm-up) and `<id> <viewport>` capture tasks per side. Both
+  // sides shoot a story at the same viewports (see `shotViewports`).
+  const viewportsOf = shotViewports(work);
+  const tasks = (ids: string[]) => ids.flatMap((id) => viewportsOf(id).map((vp) => `${id} ${vp}`));
+  const headTasks = tasks([...selectedIds]);
+  const baseTasks = tasks(baseWanted);
+  const lines = (list: string[]) => (list.length ? `${list.join('\n')}\n` : '');
+  writeFileSync(path.join(work, 'head-ids.txt'), lines([...selectedIds]));
+  writeFileSync(path.join(work, 'base-ids.txt'), lines(baseWanted));
+  writeFileSync(path.join(work, 'head-tasks.txt'), lines(headTasks));
+  writeFileSync(path.join(work, 'base-tasks.txt'), lines(baseTasks));
   console.log(
     `[ui-review] selected ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'}` +
       (capped ? ` (capped at ${max}; ${dropped.length} not captured)` : '') +
       (selection.targeted?.total ? `, ${selection.targeted.captured}/${selection.targeted.total} of them render the non-global changes` : '') +
-      `; head shots: ${selected.length}, base shots: ${baseWanted.length}`,
+      `; head: ${selected.length} stories / ${headTasks.length} shots, base: ${baseWanted.length} stories / ${baseTasks.length} shots`,
   );
+}
+
+/**
+ * Story id → the review viewports it is shot at, on both sides: its own
+ * (`meta.viewports`) as the head defines it, or the base's for a story only
+ * the base has (removed); else the keyboard rule.
+ */
+function shotViewports(work: string): (id: string) => string[] {
+  const head = viewportsFromMeta(path.join(work, 'head-meta.json'), { strict: true });
+  const base = viewportsFromMeta(path.join(work, 'base-meta.json'), { strict: false });
+  const headIds = new Set((storiesFromMeta(path.join(work, 'head-meta.json')) ?? []).map((s) => s.id));
+  return (id) => viewportsForStory(id, REVIEW_VIEWPORTS, headIds.has(id) ? head[id] : base[id]);
 }
 
 // ---------------------------------------------------------------- diff
@@ -304,6 +359,7 @@ async function stepDiff(flags: Flags) {
   const selection = readJson<Selection>(path.join(work, 'selection.json'));
   const headIds = new Set((storiesFromMeta(path.join(work, 'head-meta.json')) ?? []).map((s) => s.id));
   const baseIds = new Set((storiesFromMeta(path.join(work, 'base-meta.json')) ?? []).map((s) => s.id));
+  const viewportsOf = shotViewports(work);
 
   for (const dir of ['diff', 'html', 'png']) rmSync(path.join(work, dir), { recursive: true, force: true });
 
@@ -358,7 +414,7 @@ async function stepDiff(flags: Flags) {
 
   for (const story of all) {
     const shots: StoryResult['shots'] = [];
-    for (const viewport of viewportsForStory(story.id, REVIEW_VIEWPORTS)) {
+    for (const viewport of viewportsOf(story.id)) {
       const headFile = shotPath('head', viewport, story.id);
       const baseFile = shotPath('base', viewport, story.id);
       const inHead = headIds.has(story.id);
