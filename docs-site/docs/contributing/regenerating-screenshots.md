@@ -26,7 +26,7 @@ docker compose --profile tools run --rm media       # screenshots + scenes, then
 Useful variables:
 
 - `MEDIA_STEPS=shots,encode` runs only some steps (`shots`, `record`, `encode`). To re-encode only, add `--no-deps` so the capture container isn't started: `MEDIA_STEPS=encode docker compose --profile tools run --rm --no-deps media`.
-- `MEDIA_FILTER=voice` limits the run to screenshots or scenes whose name contains the text.
+- `MEDIA_FILTER=voice` limits the capture to screenshots or scenes whose name contains the text. The encode step ignores it and rebuilds every output from `raw/`, which takes about 15 s. A filtered run keeps the other screenshots and writes a `report.json` that covers only the filtered ones, so finish with an unfiltered run (`MEDIA_STEPS=shots,encode` is enough if no scene changed) before you publish.
 
 Stop the sandbox afterwards with `docker compose stop ladle && docker compose rm -f ladle media-capture`. `media-capture` runs as a dependency of `media`, so `--rm` does not remove it.
 
@@ -37,7 +37,7 @@ Stop the sandbox afterwards with `docker compose stop ladle && docker compose rm
 
 Look at every output before you publish. Nothing checks taste automatically.
 
-1. `report.json` must show `"issueCount": 0`. Also check `raw/scenes/scenes.json` for page errors in the recordings.
+1. `report.json` must show `"issueCount": 0` and `"filter": null` (an unfiltered run). Also check `raw/scenes/scenes.json` for page errors in the recordings.
 2. Open every file in `screenshots/`. Look for realistic content, no loading spinners, no broken images, no error or offline toasts, and no sandbox artefacts. The pipeline also rejects "SIMULATED", "Story not found" and similar text.
 3. Watch `video/hero.webp` in a browser. It should loop cleanly, and the cursor movement and typing should look human.
 4. Watch `video/tour.mp4`, or pull out one frame per second onto a contact sheet to skim it (40 tiles, enough for the whole ~40 s tour):
@@ -58,7 +58,7 @@ frontend/scripts/media/publish-media.sh --dry-run   # build the commit locally a
 frontend/scripts/media/publish-media.sh             # force-push it to origin/media
 ```
 
-Each publish replaces the branch with a single new commit, so the branch history stays at one commit. Browsers and GitHub's image proxy can cache the old files for a few minutes after a publish.
+The script refuses to publish unless `report.json` comes from an unfiltered screenshot run with no issues, and `screenshots/` holds exactly the screenshots in `catalog.mjs`. Each publish replaces the branch with a single new commit, so the branch history stays at one commit. Browsers and GitHub's image proxy can cache the old files for a few minutes after a publish.
 
 !!! warning "Publish before the change reaches `main`"
     The README on `main` and the docs site (deployed on every `docs-site/**` push to `main`) load the media straight from the `media` branch. Publish when (or just before) a change that adds or renames media merges, otherwise those images and the video show as broken until someone does. Publishing a little early is fine, as long as the change doesn't rename or remove a file that `main` still uses (each publish replaces the whole branch).

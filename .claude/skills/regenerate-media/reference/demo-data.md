@@ -48,7 +48,7 @@ Every screenshot and every video scene shows **one moment in one team's day**: T
 
 ## Checking a data change
 
-Change the data, then regenerate everything it touches. A change to `showcase.ts` affects every story, so run the full pipeline, then look at every screenshot and scene again ([review.md](review.md)). Type-check and lint the stories in Docker:
+Change the data, then regenerate everything it touches. A change to `showcase.ts` affects every story, so run the full pipeline (all steps). Then review everything `changed-media.sh` lists ([review.md](review.md)): usually most screenshots, and always the videos, because they were re-recorded. Type-check and lint the stories in Docker:
 
 ```bash
 docker compose run --rm frontend pnpm run type-check

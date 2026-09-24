@@ -6,6 +6,10 @@
  * `.media-out/manifest.json` and `.media-out/report.json`.
  *
  * Env: MEDIA_BASE_URL, MEDIA_OUT_DIR, MEDIA_FILTER (substring of shot name).
+ * A filtered run shoots only the matching shots and keeps the other PNGs; it
+ * still writes the full manifest (every shot in the catalog), but report.json
+ * covers only the shots it took. An unfiltered run first deletes raw/shots/,
+ * so shots removed from the catalog don't linger.
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -105,7 +109,9 @@ async function main() {
   ).length;
   await writeFile(
     path.join(OUT_DIR, 'report.json'),
-    JSON.stringify({ generatedAt: new Date().toISOString(), issueCount, shots: results }, null, 2),
+    // `filter` is set when MEDIA_FILTER limited the run: then `shots` covers only
+    // those shots, and publish-media.sh refuses the report.
+    JSON.stringify({ generatedAt: new Date().toISOString(), filter: FILTER || null, issueCount, shots: results }, null, 2),
   );
   console.log(`[media:shots] ${results.length} screenshot(s), ${issueCount} with issues — see ${path.join(OUT_DIR, 'report.json')}`);
 }

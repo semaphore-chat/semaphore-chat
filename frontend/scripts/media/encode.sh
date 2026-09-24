@@ -34,6 +34,10 @@ XFADE=fade          # xfade transition (the hero uses HERO_XFADE)
 HERO_XFADE="custom:expr='A*(1-pow(1-P\,3))+B*pow(1-P\,3)'"
 BG_TOP='0x1b1530'   # phone scene backdrop (showcase violet, dark)
 BG_BOTTOM='0x0f0d1a'
+# The gradients source replaces any end point outside the frame (x >= width,
+# y >= height) with a random one, so gradient end points must stay inside it
+# (1279, not 1280). Otherwise social.png and the phone scene backdrop change on
+# every encode, and unchanged inputs no longer give byte-identical outputs.
 
 # The capture container's output isn't shown by `compose run` (it's a dependency).
 if [[ -f "$OUT/capture.log" ]]; then
@@ -53,7 +57,7 @@ if [[ -f "$RAW/shots/chat-desktop.png" ]]; then
   # The whole #dev screenshot (a 2:1 crop of a 16:10 frame would cut through
   # a message) framed on the showcase violet, like the phone scene.
   "${FF[@]}" -i "$RAW/shots/chat-desktop.png" \
-    -f lavfi -i "gradients=s=1280x640:c0=${BG_TOP}:c1=${BG_BOTTOM}:x0=0:y0=0:x1=1280:y1=640:d=1:r=1" \
+    -f lavfi -i "gradients=s=1280x640:c0=${BG_TOP}:c1=${BG_BOTTOM}:x0=0:y0=0:x1=1279:y1=639:d=1:r=1" \
     -filter_complex "[0:v]scale=-2:576:flags=lanczos,pad=iw+4:ih+4:2:2:color=0x3a3158[s];[1:v][s]overlay=(W-w)/2:(H-h)/2" \
     -frames:v 1 "$OUT/social.png"
 fi
@@ -75,7 +79,7 @@ while read -r name start dur; do
   if [[ "$name" == *phone* ]]; then
     # Phone clip (390x844) centred on a 1440x900 violet backdrop.
     "${FF[@]}" -ss "$start" -i "$src" -t "$dur" \
-      -f lavfi -i "gradients=s=1440x900:c0=${BG_TOP}:c1=${BG_BOTTOM}:x0=0:y0=0:x1=0:y1=900:d=${dur}:r=30" \
+      -f lavfi -i "gradients=s=1440x900:c0=${BG_TOP}:c1=${BG_BOTTOM}:x0=0:y0=0:x1=0:y1=899:d=${dur}:r=30" \
       -filter_complex "[0:v]fps=30,scale=-2:840:flags=lanczos,pad=iw+4:ih+4:2:2:color=0x3a3158[p];[1:v][p]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p,setsar=1" \
       -c:v libx264 -crf 12 -preset veryfast -an "$TMP/$name.mp4"
   else

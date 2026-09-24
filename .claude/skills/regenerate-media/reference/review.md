@@ -1,17 +1,29 @@
 # Reviewing the media
 
-Nothing checks taste automatically, and a passing report doesn't mean the media is good. Look at every image, and at video frames at least every 0.5 s, before you call a run done or publish it.
+Nothing checks taste automatically, and a passing report doesn't mean the media is good. Before you call a run done or publish it, look at every output that changed, and at video frames at least every 0.5 s whenever a video changed.
+
+## 0. What changed
+
+```bash
+.claude/skills/regenerate-media/scripts/changed-media.sh     # compares with the snapshot from `changed-media.sh snapshot`
+```
+
+It lists each output (`screenshots/*.webp`, `video/*`, `social.png`, `manifest.json`) as `changed`, `added` or `removed`, and prints a diff of `manifest.json`, which leaves out its `generatedAt` line. An output it doesn't list is byte-identical to the snapshot. Encoding is deterministic, and screenshot capture almost always is too, so an unlisted file shows exactly what it showed then.
+
+- Skip the unlisted files only if the snapshot itself had been reviewed: it was what's published, or you had already checked it. With no snapshot, on a first run, or when nobody reviewed the snapshot, review everything below.
+- A listed screenshot is usually a real change. It can also be a capture wobble: `chat-phone`'s code block once came out one CSS pixel (2 px in the 2x image) higher in one run than in the one before. Look at it either way.
+- The videos only change when scenes were re-recorded or `encode.sh` changed. If `video/hero.*` and `video/tour.mp4` aren't listed, skip step 3.
 
 ## 1. Reports
 
-- `frontend/.media-out/report.json` must have `"issueCount": 0`, and it must come from a full, unfiltered shots run. A `MEDIA_FILTER` run overwrites it with only the filtered shots. Each entry lists `error`, `pageErrors`, `renderErrors`, `unhandledRequests`, `brokenImages` and `forbidden`.
+- `frontend/.media-out/report.json` must have `"issueCount": 0` and `"filter": null`, which means it comes from an unfiltered shots run. A `MEDIA_FILTER` run overwrites it with only the filtered shots and records the filter. `publish-media.sh` refuses a report that doesn't cover every shot in the catalog. Each entry lists `error`, `pageErrors`, `renderErrors`, `unhandledRequests`, `brokenImages` and `forbidden`.
 - In `frontend/.media-out/raw/scenes/scenes.json`, every scene needs `error: null` and empty `pageErrors`, `renderErrors`, `unhandledRequests` and `forbidden`.
 - `consoleErrors` and `httpErrors` are informational. For the known noise, see the end of [gotchas.md](gotchas.md).
 - `capture.log`, which `encode.sh` also prints, ends each shot and scene with `ok` or `ISSUES: …`, and gives each scene's kept length in seconds.
 
-## 2. Screenshots: open every file in `screenshots/`
+## 2. Screenshots: open every changed or added file in `screenshots/`
 
-Read each `.webp` with the Read tool. For each one, check for:
+Read each one with the Read tool (every file in `screenshots/` when step 0 says to review everything). For each one, check for:
 
 - **Sandbox artefacts:** Ladle chrome or a Ladle backdrop, "Story not found", "SIMULATED" camera tiles, lorem ipsum, and "reply #N" filler.
 - **Error states:** error, offline, "update available" or reconnecting banners and toasts, a "notifications are blocked" banner, "Something went wrong", "Failed to load", and empty states such as "No clips yet".
@@ -26,7 +38,7 @@ Read each `.webp` with the Read tool. For each one, check for:
   - nobody listed twice.
 - **Caption and alt text:** the caption and alt in `catalog.mjs`, and the copies in `docs-site/docs/tour.md` and `README.md`, must describe what is actually visible, including counts ("five replies", "four participant tiles, two of them outlined").
 
-## 3. Videos: look at frames, not just a player
+## 3. Videos: look at frames, not just a player (when a video changed)
 
 ```bash
 .claude/skills/regenerate-media/scripts/review-frames.sh          # tour + hero (or: tour | hero)
@@ -60,7 +72,17 @@ Check in the frames:
 - **Hero loop seam:** `hero/f000.png` and the last `hero/f*.png` should look the same, with no jump when the loop restarts. Crossfades should leave no burnt-in dark blocks.
 - **Crossfades:** no black flash between scenes, and no leftover text from the previous scene.
 
-## 4. Sizes
+## 4. On the page
+
+When an image was added to or moved in `docs-site/docs/tour.md`, look at it where readers will see it:
+
+```bash
+.claude/skills/regenerate-media/scripts/preview-docs.sh <shot-name> [<shot-name> ...]
+```
+
+The real pages load the media from the `media` branch, so they can't show anything that hasn't been published. The preview builds the docs with the media URLs pointing at `frontend/.media-out/` and writes screenshots to `raw/review/docs/`: each Tour section at desktop width (`tour-<section>.png`), the lightbox opened on each named shot on a desktop and on a phone (`lightbox-<shot>-desktop.png`, `lightbox-<shot>-phone.png`), and the docs home page (`home.png`). Check that the grid lines up, the phone column stays narrow, and the lightbox shows the whole image with its caption. Apart from the MkDocs 2.0 notice, anything the build prints is a warning to fix. The README grid can't be previewed locally.
+
+## 5. Sizes
 
 Check them with `ls -la frontend/.media-out/video/`:
 
@@ -73,6 +95,6 @@ Check them with `ls -la frontend/.media-out/video/`:
 
 If the hero grows past 2 MB, shorten the hero scenes before lowering the quality (see gotchas 25 and 26).
 
-## 5. When the product is at fault
+## 6. When the product is at fault
 
 If something looks wrong because of the product itself, such as a layout bug, a wrong string or a console error from app code, rather than the demo data or the scripts, don't change product code (`frontend/src` outside `stories/`) to make the media look better. Report it with the screenshot or frame, and work around it in the data or the scene only if the workaround stays honest.
