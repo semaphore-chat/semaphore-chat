@@ -5,15 +5,23 @@
  * `frontend/scripts/media/`).
  *
  * Unlike `buildScenario()`'s randomized filler, everything a viewer can read
- * here is hand-written: a small product team ("Lumen Studio") shipping a
- * release on a Tuesday afternoon. `buildScenario()` only provides the base
- * `Scenario` object; every user, community, channel, message, DM,
- * notification, role and voice presence is replaced with curated content,
- * and unread badges are set with the `withUnread` modifier.
+ * here is hand-written. The main community is "Couch Co-op", a group of
+ * friends who play a (fictional) co-op game, Deep Rift, on a Tuesday evening:
+ * patch notes, key binds, sorting out Friday, two of them already in voice.
+ * Alex also belongs to "Lumen Studio", the small product team he works at,
+ * whose day (the afternoon's #dev, the release group DM) is still there.
+ *
+ * Display names are per user, not per community (the backend has no
+ * per-community nicknames), so everyone goes by their handle everywhere:
+ * "dropbear" in Couch Co-op is "dropbear" in Lumen Studio too.
+ *
+ * `buildScenario()` only provides the base `Scenario` object; every user,
+ * community, channel, message, DM, notification, role and voice presence is
+ * replaced with curated content, and unread badges are set with `withUnread`.
  *
  * Timestamps are fixed wall-clock times on Tuesday 2026-09-22 in
  * America/New_York (the media scripts pin the browser clock to `SHOWCASE_NOW`
- * and the timezone to match), so "Today at 2:05 PM" never drifts.
+ * and the timezone to match), so "Today at 8:02 PM" never drifts.
  */
 import {
   createMessage,
@@ -36,23 +44,27 @@ import {
   SKIN,
   bannerSvg,
   communityIconSvg,
+  deepRiftPatchSvg,
   emptyStateMockSvg,
   illustratedAvatarSvg,
   paletteSvg,
+  pitScreenshotSvg,
   prPreviewSvg,
   registerShowcaseFile,
   sunsetPhotoSvg,
   svgDataUri,
   type AvatarLook,
+  type CommunityGlyph,
 } from './showcaseArt';
+import { SHOWCASE_GIFS, showcaseGifUrl } from './showcaseGifs';
 import { ADMIN_ACTIONS, MEMBER_ACTIONS } from './edge/voice';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Time
 // ─────────────────────────────────────────────────────────────────────────
 
-/** "Now" for the showcase: Tuesday 22 Sep 2026, 3:42 PM EDT. */
-export const SHOWCASE_NOW = '2026-09-22T19:42:00Z';
+/** "Now" for the showcase: Tuesday 22 Sep 2026, 9:04 PM EDT. */
+export const SHOWCASE_NOW = '2026-09-23T01:04:00Z';
 /** The browser timezone the media scripts use, so wall-clock times below read as written. */
 export const SHOWCASE_TIMEZONE = 'America/New_York';
 
@@ -68,69 +80,74 @@ export function at(hhmm: string, daysAgo = 0): string {
 
 interface Persona {
   id: string;
+  /** Stable key for this file (`U.priya`); usernames are the handles people chose. */
+  key: string;
   username: string;
+  /** Global per user: the same in every community. */
   displayName: string;
-  /** Online iff a status is set (see `isFixtureUserOnline` in handlers.ts). */
+  /** Most people don't set one. */
   status: string | null;
+  /** Online right now (Tuesday 9:04 PM). Everyone in voice is online. */
+  online: boolean;
   bio?: string;
   look: AvatarLook;
 }
 
 const PERSONAS: Persona[] = [
   {
-    id: 'u-priya', username: 'priya', displayName: 'Priya Raman', status: 'Sketching empty states ✏️',
+    id: 'u-priya', key: 'priya', username: 'pri', displayName: 'pri', status: 'downloading 40gb update', online: true,
     bio: 'Product designer. Illustrations, type, and too many color palettes.',
     look: { skin: SKIN.tan, hair: 'long', hairColor: HAIR.black, bg: ['#FFD6E7', '#FF9CC2'], shirt: '#7C5CFF', earrings: true },
   },
   {
-    id: 'u-marcus', username: 'marcus', displayName: 'Marcus Okafor', status: 'Reviewing PRs',
+    id: 'u-marcus', key: 'marcus', username: 'dropbear', displayName: 'dropbear', status: 'back at 9', online: true,
     bio: 'Backend & infra. Will talk your ear off about backoff strategies.',
     look: { skin: SKIN.deep, hair: 'buzz', hairColor: HAIR.black, bg: ['#C9F2E3', '#6FD6B0'], shirt: '#1F6FEB', beard: true },
   },
   {
-    id: 'u-aiko', username: 'aiko', displayName: 'Aiko Tanaka', status: 'QA on iOS 📱',
+    id: 'u-aiko', key: 'aiko', username: 'aiko', displayName: 'aiko', status: null, online: true,
     look: { skin: SKIN.porcelain, hair: 'bob', hairColor: HAIR.black, bg: ['#D8E6FF', '#8FB2FF'], shirt: '#FF8A3D', glasses: true },
   },
   {
-    id: 'u-samira', username: 'samira', displayName: 'Samira Haddad', status: 'Release captain this week',
+    id: 'u-samira', key: 'samira', username: 'samira', displayName: 'Samira', status: null, online: true,
     look: { skin: SKIN.olive, hair: 'bun', hairColor: HAIR.darkBrown, bg: ['#E4DAFF', '#B49CFF'], shirt: '#12B886', earrings: true },
   },
   {
-    id: 'u-diego', username: 'diego', displayName: 'Diego Alvarez', status: 'Blog post graphics 🎨',
+    id: 'u-diego', key: 'diego', username: 'diego', displayName: 'Diego', status: null, online: false,
     look: { skin: SKIN.tan, hair: 'wavy', hairColor: HAIR.darkBrown, bg: ['#FFE7C2', '#FFC06B'], shirt: '#2D2446', beard: true },
   },
   {
-    id: 'u-grace', username: 'grace', displayName: 'Grace Mensah', status: 'On call 🟢',
+    id: 'u-grace', key: 'grace', username: 'gracie', displayName: 'gracie', status: 'work tomorrow 😐', online: true,
     look: { skin: SKIN.brown, hair: 'curly', hairColor: HAIR.black, bg: ['#FFE0D1', '#FF9F7A'], shirt: '#7C5CFF', earrings: true },
   },
   {
-    id: 'u-tomas', username: 'tomas', displayName: 'Tomás Silva', status: '☕ back in 10',
+    id: 'u-tomas', key: 'tomas', username: 'tomatillo', displayName: 'tomatillo', status: null, online: true,
     look: { skin: SKIN.light, hair: 'wavy', hairColor: HAIR.auburn, bg: ['#D3F4FF', '#7DD3FC'], shirt: '#E0306F', beard: true },
   },
   {
-    id: 'u-zara', username: 'zara', displayName: 'Zara Khan', status: 'Heads down until 4',
+    id: 'u-zara', key: 'zara', username: 'zara', displayName: 'zara', status: null, online: false,
     look: { skin: SKIN.brown, hair: 'ponytail', hairColor: HAIR.darkBrown, bg: ['#FFF1C2', '#FFD35C'], shirt: '#0B7285' },
   },
   {
-    id: 'u-kwame', username: 'kwame', displayName: 'Kwame Asante', status: 'Mixing the podcast 🎧',
+    id: 'u-kwame', key: 'kwame', username: 'kwam3', displayName: 'kwam3', status: null, online: true,
     look: { skin: SKIN.deep, hair: 'bald', hairColor: HAIR.black, bg: ['#E8E2FF', '#A89BFF'], shirt: '#FFB86B', beard: true, glasses: true },
   },
   {
-    id: 'u-chloe', username: 'chloe', displayName: 'Chloé Dubois', status: 'Writing docs',
+    id: 'u-chloe', key: 'chloe', username: 'chlo', displayName: 'chlo', status: null, online: true,
     look: { skin: SKIN.porcelain, hair: 'bob', hairColor: HAIR.auburn, bg: ['#DDF3F0', '#7ED9C9'], shirt: '#FF6FB5' },
   },
   {
-    id: 'u-noah', username: 'noah', displayName: 'Noah Bergström', status: null,
+    id: 'u-noah', key: 'noah', username: 'noahbody', displayName: 'noahbody', status: null, online: false,
     look: { skin: SKIN.porcelain, hair: 'short', hairColor: HAIR.blonde, bg: ['#E2F7D5', '#9BE07A'], shirt: '#3B4252', glasses: true },
   },
   {
-    id: 'u-mateo', username: 'mateo', displayName: 'Mateo Rossi', status: null,
+    id: 'u-mateo', key: 'mateo', username: 'mateo', displayName: 'mateo', status: null, online: false,
     look: { skin: SKIN.olive, hair: 'short', hairColor: HAIR.black, bg: ['#FFD9D9', '#FF8F8F'], shirt: '#1E1B33', beard: true },
   },
 ];
 
 const ME: Persona = {
-  id: 'me', username: 'alex', displayName: 'Alex Kim', status: 'Shipping v2.4 🚀',
+  id: 'me', key: 'me', username: 'alexk', displayName: 'alexk', status: null, online: true,
   bio: 'Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.',
   look: { skin: SKIN.light, hair: 'short', hairColor: HAIR.darkBrown, bg: ['#CDE8FF', '#7C9CFF'], shirt: '#12B886' },
 };
@@ -145,7 +162,7 @@ function toUser(p: Persona, extra: Partial<ScenarioUser> = {}): ScenarioUser {
       status: p.status ?? undefined,
       bio: p.bio ?? null,
       email: `${p.username}@lumen.studio`,
-      lastSeen: p.status ? SHOWCASE_NOW : at('11:20'),
+      lastSeen: p.online ? SHOWCASE_NOW : at('17:40'),
     }),
     avatarUrl: avatarId,
     ...extra,
@@ -157,7 +174,10 @@ const me: ScenarioUser = toUser(ME, {
   bannerUrl: registerShowcaseFile('sc-banner-me', () => bannerSvg('#5B6CFF', '#B36BFF')),
 });
 const users: ScenarioUser[] = PERSONAS.map((p) => toUser(p));
-const U = Object.fromEntries([me, ...users].map((u) => [u.username, u])) as Record<string, ScenarioUser>;
+const U = Object.fromEntries([ME, ...PERSONAS].map((p, i) => [p.key, [me, ...users][i]])) as Record<string, ScenarioUser>;
+
+/** Ids of the people who are online (presence is answered from this, not from `status`). */
+export const SHOWCASE_ONLINE_IDS: ReadonlySet<string> = new Set([ME, ...PERSONAS].filter((p) => p.online).map((p) => p.id));
 
 // ─────────────────────────────────────────────────────────────────────────
 // Message helpers
@@ -205,11 +225,24 @@ function channel(communityId: string, id: string, name: string, type: 'TEXT' | '
   return createChannel({ id, name, communityId, type, position, createdAt: at('09:00', 200) });
 }
 
+const COUCH = 'c-couch';
 const LUMEN = 'c-lumen';
 const TRAIL = 'c-trail';
 const SYNTH = 'c-synth';
 
+/** Couch Co-op, the main community. */
 export const showcaseChannels = {
+  general: channel(COUCH, 'cc-general', 'general', 'TEXT', 0),
+  clips: channel(COUCH, 'cc-clips', 'clips', 'TEXT', 1),
+  lfg: channel(COUCH, 'cc-lfg', 'lfg', 'TEXT', 2),
+  memes: channel(COUCH, 'cc-memes', 'memes', 'TEXT', 3),
+  squad: channel(COUCH, 'vc-squad', 'Squad Up', 'VOICE', 4),
+  afk: channel(COUCH, 'vc-afk', 'AFK', 'VOICE', 5),
+};
+const CC = showcaseChannels;
+
+/** Lumen Studio, Alex's work community. */
+export const lumenChannels = {
   announcements: channel(LUMEN, 'ch-announcements', 'announcements', 'TEXT', 0),
   general: channel(LUMEN, 'ch-general', 'general', 'TEXT', 1),
   dev: channel(LUMEN, 'ch-dev', 'dev', 'TEXT', 2),
@@ -218,8 +251,10 @@ export const showcaseChannels = {
   lounge: channel(LUMEN, 'vc-lounge', 'Lounge', 'VOICE', 5),
   standup: channel(LUMEN, 'vc-standup', 'Standup', 'VOICE', 6),
 };
-const C = showcaseChannels;
+const C = lumenChannels;
 
+// Samira started Couch Co-op; Alex runs Lumen Studio's instance and community.
+const couchMembers = [U.samira, me, U.marcus, U.aiko, U.grace, U.priya, U.kwame, U.tomas, U.chloe, U.noah, U.zara, U.diego];
 const lumenMembers = [me, ...users];
 // Tomás runs the hiking community and Kwame the synth one; Alex just joined them.
 const trailMembers = [U.tomas, me, U.grace, U.noah, U.zara, U.mateo, U.chloe];
@@ -232,7 +267,7 @@ function community(
   id: string,
   name: string,
   description: string,
-  glyph: 'lumen' | 'trail' | 'synth',
+  glyph: CommunityGlyph,
   banner: [string, string],
   channels: Channel[],
   /** Creator first (the community's owner / Community Admin). */
@@ -252,6 +287,7 @@ function community(
 }
 
 const communities: ScenarioCommunity[] = [
+  community(COUCH, 'Couch Co-op', 'Friday nights, mostly Deep Rift.', 'couch', ['#3B5BDB', '#15AABF'], Object.values(CC), couchMembers),
   community(
     LUMEN,
     'Lumen Studio',
@@ -291,7 +327,87 @@ const communities: ScenarioCommunity[] = [
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// #dev — the hero conversation
+// Couch Co-op #general — the hero conversation
+// ─────────────────────────────────────────────────────────────────────────
+
+const cg = { channelId: CC.general.id };
+
+const patchPreview: LinkPreview = {
+  url: 'https://deeprift.gg/patch/6-2',
+  title: 'Deep Rift 6.2: driller changes, new cave biome, bug fixes',
+  description: 'The full patch notes for Deep Rift 6.2.',
+  siteName: 'Deep Rift',
+  imageUrl: svgDataUri(deepRiftPatchSvg()),
+};
+
+/** The thread parent in #general (5 replies) — the Thread story opens it. */
+export const SHOWCASE_THREAD_PARENT_ID = 'sc-cc-friday';
+/** gracie's "found this from last time" (the pit screenshot's caption, 😂 ×4). */
+export const SHOWCASE_PIT_CAPTION_ID = 'sc-cc-pit-caption';
+
+const generalMessages: Message[] = [
+  msg(cg, U.marcus, at('20:02'), 'patch notes are up deeprift.gg/patch/6-2', { linkPreviews: [patchPreview] }),
+  msg(cg, U.aiko, at('20:04'), 'they finally nerfed the fire thing'),
+  msg(cg, U.grace, at('20:04'), 'good'),
+  msg(cg, U.marcus, at('20:05'), 'that was my whole build'),
+  msg(cg, U.grace, at('20:05'), 'we know'),
+  msg(cg, U.priya, at('20:09'), [
+    text('reinstalled and lost all my binds again. putting them here so i stop doing this'),
+    code('dig     mouse4\nping    mouse5\nflare   f\nemote   v'),
+  ]),
+  msg(cg, U.kwame, at('20:10'), 'why is emote on v'),
+  msg(cg, U.priya, at('20:10'), 'priorities', { reactions: [react('👍', U.aiko, U.grace)] }),
+  msg(cg, U.samira, at('20:14'), 'are we doing friday or not', {
+    id: SHOWCASE_THREAD_PARENT_ID,
+    replyCount: 5,
+    lastReplyAt: at('20:20'),
+  }),
+  msg(cg, me, at('20:16'), [mention(U.marcus), text(' you still have my headset btw')]),
+  msg(cg, U.marcus, at('20:21'), "yeah i'll bring it friday"),
+  msg(cg, U.grace, at('20:22'), [], {
+    id: 'sc-cc-pit',
+    attachments: [imageAttachment('sc-img-pit', 'deep-rift-pit.png', pitScreenshotSvg, 356_812)],
+  }),
+  msg(cg, U.grace, at('20:22'), 'found this from last time', {
+    id: SHOWCASE_PIT_CAPTION_ID,
+    reactions: [react('😂', U.aiko, U.priya, U.kwame, U.samira)],
+  }),
+  // A GIF message is just the GIF's URL (what the picker sends); the app embeds it.
+  msg(cg, U.kwame, at('20:23'), showcaseGifUrl(SHOWCASE_GIFS.pitFall), { id: 'sc-cc-pit-gif' }),
+];
+
+const threadReplies: Message[] = [
+  msg(cg, U.aiko, at('20:15'), "can't til 9", { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+  msg(cg, U.marcus, at('20:17'), '9 works', { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+  msg(cg, U.priya, at('20:17'), 'same', { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+  msg(cg, U.samira, at('20:19'), 'ok 9. hop in voice a bit before', {
+    id: 'sc-thread-ok-9',
+    parentMessageId: SHOWCASE_THREAD_PARENT_ID,
+  }),
+  msg(cg, me, at('20:20'), '👍', { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+];
+
+const clips = { channelId: CC.clips.id };
+const clipsMessages: Message[] = [
+  msg(clips, U.tomas, at('22:47', 1), 'from last night https://clips.deeprift.gg/c/k2f9q', {
+    reactions: [react('🔥', U.marcus, U.chloe)],
+  }),
+  msg(clips, U.chloe, at('20:31'), 'https://clips.deeprift.gg/c/p77xm'),
+  msg(clips, U.chloe, at('20:31'), 'the ending'),
+];
+
+const lfg = { channelId: CC.lfg.id };
+const lfgMessages: Message[] = [
+  msg(lfg, U.noah, at('19:40', 1), 'need one more, starting in 10'),
+  msg(lfg, U.zara, at('19:42', 1), 'me'),
+  msg(lfg, U.kwame, at('20:40'), 'anyone up for a couple runs tonight'),
+];
+
+const memes = { channelId: CC.memes.id };
+const memesMessages: Message[] = [msg(memes, U.zara, at('18:12', 1), showcaseGifUrl(SHOWCASE_GIFS.nod))];
+
+// ─────────────────────────────────────────────────────────────────────────
+// Lumen Studio #dev — the afternoon
 // ─────────────────────────────────────────────────────────────────────────
 
 const dev = { channelId: C.dev.id };
@@ -310,8 +426,8 @@ const devPriyaImage = msg(dev, U.priya, at('13:40'), 'New empty states are ready
   reactions: [react('😍', U.aiko, U.samira, U.tomas, U.grace), react('🎉', U.marcus, me)],
 });
 
-/** The thread parent in #dev (5 replies) — the `tour` thread story opens it. */
-export const SHOWCASE_THREAD_PARENT_ID = 'sc-dev-release-thread';
+/** The release thread in Lumen's #dev (5 replies). */
+const LUMEN_THREAD_PARENT_ID = 'sc-dev-release-thread';
 
 const devMessages: Message[] = [
   msg(dev, U.grace, at('13:31'), 'Afternoon all 👋 on-call handoff done, pager has been quiet'),
@@ -335,7 +451,7 @@ const devMessages: Message[] = [
     { reactions: [react('🔥', U.aiko, U.grace, me), react('🙌', U.samira)] },
   ),
   msg(dev, U.samira, at('14:20'), "Should the reconnect fix go out in Thursday's release, or wait for the mobile pass?", {
-    id: SHOWCASE_THREAD_PARENT_ID,
+    id: LUMEN_THREAD_PARENT_ID,
     replyCount: 5,
     lastReplyAt: at('14:41'),
   }),
@@ -346,29 +462,28 @@ const devMessages: Message[] = [
   }),
 ];
 
-const threadReplies: Message[] = [
-  msg(dev, U.marcus, at('14:24'), 'Thursday. The mobile pass can land in 2.4.1', { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+const lumenThreadReplies: Message[] = [
+  msg(dev, U.marcus, at('14:24'), 'Thursday. The mobile pass can land in 2.4.1', { parentMessageId: LUMEN_THREAD_PARENT_ID }),
   msg(dev, U.priya, at('14:26'), "+1, the empty states don't depend on it either", {
-    parentMessageId: SHOWCASE_THREAD_PARENT_ID,
+    parentMessageId: LUMEN_THREAD_PARENT_ID,
     reactions: [react('👍', U.samira, U.marcus)],
   }),
-  msg(dev, U.aiko, at('14:29'), "I'll do a final QA pass on iOS and Android tonight 📱", { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
+  msg(dev, U.aiko, at('14:29'), "I'll do a final QA pass on iOS and Android tonight 📱", { parentMessageId: LUMEN_THREAD_PARENT_ID }),
   msg(dev, U.samira, at('14:33'), "Perfect. Drafting the changelog now, I'll tag the release Thursday morning", {
-    id: 'sc-thread-changelog',
-    parentMessageId: SHOWCASE_THREAD_PARENT_ID,
+    parentMessageId: LUMEN_THREAD_PARENT_ID,
   }),
   msg(dev, me, at('14:41'), 'Ship it 🚀', {
-    parentMessageId: SHOWCASE_THREAD_PARENT_ID,
+    parentMessageId: LUMEN_THREAD_PARENT_ID,
     reactions: [react('🚀', U.samira, U.marcus, U.priya, U.aiko)],
   }),
 ];
 
 // ─────────────────────────────────────────────────────────────────────────
-// Other channels
+// Lumen Studio's other channels
 // ─────────────────────────────────────────────────────────────────────────
 
 const general = { channelId: C.general.id };
-const generalMessages: Message[] = [
+const lumenGeneralMessages: Message[] = [
   msg(general, U.chloe, at('09:12'), 'Morning! The new docs site search is live, let me know if anything looks off 🔍', {
     reactions: [react('🙌', U.priya, U.diego, me)],
   }),
@@ -443,8 +558,14 @@ const randomMessages: Message[] = [
 ];
 
 const messagesByChannel: Record<string, Message[]> = {
+  [CC.general.id]: generalMessages,
+  [CC.clips.id]: clipsMessages,
+  [CC.lfg.id]: lfgMessages,
+  [CC.memes.id]: memesMessages,
+  [CC.squad.id]: [],
+  [CC.afk.id]: [],
   [C.announcements.id]: announcementMessages,
-  [C.general.id]: generalMessages,
+  [C.general.id]: lumenGeneralMessages,
   [C.dev.id]: devMessages,
   [C.design.id]: designMessages,
   [C.random.id]: randomMessages,
@@ -482,16 +603,30 @@ function dmGroup(id: string, members: ScenarioUser[], name: string | null, messa
   } as Scenario['dmGroups'][number];
 }
 
-export const SHOWCASE_DM_PRIYA = 'dm-priya';
+export const SHOWCASE_DM_PRI = 'dm-priya';
 export const SHOWCASE_DM_LAUNCH = 'dm-launch';
 
-const dmPriya = { dmId: SHOWCASE_DM_PRIYA };
+const dmPriya = { dmId: SHOWCASE_DM_PRI };
 const dmLaunch = { dmId: SHOWCASE_DM_LAUNCH };
 const dmMarcus = { dmId: 'dm-marcus' };
 const dmGrace = { dmId: 'dm-grace' };
 const dmKwame = { dmId: 'dm-kwame' };
 
 const messagesByDmGroup: Record<string, Message[]> = {
+  [SHOWCASE_DM_PRI]: [
+    // pri works with Alex at Lumen too: yesterday's and this afternoon's
+    // messages are about work, tonight's about the pit screenshot.
+    msg(dmPriya, U.priya, at('16:05', 1), 'first pass at the empty states, still rough but you get the idea'),
+    msg(dmPriya, me, at('16:30', 1), 'love the direction, the channel one especially'),
+    msg(dmPriya, U.priya, at('16:31', 1), 'that one took the longest 😅'),
+    msg(dmPriya, me, at('16:32', 1), 'can you share them in #dev tomorrow so the team can weigh in?'),
+    msg(dmPriya, U.priya, at('16:33', 1), 'will do 👍'),
+    msg(dmPriya, U.priya, at('15:20'), 'the onboarding copy is up in the doc, no rush', { id: 'sc-dm-priya-copy' }),
+    msg(dmPriya, me, at('15:48'), 'looks good, two small comments'),
+    msg(dmPriya, U.priya, at('20:58'), 'did you see gracie posted the pit screenshot', { id: 'sc-dm-pri-pit' }),
+    msg(dmPriya, U.priya, at('20:58'), 'lmao', { id: 'sc-dm-pri-lmao' }),
+    msg(dmPriya, U.priya, at('20:59'), 'dropbear is never living that down', { id: 'sc-dm-pri-never' }),
+  ],
   [SHOWCASE_DM_LAUNCH]: [
     msg(dmLaunch, U.samira, at('16:48', 1), "Launch is Thursday 🚀 who's taking what?"),
     msg(dmLaunch, U.diego, at('16:55', 1), 'Blog post and landing page copy. Aiko has QA and the store screenshots'),
@@ -511,23 +646,6 @@ const messagesByDmGroup: Record<string, Message[]> = {
       id: 'sc-dm-launch-signoff',
     }),
   ],
-  [SHOWCASE_DM_PRIYA]: [
-    // Yesterday: the empty states she shares in #dev today (13:40). Enough
-    // history that the conversation scrolls, like a real 1:1 would.
-    msg(dmPriya, U.priya, at('10:12', 1), 'morning! are we keeping the old onboarding illustrations for 2.4?'),
-    msg(dmPriya, me, at('10:20', 1), 'only the welcome one, the rest can go'),
-    msg(dmPriya, U.priya, at('10:21', 1), 'yesss 🎨'),
-    msg(dmPriya, U.priya, at('16:05', 1), 'first pass at the empty states, still rough but you get the idea'),
-    msg(dmPriya, me, at('16:30', 1), 'love the direction, the channel one especially'),
-    msg(dmPriya, U.priya, at('16:31', 1), 'that one took the longest 😅'),
-    msg(dmPriya, me, at('16:32', 1), 'can you share them in #dev tomorrow so the team can weigh in?'),
-    msg(dmPriya, U.priya, at('16:33', 1), 'will do 👍'),
-    msg(dmPriya, U.priya, at('13:30'), 'hey! do you have 5 minutes later to look at the onboarding copy?'),
-    msg(dmPriya, me, at('13:32'), 'sure, after standup this afternoon?'),
-    msg(dmPriya, U.priya, at('13:33'), 'perfect 🙏'),
-    msg(dmPriya, U.priya, at('15:20'), 'the onboarding copy is up in Figma, no rush', { id: 'sc-dm-priya-figma' }),
-    msg(dmPriya, U.priya, at('15:21'), 'also… I may have made three more illustrations 😅', { id: 'sc-dm-priya-illustrations' }),
-  ],
   'dm-marcus': [
     msg(dmMarcus, U.marcus, at('11:02'), 'pairing tomorrow at 10 still good?', { id: 'sc-dm-marcus-pairing' }),
     msg(dmMarcus, me, at('11:05'), '👍 I’ll bring coffee'),
@@ -540,7 +658,7 @@ const messagesByDmGroup: Record<string, Message[]> = {
 };
 
 const dmGroups: Scenario['dmGroups'] = [
-  dmGroup(SHOWCASE_DM_PRIYA, [me, U.priya], null, messagesByDmGroup[SHOWCASE_DM_PRIYA]),
+  dmGroup(SHOWCASE_DM_PRI, [me, U.priya], null, messagesByDmGroup[SHOWCASE_DM_PRI]),
   dmGroup(SHOWCASE_DM_LAUNCH, [me, U.samira, U.aiko, U.diego], 'Launch crew 🚀', messagesByDmGroup[SHOWCASE_DM_LAUNCH]),
   dmGroup('dm-marcus', [me, U.marcus], null, messagesByDmGroup['dm-marcus']),
   dmGroup('dm-grace', [me, U.grace], null, messagesByDmGroup['dm-grace']),
@@ -554,6 +672,7 @@ const dmGroups: Scenario['dmGroups'] = [
 const everyMessage = (): Message[] => [
   ...Object.values(messagesByChannel).flat(),
   ...threadReplies,
+  ...lumenThreadReplies,
   ...Object.values(messagesByDmGroup).flat(),
 ];
 
@@ -590,17 +709,19 @@ function notification(type: NotificationDto['type'], messageId: string, read = f
  * What the backend would have created (notifications.service.ts): one
  * DIRECT_MESSAGE per DM message — a mention inside a DM is still
  * DIRECT_MESSAGE — a USER_MENTION for the channel mention, a THREAD_REPLY for
- * the watched release thread. Unread ones match the unread DMs/mention below
- * (bell = 2 + 3 + 1); older read ones were cleared from the inbox. Newest
- * first, like the API.
+ * the watched Friday thread (read: Alex replied after it). Unread ones match
+ * the unread DMs/mention below (bell = 3 + 3 + 1); older read ones were
+ * cleared from the inbox. Newest first, like the API.
  */
 const notifications: NotificationDto[] = [
-  notification('DIRECT_MESSAGE', 'sc-dm-priya-illustrations'),
-  notification('DIRECT_MESSAGE', 'sc-dm-priya-figma'),
+  notification('DIRECT_MESSAGE', 'sc-dm-pri-never'),
+  notification('DIRECT_MESSAGE', 'sc-dm-pri-lmao'),
+  notification('DIRECT_MESSAGE', 'sc-dm-pri-pit'),
+  notification('THREAD_REPLY', 'sc-thread-ok-9', true),
+  notification('DIRECT_MESSAGE', 'sc-dm-priya-copy', true),
   notification('DIRECT_MESSAGE', 'sc-dm-launch-signoff'),
   notification('DIRECT_MESSAGE', 'sc-dm-launch-screens'),
   notification('DIRECT_MESSAGE', 'sc-dm-launch-copy'),
-  notification('THREAD_REPLY', 'sc-thread-changelog', true),
   notification('USER_MENTION', 'sc-design-accent'),
   notification('DIRECT_MESSAGE', 'sc-dm-marcus-pairing', true),
   notification('CHANNEL_MESSAGE', 'sc-trail-ridge', true),
@@ -630,8 +751,9 @@ const MODERATOR_ACTIONS: RoleDto['actions'] = [
 /**
  * Like the real backend: every community gets the default "Community Admin",
  * "Moderator" and "Member" roles (isDefault, created with the community;
- * `createDefaultCommunityRoles`), and the creator is its Community Admin.
- * Lumen Studio added two custom roles later.
+ * `createDefaultCommunityRoles`, and default role names can't be changed),
+ * and the creator is its Community Admin. Couch Co-op added one custom role,
+ * "mods" (dropbear and gracie); Lumen Studio added Release Manager and Designer.
  */
 function role(
   communityId: string,
@@ -656,31 +778,41 @@ for (const c of communities) {
   const admin = role(c.id, 'Community Admin', ADMIN_ACTIONS, 10);
   const moderator = role(c.id, 'Moderator', MODERATOR_ACTIONS, 20);
   const member = role(c.id, 'Member', MEMBER_ACTIONS, 100);
-  const isLumen = c.id === LUMEN;
-  const release = role(c.id, 'Release Manager', [...MEMBER_ACTIONS, 'PIN_MESSAGE', 'UNPIN_MESSAGE', 'CREATE_INVITE'], 30, { createdDaysAgo: 142 });
-  const designer = role(c.id, 'Designer', [...MEMBER_ACTIONS, 'MANAGE_EMOJIS', 'CREATE_SOUNDBOARD_SOUND'], 40, { createdDaysAgo: 96 });
-  rolesByCommunity[c.id] = isLumen ? [admin, moderator, release, designer, member] : [admin, moderator, member];
+  let custom: RoleDto[] = [];
+  let rolesOf = (_id: string): RoleDto[] => [member];
+  if (c.id === LUMEN) {
+    const release = role(c.id, 'Release Manager', [...MEMBER_ACTIONS, 'PIN_MESSAGE', 'UNPIN_MESSAGE', 'CREATE_INVITE'], 30, { createdDaysAgo: 142 });
+    const designer = role(c.id, 'Designer', [...MEMBER_ACTIONS, 'MANAGE_EMOJIS', 'CREATE_SOUNDBOARD_SOUND'], 40, { createdDaysAgo: 96 });
+    custom = [release, designer];
+    rolesOf = (id) =>
+      id === U.grace.id || id === U.marcus.id
+        ? [moderator]
+        : id === U.samira.id
+          ? [release]
+          : id === U.priya.id || id === U.diego.id
+            ? [designer]
+            : [member];
+  } else if (c.id === COUCH) {
+    const mods = role(
+      c.id,
+      'mods',
+      [...MEMBER_ACTIONS, 'PIN_MESSAGE', 'UNPIN_MESSAGE', 'DELETE_ANY_MESSAGE', 'MUTE_PARTICIPANT', 'KICK_USER', 'CREATE_INVITE'],
+      30,
+      { createdDaysAgo: 310 },
+    );
+    custom = [mods];
+    rolesOf = (id) => (id === U.marcus.id || id === U.grace.id ? [mods] : [member]);
+  }
+  rolesByCommunity[c.id] = [admin, moderator, ...custom, member];
   membershipsByCommunity[c.id] = c.memberIds.map((id, i) => {
     const user = id === me.id ? me : users.find((u) => u.id === id)!;
-    const roles =
-      id === c.ownerId
-        ? [admin]
-        : !isLumen
-          ? [member]
-          : id === U.grace.id || id === U.marcus.id
-            ? [moderator]
-            : id === U.samira.id
-              ? [release]
-              : id === U.priya.id || id === U.diego.id
-                ? [designer]
-                : [member];
     return {
       id: `sc-membership-${c.id}-${i}`,
       userId: id,
       communityId: c.id,
       // The creator joined the day the community was made; everyone else after.
       joinedAt: i === 0 ? c.createdAt : at('10:00', COMMUNITY_AGE_DAYS - 20 - i * 23),
-      roles,
+      roles: id === c.ownerId ? [admin] : rolesOf(id),
       user: user as never,
     };
   });
@@ -699,26 +831,19 @@ function presence(entries: [ScenarioUser, string][]): VoicePresenceUserDto[] {
 }
 
 /**
- * Who's in which voice channel, before Alex joins anything. Each person is in
- * at most one channel, and everyone in voice is online. The Lounge is the
- * design/writing crew co-working; the release crew is in Standup. The Voice
- * story adds Alex to the Lounge (`showcaseWithMeInVoice`) and keeps everyone
- * else where they are; in the tour he then leaves ("On my way to standup" in
- * the phone clip) and the last scene (`ChatLightStandup`) has him in Standup.
+ * Who's in which voice channel, before Alex joins anything: dropbear and pri
+ * in Squad Up, kwam3 idle in AFK. Lumen Studio's voice channels are empty
+ * (it's 9 PM). Each person is in at most one channel, and everyone in voice
+ * is online. The Voice story adds Alex to Squad Up (`showcaseWithMeInVoice`)
+ * and keeps everyone else where they are.
  */
-export const showcaseLoungeCrew: ScenarioUser[] = [U.priya, U.diego, U.chloe];
-export const showcaseStandupCrew: ScenarioUser[] = [U.samira, U.marcus, U.aiko];
+export const showcaseSquadCrew: ScenarioUser[] = [U.marcus, U.priya];
 const voicePresenceByChannel: Record<string, VoicePresenceUserDto[]> = {
-  [C.lounge.id]: presence([
-    [U.priya, at('15:05')],
-    [U.diego, at('15:08')],
-    [U.chloe, at('15:21')],
+  [CC.squad.id]: presence([
+    [U.marcus, at('21:00')],
+    [U.priya, at('21:01')],
   ]),
-  [C.standup.id]: presence([
-    [U.samira, at('15:36')],
-    [U.marcus, at('15:38')],
-    [U.aiko, at('15:39')],
-  ]),
+  [CC.afk.id]: presence([[U.kwame, at('20:48')]]),
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -734,7 +859,7 @@ let assembled: Scenario = {
   users,
   communities,
   messagesByChannel,
-  threadRepliesByParent: { [SHOWCASE_THREAD_PARENT_ID]: threadReplies },
+  threadRepliesByParent: { [SHOWCASE_THREAD_PARENT_ID]: threadReplies, [LUMEN_THREAD_PARENT_ID]: lumenThreadReplies },
   pinnedByChannel,
   voicePresenceByChannel,
   dmGroups,
@@ -744,15 +869,17 @@ let assembled: Scenario = {
   friendships,
   membershipsByCommunity,
   rolesByCommunity,
-  instanceName: 'Lumen Studio',
+  instanceName: 'Semaphore Chat',
 };
 // Unread = the newest N messages of each context (the DM ones match the
 // unread DIRECT_MESSAGE notifications above; #design's mention is 11:20).
+assembled = withUnread(assembled, CC.clips.id, 2);
+assembled = withUnread(assembled, CC.lfg.id, 1);
 assembled = withUnread(assembled, C.general.id, 4);
 assembled = withUnread(assembled, C.design.id, 3, 1);
 assembled = withUnread(assembled, C.announcements.id, 1);
 assembled = withUnread(assembled, 'tr-general', 1);
-assembled = withUnread(assembled, SHOWCASE_DM_PRIYA, 2);
+assembled = withUnread(assembled, SHOWCASE_DM_PRI, 3);
 assembled = withUnread(assembled, SHOWCASE_DM_LAUNCH, 3, 1);
 
 export const showcaseScenario: Scenario = assembled;
@@ -776,7 +903,7 @@ export function showcaseWithRead(contextId: string, scenario: Scenario = showcas
 export function showcaseWithMeInVoice(
   channelId: string,
   scenario: Scenario = showcaseScenario,
-  joinedAt: string = at('15:41'),
+  joinedAt: string = at('21:03'),
 ): Scenario {
   const already = scenario.voicePresenceByChannel[channelId] ?? [];
   return {
@@ -788,18 +915,18 @@ export function showcaseWithMeInVoice(
   };
 }
 export const showcaseMe = me;
-/** Showcase users by username (`priya`, `marcus`, `aiko`, ...). */
+/** Showcase users by key (`priya`, `marcus`, `aiko`, ...; usernames are the handles: `pri`, `dropbear`, ...). */
 export const showcaseUsers = U;
-export const SHOWCASE_COMMUNITY_ID = LUMEN;
+export const SHOWCASE_COMMUNITY_ID = COUCH;
 
 export const showcasePaths = {
-  dev: `/community/${LUMEN}/channel/${C.dev.id}`,
-  general: `/community/${LUMEN}/channel/${C.general.id}`,
-  lounge: `/community/${LUMEN}/channel/${C.lounge.id}`,
-  community: `/community/${LUMEN}`,
-  communitySettings: `/community/${LUMEN}/edit`,
+  general: `/community/${COUCH}/channel/${CC.general.id}`,
+  squad: `/community/${COUCH}/channel/${CC.squad.id}`,
+  community: `/community/${COUCH}`,
+  lumenDev: `/community/${LUMEN}/channel/${C.dev.id}`,
+  lumenSettings: `/community/${LUMEN}/edit`,
   dms: '/direct-messages',
-  dmPriya: `/direct-messages/${SHOWCASE_DM_PRIYA}`,
+  dmPri: `/direct-messages/${SHOWCASE_DM_PRI}`,
   dmLaunch: `/direct-messages/${SHOWCASE_DM_LAUNCH}`,
   notifications: '/notifications',
   settings: '/settings',

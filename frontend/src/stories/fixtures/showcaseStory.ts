@@ -47,7 +47,8 @@ import { StoryRoutes } from './StoryRoutes';
 import { makeHandlers } from './handlers';
 import type { LadleStoryComponent } from './screenStory';
 import { showcaseFileHandlers } from './showcaseArt';
-import { showcaseScenario } from './showcase';
+import { SHOWCASE_ONLINE_IDS, showcaseScenario } from './showcase';
+import { showcaseGifHandlers } from './showcaseGifs';
 import type { Scenario, ScenarioUser } from './types';
 
 /** The showcase's default look: dark, violet accent (matches the docs site), balanced intensity. */
@@ -409,6 +410,35 @@ function memberRoleHandlers(scenario: Scenario): HttpHandler[] {
   ];
 }
 
+/**
+ * Presence from `SHOWCASE_ONLINE_IDS` (the base handlers treat "has a status"
+ * as online, but in the showcase most people online haven't set one).
+ */
+function presenceHandlers(scenario: Scenario): HttpHandler[] {
+  const online = (id: string) => SHOWCASE_ONLINE_IDS.has(id);
+  const bulk = (ids: string[]) => Object.fromEntries(ids.map((id) => [id, online(id)]));
+  return [
+    http.get('/api/presence/user/:userId', ({ params }) =>
+      HttpResponse.json({ userId: String(params.userId), isOnline: online(String(params.userId)) })),
+    http.get('/api/presence/users/bulk', () =>
+      HttpResponse.json({ presence: bulk([scenario.me, ...scenario.users].map((u) => u.id)) })),
+    http.get('/api/presence/users/:userIds', ({ params }) =>
+      HttpResponse.json({ presence: bulk(String(params.userIds).split(',').filter(Boolean)) })),
+  ];
+}
+
+/** The instance has GIF search turned on (the picker's endpoints: `showcaseGifHandlers`). */
+function publicSettingsHandler(scenario: Scenario): HttpHandler {
+  return http.get('/api/instance/settings/public', () =>
+    HttpResponse.json({
+      name: scenario.instanceName,
+      registrationMode: 'INVITE_ONLY',
+      maxFileSizeBytes: 25 * 1024 * 1024,
+      gifSearchEnabled: true,
+      passwordResetEnabled: true,
+    }));
+}
+
 const voiceHeartbeatHandlers: HttpHandler[] = [
   http.post('/api/channels/:channelId/voice-presence/refresh', ({ params }) =>
     HttpResponse.json({ success: true, message: 'Presence refreshed successfully', channelId: String(params.channelId) }, { status: 201 })),
@@ -611,6 +641,9 @@ export function defineShowcase(path: string, options: ShowcaseOptions = {}): Lad
     extraHandlers: [
       ...(options.extraHandlers ?? []),
       ...showcaseFileHandlers(),
+      ...showcaseGifHandlers(),
+      publicSettingsHandler(scenario),
+      ...presenceHandlers(scenario),
       appearanceHandler(scenario, theme),
       ...reactionHandlers(scenario, () => live.sent),
       ...memberRoleHandlers(scenario),

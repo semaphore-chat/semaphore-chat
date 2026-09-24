@@ -166,44 +166,42 @@ function makeActor(page) {
 // Scenes
 // ─────────────────────────────────────────────────────────────────────────
 
-const DEV = { channelId: 'ch-dev' };
+// Ids and usernames: see src/stories/fixtures/showcase.ts. People are named
+// by username (their handle): alexk (Alex, the viewer), dropbear, pri, aiko,
+// gracie, samira (shown as "Samira"), kwam3, ...
+const GEN = { channelId: 'cc-general' };
+const DM_PRI = { dmId: 'dm-priya' };
+const PIT_CAPTION_ID = 'sc-cc-pit-caption';
+const THREAD_PARENT_ID = 'sc-cc-friday';
 
 /** What gets said in the tour's scenes (shared with the catch-up steps below). */
 const TOUR_TEXT = {
-  merged: 'Merged! Thanks for the quick reviews, everyone 🎉',
-  staging: 'Nice 🚀 deploying to staging now',
-  standup: 'On my way to standup 🏃',
-  seeYou: 'See you there!',
+  friday: "ok i'm on at 8:45 friday",
+  dmReply: 'yeah i saw',
+  priAsk: 'you getting on?',
 };
 
 // The tour plays as one continuous session, but every scene is a fresh page.
 // These replay what earlier scenes did (through window.__showcase, before the
 // clip starts) so a later scene doesn't lose sent messages or show badges for
-// conversations already read. Ids: see src/stories/fixtures/showcase.ts.
+// conversations already read.
 // Messages are spaced out: several arriving within a frame or two can leave
 // the list short of the bottom (it stops following new messages).
 const CATCH_UP_GAP_MS = 400;
 const afterTourChat = async (actor) => {
-  await actor.showcase('say', 'alex', DEV, TOUR_TEXT.merged, {
-    reactions: [
-      { emoji: '🎉', userIds: ['u-priya', 'u-aiko'] },
-      { emoji: '🙌', userIds: ['u-marcus'] },
-    ],
-  });
+  await actor.showcase('say', 'alexk', GEN, TOUR_TEXT.friday);
   await sleep(CATCH_UP_GAP_MS);
-  await actor.showcase('say', 'marcus', DEV, TOUR_TEXT.staging);
-  await sleep(CATCH_UP_GAP_MS);
-  await actor.showcase('react', 'alex', 'sc-dev-ci-green', '💚', DEV);
+  await actor.showcase('react', 'alexk', PIT_CAPTION_ID, '😂', GEN);
 };
-const afterTourDms = (actor) => actor.showcase('read', { dmId: 'dm-priya' });
-const afterTourPhone = async (actor) => {
+const afterTourDms = async (actor) => {
+  await actor.showcase('say', 'alexk', DM_PRI, TOUR_TEXT.dmReply);
   await sleep(CATCH_UP_GAP_MS);
-  await actor.showcase('say', 'alex', DEV, TOUR_TEXT.standup);
+  await actor.showcase('say', 'pri', DM_PRI, TOUR_TEXT.priAsk);
   await sleep(CATCH_UP_GAP_MS);
-  await actor.showcase('say', 'aiko', DEV, TOUR_TEXT.seeYou);
+  await actor.showcase('read', DM_PRI);
 };
 
-/** #dev: type + send a message, teammates react and reply, +1 a reaction, open the thread (`long`: a longer message, for the tour). */
+/** #general: type + send a message, +1 the 😂 on gracie's screenshot, scroll up and open the Friday thread. */
 async function chatScene({ page, actor, start }, { long = false } = {}) {
   const composer = page.locator('textarea').first();
   const cbox = await composer.boundingBox();
@@ -211,56 +209,67 @@ async function chatScene({ page, actor, start }, { long = false } = {}) {
   // toolbar, so the cursor never travels across the message list to get here.
   await actor.place(cbox.x + cbox.width * 0.78, cbox.y + cbox.height / 2 + 6);
   await start();
-  await sleep(200);
+  await sleep(long ? 500 : 200);
   await actor.clickOn(composer, { dx: -cbox.width * 0.3, moveMs: 700, pause: 120 });
   // Drift off the text like a person does before typing.
   await actor.move(actor.pos.x + 190, actor.pos.y + 14, 300);
-  await actor.type(long ? TOUR_TEXT.merged : 'Merged, thanks all 🎉');
+  await actor.type(TOUR_TEXT.friday);
   await sleep(200);
   await page.keyboard.press('Enter');
-  await sleep(450);
-  const mine = await page.evaluate(() => {
-    const rows = Array.from(document.querySelectorAll('[data-message-id]'));
-    const row = rows.reverse().find((r) => (r.textContent ?? '').includes('Merged'));
-    return row ? row.getAttribute('data-message-id') : null;
-  });
-  if (mine) {
-    await actor.showcase('react', 'priya', mine, '🎉', DEV);
-    await sleep(300);
-    await actor.showcase('react', 'aiko', mine, '🎉', DEV);
-    await sleep(200);
-    await actor.showcase('react', 'marcus', mine, '🙌', DEV);
+  await sleep(long ? 1000 : 600);
+  // +1 the 😂 on gracie's "found this from last time".
+  const laugh = page.locator('.MuiChip-root', { hasText: '😂' }).first();
+  if (await laugh.isVisible().catch(() => false)) {
+    await actor.clickOn(laugh, { moveMs: 750, pause: 120 });
+    await sleep(long ? 500 : 250);
   }
-  await actor.showcase('typing', 'marcus', DEV, true);
-  await sleep(900);
-  await actor.showcase('typing', 'marcus', DEV, false);
-  await actor.showcase('say', 'marcus', DEV, TOUR_TEXT.staging);
-  await sleep(450);
-  // +1 Grace's "CI is green" reaction.
-  const green = page.locator('.MuiChip-root', { hasText: '💚' }).first();
-  if (await green.isVisible().catch(() => false)) {
-    await actor.clickOn(green, { moveMs: 750, pause: 120 });
-    await sleep(long ? 700 : 350);
-  }
+  // The Friday thread is above the fold (and the list is virtualised, so its
+  // row isn't in the DOM yet). Rest the cursor on the composer, scroll the
+  // list up like a trackpad would, then go and click "5 replies".
+  await actor.move(cbox.x + cbox.width * 0.55, cbox.y + cbox.height / 2 + 4, 650);
+  await scrollUntilVisible(page, THREAD_PARENT_ID);
+  await sleep(long ? 600 : 350);
   const replies = page.locator('button', { hasText: /5 replies/ }).first();
-  await replies.scrollIntoViewIfNeeded();
   await actor.clickOn(replies, { moveMs: 800, pause: 120 });
-  await sleep(long ? 2000 : 1700);
+  await sleep(long ? 2200 : 1700);
+}
+
+/** Smoothly scroll the message list up until a message row is fully in view (a third of the way down). */
+async function scrollUntilVisible(page, messageId) {
+  for (let i = 0; i < 40; i++) {
+    const done = await page.evaluate((id) => {
+      const anyRow = document.querySelector('[data-message-id]');
+      let el = anyRow?.parentElement ?? null;
+      while (el && !(el.scrollHeight > el.clientHeight + 4 && /(auto|scroll)/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+      if (!el) throw new Error('scrollUntilVisible: no scrolling message list');
+      const target = document.querySelector(`[data-message-id="${id}"]`);
+      const box = el.getBoundingClientRect();
+      if (target) {
+        const t = target.getBoundingClientRect();
+        if (t.top >= box.top + box.height * 0.3) return true;
+      }
+      el.scrollBy({ top: -30 });
+      return false;
+    }, messageId);
+    if (done) return;
+    await sleep(16);
+  }
+  throw new Error(`scrollUntilVisible: ${messageId} never came into view`);
 }
 
 /**
- * Connected to the Lounge: people take turns talking. The conversation script
- * (`startConversation` in showcaseStory.ts) goes Priya, Priya, Diego,
- * Diego+Priya, Chloé, ... one step every `stepMs`; `lead` is how long it has
- * been running when the clip starts, so a short clip still shows all three.
+ * Connected to Squad Up: dropbear and pri take turns talking. The
+ * conversation script (`startConversation` in showcaseStory.ts) goes
+ * dropbear, dropbear, pri, pri+dropbear, dropbear, ... one step every
+ * `stepMs`; `lead` is how long it has been running when the clip starts.
  *
  * The cursor stays in the empty middle of the voice bar: a hovered stage tile
  * swaps its green speaking ring for the card hover border.
  */
 async function voiceScene({ actor, start }, { ms = 5200, stepMs = 1100, lead = 300 } = {}) {
   await actor.place(420, 868);
-  // The people already in the Lounge (`showcaseLoungeCrew` in src/stories/fixtures/showcase.ts).
-  await actor.showcase('conversation', ['priya', 'diego', 'chloe'], stepMs);
+  // The people already in Squad Up (`showcaseSquadCrew` in src/stories/fixtures/showcase.ts).
+  await actor.showcase('conversation', ['dropbear', 'pri'], stepMs);
   await sleep(lead);
   await start();
   await sleep(600);
@@ -268,80 +277,78 @@ async function voiceScene({ actor, start }, { ms = 5200, stepMs = 1100, lead = 3
   await sleep(ms - 2000);
 }
 
-/** DMs: open Priya's conversation from the list, reply, she answers. */
+/** DMs: open pri's conversation from the list, reply, she asks if he's getting on. */
 async function dmScene({ page, actor, start }) {
-  const priya = page.locator('[role="button"], a, li', { hasText: 'Priya Raman' }).first();
-  const pbox = await priya.boundingBox();
+  const pri = page.locator('[role="button"], a, li', { hasText: /never living that down/ }).first();
+  const pbox = await pri.boundingBox();
   await actor.place(pbox.x + pbox.width + 260, pbox.y + 180);
   await start();
   await sleep(300);
-  await actor.clickOn(priya, { moveMs: 750 });
+  await actor.clickOn(pri, { moveMs: 750 });
   const composer = page.locator('textarea:visible').first();
   await composer.waitFor({ state: 'visible' });
-  await sleep(500);
+  await sleep(1200);
   await actor.clickOn(composer, { moveMs: 700 });
   await actor.move(actor.pos.x + 180, actor.pos.y + 14, 300);
-  await actor.type('Love them, ship all three 😄');
+  await actor.type(TOUR_TEXT.dmReply);
   await page.keyboard.press('Enter');
-  await sleep(600);
-  await actor.showcase('typing', 'priya', { dmId: 'dm-priya' }, true);
-  await sleep(1000);
-  await actor.showcase('typing', 'priya', { dmId: 'dm-priya' }, false);
-  await actor.showcase('say', 'priya', { dmId: 'dm-priya' }, 'yay!! 🎉 adding them to the release');
-  await sleep(1700);
+  await sleep(1800);
+  await actor.showcase('say', 'pri', DM_PRI, TOUR_TEXT.priAsk);
+  await sleep(1900);
 }
 
-/** Phone: tap the composer, send "on my way to standup" in #dev, Aiko answers. */
+/** Phone, in pri's DM: answer "you getting on?" with a GIF from the picker (search "ok"). */
 async function phoneScene({ page, actor, start }) {
-  const composer = page.locator('textarea').first();
   // A finger doesn't hover: keep the (invisible) pointer on the app bar and
   // jump straight to each tap, so no message row shows a hover highlight.
   await actor.place(195, 20);
   await start();
-  await sleep(500);
-  await actor.tap(composer);
-  await sleep(300);
-  await actor.type(TOUR_TEXT.standup);
-  await sleep(250);
-  // On touch layouts Enter inserts a newline; tap the send button like a person would.
-  await actor.tap(page.locator('button:has([data-testid="SendIcon"])').last());
+  await sleep(700);
+  // The compact composer's "+" opens a sheet with Attach file / GIF / Emoji.
+  await actor.tap(page.locator('button[aria-label="Add attachment, GIF or emoji"]'));
+  await sleep(700);
+  await actor.tap(page.locator('[data-testid="composer-actions-sheet"] [role="button"]', { hasText: 'GIF' }).first());
+  const search = page.locator('input[placeholder="Search GIFs..."]');
+  await search.waitFor({ state: 'visible' });
   await sleep(900);
-  await actor.showcase('say', 'aiko', DEV, TOUR_TEXT.seeYou);
-  await sleep(1500);
+  await actor.type('ok');
+  const gif = page.locator('button[aria-label="ok"]');
+  await gif.waitFor({ state: 'visible' });
+  await sleep(1300);
+  await actor.tap(gif);
+  await actor.place(195, 20);
+  await sleep(2400);
 }
 
 /**
- * Light theme, now in Standup (after "On my way to standup"): the Standup
- * crew talk in the sidebar while #dev stays open. The cursor drifts right to
- * left along the channel header, clear of message rows (hover toolbars) and
- * header buttons: `move` bows a rightward move downwards and a leftward one
- * upwards, so going right to left the arc rises into the empty app bar
- * instead of dipping into the message list.
+ * Light theme, now in Squad Up: dropbear and pri talk in the sidebar while
+ * #general stays open. The cursor drifts right to left along the channel
+ * header, clear of message rows (hover toolbars) and header buttons: `move`
+ * bows a rightward move downwards and a leftward one upwards, so going right
+ * to left the arc rises into the empty app bar instead of dipping into the
+ * message list.
  */
 async function lightScene({ actor, start }) {
-  // `showcaseStandupCrew` in src/stories/fixtures/showcase.ts.
-  await actor.showcase('conversation', ['samira', 'marcus', 'aiko'], 1100);
+  await actor.showcase('conversation', ['dropbear', 'pri'], 1100);
   await actor.place(1000, 90);
   await sleep(300);
   await start();
   await actor.move(600, 92, 1600);
-  await sleep(1600);
+  await sleep(1800);
 }
 
 const SCENES = [
   { name: 'hero-chat', story: 'tour--chat', viewport: 'desktop', run: (c) => chatScene(c) },
-  // Joins at the conversation's second step, so Priya, Diego (alone, then with
-  // Priya) and Chloé all speak before the loop fades back to the start.
+  // Joins at the conversation's second step, so dropbear, pri and both
+  // together all speak before the loop fades back to the start.
   { name: 'hero-voice', story: 'tour--voice', viewport: 'desktop', run: (c) => voiceScene(c, { ms: 4000, stepMs: 1000, lead: 900 }) },
   { name: 'tour-chat', story: 'tour--chat', viewport: 'desktop', run: (c) => chatScene(c, { long: true }) },
+  // Opens pri's DM from the list (her 3 unread), so it starts from the unread state.
   { name: 'tour-dms', story: 'tour--dm-list', viewport: 'desktop', run: dmScene },
-  // (#dev isn't on screen in the voice scene; replaying the chat there would only mark #dev unread.)
+  { name: 'tour-phone', story: 'tour--dms', viewport: 'phone', before: [afterTourDms], run: phoneScene },
+  // (#general isn't on screen in the voice scene; replaying the chat there would only mark it unread.)
   { name: 'tour-voice', story: 'tour--voice', viewport: 'desktop', before: [afterTourDms], run: (c) => voiceScene(c, { ms: 5000 }) },
-  { name: 'tour-phone', story: 'tour--chat', viewport: 'phone', before: [afterTourChat, afterTourDms], run: phoneScene },
-  {
-    name: 'tour-light', story: 'tour--chat-light-standup', viewport: 'desktop',
-    before: [afterTourChat, afterTourDms, afterTourPhone], run: lightScene,
-  },
+  { name: 'tour-light', story: 'tour--chat-light-squad', viewport: 'desktop', before: [afterTourChat, afterTourDms], run: lightScene },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────

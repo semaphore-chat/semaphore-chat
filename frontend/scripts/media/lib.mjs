@@ -20,7 +20,7 @@ export const OUT_DIR = path.resolve(FRONTEND_ROOT, process.env.MEDIA_OUT_DIR || 
 export const FILTER = process.env.MEDIA_FILTER || '';
 
 /** Must match `SHOWCASE_NOW` / `SHOWCASE_TIMEZONE` in src/stories/fixtures/showcase.ts. */
-export const SHOWCASE_NOW = '2026-09-22T19:42:00Z';
+export const SHOWCASE_NOW = '2026-09-23T01:04:00Z';
 export const SHOWCASE_TIMEZONE = 'America/New_York';
 
 export const VIEWPORTS = {

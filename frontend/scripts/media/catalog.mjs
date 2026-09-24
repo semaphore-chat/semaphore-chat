@@ -20,28 +20,28 @@ export const SECTIONS = [
 export const SHOTS = [
   {
     name: 'chat-desktop', story: 'tour--chat', viewport: 'desktop', section: 'Chat', readme: true,
-    caption: 'Text channels with link previews, code blocks, reactions and threads',
-    alt: 'The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block with emoji reactions, a message with a five-reply thread, and the member list grouped by role with online status.',
+    caption: 'Text channels with images, GIFs, reactions and mentions',
+    alt: 'The #general channel of the Couch Co-op community on desktop: a mention, a game screenshot with emoji reactions, an animated GIF, and the member list grouped by role with online status.',
   },
   {
     name: 'thread-desktop', story: 'tour--thread', viewport: 'desktop', section: 'Threads & replies', readme: true,
     caption: 'Threads keep side conversations out of the main channel',
-    alt: 'A message thread about the release plan open beside the #dev channel, with five replies and reactions.',
+    alt: 'A thread about Friday\'s game night open beside the #general channel, with five replies.',
   },
   {
     name: 'voice-desktop', story: 'tour--voice', viewport: 'desktop', section: 'Voice & video', readme: true,
     caption: 'Drop-in voice channels, with speaking indicators and a persistent voice bar',
-    alt: 'The Lounge voice channel on desktop: a stage of four participant tiles, two of them outlined because they are speaking, and the voice controls at the bottom.',
+    alt: 'The Squad Up voice channel on desktop: a stage of three participant tiles, two of them outlined because they are speaking, and the voice controls at the bottom.',
   },
   {
     name: 'dms-desktop', story: 'tour--dms', viewport: 'desktop', section: 'DMs', readme: true,
     caption: 'Direct messages and group DMs, with unread badges',
-    alt: 'The "Launch crew" group direct message on desktop, with the conversation list showing unread counts.',
+    alt: 'A direct message conversation on desktop, with the conversation list showing unread counts.',
   },
   {
     name: 'community-settings-desktop', story: 'tour--community-settings', viewport: 'desktop', section: 'Communities & roles',
     caption: 'Community settings, members and roles',
-    alt: 'The Lumen Studio community settings page with its banner, name and description.',
+    alt: 'The community settings page of Lumen Studio, a product team\'s community, with its banner, name and description.',
   },
   {
     name: 'community-roles-desktop', story: 'tour--community-roles', viewport: 'desktop', section: 'Communities & roles', readme: true,
@@ -49,9 +49,9 @@ export const SHOTS = [
     alt: 'The Roles tab of the Lumen Studio community settings, listing the default Community Admin, Moderator and Member roles and the custom Release Manager and Designer roles, with their permissions.',
   },
   {
-    name: 'chat-light-desktop', story: 'tour--chat-light', viewport: 'desktop', section: 'Themes', readme: true,
+    name: 'chat-light-desktop', story: 'tour--lumen-dev-light', viewport: 'desktop', section: 'Themes', readme: true,
     caption: 'Light and dark themes with twelve accent colours',
-    alt: 'The #dev channel in the light theme with a violet accent.',
+    alt: 'The #dev channel of Lumen Studio, a product team\'s community, in the light theme with a violet accent: a pull-request link preview, a code block and a five-reply thread.',
   },
   {
     name: 'notifications-desktop', story: 'tour--notifications', viewport: 'desktop', section: 'Chat',
@@ -60,8 +60,8 @@ export const SHOTS = [
   },
   {
     name: 'dms-light-desktop', story: 'tour--dms-light', viewport: 'desktop', section: 'Themes',
-    caption: 'Group DMs in the light theme',
-    alt: 'The "Launch crew" group direct message in the light theme.',
+    caption: 'Direct messages in the light theme',
+    alt: 'A direct message conversation in the light theme.',
   },
   {
     name: 'dms-accent-desktop', story: 'tour--dms-accent', viewport: 'desktop', section: 'Themes',
@@ -71,22 +71,22 @@ export const SHOTS = [
   {
     name: 'chat-phone', story: 'tour--chat', viewport: 'phone', section: 'Mobile & PWA',
     caption: 'The same chat, built for phones',
-    alt: 'The #dev channel on a phone, with the message composer at the bottom.',
+    alt: 'The #general channel on a phone: a message with a thread, a game screenshot with reactions, an animated GIF and the message composer.',
   },
   {
     name: 'community-phone', story: 'tour--community', viewport: 'phone', section: 'Mobile & PWA',
-    caption: 'Channel list with unread badges and who is in voice',
-    alt: 'The Lumen Studio channel list on a phone, with unread badges and the people currently in the Lounge and Standup voice channels.',
+    caption: 'Channel list with unread channels and who is in voice',
+    alt: 'The Couch Co-op channel list on a phone, with unread channels marked and the people currently in the Squad Up and AFK voice channels.',
   },
   {
     name: 'thread-phone', story: 'tour--thread', viewport: 'phone', section: 'Threads & replies', prepare: 'threadFromTop',
     caption: 'Threads open full screen on phones',
-    alt: 'The release-plan thread open full screen on a phone.',
+    alt: 'The Friday thread open full screen on a phone, with five replies.',
   },
   {
     name: 'voice-phone', story: 'tour--voice', viewport: 'phone', section: 'Voice & video',
     caption: 'Voice on the go',
-    alt: 'The Lounge voice channel on a phone, with participant tiles and compact voice controls.',
+    alt: 'The Squad Up voice channel on a phone, with participant tiles and compact voice controls.',
   },
   {
     name: 'dm-list-phone', story: 'tour--dm-list', viewport: 'phone', section: 'DMs',
@@ -96,7 +96,7 @@ export const SHOTS = [
   {
     name: 'members-phone', story: 'tour--members', viewport: 'phone', section: 'Communities & roles',
     caption: 'Members grouped by role and online status',
-    alt: 'The member list on a phone, grouped by role (Community Admin, Moderator, Release Manager, Designer) and online status.',
+    alt: 'The Couch Co-op member list on a phone, grouped by role (Community Admin, mods) and online status.',
   },
 ];
 
@@ -104,11 +104,11 @@ export const VIDEOS = [
   {
     name: 'hero', file: 'video/hero.webp', fallback: 'video/hero.gif', section: 'Tour',
     caption: 'Semaphore Chat in 15 seconds',
-    alt: 'A short looping clip: a message is typed and sent in the #dev channel, a teammate replies and reacts, a thread opens, and then the Lounge voice channel shows people talking.',
+    alt: 'A short looping clip: a message is typed and sent in a community\'s #general channel, a reaction is added, a thread opens, and then the Squad Up voice channel shows two people talking.',
   },
   {
     name: 'tour', file: 'video/tour.mp4', poster: 'video/tour-poster.webp', section: 'Tour',
     caption: 'A 40-second tour of Semaphore Chat',
-    alt: 'A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, the app on a phone, and the light theme with the voice bar.',
+    alt: 'A guided tour: sending a message and adding a reaction in a channel, opening a thread, replying to a direct message, sending a GIF from the GIF picker on a phone, a voice channel with people speaking, and the light theme with the voice bar.',
   },
 ];

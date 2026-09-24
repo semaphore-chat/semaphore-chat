@@ -71,6 +71,7 @@ The script refuses to publish unless `report.json` comes from an unfiltered scre
 |-----------|------|
 | Demo people, channels, messages, DMs, notifications | `frontend/src/stories/fixtures/showcase.ts` |
 | Avatars, community logos, attached images | `frontend/src/stories/fixtures/showcaseArt.ts` (hand-written SVG, generated locally) |
+| GIFs (picker results and GIF messages) | `frontend/src/stories/fixtures/showcaseGifs.ts` (drawn on a canvas and encoded as GIFs in the browser, served from a mocked GIF provider) |
 | Theme, live socket and voice behaviour (`window.__showcase`) | `frontend/src/stories/fixtures/showcaseStory.ts` |
 | Screens (one story per screenshot subject) | `frontend/src/stories/tour/Tour.stories.tsx` (story ids `tour--*`) |
 | Which screenshots, viewports, captions and alt text | `frontend/scripts/media/catalog.mjs` |
@@ -78,4 +79,4 @@ The script refuses to publish unless `report.json` comes from an unfiltered scre
 | Encoding, crossfades, sizes | `frontend/scripts/media/encode.sh` |
 | Where the media is shown | `README.md`, `docs-site/docs/tour.md`, `docs-site/docs/index.md` |
 
-Timestamps in the demo data are fixed wall-clock times, and the capture pins the browser clock and timezone to match. A "3:42 PM" in the data always renders as 3:42 PM.
+Timestamps in the demo data are fixed wall-clock times, and the capture pins the browser clock and timezone to match. A "9:04 PM" in the data always renders as 9:04 PM.

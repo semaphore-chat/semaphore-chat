@@ -152,11 +152,23 @@ export function illustratedAvatarSvg(key: string, look: AvatarLook, size = 256):
 // Communities
 // ─────────────────────────────────────────────────────────────────────────
 
-export type CommunityGlyph = 'lumen' | 'trail' | 'synth';
+export type CommunityGlyph = 'couch' | 'lumen' | 'trail' | 'synth';
 
 /** A community logo: gradient tile with a simple geometric glyph. */
 export function communityIconSvg(glyph: CommunityGlyph, size = 256): string {
   const tiles: Record<CommunityGlyph, { bg: [string, string]; art: string }> = {
+    couch: {
+      bg: ['#3B5BDB', '#15AABF'],
+      art:
+        `<g fill="#FFFFFF">` +
+        `<rect x="32" y="40" width="64" height="34" rx="11"/>` +
+        `<rect x="20" y="58" width="20" height="38" rx="9"/>` +
+        `<rect x="88" y="58" width="20" height="38" rx="9"/>` +
+        `<rect x="36" y="72" width="56" height="20" rx="6"/>` +
+        `<rect x="28" y="92" width="8" height="12" rx="3"/><rect x="92" y="92" width="8" height="12" rx="3"/>` +
+        `</g>` +
+        `<path d="M64 74 V90" stroke="#2F6FD0" stroke-width="3" stroke-linecap="round" opacity="0.55"/>`,
+    },
     lumen: {
       bg: ['#7C5CFF', '#FF6FB5'],
       art:
@@ -321,6 +333,104 @@ export function prPreviewSvg(author: AvatarLook): string {
     avatar +
     // Language bar.
     `<rect x="0" y="146" width="620" height="10" fill="#3178C6"/><rect x="620" y="146" width="130" height="10" fill="#7C5CFF"/><rect x="750" y="146" width="90" height="10" fill="#F1E05A"/>` +
+    `</svg>`
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Deep Rift (the fictional game Couch Co-op plays)
+// ─────────────────────────────────────────────────────────────────────────
+
+const GAME_FONT = `font-family="Roboto, 'Segoe UI', Helvetica, Arial, 'Liberation Sans', sans-serif"`;
+
+/** A little driller (helmet lamp, overalls), feet at (x, y). Same character as the showcase GIFs. */
+function drillerSvg(x: number, y: number, s: number, suit: string, opts: { eyes?: 'open' | 'dizzy'; arm?: number; tilt?: number } = {}): string {
+  const ink = 'stroke="#15131F" stroke-width="3.2"';
+  const eyes =
+    opts.eyes === 'dizzy'
+      ? [-8, 8].map((cx) => `<path d="M${cx - 4} -82 L${cx + 4} -74 M${cx + 4} -82 L${cx - 4} -74" stroke="#15131F" stroke-width="2.4" stroke-linecap="round"/>`).join('')
+      : `<circle cx="-8" cy="-78" r="2.8" fill="#15131F"/><circle cx="8" cy="-78" r="2.8" fill="#15131F"/>`;
+  return (
+    `<g transform="translate(${x} ${y}) rotate(${opts.tilt ?? 0}) scale(${s})">` +
+    `<rect x="-15" y="-24" width="12" height="24" rx="5" fill="#2D2446" ${ink}/>` +
+    `<rect x="3" y="-24" width="12" height="24" rx="5" fill="#2D2446" ${ink}/>` +
+    `<rect x="-31" y="-58" width="11" height="30" rx="5" fill="${suit}" ${ink}/>` +
+    `<rect x="-23" y="-64" width="46" height="44" rx="12" fill="${suit}" ${ink}/>` +
+    `<rect x="-21.5" y="-36" width="43" height="6" fill="#2D2446"/>` +
+    `<g transform="translate(25 -56) rotate(${opts.arm ?? 0})"><rect x="-5.5" y="-2" width="11" height="30" rx="5" fill="${suit}" ${ink}/>` +
+    `<circle cx="0" cy="30" r="7" fill="#F2C9A0" ${ink}/></g>` +
+    `<circle cx="0" cy="-84" r="21" fill="#F2C9A0" ${ink}/>` +
+    `<path d="M-24 -88 A24 24 0 0 1 24 -88 Z" fill="#FFD35C" ${ink}/>` +
+    `<rect x="-28" y="-90" width="56" height="7" rx="3" fill="#FFD35C" ${ink}/>` +
+    `<circle cx="0" cy="-101" r="6.5" fill="#FFF6C9" ${ink}/>` +
+    eyes +
+    `</g>`
+  );
+}
+
+/** Link-preview banner for the Deep Rift 6.2 patch notes (dropbear's link in #general). */
+export function deepRiftPatchSvg(): string {
+  const crystals = [[70, 40, 10], [150, 150, 7], [560, 36, 8], [720, 170, 9], [800, 60, 6]]
+    .map(([x, y, s]) => `<path d="M${x} ${y - s * 1.6} L${x + s} ${y} L${x} ${y + s * 1.6} L${x - s} ${y} Z" fill="#5EEAD4"/>`)
+    .join('');
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="840" height="220" viewBox="0 0 840 220">` +
+    `<defs><linearGradient id="dr" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1B1530"/><stop offset="1" stop-color="#3A1F4F"/></linearGradient>` +
+    `<radialGradient id="drl" cx="0.78" cy="0.35" r="0.5"><stop offset="0" stop-color="#FFD35C" stop-opacity="0.35"/><stop offset="1" stop-color="#FFD35C" stop-opacity="0"/></radialGradient></defs>` +
+    `<rect width="840" height="220" fill="url(#dr)"/>` +
+    `<rect width="840" height="220" fill="url(#drl)"/>` +
+    `<path d="M0 180 C120 160 220 190 340 172 C470 152 560 186 700 168 C760 160 800 170 840 164 L840 220 L0 220 Z" fill="#2A2145"/>` +
+    crystals +
+    `<text x="48" y="102" ${GAME_FONT} font-size="54" font-weight="800" letter-spacing="6" fill="#F3F0FF">DEEP RIFT</text>` +
+    `<rect x="50" y="122" width="148" height="40" rx="20" fill="#FF8A3D"/>` +
+    `<text x="124" y="150" ${GAME_FONT} font-size="22" font-weight="700" text-anchor="middle" fill="#1B1530">PATCH 6.2</text>` +
+    `<text x="216" y="150" ${GAME_FONT} font-size="21" fill="#B9B2CC">driller changes · new biome</text>` +
+    drillerSvg(660, 190, 1.35, '#FF8A3D', { arm: -150 }) +
+    `</svg>`
+  );
+}
+
+/** A Deep Rift screenshot: four drillers stuck at the bottom of a pit (gracie's "found this from last time"). */
+export function pitScreenshotSvg(): string {
+  const rock = '#3B2F5C';
+  const hud =
+    // Squad health bars, top left; depth readout top right; crosshair.
+    [0, 1, 2, 3]
+      .map((i) => {
+        const suit = ['#FF8A3D', '#3DD68C', '#7C9CFF', '#FF6FB5'][i];
+        const hp = [0.35, 0.6, 0.2, 0.8][i];
+        return (
+          `<circle cx="42" cy="${40 + i * 30}" r="9" fill="${suit}"/>` +
+          `<rect x="58" y="${34 + i * 30}" width="120" height="12" rx="6" fill="#000" opacity="0.45"/>` +
+          `<rect x="58" y="${34 + i * 30}" width="${120 * hp}" height="12" rx="6" fill="${hp < 0.3 ? '#FF6B6B' : '#3DD68C'}"/>`
+        );
+      })
+      .join('') +
+    `<rect x="800" y="28" width="132" height="40" rx="8" fill="#000" opacity="0.45"/>` +
+    `<text x="866" y="55" ${GAME_FONT} font-size="20" font-weight="700" text-anchor="middle" fill="#E9E6F5">-214 m</text>` +
+    `<g stroke="#FFFFFF" stroke-width="3" opacity="0.7"><path d="M480 250 v10 M480 276 v10 M462 268 h10 M488 268 h10"/></g>`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="523" height="257" viewBox="0 20 960 471">` +
+    `<defs>` +
+    `<linearGradient id="pc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#120E22"/><stop offset="1" stop-color="#2A2145"/></linearGradient>` +
+    `<radialGradient id="pl" cx="0.5" cy="0.78" r="0.42"><stop offset="0" stop-color="#FFE9A8" stop-opacity="0.5"/><stop offset="1" stop-color="#FFE9A8" stop-opacity="0"/></radialGradient>` +
+    `</defs>` +
+    `<rect width="960" height="540" fill="url(#pc)"/>` +
+    // Pit walls, looking down into it.
+    `<path d="M0 0 L300 0 L360 250 L330 540 L0 540 Z" fill="${rock}"/>` +
+    `<path d="M960 0 L650 0 L600 260 L640 540 L960 540 Z" fill="${rock}"/>` +
+    `<path d="M300 0 L360 250 L330 540" stroke="#54457F" stroke-width="6" fill="none"/>` +
+    `<path d="M650 0 L600 260 L640 540" stroke="#54457F" stroke-width="6" fill="none"/>` +
+    `<path d="M330 450 C420 430 540 430 640 452 L640 540 L330 540 Z" fill="#241B3D"/>` +
+    [[200, 120, 12], [120, 330, 9], [780, 180, 11], [860, 400, 8], [420, 90, 7]]
+      .map(([x, y, s]) => `<path d="M${x} ${y - s * 1.6} L${x + s} ${y} L${x} ${y + s * 1.6} L${x - s} ${y} Z" fill="#5EEAD4"/>`)
+      .join('') +
+    `<rect width="960" height="540" fill="url(#pl)"/>` +
+    drillerSvg(400, 470, 1.25, '#FF8A3D', { eyes: 'dizzy', tilt: -8 }) +
+    drillerSvg(470, 482, 1.25, '#3DD68C', { arm: -160 }) +
+    drillerSvg(540, 472, 1.25, '#7C9CFF', { tilt: 6 }) +
+    drillerSvg(600, 486, 1.25, '#FF6FB5', { arm: -40 }) +
+    hud +
     `</svg>`
   );
 }

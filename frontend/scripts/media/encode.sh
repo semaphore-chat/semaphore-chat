@@ -25,13 +25,13 @@ FADE=0.5            # crossfade between scenes (s)
 LOOP_FADE=0.6       # hero: crossfade from the last scene back to the first frame
 LOOP_HOLD=0.25      # hero: then hold that first frame (the 12 fps WebP/GIF may not sample the fade's very last frame)
 XFADE=fade          # xfade transition (the hero uses HERO_XFADE)
-# The hero's crossfades ease in (cubic) instead of running linearly. The
+# The hero's crossfades ease in steeply (sixth power) instead of running linearly. The
 # animated-WebP encoder skips pixels that changed by only a few levels since
 # the previous frame, so a slow linear fade over dark, dimmed content never
 # finishes there: the old scene's text stays burnt into the new one as dark
 # blocks for as long as that area stays still. Eased, the last step of the
 # fade is large enough to be encoded everywhere it matters.
-HERO_XFADE="custom:expr='A*(1-pow(1-P\,3))+B*pow(1-P\,3)'"
+HERO_XFADE="custom:expr='A*(1-pow(1-P\,6))+B*pow(1-P\,6)'"
 BG_TOP='0x1b1530'   # phone scene backdrop (showcase violet, dark)
 BG_BOTTOM='0x0f0d1a'
 # The gradients source replaces any end point outside the frame (x >= width,
@@ -138,7 +138,7 @@ fi
 
 # ── Tour ─────────────────────────────────────────────────────────────────
 TOUR=()
-for c in tour-chat tour-dms tour-voice tour-phone tour-light; do
+for c in tour-chat tour-dms tour-phone tour-voice tour-light; do
   [[ -n "${DUR[$c]:-}" ]] && TOUR+=("$c")
 done
 if (( ${#TOUR[@]} > 0 )); then
