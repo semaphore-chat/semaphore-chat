@@ -47,11 +47,15 @@ async function shoot(browser, shot) {
   let error = null;
   try {
     await page.goto(storyUrl(shot.story), { waitUntil: 'networkidle', timeout: 45_000 });
-    brokenImages = await waitForSettled(page, { settleMs: shot.settleMs ?? 2500 });
-    forbidden = await findForbiddenText(page);
+    await waitForSettled(page, { settleMs: shot.settleMs ?? 2500 });
     // Park the mouse off-canvas so no hover state leaks into the shot.
     await page.mouse.move(0, 0);
     if (shot.prepare) await PREPARE[shot.prepare](page);
+    // Check the frame that is actually captured: the mouse move and `prepare`
+    // can change what's on screen (a scroll can bring new images into view),
+    // so wait for anything they started and only then look for problems.
+    brokenImages = await waitForSettled(page, { settleMs: 0 });
+    forbidden = await findForbiddenText(page);
     await page.screenshot({ path: path.join(OUT_DIR, 'raw', 'shots', `${shot.name}.png`) });
   } catch (err) {
     error = String(err?.message || err);

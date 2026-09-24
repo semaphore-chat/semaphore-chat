@@ -76,9 +76,13 @@ if [[ "$encoded_shots" != "$catalog_shots" ]]; then
   exit 1
 fi
 
-STAGE=$(mktemp -d)
-INDEX=$(mktemp -u)
-trap 'rm -rf "$STAGE" "$INDEX"' EXIT
+# One private temp dir holds the staged files and the temporary index. The
+# index path must not exist yet (git rejects an empty file as a corrupt index),
+# so it is a name inside a dir only we can write to, not a mktemp -u name.
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+STAGE="$WORK/stage"
+INDEX="$WORK/index"
 
 mkdir -p "$STAGE/screenshots" "$STAGE/video"
 cp "$SRC"/screenshots/*.webp "$STAGE/screenshots/"

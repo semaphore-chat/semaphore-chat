@@ -84,6 +84,10 @@ const sections = await desktop.evaluate(() => {
 });
 for (const s of sections) {
   const file = path.join(outDir, `tour-${s.id}.png`);
+  // fullPage + clip is deliberate: Playwright (unlike Puppeteer) allows both,
+  // and then the clip is in page coordinates, trimmed to the whole document.
+  // Without fullPage the clip is trimmed to the viewport, so every section
+  // below the first 900 px would come out empty or cut off.
   await desktop.screenshot({ path: file, fullPage: true, clip: { x: 0, y: s.top, width: 1440, height: s.height } });
 }
 console.log(`tour: ${sections.length} section(s): ${sections.map((s) => s.id).join(', ')}`);
