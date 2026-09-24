@@ -74,7 +74,7 @@
     "@mui/material": "^7.0.2",
     "@semaphore-chat/shared": "workspace:*",
     "@tanstack/react-query": "^5.90.20",
-    "axios": "^1.13.2",
+    "axios": "^1.18.0",
     "date-fns": "^4.1.0",
     "electron-audio-loopback": "^1.0.6",
     "electron-updater": "^6.3.9",
