@@ -12,7 +12,10 @@ End-to-end tests using Playwright to verify critical user flows.
 
 ### Run in Docker (Recommended)
 
-This runs tests in complete isolation with a fresh database:
+This runs tests in complete isolation with a fresh database, Playwright
+included (the `playwright` service in `docker-compose.e2e.yml`, which opens the
+app as `http://localhost:5173` from inside the frontend container's network
+namespace, so it is a secure context):
 
 ```bash
 # From project root
@@ -22,6 +25,14 @@ This runs tests in complete isolation with a fresh database:
 npm run test:e2e:docker
 ```
 
+The stack joins the shared `semaphore-test` Docker network (created once by
+`scripts/test-net.sh`, never removed) instead of creating a network per run:
+each network create/remove makes Chromium-based browsers on the host drop
+their connections. Its containers are named after the checkout
+(`E2E_STACK`, printed at the start, e.g. `e2e-semaphore-chat-1a2b3c-backend`)
+and publish random host ports, so runs from different worktrees can go at the
+same time, and `--clean` only removes this checkout's containers.
+
 ### Options
 
 ```bash
@@ -29,18 +40,18 @@ npm run test:e2e:docker
 ./scripts/run-e2e.sh --all
 npm run test:e2e:docker:all
 
-# Run with Playwright UI (interactive debugging)
+# Run with Playwright UI (interactive debugging; Playwright on the host)
 ./scripts/run-e2e.sh --ui
 npm run test:e2e:docker:ui
 
-# Run with visible browser
+# Run with visible browser (Playwright on the host, against localhost:5174)
 ./scripts/run-e2e.sh --headed
 
 # Run specific test file
 ./scripts/run-e2e.sh auth
 ./scripts/run-e2e.sh messaging
 
-# Clean up Docker containers
+# Clean up this checkout's Docker containers
 ./scripts/run-e2e.sh --clean
 npm run test:e2e:docker:clean
 ```
@@ -135,21 +146,23 @@ See `.github/workflows/e2e-tests.yml` for configuration.
 ```bash
 # Clean up and rebuild
 ./scripts/run-e2e.sh --clean
-docker compose -p kraken-e2e -f docker-compose.e2e.yml build --no-cache
+E2E_STACK=<stack> docker compose -p <stack> -f docker-compose.e2e.yml build --no-cache
 ```
 
-If the e2e Postgres port (5433) collides with something already running on your
-host, override it:
+In `--ui`/`--headed` mode the stack publishes fixed host ports (Postgres 5433,
+Redis 6380, backend 3001, frontend 5174). If one collides with something
+already running on your host, override it (0 picks a free port; the host
+Playwright is pointed at whatever port the frontend gets):
 
 ```bash
-E2E_POSTGRES_PORT=5533 ./scripts/run-e2e.sh
+E2E_POSTGRES_PORT=5533 ./scripts/run-e2e.sh --headed
 ```
 
 ### Database seed fails
 
 ```bash
 # Check backend logs
-docker compose -p kraken-e2e -f docker-compose.e2e.yml logs backend-test
+docker logs <stack>-backend   # <stack>: the "Stack:" line run-e2e.sh prints
 ```
 
 ### Browser not installed

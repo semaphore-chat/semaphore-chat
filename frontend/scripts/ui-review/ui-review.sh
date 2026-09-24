@@ -103,7 +103,12 @@ BASE_DIR="$UIR/base"
 # shellcheck source=lib/hash.sh
 source "$SCRIPT_DIR/lib/hash.sh"
 PROJECT="uir-$(printf '%s' "$REPO_ROOT" | digest 1 | cut -c1-10)"
+# The compose file puts the containers on the shared, external `semaphore-test`
+# network (see compose.yml): create it once if needed, before any `up`.
+# Compose never creates or removes an external network, so `down` below leaves
+# it alone and no review adds or removes a host bridge.
 COMPOSE=(docker compose -p "$PROJECT" --project-directory "$REPO_ROOT" -f "$SCRIPT_DIR/compose.yml")
+ensure_network() { "$REPO_ROOT/scripts/test-net.sh"; }
 
 # ---------------------------------------------------------------- images
 
@@ -122,7 +127,7 @@ export UI_REVIEW_IMAGE="$HEAD_IMAGE" UI_REVIEW_BASE_IMAGE="$HEAD_IMAGE" UI_REVIE
 # ---------------------------------------------------------------- cleanup
 
 as_root() { # rm/chown things containers created as root, via a throwaway container
-  docker run --rm --entrypoint sh -v "$REPO_ROOT:/repo" "$HEAD_IMAGE" -c "$1"
+  docker run --rm --network none --entrypoint sh -v "$REPO_ROOT:/repo" "$HEAD_IMAGE" -c "$1"
 }
 # Hand what the containers generated as root back to the invoking user. (The
 # empty frontend/ and shared/node_modules dirs Docker leaves as mount points
@@ -296,6 +301,7 @@ capture() {
   local services=(ladle-head shots tool)
   if (( HAS_BASE )); then services+=(ladle-base); fi
   log "starting ${services[*]} (project $PROJECT) ..."
+  ensure_network
   "${COMPOSE[@]}" up -d "${services[@]}" >/dev/null
   "${COMPOSE[@]}" exec -T tool sh -c "rm -rf /ui-review/work /ui-review/shots /ui-review/out && mkdir -p /ui-review/work /ui-review/out && chown $(id -u):$(id -g) /ui-review/work /ui-review/out"
 
@@ -374,6 +380,7 @@ if (( REUSE )); then
   ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
   trap cleanup EXIT
   trap 'exit 130' INT TERM
+  ensure_network
   "${COMPOSE[@]}" up -d tool >/dev/null
 else
   capture

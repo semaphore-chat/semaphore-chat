@@ -100,4 +100,6 @@ docker compose --profile tools run --rm media      # → frontend/.media-out/ (g
 ```
 
 See [Regenerating Screenshots](https://docs.semaphorechat.app/contributing/regenerating-screenshots/) for reviewing and publishing (to the orphan `media` branch).
+
+The `docker compose` commands in this section use the dev stack, so run them in the main checkout. From a git worktree, use `ui-review.sh` (above) for screenshots and `scripts/test-stack.sh <ticket> media` for the README/docs media: both run on the shared `semaphore-test` Docker network instead of creating one per checkout.
 ```

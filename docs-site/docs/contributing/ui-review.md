@@ -196,7 +196,11 @@ file included, probes again.
 Two Ladle dev servers run in containers that share one network namespace (no
 host ports, so a running `ladle` on :61000 is never disturbed): the working
 tree on `:61000` and a temporary git worktree at the merge-base on `:61001`
-(`.ui-review/base`, created and removed by the tool). The base uses the same
+(`.ui-review/base`, created and removed by the tool). The containers join the
+shared `semaphore-test` Docker network (created once by `scripts/test-net.sh`,
+never removed), so a review never creates or removes a network, which would add
+and remove a host bridge and make Chromium-based browsers on the machine drop
+their connections. The base uses the same
 image unless its dependency manifests differ, in which case an image is built
 from the base's own lockfile. Before capturing, both servers load every
 selected story once, so Vite's first transform of their chunks doesn't happen

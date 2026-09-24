@@ -68,6 +68,10 @@ When backend controllers or DTOs change:
 ```bash
 docker compose run --rm backend pnpm run generate:openapi
 docker compose run --rm frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
+
+# From a git worktree (no dev stack; see Testing > Test Stacks):
+scripts/test-stack.sh <ticket> run-backend pnpm run generate:openapi
+scripts/test-stack.sh <ticket> run-frontend sh -c 'OPENAPI_SPEC_PATH=/spec/openapi.json pnpm exec openapi-ts'
 ```
 
 ---
@@ -126,7 +130,7 @@ import { isElectron, isWeb, hasElectronFeature } from './utils/platform';
 
 ## Docker Development
 
-All development uses Docker. Never run `pnpm`/`npm` commands on the host.
+All development uses Docker. Never run `pnpm`/`npm` commands on the host. These commands use the dev stack, so run them in the main checkout; from a git worktree use `scripts/test-stack.sh <ticket> run-backend|run-frontend <cmd>` ([Test Stacks](testing.md#test-stacks-and-the-shared-docker-network)).
 
 ```bash
 # Backend

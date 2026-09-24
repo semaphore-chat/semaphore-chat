@@ -523,6 +523,8 @@ docker compose run --rm backend pnpm run lint
 docker compose run --rm backend pnpm run prisma
 ```
 
+These commands drive the dev stack in your clone. Working in a git worktree, or on several branches at once? Use `scripts/test-stack.sh <ticket> run-backend|run-frontend <cmd>` instead: it runs everything on one shared Docker network rather than creating a compose project (and a network) per checkout. See [Test Stacks](https://docs.semaphorechat.app/contributing/testing/#test-stacks-and-the-shared-docker-network).
+
 See [CONTRIBUTING.md](./CONTRIBUTING.md) and the [developer docs](https://docs.semaphorechat.app) for more.
 
 ## Deployment

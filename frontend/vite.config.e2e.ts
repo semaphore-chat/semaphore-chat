@@ -13,11 +13,16 @@ import path from "path";
  * http://localhost:<port>, which browsers treat as a *secure context* (so
  * getUserMedia works) without any TLS — see frontend/e2e/voice/README.md.
  *
- * E2E_BACKEND_URL overrides the proxy target. It defaults to the backend-test
- * container on the docker-compose.e2e.yml network; the CI Playwright job runs
- * the backend directly on the runner and points this at localhost instead.
+ * E2E_BACKEND_URL sets the proxy target. docker-compose.e2e.yml points it at
+ * its run's backend container (<E2E_STACK>-backend: the shared semaphore-test
+ * network can hold several e2e stacks, so the generic `backend-test` service
+ * name is ambiguous there); the CI Playwright job runs the backend directly on
+ * the runner and points this at localhost instead. Without it, the fallback is
+ * the backend container name docker-compose.e2e.yml uses for E2E_STACK (by
+ * default `semaphore-e2e`), never the ambiguous service name.
  */
-const backendUrl = process.env.E2E_BACKEND_URL || "http://backend-test:3000";
+const backendUrl =
+  process.env.E2E_BACKEND_URL || `http://${process.env.E2E_STACK || "semaphore-e2e"}-backend:3000`;
 const backendWsUrl = backendUrl.replace(/^http/, "ws");
 
 export default defineConfig({
@@ -75,11 +80,11 @@ export default defineConfig({
   base: "/",
   server: {
     host: "0.0.0.0",
-    // Allow the in-network container hostname used by a dockerized Playwright
-    // runner; Vite otherwise 403s unknown Hosts.
+    // Vite otherwise 403s unknown Hosts. The dockerized Playwright runner
+    // shares this container's network namespace and uses "localhost".
     allowedHosts: ["frontend-test", "localhost"],
     proxy: {
-      // Proxy to backend-test container in Docker E2E network (or E2E_BACKEND_URL)
+      // Proxy to this run's backend (E2E_BACKEND_URL)
       "/api": {
         target: backendUrl,
         changeOrigin: true,

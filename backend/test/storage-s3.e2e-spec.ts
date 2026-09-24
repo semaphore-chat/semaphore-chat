@@ -14,6 +14,9 @@
  *          -e DATABASE_URL=postgresql://semaphore:semaphore@postgres:5432/semaphore_e2e_local_test \
  *          backend sh -c 'pnpm run prisma:migrate && pnpm run test:e2e -- storage-s3'
  *      S3_ENDPOINT defaults to the compose-network hostname (http://minio:9000).
+ *      From a worktree, a per-ticket stack brings its own MinIO and sets
+ *      S3_TEST_ENDPOINT=http://<ticket>-minio:9000:
+ *        scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e -- storage-s3'
  *
  *   2. CI: .github/workflows/backend-tests.yml's e2e job runs a `minio`
  *      service container reachable at http://localhost:9000 (GitHub Actions

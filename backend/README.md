@@ -17,6 +17,8 @@ docker compose run --rm backend pnpm run test
 docker compose run --rm backend pnpm run lint
 ```
 
+From a git worktree, use `scripts/test-stack.sh <ticket> run-backend <cmd>` (or `run` for a per-ticket Postgres, Redis and MinIO) instead of `docker compose run`; see the root CLAUDE.md.
+
 ## License
 
 [AGPL-3.0-only](../LICENSE)

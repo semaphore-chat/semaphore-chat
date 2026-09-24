@@ -45,7 +45,7 @@ compgen -G "$SRC/screenshots/*.webp" >/dev/null || { echo "no screenshots in $SR
 # shots.mjs writes both files with JSON.stringify(..., null, 2), so the names
 # are read without jq: each report entry has "name" at 6 spaces, and each
 # manifest screenshot has "file": "screenshots/<name>.webp".
-FULL_RUN='MEDIA_STEPS=shots,encode docker compose --profile tools run --rm media'
+FULL_RUN='MEDIA_STEPS=shots,encode docker compose --profile tools run --rm media (main checkout; from a worktree: MEDIA_STEPS=shots,encode scripts/test-stack.sh <ticket> media)'
 REPORT="$SRC/report.json"
 [[ -f "$REPORT" ]] || { echo "missing $REPORT — run the shots step first: $FULL_RUN" >&2; exit 1; }
 if ! grep -q '"issueCount": 0' "$REPORT"; then

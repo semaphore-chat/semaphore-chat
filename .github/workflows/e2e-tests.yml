@@ -54,7 +54,8 @@ jobs:
   # the backend-test and frontend-test containers in docker-compose.e2e.yml
   # run. Keep the env below in sync with that file; scripts/check-e2e-env.sh
   # fails the start steps if it drifts. Only the addresses change: the compose
-  # hostnames become localhost. docker-compose.e2e.yml and scripts/run-e2e.sh
+  # container names become localhost (the backend: localhost:3001).
+  # docker-compose.e2e.yml and scripts/run-e2e.sh
   # are still how to run this suite locally. The dev Dockerfiles that file
   # builds are no longer built here, only by the nightly Voice E2E job.
   e2e:
@@ -387,6 +388,12 @@ jobs:
             frontend-test.cache-from=type=gha,scope=e2e-frontend-test
             ${{ github.ref == 'refs/heads/main' && 'backend-test.cache-to=type=gha,scope=e2e-backend-test,mode=max,ignore-error=true' || '' }}
             ${{ github.ref == 'refs/heads/main' && 'frontend-test.cache-to=type=gha,scope=e2e-frontend-test,mode=max,ignore-error=true' || '' }}
+
+      # The e2e compose files join the external `semaphore-test` network
+      # (shared by local test stacks so they never create/remove networks;
+      # see scripts/test-net.sh). Compose does not create external networks.
+      - name: Create the shared test network
+        run: scripts/test-net.sh
 
       - name: Start infra (postgres, redis, real LiveKit)
         run: |

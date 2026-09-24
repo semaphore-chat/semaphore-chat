@@ -15,6 +15,7 @@ The human-facing guide is `docs-site/docs/contributing/regenerating-screenshots.
 - **Never commit image or video files.** The media lives only on the orphan `media` branch. `frontend/.media-out/` is gitignored.
 - **Don't change product code** (`frontend/src` outside `stories/`) to make the media look better. If the media shows a product bug, report it with the frame or screenshot.
 - **Publishing force-pushes a shared branch.** Run `publish-media.sh` without `--dry-run` only when the user asks. Only publish UI that is on `main`, or that is merging with this change.
+- **The `docker compose` commands below run in the main checkout only.** They use the dev project (`semaphore-chat`, network `semaphore-chat_default`, which stays up). Run from a worktree, or with `-p <name>`, compose creates a `<name>_default` network, and every network create/remove makes Chromium-based browsers on the host drop their connections (see CLAUDE.md). **In a worktree** (media work for a branch), run the same pipeline with `scripts/test-stack.sh <ticket> media`, where `<ticket>` is unique to the worktree (e.g. the branch name): every `[MEDIA_STEPS=… MEDIA_FILTER=…] docker compose --profile tools run --rm [--no-deps] media` below becomes `[MEDIA_STEPS=… MEDIA_FILTER=…] scripts/test-stack.sh <ticket> media`. It starts the worktree's Ladle itself as `<ticket>-ladle` (no host port, on the shared `semaphore-test` network; it stays up between runs), so skip `up -d ladle`; `docker compose --profile tools restart ladle` becomes `docker restart <ticket>-ladle`, and `scripts/test-stack.sh <ticket> down` removes it when you're done. Run checks with `scripts/test-stack.sh <ticket> run-frontend <cmd>`.
 
 ## Map
 
@@ -41,6 +42,9 @@ The human-facing guide is `docs-site/docs/contributing/regenerating-screenshots.
 docker compose --profile tools up -d ladle                  # sandbox on :61000; first start compiles for ~30 s
 docker compose --profile tools run --rm media               # shots + record (media-capture), then encode (media)
 docker ps -a --filter name=media-capture                    # then: docker rm -f <exited container>
+
+# The same from a worktree (see Ground rules): no `up`, no leftover capture container
+scripts/test-stack.sh <ticket> media
 ```
 
 - **Snapshot first.** `changed-media.sh snapshot` records a checksum of every published output. After you regenerate, `changed-media.sh` lists what changed since then (see step 2). Take the snapshot once, at the start of the task, and don't retake it until you're done. It is also how you check that an undo really restored the old outputs.
@@ -121,8 +125,8 @@ frontend/scripts/media/publish-media.sh             # force-pushes one orphan co
 
   | Files | Check |
   |-------|-------|
-  | `frontend/src/stories/**/*.ts(x)` | `docker compose run --rm frontend pnpm run type-check`, then `docker compose run --rm frontend pnpm exec eslint <the files>` |
-  | `frontend/scripts/media/*.mjs` | Not covered by type-check. ESLint only parses them (no rules apply to `.mjs`), so `docker compose run --rm --no-deps frontend pnpm exec eslint scripts/media/` catches syntax errors. The pipeline run is the real test. |
+  | `frontend/src/stories/**/*.ts(x)` | `scripts/test-stack.sh <ticket> run-frontend pnpm run type-check`, then `scripts/test-stack.sh <ticket> run-frontend pnpm exec eslint <the files>` |
+  | `frontend/scripts/media/*.mjs` | Not covered by type-check. ESLint only parses them (no rules apply to `.mjs`), so `scripts/test-stack.sh <ticket> run-frontend pnpm exec eslint scripts/media/` catches syntax errors. The pipeline run is the real test. |
   | `*.sh` | `bash -n <file>` |
   | `docs-site/**` | `preview-docs.sh` (it prints mkdocs warnings; there should be none) |
 

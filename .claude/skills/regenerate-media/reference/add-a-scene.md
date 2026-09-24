@@ -79,6 +79,8 @@ To find a message you just sent, look it up in the DOM (`[data-message-id]` rows
 
 ## 5. Record and look
 
+From a worktree, run these as `MEDIA_STEPS=... MEDIA_FILTER=... scripts/test-stack.sh <ticket> media` (see SKILL.md).
+
 ```bash
 MEDIA_STEPS=record,encode MEDIA_FILTER=tour-thread docker compose --profile tools run --rm media   # one scene; merges into scenes.json
 MEDIA_STEPS=record,encode MEDIA_FILTER=tour- docker compose --profile tools run --rm media      # all tour scenes
