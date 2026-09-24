@@ -128,7 +128,7 @@ async function stepAffected(flags: Flags) {
       baseUrl: 'http://localhost:61000',
       stories: plan.stories,
       targets,
-      concurrency: num(flags, 'concurrency', 4),
+      ...(typeof flags.concurrency === 'string' ? { concurrency: Number(flags.concurrency) } : {}),
       freezeTime: str(flags, 'freeze-time', ''),
     });
   }

@@ -149,6 +149,7 @@ capture() {
   ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
   mkdir -p "$UIR"
   trap cleanup EXIT
+  trap 'exit 130' INT TERM
 
   HAS_BASE=0
   if git cat-file -e "$MERGE_BASE:frontend/.ladle/config.mjs" 2>/dev/null; then
@@ -188,7 +189,7 @@ capture() {
   if [[ -n "$STORIES" ]]; then select_args+=(--ids "$STORIES"); fi
   tool select "${select_args[@]}"
 
-  local shot_env=(-e UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
+  local shot_env=(-e "UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop" -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
     -e "UX_SHOTS_SETTLE_MS=$SETTLE_MS" -e "UX_SHOTS_QUIET_MS=$QUIET_MS" -e "UX_SHOTS_FREEZE_TIME=$FREEZE_TIME" -e UX_SHOTS_DISABLE_ANIMATIONS=1)
   local pids=()
   if grep -q . "$WORK/head-ids.txt"; then
@@ -231,6 +232,7 @@ if (( REUSE )); then
     die "--reuse: .ui-review/out was generated for a different base/head — run without --reuse"
   ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
   trap cleanup EXIT
+  trap 'exit 130' INT TERM
   "${COMPOSE[@]}" up -d tool >/dev/null
 else
   capture

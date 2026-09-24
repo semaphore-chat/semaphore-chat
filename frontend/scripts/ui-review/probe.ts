@@ -9,16 +9,20 @@
  * on NODE_PATH):
  *   node scripts/ui-review/probe.ts <plan.json> <out.json>
  * plan.json: { baseUrl, stories: string[], targets: { [file]: number[] | 'all' },
- *              viewports?: string[], concurrency?: number, quietMs?: number, freezeTime?: string }
+ *              concurrency?: number, quietMs?: number, freezeTime?: string }
  * out.json:  { hits: { [storyId]: { [viewport]: string[] } }, errors: [...], durationMs }
- * A story stops probing at the first viewport where a target ran. A story whose
- * load fails is kept (every target counted as hit) so the capture shows why.
+ *
+ * Per story, stopping at the first viewport where a target ran: desktop →
+ * tablet → phone, each a fresh load with that viewport's touch/mobile emulation;
+ * "*keyboard*" stories only get phone-short. A story whose load fails is kept
+ * (every target counted as hit) so the capture shows why.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { createRequire } from 'node:module';
-import type { Browser } from 'playwright-core';
+import type { Browser, CDPSession, Page } from 'playwright-core';
 import { exercisedTargets, fileFromModuleUrl, type CoverageScript, type TargetLines } from './lib/coverage.ts';
-import { VIEWPORTS, viewportsForStory } from './lib/viewports.ts';
+import { VIEWPORTS, viewportsForStory, type Viewport } from './lib/viewports.ts';
 import { waitForDomQuiet } from './lib/settle.ts';
 
 const require = createRequire(import.meta.url);
@@ -28,7 +32,6 @@ interface Plan {
   baseUrl: string;
   stories: string[];
   targets: Record<string, TargetLines>;
-  viewports?: string[];
   concurrency?: number;
   quietMs?: number;
   freezeTime?: string;
@@ -40,10 +43,12 @@ if (!planPath || !outPath) {
   process.exit(2);
 }
 const plan: Plan = JSON.parse(readFileSync(planPath, 'utf8'));
-// Desktop first: it renders the most at once (sidebars + member list + chat).
-const probeViewports = plan.viewports ?? ['desktop', 'phone', 'tablet', 'phone-short'];
 const targets = new Map(Object.entries(plan.targets));
+const quietMs = plan.quietMs ?? 600;
+// CPU-bound (React dev build + coverage instrumentation): scale with cores.
+const concurrency = plan.concurrency ?? Math.min(12, Math.max(2, availableParallelism() - 2));
 const sources = new Map<string, Promise<string>>();
+const PROBE_ORDER = ['desktop', 'tablet', 'phone', 'phone-short'];
 
 function sourceFor(url: string): Promise<string> {
   if (!sources.has(url)) {
@@ -57,25 +62,28 @@ function sourceFor(url: string): Promise<string> {
   return sources.get(url)!;
 }
 
-async function probeOnce(browser: Browser, storyId: string, viewportName: string): Promise<string[]> {
-  const vp = VIEWPORTS[viewportName];
+interface ProbePage {
+  page: Page;
+  /** Targets that ran since the previous call (V8 resets counts on every take). */
+  take: () => Promise<string[]>;
+  close: () => Promise<void>;
+}
+
+async function openPage(browser: Browser, vp: Viewport, storyId: string): Promise<ProbePage> {
   const context = await browser.newContext({
     viewport: { width: vp.width, height: vp.height },
     isMobile: vp.isMobile,
     hasTouch: vp.hasTouch,
   });
-  try {
-    const page = await context.newPage();
-    if (plan.freezeTime) await page.clock.setFixedTime(new Date(plan.freezeTime));
-    const cdp = await context.newCDPSession(page);
-    await cdp.send('Profiler.enable');
-    // detailed: false — see lib/coverage.ts for why not block coverage.
-    await cdp.send('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
-    await page.goto(`${plan.baseUrl}/?story=${encodeURIComponent(storyId)}&mode=preview`, {
-      waitUntil: 'networkidle',
-      timeout: 30_000,
-    });
-    await waitForDomQuiet(page, plan.quietMs ?? 600);
+  const page = await context.newPage();
+  if (plan.freezeTime) await page.clock.setFixedTime(new Date(plan.freezeTime));
+  const cdp: CDPSession = await context.newCDPSession(page);
+  await cdp.send('Profiler.enable');
+  // detailed: false — see lib/coverage.ts for why not block coverage.
+  await cdp.send('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
+  await page.goto(`${plan.baseUrl}/?story=${encodeURIComponent(storyId)}&mode=preview`, { waitUntil: 'networkidle', timeout: 60_000 });
+  await waitForDomQuiet(page, quietMs);
+  const take = async () => {
     const { result } = (await cdp.send('Profiler.takePreciseCoverage')) as unknown as { result: CoverageScript[] };
     const relevant = result.filter((s) => {
       const file = fileFromModuleUrl(s.url);
@@ -84,38 +92,53 @@ async function probeOnce(browser: Browser, storyId: string, viewportName: string
     const texts = new Map<string, string>();
     await Promise.all(relevant.map(async (s) => texts.set(s.url, await sourceFor(s.url))));
     return [...exercisedTargets(relevant, texts, targets)].sort();
-  } finally {
-    await context.close();
+  };
+  return { page, take, close: () => context.close() };
+}
+
+async function probeStory(browser: Browser, storyId: string): Promise<Record<string, string[]>> {
+  const hits: Record<string, string[]> = {};
+  // Desktop first: it renders the most at once (sidebars, member list, chat).
+  // Each viewport is a fresh load with that viewport's touch/mobile emulation —
+  // resizing one page instead re-mounts layouts in ways a real load never does
+  // (it made the probe report changes the phone capture then didn't show).
+  for (const viewport of viewportsForStory(storyId, PROBE_ORDER)) {
+    const p = await openPage(browser, VIEWPORTS[viewport], storyId);
+    try {
+      hits[viewport] = await p.take();
+    } finally {
+      await p.close();
+    }
+    if (hits[viewport].length) break;
   }
+  return hits;
 }
 
 async function main() {
   const started = Date.now();
   const browser = await chromium.launch();
   const hits: Record<string, Record<string, string[]>> = {};
-  const errors: { storyId: string; viewport: string; message: string }[] = [];
+  const errors: { storyId: string; message: string }[] = [];
   let next = 0;
   let done = 0;
 
   const worker = async () => {
     while (next < plan.stories.length) {
       const storyId = plan.stories[next++];
-      hits[storyId] = {};
-      for (const viewportName of viewportsForStory(storyId, probeViewports)) {
-        try {
-          hits[storyId][viewportName] = await probeOnce(browser, storyId, viewportName);
-        } catch (err) {
-          errors.push({ storyId, viewport: viewportName, message: String((err as Error)?.message ?? err) });
-          hits[storyId][viewportName] = [...targets.keys()].sort();
-        }
-        if (hits[storyId][viewportName].length > 0) break;
+      try {
+        hits[storyId] = await probeStory(browser, storyId);
+      } catch (err) {
+        errors.push({ storyId, message: String((err as Error)?.message ?? err) });
+        hits[storyId] = { error: [...targets.keys()].sort() };
       }
       done++;
-      const seen = Object.values(hits[storyId]).some((h) => h.length > 0);
-      console.log(`[probe] ${done}/${plan.stories.length} ${storyId}: ${seen ? 'renders the change' : '-'}`);
+      const seen = Object.entries(hits[storyId]).filter(([, h]) => h.length > 0);
+      const secs = Math.round((Date.now() - started) / 1000);
+      console.log(`[probe] ${done}/${plan.stories.length} ${secs}s ${storyId}: ${seen.length ? `renders the change (${seen[0][0]})` : '-'}`);
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(plan.concurrency ?? 4, plan.stories.length)) }, worker));
+  console.log(`[probe] ${plan.stories.length} stories, ${targets.size} changed module(s), ${concurrency} in parallel`);
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, plan.stories.length)) }, worker));
   await browser.close();
 
   writeFileSync(outPath, JSON.stringify({ hits, errors, durationMs: Date.now() - started }, null, 2));
