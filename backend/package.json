@@ -83,7 +83,7 @@
     "@suites/di.nestjs": "^3.0.1",
     "@suites/doubles.jest": "^3.0.1",
     "@suites/unit": "^3.0.1",
-    "@swc/cli": "^0.6.0",
+    "@swc/cli": "^0.8.1",
     "@swc/core": "^1.10.7",
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.10",
