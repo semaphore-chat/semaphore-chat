@@ -5,6 +5,7 @@ import VirtualMessageList, {
   type VirtualMessageListHandle,
 } from '../../components/Message/VirtualMessageList';
 import { createMessage, resetFactoryCounter } from '../test-utils/factories';
+import { TYPING_INDICATOR_HEIGHT } from '../../constants/layout';
 
 // ── Mock virtua's VList ────────────────────────────────────────────────
 // jsdom can't do real layout, so we mock VList: it renders its children into a
@@ -391,6 +392,80 @@ describe('VirtualMessageList', () => {
     fakeHandle.scrollToIndex.mockClear();
     act(() => ref.current?.scrollToBottom());
     expect(fakeHandle.scrollToIndex).toHaveBeenCalledWith(4, { align: 'end' });
+  });
+
+  // The typing indicator floats (absolutely positioned) over the bottom of
+  // the list; a permanent spacer at the end of the list keeps the newest
+  // message above it. The spacer lives INSIDE the last row, so it is part of
+  // that item's measured size: scrollToIndex(last, { align: 'end' }) — used by
+  // initial positioning, stick-to-bottom and scrollToBottom — lands at the
+  // true bottom, spacer included, and item indices stay 1:1 with messages.
+  describe('typing-indicator spacer', () => {
+    const spacers = () => document.querySelectorAll('[data-testid="typing-indicator-spacer"]');
+
+    it('renders exactly one spacer, as tall as the typing indicator, at the end of the list', () => {
+      render(<VirtualMessageList {...baseProps} orderedMessages={messages(3)} />);
+      expect(spacers()).toHaveLength(1);
+      const spacer = spacers()[0] as HTMLElement;
+      expect(spacer.style.height).toBe(`${TYPING_INDICATOR_HEIGHT}px`);
+      expect(spacer.getAttribute('aria-hidden')).toBe('true');
+      // Last thing in the list, inside the newest message's row.
+      const lastRow = document.querySelector('[data-message-id="msg-2"]')!;
+      expect(lastRow.contains(spacer)).toBe(true);
+      expect(lastRow.lastElementChild).toBe(spacer);
+    });
+
+    it('does not add an extra list item (indices stay 1:1 with messages)', () => {
+      render(<VirtualMessageList {...baseProps} orderedMessages={messages(3)} />);
+      const vlist = document.querySelector('[data-testid="vlist"]')!;
+      expect(vlist.children).toHaveLength(3);
+    });
+
+    it('moves to the new last row and sticks to the true bottom when a newer message arrives while pinned', () => {
+      const initial = messages(5);
+      const { rerender } = render(
+        <VirtualMessageList {...baseProps} orderedMessages={initial} />,
+      );
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+        />,
+      );
+      expect(spacers()).toHaveLength(1);
+      expect(
+        document.querySelector('[data-message-id="newer"]')!.contains(spacers()[0]),
+      ).toBe(true);
+      // align 'end' on the row that contains the spacer = the bottom of the
+      // scroll content, not the bottom of the message text.
+      expect(fakeHandle.scrollToIndex).toHaveBeenCalledWith(5, { align: 'end' });
+    });
+
+    it('counts a scroll offset at the very bottom (spacer included) as pinned', () => {
+      const onAtBottomChange = vi.fn();
+      render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(5)}
+          onAtBottomChange={onAtBottomChange}
+        />,
+      );
+      onAtBottomChange.mockClear();
+      // scrollSize 1000, viewport 400 → max offset 600 (spacer is inside it).
+      act(() => capturedProps.onScroll?.(600));
+      expect(onAtBottomChange).toHaveBeenLastCalledWith(true);
+    });
+
+    it('keeps the spacer in anchored mode (the indicator overlays that list too)', () => {
+      render(
+        <VirtualMessageList {...baseProps} mode="anchored" orderedMessages={messages(4)} />,
+      );
+      expect(spacers()).toHaveLength(1);
+      expect(document.querySelector('[data-message-id="msg-3"]')!.contains(spacers()[0])).toBe(true);
+    });
   });
 
   describe('jump-to-message', () => {

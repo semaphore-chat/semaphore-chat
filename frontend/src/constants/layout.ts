@@ -34,3 +34,11 @@ export const CHANNEL_LIST_WIDTH = 240;
  * Member list width (right sidebar)
  */
 export const MEMBER_LIST_WIDTH = 240;
+
+/**
+ * Height of the "X is typing..." indicator that floats over the bottom of
+ * the message list. The list reserves a spacer of this height after the
+ * newest message so the indicator never covers it (no layout shift when
+ * typing starts or stops).
+ */
+export const TYPING_INDICATOR_HEIGHT = 32;

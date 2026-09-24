@@ -17,6 +17,7 @@ import { DaySeparator } from "./DaySeparator";
 import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
 import type { Message } from "../../types/message.type";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { TYPING_INDICATOR_HEIGHT } from "../../constants/layout";
 
 /** How close to the top (in item indices) triggers an older-page load. */
 const LOAD_MORE_INDEX_PROXIMITY = 8;
@@ -127,6 +128,15 @@ export interface VirtualMessageListProps {
  *   Both positioning paths use the double-rAF re-assert pattern (a single
  *   rAF races virtua's measurement readiness on first mount).
  * - **atBottom**: derived from virtua's scroll offset, reported upward for FABs.
+ * - **Typing-indicator spacer**: the "X is typing..." line (TypingIndicator)
+ *   floats over the bottom of this list, so the newest row carries a
+ *   permanent `TYPING_INDICATOR_HEIGHT` spacer (always present, so no layout
+ *   shift when typing starts or stops). It lives INSIDE the last row rather
+ *   than as an extra VList item: virtua measures it as part of that row, so
+ *   every `scrollToIndex(len - 1, { align: "end" })` (initial positioning,
+ *   stick-to-bottom, scrollToBottom) lands at the true bottom, and item
+ *   indices stay 1:1 with messages (visible-range read tracking, the
+ *   load-newer proximity check, roving focus and day markers are unaffected).
  *
  * **Roving row focus**: exactly one row is in the natural Tab order at a
  * time (`focusedRowKey`, tracked by row identity — `clientId ?? id` — so it
@@ -781,6 +791,13 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
                   onRovingFocus={handleRowFocus}
                   listContainerRef={listContainerRef}
                 />
+                {index === len - 1 && (
+                  <div
+                    aria-hidden="true"
+                    data-testid="typing-indicator-spacer"
+                    style={{ height: TYPING_INDICATOR_HEIGHT }}
+                  />
+                )}
               </div>
             );
           })}
