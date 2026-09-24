@@ -35,13 +35,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -74,20 +74,20 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
           cache-dependency-path: pnpm-lock.yaml
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: '3.11'
 
@@ -151,21 +151,21 @@ jobs:
           }
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-installer
           path: frontend/release/Semaphore-Chat-Setup-*.exe
           retention-days: 7
 
       - name: Upload Windows blockmap
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-blockmap
           path: frontend/release/Semaphore-Chat-Setup-*.exe.blockmap
           retention-days: 7
 
       - name: Upload Windows update manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows-yml
           path: frontend/release/latest.yml
@@ -181,13 +181,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -249,28 +249,28 @@ jobs:
           grep -q ELECTRON_SMOKE_OK smoke.log || { echo "Electron smoke test FAILED: packed app never reached ready state (no ELECTRON_SMOKE_OK)"; exit 1; }
 
       - name: Upload Linux AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-appimage
           path: frontend/release/Semaphore-Chat-*.AppImage
           retention-days: 7
 
       - name: Upload Linux Debian package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-deb
           path: frontend/release/semaphore-chat_*_amd64.deb
           retention-days: 7
 
       - name: Upload Linux RPM package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-rpm
           path: frontend/release/semaphore-chat-*.x86_64.rpm
           retention-days: 7
 
       - name: Upload Linux update manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: linux-yml
           path: frontend/release/latest-linux.yml
@@ -291,7 +291,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Determine release tag
         id: release-info
@@ -304,49 +304,49 @@ jobs:
 
       - name: Download Windows installer
         if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-installer
           path: release-artifacts/
 
       - name: Download Windows blockmap
         if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-blockmap
           path: release-artifacts/
 
       - name: Download Windows update manifest
         if: needs.build-windows.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: windows-yml
           path: release-artifacts/
 
       - name: Download Linux AppImage
         if: needs.build-linux.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-appimage
           path: release-artifacts/
 
       - name: Download Linux Debian package
         if: needs.build-linux.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-deb
           path: release-artifacts/
 
       - name: Download Linux RPM package
         if: needs.build-linux.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-rpm
           path: release-artifacts/
 
       - name: Download Linux update manifest
         if: needs.build-linux.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: linux-yml
           path: release-artifacts/
@@ -355,7 +355,7 @@ jobs:
         run: ls -lah release-artifacts/
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.release-info.outputs.tag }}
           files: release-artifacts/*

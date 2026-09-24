@@ -87,7 +87,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Extract version from tag
         id: version
@@ -113,11 +113,11 @@ jobs:
           cd backend && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -125,7 +125,7 @@ jobs:
 
       - name: Extract metadata for Backend
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend
           tags: |
@@ -142,7 +142,7 @@ jobs:
       - name: Build and push Backend image
         id: push-backend
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./backend/Dockerfile.prod
@@ -163,7 +163,7 @@ jobs:
       # fresh the same way as the push step (same no-cache-filters), seconds
       # later, so the scan never checks staler Alpine packages than were pushed.
       - name: Build Backend image for scan
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./backend/Dockerfile.prod
@@ -200,7 +200,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Extract version from tag
         id: version
@@ -226,11 +226,11 @@ jobs:
           cd frontend && npm version ${{ steps.version.outputs.version }} --no-git-tag-version --allow-same-version
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -238,7 +238,7 @@ jobs:
 
       - name: Extract metadata for Frontend
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend
           tags: |
@@ -255,7 +255,7 @@ jobs:
       - name: Build and push Frontend image
         id: push-frontend
         if: github.event_name != 'pull_request'
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./frontend/Dockerfile.prod
@@ -278,7 +278,7 @@ jobs:
       # fresh the same way as the push step (same no-cache-filters), seconds
       # later, so the scan never checks staler Alpine packages than were pushed.
       - name: Build Frontend image for scan
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./frontend/Dockerfile.prod
