@@ -29,7 +29,7 @@ Useful variables:
 Stop the sandbox afterwards with `docker compose stop ladle && docker compose rm -f ladle media-capture`. `media-capture` runs as a dependency of `media`, so `--rm` does not remove it.
 
 !!! note "Added a new story file?"
-    Ladle only picks up **new** `*.stories.tsx` files after a restart (`docker compose restart ladle`). Otherwise the capture shows "Story not found". The pipeline flags that page as forbidden text in `report.json`.
+    Ladle only picks up **new** `*.stories.tsx` files after a restart (`docker compose --profile tools restart ladle`). Otherwise the capture shows "Story not found". The pipeline flags that page as forbidden text in `report.json`.
 
 ## Review
 
@@ -38,11 +38,11 @@ Look at every output before you publish. Nothing checks taste automatically.
 1. `report.json` must show `"issueCount": 0`. Also check `raw/scenes/scenes.json` for page errors in the recordings.
 2. Open every file in `screenshots/`. Look for realistic content, no loading spinners, no broken images, no error or offline toasts, and no sandbox artefacts. The pipeline also rejects "SIMULATED", "Story not found" and similar text.
 3. Watch `video/hero.webp` in a browser. It should loop cleanly, and the cursor movement and typing should look human.
-4. Watch `video/tour.mp4`, or pull out one frame per second to skim it:
+4. Watch `video/tour.mp4`, or pull out one frame per second onto a contact sheet to skim it (40 tiles, enough for the whole ~40 s tour):
 
     ```bash
     docker run --rm -v "$PWD/frontend/.media-out:/w" --entrypoint ffmpeg linuxserver/ffmpeg:9.0-cli-ls82 \
-      -i /w/video/tour.mp4 -vf "fps=1,scale=640:-1,tile=4x6" -frames:v 1 /w/raw/tour-contact-sheet.png
+      -i /w/video/tour.mp4 -vf "fps=1,scale=480:-1,tile=5x8" -frames:v 1 /w/raw/tour-contact-sheet.png
     ```
 
 5. Check the size targets: `hero.webp` should be 2 MB or less, `hero.gif` 5 MB or less, and `tour.mp4` a few MB.
@@ -57,6 +57,11 @@ frontend/scripts/media/publish-media.sh             # force-push it to origin/me
 ```
 
 Each publish replaces the branch with a single new commit, so the branch history stays at one commit. Browsers and GitHub's image proxy can cache the old files for a few minutes after a publish.
+
+!!! warning "Publish before the change reaches `main`"
+    The README on `main` and the docs site (deployed on every `docs-site/**` push to `main`) load the media straight from the `media` branch. Publish when (or just before) a change that adds or renames media merges, otherwise those images and the video show as broken until someone does. Publishing a little early is fine, as long as the change doesn't rename or remove a file that `main` still uses (each publish replaces the whole branch).
+
+`social.png` is not used by the README or the docs. After publishing a new one, upload it as the repository's social preview (**Settings → General → Social preview** on GitHub), which is what link previews of the repository show.
 
 ## Changing what's captured
 

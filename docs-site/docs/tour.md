@@ -5,11 +5,11 @@ description: See Semaphore Chat in action — a short video tour and screenshots
 
 # Tour
 
-A quick look at Semaphore Chat before you install it. Everything below was captured from the real app UI running against demo data, and is regenerated whenever the UI changes (see [Regenerating screenshots](contributing/regenerating-screenshots.md)).
+A quick look at Semaphore Chat before you install it. Everything below was captured from the real app UI running against demo data (see [Regenerating screenshots](contributing/regenerating-screenshots.md) for how it is made).
 
 <video controls muted playsinline preload="metadata" width="100%"
   poster="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour-poster.webp"
-  aria-label="A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, and the app on a phone.">
+  aria-label="A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, the app on a phone, and the light theme with the voice bar.">
   <source src="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour.mp4" type="video/mp4">
   Your browser can't play this video. <a href="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/video/tour.mp4">Download the tour (MP4)</a>.
 </video>
@@ -22,7 +22,7 @@ Real-time text channels with mentions, reactions, link previews, code blocks, im
 
 <div class="grid tour-desktop" markdown>
 
-![The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block, an image of a design mock with emoji reactions, and the member list with online status.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-desktop.webp){ loading=lazy data-gallery="chat" data-title="Text channels with link previews, code blocks, images and reactions" }
+![The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block with emoji reactions, a message with a five-reply thread, and the member list grouped by role with online status.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/chat-desktop.webp){ loading=lazy data-gallery="chat" data-title="Text channels with link previews, code blocks, reactions and threads" }
 
 ![The notifications page listing direct messages, a mention and a thread reply.](https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/screenshots/notifications-desktop.webp){ loading=lazy data-gallery="chat" data-title="Mentions, replies and DMs in one notifications inbox" }
 

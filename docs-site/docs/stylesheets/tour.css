@@ -1,7 +1,14 @@
-/* Tour page gallery (docs/tour.md): desktop screenshots two per row, phone
-   screenshots in narrow columns so their height stays in proportion. */
+/* Tour page gallery (docs/tour.md): desktop screenshots two per row (one per
+   row on narrow screens), so a section with a single desktop shot shows it
+   at the same size as the others; phone screenshots in narrow columns so
+   their height stays in proportion. */
 .md-typeset .grid.tour-desktop {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+  grid-template-columns: minmax(0, 1fr);
+}
+@media screen and (min-width: 45em) {
+  .md-typeset .grid.tour-desktop {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .md-typeset .grid.tour-phones {
   grid-template-columns: repeat(auto-fill, minmax(6rem, 8.5rem));
@@ -11,4 +18,15 @@
 .md-typeset .grid.tour-phones img {
   border-radius: 0.4rem;
   box-shadow: var(--md-shadow-z1);
+}
+
+/* Lightbox: leave room for the caption under the image. mkdocs-glightbox
+   writes data-height="auto", which glightbox turns into the invalid
+   `max-height: calc(auto - <caption>px)`, so the browser drops it and a
+   desktop screenshot runs off the top and bottom of the viewport. Phones are
+   fine as they are (the image is narrower than the screen is tall). */
+@media screen and (min-width: 769px) {
+  .glightbox-container .desc-bottom .gslide-image img {
+    max-height: calc(100vh - 6rem);
+  }
 }
