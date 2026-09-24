@@ -1,79 +1,91 @@
 version: 2
-updates:
-  # Backend (npm)
-  - package-ecosystem: "npm"
-    directory: "/backend"
-    schedule:
-      interval: "weekly"
-    groups:
-      # Group all patch updates together
-      patch-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "patch"
-      # Group minor updates together
-      minor-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "minor"
-    commit-message:
-      prefix: "chore(deps)"
-    labels:
-      - "dependencies"
-      - "backend"
 
-  # Frontend (npm)
+# Notes (2026-09 backlog cleanup):
+# - The repo is ONE pnpm workspace (shared/, backend/, frontend/) with a single
+#   root pnpm-lock.yaml, so npm updates run from "/". The old /backend and
+#   /frontend entries predate the workspace and produced package-lock.json PRs.
+# - Security updates are grouped too (applies-to: security-updates), so an
+#   advisory wave becomes one PR instead of one job per package.
+# - Majors are never grouped: each gets its own PR for a changelog review.
+updates:
+  # npm: the whole pnpm workspace
   - package-ecosystem: "npm"
-    directory: "/frontend"
+    directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
     groups:
-      patch-updates:
-        patterns:
-          - "*"
-        update-types:
-          - "patch"
-      minor-updates:
+      security:
+        applies-to: security-updates
         patterns:
           - "*"
         update-types:
           - "minor"
+          - "patch"
+      production-minor-patch:
+        dependency-type: "production"
+        update-types:
+          - "minor"
+          - "patch"
+      development-minor-patch:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
     commit-message:
       prefix: "chore(deps)"
     labels:
       - "dependencies"
-      - "frontend"
+      - "javascript"
 
   # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+      day: "monday"
+    groups:
+      actions:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(deps)"
     labels:
       - "dependencies"
-      - "ci"
 
-  # Docker
+  # Docker base images. node stays on the active LTS line (24); its majors
+  # (e.g. non-LTS 25) are ignored. nginx/alpine minor and patch bumps flow through.
   - package-ecosystem: "docker"
-    directory: "/backend"
+    directories:
+      - "/backend"
+      - "/frontend"
     schedule:
       interval: "weekly"
+      day: "monday"
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      docker-images:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(deps)"
     labels:
       - "dependencies"
-      - "docker"
 
-  - package-ecosystem: "docker"
-    directory: "/frontend"
+  # Docs site (MkDocs)
+  - package-ecosystem: "pip"
+    directory: "/docs-site"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
+    groups:
+      docs:
+        patterns:
+          - "*"
     commit-message:
       prefix: "chore(deps)"
     labels:
       - "dependencies"
-      - "docker"
+      - "documentation"
