@@ -104,3 +104,6 @@ node_modules/
 
 # MkDocs build output
 docs-site/site/
+
+# UI review tool (frontend/scripts/ui-review/): work dir + temporary base worktree
+/.ui-review/

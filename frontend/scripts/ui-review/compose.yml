@@ -1,0 +1,66 @@
+# Containers for the UI review tool — driven by ui-review.sh, not meant to be
+# used directly. ui-review.sh runs it with its own project name (`-p uir-...`)
+# and `--project-directory <repo root>`, so relative paths are repo-relative.
+#
+# No host ports are published: the Chromium container shares `ladle-head`'s
+# network namespace and reaches both Ladle instances as "localhost" (a secure
+# context — see the `ux-shots` service in docker-compose.yml for why that
+# matters). So a review never collides with a developer's own `ladle` on
+# :61000, and reviews of different checkouts can run side by side.
+#
+# Only the small per-package node_modules dirs get anonymous volumes; the big
+# hoisted /app/node_modules comes straight from the image (never shadowed).
+services:
+  # Ladle on the checkout under review (working tree, incl. uncommitted edits).
+  ladle-head:
+    image: ${UI_REVIEW_IMAGE:?set by ui-review.sh}
+    command: pnpm exec ladle serve --host 127.0.0.1 --port 61000
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend
+      - ./shared:/app/shared
+      - /app/frontend/node_modules
+      - /app/shared/node_modules
+      - ./backend:/spec:ro
+
+  # Ladle on the temporary merge-base worktree (.ui-review/base), on :61001.
+  ladle-base:
+    image: ${UI_REVIEW_BASE_IMAGE:-${UI_REVIEW_IMAGE}}
+    command: pnpm exec ladle serve --host 127.0.0.1 --port 61001
+    network_mode: "service:ladle-head"
+    working_dir: /app/frontend
+    volumes:
+      - ${UI_REVIEW_BASE_DIR:-./.ui-review/base}/frontend:/app/frontend
+      - ${UI_REVIEW_BASE_DIR:-./.ui-review/base}/shared:/app/shared
+      - /app/frontend/node_modules
+      - /app/shared/node_modules
+      - ${UI_REVIEW_BASE_DIR:-./.ui-review/base}/backend:/spec:ro
+
+  # Chromium (Playwright image): render probe, screenshots (scripts/ux-shots.mjs)
+  # and composites. Stays up so playwright-core is installed once per review.
+  shots:
+    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    network_mode: "service:ladle-head"
+    working_dir: /app/frontend
+    environment:
+      - NODE_PATH=/opt/uxshots/node_modules
+    volumes:
+      - ./frontend:/app/frontend
+      - ./.ui-review:/ui-review
+    command: >
+      sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
+      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      touch /opt/uxshots/.ready && exec sleep infinity"
+
+  # Node side (frontend image: esbuild, sharp, pixelmatch): module graph,
+  # pixel diff, WebP encoding, PR block. No network needed.
+  tool:
+    image: ${UI_REVIEW_IMAGE:?set by ui-review.sh}
+    working_dir: /app/frontend
+    entrypoint: ["sleep", "infinity"]
+    volumes:
+      - ./frontend:/app/frontend
+      - ./shared:/app/shared
+      - /app/frontend/node_modules
+      - /app/shared/node_modules
+      - ./.ui-review:/ui-review

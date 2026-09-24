@@ -438,6 +438,8 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 - Frontend: `docker compose run --rm frontend pnpm run test`
 - Backend: `docker compose run --rm backend pnpm run test`
 
+**UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
+
 ### Code Quality
 
 - ESLint configured for both backend and frontend

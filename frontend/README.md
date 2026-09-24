@@ -73,6 +73,15 @@ Stop it with `docker compose stop ladle && docker compose rm -f ladle` (this doe
 export const MyScreen = defineScreen(bigCommunityScenario, '/community/community-1/channel/channel-1');
 ```
 
+**UI review for PRs** — `frontend/scripts/ui-review/ui-review.sh` renders the stories a change affects on the merge-base and on your working tree at phone/tablet/desktop, pixel-diffs them and writes labelled before/after composites plus a PR-description section. Run it before opening any PR that touches the UI, look at the composites, then attach them to the PR (images go to the orphan `pr-screenshots` branch, never to a code branch):
+
+```bash
+frontend/scripts/ui-review/ui-review.sh --base origin/main                    # → .ui-review/out/
+frontend/scripts/ui-review/ui-review.sh --base origin/main --pr 123 --update-pr --reuse
+```
+
+If it lists changed files that no story renders, add a story for them. Details: [UI Review Screenshots](https://docs.semaphorechat.app/contributing/ui-review/).
+
 **Screenshot sweep** — captures every story at phone/tablet/desktop viewports:
 
 ```bash
@@ -81,5 +90,5 @@ docker compose --profile tools run --rm ux-shots
 docker compose stop ladle && docker compose rm -f ladle
 ```
 
-Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`.
+Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`. A story that only makes sense at some widths limits itself with `MyStory.meta = { viewports: ['phone'] };` (a top-level statement, read statically by Ladle); the sweep and the UI review honour it.
 ```
