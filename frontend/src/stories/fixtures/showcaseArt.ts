@@ -298,19 +298,29 @@ export function paletteSvg(): string {
   );
 }
 
-/** Link-preview banner for the pull request Marcus links in #dev. */
-export function prPreviewSvg(): string {
+/**
+ * Link-preview banner for the pull request Marcus links in #dev: a slim
+ * summary strip (repo, PR number, diff stats, author, language bar), like a
+ * code host's social card. Slim on purpose: at 840×156 the whole #dev message,
+ * author row included, fits above the fold in the desktop screenshots.
+ */
+export function prPreviewSvg(author: AvatarLook): string {
+  const font = `font-family="Roboto, 'Segoe UI', Helvetica, Arial, 'Liberation Sans', sans-serif"`;
+  const avatar = illustratedAvatarSvg('prauthor', author, 80).replace('<svg ', '<svg x="732" y="30" ');
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="840" height="300" viewBox="0 0 840 300">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="840" height="156" viewBox="0 0 840 156">` +
     `<defs><linearGradient id="p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1E1B33"/><stop offset="1" stop-color="#2C1F4A"/></linearGradient></defs>` +
-    `<rect width="840" height="300" fill="url(#p)"/>` +
-    `<circle cx="96" cy="112" r="34" fill="none" stroke="#3DD68C" stroke-width="8"/>` +
-    `<path d="M96 146 L96 222" stroke="#3DD68C" stroke-width="8"/><circle cx="96" cy="236" r="14" fill="#3DD68C"/>` +
-    `<path d="M150 112 C220 112 230 180 300 180" stroke="#7C5CFF" stroke-width="8" fill="none"/><circle cx="312" cy="180" r="14" fill="#7C5CFF"/>` +
-    `<rect x="380" y="92" width="360" height="26" rx="13" fill="#EDEAFB"/>` +
-    `<rect x="380" y="136" width="280" height="16" rx="8" fill="#8C86A3"/>` +
-    `<rect x="380" y="168" width="220" height="16" rx="8" fill="#8C86A3"/>` +
-    `<rect x="380" y="214" width="92" height="30" rx="15" fill="#3DD68C"/><rect x="484" y="214" width="120" height="30" rx="15" fill="#3A3458"/>` +
+    `<rect width="840" height="156" fill="url(#p)"/>` +
+    // Pull-request glyph.
+    `<g fill="none" stroke="#3DD68C" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">` +
+    `<circle cx="50" cy="42" r="10"/><path d="M50 52 V100"/><circle cx="50" cy="110" r="10"/>` +
+    `<circle cx="98" cy="110" r="10"/><path d="M98 100 V66 C98 54 92 48 80 48 H68"/><path d="M77 39 L68 48 L77 57"/>` +
+    `</g>` +
+    `<text x="136" y="64" ${font} font-size="32" font-weight="700" fill="#F3F0FF">lumen-studio/lumen</text>` +
+    `<text x="136" y="106" ${font} font-size="25" fill="#A9A3C4">#482 · 6 files changed · <tspan fill="#3DD68C">+128</tspan> <tspan fill="#FF7A7A">−41</tspan></text>` +
+    avatar +
+    // Language bar.
+    `<rect x="0" y="146" width="620" height="10" fill="#3178C6"/><rect x="620" y="146" width="130" height="10" fill="#7C5CFF"/><rect x="750" y="146" width="90" height="10" fill="#F1E05A"/>` +
     `</svg>`
   );
 }

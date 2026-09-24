@@ -105,7 +105,7 @@ const PERSONAS: Persona[] = [
   },
   {
     id: 'u-tomas', username: 'tomas', displayName: 'Tomás Silva', status: '☕ back in 10',
-    look: { skin: SKIN.light, hair: 'short', hairColor: HAIR.brown, bg: ['#D3F4FF', '#7DD3FC'], shirt: '#E0306F' },
+    look: { skin: SKIN.light, hair: 'wavy', hairColor: HAIR.auburn, bg: ['#D3F4FF', '#7DD3FC'], shirt: '#E0306F', beard: true },
   },
   {
     id: 'u-zara', username: 'zara', displayName: 'Zara Khan', status: 'Heads down until 4',
@@ -301,7 +301,7 @@ const prPreview: LinkPreview = {
   title: 'Retry socket reconnects with jittered backoff · Pull Request #482',
   description: 'Reconnects now back off exponentially with jitter, so a flaky network no longer stampedes the gateway.',
   siteName: 'GitHub',
-  imageUrl: svgDataUri(prPreviewSvg()),
+  imageUrl: svgDataUri(prPreviewSvg(PERSONAS.find((p) => p.id === 'u-marcus')!.look)),
 };
 
 const devPriyaImage = msg(dev, U.priya, at('13:40'), 'New empty states are ready for review ✨ here\'s the channel one', {
@@ -353,7 +353,7 @@ const threadReplies: Message[] = [
     reactions: [react('👍', U.samira, U.marcus)],
   }),
   msg(dev, U.aiko, at('14:29'), "I'll do a final QA pass on iOS and Android tonight 📱", { parentMessageId: SHOWCASE_THREAD_PARENT_ID }),
-  msg(dev, U.samira, at('14:33'), "Perfect. I'll draft the changelog and tag the release Thursday morning", {
+  msg(dev, U.samira, at('14:33'), "Perfect. Drafting the changelog now, I'll tag the release Thursday morning", {
     id: 'sc-thread-changelog',
     parentMessageId: SHOWCASE_THREAD_PARENT_ID,
   }),
@@ -493,6 +493,8 @@ const dmKwame = { dmId: 'dm-kwame' };
 
 const messagesByDmGroup: Record<string, Message[]> = {
   [SHOWCASE_DM_LAUNCH]: [
+    msg(dmLaunch, U.samira, at('16:48', 1), "Launch is Thursday 🚀 who's taking what?"),
+    msg(dmLaunch, U.diego, at('16:55', 1), 'Blog post and landing page copy. Aiko has QA and the store screenshots'),
     msg(dmLaunch, U.samira, at('17:10', 1), 'Launch checklist is in the release doc, shout if I missed anything'),
     msg(dmLaunch, U.aiko, at('17:24', 1), 'Looks complete to me 👌'),
     msg(dmLaunch, U.diego, at('17:31', 1), "Blog post draft is ready too, I'll share it in the morning ✍️"),
@@ -523,7 +525,7 @@ const messagesByDmGroup: Record<string, Message[]> = {
     msg(dmPriya, U.priya, at('13:30'), 'hey! do you have 5 minutes later to look at the onboarding copy?'),
     msg(dmPriya, me, at('13:32'), 'sure, after standup this afternoon?'),
     msg(dmPriya, U.priya, at('13:33'), 'perfect 🙏'),
-    msg(dmPriya, U.priya, at('15:20'), 'sent you the Figma link, no rush', { id: 'sc-dm-priya-figma' }),
+    msg(dmPriya, U.priya, at('15:20'), 'the onboarding copy is up in Figma, no rush', { id: 'sc-dm-priya-figma' }),
     msg(dmPriya, U.priya, at('15:21'), 'also… I may have made three more illustrations 😅', { id: 'sc-dm-priya-illustrations' }),
   ],
   'dm-marcus': [
@@ -699,11 +701,13 @@ function presence(entries: [ScenarioUser, string][]): VoicePresenceUserDto[] {
 /**
  * Who's in which voice channel, before Alex joins anything. Each person is in
  * at most one channel, and everyone in voice is online. The Lounge is the
- * design/writing crew co-working; the release crew is in Standup (Alex heads
- * there at 3:42 in the phone clip). The Voice story adds Alex to the Lounge
- * (`showcaseWithMeInVoice`) and keeps everyone else where they are.
+ * design/writing crew co-working; the release crew is in Standup. The Voice
+ * story adds Alex to the Lounge (`showcaseWithMeInVoice`) and keeps everyone
+ * else where they are; in the tour he then leaves ("On my way to standup" in
+ * the phone clip) and the last scene (`ChatLightStandup`) has him in Standup.
  */
 export const showcaseLoungeCrew: ScenarioUser[] = [U.priya, U.diego, U.chloe];
+export const showcaseStandupCrew: ScenarioUser[] = [U.samira, U.marcus, U.aiko];
 const voicePresenceByChannel: Record<string, VoicePresenceUserDto[]> = {
   [C.lounge.id]: presence([
     [U.priya, at('15:05')],
@@ -768,14 +772,18 @@ export function showcaseWithRead(contextId: string, scenario: Scenario = showcas
   };
 }
 
-/** The showcase with Alex connected to a voice channel: joins the people already there (last, just now). */
-export function showcaseWithMeInVoice(channelId: string, scenario: Scenario = showcaseScenario): Scenario {
+/** The showcase with Alex connected to a voice channel: joins the people already there (last, at `joinedAt`). */
+export function showcaseWithMeInVoice(
+  channelId: string,
+  scenario: Scenario = showcaseScenario,
+  joinedAt: string = at('15:41'),
+): Scenario {
   const already = scenario.voicePresenceByChannel[channelId] ?? [];
   return {
     ...scenario,
     voicePresenceByChannel: {
       ...scenario.voicePresenceByChannel,
-      [channelId]: [...already, ...presence([[me, at('15:41')]])],
+      [channelId]: [...already, ...presence([[me, joinedAt]])],
     },
   };
 }

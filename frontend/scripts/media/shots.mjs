@@ -10,9 +10,29 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
-  chromium, OUT_DIR, FILTER, waitForLadle, storyUrl, newCaptureContext, watchPage, waitForSettled, findForbiddenText,
+  chromium, OUT_DIR, FILTER, waitForLadle, storyUrl, newCaptureContext, watchPage, waitForSettled, findForbiddenText, sleep,
 } from './lib.mjs';
 import { SHOTS, VIDEOS, SECTIONS } from './catalog.mjs';
+
+/** Page tweaks a shot can ask for (`prepare` in catalog.mjs), run just before the screenshot. */
+const PREPARE = {
+  // Threads open scrolled to the newest reply, which on a phone leaves the
+  // first reply's name row cut in half under the original message. Show the
+  // thread from its first reply instead (all five replies still fit).
+  async threadFromTop(page) {
+    const moved = await page.evaluate(() => {
+      const label = Array.from(document.querySelectorAll('.MuiTypography-caption')).find(
+        (el) => el.textContent?.trim() === 'Original message',
+      );
+      const replies = label?.parentElement?.nextElementSibling;
+      if (!replies) return false;
+      replies.scrollTop = 0;
+      return true;
+    });
+    if (!moved) throw new Error('threadFromTop: no thread reply list');
+    await sleep(400);
+  },
+};
 
 async function shoot(browser, shot) {
   const context = await newCaptureContext(browser, shot.viewport);
@@ -27,6 +47,7 @@ async function shoot(browser, shot) {
     forbidden = await findForbiddenText(page);
     // Park the mouse off-canvas so no hover state leaks into the shot.
     await page.mouse.move(0, 0);
+    if (shot.prepare) await PREPARE[shot.prepare](page);
     await page.screenshot({ path: path.join(OUT_DIR, 'raw', 'shots', `${shot.name}.png`) });
   } catch (err) {
     error = String(err?.message || err);

@@ -180,6 +180,9 @@ const TOUR_TEXT = {
 // These replay what earlier scenes did (through window.__showcase, before the
 // clip starts) so a later scene doesn't lose sent messages or show badges for
 // conversations already read. Ids: see src/stories/fixtures/showcase.ts.
+// Messages are spaced out: several arriving within a frame or two can leave
+// the list short of the bottom (it stops following new messages).
+const CATCH_UP_GAP_MS = 400;
 const afterTourChat = async (actor) => {
   await actor.showcase('say', 'alex', DEV, TOUR_TEXT.merged, {
     reactions: [
@@ -187,12 +190,16 @@ const afterTourChat = async (actor) => {
       { emoji: '🙌', userIds: ['u-marcus'] },
     ],
   });
+  await sleep(CATCH_UP_GAP_MS);
   await actor.showcase('say', 'marcus', DEV, TOUR_TEXT.staging);
+  await sleep(CATCH_UP_GAP_MS);
   await actor.showcase('react', 'alex', 'sc-dev-ci-green', '💚', DEV);
 };
 const afterTourDms = (actor) => actor.showcase('read', { dmId: 'dm-priya' });
 const afterTourPhone = async (actor) => {
+  await sleep(CATCH_UP_GAP_MS);
   await actor.showcase('say', 'alex', DEV, TOUR_TEXT.standup);
+  await sleep(CATCH_UP_GAP_MS);
   await actor.showcase('say', 'aiko', DEV, TOUR_TEXT.seeYou);
 };
 
@@ -200,8 +207,9 @@ const afterTourPhone = async (actor) => {
 async function chatScene({ page, actor, start }, { long = false } = {}) {
   const composer = page.locator('textarea').first();
   const cbox = await composer.boundingBox();
-  // Start over the channel header (hovering a message row shows its toolbar).
-  await actor.place(cbox.x + cbox.width * 0.62, 90);
+  // Start on the composer's right: hovering a message row shows its action
+  // toolbar, so the cursor never travels across the message list to get here.
+  await actor.place(cbox.x + cbox.width * 0.78, cbox.y + cbox.height / 2 + 6);
   await start();
   await sleep(200);
   await actor.clickOn(composer, { dx: -cbox.width * 0.3, moveMs: 700, pause: 120 });
@@ -240,15 +248,23 @@ async function chatScene({ page, actor, start }, { long = false } = {}) {
   await sleep(long ? 2000 : 1700);
 }
 
-/** Connected to the Lounge: people take turns talking; the cursor drifts over the stage. */
-async function voiceScene({ actor, start }, { ms = 5200 } = {}) {
-  await actor.place(1000, 720);
+/**
+ * Connected to the Lounge: people take turns talking. The conversation script
+ * (`startConversation` in showcaseStory.ts) goes Priya, Priya, Diego,
+ * Diego+Priya, Chloé, ... one step every `stepMs`; `lead` is how long it has
+ * been running when the clip starts, so a short clip still shows all three.
+ *
+ * The cursor stays in the empty middle of the voice bar: a hovered stage tile
+ * swaps its green speaking ring for the card hover border.
+ */
+async function voiceScene({ actor, start }, { ms = 5200, stepMs = 1100, lead = 300 } = {}) {
+  await actor.place(420, 868);
   // The people already in the Lounge (`showcaseLoungeCrew` in src/stories/fixtures/showcase.ts).
-  await actor.showcase('conversation', ['priya', 'diego', 'chloe'], 1100);
-  await sleep(300);
+  await actor.showcase('conversation', ['priya', 'diego', 'chloe'], stepMs);
+  await sleep(lead);
   await start();
   await sleep(600);
-  await actor.move(860, 520, 1400);
+  await actor.move(820, 860, 1400);
   await sleep(ms - 2000);
 }
 
@@ -294,24 +310,36 @@ async function phoneScene({ page, actor, start }) {
   await sleep(1500);
 }
 
-/** Light theme: a calm pan over #dev. */
+/**
+ * Light theme, now in Standup (after "On my way to standup"): the Standup
+ * crew talk in the sidebar while #dev stays open. The cursor drifts right to
+ * left along the channel header, clear of message rows (hover toolbars) and
+ * header buttons: `move` bows a rightward move downwards and a leftward one
+ * upwards, so going right to left the arc rises into the empty app bar
+ * instead of dipping into the message list.
+ */
 async function lightScene({ actor, start }) {
-  await actor.place(1200, 300);
+  // `showcaseStandupCrew` in src/stories/fixtures/showcase.ts.
+  await actor.showcase('conversation', ['samira', 'marcus', 'aiko'], 1100);
+  await actor.place(1000, 90);
+  await sleep(300);
   await start();
-  await actor.move(820, 560, 1600);
+  await actor.move(600, 92, 1600);
   await sleep(1600);
 }
 
 const SCENES = [
   { name: 'hero-chat', story: 'tour--chat', viewport: 'desktop', run: (c) => chatScene(c) },
-  { name: 'hero-voice', story: 'tour--voice', viewport: 'desktop', run: (c) => voiceScene(c, { ms: 4000 }) },
+  // Joins at the conversation's second step, so Priya, Diego (alone, then with
+  // Priya) and Chloé all speak before the loop fades back to the start.
+  { name: 'hero-voice', story: 'tour--voice', viewport: 'desktop', run: (c) => voiceScene(c, { ms: 4000, stepMs: 1000, lead: 900 }) },
   { name: 'tour-chat', story: 'tour--chat', viewport: 'desktop', run: (c) => chatScene(c, { long: true }) },
   { name: 'tour-dms', story: 'tour--dm-list', viewport: 'desktop', run: dmScene },
   // (#dev isn't on screen in the voice scene; replaying the chat there would only mark #dev unread.)
   { name: 'tour-voice', story: 'tour--voice', viewport: 'desktop', before: [afterTourDms], run: (c) => voiceScene(c, { ms: 5000 }) },
   { name: 'tour-phone', story: 'tour--chat', viewport: 'phone', before: [afterTourChat, afterTourDms], run: phoneScene },
   {
-    name: 'tour-light', story: 'tour--chat-light', viewport: 'desktop',
+    name: 'tour-light', story: 'tour--chat-light-standup', viewport: 'desktop',
     before: [afterTourChat, afterTourDms, afterTourPhone], run: lightScene,
   },
 ];

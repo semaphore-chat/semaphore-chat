@@ -25,6 +25,7 @@ import {
   showcaseLoungeCrew,
   showcaseMe,
   showcasePaths,
+  showcaseStandupCrew,
   showcaseWithMeInVoice,
   showcaseWithRead,
 } from '../fixtures/showcase';
@@ -36,6 +37,18 @@ export const Chat = defineShowcase(showcasePaths.dev);
 
 /** Same, in light mode. */
 export const ChatLight = defineShowcase(showcasePaths.dev, { theme: lightTheme });
+
+/**
+ * Light mode, connected to Standup: the tour's last scene, after Alex left the
+ * Lounge ("On my way to standup" in the phone clip). The voice bar stays with
+ * him in #dev and the Standup crew talk in the sidebar.
+ */
+export const ChatLightStandup = defineShowcase(showcasePaths.dev, {
+  scenario: showcaseWithMeInVoice(showcaseChannels.standup.id, undefined, at('15:42')),
+  theme: lightTheme,
+  voiceState: channelVoiceState(showcaseChannels.standup, { createdAt: at('15:42') }),
+  voice: { me: { user: showcaseMe }, remotes: showcaseStandupCrew.map((user) => ({ user })) },
+});
 
 /** #dev with the release-planning thread open. */
 export const Thread = defineShowcase(showcasePaths.dev, {

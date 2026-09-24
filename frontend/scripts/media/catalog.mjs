@@ -4,7 +4,8 @@
  * page. `shots.mjs` writes this out as `.media-out/manifest.json`.
  *
  * `section` groups the docs gallery (docs-site/docs/tour.md); `readme: true`
- * marks the six README grid shots (all desktop, so the grid lines up).
+ * marks the six README grid shots (all desktop, so the grid lines up);
+ * `prepare` names a page tweak in shots.mjs (`PREPARE`) run before the shot.
  */
 export const SECTIONS = [
   'Chat',
@@ -19,8 +20,8 @@ export const SECTIONS = [
 export const SHOTS = [
   {
     name: 'chat-desktop', story: 'tour--chat', viewport: 'desktop', section: 'Chat', readme: true,
-    caption: 'Text channels with link previews, code blocks, images and reactions',
-    alt: 'The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block, an image of a design mock with emoji reactions, and the member list with online status.',
+    caption: 'Text channels with link previews, code blocks, reactions and threads',
+    alt: 'The #dev channel of the Lumen Studio community on desktop: a pull-request link preview, a code block with emoji reactions, a message with a five-reply thread, and the member list grouped by role with online status.',
   },
   {
     name: 'thread-desktop', story: 'tour--thread', viewport: 'desktop', section: 'Threads & replies', readme: true,
@@ -78,7 +79,7 @@ export const SHOTS = [
     alt: 'The Lumen Studio channel list on a phone, with unread badges and the people currently in the Lounge and Standup voice channels.',
   },
   {
-    name: 'thread-phone', story: 'tour--thread', viewport: 'phone', section: 'Threads & replies',
+    name: 'thread-phone', story: 'tour--thread', viewport: 'phone', section: 'Threads & replies', prepare: 'threadFromTop',
     caption: 'Threads open full screen on phones',
     alt: 'The release-plan thread open full screen on a phone.',
   },
@@ -108,6 +109,6 @@ export const VIDEOS = [
   {
     name: 'tour', file: 'video/tour.mp4', poster: 'video/tour-poster.webp', section: 'Tour',
     caption: 'A 40-second tour of Semaphore Chat',
-    alt: 'A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, and the app on a phone.',
+    alt: 'A guided tour: chatting and reacting in a channel, a thread, a direct message, a voice channel with people speaking, the app on a phone, and the light theme with the voice bar.',
   },
 ];
