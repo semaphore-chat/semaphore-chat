@@ -44,6 +44,9 @@ PROBE_THRESHOLD="${UI_REVIEW_PROBE_THRESHOLD:-12}"
 CONCURRENCY="${UI_REVIEW_CONCURRENCY:-3}"
 SETTLE_MS="${UI_REVIEW_SETTLE_MS:-1500}"
 QUIET_MS="${UI_REVIEW_QUIET_MS:-800}"
+# Extra captures of changed stories that must reproduce before a change counts
+# (a flaky story slips through only if every re-capture matches by chance).
+RECHECKS="${UI_REVIEW_RECHECKS:-2}"
 # Fixture epoch (src/stories/fixtures/rng.ts) + 30 min: relative times render
 # the same on both sides and on every run.
 FREEZE_TIME="${UI_REVIEW_FREEZE_TIME:-2026-09-22T18:30:00Z}"
@@ -220,14 +223,17 @@ capture() {
   shoot_pair "$WORK/head-ids.txt" "$WORK/base-ids.txt" ""
   tool diff "${diff_args[@]}"
 
-  # Stability re-check: capture the changed stories once more on both sides. A
-  # story whose own re-capture differs renders nondeterministically; its diff
-  # is reported as "unstable" instead of "changed".
-  if grep -q . "$WORK/recheck-ids.txt"; then
-    log "re-capturing the $(grep -c . "$WORK/recheck-ids.txt") changed stories on both sides to rule out flaky rendering ..."
-    shoot_pair "$WORK/recheck-ids.txt" "$WORK/recheck-ids.txt" "-recheck"
+  # Stability re-checks: capture the stories that still show a change again on
+  # both sides. A story whose own re-capture differs renders
+  # nondeterministically; its diff is reported as "unstable", not "changed".
+  local pass
+  for ((pass = 1; pass <= RECHECKS; pass++)); do
+    grep -q . "$WORK/recheck-ids.txt" || break
+    cp "$WORK/recheck-ids.txt" "$WORK/recheck-ids-$pass.txt"
+    log "stability re-check $pass/$RECHECKS: capturing the $(grep -c . "$WORK/recheck-ids-$pass.txt") changed stories again on both sides ..."
+    shoot_pair "$WORK/recheck-ids-$pass.txt" "$WORK/recheck-ids-$pass.txt" "-recheck-$pass"
     tool diff "${diff_args[@]}"
-  fi
+  done
   cexec shots node scripts/ui-review/composite.ts /ui-review/work/composite-jobs.json
   tool finalize --work /ui-review/work --out /ui-review/out
   printf '{"base":"%s","head":"%s","dirty":%s}\n' "$MERGE_BASE" "$HEAD_SHA" "$DIRTY" >"$OUT/run.json"

@@ -6,8 +6,8 @@
  *   affected  changed files → candidate stories (+ probe plan)     work/affected.json, work/probe-plan.json
  *   select    apply probe hits, cap                                 work/selection.json, work/{head,base}-ids.txt
  *   diff      pixel-diff head vs base shots, plan composites        work/diff-report.json, work/composite-jobs.json,
- *             (run again after re-capturing work/recheck-ids.txt    work/recheck-ids.txt
- *             into shots/{head,base}-recheck: unstable shots)
+ *             (run again after each re-capture of work/recheck-ids  work/recheck-ids.txt
+ *             into shots/{head,base}-recheck-<n>: unstable shots)
  *   finalize  composite PNGs → WebP, final report                   out/composites/*.webp, out/report.json
  *   block     PR-description section (local paths or published URLs)
  *   splice    put the section into a PR body (gh pr view --json body)
@@ -15,7 +15,7 @@
  *
  * Usage: node scripts/ui-review/cli.ts <step> [--flag value ...]
  */
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { buildGraph } from './lib/graph.ts';
 import {
@@ -262,15 +262,23 @@ async function stepDiff(flags: Flags) {
 
   for (const dir of ['diff', 'html', 'png']) rmSync(path.join(work, dir), { recursive: true, force: true });
 
-  type Side = 'head' | 'base' | 'head-recheck' | 'base-recheck';
-  const shotPath = (side: Side, viewport: string, id: string) => path.join(root, 'shots', side, viewport, `${id}.png`);
-  /** Differing pixels between a shot and its re-capture (undefined: not re-captured). */
-  const drift = async (first: Raw, side: Side, viewport: string, id: string): Promise<number | undefined> => {
-    const file = shotPath(side, viewport, id);
-    if (!existsSync(file)) return undefined;
-    const again = await loadRaw(file);
-    if (again.width !== first.width || again.height !== first.height) return Number.POSITIVE_INFINITY;
-    return pixelmatch(first.data, again.data, undefined, first.width, first.height, { threshold, includeAA: false });
+  const shotPath = (side: string, viewport: string, id: string) => path.join(root, 'shots', side, viewport, `${id}.png`);
+  const shotDirs = existsSync(path.join(root, 'shots')) ? readdirSync(path.join(root, 'shots')) : [];
+  const recheckDirs = (side: 'head' | 'base') => shotDirs.filter((d) => d.startsWith(`${side}-recheck-`));
+  /** Largest pixel difference between a shot and its re-captures (undefined: never re-captured). */
+  const drift = async (first: Raw, side: 'head' | 'base', viewport: string, id: string): Promise<number | undefined> => {
+    let worst: number | undefined;
+    for (const dir of recheckDirs(side)) {
+      const file = shotPath(dir, viewport, id);
+      if (!existsSync(file)) continue;
+      const again = await loadRaw(file);
+      const pixels =
+        again.width !== first.width || again.height !== first.height
+          ? Number.POSITIVE_INFINITY
+          : pixelmatch(first.data, again.data, undefined, first.width, first.height, { threshold, includeAA: false });
+      worst = Math.max(worst ?? 0, pixels);
+    }
+    return worst;
   };
   const jobs: { html: string; out: string }[] = [];
   const stories: StoryResult[] = [];
@@ -317,7 +325,7 @@ async function stepDiff(flags: Flags) {
         if (status === 'changed') {
           status = confirmChange(
             status,
-            { head: await drift(head, 'head-recheck', viewport, story.id), base: await drift(base, 'base-recheck', viewport, story.id) },
+            { head: await drift(head, 'head', viewport, story.id), base: await drift(base, 'base', viewport, story.id) },
             { minPixels },
           );
           const mask = new Uint8Array(width * height);
@@ -383,7 +391,7 @@ async function stepDiff(flags: Flags) {
     }
   }
 
-  // Stories whose change should be confirmed by capturing both sides again.
+  // Stories whose change still needs confirming by capturing both sides again.
   const recheck = stories.filter((s) => s.shots.some((shot) => shot.status === 'changed')).map((s) => s.id);
   writeFileSync(path.join(work, 'recheck-ids.txt'), recheck.length ? `${recheck.join('\n')}\n` : '');
 

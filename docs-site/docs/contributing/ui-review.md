@@ -96,7 +96,8 @@ Before publishing, check the run the way a reviewer would:
 
 Tuning via environment: `UI_REVIEW_MAX_STORIES`, `UI_REVIEW_PROBE_THRESHOLD`
 (default 12), `UI_REVIEW_CONCURRENCY` (capture: 3 pages per side),
-`UI_REVIEW_SETTLE_MS` (1500), `UI_REVIEW_QUIET_MS` (800), `UI_REVIEW_FREEZE_TIME`.
+`UI_REVIEW_SETTLE_MS` (1500), `UI_REVIEW_QUIET_MS` (800), `UI_REVIEW_RECHECKS` (2),
+`UI_REVIEW_FREEZE_TIME`.
 The render probe runs one page per CPU core minus two (at most 12).
 
 ## How it works
@@ -161,11 +162,14 @@ no head.
 
 A few stories render nondeterministically (for example a menu opened while
 media is still sizing: the menu anchors differently from load to load). To
-keep those out of "changed", every story with a changed shot is **captured a
-second time on both sides**; if the head or the base differs from its own
-first capture, the shot is reported as **unstable** — listed separately, with
-its composite, and not counted as a change. It costs one more capture of the
-changed stories only.
+keep those out of "changed", every story with a changed shot is **captured
+again on both sides** (two more times by default, `UI_REVIEW_RECHECKS`; each
+pass only re-captures stories that still show a change). If the head or the
+base differs from its own first capture, the shot is reported as
+**unstable** — listed separately, with its composite, and not counted as a
+change. A flaky story can still slip through as "changed" when every
+re-capture happens to match, but that gets unlikely quickly; a real change
+reproduces every time.
 
 Composites are drawn by Chromium from an HTML template (the
 before | after panels, a diff panel on phone, red outlines around changed
