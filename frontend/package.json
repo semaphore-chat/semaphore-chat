@@ -103,7 +103,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.0.18",
     "rollup-plugin-visualizer": "^5.14.0",
-    "concurrently": "^9.1.2",
+    "concurrently": "^10.0.5",
     "cross-env": "^7.0.3",
     "electron": "39.8.10",
     "electron-builder": "^26.16.1",
