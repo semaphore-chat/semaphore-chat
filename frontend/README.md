@@ -90,5 +90,5 @@ docker compose --profile tools run --rm ux-shots
 docker compose stop ladle && docker compose rm -f ladle
 ```
 
-Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`.
+Output: `frontend/.ux-shots/<viewport>/<story-id>.png` + `.ux-shots/report.json` (console errors/warnings and unhandled MSW requests per story). Both gitignored. Filter with env vars: `UX_SHOTS_FILTER=channel-chat` (substring match on story id), `UX_SHOTS_VIEWPORTS=phone,desktop`. A story that only makes sense at some widths limits itself with `MyStory.meta = { viewports: ['phone'] };` (a top-level statement, read statically by Ladle); the sweep and the UI review honour it.
 ```

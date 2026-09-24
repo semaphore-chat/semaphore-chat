@@ -34,7 +34,7 @@ jq -r '"uncovered: \(.uncovered | join(", "))", "not visible in Ladle: \(.appOnl
 
 - **Composites:** `.ui-review/out/composites/<story>--<viewport>.webp`. They exist only for changed, new, removed and unstable shots.
 - **Raw full-page shots:** `.ui-review/shots/head/<viewport>/<story>.png` (and `base/`). At 1 image pixel per CSS pixel, these are what you open for unchanged stories, and when you want the whole page instead of the composite's crop.
-- **Viewports:** `phone` 390×844, `tablet` 820×1180 and `desktop` 1440×900. Only `keyboard` stories are captured at `phone-short` 390×500.
+- **Viewports:** `phone` 390×844, `tablet` 820×1180 and `desktop` 1440×900. Only `keyboard` stories are captured at `phone-short` 390×500, and a story with its own `meta.viewports` only at those (see [stories.md](stories.md#viewports-limiting-a-story-to-some-widths)), so a missing tablet or desktop shot there is expected.
 
 ## Reading a composite
 
@@ -51,7 +51,7 @@ Compare "before" and "after" inside every outline, then scan the whole "after" p
 
 ## The checklist in detail
 
-1. **Intended?** For each changed story, name the edit that explains it. The story's `Renders:` line in the PR section, and its `reasons` in `report.json`, show which changed files the story runs. A change you can't explain is a regression until proven otherwise. That is exactly what this review exists to catch. Unexpected size changes (a list one row shorter, a panel 8 px taller) count too.
+1. **Intended?** For each changed story, name the edit that explains it. The story's `Renders:` line in the PR section, and its `reasons` in `report.json`, show which changed files the story runs. That includes a story whose own file changed: its line names the other changed files it runs, so a story you only touched for imports still shows the product change behind its difference. A change you can't explain is a regression until proven otherwise. That is exactly what this review exists to catch. Unexpected size changes (a list one row shorter, a panel 8 px taller) count too.
 2. **Overlap, clipping, overflow:**
    - Elements drawn on top of each other.
    - Text or icons cut off by their container.

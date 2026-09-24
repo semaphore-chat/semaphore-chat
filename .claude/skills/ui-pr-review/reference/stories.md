@@ -5,7 +5,9 @@ Stories are how the UI review sees your change: a changed line that no story ren
 ## Contents
 
 - Where stories live and how ids are formed
+- What a story file may export, and where shared helpers go
 - Screen, component and edge-state stories
+- Viewports: limiting a story to some widths
 - Data: scenarios, modifiers, edge helpers
 - Driving the UI into a state (menus, panels, typing)
 - Which edge cases to add
@@ -20,9 +22,26 @@ Stories are how the UI review sees your change: a changed line that no story ren
 | One component in isolation | `frontend/src/stories/components/` | `defineComponent` (`fixtures/componentStory.tsx`) |
 | Edge states (long data, empty, loading, errors, offline, theme, voice) | `frontend/src/stories/edge/{chat,nav,states,voice}/` | `edgeScreen` (`fixtures/edge/states.ts`), `defineNavScreen` (`fixtures/edge/nav.ts`) |
 
-The story id is the file name in kebab case, then `--`, then the export name in kebab case. For example, `EdgeChatWorstCase.stories.tsx` with `export const EverythingAtOnce` gives `edge-chat-worst-case--everything-at-once`. After a run, every id is listed in `.ui-review/work/head-meta.json` (under `stories`). An id containing `keyboard` is captured only at `phone-short` (390×500), which approximates an on-screen keyboard.
+A story id is `<file>--<export>`, both in Ladle's kebab case. `<file>` is the file name up to its first `.`, and `<export>` is the export name. Ladle's kebab case works like this:
+
+- A capital letter starts a new word, and everything is lower-cased: `EverythingAtOnce` gives `everything-at-once`.
+- A run of capitals is one word: `DmComposerLoaded` and `DMComposerLoaded` both give `dm-composer-loaded`.
+- **Digits stay attached to the word before them:** `LongNamesNarrow320` gives `long-names-narrow320`, not `...-narrow-320`.
+
+So `EdgeChatWorstCase.stories.tsx` with `export const EverythingAtOnce` gives `edge-chat-worst-case--everything-at-once`. After any run, every id is listed in `.ui-review/work/head-meta.json` (`jq -r '.stories | keys[]' .ui-review/work/head-meta.json`). A `--stories` id that doesn't exist stops the run, and the error suggests the right spelling or lists the ids of that file.
 
 The tool starts its own Ladle each run, so new story files are picked up without restarting anything.
+
+## What a story file may export, and where shared helpers go
+
+**Every named export of a `*.stories.tsx` file becomes a story.** Ladle doesn't check what the export is: an exported helper function or data object shows up as a broken story, and `export type` breaks the file. Keep non-story values unexported, and put anything two story files share in `frontend/src/stories/fixtures/`, next to similar helpers (`fixtures/edge/nav.ts` for navigation data, `fixtures/edge/chat.ts` for chat channels, and so on).
+
+Editing a fixture file is usually an ordinary change. The review's probe keeps only the stories that run the lines you changed: a new function brings in the stories that call it, and a new top-level constant brings in the stories whose files import that fixture. Only the harness that nearly every story loads makes the change **global**, which turns the review into a 40-story sample. Those fixture files are currently:
+
+- `SandboxShell.tsx`, `AuthenticatedShell.tsx`, `StoryRoutes.tsx`, `handlers.ts`, `builder.ts`, `types.ts`, `auth.ts`, `avatars.ts`, `fakeSocket.ts` and `rng.ts`;
+- plus `.ladle/**`, `src/theme/**` and the app modules the harness imports directly (`Layout.tsx`, the context providers).
+
+The rule behind the list: a fixture file that at least 90% of story files load is global. Every other fixture file, including `scenarios.ts`, `modifiers.ts`, `handlerHelpers.ts`, `screenStory.tsx`, `componentStory.tsx`, `interactions.tsx` and `edge/*.ts`, is not. The section's "Global change" note names the files that made a run global.
 
 ## Screen, component and edge-state stories
 
@@ -48,6 +67,8 @@ export const Narrow = defineComponent(bigCommunityScenario, () => <MyWidget user
 
 `defineComponent(scenario, render, { maxWidth = 640 | false, voiceState, isSocketConnected, extraHandlers })`. Test data factories from `src/__tests__/test-utils/factories.ts` (`createReaction`, `createMessage`, ...) work here too.
 
+**Component stories use a different accent colour.** A `defineComponent` story renders without `Layout`, so nothing applies the scenario's appearance settings, and it keeps the theme defaults: teal accent, minimal intensity. Screen and edge stories go through `Layout`, which applies the scenario's `/api/appearance-settings`: blue accent, balanced intensity. So a component story and a screen story of the same UI differ in accent colour. That is expected, not a regression. In the review, both sides of a story use the same theme, so it never shows up as a change. (In an interactive Ladle tab the theme is kept in `localStorage`, so a component story opened after a screen story shows blue there.)
+
 ```tsx
 // edge/states/...: app chrome plus edge-state toggles
 import { edgeScreen, withHangingEndpoint } from '../../fixtures/edge/states';
@@ -65,6 +86,24 @@ export const ChannelListLoading = edgeScreen(s, `/community/${primaryCommunity.i
 - `offline`, `isSocketConnected: false` (shows the connection banner), `updateAvailable`, `installPrompt`.
 - `voice`: "me" connected to the first voice channel.
 - `extraHandlers`, `overlay`.
+
+## Viewports: limiting a story to some widths
+
+Every story is captured at phone (390×844), tablet (820×1180) and desktop (1440×900). A story whose id contains `keyboard` is captured only at `phone-short` (390×500), which approximates an on-screen keyboard.
+
+A story that only makes sense at some widths names them in its Ladle meta. For example, a 320 px column is a phone layout: at tablet and desktop the app uses other layouts, so shots there would show something the app never renders.
+
+```tsx
+export const LongNamesNarrow320 = defineComponent(scenario, () => (
+  <Box sx={{ width: 320 }}><NotificationList /></Box>
+), { maxWidth: false });
+LongNamesNarrow320.meta = { viewports: ['phone'] };
+```
+
+- The names are `phone`, `phone-short`, `tablet` and `desktop`. The type (`StoryMeta` in `fixtures/screenStory.tsx`) catches typos, and the review stops on an invalid list.
+- Ladle reads the meta statically, so it must be a top-level `MyStory.meta = { ... };` statement with an object literal: no variables, no `as const`, and not set inside a helper.
+- The review probes, captures and compares the story only at those viewports, on both sides. `scripts/ux-shots.mjs` honours it too.
+- Use it only for widths the app can't show at the other viewports. Leave everything else at all three, so a regression at another width stays visible.
 
 ## Data: scenarios, modifiers, edge helpers
 
@@ -109,7 +148,7 @@ For each new or changed piece of UI, ask which of these could break it, and add 
 - **Counts and badges:** unread, mentions, large numbers (99+).
 - **Permissions:** owner or admin versus a plain member (`meOverrides`, roles), when controls depend on them.
 - **Theme:** dark (the default) and light, when colours are involved (`edgeScreen(..., { theme })`).
-- **Layout:** phone, tablet and desktop are captured automatically. Add a `keyboard` story when the composer or bottom UI matters with a keyboard open.
+- **Layout:** phone, tablet and desktop are captured automatically. Add a `keyboard` story when the composer or bottom UI matters with a keyboard open, and a narrow story (limited to `phone`, see "Viewports") when the narrowest supported phone matters.
 
 ## Determinism rules
 
@@ -122,9 +161,11 @@ The review captures both sides with the clock frozen at `2026-09-22T18:30:00Z` (
 
 ## Validate
 
+Run the checks in the review image. `--exec` works in any checkout or worktree and generates the gitignored API client first. (`docker compose run frontend ...` needs `backend/.env`, which only the main checkout has, and a generated `src/api-client/`.)
+
 ```bash
-docker compose run --rm --no-deps frontend pnpm run type-check
-docker compose run --rm --no-deps frontend pnpm exec eslint <your story files>
+frontend/scripts/ui-review/ui-review.sh --exec 'pnpm run type-check'
+frontend/scripts/ui-review/ui-review.sh --exec 'pnpm exec eslint src/stories/edge/nav/MyStories.stories.tsx'   # paths relative to frontend/
 ```
 
-Then run the UI review (`--stories <new ids>` for a quick look, and the normal run at the end). New stories appear under **New stories** with after-only composites. Review them like changed ones. Also check that they show no console issues (a missing MSW handler shows as an unhandled request).
+Then run the UI review (`--stories <new ids>` for a quick look, and the normal run at the end). New stories appear under **New stories** with after-only composites. Review them like changed ones. For a bug fix, the SKILL.md step 2 explains how to see a new story before and after the fix. Also check that they show no console issues (a missing MSW handler shows as an unhandled request).

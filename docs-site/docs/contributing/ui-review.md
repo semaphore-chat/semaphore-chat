@@ -53,6 +53,14 @@ frontend/scripts/ui-review/ui-review.sh --base origin/main --pr <number> --updat
 frontend/scripts/ui-review/ui-review.sh --base origin/main --pr <number> --update-pr
 ```
 
+Stacked on another unmerged branch? Pass it to both: `gh pr create --base
+<parent-branch>` and `ui-review.sh --base origin/<parent-branch>`.
+
+To type-check, lint or test a checkout the main Compose file can't run in
+(a fresh worktree has no `backend/.env` and no generated API client), use the
+tool's image: `frontend/scripts/ui-review/ui-review.sh --exec 'pnpm run
+type-check'`.
+
 Images are published per PR number, so publishing needs `--pr`; before the PR
 exists, review locally. `--pr` must be the open PR of the branch you are on
 (a typo would otherwise write into someone else's PR); `--force-pr` overrides
@@ -111,6 +119,7 @@ Before publishing, check the run the way a reviewer would:
 | `--allow-dirty` | Allow publishing with uncommitted `frontend/`/`shared/` changes |
 | `--force-pr` | Publish for a PR that isn't this branch's open PR |
 | `--keep` | Leave the containers and the base worktree running (debugging) |
+| `--exec '<cmd>'` | Instead of a review, run `<cmd>` in the review image (dependencies installed, API client generated) and exit with its status: `--exec 'pnpm run type-check'`. Works in any checkout or worktree, without `backend/.env` |
 
 Tuning via environment: `UI_REVIEW_MAX_STORIES`, `UI_REVIEW_PROBE_THRESHOLD`
 (default 12), `UI_REVIEW_CONCURRENCY` (capture pages per side: 4 on 24+ cores,
@@ -147,7 +156,8 @@ files, limited to what Ladle can render (`frontend/` and `shared/`).
    how many of each, and how many story files the sample covered.
 3. **Changed story files** are always captured ("direct"); stories that
    disappeared from every story file are reported as removed (a story file
-   that moved keeps its ids).
+   that moved keeps its ids). When the probe below runs, it loads them too,
+   so their "Renders:" line names only the changed files they actually run.
 4. **Everything else**: every story whose file can reach the changed file.
    That is nearly every story — they all mount the shared harness, which
    statically imports `Layout` and lazily every page — so when there are more
@@ -175,9 +185,11 @@ reminder to add a story. Files only the real app loads (`index.html`,
 `index.css` and `public/`) are listed as **not visible in Ladle** instead of
 triggering a sample that could only show "no change".
 
-The probe result is cached in `.ui-review/cache/` by the probe plan and the
-content of everything the head renders, so rerunning on the same code (e.g.
-after a push that changed nothing under `frontend/`/`shared/`) skips it.
+The probe result is cached in `.ui-review/cache/` by the probe plan, the
+dependency image and the content of `frontend/` and `shared/` (the git tree
+of the working tree, untracked files included). Rerunning on the same content
+skips it, also after committing the reviewed edits; any edit there, a story
+file included, probes again.
 
 ### Capture
 
@@ -189,12 +201,25 @@ image unless its dependency manifests differ, in which case an image is built
 from the base's own lockfile. Before capturing, both servers load every
 selected story once, so Vite's first transform of their chunks doesn't happen
 during a timed capture. Screenshots come from `scripts/ux-shots.mjs`
-(exact-id mode) with the clock frozen at a fixed instant, CSS animations
-disabled, and a settle wait: the page counts as ready once, for 800 ms, the
-DOM has not changed, no request started or finished and no script,
-stylesheet or font is still loading — a lazy route whose chunk is still in
-flight behind a static "Loading..." screen is not "ready". Identical code
-renders identical pixels.
+(story × viewport task mode, the same list on both sides) with the clock
+frozen at a fixed instant, CSS animations disabled, and a settle wait: the
+page counts as ready once, for 800 ms, the DOM has not changed, no request
+started or finished and no script, stylesheet or font is still loading — a
+lazy route whose chunk is still in flight behind a static "Loading..." screen
+is not "ready". Identical code renders identical pixels.
+
+Each story is shot at phone, tablet and desktop, except `*keyboard*` stories
+(only `phone-short`, 390×500) and stories that name their own viewports in
+their Ladle meta, for a layout only some widths can show (a 320 px column is
+a phone layout):
+
+```tsx
+LongNamesNarrow320.meta = { viewports: ['phone'] };
+```
+
+It has to be a top-level statement with an object literal, because Ladle reads
+it statically into `meta.json`. The probe, the capture and the diff all use
+it, on both sides, and so does the plain `ux-shots.mjs` sweep.
 
 ### Diff and classification
 
@@ -328,10 +353,13 @@ code) — run it after changing the script; it never touches the real remote.
   stories miss takes about 7 min, since each miss loads 3 viewports), 40
   captured with 35 changed and 66 changed shots re-checked twice — about 11
   min end to end. Four stories via `--stories`: 1.5 min; 40 unchanged stories:
-  4.5 min. A change to a single screen or component with its own story needs
-  no probe (below 12 candidates), a rerun on the same code reuses the probe,
-  and `UI_REVIEW_RECHECKS=1` saves the second re-check (about 2 min in the
-  run above).
+  4.5 min. A change to one component or page is not cheaper than that: every
+  story reaches nearly every routed component through the shared harness, so
+  it probes about 217 stories (about 6.5 min, most of them misses) and takes 8
+  to 10 min in total. Only changes limited to story files, or to modules no
+  route reaches (12 candidates or fewer), skip the probe (about 2 min). A rerun
+  on the same content reuses the probe, and `UI_REVIEW_RECHECKS=1` saves the
+  second re-check (about 2 min in the run above).
 - Links use `raw.githubusercontent.com`, which serves public repositories.
 
 ## Disk space
@@ -365,3 +393,14 @@ next run.
   `<!-- ui-review:start -->` line but no end marker; fix the description by hand.
 - `.ui-review/` is disposable (gitignored); files the containers create there are
   handed back to your user at the end of every run.
+- **Removing a worktree after a review** — `git worktree remove <path>` works:
+  the tool hands what its containers wrote back to your user, and the empty
+  root-owned `frontend/node_modules` and `shared/node_modules` (Docker mount
+  points) don't block it. If it reports "Permission denied", another container
+  wrote files there as root; hand them back with
+  `docker run --rm --entrypoint chown -v <path>:/w uir-frontend:<hash> -R "$(id -u):$(id -g)" /w`
+  and remove it again.
+- **"unknown story id(s)"** — `--stories` takes Ladle ids: `<file>--<export>`
+  in kebab case, with digits kept on the word before them
+  (`LongNamesNarrow320` → `long-names-narrow320`). The error suggests the
+  right spelling or lists the ids of that story file.

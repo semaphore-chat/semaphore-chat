@@ -10,7 +10,7 @@
 - Pull requests from forks
 - Run time
 - A run failed or was interrupted
-- Housekeeping: pruning, images, disk
+- Housekeeping: pruning, images, disk, removing a worktree
 - Changing the tool itself
 
 ## Nothing affected
@@ -47,7 +47,7 @@ A change is **global** when it can restyle every story:
 - `frontend/.ladle/**`, `frontend/src/theme/**`;
 - `frontend/package.json`, `frontend/tsconfig*.json`, root `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `.npmrc`, `patches/**`, `frontend/Dockerfile`, `shared/package.json`;
 - anything the Ladle provider imports;
-- the story harness nearly every story shares (`SandboxShell`, the fixtures builder, ...), and the app modules those import directly (`Layout`, context providers).
+- the story harness nearly every story shares, and the app modules those import directly (`Layout`, context providers). The fixture files that count are listed in [stories.md](stories.md#what-a-story-file-may-export-and-where-shared-helpers-go): `SandboxShell.tsx`, `AuthenticatedShell.tsx`, `StoryRoutes.tsx`, `handlers.ts`, `builder.ts`, `types.ts`, `auth.ts`, `avatars.ts`, `fakeSocket.ts` and `rng.ts`. Other fixture files, such as `scenarios.ts` or `edge/nav.ts`, are ordinary changes.
 
 What the tool then does:
 
@@ -93,14 +93,15 @@ What to do:
 
 ## Stacked PRs
 
-When your branch is based on another unmerged branch, compare against that branch:
+When your branch is based on another unmerged branch, both the PR and the review compare against that branch:
 
 ```bash
 git fetch origin
+gh pr create --base <parent-branch> --title "..." --body-file <body.md>
 frontend/scripts/ui-review/ui-review.sh --base origin/<parent-branch> --pr <n> --update-pr
 ```
 
-Otherwise the "before" side is `main`, and the section shows the parent's changes as yours. The "Regenerate" command in the section records the `--base`. When the parent merges and your PR is retargeted to `main`, run again with `--base origin/main`.
+Without `gh pr create --base`, the PR targets `main` and its diff includes the parent's commits. Without the tool's `--base`, the "before" side is `main`, and the section shows the parent's changes as yours. The "Regenerate" command in the section records the `--base`. When the parent merges and your PR is retargeted to `main`, run again with `--base origin/main`.
 
 ## Pull requests from forks
 
@@ -113,12 +114,17 @@ These times were measured on a 32-core machine. Plan for more on smaller machine
 | Change | Time |
 |--------|------|
 | First run on a dependency set | plus the `uir-frontend:<hash>` image build (about 3.7 GB) |
-| One screen or component that has its own story (under 12 candidates, so no probe) | about 2 min |
-| `--stories` with four stories | about 1.5 min |
+| A component or page, even one with its own stories (about 217 candidates, so a probe) | about 6.5 min probe, 8 to 10 min in total |
+| A broad change: a constant used everywhere, such as `TOUCH_TARGETS` in `utils/breakpoints.ts` | about 2.5 to 6 min probe, about 10 to 11 min in total |
+| Only story files changed, or a module no route reaches (12 candidates or fewer, so no probe) | about 2 min |
+| `--stories` with four stories (never probes) | about 1.5 min |
 | 40 stories, none changed | about 4.5 min |
-| A broad change: a constant used everywhere, such as `TOUCH_TARGETS` in `utils/breakpoints.ts` | about 6 min probe, about 10 to 11 min in total |
 
-A rerun on the same code reuses the probe result (`.ui-review/cache/`). `UI_REVIEW_RECHECKS=1` saves about 2 min on a run with many changed shots, but lets more flaky stories through as "changed". Always run the tool in the background from an agent, and continue when it reports back.
+Why nearly every change probes: every story mounts the shared harness, which imports `Layout` and lazily every page, so any component a route renders is statically reachable from nearly every story. The probe then loads each candidate (up to three viewports each) to find the few that run the changed code. A probe where most stories miss is the slow case, since each miss loads all its viewports.
+
+The probe result is cached in `.ui-review/cache/` by the **content** of `frontend/` and `shared/` (plus the dependency image and the probe plan). A rerun on the same content reuses it, including after you commit the reviewed edits. Any edit there, a story file included, means a new probe. So look at new or changed stories with `--stories` runs, and do the full run once, on committed code, at the end.
+
+`UI_REVIEW_RECHECKS=1` saves about 2 min on a run with many changed shots, but lets more flaky stories through as "changed". Always run the tool in the background from an agent, and continue when it reports back.
 
 ## A run failed or was interrupted
 
@@ -140,7 +146,7 @@ A rerun on the same code reuses the probe result (`.ui-review/cache/`). `UI_REVI
 
   Never prune other projects' volumes or containers (the dev stack, another checkout's `uir-*` project).
 
-## Housekeeping: pruning, images, disk
+## Housekeeping: pruning, images, disk, removing a worktree
 
 - **The `pr-screenshots` branch** holds one parentless commit: `README.md` plus `pr-<n>/<timestamp>-<sha>/*.webp`. Only `pr-screenshots.sh` writes it, never a manual push.
 - `.github/workflows/prune-pr-screenshots.yml` removes a PR's folder when the PR is closed or merged, and a daily run removes every closed PR's folder. You can also run it manually from Actions, where it defaults to a dry run. Locally:
@@ -153,10 +159,28 @@ A rerun on the same code reuses the probe result (`.ui-review/cache/`). `UI_REVI
 - **Never commit images to a code branch.** `.ui-review/` and `frontend/.ux-shots/` are gitignored. Stage files by name, and don't `git add -f` anything from them.
 - **Disk:** each dependency set gets its own `uir-frontend:<hash>` image (about 3.7 GB). The tool never deletes them. List them with `docker image ls uir-frontend`. Remove stale ones only when no review is running, since another checkout may be using one, and ask the user first. The Playwright image (about 3.2 GB) is shared. `.ui-review/` is disposable, and each run replaces it.
 
+### Removing a worktree after a review
+
+The tool's containers run as root with the checkout mounted. At the end of every run, and of every `--exec`, the tool removes its containers and hands what they wrote (`.ui-review/`, `frontend/.ladle/public/`, `frontend/src/api-client/`) back to your user. So after a review:
+
+```bash
+git worktree remove <path>        # from another checkout of the repo
+```
+
+- The empty root-owned `frontend/node_modules` and `shared/node_modules` directories are the mount points Docker creates for the containers' own `node_modules` volumes. Empty directories don't stop the removal.
+- If it fails with "Permission denied", a container outside the tool wrote files as root (for example your own `docker run` generating the API client). Hand the tree back with any `uir-frontend` image, then remove it:
+
+  ```bash
+  docker run --rm --entrypoint chown -v <path>:/w uir-frontend:<hash> -R "$(id -u):$(id -g)" /w
+  git worktree remove <path>
+  ```
+
+- Check that nothing of the worktree's own is left: `docker compose ls -a` shows no `uir-<id>` project of it (the id is printed at the start of each run), and `git worktree list` no longer lists it. Leave the `uir-frontend` images alone unless the user asks.
+
 ## Changing the tool itself
 
 If your PR changes `frontend/scripts/ui-review/` or `scripts/ux-shots.mjs`:
 
-- run its unit tests in `frontend/src/__tests__/scripts/ui-review/` (the full frontend test suite);
+- run its unit tests in `frontend/src/__tests__/scripts/ui-review/` (`ui-review.sh --exec 'pnpm exec vitest run src/__tests__/scripts/ui-review/'`, and the full suite before pushing);
 - after touching `pr-screenshots.sh`, run `frontend/scripts/ui-review/test-pr-screenshots.sh`. It works against a throwaway local bare repository and never touches the real remote;
 - keep `docs-site/docs/contributing/ui-review.md` and this skill in sync with the behaviour.
