@@ -58,6 +58,7 @@ nav:
       - Overview: contributing/index.md
       - Development Setup: contributing/development-setup.md
       - Testing Guide: contributing/testing.md
+      - UI Review Screenshots: contributing/ui-review.md
       - Code Patterns: contributing/code-patterns.md
   - Security: security.md
   - License: license.md

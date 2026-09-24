@@ -73,6 +73,15 @@ Stop it with `docker compose stop ladle && docker compose rm -f ladle` (this doe
 export const MyScreen = defineScreen(bigCommunityScenario, '/community/community-1/channel/channel-1');
 ```
 
+**UI review for PRs** — `frontend/scripts/ui-review/ui-review.sh` renders the stories a change affects on the merge-base and on your working tree at phone/tablet/desktop, pixel-diffs them and writes labelled before/after composites plus a PR-description section. Run it before opening any PR that touches the UI, look at the composites, then attach them to the PR (images go to the orphan `pr-screenshots` branch, never to a code branch):
+
+```bash
+frontend/scripts/ui-review/ui-review.sh --base origin/main                    # → .ui-review/out/
+frontend/scripts/ui-review/ui-review.sh --base origin/main --pr 123 --update-pr --reuse
+```
+
+If it lists changed files that no story renders, add a story for them. Details: [UI Review Screenshots](https://docs.semaphorechat.app/contributing/ui-review/).
+
 **Screenshot sweep** — captures every story at phone/tablet/desktop viewports:
 
 ```bash
