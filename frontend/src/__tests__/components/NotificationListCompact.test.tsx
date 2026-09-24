@@ -137,6 +137,32 @@ describe('NotificationList (compact rows)', () => {
     expect(preview).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
   });
 
+  // jsdom has no layout, so this pins the flex contract that decides who gives
+  // way: the name shrinks (and ellipsizes), the type label never does. The
+  // label used to carry flex-shrink 1000 and collapsed to "M…" next to a
+  // 32-character name.
+  it.each([
+    [NotificationType.USER_MENTION, 'Mentioned you'],
+    [NotificationType.SPECIAL_MENTION, 'Mentioned everyone'],
+    [NotificationType.DIRECT_MESSAGE, 'Sent a message'],
+    [NotificationType.CHANNEL_MESSAGE, 'New message'],
+    [NotificationType.THREAD_REPLY, 'Replied in a thread'],
+  ])('truncates a long name before the %s label', (type, label) => {
+    const longName = 'Maximilian Alexander Featherston';
+    mockNotifications = [
+      makeNotification({ type, author: { id: 'a', username: 'u1', displayName: longName, avatarUrl: null } }),
+    ];
+    renderWithProviders(<NotificationList />);
+    expect(screen.getByText(longName)).toHaveStyle({
+      flexShrink: '1',
+      minWidth: '0px',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+    });
+    expect(screen.getByText(label)).toHaveStyle({ flexShrink: '0', whiteSpace: 'nowrap' });
+  });
+
   describe('desktop (pointer)', () => {
     it('shows inline mark-read and dismiss icons', () => {
       renderWithProviders(<NotificationList />);
