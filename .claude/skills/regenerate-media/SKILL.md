@@ -5,7 +5,7 @@ description: Regenerate, review and publish Semaphore Chat's README and docs med
 
 # Regenerate the README / docs media
 
-The README hero and grid, the docs Tour page (video plus gallery) and `social.png` are screenshots and recordings of the **real UI** in the Ladle sandbox, running against hand-written demo data ("Lumen Studio", Tuesday 3:42 PM). None of it is edited by hand. The loop is: **snapshot → generate → look at what changed → fix the data, stories or scripts → regenerate → publish** (publish only when asked).
+The README hero and grid, the docs Tour page (video plus gallery) and `social.png` are screenshots and recordings of the **real UI** in the Ladle sandbox, running against hand-written demo data (the "Couch Co-op" friend group, plus Alex's work community "Lumen Studio", Tuesday 9:04 PM). None of it is edited by hand. The loop is: **snapshot → generate → look at what changed → fix the data, stories or scripts → regenerate → publish** (publish only when asked).
 
 The human-facing guide is `docs-site/docs/contributing/regenerating-screenshots.md`. The design is in `docs/superpowers/specs/2026-09-23-readme-media-design.md`.
 
@@ -58,7 +58,7 @@ docker ps -a --filter name=media-capture                    # then: docker rm -f
 | You changed | Final run | Takes |
 |-------------|-----------|-------|
 | `catalog.mjs`, `shots.mjs`, or a story that no scene records | `MEDIA_STEPS=shots,encode docker compose --profile tools run --rm media` | about 2 min |
-| anything in `frontend/src/stories/fixtures/` (such as `showcase.ts`), `lib.mjs`, `record.mjs`, or a story a scene records (`tour--chat`, `tour--voice`, `tour--dm-list` or `tour--chat-light-standup`) | `docker compose --profile tools run --rm media` (all steps) | several minutes |
+| anything in `frontend/src/stories/fixtures/` (such as `showcase.ts`), `lib.mjs`, `record.mjs`, or a story a scene records (`tour--chat`, `tour--voice`, `tour--dm-list`, `tour--dms` or `tour--chat-light-squad`) | `docker compose --profile tools run --rm media` (all steps) | several minutes |
 | only `encode.sh` | `MEDIA_STEPS=encode docker compose --profile tools run --rm --no-deps media` | about 15 s |
 
 Re-record only when the scenes or the data they show changed. Recordings are never byte-identical, so every re-record means a new frame review.

@@ -34,7 +34,7 @@ Read each one with the Read tool (every file in `screenshots/` when step 0 says 
   - the same people in the same voice channel everywhere;
   - no badge on the conversation being viewed;
   - a bell count that matches the unread notifications;
-  - times that fit 3:42 PM on Tuesday;
+  - times that fit 9:04 PM on Tuesday;
   - nobody listed twice.
 - **Caption and alt text:** the caption and alt in `catalog.mjs`, and the copies in `docs-site/docs/tour.md` and `README.md`, must describe what is actually visible, including counts ("five replies", "four participant tiles, two of them outlined").
 
@@ -65,7 +65,7 @@ Check in the frames:
   - It never rests on a message row (which shows the action toolbar with a red delete icon), and it only crosses rows on its way to click something in them.
   - It never sits on a voice stage tile (which hides the green speaking ring).
   - On the phone, taps show a touch dot and there is no pointer drift.
-- **Voice:** every person in the clip lights up green at least once. The hero shows Priya, then Diego, then Diego and Priya together, then Chloé. People in the voice channel match the sidebar.
+- **Voice:** every person in the clip lights up green at least once. The hero shows dropbear, then pri, then both together. People in the voice channel match the sidebar.
 - **Messages:** sent messages settle with no stuck "sending" state, teammates' replies appear, and the newest message is fully visible with no scroll-to-bottom button hiding it.
 - **Continuity between tour scenes:** what one scene did (sent messages, reactions, read DMs, which voice channel Alex is in) is still true in the next one, and the badges agree.
 - **Pacing:** typing and cursor movement look human, and each key moment is held long enough to read.
@@ -88,9 +88,9 @@ Check them with `ls -la frontend/.media-out/video/`:
 
 | File | Target | Last good run |
 |------|--------|---------------|
-| `video/hero.webp` | ≤ 2 MB (about 15 s, 960 px, 12 fps) | 1.6 MB, 15.25 s |
-| `video/hero.gif` | ≤ 5 MB (800 px) | 3.5 MB |
-| `video/tour.mp4` | a few MB (about 40 s, 1440×900, CRF 28) | 1.5 MB |
+| `video/hero.webp` | ≤ 2 MB (about 15 s, 960 px, 12 fps) | 1.2 MB, 15.65 s |
+| `video/hero.gif` | ≤ 5 MB (800 px) | 2.8 MB |
+| `video/tour.mp4` | a few MB (about 40 s, 1440×900, CRF 28) | 1.1 MB, 36.9 s |
 | `screenshots/*.webp` | 2x: 2880×1800 desktop, 780×1688 phone | |
 
 If the hero grows past 2 MB, shorten the hero scenes before lowering the quality (see gotchas 25 and 26).

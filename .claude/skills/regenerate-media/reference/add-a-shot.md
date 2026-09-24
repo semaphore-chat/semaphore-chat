@@ -4,7 +4,7 @@ A screenshot is made from four things: a **story** (what's on screen), a **catal
 
 ## 1. The story: `frontend/src/stories/tour/Tour.stories.tsx`
 
-Each export is one screen. Ladle gives it the id `tour--<kebab-case export name>`, so `ChatLightStandup` becomes `tour--chat-light-standup`. Reuse an existing story if the screen is the same and only the viewport differs; `tour--chat` serves both `chat-desktop` and `chat-phone`.
+Each export is one screen. Ladle gives it the id `tour--<kebab-case export name>`, so `ChatLightSquad` becomes `tour--chat-light-squad`. Reuse an existing story if the screen is the same and only the viewport differs; `tour--chat` serves both `chat-desktop` and `chat-phone`.
 
 ```tsx
 /** One line: what this screen shows and why. */
@@ -17,10 +17,10 @@ export const Pinned = defineShowcase(showcasePaths.dev, {
 
 `defineShowcase(path, options)` (in `fixtures/showcaseStory.ts`) takes:
 
-- `path`: an app route. `showcasePaths` has `dev`, `general`, `lounge`, `community`, `communitySettings`, `dms`, `dmPriya`, `dmLaunch`, `notifications`, `settings`, `profile` and `home`. Add a route to `showcasePaths` if you need a new one.
+- `path`: an app route. `showcasePaths` has `general`, `squad`, `community`, `lumenDev`, `lumenSettings`, `dms`, `dmPri`, `dmLaunch`, `notifications`, `settings`, `profile` and `home`. Add a route to `showcasePaths` if you need a new one.
 - `scenario`: a changed copy of `showcaseScenario`, e.g. `showcaseWithRead(id)` or `showcaseWithMeInVoice(channelId, scenario, joinedAt)`. Never change the shared object in place.
 - `theme`: `{ mode, accentColor, intensity }`.
-- `voiceState` + `voice`: to show Alex connected to a voice channel. Copy the `Voice` or `ChatLightStandup` stories: `channelVoiceState(channel, { createdAt })` and `voice: { me: { user: showcaseMe }, remotes: [...crew] }`, where the remotes are exactly the people already in that channel, and `speaking: true` lights up a tile.
+- `voiceState` + `voice`: to show Alex connected to a voice channel. Copy the `Voice` or `ChatLightSquad` stories: `channelVoiceState(channel, { createdAt })` and `voice: { me: { user: showcaseMe }, remotes: [...crew] }`, where the remotes are exactly the people already in that channel, and `speaking: true` lights up a tile.
 - `overlay`: a component that acts once the story has mounted. It uses the helpers in `fixtures/interactions.tsx` (`ClickOnMount`, `TypeIntoTextareaOnMount`, `AttachFileOnMount`) and the finders in `fixtures/domQueries.ts` (`findButtonByText`, `findButtonByIconTestId`, `findMenuItemByText`). Use it to open a thread, a tab, a drawer or a menu.
 - `extraHandlers`: MSW handlers for any endpoint the screen needs that the showcase doesn't answer yet. Unhandled requests show up in `report.json`.
 
@@ -38,7 +38,7 @@ Add an entry to `SHOTS`. The order of `SHOTS` is the capture order and the order
 {
   name: 'pinned-desktop', story: 'tour--pinned', viewport: 'desktop', section: 'Chat',
   caption: 'Pin the messages everyone needs',               // short; used as the gallery title
-  alt: 'The pinned messages panel open beside the #dev channel, listing three pinned messages.', // what is visible, specifically
+  alt: 'The pinned messages panel open beside the #general channel, listing three pinned messages.', // what is visible, specifically
   // readme: true,          // only for the six README grid shots (all desktop)
   // prepare: 'threadFromTop', // a page tweak from PREPARE in shots.mjs, run right before the screenshot
   // settleMs: 2500,        // extra settle time (default 2500)

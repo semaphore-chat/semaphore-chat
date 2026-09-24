@@ -4,12 +4,12 @@ The hero (`hero.webp` / `hero.gif`, about 15 s) and the tour (`tour.mp4`, about 
 
 | Video | Scenes, in order (`encode.sh`) |
 |-------|--------------------------------|
-| hero | `hero-chat` (#dev: send, reactions, a reply, +1, open thread) → `hero-voice` (Lounge talking) → loop back |
-| tour | `tour-chat` → `tour-dms` (reply to Priya) → `tour-voice` (Lounge) → `tour-phone` ("On my way to standup") → `tour-light` (Alex in Standup, light theme) |
+| hero | `hero-chat` (#general: send, +1 the 😂, scroll up, open the Friday thread) → `hero-voice` (Squad Up talking) → loop back |
+| tour | `tour-chat` → `tour-dms` (reply to pri, she asks "you getting on?") → `tour-phone` (answer with a GIF from the picker) → `tour-voice` (Squad Up) → `tour-light` (Alex in Squad Up, light theme) |
 
 ## 1. The story
 
-A scene records a story, just as a screenshot does. Reuse a tour story, or add one (see [add-a-shot.md](add-a-shot.md), step 1). A scene that needs a different starting state gets its own story. For example, `tour-light` uses `ChatLightStandup` because Alex is in Standup by then. Don't script the state into place on camera.
+A scene records a story, just as a screenshot does. Reuse a tour story, or add one (see [add-a-shot.md](add-a-shot.md), step 1). A scene that needs a different starting state gets its own story. For example, `tour-light` uses `ChatLightSquad` because Alex is in Squad Up by then. Don't script the state into place on camera.
 
 ## 2. The scene function (in `record.mjs`)
 
@@ -22,7 +22,7 @@ async function threadScene({ page, actor, start }) {
   await start();                                                        // the clip starts here
   await sleep(300);
   await actor.clickOn(page.locator('button', { hasText: /5 replies/ }).first(), { moveMs: 800 });
-  await actor.showcase('say', 'marcus', { channelId: 'ch-dev' }, 'On it 👍');
+  await actor.showcase('say', 'dropbear', { channelId: 'cc-general' }, '9 works');
   await sleep(1700);                                                    // hold the result, then return: the clip ends
 }
 ```
@@ -35,7 +35,7 @@ Then add it to `SCENES`:
 
 - The clip keeps only what happens between `start()` and the moment `run` returns. The trim offsets are written to `raw/scenes/scenes.json` and `trims.txt`.
 - `viewport` is `desktop` (1440×900) or `phone` (390×844, recorded at 1x). `encode.sh` centres any scene whose name contains `phone` on a violet backdrop.
-- **`before`** takes catch-up functions that run after the page loads and before the scene starts. They make a fresh page look like the rest of the tour so far. Every tour scene is a new page, so without them, messages sent earlier vanish and conversations that were already read show badges again. The existing ones are `afterTourChat` (the merged message with its reactions, Marcus's reply, the 💚 +1), `afterTourDms` (Priya's DM read) and `afterTourPhone` ("On my way to standup" / "See you there!"). If you change what a scene does, update the catch-up functions that replay it. Space out replayed messages with `CATCH_UP_GAP_MS` (gotcha 17). Shared text goes in `TOUR_TEXT`.
+- **`before`** takes catch-up functions that run after the page loads and before the scene starts. They make a fresh page look like the rest of the tour so far. Every tour scene is a new page, so without them, messages sent earlier vanish and conversations that were already read show badges again. The existing ones are `afterTourChat` (Alex's "ok i'm on at 8:45 friday" and his 😂 +1) and `afterTourDms` (Alex's "yeah i saw", pri's "you getting on?", her DM read). If you change what a scene does, update the catch-up functions that replay it. Space out replayed messages with `CATCH_UP_GAP_MS` (gotcha 17). Shared text goes in `TOUR_TEXT`.
 
 ### The actor: cursor and keyboard (`makeActor`)
 
@@ -51,7 +51,7 @@ Then add it to `SCENES`:
 
 ### Teammates: `window.__showcase` (`ShowcaseApi` in `showcaseStory.ts`)
 
-`where` is `{ channelId: 'ch-dev' }` or `{ dmId: 'dm-priya' }`. People are referred to by username: `alex` (Alex, the viewer), `priya`, `marcus`, `aiko`, `samira`, `diego`, `grace`, `tomas`, `zara`, `kwame`, `chloe`, `noah` or `mateo`.
+`where` is `{ channelId: 'cc-general' }` or `{ dmId: 'dm-priya' }`. People are referred to by username (their handle): `alexk` (Alex, the viewer), `pri`, `dropbear`, `aiko`, `samira` (shown as "Samira"), `diego` ("Diego"), `gracie`, `tomatillo`, `zara`, `kwam3`, `chlo`, `noahbody` or `mateo`.
 
 | Call | Effect |
 |------|--------|
@@ -68,7 +68,7 @@ To find a message you just sent, look it up in the DOM (`[data-message-id]` rows
 
 - A person watching needs time: about 700–800 ms for a cursor move to a target, a short pause before clicking, human typing speed, and **1.5–2 s held on the result** before the scene ends. The hero's total is about 15 s, so keep hero scenes tight. The tour can breathe.
 - Park the cursor where hovering changes nothing: the composer, the channel header, the app bar, or the empty middle of the voice bar. Never park it on message rows or voice stage tiles (gotchas 19–22). Plan the path so it doesn't cross the message list unless it's going to click something there.
-- In a voice scene, every speaker should light up at least once within the clip. Tune `stepMs` and `lead`. The hero uses `{ ms: 4000, stepMs: 1000, lead: 900 }` so that Priya, then Diego, then Diego and Priya together, then Chloé all speak.
+- In a voice scene, every speaker should light up at least once within the clip. Tune `stepMs` and `lead`. The hero uses `{ ms: 4000, stepMs: 1000, lead: 900 }` so that dropbear, then pri, then both together speak.
 - On the phone, the pointer rests on the app bar (`place(195, 20)`), every interaction is a `tap`, and messages are sent by tapping the send button, because Enter adds a newline.
 
 ## 4. Wire it into the video (`encode.sh`)
