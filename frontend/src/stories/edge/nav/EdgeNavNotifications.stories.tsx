@@ -38,11 +38,12 @@ const longNames = withNotifications(
 export const LongNamesEveryType = defineNavScreen(longNames, '/notifications');
 
 /**
- * The same rows in a 320px column, the narrowest phone we support: on the
- * phone viewport this is the real touch layout, where the label and time
- * leave the name the least room. Tablet is a touch layout too. Desktop renders
- * the pointer layout (inline mark-read/dismiss) squeezed into 320px, which the
- * app never does (pointer layout means ≥1200px, or Electron at ≥800px).
+ * The same rows in a 320px column, the narrowest phone we support, in the
+ * touch layout, where the label and time leave the name the least room.
+ * Captured on phone only: desktop would render the pointer layout (inline
+ * mark-read/dismiss) squeezed into 320px, which the app never does (pointer
+ * layout means ≥1200px, or Electron at ≥800px), and tablet would repeat the
+ * phone shot, since the list only varies by touch vs pointer.
  */
 export const LongNamesNarrow320 = defineComponent(
   longNames,
@@ -53,3 +54,4 @@ export const LongNamesNarrow320 = defineComponent(
   ),
   { maxWidth: false, extraHandlers: navHandlers(longNames) },
 );
+LongNamesNarrow320.meta = { viewports: ['phone'] };
