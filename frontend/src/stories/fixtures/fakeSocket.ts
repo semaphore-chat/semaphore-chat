@@ -15,6 +15,9 @@ export interface FakeSocket {
   off: (event: string, handler: Handler) => void;
   once: (event: string, handler: Handler) => void;
   emit: (event: string, ...args: unknown[]) => void;
+  /** Sandbox-only: delivers `event` to the registered handlers as if the
+   * server had pushed it (e.g. a `userTyping` event for a typing story). */
+  receive: (event: string, ...args: unknown[]) => void;
   connected: boolean;
   id: string;
 }
@@ -39,6 +42,9 @@ export function createFakeSocket(): FakeSocket {
     },
     emit() {
       // No-op — nothing is listening on the other end in the sandbox.
+    },
+    receive(event, ...args) {
+      for (const handler of [...(handlers.get(event) ?? [])]) handler(...args);
     },
     connected: true,
     id: 'ladle-fake-socket',
