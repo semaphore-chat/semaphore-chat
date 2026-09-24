@@ -1,0 +1,76 @@
+name: Prune PR screenshots
+
+# Removes UI-review screenshots (frontend/scripts/ui-review/, published to the
+# orphan `pr-screenshots` branch) once their PR is closed or merged:
+#   - pull_request closed: just that PR's pr-<n>/ folder;
+#   - daily: every pr-<n>/ whose PR is closed — the safety net for closed-PR
+#     runs that could not push (fork PRs get a read-only token) or that were
+#     superseded in the concurrency queue;
+#   - manual: dry run by default, optionally a single PR.
+# The logic lives in frontend/scripts/ui-review/pr-screenshots.sh (plain git +
+# gh), the same script contributors run locally. It no-ops when the branch
+# doesn't exist and never touches any other branch.
+
+on:
+  pull_request:
+    types: [closed]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only print what would be removed
+        type: boolean
+        default: true
+      pr:
+        description: Only this PR number (empty = every closed PR)
+        type: string
+        required: false
+
+permissions:
+  contents: write # push the rebuilt pr-screenshots branch
+  pull-requests: read # gh pr view (state of each PR folder)
+
+# One prune (or publish race) at a time; queue instead of cancelling.
+concurrency:
+  group: pr-screenshots-branch
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: Prune closed PRs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout (default branch — never the PR's code)
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          script=frontend/scripts/ui-review/pr-screenshots.sh
+          if [[ ! -f "$script" ]]; then
+            echo "::notice::$script is not on the default branch yet, nothing to do."
+            exit 0
+          fi
+          args=(prune)
+          if [[ -n "$PR_NUMBER" ]]; then args+=(--pr "$PR_NUMBER"); fi
+          if [[ "$DRY_RUN" == "true" ]]; then args+=(--dry-run); fi
+          status=0
+          bash "$script" "${args[@]}" || status=$?
+          if [[ $status -eq 3 && "$EVENT" == "pull_request" ]]; then
+            echo "::notice::No permission to push to pr-screenshots (read-only token, e.g. a fork PR). The daily run will prune pr-$PR_NUMBER/."
+            exit 0
+          fi
+          exit $status
