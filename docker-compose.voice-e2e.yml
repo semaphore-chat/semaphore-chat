@@ -9,6 +9,7 @@
 #   export E2E_POSTGRES_PORT=0 E2E_REDIS_PORT=0 E2E_BACKEND_PORT=0 E2E_FRONTEND_PORT=0
 #   c() { docker compose -p "$E2E_STACK" -f docker-compose.e2e.yml -f docker-compose.voice-e2e.yml "$@"; }
 #   c up -d postgres-test redis-test livekit-e2e backend-test frontend-test
+#   # once backend-test answers /api/health (it compiles first):
 #   c exec -T backend-test sh -c 'pnpm run prisma:migrate && pnpm run seed:e2e'
 #   c run --rm playwright /app/node_modules/.bin/playwright test --project=voice --workers=1
 #   c down -v

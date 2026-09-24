@@ -17,9 +17,12 @@ import path from "path";
  * its run's backend container (<E2E_STACK>-backend: the shared semaphore-test
  * network can hold several e2e stacks, so the generic `backend-test` service
  * name is ambiguous there); the CI Playwright job runs the backend directly on
- * the runner and points this at localhost instead.
+ * the runner and points this at localhost instead. Without it, the fallback is
+ * the backend container name docker-compose.e2e.yml uses for E2E_STACK (by
+ * default `semaphore-e2e`), never the ambiguous service name.
  */
-const backendUrl = process.env.E2E_BACKEND_URL || "http://backend-test:3000";
+const backendUrl =
+  process.env.E2E_BACKEND_URL || `http://${process.env.E2E_STACK || "semaphore-e2e"}-backend:3000`;
 const backendWsUrl = backendUrl.replace(/^http/, "ws");
 
 export default defineConfig({
