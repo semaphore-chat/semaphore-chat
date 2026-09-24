@@ -128,7 +128,7 @@ The probe result is cached in `.ui-review/cache/` by the **content** of `fronten
 
 ## A run failed or was interrupted
 
-- The tool removes its containers (`docker compose -p uir-<id> down -v --remove-orphans`) and its base worktree (`.ui-review/base`) on exit, including on errors and Ctrl-C. The project name is printed at the start ("starting ... (project uir-...)").
+- The tool removes its containers (`docker compose -p uir-<id> down -v --remove-orphans`) and its base worktree (`.ui-review/base`) on exit, including on errors and Ctrl-C. The project name is printed at the start ("starting ... (project uir-...)"). The shared `semaphore-test` network they ran on is external and stays: never remove or prune it.
 - **"Ladle (head/base) did not come up":** rerun with `--keep`, read `docker compose -p uir-<id> logs ladle-head` (or `ladle-base`), then clean up as below.
 - **Everything shows as new:** the merge-base predates the Ladle sandbox. Check `--base`.
 - **"PR #n is ..., for branch ...":** wrong `--pr`, or the PR is closed. Fix the number. Use `--force-pr` only when you really mean another PR.

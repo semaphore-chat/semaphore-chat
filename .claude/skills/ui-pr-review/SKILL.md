@@ -22,7 +22,7 @@ The human guide (every option, how stories are selected, the publishing mechanic
 
 - **Docker only.** The script drives only git, gh and docker on the host, and every Node step runs in its own containers. Never run pnpm, node or python on the host. Read JSON with the Read tool, or with `jq`.
 - **Never commit images.** Screenshots go only to the orphan `pr-screenshots` branch (`pr-<n>/`), and only through the script. `.ui-review/` is gitignored. Don't copy composites into the repo, docs or code branches, and never push to `pr-screenshots` by hand.
-- **Leave the dev `ladle` container (:61000) alone.** The tool doesn't use it. It runs its own compose project (`uir-<hash of the checkout path>`) with no host ports, so reviews in different worktrees don't collide.
+- **Leave the dev `ladle` container (:61000) alone.** The tool doesn't use it. It runs its own compose project (`uir-<hash of the checkout path>`) with no host ports, so reviews in different worktrees don't collide. Its containers join the shared `semaphore-test` Docker network (external: the tool never creates or removes a network, see CLAUDE.md). Don't start its compose file yourself with another `-p` name or network.
 - **Don't tune the result away.** Don't raise `UI_REVIEW_PIXEL_THRESHOLD` or lower `UI_REVIEW_RECHECKS` to make a difference disappear. Don't hand-edit the section between the markers, because the next run replaces it.
 - **Every run replaces** `.ui-review/out/` and `.ui-review/shots/`, and `--reuse` publishes whatever the last run produced. Do targeted runs (`--stories`) before the final full run, not after it.
 
@@ -32,7 +32,7 @@ The tool compares your working tree with the base, so a run before the edit has 
 
 For a visual bug, find the stories that show it before you fix it: `grep -rl <Component> frontend/src/stories/` gives the story files, and `--stories id1,id2` (step 3) captures them even with no change yet, so you can open their head shots and see the bug. A bug that an **existing** story shows gives the most useful before/after (see step 2 for new stories).
 
-Run the checks with the tool's `--exec`, which works in any checkout or worktree. `docker compose run frontend ...` needs `backend/.env` and a generated `src/api-client/`, which a fresh worktree doesn't have:
+Run the checks with the tool's `--exec` (or `scripts/test-stack.sh <ticket> run-frontend <cmd>`, the same image and mounts), which work in any checkout or worktree. Don't use `docker compose run frontend ...` in a worktree: it needs `backend/.env` and a generated `src/api-client/`, which a fresh worktree doesn't have, and it creates a `<worktree>_default` Docker network:
 
 ```bash
 frontend/scripts/ui-review/ui-review.sh --exec 'pnpm run type-check'

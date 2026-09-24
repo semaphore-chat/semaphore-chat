@@ -8,6 +8,15 @@
 # matters). So a review never collides with a developer's own `ladle` on
 # :61000, and reviews of different checkouts can run side by side.
 #
+# Network: the containers join the shared, long-lived `semaphore-test` network
+# (external: ui-review.sh creates it once via scripts/test-net.sh; compose
+# never creates or removes it, so `down` leaves it alone). A per-review
+# `uir-..._default` network would add and remove a host bridge on every run,
+# which makes Chromium-based browsers on the machine drop their connections.
+# Other stacks share that network, but nothing here is addressed by name: the
+# containers are named `<project>-<service>-1` (unique per checkout), and
+# Chromium reaches Ladle only through the shared namespace, as localhost.
+#
 # Only the small per-package node_modules dirs get anonymous volumes; the big
 # hoisted /app/node_modules comes straight from the image (never shadowed).
 services:
@@ -64,3 +73,8 @@ services:
       - /app/frontend/node_modules
       - /app/shared/node_modules
       - ./.ui-review:/ui-review
+
+networks:
+  default:
+    external: true
+    name: semaphore-test
