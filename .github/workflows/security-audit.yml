@@ -30,9 +30,10 @@ jobs:
           node-version: '24'
 
       # Report-only for now: the full-workspace audit has a pre-existing
-      # baseline (as of 2026-06-10: 33 high / 33 moderate / 5 low, e.g.
-      # react-router DoS, plus transitive tar/minimatch/lodash/path-to-regexp/
-      # socket.io-parser/defu/effect advisories). A plain `continue-on-error`
+      # baseline. The transitive tar/minimatch/lodash/path-to-regexp/
+      # socket.io-parser/defu/effect/axios advisories were cleared 2026-09;
+      # electron went to 39.8.10 the same month. What remains is extract-zip
+      # (no fixed version upstream; install-time only). A plain `continue-on-error`
       # job still shows a red X on PRs, so the step downgrades the failure
       # itself and surfaces the result in the step summary instead.
       # TODO: remove the `|| ...` downgrade to make this blocking once the

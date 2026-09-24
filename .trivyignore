@@ -6,40 +6,8 @@
 # Keep in sync with the pnpm-audit baseline note in
 # .github/workflows/security-audit.yml.
 
-# --- backend image: npm transitive deps (fixed versions exist — bump & remove) ---
-# axios (fix: >=1.15.1)
-CVE-2026-42033
-CVE-2026-42035
-CVE-2026-42043
-CVE-2026-42264
-CVE-2026-44486
-CVE-2026-44487
-CVE-2026-44488
-CVE-2026-44492
-CVE-2026-44494
-CVE-2026-44495
-CVE-2026-44496
-# defu
-CVE-2026-35209
-# effect
-CVE-2026-32887
-# lodash (via @nestjs/config)
-CVE-2026-4800
-# minimatch
-CVE-2026-26996
-CVE-2026-27903
-CVE-2026-27904
-# path-to-regexp (via @nestjs/core)
-CVE-2026-4926
-# socket.io-parser
-CVE-2026-33151
+# --- backend image: npm transitive deps ---
 # extract-zip (dev/build-time only: @electron/get unpacks the Electron binary
 # at install; not shipped in app.asar or images. No fixed version upstream yet
 # — remove when one lands.) Added 2026-08-19 pre-v0.4.3 audit.
 CVE-2026-56876
-
-# --- frontend image: OS packages from the nginx/alpine base (bump base image) ---
-# libxml2
-CVE-2026-6732
-# nghttp2-libs
-CVE-2026-27135
