@@ -29,6 +29,12 @@ jobs:
         with:
           node-version: '24'
 
+      # Blocking: a key-name-based version bump once overwrote
+      # backend scripts.prisma with "^6.19.3". Fail if any scripts entry
+      # looks like a version instead of a command.
+      - name: Check package.json scripts are commands, not versions
+        run: node scripts/check-package-scripts.mjs
+
       # Report-only for now: the full-workspace audit has a pre-existing
       # baseline. The transitive tar/minimatch/lodash/path-to-regexp/
       # socket.io-parser/defu/effect/axios advisories were cleared 2026-09;
