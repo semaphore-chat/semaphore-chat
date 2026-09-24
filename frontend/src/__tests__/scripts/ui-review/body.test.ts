@@ -29,13 +29,33 @@ describe('spliceBlock', () => {
     expect(twice).toBe(spliceBlock(once, block('Y')));
   });
 
-  it('treats a start marker without an end marker as a truncated block running to the end', () => {
-    expect(spliceBlock(`Keep me\n${START_MARKER}\nhalf a blo`, block('NEW'))).toBe(`Keep me\n${block('NEW')}`);
+  it('refuses (instead of truncating) when a start marker line has no end marker line after it', () => {
+    expect(() => spliceBlock(`Keep me\n${START_MARKER}\nhalf a blo\n\n## Test plan\n- [x] it works`, block('NEW'))).toThrow(/without a matching/);
   });
 
   it('ignores a stray end marker before the start marker', () => {
-    const body = `a ${END_MARKER} b\n${block('OLD')}\nc`;
-    expect(spliceBlock(body, block('NEW'))).toBe(`a ${END_MARKER} b\n${block('NEW')}\nc`);
+    const body = `a\n${END_MARKER}\nb\n${block('OLD')}\nc`;
+    expect(spliceBlock(body, block('NEW'))).toBe(`a\n${END_MARKER}\nb\n${block('NEW')}\nc`);
+  });
+
+  // Regression: plain indexOf treated any mention of the markers as the block.
+  it('ignores markers mentioned inline in the text', () => {
+    const body = `Adds the \`${START_MARKER}\` marker handling.\n\n## Test plan\n- [x] manual check\n\n🤖 Generated with Claude Code\n`;
+    expect(spliceBlock(body, block('NEW'))).toBe(`${body}\n${block('NEW')}\n`);
+    const withBlock = `Mentions ${START_MARKER} here.\n\nUser text\n\n${block('OLD')}\n\nfooter`;
+    expect(spliceBlock(withBlock, block('NEW'))).toBe(`Mentions ${START_MARKER} here.\n\nUser text\n\n${block('NEW')}\n\nfooter`);
+  });
+
+  it('ignores markers inside fenced code blocks (e.g. the docs snippet quoted in a description)', () => {
+    const snippet = `To place it:\n\n\`\`\`markdown\n${START_MARKER}\n${END_MARKER}\n\`\`\`\n\n`;
+    expect(spliceBlock(`${snippet}${block('OLD')}\nend`, block('NEW'))).toBe(`${snippet}${block('NEW')}\nend`);
+    const tilde = `~~~\n${START_MARKER}\n~~~\n`;
+    expect(spliceBlock(tilde, block('NEW'))).toBe(`${tilde}\n${block('NEW')}\n`);
+  });
+
+  it('accepts marker lines with CRLF endings or up to three spaces of indentation', () => {
+    const body = `x\r\n  ${START_MARKER}\r\nold\r\n${END_MARKER}\r\ny`;
+    expect(spliceBlock(body, block('NEW'))).toBe(`x\r\n  ${block('NEW')}\r\ny`);
   });
 
   it('rejects a block without markers', () => {

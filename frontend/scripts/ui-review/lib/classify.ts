@@ -1,13 +1,13 @@
 /**
- * Pixel-diff classification and diff-region geometry. Pure — `diff.ts` feeds
- * it pixelmatch output (which already discounts anti-aliased pixels and
+ * Pixel-diff classification and diff-region geometry. Pure — `cli.ts diff`
+ * feeds it pixelmatch output (which already discounts anti-aliased pixels and
  * per-pixel colour deltas under its `threshold`).
  */
 
 /**
- * `unstable`: base and head differ, but so did two captures of the same side
- * (see `confirmChange`) — the story renders nondeterministically, so the diff
- * can't be attributed to the change.
+ * `unstable`: base and head differ, but capturing both sides again did not
+ * reproduce the difference (see `confirmChange`) — the story renders
+ * nondeterministically, so the diff can't be attributed to the change.
  */
 export type ShotStatus = 'changed' | 'unstable' | 'new' | 'removed' | 'unchanged' | 'missing';
 export type StoryStatus = 'changed' | 'unstable' | 'new' | 'removed' | 'unchanged' | 'error';
@@ -18,6 +18,15 @@ export interface Thresholds {
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { minPixels: 24 };
+
+/**
+ * pixelmatch's per-pixel colour tolerance (0-1, YIQ distance). 0.1, its
+ * default, ignores grey steps below ~26/255 — a divider or border opacity
+ * tweak. Renders are pixel-exact run to run (same Chromium, fonts, frozen
+ * clock), so the tool can afford a much stricter value: 0.03 still ignores
+ * steps below ~8/255.
+ */
+export const DEFAULT_PIXEL_THRESHOLD = 0.03;
 
 export interface ShotComparison {
   hasBase: boolean;
@@ -37,20 +46,19 @@ export function classifyShot(c: ShotComparison, thresholds: Partial<Thresholds> 
 }
 
 /**
- * Stability re-check of a change: `drift` holds the differing pixels between
- * two captures of the same side (head vs head again, base vs base again;
- * `Infinity` when the page size changed, absent when not re-captured). Any
- * drift above the noise floor means the story renders nondeterministically.
+ * Stability re-check of a change. `rechecks` holds, for each re-capture of
+ * both sides, the base-vs-head differing pixels *inside the region of the
+ * first diff* (see `pixelsInBoxes`). A real change reproduces there on every
+ * re-capture; a difference that vanishes on any re-capture came from a race
+ * (a menu opened while media was sizing, a page caught mid-load), so the shot
+ * is `unstable`. Differences elsewhere on the page (a list scrolled
+ * differently on one capture) don't matter: they neither confirm nor refute
+ * this change.
  */
-export function confirmChange(
-  status: ShotStatus,
-  drift: { head?: number; base?: number },
-  thresholds: Partial<Thresholds> = {},
-): ShotStatus {
+export function confirmChange(status: ShotStatus, rechecks: number[], thresholds: Partial<Thresholds> = {}): ShotStatus {
   if (status !== 'changed') return status;
   const { minPixels } = { ...DEFAULT_THRESHOLDS, ...thresholds };
-  const drifted = [drift.head, drift.base].some((d) => d !== undefined && d > minPixels);
-  return drifted ? 'unstable' : 'changed';
+  return rechecks.some((pixels) => pixels <= minPixels) ? 'unstable' : 'changed';
 }
 
 export function summarizeStory(statuses: ShotStatus[]): StoryStatus {
@@ -149,4 +157,25 @@ export function cropWindow(pageHeight: number, boxes: Box[], maxHeight: number):
   const center = union.y + union.height / 2;
   const top = Math.round(Math.min(Math.max(0, center - maxHeight / 2), pageHeight - maxHeight));
   return { top, height: maxHeight };
+}
+
+/** Boxes grown by `margin` px on every side, clamped to the image. */
+export function growBoxes(boxes: Box[], margin: number, width: number, height: number): Box[] {
+  return boxes.map((b) => {
+    const x = Math.max(0, b.x - margin);
+    const y = Math.max(0, b.y - margin);
+    return { x, y, width: Math.min(width, b.x + b.width + margin) - x, height: Math.min(height, b.y + b.height + margin) - y };
+  });
+}
+
+/** Set pixels of `mask` (width × height) that fall inside any of `boxes` (each pixel counted once). */
+export function pixelsInBoxes(mask: Uint8Array, width: number, height: number, boxes: Box[]): number {
+  let count = 0;
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    for (let x = 0; x < width; x++) {
+      if (mask[row + x] && boxes.some((b) => x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height)) count++;
+    }
+  }
+  return count;
 }

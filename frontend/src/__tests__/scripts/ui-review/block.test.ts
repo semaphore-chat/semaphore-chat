@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { renderBlock, rawGithubUrl, publishFolder, type ReviewReport } from '../../../../scripts/ui-review/lib/block.ts';
+import { renderBlock, rawGithubUrl, publishFolder, summarizeFiles, treeUrl, type ReviewReport } from '../../../../scripts/ui-review/lib/block.ts';
 import { START_MARKER, END_MARKER } from '../../../../scripts/ui-review/lib/body.ts';
 
 describe('rawGithubUrl', () => {
@@ -120,7 +120,7 @@ describe('renderBlock', () => {
   it('keeps unstable stories out of "changed", in their own collapsed section with images', () => {
     expect(md).toContain('1 unstable');
     expect(md).toMatch(/### Unstable \(1\)/);
-    expect(md).toMatch(/renders differently between two captures/);
+    expect(md).toMatch(/capturing both sides again did not reproduce the difference/);
     expect(md).toContain('<details><summary><b>menu--flaky</b>');
     expect(md).toContain('https://img.test/menu--flaky--desktop.webp');
     const changedSection = md.slice(md.indexOf('### Changed'), md.indexOf('### New stories'));
@@ -151,7 +151,7 @@ describe('renderBlock', () => {
       opts,
     );
     expect(capped).toContain('frontend/src/theme/tokens.ts');
-    expect(capped).toMatch(/representative sample of 5 of 221/);
+    expect(capped).toMatch(/Captured 4 of 221 stories: a sample spread across areas/);
     expect(capped).toContain('--all');
     expect(capped).toContain('`a--b`');
   });
@@ -168,5 +168,141 @@ describe('renderBlock', () => {
 
   it('never emits emoji', () => {
     expect(md).not.toMatch(/\p{Extended_Pictographic}/u);
+  });
+
+  it('uses HTML, not Markdown backticks, inside <summary> (GitHub shows those literally)', () => {
+    const summaries = md.split('\n').filter((l) => l.includes('<summary><b>'));
+    expect(summaries.length).toBeGreaterThan(0);
+    for (const line of summaries) expect(line).not.toContain('`');
+    expect(md).toContain('<code>src/stories/components/MessageReactions.stories.tsx</code></summary>');
+  });
+
+  it('names the global files, and says which stories render the other changed files first', () => {
+    const md2 = renderBlock(
+      report({
+        selection: {
+          global: { files: ['frontend/package.json'] },
+          candidates: 221,
+          probed: { stories: 200, kept: 2, durationMs: 1000 },
+          capped: true,
+          maxStories: 40,
+          dropped: ['x--y'],
+          targeted: { total: 2, captured: 2 },
+          storyFiles: { total: 53, sampled: 38 },
+        },
+      }),
+      opts,
+    );
+    expect(md2).toMatch(/first the 2 of 2 that render the other changed files, then a sample spread across areas, covering 38 of 53 story files/);
+  });
+
+  it('lists app-only files as not visible in Ladle', () => {
+    const appOnly = renderBlock(report({ appOnly: ['frontend/src/index.css'] }), opts);
+    expect(appOnly).toMatch(/\*\*Not visible in Ladle\*\*/);
+    expect(appOnly).toContain('`frontend/src/index.css`');
+  });
+
+  it('flags changed files whose stories show nothing, or that no probed story runs', () => {
+    const files = renderBlock(
+      report({
+        files: [
+          { file: 'frontend/src/components/Voice/ScreenSourcePicker.tsx', captured: 25, changed: 0, unstable: 0, dropped: 0 },
+          { file: 'frontend/src/pages/AdminDashboard.tsx', captured: 2, changed: 1, unstable: 0, dropped: 0 },
+          { file: 'frontend/src/components/Hidden.tsx', captured: 0, changed: 0, unstable: 0, dropped: 0 },
+        ],
+      }),
+      opts,
+    );
+    expect(files).toMatch(/no visible change in any captured story[^\n]*\n\n- `src\/components\/Voice\/ScreenSourcePicker.tsx` \(25 captured stories\)/);
+    expect(files).toMatch(/no probed story executes[^\n]*\n\n- `src\/components\/Hidden.tsx`/);
+    expect(files).toContain('| `src/pages/AdminDashboard.tsx` | 2 | 1 | 0 | 0 |');
+  });
+});
+
+describe("renderBlock — fitting GitHub's PR description limit", () => {
+  const many = (n: number, status: 'changed' | 'unstable') =>
+    Array.from({ length: n }, (_, i) => ({
+      id: `edge-story-number-${i}--some-long-variant-name`,
+      file: 'frontend/src/stories/edge/chat/EdgeChatWorstCase.stories.tsx',
+      direct: false,
+      reasons: ['frontend/src/components/Message/MessageReactions.tsx'],
+      status,
+      shots: ['phone', 'tablet', 'desktop'].map((viewport) => ({
+        viewport,
+        status,
+        diffPercent: 1.5,
+        composite: `edge-story-number-${i}--some-long-variant-name--${viewport}.webp`,
+      })),
+    }));
+  const big = report({
+    stories: many(221, 'changed'),
+    issues: Array.from({ length: 80 }, (_, i) => ({
+      side: 'head' as const,
+      storyId: `s${i}`,
+      viewport: 'phone',
+      ok: true,
+      errorMessage: null,
+      pageErrors: [],
+      renderErrors: ['The above error occurred in the <X> component '.repeat(20)],
+      unhandledRequests: ['[MSW] Warning: intercepted a request without a matching request handler: GET /api/x '.repeat(10)],
+    })),
+  });
+  const urlOpts = {
+    ...opts,
+    imageUrl: (p: string) => `https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/pr-screenshots/pr-450/20260923-190507-abcdef1/${p}`,
+    imagesUrl: treeUrl('semaphore-chat/semaphore-chat', 'pr-screenshots', 'pr-450/20260923-190507-abcdef1'),
+  };
+
+  it('renders everything when there is no budget', () => {
+    expect(renderBlock(big, urlOpts).length).toBeGreaterThan(65_536);
+  });
+
+  it('shortens step by step until it fits, and says so', () => {
+    // Regression: a 221-story --all run produced a ~214k-character section; gh pr edit then failed.
+    const budget = 30_000;
+    const md = renderBlock(big, { ...urlOpts, maxChars: budget });
+    expect(md.length).toBeLessThanOrEqual(budget);
+    expect(md.startsWith('<!-- ui-review:start -->')).toBe(true);
+    expect(md.trimEnd().endsWith('<!-- ui-review:end -->')).toBe(true);
+    expect(md).toMatch(
+      /Shortened to fit GitHub's PR description limit: \[all images of this run\]\(https:\/\/github\.com\/semaphore-chat\/semaphore-chat\/tree\/pr-screenshots\/pr-450\/20260923-190507-abcdef1\)/,
+    );
+    expect(md).toContain('**221 changed**');
+  });
+
+  it('keeps inline images when they fit, links when they do not', () => {
+    const small = report({ stories: many(3, 'changed') });
+    expect(renderBlock(small, { ...urlOpts, maxChars: 60_000 })).toContain('![edge-story-number-0');
+    const md = renderBlock(big, { ...urlOpts, maxChars: 60_000 });
+    expect(md.length).toBeLessThanOrEqual(60_000);
+    expect(md).not.toContain('![');
+    expect(md).toContain('](https://raw.githubusercontent.com/');
+  });
+
+  it('throws when even the shortest form does not fit', () => {
+    expect(() => renderBlock(big, { ...urlOpts, maxChars: 500 })).toThrow(/does not fit/);
+  });
+});
+
+describe('summarizeFiles', () => {
+  it('counts, per changed file, the captured stories that run it by outcome, and the ones over the cap', () => {
+    const leafTargets = {
+      'frontend/src/pages/AdminDashboard.tsx': ['frontend/src/pages/AdminDashboard.tsx'],
+      'frontend/src/components/Channel/ChannelList.css': ['frontend/src/components/Channel/ChannelList.tsx'],
+      'frontend/src/stories/components/Chip.stories.tsx': [],
+    };
+    const captured = [
+      { file: 'a', reasons: ['frontend/src/pages/AdminDashboard.tsx', 'frontend/package.json'], status: 'changed' },
+      { file: 'b', reasons: ['frontend/src/pages/AdminDashboard.tsx'], status: 'unchanged' },
+      { file: 'c', reasons: ['frontend/src/components/Channel/ChannelList.tsx'], status: 'unstable' },
+      { file: 'frontend/src/stories/components/Chip.stories.tsx', reasons: ['frontend/src/stories/components/Chip.stories.tsx'], status: 'new' },
+      { file: 'd', reasons: ['frontend/package.json'], status: 'unchanged' },
+    ];
+    const dropped = [{ file: 'e', reasons: ['frontend/src/pages/AdminDashboard.tsx'] }];
+    expect(summarizeFiles(leafTargets, captured, dropped)).toEqual([
+      { file: 'frontend/src/components/Channel/ChannelList.css', captured: 1, changed: 0, unstable: 1, dropped: 0 },
+      { file: 'frontend/src/pages/AdminDashboard.tsx', captured: 2, changed: 1, unstable: 0, dropped: 1 },
+      { file: 'frontend/src/stories/components/Chip.stories.tsx', captured: 1, changed: 1, unstable: 0, dropped: 0 },
+    ]);
   });
 });

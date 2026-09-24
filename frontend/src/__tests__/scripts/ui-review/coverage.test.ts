@@ -118,7 +118,7 @@ describe('exercisedTargets (line-precise)', () => {
     expect(run(script(1, 0), [10])).toEqual([]);
   });
 
-  it('falls back to module level for changes outside every function', () => {
+  it('counts a change outside every function when some function of the module ran', () => {
     expect(run(script(1, 0), [15])).toEqual([file]);
     expect(run(script(0, 0), [15])).toEqual([]);
   });
@@ -130,5 +130,128 @@ describe('exercisedTargets (line-precise)', () => {
 
   it('ignores scripts that are not targets', () => {
     expect([...exercisedTargets([script(1, 1)], new Map([[url, src]]), new Map([['frontend/src/Other.tsx', [1]]]), MOUNTS)]).toEqual([]);
+  });
+});
+
+describe('exercisedTargets — top-level changes and importers', () => {
+  const u = (f: string) => `http://localhost:61000/@fs/app/frontend/${f}`;
+  const CONSTANTS = 'frontend/src/utils/breakpoints.ts';
+  const BARREL = 'frontend/src/utils/index.ts';
+  const ITEM = 'frontend/src/components/ChannelItem.tsx';
+  const OTHER = 'frontend/src/components/Other.tsx';
+
+  // utils/breakpoints.ts as Vite serves it: constants + a helper, no react-refresh.
+  // Generated lines 0-4 map to original lines 1, 2, 3, 5 (plus the arrow at col 28), 6.
+  const constMap = btoa(JSON.stringify({ version: 3, sources: ['breakpoints.ts'], mappings: 'AAAA;AACA;AACA;AAEA,4BAAA4B;AACA' }));
+  const constSrc = [
+    'export const TOUCH_TARGETS = {',
+    '    MINIMUM: 44',
+    '};',
+    'export const isStandalone = () => false;',
+    'export const EDGE = 20;',
+    `//# sourceMappingURL=data:application/json;base64,${constMap}`,
+  ].join('\n');
+  const helper = constSrc.indexOf('() => false');
+  const constants = (helperRuns: number): CoverageScript => ({
+    url: u('src/utils/breakpoints.ts'),
+    functions: [fn('', 0, constSrc.length, 1), fn('isStandalone', helper, helper + 11, helperRuns)],
+  });
+
+  const component = (f: string, runs: number): CoverageScript => {
+    const src = refreshModule('function Item() { return 1; }\nexport default Item;');
+    const start = src.indexOf('function Item');
+    const trailer = src.indexOf('(currentExports)');
+    return { url: u(f.replace(/^frontend\//, '')), functions: [fn('', 0, src.length, 1), fn('Item', start, start + 30, runs), fn('', trailer, trailer + 40, 1)] };
+  };
+  const componentSources = (...files: string[]) =>
+    files.map((f) => [u(f.replace(/^frontend\//, '')), refreshModule('function Item() { return 1; }\nexport default Item;')] as [string, string]);
+  const barrel: CoverageScript = { url: u('src/utils/index.ts'), functions: [fn('', 0, 50, 1)] };
+
+  const run = (scripts: CoverageScript[], lines: number[] | 'all', importers: Record<string, string[]>) =>
+    [
+      ...exercisedTargets(
+        scripts,
+        new Map([[u('src/utils/breakpoints.ts'), constSrc], [u('src/utils/index.ts'), 'export * from "./breakpoints";'], ...componentSources(ITEM, OTHER)]),
+        new Map([[CONSTANTS, lines]]),
+        MOUNTS,
+        new Map(Object.entries(importers)),
+      ),
+    ];
+
+  it('counts a changed constant where a module importing it rendered, though none of its own helpers ran', () => {
+    // Regression: TOUCH_TARGETS.MINIMUM 44 -> 64 dropped every story whose only
+    // use of breakpoints.ts was reading the constant (helpers never ran).
+    expect(run([constants(0), component(ITEM, 2)], [2], { [CONSTANTS]: [ITEM] })).toEqual([CONSTANTS]);
+  });
+
+  it('walks up through function-free barrels to the code that reads the constant', () => {
+    expect(run([constants(0), barrel, component(ITEM, 1)], [2], { [CONSTANTS]: [BARREL], [BARREL]: [ITEM] })).toEqual([CONSTANTS]);
+  });
+
+  it('does not count importers that are loaded but did not run, or not loaded at all', () => {
+    expect(run([constants(0), component(ITEM, 0)], [2], { [CONSTANTS]: [ITEM] })).toEqual([]);
+    expect(run([constants(0), component(OTHER, 3)], [2], { [CONSTANTS]: [ITEM] })).toEqual([]);
+    expect(run([constants(0), component(ITEM, 2)], [2], {})).toEqual([]);
+  });
+
+  it('keeps changes inside a helper function precise: only that function running counts', () => {
+    expect(run([constants(0), component(ITEM, 2)], [5], { [CONSTANTS]: [ITEM] })).toEqual([]);
+    expect(run([constants(1), component(ITEM, 0)], [5], { [CONSTANTS]: [ITEM] })).toEqual([CONSTANTS]);
+  });
+
+  it('a change to both a helper and a constant counts either way', () => {
+    expect(run([constants(0), component(ITEM, 1)], [2, 5], { [CONSTANTS]: [ITEM] })).toEqual([CONSTANTS]);
+  });
+
+  it('a new file (whole-file target) also counts where an importer ran', () => {
+    expect(run([constants(0), component(ITEM, 1)], 'all', { [CONSTANTS]: [ITEM] })).toEqual([CONSTANTS]);
+  });
+
+  it('in a component module, a top-level change counts only when the module itself rendered', () => {
+    const TARGET = 'frontend/src/components/Reactions.tsx';
+    // Generated line 0 (after the refresh preamble) holds `const SIZE = 24;`, mapped to original line 3.
+    const body = 'const SIZE = 24;\nfunction Chip() { return SIZE; }\nexport default Chip;';
+    const src0 = refreshModule(body);
+    const preamble = src0.slice(0, src0.indexOf('const SIZE')).split('\n').length - 1;
+    const mapping = `${';'.repeat(preamble)}AAEA;AACA`;
+    const src = `${src0}\n//# sourceMappingURL=data:application/json;base64,${btoa(JSON.stringify({ version: 3, sources: ['Reactions.tsx'], mappings: mapping }))}`;
+    const chip = src.indexOf('function Chip');
+    const trailer = src.indexOf('(currentExports)');
+    const reactions = (runs: number): CoverageScript => ({
+      url: u('src/components/Reactions.tsx'),
+      functions: [fn('', 0, src.length, 1), fn('Chip', chip, chip + 32, runs), fn('', trailer, trailer + 40, 1)],
+    });
+    const probe = (runs: number) =>
+      [
+        ...exercisedTargets(
+          [reactions(runs), component(ITEM, 5)],
+          new Map([[u('src/components/Reactions.tsx'), src], ...componentSources(ITEM)]),
+          new Map([[TARGET, [3]]]),
+          MOUNTS,
+          new Map([[TARGET, [ITEM]]]),
+        ),
+      ];
+    expect(probe(0)).toEqual([]); // the message list rendered, the reaction chips didn't
+    expect(probe(1)).toEqual([TARGET]);
+  });
+
+  it('import lines alone do not widen a line-precise target', () => {
+    // Generated line 0 is an import mapped to original line 1; line 1 a function (orig 2).
+    const map = btoa(JSON.stringify({ version: 3, sources: ['x.ts'], mappings: 'AAAA;AACA' }));
+    const src = ['import { a } from "/src/a.ts";', 'function f() { return a; }', 'export { f };', `//# sourceMappingURL=data:application/json;base64,${map}`].join('\n');
+    const f = src.indexOf('function f');
+    const target = 'frontend/src/utils/x.ts';
+    const probe = (fRuns: number) =>
+      [
+        ...exercisedTargets(
+          [{ url: u('src/utils/x.ts'), functions: [fn('', 0, src.length, 1), fn('f', f, f + 30, fRuns)] }, component(ITEM, 1)],
+          new Map([[u('src/utils/x.ts'), src], ...componentSources(ITEM)]),
+          new Map([[target, [1, 2]]]),
+          MOUNTS,
+          new Map([[target, [ITEM]]]),
+        ),
+      ];
+    expect(probe(0)).toEqual([]);
+    expect(probe(1)).toEqual([target]);
   });
 });

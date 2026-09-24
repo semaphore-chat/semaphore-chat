@@ -6,10 +6,11 @@
  *   affected  changed files → candidate stories (+ probe plan)     work/affected.json, work/probe-plan.json
  *   select    apply probe hits, cap                                 work/selection.json, work/{head,base}-ids.txt
  *   diff      pixel-diff head vs base shots, plan composites        work/diff-report.json, work/composite-jobs.json,
- *             (run again after each re-capture of work/recheck-ids  work/recheck-ids.txt
- *             into shots/{head,base}-recheck-<n>: unstable shots)
+ *             (run again after each re-capture of work/recheck-     work/recheck-tasks.txt
+ *             tasks.txt into shots/{head,base}-recheck-<n>)
  *   finalize  composite PNGs → WebP, final report                   out/composites/*.webp, out/report.json
- *   block     PR-description section (local paths or published URLs)
+ *   block     PR-description section (local paths or published URLs);
+ *             with --body-json also the whole new PR body, kept under GitHub's size limit
  *   splice    put the section into a PR body (gh pr view --json body)
  *   folder    publish folder name for a PR (pr-<n>/<stamp>-<sha7>)
  *
@@ -23,17 +24,39 @@ import {
   planProbe,
   applyProbe,
   capStories,
+  probeImporters,
   type AffectedResult,
   type AffectedStory,
   type ProbeHits,
   type StoryRef,
 } from './lib/affected.ts';
 import { parseChangedLines, parseNameStatusZ } from './lib/gitdiff.ts';
-import type { TargetLines } from './lib/coverage.ts';
-import { classifyShot, confirmChange, diffBoxes, summarizeStory, DEFAULT_THRESHOLDS, type Box, type ShotStatus } from './lib/classify.ts';
+import { IMPORTER_DEPTH, type TargetLines } from './lib/coverage.ts';
+import {
+  classifyShot,
+  confirmChange,
+  diffBoxes,
+  growBoxes,
+  pixelsInBoxes,
+  summarizeStory,
+  DEFAULT_PIXEL_THRESHOLD,
+  DEFAULT_THRESHOLDS,
+  type Box,
+  type ShotStatus,
+} from './lib/classify.ts';
 import { compositeHtml, type CompositeInput } from './lib/layout.ts';
-import { renderBlock, rawGithubUrl, publishFolder, type ReviewReport, type ShotIssue, type StoryResult } from './lib/block.ts';
-import { spliceBlock } from './lib/body.ts';
+import {
+  renderBlock,
+  rawGithubUrl,
+  publishFolder,
+  treeUrl,
+  summarizeFiles,
+  GITHUB_BODY_LIMIT,
+  type ReviewReport,
+  type ShotIssue,
+  type StoryResult,
+} from './lib/block.ts';
+import { spliceBlock, START_MARKER, END_MARKER } from './lib/body.ts';
 import { REVIEW_VIEWPORTS, viewportsForStory } from './lib/viewports.ts';
 
 type Flags = Record<string, string | true>;
@@ -130,18 +153,22 @@ async function stepAffected(flags: Flags) {
       baseUrl: 'http://localhost:61000',
       stories: plan.stories,
       targets,
+      importers: probeImporters(graph, affected.probeTargets, IMPORTER_DEPTH),
       ...(typeof flags.concurrency === 'string' ? { concurrency: Number(flags.concurrency) } : {}),
       freezeTime: str(flags, 'freeze-time', ''),
     });
   }
 
   const direct = affected.stories.filter((s) => s.direct).length;
+  const targeted = affected.stories.filter((s) => !s.direct && s.targeted).length;
   console.log(
     `[ui-review] ${changed.length} changed file(s): ` +
       (affected.global
-        ? `GLOBAL (${affected.global.files.join(', ')}) → all ${affected.stories.length} stories`
+        ? `GLOBAL (${affected.global.files.join(', ')}) → all ${affected.stories.length} stories` +
+          (targeted ? `, ${targeted} reached by the other changed files` : '')
         : `${affected.stories.length} candidate stor${affected.stories.length === 1 ? 'y' : 'ies'} (${direct} direct)`) +
       `, ${affected.removed.length} removed, ${affected.uncovered.length} uncovered file(s)` +
+      (affected.appOnly.length ? `, ${affected.appOnly.length} app-only file(s) Ladle never loads` : '') +
       (plan.probe ? ` → probing ${plan.stories.length} stories` : ''),
   );
 }
@@ -151,13 +178,18 @@ async function stepAffected(flags: Flags) {
 interface Selection {
   global: AffectedResult['global'];
   candidates: number;
-  probed: { stories: number; kept: number; durationMs: number } | null;
+  probed: ReviewReport['selection']['probed'];
   capped: boolean;
   maxStories: number;
   selected: AffectedStory[];
   dropped: string[];
+  droppedStories: AffectedStory[];
+  targeted?: { total: number; captured: number };
+  storyFiles: { total: number; sampled: number };
   removed: StoryRef[];
   uncovered: string[];
+  appOnly: string[];
+  leafTargets: Record<string, string[]>;
 }
 
 function stepSelect(flags: Flags) {
@@ -165,47 +197,57 @@ function stepSelect(flags: Flags) {
   const max = num(flags, 'max', 40);
   const all = flags.all === true;
   const affected = readJson<AffectedFile>(path.join(work, 'affected.json'));
+  const globalFiles = affected.global?.files ?? [];
 
   let stories = affected.stories;
   let probed: Selection['probed'] = null;
   const probeOut = path.join(work, 'probe-out.json');
+  const explicit = typeof flags.ids === 'string';
   if (typeof flags.ids === 'string') {
     // --stories override: exactly these (head) stories, no probe, no cap.
     const wanted = new Set(flags.ids.split(/[\s,]+/).filter(Boolean));
     const head = storiesFromMeta(path.join(work, 'head-meta.json')) ?? [];
     const unknown = [...wanted].filter((id) => !head.some((s) => s.id === id));
     if (unknown.length) throw new Error(`unknown story id(s): ${unknown.join(', ')}`);
-    stories = head.filter((s) => wanted.has(s.id)).map((s) => ({ ...s, direct: true, reasons: ['--stories'] }));
+    stories = head.filter((s) => wanted.has(s.id)).map((s) => ({ ...s, direct: true, targeted: true, reasons: ['--stories'] }));
   } else if (existsSync(probeOut)) {
     const { hits, durationMs } = readJson<{ hits: ProbeHits; durationMs: number }>(probeOut);
-    const before = stories.filter((s) => !s.direct).length;
-    stories = applyProbe(stories, hits);
-    probed = { stories: before, kept: stories.filter((s) => !s.direct).length, durationMs };
+    const isCandidate = (s: AffectedStory) => !s.direct && s.targeted !== false;
+    const before = stories.filter(isCandidate).length;
+    stories = applyProbe(stories, hits, { globalFiles });
+    probed = { stories: before, kept: stories.filter(isCandidate).length, durationMs, ...(flags['probe-cached'] === true ? { cached: true } : {}) };
   }
-  const explicit = typeof flags.ids === 'string';
   const { selected, dropped, capped } = capStories(stories, { max, all: all || explicit });
 
+  const targetedOf = (list: AffectedStory[]) => list.filter((s) => !s.direct && s.targeted !== false).length;
   const selection: Selection = {
     global: affected.global,
-    candidates: affected.stories.length,
+    candidates: explicit ? stories.length : affected.stories.length,
     probed,
     capped,
     maxStories: max,
     selected,
     dropped: dropped.map((s) => s.id),
+    droppedStories: dropped,
+    ...(affected.global && !explicit ? { targeted: { total: targetedOf(stories), captured: targetedOf(selected) } } : {}),
+    storyFiles: { total: new Set(stories.map((s) => s.file)).size, sampled: new Set(selected.map((s) => s.file)).size },
     removed: explicit ? [] : affected.removed,
     uncovered: affected.uncovered,
+    appOnly: affected.appOnly ?? [],
+    leafTargets: explicit ? {} : (affected.leafTargets ?? {}),
   };
   writeJson(path.join(work, 'selection.json'), selection);
 
   const baseStories = storiesFromMeta(path.join(work, 'base-meta.json')) ?? [];
   const baseIds = new Set(baseStories.map((s) => s.id));
-  writeFileSync(path.join(work, 'head-ids.txt'), `${selected.map((s) => s.id).join('\n')}\n`);
-  const baseWanted = [...selected.map((s) => s.id).filter((id) => baseIds.has(id)), ...selection.removed.map((s) => s.id)];
+  const selectedIds = new Set(selected.map((s) => s.id));
+  writeFileSync(path.join(work, 'head-ids.txt'), `${[...selectedIds].join('\n')}\n`);
+  const baseWanted = [...new Set([...[...selectedIds].filter((id) => baseIds.has(id)), ...selection.removed.map((s) => s.id)])];
   writeFileSync(path.join(work, 'base-ids.txt'), `${baseWanted.join('\n')}\n`);
   console.log(
     `[ui-review] selected ${selected.length} stor${selected.length === 1 ? 'y' : 'ies'}` +
       (capped ? ` (capped at ${max}; ${dropped.length} not captured)` : '') +
+      (selection.targeted ? `, ${selection.targeted.captured}/${selection.targeted.total} of them render the non-global changes` : '') +
       `; head shots: ${selected.length}, base shots: ${baseWanted.length}`,
   );
 }
@@ -242,12 +284,15 @@ function pad(img: Raw, width: number, height: number): Buffer {
 }
 
 const DIFF_COLOR: [number, number, number] = [255, 0, 60];
+/** Slack around the first diff's boxes when checking that a re-capture reproduces it. */
+const RECHECK_MARGIN = 16;
 
 async function stepDiff(flags: Flags) {
   const work = str(flags, 'work');
   const root = path.dirname(work); // /ui-review
   const minPixels = num(flags, 'min-pixels', DEFAULT_THRESHOLDS.minPixels);
-  const threshold = num(flags, 'pixel-threshold', 0.1);
+  const threshold = num(flags, 'pixel-threshold', DEFAULT_PIXEL_THRESHOLD);
+  const rechecks = num(flags, 'rechecks', 0);
   const baseRef = str(flags, 'base-ref');
   const baseSha = str(flags, 'base-sha');
   const headRef = str(flags, 'head-ref');
@@ -264,24 +309,48 @@ async function stepDiff(flags: Flags) {
 
   const shotPath = (side: string, viewport: string, id: string) => path.join(root, 'shots', side, viewport, `${id}.png`);
   const shotDirs = existsSync(path.join(root, 'shots')) ? readdirSync(path.join(root, 'shots')) : [];
-  const recheckDirs = (side: 'head' | 'base') => shotDirs.filter((d) => d.startsWith(`${side}-recheck-`));
-  /** Largest pixel difference between a shot and its re-captures (undefined: never re-captured). */
-  const drift = async (first: Raw, side: 'head' | 'base', viewport: string, id: string): Promise<number | undefined> => {
-    let worst: number | undefined;
-    for (const dir of recheckDirs(side)) {
-      const file = shotPath(dir, viewport, id);
-      if (!existsSync(file)) continue;
-      const again = await loadRaw(file);
-      const pixels =
-        again.width !== first.width || again.height !== first.height
-          ? Number.POSITIVE_INFINITY
-          : pixelmatch(first.data, again.data, undefined, first.width, first.height, { threshold, includeAA: false });
-      worst = Math.max(worst ?? 0, pixels);
+  const passes = shotDirs
+    .map((d) => /^head-recheck-(\d+)$/.exec(d)?.[1])
+    .filter((n): n is string => n !== undefined && shotDirs.includes(`base-recheck-${n}`))
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  /** Diff two captures; returns the mask of differing pixels (and the pixelmatch output image). */
+  const compare = (base: Raw, head: Raw) => {
+    const width = Math.max(head.width, base.width);
+    const height = Math.max(head.height, base.height);
+    const output = Buffer.alloc(width * height * 4);
+    const pixels = pixelmatch(pad(base, width, height), pad(head, width, height), output, width, height, {
+      threshold,
+      includeAA: false,
+      alpha: 0.15,
+      diffColor: DIFF_COLOR,
+      aaColor: [190, 190, 190],
+    });
+    const mask = new Uint8Array(width * height);
+    for (let p = 0; p < mask.length; p++) {
+      const o = p * 4;
+      if (output[o] === DIFF_COLOR[0] && output[o + 1] === DIFF_COLOR[1] && output[o + 2] === DIFF_COLOR[2]) mask[p] = 1;
     }
-    return worst;
+    return { pixels, width, height, output, mask };
   };
+
+  /** Base-vs-head differing pixels inside `region`, for every re-capture pass of this shot. */
+  const recheckPixels = async (viewport: string, id: string, region: Box[]): Promise<number[]> => {
+    const out: number[] = [];
+    for (const n of passes) {
+      const headFile = shotPath(`head-recheck-${n}`, viewport, id);
+      const baseFile = shotPath(`base-recheck-${n}`, viewport, id);
+      if (!existsSync(headFile) || !existsSync(baseFile)) continue; // not re-captured in this pass
+      const again = compare(await loadRaw(baseFile), await loadRaw(headFile));
+      out.push(pixelsInBoxes(again.mask, again.width, again.height, region));
+    }
+    return out;
+  };
+
   const jobs: { html: string; out: string }[] = [];
   const stories: StoryResult[] = [];
+  const recheckTasks: string[] = [];
   const all: (AffectedStory | (StoryRef & { direct: boolean; reasons: string[] }))[] = [
     ...selection.selected,
     ...selection.removed.map((s) => ({ ...s, direct: true, reasons: [] as string[] })),
@@ -306,37 +375,24 @@ async function stepDiff(flags: Flags) {
       let boxes: Box[] = [];
       let diffFile: string | undefined;
       let size: { width: number; height: number } | undefined;
+      let recheckCounts: number[] | undefined;
       const head = hasHead ? await loadRaw(headFile) : null;
       const base = hasBase ? await loadRaw(baseFile) : null;
       if (head && base) {
-        const width = Math.max(head.width, base.width);
-        const height = Math.max(head.height, base.height);
-        const output = Buffer.alloc(width * height * 4);
-        diffPixels = pixelmatch(pad(base, width, height), pad(head, width, height), output, width, height, {
-          threshold,
-          includeAA: false,
-          alpha: 0.15,
-          diffColor: DIFF_COLOR,
-          aaColor: [190, 190, 190],
-        });
+        const first = compare(base, head);
+        const { width, height } = first;
+        diffPixels = first.pixels;
         const sameSize = head.width === base.width && head.height === base.height;
         status = classifyShot({ hasBase: true, hasHead: true, sameSize, diffPixels, totalPixels: width * height }, { minPixels });
         size = { width, height };
         if (status === 'changed') {
-          status = confirmChange(
-            status,
-            { head: await drift(head, 'head', viewport, story.id), base: await drift(base, 'base', viewport, story.id) },
-            { minPixels },
-          );
-          const mask = new Uint8Array(width * height);
-          for (let p = 0; p < mask.length; p++) {
-            const o = p * 4;
-            if (output[o] === DIFF_COLOR[0] && output[o + 1] === DIFF_COLOR[1] && output[o + 2] === DIFF_COLOR[2]) mask[p] = 1;
-          }
-          boxes = diffBoxes(mask, width, height);
+          boxes = diffBoxes(first.mask, width, height);
+          recheckCounts = await recheckPixels(viewport, story.id, growBoxes(boxes, RECHECK_MARGIN, width, height));
+          status = confirmChange(status, recheckCounts, { minPixels });
+          if (status === 'changed' && recheckCounts.length < rechecks) recheckTasks.push(`${story.id} ${viewport}`);
           diffFile = path.join(work, 'diff', viewport, `${story.id}.png`);
           mkdirSync(path.dirname(diffFile), { recursive: true });
-          await sharp(output, { raw: { width, height, channels: 4 } }).png().toFile(diffFile);
+          await sharp(first.output, { raw: { width, height, channels: 4 } }).png().toFile(diffFile);
         }
       } else {
         status = classifyShot({ hasBase: !!base, hasHead: !!head, sameSize: false, diffPixels: 0, totalPixels: 0 });
@@ -348,6 +404,7 @@ async function stepDiff(flags: Flags) {
         shot.diffPixels = diffPixels;
         shot.diffPercent = size ? (100 * diffPixels) / (size.width * size.height) : 0;
       }
+      if (recheckCounts?.length) shot.rechecks = recheckCounts;
       if (status === 'changed' || status === 'unstable' || status === 'new' || status === 'removed') {
         const name = `${story.id}--${viewport}`;
         const htmlFile = path.join(work, 'html', `${name}.html`);
@@ -391,9 +448,8 @@ async function stepDiff(flags: Flags) {
     }
   }
 
-  // Stories whose change still needs confirming by capturing both sides again.
-  const recheck = stories.filter((s) => s.shots.some((shot) => shot.status === 'changed')).map((s) => s.id);
-  writeFileSync(path.join(work, 'recheck-ids.txt'), recheck.length ? `${recheck.join('\n')}\n` : '');
+  // Changed shots still to confirm: re-captured (only that viewport) on both sides.
+  writeFileSync(path.join(work, 'recheck-tasks.txt'), recheckTasks.length ? `${recheckTasks.join('\n')}\n` : '');
 
   const order: Record<string, number> = { changed: 0, new: 1, removed: 2, unstable: 3, error: 4, unchanged: 5 };
   stories.sort((a, b) => order[a.status] - order[b.status] || a.id.localeCompare(b.id));
@@ -408,17 +464,22 @@ async function stepDiff(flags: Flags) {
       capped: selection.capped,
       maxStories: selection.maxStories,
       dropped: selection.dropped,
+      ...(selection.targeted ? { targeted: selection.targeted } : {}),
+      storyFiles: selection.storyFiles,
     },
     stories,
     uncovered: selection.uncovered,
+    appOnly: selection.appOnly ?? [],
+    files: summarizeFiles(selection.leafTargets ?? {}, stories, selection.droppedStories ?? []),
     issues,
-    thresholds: { minPixels, pixelmatchThreshold: threshold },
+    thresholds: { minPixels, pixelmatchThreshold: threshold, rechecks },
   };
   writeJson(path.join(work, 'diff-report.json'), report);
   writeJson(path.join(work, 'composite-jobs.json'), jobs);
   const count = (s: string) => stories.filter((x) => x.status === s).length;
   console.log(
-    `[ui-review] diff: ${count('changed')} changed, ${count('new')} new, ${count('removed')} removed, ${count('unstable')} unstable, ${count('unchanged')} unchanged, ${count('error')} failed; ${jobs.length} composite(s) to render`,
+    `[ui-review] diff: ${count('changed')} changed, ${count('new')} new, ${count('removed')} removed, ${count('unstable')} unstable, ${count('unchanged')} unchanged, ${count('error')} failed; ${jobs.length} composite(s) to render` +
+      (recheckTasks.length ? `; ${recheckTasks.length} changed shot(s) to re-check` : ''),
   );
 }
 
@@ -453,6 +514,9 @@ async function stepFinalize(flags: Flags) {
 
 // ---------------------------------------------------------------- block / splice / folder
 
+/** Room left at the end of GitHub's limit (their count may differ slightly from JS string length). */
+const BODY_SAFETY = 256;
+
 function stepBlock(flags: Flags) {
   const reportFile = str(flags, 'report');
   const target = str(flags, 'out');
@@ -464,7 +528,25 @@ function stepBlock(flags: Flags) {
     repo && folder
       ? (file: string) => rawGithubUrl(repo, branch, `${folder}/${file}`)
       : (file: string) => `composites/${file}`;
-  writeFileSync(target, renderBlock(report, { imageUrl, command: str(flags, 'command') }));
+  const imagesUrl = repo && folder ? treeUrl(repo, branch, folder) : undefined;
+  const command = str(flags, 'command');
+
+  if (typeof flags['body-json'] !== 'string') {
+    writeFileSync(target, renderBlock(report, { imageUrl, imagesUrl, command }));
+    return;
+  }
+  // The whole new PR body: the section gets whatever room the rest of the body leaves.
+  const { body } = readJson<{ body: string | null }>(flags['body-json']);
+  const placeholder = `${START_MARKER}\n${END_MARKER}`;
+  const rest = spliceBlock(body ?? '', placeholder).length - placeholder.length;
+  const maxChars = GITHUB_BODY_LIMIT - BODY_SAFETY - rest;
+  if (maxChars < 2000) throw new Error(`the PR description is ${rest} characters without the UI review section — no room for it under GitHub's ${GITHUB_BODY_LIMIT}-character limit`);
+  const block = renderBlock(report, { imageUrl, imagesUrl, command, maxChars });
+  const newBody = spliceBlock(body ?? '', block);
+  if (newBody.length > GITHUB_BODY_LIMIT - BODY_SAFETY) throw new Error(`new PR description would be ${newBody.length} characters (limit ${GITHUB_BODY_LIMIT})`);
+  writeFileSync(target, block);
+  writeFileSync(str(flags, 'body-out'), newBody);
+  console.log(`[ui-review] PR description: ${newBody.length} characters (section ${block.length})`);
 }
 
 function stepSplice(flags: Flags) {

@@ -24,9 +24,16 @@
  *   UX_SHOTS_FREEZE_TIME        ISO timestamp — pins `Date.now()`/`new Date()`
  *                               (timers keep running) so relative times render
  *                               identically run to run
- *   UX_SHOTS_QUIET_MS           after load, also wait until the DOM has had no
- *                               mutation for this long (max 10s) before the
- *                               settle sleep — steadier under concurrency
+ *   UX_SHOTS_TASKS              exact story × viewport pairs to shoot, `@<file>`
+ *                               with one `<story id> <viewport>` per line
+ *                               (replaces UX_SHOTS_IDS/FILTER/VIEWPORTS)
+ *   UX_SHOTS_QUIET_MS           after load, also wait (max 10s) until, for this
+ *                               long, the DOM had no mutation, no request
+ *                               started or finished and no script/stylesheet/
+ *                               font request is pending, before the settle
+ *                               sleep. Catches a lazy route still loading
+ *                               behind a static "Loading..." screen; steadier
+ *                               under concurrency
  *   UX_SHOTS_DISABLE_ANIMATIONS `1` — screenshots with CSS animations and
  *                               transitions stopped (spinners, skeletons)
  */
@@ -52,6 +59,7 @@ const OUT_DIR = path.resolve(FRONTEND_ROOT, process.env.UX_SHOTS_OUT_DIR || '.ux
 const SETTLE_MS = Number(process.env.UX_SHOTS_SETTLE_MS || 4500);
 const NAV_TIMEOUT_MS = 30_000;
 const IDS_SPEC = process.env.UX_SHOTS_IDS || '';
+const TASKS_SPEC = process.env.UX_SHOTS_TASKS || '';
 const CONCURRENCY = Math.max(1, Number(process.env.UX_SHOTS_CONCURRENCY || 1));
 const FREEZE_TIME = process.env.UX_SHOTS_FREEZE_TIME || '';
 const DISABLE_ANIMATIONS = process.env.UX_SHOTS_DISABLE_ANIMATIONS === '1';
@@ -76,9 +84,9 @@ function sleep(ms) {
 
 /**
  * UX_SHOTS_QUIET_MS: resolve once the DOM has gone `quietMs` without a
- * mutation (data arrived, lazy routes mounted, lists measured) — max 10s. A
- * fixed sleep after `networkidle` alone gets flaky with several pages in
- * parallel. Keep in sync with scripts/ui-review/lib/settle.ts.
+ * mutation (data arrived, lazy routes mounted, lists measured). A fixed sleep
+ * after `networkidle` alone gets flaky with several pages in parallel. Keep in
+ * sync with scripts/ui-review/lib/settle.ts.
  */
 function waitForDomQuiet(page, quietMs, maxMs = 10_000) {
   return page.evaluate(
@@ -100,6 +108,43 @@ function waitForDomQuiet(page, quietMs, maxMs = 10_000) {
       }),
     { quietMs, maxMs },
   );
+}
+
+const BLOCKING_REQUESTS = new Set(['document', 'script', 'stylesheet', 'font']);
+
+/**
+ * Network side of the settle check (UX_SHOTS_QUIET_MS): pending
+ * script/stylesheet/font requests (a lazy route's chunk mid-transform) and the
+ * time since any request last started or finished. Pending fetch/XHR don't
+ * block — stories of loading states hold requests open on purpose. Start it
+ * before `page.goto`. Keep in sync with scripts/ui-review/lib/settle.ts.
+ */
+function trackNetwork(page) {
+  const pending = new Set();
+  let last = Date.now();
+  page.on('request', (request) => {
+    last = Date.now();
+    if (BLOCKING_REQUESTS.has(request.resourceType())) pending.add(request);
+  });
+  const done = (request) => {
+    last = Date.now();
+    pending.delete(request);
+  };
+  page.on('requestfinished', done);
+  page.on('requestfailed', done);
+  return { blocking: () => pending.size, idleFor: () => Date.now() - last };
+}
+
+/** DOM quiet, network quiet and nothing blocking pending, all for `quietMs`; false when `maxMs` ran out. */
+async function waitForSettled(page, net, quietMs, maxMs = 10_000) {
+  const started = Date.now();
+  const left = () => maxMs - (Date.now() - started);
+  while (left() > 0) {
+    await waitForDomQuiet(page, quietMs, Math.max(1, left()));
+    if (net.blocking() === 0 && net.idleFor() >= quietMs) return true;
+    await sleep(Math.min(Math.max(50, net.blocking() > 0 ? 100 : quietMs - net.idleFor()), Math.max(1, left())));
+  }
+  return false;
 }
 
 async function fetchMeta() {
@@ -169,10 +214,12 @@ async function shootStory(browser, storyId, viewportName) {
   const url = `${BASE_URL}/?story=${encodeURIComponent(storyId)}&mode=preview`;
   let ok = true;
   let errorMessage = null;
+  let settled = true;
+  const net = QUIET_MS > 0 ? trackNetwork(page) : null;
   try {
     if (FREEZE_TIME) await page.clock.setFixedTime(new Date(FREEZE_TIME));
     await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
-    if (QUIET_MS > 0) await waitForDomQuiet(page, QUIET_MS);
+    if (net) settled = await waitForSettled(page, net, QUIET_MS);
     await sleep(SETTLE_MS);
 
     const outSubdir = path.join(OUT_DIR, viewportName);
@@ -194,6 +241,7 @@ async function shootStory(browser, storyId, viewportName) {
     viewport: viewportName,
     ok,
     errorMessage,
+    ...(net ? { settled } : {}),
     consoleEntries,
     pageErrors,
     unhandledRequests,
@@ -208,6 +256,21 @@ async function readRequestedIds() {
   return [...new Set(text.split(/[\s,]+/).filter(Boolean))];
 }
 
+/** UX_SHOTS_TASKS → [{ storyId, viewportName }] (`@path`: one `<id> <viewport>` per line). */
+async function readRequestedTasks() {
+  if (!TASKS_SPEC) return null;
+  const text = TASKS_SPEC.startsWith('@') ? await readFile(path.resolve(FRONTEND_ROOT, TASKS_SPEC.slice(1)), 'utf8') : TASKS_SPEC;
+  const seen = new Set();
+  const tasks = [];
+  for (const line of text.split(/[\n,]+/)) {
+    const [storyId, viewportName] = line.trim().split(/\s+/);
+    if (!storyId || !viewportName || seen.has(`${storyId} ${viewportName}`)) continue;
+    seen.add(`${storyId} ${viewportName}`);
+    tasks.push({ storyId, viewportName });
+  }
+  return tasks;
+}
+
 function describeResult(result) {
   const hasIssues =
     !result.ok || result.pageErrors.length > 0 || result.unhandledRequests.length > 0 || result.renderErrors.length > 0;
@@ -216,14 +279,15 @@ function describeResult(result) {
       ? `done (${result.pageErrors.length} page error(s), ${result.renderErrors.length} render error(s), ${result.unhandledRequests.length} unhandled request(s))`
       : 'ok'
     : `FAILED: ${result.errorMessage}`;
-  return { hasIssues, text };
+  return { hasIssues, text: result.settled === false ? `${text} (page still busy after the settle wait)` : text };
 }
 
 async function main() {
   console.log(`[ux-shots] Fetching story list from ${BASE_URL}/meta.json ...`);
   const meta = await fetchMeta();
   let storyIds = Object.keys(meta.stories).sort();
-  const requestedIds = await readRequestedIds();
+  const requestedTasks = await readRequestedTasks();
+  const requestedIds = requestedTasks ? [...new Set(requestedTasks.map((t) => t.storyId))] : await readRequestedIds();
   let missingIds = [];
   if (requestedIds) {
     const known = new Set(storyIds);
@@ -234,19 +298,26 @@ async function main() {
       console.log(`[ux-shots] ${missingIds.length} requested id(s) not in this Ladle instance: ${missingIds.join(', ')}`);
     }
   }
-  if (FILTER) {
+  if (FILTER && !requestedTasks) {
     storyIds = storyIds.filter((id) => id.includes(FILTER));
   }
   if (storyIds.length === 0) {
     console.error('[ux-shots] No stories matched — nothing to do.');
     process.exit(1);
   }
-  console.log(`[ux-shots] ${storyIds.length} stories, viewports: ${requestedViewports.join(', ')}`);
+  const available = new Set(storyIds);
+  const tasks = requestedTasks
+    ? requestedTasks.filter((t) => available.has(t.storyId) && VIEWPORTS[t.viewportName])
+    : storyIds.flatMap((storyId) => viewportsForStory(storyId).map((viewportName) => ({ storyId, viewportName })));
+  console.log(
+    requestedTasks
+      ? `[ux-shots] ${tasks.length} story × viewport task(s)`
+      : `[ux-shots] ${storyIds.length} stories, viewports: ${requestedViewports.join(', ')}`,
+  );
 
   await mkdir(OUT_DIR, { recursive: true });
 
   const browser = await chromium.launch();
-  const tasks = storyIds.flatMap((storyId) => viewportsForStory(storyId).map((viewportName) => ({ storyId, viewportName })));
   // Slot per task so report.json keeps story/viewport order at any concurrency.
   const results = new Array(tasks.length);
   let failureCount = 0;

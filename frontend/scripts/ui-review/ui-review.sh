@@ -11,7 +11,7 @@
 #
 #   --base <ref>        compare against merge-base(<ref>, HEAD) (default origin/main;
 #                       fetch it first if it may be stale)
-#   --pr <n>            the PR to publish for / update
+#   --pr <n>            the PR to publish for / update (must be this branch's open PR)
 #   --publish           push the composites to the pr-screenshots branch (needs --pr)
 #   --update-pr         also replace the UI-review section of the PR body (implies --publish)
 #   --out <file|->      also write the generated section there ('-' = stdout)
@@ -22,6 +22,7 @@
 #   --all               no cap: capture every affected story
 #   --max-stories <n>   cap (default 40, env UI_REVIEW_MAX_STORIES)
 #   --allow-dirty       allow --publish with uncommitted frontend/shared changes
+#   --force-pr          publish for a PR that is not this branch's open PR
 #   --keep              leave containers and the base worktree up afterwards
 #
 # The working tree is what gets reviewed (uncommitted edits included); the base
@@ -39,17 +40,22 @@ STORIES=""
 ALL=0
 MAX_STORIES="${UI_REVIEW_MAX_STORIES:-40}"
 ALLOW_DIRTY=0
+FORCE_PR=0
 KEEP=0
 PROBE_THRESHOLD="${UI_REVIEW_PROBE_THRESHOLD:-12}"
-CONCURRENCY="${UI_REVIEW_CONCURRENCY:-3}"
+# Pages per side while capturing: CPU-bound (two Vite dev servers + Chromium).
+CONCURRENCY="${UI_REVIEW_CONCURRENCY:-$(( $(nproc 2>/dev/null || echo 8) >= 24 ? 4 : 3 ))}"
 SETTLE_MS="${UI_REVIEW_SETTLE_MS:-1500}"
 QUIET_MS="${UI_REVIEW_QUIET_MS:-800}"
-# Extra captures of changed stories that must reproduce before a change counts
-# (a flaky story slips through only if every re-capture matches by chance).
+# Extra captures of each changed shot (both sides, that viewport only); the
+# difference has to reproduce in its region every time to count as a change.
 RECHECKS="${UI_REVIEW_RECHECKS:-2}"
+# pixelmatch colour tolerance; empty = the tool's default (lib/classify.ts).
+PIXEL_THRESHOLD="${UI_REVIEW_PIXEL_THRESHOLD:-}"
 # Fixture epoch (src/stories/fixtures/rng.ts) + 30 min: relative times render
 # the same on both sides and on every run.
 FREEZE_TIME="${UI_REVIEW_FREEZE_TIME:-2026-09-22T18:30:00Z}"
+WARMUP_CONCURRENCY=6
 
 die() { echo "ui-review: $*" >&2; exit 1; }
 log() { echo "ui-review: $*" >&2; }
@@ -66,12 +72,15 @@ while [[ $# -gt 0 ]]; do
     --all) ALL=1; shift ;;
     --max-stories) MAX_STORIES="$2"; shift 2 ;;
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
+    --force-pr) FORCE_PR=1; shift ;;
     --keep) KEEP=1; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -e 's/^# \{0,1\}//' -e '/^set -euo/d'; exit 0 ;;
     *) die "unknown option $1 (see --help)" ;;
   esac
 done
 [[ -z "$PR" || "$PR" =~ ^[0-9]+$ ]] || die "--pr must be a number"
+[[ "$MAX_STORIES" =~ ^[0-9]+$ ]] || die "--max-stories must be a number"
+[[ "$RECHECKS" =~ ^[0-9]+$ ]] || die "UI_REVIEW_RECHECKS must be a number"
 (( PUBLISH == 0 )) || [[ -n "$PR" ]] || die "--publish/--update-pr need --pr <n> (images are published per PR; see --help)"
 command -v docker >/dev/null || die "docker is required"
 
@@ -90,15 +99,45 @@ HEAD_SHA="$(git rev-parse HEAD)"
 HEAD_REF="$(git rev-parse --abbrev-ref HEAD)"
 DIRTY=0
 [[ -z "$(git status --porcelain -- frontend shared)" ]] || DIRTY=1
+
+# owner/name of a remote's GitHub repository (images are pushed to origin, so
+# their URLs must name origin's repository — in a fork clone that's the fork).
+remote_slug() {
+  local url
+  url="$(git remote get-url "$1" 2>/dev/null)" || return 1
+  url="${url%/}"
+  url="${url%.git}"
+  [[ "$url" =~ github\.com[:/]+([^/:]+)/([^/]+)$ ]] || return 1
+  echo "${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+}
+
 if (( PUBLISH )); then
   command -v gh >/dev/null || die "--publish/--update-pr need the gh CLI"
   (( DIRTY == 0 || ALLOW_DIRTY )) || die "uncommitted frontend/shared changes — commit them first (or pass --allow-dirty)"
-  PR_HEAD="$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" || die "cannot read PR #$PR with gh"
+  PR_INFO="$(gh pr view "$PR" --json headRefName,headRefOid,state --jq '[.headRefName, .headRefOid, .state] | @tsv')" ||
+    die "cannot read PR #$PR with gh"
+  IFS=$'\t' read -r PR_BRANCH PR_HEAD PR_STATE <<<"$PR_INFO"
+  if [[ "$PR_BRANCH" != "$HEAD_REF" || "$PR_STATE" != OPEN ]]; then
+    msg="PR #$PR is ${PR_STATE,,}, for branch '$PR_BRANCH' — this checkout is on '$HEAD_REF'"
+    (( FORCE_PR )) || die "$msg. Wrong --pr? (--force-pr publishes anyway)"
+    log "warning: $msg (--force-pr)"
+  fi
   [[ "$PR_HEAD" == "$HEAD_SHA" ]] || log "warning: PR #$PR head is ${PR_HEAD:0:7} but local HEAD is ${HEAD_SHA:0:7} (push first?)"
+  REPO_SLUG="$(remote_slug origin)" ||
+    die "remote 'origin' ($(git remote get-url origin 2>/dev/null || echo none)) is not a GitHub repository — the images are pushed there"
 fi
 
-REGEN="$SCRIPT_DIR/ui-review.sh --base $BASE_REF${PR:+ --pr $PR --update-pr}"
-if (( ALL )); then REGEN+=" --all"; fi
+# The command that regenerates this section, with the options that shaped it.
+regen=("$SCRIPT_DIR/ui-review.sh" --base "$BASE_REF")
+if [[ -n "$PR" ]]; then regen+=(--pr "$PR" --update-pr); fi
+if (( ALL )); then regen+=(--all); fi
+if [[ -n "$STORIES" ]]; then regen+=(--stories "$STORIES"); fi
+if [[ "$MAX_STORIES" != 40 ]]; then regen+=(--max-stories "$MAX_STORIES"); fi
+REGEN=""
+for var in UI_REVIEW_PROBE_THRESHOLD UI_REVIEW_RECHECKS UI_REVIEW_PIXEL_THRESHOLD UI_REVIEW_SETTLE_MS UI_REVIEW_QUIET_MS UI_REVIEW_FREEZE_TIME; do
+  if [[ -n "${!var:-}" ]]; then REGEN+="$var=${!var} "; fi
+done
+REGEN+="${regen[*]}"
 
 # ---------------------------------------------------------------- images
 
@@ -148,21 +187,23 @@ cexec() { "${COMPOSE[@]}" exec -T "$@"; } # cexec [-e VAR=x ...] <service> <cmd.
 
 # ---------------------------------------------------------------- capture
 
-# shoot_pair <head ids file> <base ids file> <out dir suffix>: screenshots of
-# the listed stories on both Ladle instances, in parallel, into
-# .ui-review/shots/{head,base}<suffix>/.
+# shoot_pair <ids|tasks> <head list> <base list> <out dir suffix>: screenshots
+# on both Ladle instances, in parallel, into .ui-review/shots/{head,base}<suffix>/.
+# `ids` lists story ids (every viewport); `tasks` lists "<id> <viewport>" pairs.
 shoot_pair() {
-  local head_ids="$1" base_ids="$2" suffix="$3" pids=() pid failed=0
+  local mode="$1" head_list="$2" base_list="$3" suffix="$4" pids=() pid failed=0 spec
+  spec=UX_SHOTS_IDS
+  [[ "$mode" == ids ]] || spec=UX_SHOTS_TASKS
   local env=(-e "UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop" -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
     -e "UX_SHOTS_SETTLE_MS=$SETTLE_MS" -e "UX_SHOTS_QUIET_MS=$QUIET_MS" -e "UX_SHOTS_FREEZE_TIME=$FREEZE_TIME"
     -e UX_SHOTS_DISABLE_ANIMATIONS=1)
-  if grep -q . "$head_ids"; then
-    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e "UX_SHOTS_IDS=@/ui-review/work/$(basename "$head_ids")" \
+  if grep -q . "$head_list"; then
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e "$spec=@/ui-review/work/$(basename "$head_list")" \
       -e "UX_SHOTS_OUT_DIR=/ui-review/shots/head$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-head$suffix.log" 2>&1 &
     pids+=($!)
   fi
-  if (( HAS_BASE )) && grep -q . "$base_ids"; then
-    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e "UX_SHOTS_IDS=@/ui-review/work/$(basename "$base_ids")" \
+  if (( HAS_BASE )) && grep -q . "$base_list"; then
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e "$spec=@/ui-review/work/$(basename "$base_list")" \
       -e "UX_SHOTS_OUT_DIR=/ui-review/shots/base$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-base$suffix.log" 2>&1 &
     pids+=($!)
   fi
@@ -170,9 +211,39 @@ shoot_pair() {
   (( failed == 0 )) || die "screenshot capture failed — see .ui-review/work/shots-*.log"
 }
 
+# Loads the stories about to be captured on both Ladle instances first, so the
+# timed capture doesn't wait on Vite's first transform of their chunks.
+warm_both() {
+  local pids=() pid
+  if grep -q . "$WORK/head-ids.txt"; then
+    cexec shots node scripts/ui-review/warmup.ts http://localhost:61000 @/ui-review/work/head-ids.txt "$WARMUP_CONCURRENCY" \
+      >"$WORK/warmup-head.log" 2>&1 &
+    pids+=($!)
+  fi
+  if (( HAS_BASE )) && grep -q . "$WORK/base-ids.txt"; then
+    cexec shots node scripts/ui-review/warmup.ts http://localhost:61001 @/ui-review/work/base-ids.txt "$WARMUP_CONCURRENCY" \
+      >"$WORK/warmup-base.log" 2>&1 &
+    pids+=($!)
+  fi
+  for pid in "${pids[@]}"; do wait "$pid" || log "warning: warm-up failed (see .ui-review/work/warmup-*.log); capturing anyway"; done
+}
+
+# Key of the render probe's result: the plan plus everything the head renders
+# (tracked tree, uncommitted edits, untracked files, dependency image).
+probe_cache_key() {
+  {
+    echo "$HEAD_IMAGE"
+    git ls-tree -r HEAD -- frontend shared
+    git diff HEAD --binary --no-ext-diff -- frontend shared
+    git ls-files --others --exclude-standard -z -- frontend shared | xargs -0 -r sha1sum
+    cat "$WORK/probe-plan.json"
+  } | sha256sum | cut -c1-16
+}
+
 capture() {
   local diff_args=(--work /ui-review/work --base-ref "$BASE_REF" --base-sha "$MERGE_BASE" --head-ref "$HEAD_REF"
-    --head-sha "$HEAD_SHA" --dirty "$DIRTY")
+    --head-sha "$HEAD_SHA" --dirty "$DIRTY" --rechecks "$RECHECKS")
+  if [[ -n "$PIXEL_THRESHOLD" ]]; then diff_args+=(--pixel-threshold "$PIXEL_THRESHOLD"); fi
   ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
   mkdir -p "$UIR"
   trap cleanup EXIT
@@ -208,30 +279,42 @@ capture() {
 
   tool affected --work /ui-review/work --probe-threshold "$PROBE_THRESHOLD" --freeze-time "$FREEZE_TIME"
   cexec shots node scripts/ui-review/warmup.ts http://localhost:61000
-  if [[ -z "$STORIES" && -f "$WORK/probe-plan.json" ]]; then
-    cexec shots node scripts/ui-review/probe.ts /ui-review/work/probe-plan.json /ui-review/work/probe-out.json
-  fi
   local select_args=(--work /ui-review/work --max "$MAX_STORIES")
+  if [[ -z "$STORIES" && -f "$WORK/probe-plan.json" ]]; then
+    local key cache
+    key="$(probe_cache_key)"
+    cache="$UIR/cache/probe-$key.json"
+    if [[ -f "$cache" ]]; then
+      log "render probe: reusing the result of an earlier run of the same code (.ui-review/cache/probe-$key.json)"
+      cp "$cache" "$WORK/probe-out.json"
+      select_args+=(--probe-cached)
+    else
+      cexec shots node scripts/ui-review/probe.ts /ui-review/work/probe-plan.json /ui-review/work/probe-out.json
+      mkdir -p "$UIR/cache"
+      cp "$WORK/probe-out.json" "$cache"
+      # Keep the 10 most recent results.
+      # shellcheck disable=SC2012 # names are probe-<hex>.json
+      ls -1t "$UIR"/cache/probe-*.json | tail -n +11 | xargs -r rm -f
+    fi
+  fi
   if (( ALL )); then select_args+=(--all); fi
   if [[ -n "$STORIES" ]]; then select_args+=(--ids "$STORIES"); fi
   tool select "${select_args[@]}"
 
-  if (( HAS_BASE )) && grep -q . "$WORK/base-ids.txt"; then
-    cexec shots node scripts/ui-review/warmup.ts http://localhost:61001 "$(head -n1 "$WORK/base-ids.txt")"
-  fi
-  log "capturing $(grep -c . "$WORK/head-ids.txt" || true) head / $(grep -c . "$WORK/base-ids.txt" || true) base stories (logs: .ui-review/work/shots-*.log) ..."
-  shoot_pair "$WORK/head-ids.txt" "$WORK/base-ids.txt" ""
+  warm_both
+  log "capturing $(grep -c . "$WORK/head-ids.txt" || true) head / $(grep -c . "$WORK/base-ids.txt" || true) base stories, $CONCURRENCY pages per side (logs: .ui-review/work/shots-*.log) ..."
+  shoot_pair ids "$WORK/head-ids.txt" "$WORK/base-ids.txt" ""
   tool diff "${diff_args[@]}"
 
-  # Stability re-checks: capture the stories that still show a change again on
-  # both sides. A story whose own re-capture differs renders
-  # nondeterministically; its diff is reported as "unstable", not "changed".
+  # Stability re-checks: capture each changed shot (that story, that viewport)
+  # again on both sides. A difference that doesn't reproduce in its region is
+  # reported as "unstable", not "changed".
   local pass
   for ((pass = 1; pass <= RECHECKS; pass++)); do
-    grep -q . "$WORK/recheck-ids.txt" || break
-    cp "$WORK/recheck-ids.txt" "$WORK/recheck-ids-$pass.txt"
-    log "stability re-check $pass/$RECHECKS: capturing the $(grep -c . "$WORK/recheck-ids-$pass.txt") changed stories again on both sides ..."
-    shoot_pair "$WORK/recheck-ids-$pass.txt" "$WORK/recheck-ids-$pass.txt" "-recheck-$pass"
+    grep -q . "$WORK/recheck-tasks.txt" || break
+    cp "$WORK/recheck-tasks.txt" "$WORK/recheck-tasks-$pass.txt"
+    log "stability re-check $pass/$RECHECKS: capturing the $(grep -c . "$WORK/recheck-tasks-$pass.txt") changed shot(s) again on both sides ..."
+    shoot_pair tasks "$WORK/recheck-tasks-$pass.txt" "$WORK/recheck-tasks-$pass.txt" "-recheck-$pass"
     tool diff "${diff_args[@]}"
   done
   cexec shots node scripts/ui-review/composite.ts /ui-review/work/composite-jobs.json
@@ -264,25 +347,36 @@ tool block --report /ui-review/out/report.json --out /ui-review/out/pr-block.md 
 
 if (( PUBLISH )); then
   FOLDER="$(tool folder --pr "$PR" --sha "$HEAD_SHA")"
-  REPO_SLUG="$(gh repo view --json nameWithOwner --jq .nameWithOwner)"
-  if compgen -G "$OUT/composites/*" >/dev/null; then
+  HAS_IMAGES=0
+  if compgen -G "$OUT/composites/*" >/dev/null; then HAS_IMAGES=1; fi
+  block_args=(--report /ui-review/out/report.json --out /ui-review/out/pr-block.md --command "$REGEN" --repo "$REPO_SLUG" --folder "$FOLDER")
+  if (( UPDATE_PR )); then
+    # Render the new description first: if it can't fit GitHub's limit this
+    # fails here, before anything is pushed.
+    gh pr view "$PR" --json body >"$WORK/pr-body.json"
+    block_args+=(--body-json /ui-review/work/pr-body.json --body-out /ui-review/work/pr-body.new.md)
+  fi
+  tool block "${block_args[@]}"
+
+  if (( UPDATE_PR )); then
+    # Earlier runs stay published until the description no longer links them.
+    if (( HAS_IMAGES )); then
+      bash "$SCRIPT_DIR/pr-screenshots.sh" publish --pr "$PR" --folder "$FOLDER" --dir "$OUT/composites" --keep-previous
+    fi
+    gh pr edit "$PR" --body-file "$WORK/pr-body.new.md" >/dev/null
+    log "updated the UI review section of PR #$PR"
+    if (( HAS_IMAGES )); then
+      bash "$SCRIPT_DIR/pr-screenshots.sh" prune --pr "$PR" --keep "$FOLDER"
+    else
+      log "no composites (nothing changed visually) — clearing pr-$PR/ on pr-screenshots"
+      bash "$SCRIPT_DIR/pr-screenshots.sh" prune --pr "$PR"
+    fi
+  elif (( HAS_IMAGES )); then
     bash "$SCRIPT_DIR/pr-screenshots.sh" publish --pr "$PR" --folder "$FOLDER" --dir "$OUT/composites"
-    for f in "$OUT"/composites/*; do
-      echo "https://raw.githubusercontent.com/$REPO_SLUG/pr-screenshots/$FOLDER/$(basename "$f")"
-    done
   else
     log "no composites (nothing changed visually) — clearing pr-$PR/ on pr-screenshots"
     bash "$SCRIPT_DIR/pr-screenshots.sh" prune --pr "$PR"
   fi
-  tool block --report /ui-review/out/report.json --out /ui-review/out/pr-block.md --command "$REGEN" \
-    --repo "$REPO_SLUG" --folder "$FOLDER"
-fi
-
-if (( UPDATE_PR )); then
-  gh pr view "$PR" --json body >"$WORK/pr-body.json"
-  tool splice --body-json /ui-review/work/pr-body.json --block /ui-review/out/pr-block.md --out /ui-review/work/pr-body.new.md
-  gh pr edit "$PR" --body-file "$WORK/pr-body.new.md" >/dev/null
-  log "updated the UI review section of PR #$PR"
 fi
 
 if [[ "$OUT_FILE" == "-" ]]; then

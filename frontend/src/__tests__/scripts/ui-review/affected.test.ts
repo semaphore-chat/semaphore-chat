@@ -6,6 +6,7 @@ import {
   planProbe,
   applyProbe,
   capStories,
+  probeImporters,
   type ModuleGraph,
   type StoryRef,
 } from '../../../../scripts/ui-review/lib/affected.ts';
@@ -178,7 +179,8 @@ describe('computeAffected — graph mapping', () => {
       baseStories: headStories,
     });
     expect(result.stories).toEqual([]);
-    expect(result.uncovered).toEqual([`${F}/components/Admin/Orphan.tsx`, `${F}/main.tsx`]);
+    expect(result.uncovered).toEqual([`${F}/components/Admin/Orphan.tsx`]);
+    expect(result.appOnly).toEqual([`${F}/main.tsx`]);
     expect(result.ignored).toEqual([
       'backend/src/app.module.ts',
       'docs-site/docs/index.md',
@@ -196,11 +198,8 @@ describe('computeAffected — global changes', () => {
   it.each([
     'frontend/.ladle/config.mjs',
     'frontend/src/theme/tokens.ts',
-    'frontend/src/index.css',
     'frontend/package.json',
     'pnpm-lock.yaml',
-    'frontend/vite.config.ts',
-    'frontend/index.html',
   ])('%s → every story', (path) => {
     const result = run(path);
     expect(result.global?.files).toEqual([path]);
@@ -241,6 +240,94 @@ describe('computeAffected — global changes', () => {
       baseStories: headStories,
     });
     expect(result.stories.filter((s) => s.direct).map((s) => s.id)).toEqual(['settings--settings']);
+  });
+
+  it.each(['frontend/src/index.css', 'frontend/index.html', 'frontend/vite.config.ts', 'frontend/src/main.tsx'])(
+    '%s is app-only: Ladle never loads it, so it is reported, not sampled',
+    (path) => {
+      // Regression: these were "global", so an index.css change got a 40-story
+      // sample reported as "0 changed" for a change Ladle cannot render.
+      const result = run(path);
+      expect(result.global).toBeNull();
+      expect(result.stories).toEqual([]);
+      expect(result.appOnly).toEqual([path]);
+      expect(result.uncovered).toEqual([]);
+    },
+  );
+
+  it('an app-only file that a story does reach is handled like any other file', () => {
+    const reached: ModuleGraph = { ...graph, [`${F}/stories/fixtures/edge/chat.ts`]: node([`${F}/utils/messageCacheUpdaters.ts`, `${F}/index.css`]), [`${F}/index.css`]: node() };
+    const result = computeAffected({ changed: [{ path: `${F}/index.css`, status: 'M' }], graph: reached, headStories, baseStories: headStories });
+    expect(result.appOnly).toEqual([]);
+    expect(ids(result.stories)).toEqual(['edge-chat--reactions', 'edge-chat--wall-of-text']);
+  });
+});
+
+describe('computeAffected — a global change mixed with other changes', () => {
+  // Regression: package.json + a leaf component → every story got reasons
+  // [package.json], the leaf file vanished from the report and the stories
+  // that render it could be dropped by the relevance-blind sample.
+  const result = computeAffected({
+    changed: [
+      { path: 'frontend/package.json', status: 'M' },
+      { path: `${F}/utils/messageCacheUpdaters.ts`, status: 'M' },
+    ],
+    graph,
+    headStories,
+    baseStories: headStories,
+  });
+
+  it('keeps every story a candidate, but marks the ones the other changed files reach as targeted', () => {
+    expect(result.global?.files).toEqual(['frontend/package.json']);
+    expect(ids(result.stories)).toEqual(ids(headStories));
+    expect(ids(result.stories.filter((s) => s.targeted))).toEqual(['edge-chat--reactions', 'edge-chat--wall-of-text']);
+    expect(result.stories.find((s) => s.id === 'edge-chat--reactions')?.reasons).toEqual([`${F}/utils/messageCacheUpdaters.ts`, 'frontend/package.json']);
+    expect(result.stories.find((s) => s.id === 'settings--settings')?.reasons).toEqual(['frontend/package.json']);
+    expect(result.leafTargets).toEqual({ [`${F}/utils/messageCacheUpdaters.ts`]: [`${F}/utils/messageCacheUpdaters.ts`] });
+  });
+
+  it('captures the targeted stories before the sample', () => {
+    const { selected } = capStories(result.stories, { max: 3 });
+    expect(selected.slice(0, 2).map((s) => s.id)).toEqual(['edge-chat--reactions', 'edge-chat--wall-of-text']);
+  });
+
+  it('probes the targeted stories (when there are enough), and keeps the rest as sample candidates', () => {
+    expect(planProbe(result, { threshold: 1 })).toEqual({ probe: true, stories: ['edge-chat--reactions', 'edge-chat--wall-of-text'] });
+    expect(planProbe(result, { threshold: 5 }).probe).toBe(false);
+    const probed = applyProbe(result.stories, { 'edge-chat--reactions': { desktop: [`${F}/utils/messageCacheUpdaters.ts`] }, 'edge-chat--wall-of-text': { desktop: [] } }, {
+      globalFiles: ['frontend/package.json'],
+    });
+    expect(ids(probed)).toEqual(ids(headStories));
+    expect(ids(probed.filter((s) => s.targeted))).toEqual(['edge-chat--reactions']);
+    expect(probed.find((s) => s.id === 'edge-chat--wall-of-text')?.reasons).toEqual(['frontend/package.json']);
+  });
+});
+
+describe('computeAffected — moved story files and probe importers', () => {
+  it('a story file moved to another directory keeps its ids: nothing is reported removed', () => {
+    const moved = `${F}/stories/edge/states/EmptyState.stories.tsx`;
+    const head = headStories.map((s) => (s.id === 'empty-state--messages' ? { ...s, file: moved } : s));
+    const result = computeAffected({
+      changed: [
+        { path: `${F}/stories/components/EmptyState.stories.tsx`, status: 'D' },
+        { path: moved, status: 'A' },
+      ],
+      graph: { ...graph, [moved]: node([`${F}/stories/fixtures/componentStory.tsx`]) },
+      headStories: head,
+      baseStories: headStories,
+    });
+    expect(result.removed).toEqual([]);
+    expect(ids(result.stories)).toEqual(['empty-state--messages']);
+  });
+
+  it('probeImporters lists the importers of each target, a few levels up', () => {
+    const importers = probeImporters(graph, [`${F}/components/Common/Chip.tsx`], 2);
+    expect(importers[`${F}/components/Common/Chip.tsx`]).toEqual([`${F}/components/Message/MessageReactions.tsx`]);
+    expect(importers[`${F}/components/Message/MessageReactions.tsx`]).toEqual([
+      `${F}/components/Message/MessageComponent.tsx`,
+      `${F}/stories/components/MessageReactions.stories.tsx`,
+    ]);
+    expect(importers[`${F}/components/Message/MessageComponent.tsx`]).toBeUndefined();
   });
 });
 
@@ -306,6 +393,12 @@ describe('capStories', () => {
     const withDirect = stories.map((s) => (s.id === 'screen-c--two' ? { ...s, direct: true } : s));
     const { selected } = capStories(withDirect, { max: 2 });
     expect(selected.map((s) => s.id)).toEqual(['screen-c--two', 'screen-a--one']);
+  });
+
+  it('puts targeted stories (global mode) after direct ones and before the sample', () => {
+    const mixed = stories.map((s) => ({ ...s, targeted: s.id === 'edge-b--one' || s.id === 'comp-b--one' }));
+    const { selected } = capStories(mixed, { max: 4 });
+    expect(selected.map((s) => s.id)).toEqual(['comp-b--one', 'edge-b--one', 'screen-a--one', 'comp-a--one']);
   });
 
   it('is deterministic regardless of input order', () => {

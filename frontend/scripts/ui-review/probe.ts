@@ -9,7 +9,8 @@
  * on NODE_PATH):
  *   node scripts/ui-review/probe.ts <plan.json> <out.json>
  * plan.json: { baseUrl, stories: string[], targets: { [file]: number[] | 'all' },
- *              concurrency?: number, quietMs?: number, freezeTime?: string }
+ *              importers?: { [file]: string[] }, concurrency?: number,
+ *              quietMs?: number, freezeTime?: string }
  * out.json:  { hits: { [storyId]: { [viewport]: string[] } }, errors: [...], durationMs }
  *
  * Per story, stopping at the first viewport where a target ran: desktop →
@@ -23,7 +24,7 @@ import { createRequire } from 'node:module';
 import type { Browser, CDPSession, Page } from 'playwright-core';
 import { exercisedTargets, fileFromModuleUrl, type CoverageScript, type TargetLines } from './lib/coverage.ts';
 import { VIEWPORTS, viewportsForStory, type Viewport } from './lib/viewports.ts';
-import { waitForDomQuiet } from './lib/settle.ts';
+import { trackNetwork, waitForSettled } from './lib/settle.ts';
 
 const require = createRequire(import.meta.url);
 const { chromium } = require('playwright-core') as typeof import('playwright-core');
@@ -32,6 +33,7 @@ interface Plan {
   baseUrl: string;
   stories: string[];
   targets: Record<string, TargetLines>;
+  importers?: Record<string, string[]>;
   concurrency?: number;
   quietMs?: number;
   freezeTime?: string;
@@ -44,6 +46,9 @@ if (!planPath || !outPath) {
 }
 const plan: Plan = JSON.parse(readFileSync(planPath, 'utf8'));
 const targets = new Map(Object.entries(plan.targets));
+const importers = new Map(Object.entries(plan.importers ?? {}));
+// Modules whose coverage the top-level-change rule may look at (targets + their importers).
+const relevantFiles = new Set<string>([...targets.keys(), ...importers.keys(), ...[...importers.values()].flat()]);
 const quietMs = plan.quietMs ?? 600;
 // CPU-bound (React dev build + coverage instrumentation): scale with cores.
 const concurrency = plan.concurrency ?? Math.min(12, Math.max(2, availableParallelism() - 2));
@@ -81,17 +86,22 @@ async function openPage(browser: Browser, vp: Viewport, storyId: string): Promis
   await cdp.send('Profiler.enable');
   // detailed: false — see lib/coverage.ts for why not block coverage.
   await cdp.send('Profiler.startPreciseCoverage', { callCount: true, detailed: false });
-  await page.goto(`${plan.baseUrl}/?story=${encodeURIComponent(storyId)}&mode=preview`, { waitUntil: 'networkidle', timeout: 60_000 });
-  await waitForDomQuiet(page, quietMs);
+  const net = trackNetwork(page);
+  try {
+    await page.goto(`${plan.baseUrl}/?story=${encodeURIComponent(storyId)}&mode=preview`, { waitUntil: 'networkidle', timeout: 60_000 });
+    await waitForSettled(page, net, quietMs, 10_000);
+  } finally {
+    net.dispose();
+  }
   const take = async () => {
     const { result } = (await cdp.send('Profiler.takePreciseCoverage')) as unknown as { result: CoverageScript[] };
     const relevant = result.filter((s) => {
       const file = fileFromModuleUrl(s.url);
-      return file !== null && targets.has(file);
+      return file !== null && relevantFiles.has(file);
     });
     const texts = new Map<string, string>();
     await Promise.all(relevant.map(async (s) => texts.set(s.url, await sourceFor(s.url))));
-    return [...exercisedTargets(relevant, texts, targets)].sort();
+    return [...exercisedTargets(relevant, texts, targets, undefined, importers)].sort();
   };
   return { page, take, close: () => context.close() };
 }

@@ -1,12 +1,16 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
+import pixelmatch from 'pixelmatch';
 import {
   classifyShot,
   confirmChange,
   summarizeStory,
   diffBoxes,
+  growBoxes,
+  pixelsInBoxes,
   unionBox,
   cropWindow,
+  DEFAULT_PIXEL_THRESHOLD,
   DEFAULT_THRESHOLDS,
 } from '../../../../scripts/ui-review/lib/classify.ts';
 
@@ -54,20 +58,70 @@ describe('summarizeStory', () => {
 });
 
 describe('confirmChange (stability re-check)', () => {
-  it('keeps a change when both sides re-render identically', () => {
-    expect(confirmChange('changed', { head: 0, base: 3 })).toBe('changed');
+  // Each number: base-vs-head differing pixels inside the first diff's region on one re-capture.
+  it('keeps a change that reproduces in its region on every re-capture', () => {
+    expect(confirmChange('changed', [89, 89])).toBe('changed');
   });
 
-  it('marks a change unstable when either side renders differently on a second capture', () => {
-    expect(confirmChange('changed', { head: 0, base: 5000 })).toBe('unstable');
-    expect(confirmChange('changed', { head: DEFAULT_THRESHOLDS.minPixels + 1, base: 0 })).toBe('unstable');
-    expect(confirmChange('changed', { head: Number.POSITIVE_INFINITY })).toBe('unstable');
+  it('keeps a real change even when a re-capture also differs elsewhere (a list scrolled differently)', () => {
+    // Regression: a 1px chip border change (89 px, same box in every pass) was
+    // "unstable" because one pass-2 capture scrolled differently (~200k px of
+    // drift) — drift anywhere used to veto the change.
+    expect(confirmChange('changed', [89, 200_000])).toBe('changed');
+    // ...and when both sides dropped the same banner on the last pass, the 50 px change still showed.
+    expect(confirmChange('changed', [50, 50])).toBe('changed');
+  });
+
+  it('marks a change unstable when a re-capture no longer shows it', () => {
+    // A menu opened while media was sizing: same diff twice, gone on the third capture.
+    expect(confirmChange('changed', [61_080, 0])).toBe('unstable');
+    // The base's first capture was a half-loaded "Loading..." page.
+    expect(confirmChange('changed', [0])).toBe('unstable');
+    expect(confirmChange('changed', [DEFAULT_THRESHOLDS.minPixels])).toBe('unstable');
   });
 
   it('leaves unchecked changes and other statuses alone', () => {
-    expect(confirmChange('changed', {})).toBe('changed');
-    expect(confirmChange('unchanged', { head: 9999, base: 9999 })).toBe('unchanged');
-    expect(confirmChange('new', { head: 9999 })).toBe('new');
+    expect(confirmChange('changed', [])).toBe('changed');
+    expect(confirmChange('unchanged', [0])).toBe('unchanged');
+    expect(confirmChange('new', [0])).toBe('new');
+  });
+});
+
+describe('re-check regions', () => {
+  it('grows boxes by a margin, clamped to the image', () => {
+    expect(growBoxes([{ x: 5, y: 90, width: 10, height: 8 }], 16, 100, 100)).toEqual([{ x: 0, y: 74, width: 31, height: 26 }]);
+  });
+
+  it('counts only the differing pixels inside the boxes, each once', () => {
+    const m = new Uint8Array(20 * 10);
+    for (const [x, y] of [[1, 1], [2, 2], [15, 8], [18, 1]]) m[y * 20 + x] = 1;
+    const boxes = [{ x: 0, y: 0, width: 5, height: 5 }, { x: 1, y: 1, width: 3, height: 3 }, { x: 14, y: 7, width: 3, height: 3 }];
+    expect(pixelsInBoxes(m, 20, 10, boxes)).toBe(3);
+    expect(pixelsInBoxes(m, 20, 10, [])).toBe(0);
+  });
+});
+
+describe('default pixel threshold', () => {
+  /** 20×20 grey page with a 1px horizontal line at y=10 in `line` grey. */
+  const page = (line: number) => {
+    const data = new Uint8Array(20 * 20 * 4);
+    for (let p = 0; p < 400; p++) {
+      const v = Math.floor(p / 20) === 10 ? line : 30;
+      data.set([v, v, v, 255], p * 4);
+    }
+    return data;
+  };
+  const differing = (a: number, b: number, threshold: number) => pixelmatch(page(a), page(b), undefined, 20, 20, { threshold, includeAA: false });
+
+  it('sees a subtle 1px border colour change that 0.1 misses', () => {
+    // Regression: divider rgba(255,255,255,.12) -> alpha(text.primary,.2) over #121212 is grey 64 -> 81.
+    expect(differing(64, 81, 0.1)).toBe(0);
+    expect(differing(64, 81, DEFAULT_PIXEL_THRESHOLD)).toBe(20);
+  });
+
+  it('still ignores identical renders and near-invisible steps', () => {
+    expect(differing(64, 64, DEFAULT_PIXEL_THRESHOLD)).toBe(0);
+    expect(differing(64, 68, DEFAULT_PIXEL_THRESHOLD)).toBe(0);
   });
 });
 
