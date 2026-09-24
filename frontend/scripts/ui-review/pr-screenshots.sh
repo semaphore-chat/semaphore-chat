@@ -32,8 +32,9 @@
 #          detection, or $GITHUB_REPOSITORY in Actions).
 # The remote branch is fetched into refs/ui-review/<branch>, which is kept
 # between runs so the next fetch only transfers what changed.
-# Exit codes: 0 ok / nothing to do, 1 error, 3 push rejected for lack of
-#             permission (read-only token, e.g. a fork PR's workflow run).
+# Exit codes: 0 ok / nothing to do, 3 push rejected for lack of permission
+#             (read-only token, e.g. a fork PR's workflow run), any other
+#             non-zero: error (a failing git step exits with git's status).
 set -euo pipefail
 shopt -s inherit_errexit 2>/dev/null || true # bash >= 4.4; the script does not rely on it
 

@@ -31,7 +31,9 @@ permissions:
   contents: write # push the rebuilt pr-screenshots branch
   pull-requests: read # gh pr view (state of each PR folder)
 
-# One prune (or publish race) at a time; queue instead of cancelling.
+# One prune at a time, never cancelled mid-run. GitHub keeps only the newest
+# pending run of a group, so runs queued in between are dropped — the daily run
+# prunes what they would have. (Publishes from laptops retry on a lost lease.)
 concurrency:
   group: pr-screenshots-branch
   cancel-in-progress: false

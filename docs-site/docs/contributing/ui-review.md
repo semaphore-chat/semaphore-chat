@@ -16,7 +16,7 @@ For a change it:
 1. works out which stories the change affects;
 2. renders them on the merge-base and on your working tree, at phone/tablet/desktop;
 3. pixel-diffs each pair and sorts stories into **changed / new / removed / unchanged**
-   (and **unstable**: stories that render differently from one load to the next);
+   (and **unstable**: stories whose difference did not reproduce when captured again);
 4. renders labelled before | after composites (changed regions outlined, plus a
    1:1 zoom on small changes);
 5. optionally publishes the images to the `pr-screenshots` branch and writes a
@@ -25,7 +25,7 @@ For a change it:
 
 ## Requirements
 
-`bash`, `git`, Docker with Compose v2, and the [`gh` CLI](https://cli.github.com/)
+`bash` (4.4+), `git`, Docker with Compose v2, and the [`gh` CLI](https://cli.github.com/)
 (authenticated) for `--publish`/`--update-pr`. Nothing runs on the host except
 git, gh and docker; every Node step runs in a container. The first run builds a
 `uir-frontend:<hash>` image (reused until dependencies change).
@@ -54,8 +54,10 @@ frontend/scripts/ui-review/ui-review.sh --base origin/main --pr <number> --updat
 ```
 
 Images are published per PR number, so publishing needs `--pr`; before the PR
-exists, review locally. `--reuse` only works when base and head haven't changed
-since the capture.
+exists, review locally. `--pr` must be the open PR of the branch you are on
+(a typo would otherwise write into someone else's PR); `--force-pr` overrides
+that check. `--reuse` only works when base and head haven't changed since the
+capture.
 
 ### Review checklist
 
@@ -66,15 +68,24 @@ Before publishing, check the run the way a reviewer would:
   viewer / Read tool).
 - **Unexpected changes?** A "changed" story you didn't intend to touch is a regression
   until proven otherwise.
-- **Unstable stories** — their diff may or may not come from your change; look
-  at the composite. A story that is unstable run after run is worth fixing
-  (usually a race between a menu/popover opening and media or data settling).
+- **Unstable stories** — their difference did not reproduce on a re-capture, so
+  it may or may not come from your change; look at the composite. A story that
+  is unstable run after run is worth fixing (usually a race between a
+  menu/popover opening and media or data settling).
+- **Changed files with no visible change** — the section lists changed files
+  whose captured stories run the code but show nothing different (e.g. the
+  component renders a closed dialog), and files no probed story runs at all.
+  Either the change is behind an interaction no story sets up, or it has no
+  visual effect; add a story if it should be visible.
 - **Console issues** — page errors, render errors or unhandled MSW requests in
   the section's "Console issues" list usually mean a broken story or a missing
   fixture handler.
 - **Changed files no story renders** — the tool lists changed UI files that no
   story reaches. Add a story (`frontend/src/stories/`, see the frontend README)
   so the change can be seen.
+- **Not visible in Ladle** — `index.html`, `vite.config.ts`, `main.tsx`,
+  `index.css` and `public/` are only loaded by the real app; check those
+  changes in the app itself.
 - **Capped / sampled?** If the section says the run was capped, rerun with `--all`
   when the dropped stories matter.
 
@@ -83,7 +94,7 @@ Before publishing, check the run the way a reviewer would:
 | Option | Meaning |
 | --- | --- |
 | `--base <ref>` | Compare against `merge-base(<ref>, HEAD)` (default `origin/main`; fetch first) |
-| `--pr <n>` | PR to publish for / update |
+| `--pr <n>` | PR to publish for / update (this branch's open PR) |
 | `--publish` | Push the composites to `pr-screenshots` under `pr-<n>/` |
 | `--update-pr` | Also replace the UI-review section of the PR body (implies `--publish`) |
 | `--out <file>` / `--out -` | Also write the generated section to a file / stdout |
@@ -92,19 +103,23 @@ Before publishing, check the run the way a reviewer would:
 | `--all` | No cap: capture every affected story |
 | `--max-stories <n>` | Cap (default 40) |
 | `--allow-dirty` | Allow publishing with uncommitted `frontend/`/`shared/` changes |
+| `--force-pr` | Publish for a PR that isn't this branch's open PR |
 | `--keep` | Leave the containers and the base worktree running (debugging) |
 
 Tuning via environment: `UI_REVIEW_MAX_STORIES`, `UI_REVIEW_PROBE_THRESHOLD`
-(default 12), `UI_REVIEW_CONCURRENCY` (capture: 3 pages per side),
-`UI_REVIEW_SETTLE_MS` (1500), `UI_REVIEW_QUIET_MS` (800), `UI_REVIEW_RECHECKS` (2),
-`UI_REVIEW_FREEZE_TIME`.
-The render probe runs one page per CPU core minus two (at most 12).
+(default 12), `UI_REVIEW_CONCURRENCY` (capture pages per side: 4 on 24+ cores,
+else 3), `UI_REVIEW_SETTLE_MS` (1500), `UI_REVIEW_QUIET_MS` (800),
+`UI_REVIEW_RECHECKS` (2; `1` is faster but lets more flaky stories through as
+"changed"), `UI_REVIEW_PIXEL_THRESHOLD` (0.03), `UI_REVIEW_FREEZE_TIME`.
+The render probe runs one page per CPU core minus two (at most 12). The
+"Regenerate" command at the bottom of the section repeats the options and
+`UI_REVIEW_*` overrides that shaped the run.
 
 ## How it works
 
 Everything lives in `frontend/scripts/ui-review/`: `ui-review.sh` orchestrates,
-`compose.yml` defines its containers, `cli.ts`/`probe.ts`/`composite.ts` are the
-Node steps and `lib/` holds the (unit-tested) pure logic.
+`compose.yml` defines its containers, `cli.ts`/`probe.ts`/`composite.ts`/`warmup.ts`
+are the Node steps and `lib/` holds the (unit-tested) pure logic.
 
 ### Which stories are affected
 
@@ -115,30 +130,48 @@ files, limited to what Ladle can render (`frontend/` and `shared/`).
    global provider) as entry points yields a metafile: every import edge,
    resolved exactly like the bundler — `@semaphore-chat/shared` alias, index
    barrels, `import()`/`React.lazy`, CSS imports.
-2. **Global changes** restyle every story: `frontend/.ladle/**`, `src/theme/**`,
-   `src/index.css`, `index.html`, the Vite config, tsconfigs, package manifests,
-   the lockfile, patches — plus anything the Ladle provider imports, the
-   harness modules nearly every story shares (`SandboxShell`, fixtures builder,
-   ...) and the app modules those import directly (`Layout`, context
-   providers). All stories are then candidates, capped to a representative sample
-   (one story per story file, spread across directories); the PR section says so.
+2. **Global changes** can restyle every story: `frontend/.ladle/**`,
+   `src/theme/**`, tsconfigs, package manifests, the lockfile, patches — plus
+   anything the Ladle provider imports, the harness modules nearly every story
+   shares (`SandboxShell`, fixtures builder, ...) and the app modules those
+   import directly (`Layout`, context providers). All stories are then
+   candidates. The stories that render the diff's *other* changed files are
+   still found (graph, then the probe below) and captured first; the rest of
+   the cap is a sample spread across story directories. The PR section says
+   how many of each, and how many story files the sample covered.
 3. **Changed story files** are always captured ("direct"); stories that
-   disappeared from them are reported as removed.
+   disappeared from every story file are reported as removed (a story file
+   that moved keeps its ids).
 4. **Everything else**: every story whose file can reach the changed file.
    That is nearly every story — they all mount the shared harness, which
    statically imports `Layout` and lazily every page — so when there are more
    than a dozen candidates a **render probe** narrows them: each candidate is
    loaded in Chromium (desktop, then tablet, then phone, stopping at the first
-   hit) with V8 function coverage on, and it is kept only if a
-   function *containing a changed line* actually ran (changed lines come from
-   `git diff -U0`, mapped through the inline source maps Vite serves). A padding
-   change inside `SingleReactionChip` keeps the stories that render reaction
-   chips, not every story that renders a message list. Changes outside any
-   function (imports, top-level `styled()`/constants) fall back to "some
-   function of that module ran".
+   hit) with V8 function coverage on, and it is kept only if the changed code
+   actually ran (changed lines come from `git diff -U0`, mapped through the
+   inline source maps Vite serves):
+   - a changed line **inside a function** counts when that function ran. A
+     padding change inside `SingleReactionChip` keeps the stories that render
+     reaction chips, not every story that renders a message list;
+   - a changed line **outside any function** (a top-level constant, a static
+     `styled()` object) counts when the module's values are used: in a
+     component module, when one of its components rendered; in any other module
+     (constants, utils, style helpers) also when a module importing it ran,
+     looking through re-exporting barrels. So a change to
+     `TOUCH_TARGETS` in `utils/breakpoints.ts` keeps every story whose
+     components read it, even though the file's own helpers never run;
+   - lines that produce no code on their own (imports, types, comments) don't
+     widen the check.
 
 Changed UI files that no story reaches are listed in the PR section — a
-reminder to add a story.
+reminder to add a story. Files only the real app loads (`index.html`,
+`vite.config.ts` — Ladle has its own `.ladle/vite.config.ts` — `main.tsx`,
+`index.css` and `public/`) are listed as **not visible in Ladle** instead of
+triggering a sample that could only show "no change".
+
+The probe result is cached in `.ui-review/cache/` by the probe plan and the
+content of everything the head renders, so rerunning on the same code (e.g.
+after a push that changed nothing under `frontend/`/`shared/`) skips it.
 
 ### Capture
 
@@ -147,29 +180,37 @@ host ports, so a running `ladle` on :61000 is never disturbed): the working
 tree on `:61000` and a temporary git worktree at the merge-base on `:61001`
 (`.ui-review/base`, created and removed by the tool). The base uses the same
 image unless its dependency manifests differ, in which case an image is built
-from the base's own lockfile. Screenshots come from `scripts/ux-shots.mjs`
+from the base's own lockfile. Before capturing, both servers load every
+selected story once, so Vite's first transform of their chunks doesn't happen
+during a timed capture. Screenshots come from `scripts/ux-shots.mjs`
 (exact-id mode) with the clock frozen at a fixed instant, CSS animations
-disabled and a wait for the DOM to go quiet, so identical code renders
-identical pixels.
+disabled, and a settle wait: the page counts as ready once, for 800 ms, the
+DOM has not changed, no request started or finished and no script,
+stylesheet or font is still loading — a lazy route whose chunk is still in
+flight behind a static "Loading..." screen is not "ready". Identical code
+renders identical pixels.
 
 ### Diff and classification
 
 [pixelmatch](https://github.com/mapbox/pixelmatch) compares each pair with its
 anti-aliasing detection on (AA pixels never count) and a per-pixel colour
-threshold of 0.1. A shot is **changed** when more than 24 pixels differ or the
-page size changed; **new** when the story has no base; **removed** when it has
-no head.
+threshold of 0.03 (pixelmatch's default of 0.1 ignores grey steps below about
+26/255 — a divider or border opacity tweak; 0.03 still ignores steps below
+about 8/255, and renders are exact run to run). A shot is **changed** when more
+than 24 pixels differ or the page size changed; **new** when the story has no
+base; **removed** when it has no head.
 
 A few stories render nondeterministically (for example a menu opened while
 media is still sizing: the menu anchors differently from load to load). To
-keep those out of "changed", every story with a changed shot is **captured
-again on both sides** (two more times by default, `UI_REVIEW_RECHECKS`; each
-pass only re-captures stories that still show a change). If the head or the
-base differs from its own first capture, the shot is reported as
-**unstable** — listed separately, with its composite, and not counted as a
-change. A flaky story can still slip through as "changed" when every
-re-capture happens to match, but that gets unlikely quickly; a real change
-reproduces every time.
+keep those out of "changed", every changed shot (that story at that viewport)
+is **captured again on both sides**, twice by default (`UI_REVIEW_RECHECKS`).
+A change is confirmed only if the base-vs-head difference **reproduces inside
+its own region** (the changed boxes plus a small margin) on every re-capture;
+if it vanishes on any re-capture, the shot is **unstable** — listed
+separately, with its composite, and not counted as a change. Differences
+elsewhere on the page on a re-capture (a list scrolled differently once) don't
+matter either way. A flaky story can still come out "changed" when every
+re-capture happens to reproduce the same difference.
 
 Composites are drawn by Chromium from an HTML template (the
 before | after panels, a diff panel on phone, red outlines around changed
@@ -186,23 +227,48 @@ pr-123/20260923-190507-abc1234/<story-id>--<viewport>.webp
 pr-130/...
 ```
 
-Each publish replaces `pr-<n>/` entirely (a fresh timestamped folder, so GitHub's
-image caches never show stale pictures) and keeps other PRs' folders. The branch
-is rebuilt as a **single parentless commit** every time, so it never accumulates
-history, and pushed with `--force-with-lease` against the tip it was built from
-— a concurrent publish makes the push fail, and the script re-fetches and
-re-applies. It never checks anything out or touches another branch. Images are
-referenced as `https://raw.githubusercontent.com/<owner>/<repo>/pr-screenshots/...`.
+With `--update-pr` the order is: render the new PR description (and check it
+fits), publish the new run's folder next to the previous one, update the
+description, then drop the previous run. If anything fails on the way, the
+description still points at images that exist. Each run gets a fresh
+timestamped folder, so GitHub's image caches never show stale pictures; other
+PRs' folders are never touched. The branch is rebuilt as a **single parentless
+commit** every time, so it never accumulates history, and pushed with
+`--force-with-lease` against the tip it was built from — a concurrent publish
+makes the push fail, and the script re-fetches and re-applies (with a
+randomised backoff, up to 8 attempts). Any failing git step aborts the script
+before it pushes, the new tree is checked before the push (other PRs' folders
+unchanged, the new folder complete), and it refuses to write to a branch that
+has history or holds anything but `README.md` and `pr-<n>/` folders. It never
+checks anything out or touches another branch; the remote branch is fetched
+into `refs/ui-review/pr-screenshots`, which is kept so the next fetch is
+incremental. Images are referenced as
+`https://raw.githubusercontent.com/<owner>/<repo>/pr-screenshots/...`, where
+`<owner>/<repo>` is your `origin` remote.
 
 The PR section is spliced between its markers byte-for-byte (CRLF bodies
-included); running it again replaces it in place. If the markers are missing
-it is appended to the end — to put it somewhere else (e.g. above a footer),
-add the two marker lines there first:
+included); running it again replaces it in place. A marker only counts on a
+line of its own outside code blocks, so quoting the markers in the
+description is harmless; a start marker without an end marker stops the run
+(fix the description by hand). If the markers are missing the section is
+appended to the end — to put it somewhere else (e.g. above a footer), add the
+two marker lines there first:
 
 ```markdown
 <!-- ui-review:start -->
 <!-- ui-review:end -->
 ```
+
+GitHub limits a PR description to 65,536 characters. The section gets
+whatever room the rest of the description leaves; when it doesn't fit, it is
+shortened step by step (shorter lists, images as links, one line per story)
+and says so, with a link to the run's folder on `pr-screenshots`.
+
+**Pull requests from forks:** your `origin` is the fork, so the images go to
+your fork's `pr-screenshots` branch and the links point there. The upstream
+prune workflow can't clean that branch; run
+`frontend/scripts/ui-review/pr-screenshots.sh prune --pr <n>` yourself (or
+delete the branch) when the PR is done.
 
 ## Pruning
 
@@ -212,12 +278,15 @@ Folders of closed PRs are removed automatically by
 - when a PR is **closed or merged**, its `pr-<n>/` folder is dropped;
 - a **daily** run drops every folder whose PR is closed — the safety net for
   closed-PR runs that could not push (pull requests from forks get a read-only
-  token; the workflow logs a notice and exits cleanly) or that were superseded;
+  token; the workflow logs a notice and exits cleanly) or that GitHub
+  cancelled (see below);
 - it can be run **manually** (Actions → Prune PR screenshots), dry run by default.
 
-The workflow has `contents: write` + `pull-requests: read` only, runs one prune
-at a time (`concurrency`, queued rather than cancelled) and does nothing when
-the branch doesn't exist yet. It runs the same script you can run locally:
+The workflow has `contents: write` + `pull-requests: read` only and does
+nothing when the branch doesn't exist yet. Its `concurrency` group runs one
+prune at a time; GitHub keeps only the newest pending run of a group, so when
+several PRs close at once the runs in between are cancelled — the daily run
+catches their folders. It runs the same script you can run locally:
 
 ```bash
 frontend/scripts/ui-review/pr-screenshots.sh prune --dry-run   # what would go
@@ -227,8 +296,9 @@ frontend/scripts/ui-review/pr-screenshots.sh prune --pr 123    # one PR
 
 `frontend/scripts/ui-review/test-pr-screenshots.sh` exercises the script
 against a throwaway local bare repository (publish, replace, a lost push race,
-prune by PR / by state / dry run, the read-only exit code) — run it after
-changing the script; it never touches the real remote.
+five simultaneous publishers, keep-previous, prune by PR / by state / dry run,
+failing git steps, a missing `gh`, a non-screenshots branch, the read-only exit
+code) — run it after changing the script; it never touches the real remote.
 
 ## Limitations
 
@@ -237,18 +307,42 @@ changing the script; it never touches the real remote.
 - The probe works at function granularity: a story is kept when the function
   holding the change ran, even if the changed branch inside it didn't render
   anything visible, or rendered it outside the screenshot (e.g. a reaction on a
-  message scrolled out of view) — such stories end up in the collapsed
-  "unchanged" list.
+  message scrolled out of view). Such files are flagged as "no visible change";
+  the stories end up in the collapsed "unchanged" list. A constant exported
+  from a *component* module is only checked where that module's components
+  render.
 - Global changes and very broad changes are sampled (cap 40); use `--all` for
   a full sweep (roughly 220 stories × 3 viewports × 2 sides — minutes, not
-  seconds).
-- A run takes minutes: two Ladle servers start, a broad change probes ~200
-  stories and each captured story is shot 3× per side. Measured on a 32-core
-  machine for a one-line change to the reaction chip: 220 candidates probed in
-  ~6 min (50 kept), 40 captured, about 11 min end to end. A change to a single
-  screen or component with its own story is much faster (no probe below 12
-  candidates).
+  seconds; the PR section is shortened to fit the description).
+- A run takes minutes: two Ladle servers start, a broad change probes ~220
+  stories, each captured story is shot at 3 viewports per side, and each
+  changed shot twice more. Measured on a 32-core machine: a one-line change to
+  a constant used across the app (`TOUCH_TARGETS` in `utils/breakpoints.ts`):
+  220 stories probed in 2.5 min (every one of them runs it; a probe where most
+  stories miss takes about 7 min, since each miss loads 3 viewports), 40
+  captured with 35 changed and 66 changed shots re-checked twice — about 11
+  min end to end. Four stories via `--stories`: 1.5 min; 40 unchanged stories:
+  4.5 min. A change to a single screen or component with its own story needs
+  no probe (below 12 candidates), a rerun on the same code reuses the probe,
+  and `UI_REVIEW_RECHECKS=1` saves the second re-check (about 2 min in the
+  run above).
 - Links use `raw.githubusercontent.com`, which serves public repositories.
+
+## Disk space
+
+Each dependency set gets its own `uir-frontend:<hash>` image (about 3.7 GB, of
+which about 3.4 GB is unique): one per lockfile/manifest state you reviewed,
+plus one for a merge-base whose dependencies differ. The tool never deletes
+them. List and remove old ones with:
+
+```bash
+docker image ls uir-frontend
+docker image rm uir-frontend:<hash>   # or: docker image ls -q uir-frontend | xargs docker image rm
+```
+
+The Playwright image (`mcr.microsoft.com/playwright`, about 3.2 GB) is shared.
+Per-run output under `.ui-review/` is small (tens of MB) and replaced on the
+next run.
 
 ## Troubleshooting
 
@@ -257,6 +351,11 @@ changing the script; it never touches the real remote.
   start).
 - **Everything shows as new** — the merge-base predates the Ladle sandbox.
 - **Blank or half-rendered shots** — raise `UI_REVIEW_SETTLE_MS`, lower
-  `UI_REVIEW_CONCURRENCY`.
+  `UI_REVIEW_CONCURRENCY`. The capture log (`.ui-review/work/shots-*.log`)
+  marks shots whose page was still busy after the settle wait.
+- **"PR #n is ..., for branch ..."** — `--pr` doesn't match the branch you are
+  on (or the PR is closed); fix the number, or pass `--force-pr`.
+- **"... without a matching ... line after it"** — the PR description has a
+  `<!-- ui-review:start -->` line but no end marker; fix the description by hand.
 - `.ui-review/` is disposable (gitignored); files the containers create there are
   handed back to your user at the end of every run.
