@@ -4,8 +4,13 @@
  * per-pixel colour deltas under its `threshold`).
  */
 
-export type ShotStatus = 'changed' | 'new' | 'removed' | 'unchanged' | 'missing';
-export type StoryStatus = 'changed' | 'new' | 'removed' | 'unchanged' | 'error';
+/**
+ * `unstable`: base and head differ, but so did two captures of the same side
+ * (see `confirmChange`) — the story renders nondeterministically, so the diff
+ * can't be attributed to the change.
+ */
+export type ShotStatus = 'changed' | 'unstable' | 'new' | 'removed' | 'unchanged' | 'missing';
+export type StoryStatus = 'changed' | 'unstable' | 'new' | 'removed' | 'unchanged' | 'error';
 
 export interface Thresholds {
   /** Differing pixels (after pixelmatch's AA/colour tolerance) at or below this are noise. */
@@ -31,11 +36,29 @@ export function classifyShot(c: ShotComparison, thresholds: Partial<Thresholds> 
   return c.diffPixels > minPixels ? 'changed' : 'unchanged';
 }
 
+/**
+ * Stability re-check of a change: `drift` holds the differing pixels between
+ * two captures of the same side (head vs head again, base vs base again;
+ * `Infinity` when the page size changed, absent when not re-captured). Any
+ * drift above the noise floor means the story renders nondeterministically.
+ */
+export function confirmChange(
+  status: ShotStatus,
+  drift: { head?: number; base?: number },
+  thresholds: Partial<Thresholds> = {},
+): ShotStatus {
+  if (status !== 'changed') return status;
+  const { minPixels } = { ...DEFAULT_THRESHOLDS, ...thresholds };
+  const drifted = [drift.head, drift.base].some((d) => d !== undefined && d > minPixels);
+  return drifted ? 'unstable' : 'changed';
+}
+
 export function summarizeStory(statuses: ShotStatus[]): StoryStatus {
   if (statuses.length === 0 || statuses.includes('missing')) return 'error';
   if (statuses.every((s) => s === 'new')) return 'new';
   if (statuses.every((s) => s === 'removed')) return 'removed';
-  if (statuses.some((s) => s !== 'unchanged')) return 'changed';
+  if (statuses.some((s) => s === 'changed' || s === 'new' || s === 'removed')) return 'changed';
+  if (statuses.includes('unstable')) return 'unstable';
   return 'unchanged';
 }
 

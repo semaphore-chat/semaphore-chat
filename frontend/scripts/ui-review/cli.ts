@@ -5,7 +5,9 @@
  *
  *   affected  changed files → candidate stories (+ probe plan)     work/affected.json, work/probe-plan.json
  *   select    apply probe hits, cap                                 work/selection.json, work/{head,base}-ids.txt
- *   diff      pixel-diff head vs base shots, plan composites        work/diff-report.json, work/composite-jobs.json
+ *   diff      pixel-diff head vs base shots, plan composites        work/diff-report.json, work/composite-jobs.json,
+ *             (run again after re-capturing work/recheck-ids.txt    work/recheck-ids.txt
+ *             into shots/{head,base}-recheck: unstable shots)
  *   finalize  composite PNGs → WebP, final report                   out/composites/*.webp, out/report.json
  *   block     PR-description section (local paths or published URLs)
  *   splice    put the section into a PR body (gh pr view --json body)
@@ -28,7 +30,7 @@ import {
 } from './lib/affected.ts';
 import { parseChangedLines, parseNameStatusZ } from './lib/gitdiff.ts';
 import type { TargetLines } from './lib/coverage.ts';
-import { classifyShot, diffBoxes, summarizeStory, DEFAULT_THRESHOLDS, type Box, type ShotStatus } from './lib/classify.ts';
+import { classifyShot, confirmChange, diffBoxes, summarizeStory, DEFAULT_THRESHOLDS, type Box, type ShotStatus } from './lib/classify.ts';
 import { compositeHtml, type CompositeInput } from './lib/layout.ts';
 import { renderBlock, rawGithubUrl, publishFolder, type ReviewReport, type ShotIssue, type StoryResult } from './lib/block.ts';
 import { spliceBlock } from './lib/body.ts';
@@ -260,7 +262,16 @@ async function stepDiff(flags: Flags) {
 
   for (const dir of ['diff', 'html', 'png']) rmSync(path.join(work, dir), { recursive: true, force: true });
 
-  const shotPath = (side: 'head' | 'base', viewport: string, id: string) => path.join(root, 'shots', side, viewport, `${id}.png`);
+  type Side = 'head' | 'base' | 'head-recheck' | 'base-recheck';
+  const shotPath = (side: Side, viewport: string, id: string) => path.join(root, 'shots', side, viewport, `${id}.png`);
+  /** Differing pixels between a shot and its re-capture (undefined: not re-captured). */
+  const drift = async (first: Raw, side: Side, viewport: string, id: string): Promise<number | undefined> => {
+    const file = shotPath(side, viewport, id);
+    if (!existsSync(file)) return undefined;
+    const again = await loadRaw(file);
+    if (again.width !== first.width || again.height !== first.height) return Number.POSITIVE_INFINITY;
+    return pixelmatch(first.data, again.data, undefined, first.width, first.height, { threshold, includeAA: false });
+  };
   const jobs: { html: string; out: string }[] = [];
   const stories: StoryResult[] = [];
   const all: (AffectedStory | (StoryRef & { direct: boolean; reasons: string[] }))[] = [
@@ -304,6 +315,11 @@ async function stepDiff(flags: Flags) {
         status = classifyShot({ hasBase: true, hasHead: true, sameSize, diffPixels, totalPixels: width * height }, { minPixels });
         size = { width, height };
         if (status === 'changed') {
+          status = confirmChange(
+            status,
+            { head: await drift(head, 'head-recheck', viewport, story.id), base: await drift(base, 'base-recheck', viewport, story.id) },
+            { minPixels },
+          );
           const mask = new Uint8Array(width * height);
           for (let p = 0; p < mask.length; p++) {
             const o = p * 4;
@@ -324,7 +340,7 @@ async function stepDiff(flags: Flags) {
         shot.diffPixels = diffPixels;
         shot.diffPercent = size ? (100 * diffPixels) / (size.width * size.height) : 0;
       }
-      if (status === 'changed' || status === 'new' || status === 'removed') {
+      if (status === 'changed' || status === 'unstable' || status === 'new' || status === 'removed') {
         const name = `${story.id}--${viewport}`;
         const htmlFile = path.join(work, 'html', `${name}.html`);
         const rel = (f: string) => path.relative(path.dirname(htmlFile), f).split(path.sep).join('/');
@@ -367,7 +383,11 @@ async function stepDiff(flags: Flags) {
     }
   }
 
-  const order: Record<string, number> = { changed: 0, new: 1, removed: 2, error: 3, unchanged: 4 };
+  // Stories whose change should be confirmed by capturing both sides again.
+  const recheck = stories.filter((s) => s.shots.some((shot) => shot.status === 'changed')).map((s) => s.id);
+  writeFileSync(path.join(work, 'recheck-ids.txt'), recheck.length ? `${recheck.join('\n')}\n` : '');
+
+  const order: Record<string, number> = { changed: 0, new: 1, removed: 2, unstable: 3, error: 4, unchanged: 5 };
   stories.sort((a, b) => order[a.status] - order[b.status] || a.id.localeCompare(b.id));
   const report: ReviewReport = {
     base: { ref: baseRef, sha: baseSha },
@@ -390,7 +410,7 @@ async function stepDiff(flags: Flags) {
   writeJson(path.join(work, 'composite-jobs.json'), jobs);
   const count = (s: string) => stories.filter((x) => x.status === s).length;
   console.log(
-    `[ui-review] diff: ${count('changed')} changed, ${count('new')} new, ${count('removed')} removed, ${count('unchanged')} unchanged, ${count('error')} failed; ${jobs.length} composite(s) to render`,
+    `[ui-review] diff: ${count('changed')} changed, ${count('new')} new, ${count('removed')} removed, ${count('unstable')} unstable, ${count('unchanged')} unchanged, ${count('error')} failed; ${jobs.length} composite(s) to render`,
   );
 }
 

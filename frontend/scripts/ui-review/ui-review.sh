@@ -145,7 +145,31 @@ cexec() { "${COMPOSE[@]}" exec -T "$@"; } # cexec [-e VAR=x ...] <service> <cmd.
 
 # ---------------------------------------------------------------- capture
 
+# shoot_pair <head ids file> <base ids file> <out dir suffix>: screenshots of
+# the listed stories on both Ladle instances, in parallel, into
+# .ui-review/shots/{head,base}<suffix>/.
+shoot_pair() {
+  local head_ids="$1" base_ids="$2" suffix="$3" pids=() pid failed=0
+  local env=(-e "UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop" -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
+    -e "UX_SHOTS_SETTLE_MS=$SETTLE_MS" -e "UX_SHOTS_QUIET_MS=$QUIET_MS" -e "UX_SHOTS_FREEZE_TIME=$FREEZE_TIME"
+    -e UX_SHOTS_DISABLE_ANIMATIONS=1)
+  if grep -q . "$head_ids"; then
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e "UX_SHOTS_IDS=@/ui-review/work/$(basename "$head_ids")" \
+      -e "UX_SHOTS_OUT_DIR=/ui-review/shots/head$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-head$suffix.log" 2>&1 &
+    pids+=($!)
+  fi
+  if (( HAS_BASE )) && grep -q . "$base_ids"; then
+    cexec "${env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e "UX_SHOTS_IDS=@/ui-review/work/$(basename "$base_ids")" \
+      -e "UX_SHOTS_OUT_DIR=/ui-review/shots/base$suffix" shots node scripts/ux-shots.mjs >"$WORK/shots-base$suffix.log" 2>&1 &
+    pids+=($!)
+  fi
+  for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+  (( failed == 0 )) || die "screenshot capture failed — see .ui-review/work/shots-*.log"
+}
+
 capture() {
+  local diff_args=(--work /ui-review/work --base-ref "$BASE_REF" --base-sha "$MERGE_BASE" --head-ref "$HEAD_REF"
+    --head-sha "$HEAD_SHA" --dirty "$DIRTY")
   ensure_image "$HEAD_IMAGE" "$REPO_ROOT"
   mkdir -p "$UIR"
   trap cleanup EXIT
@@ -189,29 +213,21 @@ capture() {
   if [[ -n "$STORIES" ]]; then select_args+=(--ids "$STORIES"); fi
   tool select "${select_args[@]}"
 
-  local shot_env=(-e "UX_SHOTS_VIEWPORTS=phone,phone-short,tablet,desktop" -e "UX_SHOTS_CONCURRENCY=$CONCURRENCY"
-    -e "UX_SHOTS_SETTLE_MS=$SETTLE_MS" -e "UX_SHOTS_QUIET_MS=$QUIET_MS" -e "UX_SHOTS_FREEZE_TIME=$FREEZE_TIME" -e UX_SHOTS_DISABLE_ANIMATIONS=1)
-  local pids=()
-  if grep -q . "$WORK/head-ids.txt"; then
-    cexec "${shot_env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61000 -e UX_SHOTS_IDS=@/ui-review/work/head-ids.txt \
-      -e UX_SHOTS_OUT_DIR=/ui-review/shots/head shots node scripts/ux-shots.mjs >"$WORK/shots-head.log" 2>&1 &
-    pids+=($!)
-  fi
   if (( HAS_BASE )) && grep -q . "$WORK/base-ids.txt"; then
     cexec shots node scripts/ui-review/warmup.ts http://localhost:61001 "$(head -n1 "$WORK/base-ids.txt")"
-    cexec "${shot_env[@]}" -e UX_SHOTS_BASE_URL=http://localhost:61001 -e UX_SHOTS_IDS=@/ui-review/work/base-ids.txt \
-      -e UX_SHOTS_OUT_DIR=/ui-review/shots/base shots node scripts/ux-shots.mjs >"$WORK/shots-base.log" 2>&1 &
-    pids+=($!)
   fi
-  if (( ${#pids[@]} )); then
-    log "capturing $(grep -c . "$WORK/head-ids.txt" || true) head / $(grep -c . "$WORK/base-ids.txt" || true) base stories (logs: .ui-review/work/shots-*.log) ..."
-    local pid failed=0
-    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-    (( failed == 0 )) || die "screenshot capture failed — see .ui-review/work/shots-*.log"
-  fi
+  log "capturing $(grep -c . "$WORK/head-ids.txt" || true) head / $(grep -c . "$WORK/base-ids.txt" || true) base stories (logs: .ui-review/work/shots-*.log) ..."
+  shoot_pair "$WORK/head-ids.txt" "$WORK/base-ids.txt" ""
+  tool diff "${diff_args[@]}"
 
-  tool diff --work /ui-review/work --base-ref "$BASE_REF" --base-sha "$MERGE_BASE" --head-ref "$HEAD_REF" \
-    --head-sha "$HEAD_SHA" --dirty "$DIRTY"
+  # Stability re-check: capture the changed stories once more on both sides. A
+  # story whose own re-capture differs renders nondeterministically; its diff
+  # is reported as "unstable" instead of "changed".
+  if grep -q . "$WORK/recheck-ids.txt"; then
+    log "re-capturing the $(grep -c . "$WORK/recheck-ids.txt") changed stories on both sides to rule out flaky rendering ..."
+    shoot_pair "$WORK/recheck-ids.txt" "$WORK/recheck-ids.txt" "-recheck"
+    tool diff "${diff_args[@]}"
+  fi
   cexec shots node scripts/ui-review/composite.ts /ui-review/work/composite-jobs.json
   tool finalize --work /ui-review/work --out /ui-review/out
   printf '{"base":"%s","head":"%s","dirty":%s}\n' "$MERGE_BASE" "$HEAD_SHA" "$DIRTY" >"$OUT/run.json"

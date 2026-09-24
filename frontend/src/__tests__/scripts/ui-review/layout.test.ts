@@ -50,6 +50,15 @@ describe('compositeLayout', () => {
     expect(layout.zoom).toBeNull();
   });
 
+  it('unstable shots are laid out like changes (before | after | diff, zoom)', () => {
+    expect(compositeLayout(input({ status: 'unstable' })).panels.map((p) => p.kind)).toEqual(['before', 'after', 'diff']);
+    const desktop = compositeLayout(
+      input({ status: 'unstable', viewport: 'desktop', before: img(1440, 900), after: img(1440, 900), boxes: [{ x: 600, y: 300, width: 80, height: 32 }] }),
+    );
+    expect(desktop.zoom).not.toBeNull();
+    expect(compositeHtml(input({ status: 'unstable' }))).toContain('unstable');
+  });
+
   it('new / removed stories get a single panel', () => {
     expect(compositeLayout(input({ status: 'new', before: undefined, diff: undefined, boxes: [] })).panels.map((p) => p.kind)).toEqual(['after']);
     expect(compositeLayout(input({ status: 'removed', after: undefined, diff: undefined, boxes: [] })).panels.map((p) => p.kind)).toEqual(['before']);

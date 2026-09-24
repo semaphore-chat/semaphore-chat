@@ -61,6 +61,17 @@ function report(overrides: Partial<ReviewReport> = {}): ReviewReport {
         shots: [{ viewport: 'phone', status: 'removed', composite: 'chip--gone--phone.webp' }],
       },
       { id: 'settings--settings', file: `${F}/screens/Settings.stories.tsx`, direct: false, reasons: [], status: 'unchanged', shots: [{ viewport: 'phone', status: 'unchanged' }] },
+      {
+        id: 'menu--flaky',
+        file: `${F}/edge/Menu.stories.tsx`,
+        direct: false,
+        reasons: [],
+        status: 'unstable',
+        shots: [
+          { viewport: 'phone', status: 'unchanged' },
+          { viewport: 'desktop', status: 'unstable', diffPercent: 3.5, composite: 'menu--flaky--desktop.webp' },
+        ],
+      },
     ],
     uncovered: ['frontend/src/components/Admin/Orphan.tsx'],
     issues: [
@@ -106,6 +117,16 @@ describe('renderBlock', () => {
     expect(md).toContain('https://img.test/chip--gone--phone.webp');
   });
 
+  it('keeps unstable stories out of "changed", in their own collapsed section with images', () => {
+    expect(md).toContain('1 unstable');
+    expect(md).toMatch(/### Unstable \(1\)/);
+    expect(md).toMatch(/renders differently between two captures/);
+    expect(md).toContain('<details><summary><b>menu--flaky</b>');
+    expect(md).toContain('https://img.test/menu--flaky--desktop.webp');
+    const changedSection = md.slice(md.indexOf('### Changed'), md.indexOf('### New stories'));
+    expect(changedSection).not.toContain('menu--flaky');
+  });
+
   it('collapses the unchanged stories that were checked', () => {
     expect(md).toMatch(/<details><summary>Unchanged \(1\)/);
     expect(md).toContain('`settings--settings`');
@@ -130,7 +151,7 @@ describe('renderBlock', () => {
       opts,
     );
     expect(capped).toContain('frontend/src/theme/tokens.ts');
-    expect(capped).toMatch(/representative sample of 4 of 221/);
+    expect(capped).toMatch(/representative sample of 5 of 221/);
     expect(capped).toContain('--all');
     expect(capped).toContain('`a--b`');
   });

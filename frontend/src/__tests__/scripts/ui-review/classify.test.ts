@@ -2,6 +2,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classifyShot,
+  confirmChange,
   summarizeStory,
   diffBoxes,
   unionBox,
@@ -44,6 +45,29 @@ describe('summarizeStory', () => {
     expect(summarizeStory(['unchanged', 'unchanged'])).toBe('unchanged');
     expect(summarizeStory(['missing', 'unchanged'])).toBe('error');
     expect(summarizeStory([])).toBe('error');
+  });
+
+  it('a stable change outranks an unstable one; unstable outranks unchanged', () => {
+    expect(summarizeStory(['unstable', 'changed'])).toBe('changed');
+    expect(summarizeStory(['unstable', 'unchanged'])).toBe('unstable');
+  });
+});
+
+describe('confirmChange (stability re-check)', () => {
+  it('keeps a change when both sides re-render identically', () => {
+    expect(confirmChange('changed', { head: 0, base: 3 })).toBe('changed');
+  });
+
+  it('marks a change unstable when either side renders differently on a second capture', () => {
+    expect(confirmChange('changed', { head: 0, base: 5000 })).toBe('unstable');
+    expect(confirmChange('changed', { head: DEFAULT_THRESHOLDS.minPixels + 1, base: 0 })).toBe('unstable');
+    expect(confirmChange('changed', { head: Number.POSITIVE_INFINITY })).toBe('unstable');
+  });
+
+  it('leaves unchecked changes and other statuses alone', () => {
+    expect(confirmChange('changed', {})).toBe('changed');
+    expect(confirmChange('unchanged', { head: 9999, base: 9999 })).toBe('unchanged');
+    expect(confirmChange('new', { head: 9999 })).toBe('new');
   });
 });
 

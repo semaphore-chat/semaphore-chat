@@ -9,7 +9,8 @@
  *   zoom row: before | after crops of the changed region at 1:1, when the
  *             panels above had to be scaled down and the change is small
  * Changed regions are outlined on every panel. Very tall full-page shots are
- * cropped to a window centred on the change.
+ * cropped to a window centred on the change. `unstable` shots (see
+ * classify.ts) are laid out like changes, with their own badge.
  */
 import { cropWindow, unionBox, type Box } from './classify.ts';
 
@@ -22,7 +23,7 @@ export interface ImageRef {
 export interface CompositeInput {
   storyId: string;
   viewport: string;
-  status: 'changed' | 'new' | 'removed';
+  status: 'changed' | 'unstable' | 'new' | 'removed';
   before?: ImageRef;
   after?: ImageRef;
   diff?: ImageRef;
@@ -66,7 +67,8 @@ export function compositeLayout(input: CompositeInput, options: LayoutOptions = 
   const pageWidth = Math.max(...panels.map((p) => p.image.width), 1);
   const pageHeight = Math.max(...panels.map((p) => p.image.height), 1);
   const inner = maxWidth - 2 * pad;
-  if (input.status === 'changed' && input.diff && 3 * pageWidth + 2 * gutter <= inner) {
+  const isDiff = input.status === 'changed' || input.status === 'unstable';
+  if (isDiff && input.diff && 3 * pageWidth + 2 * gutter <= inner) {
     panels.push({ kind: 'diff', image: input.diff, label: 'diff' });
   }
 
@@ -78,7 +80,7 @@ export function compositeLayout(input: CompositeInput, options: LayoutOptions = 
 
   let zoom: CompositeLayout['zoom'] = null;
   const union = unionBox(input.boxes);
-  if (input.status === 'changed' && union && scale < 0.9) {
+  if (isDiff && union && scale < 0.9) {
     const margin = 24;
     const minWidth = Math.min(pageWidth, 320);
     let x = Math.max(0, union.x - margin);
@@ -106,7 +108,7 @@ function esc(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-const STATUS_COLOR: Record<CompositeInput['status'], string> = { changed: '#d29922', new: '#3fb950', removed: '#f85149' };
+const STATUS_COLOR: Record<CompositeInput['status'], string> = { changed: '#d29922', unstable: '#a371f7', new: '#3fb950', removed: '#f85149' };
 
 function boxesHtml(boxes: Box[], scale: number, offsetX: number, offsetY: number): string {
   return boxes
@@ -155,7 +157,7 @@ export function compositeHtml(input: CompositeInput, options: LayoutOptions = {}
   const size = input.after ?? input.before;
   const meta = [
     `${esc(input.viewport)}${size ? ` ${size.width}×${size.height}` : ''}`,
-    input.status === 'changed' && input.diffPercent !== undefined ? `${input.diffPercent < 0.01 ? '<0.01' : input.diffPercent.toFixed(2)}% of pixels changed` : '',
+    (input.status === 'changed' || input.status === 'unstable') && input.diffPercent !== undefined ? `${input.diffPercent < 0.01 ? '<0.01' : input.diffPercent.toFixed(2)}% of pixels changed` : '',
   ]
     .filter(Boolean)
     .join(' · ');

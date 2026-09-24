@@ -97,7 +97,10 @@ function percent(p: number | undefined): string {
 function storyDetails(story: StoryResult, opts: BlockOptions, open: boolean): string[] {
   const rel = story.file.replace(/^frontend\//, '');
   const changedOn = story.shots.filter((s) => s.status !== 'unchanged').map((s) => s.viewport);
-  const summaryBits = [story.status === 'changed' ? `changed on ${changedOn.join(', ')}` : story.status, code(rel)];
+  const summaryBits = [
+    story.status === 'changed' || story.status === 'unstable' ? `${story.status} on ${changedOn.join(', ')}` : story.status,
+    code(rel),
+  ];
   const lines = [`<details${open ? ' open' : ''}><summary><b>${story.id}</b> — ${summaryBits.join(' · ')}</summary>`, ''];
   if (story.reasons.length > 0 && !story.direct) {
     lines.push(`Renders: ${story.reasons.slice(0, 5).map((r) => code(r.replace(/^frontend\//, ''))).join(', ')}`, '');
@@ -108,7 +111,12 @@ function storyDetails(story: StoryResult, opts: BlockOptions, open: boolean): st
     } else if (shot.status === 'missing') {
       lines.push(`**${shot.viewport}** — no screenshot (capture failed, see issues)`, '');
     } else if (shot.composite) {
-      const label = shot.status === 'changed' ? `${shot.viewport} — ${percent(shot.diffPercent)} of pixels changed` : `${shot.viewport} — ${shot.status}`;
+      const label =
+        shot.status === 'changed'
+          ? `${shot.viewport} — ${percent(shot.diffPercent)} of pixels changed`
+          : shot.status === 'unstable'
+            ? `${shot.viewport} — unstable: ${percent(shot.diffPercent)} differs, but the same code also rendered differently on a second capture`
+            : `${shot.viewport} — ${shot.status}`;
       lines.push(`**${label}**`, '', `![${story.id} ${shot.viewport}: ${shot.status}](${opts.imageUrl(shot.composite)})`, '');
     }
   }
@@ -123,6 +131,7 @@ export function renderBlock(report: ReviewReport, opts: BlockOptions): string {
   const added = by('new');
   const removed = by('removed');
   const unchanged = by('unchanged');
+  const unstable = by('unstable');
   const errored = by('error');
   const { selection } = report;
 
@@ -132,6 +141,7 @@ export function renderBlock(report: ReviewReport, opts: BlockOptions): string {
     `${added.length} new`,
     `${removed.length} removed`,
     `${unchanged.length} unchanged`,
+    ...(unstable.length ? [`${unstable.length} unstable`] : []),
     ...(errored.length ? [`${errored.length} failed`] : []),
   ].join(' · ');
   out.push(
@@ -175,6 +185,15 @@ export function renderBlock(report: ReviewReport, opts: BlockOptions): string {
   if (removed.length) {
     out.push(`### Removed stories (${removed.length})`, '');
     removed.forEach((s) => out.push(...storyDetails(s, opts, false)));
+  }
+  if (unstable.length) {
+    out.push(
+      `### Unstable (${unstable.length})`,
+      '',
+      'These differ between base and head, but the same code also renders differently between two captures (a race in the story or the app — e.g. a menu opened before media finished sizing), so the difference may not come from this change. Check them by eye.',
+      '',
+    );
+    unstable.forEach((s) => out.push(...storyDetails(s, opts, false)));
   }
   if (errored.length) {
     out.push(`### Failed to capture (${errored.length})`, '');

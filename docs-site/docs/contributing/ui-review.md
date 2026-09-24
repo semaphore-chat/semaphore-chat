@@ -15,7 +15,8 @@ For a change it:
 
 1. works out which stories the change affects;
 2. renders them on the merge-base and on your working tree, at phone/tablet/desktop;
-3. pixel-diffs each pair and sorts stories into **changed / new / removed / unchanged**;
+3. pixel-diffs each pair and sorts stories into **changed / new / removed / unchanged**
+   (and **unstable**: stories that render differently from one load to the next);
 4. renders labelled before | after composites (changed regions outlined, plus a
    1:1 zoom on small changes);
 5. optionally publishes the images to the `pr-screenshots` branch and writes a
@@ -65,6 +66,9 @@ Before publishing, check the run the way a reviewer would:
   viewer / Read tool).
 - **Unexpected changes?** A "changed" story you didn't intend to touch is a regression
   until proven otherwise.
+- **Unstable stories** — their diff may or may not come from your change; look
+  at the composite. A story that is unstable run after run is worth fixing
+  (usually a race between a menu/popover opening and media or data settling).
 - **Console issues** — page errors, render errors or unhandled MSW requests in
   the section's "Console issues" list usually mean a broken story or a missing
   fixture handler.
@@ -153,7 +157,17 @@ identical pixels.
 anti-aliasing detection on (AA pixels never count) and a per-pixel colour
 threshold of 0.1. A shot is **changed** when more than 24 pixels differ or the
 page size changed; **new** when the story has no base; **removed** when it has
-no head. Composites are drawn by Chromium from an HTML template (the
+no head.
+
+A few stories render nondeterministically (for example a menu opened while
+media is still sizing: the menu anchors differently from load to load). To
+keep those out of "changed", every story with a changed shot is **captured a
+second time on both sides**; if the head or the base differs from its own
+first capture, the shot is reported as **unstable** — listed separately, with
+its composite, and not counted as a change. It costs one more capture of the
+changed stories only.
+
+Composites are drawn by Chromium from an HTML template (the
 before | after panels, a diff panel on phone, red outlines around changed
 regions, and a 1:1 zoom row when the panels had to be scaled down), then
 encoded as WebP at most 1600 px wide.
