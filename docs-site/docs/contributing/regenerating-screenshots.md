@@ -2,6 +2,8 @@
 
 The screenshots and videos in the README and on the [Tour](../tour.md) page are generated from the real UI. The pipeline renders the app in the [Ladle UX sandbox](https://github.com/semaphore-chat/semaphore-chat/tree/main/frontend#ux-sandbox-ladle) against polished demo data, screenshots it with Playwright, records short scripted scenes, and encodes everything with ffmpeg. Everything runs in Docker, so you don't need a backend, a database or LiveKit. Regenerate the media whenever a UI change makes the current screenshots out of date.
 
+Using Claude Code? The [`regenerate-media` project skill](https://github.com/semaphore-chat/semaphore-chat/tree/main/.claude/skills/regenerate-media) walks through the same generate, review and publish loop, with the full review checklist and the known pitfalls.
+
 ## Generate
 
 ```bash
