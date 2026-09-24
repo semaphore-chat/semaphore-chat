@@ -7,7 +7,7 @@
     "prepare": "pnpm run build:shared"
   },
   "dependencies": {
-    "class-validator": "^0.14.3",
+    "class-validator": "^0.15.1",
     "class-transformer": "^0.5.1"
   },
   "pnpm": {
