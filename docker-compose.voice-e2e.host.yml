@@ -5,6 +5,7 @@
 # published ports.
 #
 # Usage:
+#   scripts/test-net.sh   # the shared semaphore-test network (external)
 #   docker compose -f docker-compose.e2e.yml \
 #     -f docker-compose.voice-e2e.yml \
 #     -f docker-compose.voice-e2e.host.yml up -d ...
@@ -12,7 +13,8 @@
 #
 # Signaling/TCP ports chosen to avoid the dev stack (7880-7882) and e2e stack
 # (5433/6380/3001/5174). The ICE UDP range (50000-50019) is published 1:1 so the
-# advertised candidate ports match the host-mapped ports.
+# advertised candidate ports match the host-mapped ports. These fixed host
+# ports mean only one host-browser voice stack can run at a time.
 
 services:
   livekit-e2e:
@@ -27,7 +29,7 @@ services:
           use_external_ip: false
           node_ip: 127.0.0.1
         redis:
-          address: redis-test:6379
+          address: ${E2E_STACK:-semaphore-e2e}-redis:6379
         keys:
           devkey: secret-that-is-at-least-32-characters-long
     ports:

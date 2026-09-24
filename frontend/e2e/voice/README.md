@@ -35,7 +35,10 @@ mismatched global playwright that can't see the `voice` project) and
 ## How it works (and the gotchas it took to get here)
 
 - **LiveKit / backend / frontend run in Docker** (the e2e stack + a real
-  `livekit-e2e`). The **browser runs on the host** against `http://localhost:5174`.
+  `livekit-e2e`), on the shared `semaphore-test` network (created once by
+  `scripts/test-net.sh`, never removed; containers named after the checkout,
+  e.g. `<stack>-livekit`). The **browser runs on the host** against
+  `http://localhost:5174`.
 - **Secure context (the key constraint):** `getUserMedia` — needed for the mic
   to publish, i.e. for any audio at all — is only available in a *secure
   context*. `http://localhost` (and `127.0.0.1`, `*.localhost`) **is** a secure
@@ -206,10 +209,12 @@ both the UI export and the tests get it.
   it once at connect, which can race the page becoming a stable secure context in
   a fresh headless tab. Mirrors a user unmuting; the product's join-time enable
   is unchanged.
-- Playwright in the container vs host: run on the host (this is the supported
-  path). For a fully-in-Docker run you'd need the frontend reachable at a
-  `*.localhost` name or over HTTPS so the in-container origin is secure — not
-  wired up; the host path is simpler and is what `run-voice-e2e.sh` uses.
+- Playwright in the container vs host: `run-voice-e2e.sh` and CI run it on the
+  host. A fully-in-Docker run also works: the compose `playwright` service
+  shares the frontend container's network namespace, so the app is
+  `http://localhost:5173` (a secure context) while LiveKit is reached as
+  `<stack>-livekit` over `semaphore-test`. See the usage at the top of
+  `docker-compose.voice-e2e.yml`.
 
 ## Regenerating the fake-audio samples
 

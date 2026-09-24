@@ -1,11 +1,33 @@
 # Docker Compose configuration for E2E tests
 # Uses separate test database to isolate from development data
+#
+# NETWORK: every service joins the shared, long-lived `semaphore-test` network
+# (external: compose never creates or removes it; scripts/test-net.sh creates
+# it once, and the run scripts call it first). Creating and removing a network
+# per run adds/removes a host bridge interface, which makes Chromium-based
+# browsers on the machine drop their connections.
+#
+# ADDRESSING: several stacks can share that network at once, and a compose
+# service name (postgres-test, backend-test, ...) is registered on it by every
+# project that has that service, so it could resolve to another run's
+# container. Services therefore address each other only by container name,
+# which carries the per-run prefix E2E_STACK (scripts/run-e2e.sh sets one per
+# checkout; the default is `semaphore-e2e`): ${E2E_STACK}-pg, -redis,
+# -backend, -frontend (and -livekit in docker-compose.voice-e2e.yml). Two runs
+# with the same E2E_STACK fail fast on the container names instead of sharing
+# containers.
+#
+# HOST PORTS: 5433 / 6380 / 3001 / 5174 by default. Override with
+# E2E_POSTGRES_PORT, E2E_REDIS_PORT, E2E_BACKEND_PORT, E2E_FRONTEND_PORT
+# (0 = a random free port; run-e2e.sh uses that so concurrent runs don't
+# collide).
 
 services:
   # PostgreSQL for E2E tests (separate from dev)
   # NOTE: near-duplicate of the postgres service in docker-compose.yml and docker-compose.prod.yml — keep image/healthcheck/env keys in sync.
   postgres-test:
     image: postgres:17
+    container_name: ${E2E_STACK:-semaphore-e2e}-pg
     ports:
       - "${E2E_POSTGRES_PORT:-5433}:5432"  # Different port to avoid conflicts; override if 5433 is taken
     environment:
@@ -19,35 +41,33 @@ services:
       retries: 10
     volumes:
       - postgres-test-data:/var/lib/postgresql/data
-    networks:
-      - e2e-network
 
   # Redis for E2E tests
   # NOTE: near-duplicate of the redis service in docker-compose.yml and docker-compose.prod.yml — keep image/healthcheck/env keys in sync.
   redis-test:
     image: redis:latest
+    container_name: ${E2E_STACK:-semaphore-e2e}-redis
     ports:
-      - "6380:6379"  # Different port to avoid conflicts
+      - "${E2E_REDIS_PORT:-6380}:6379"  # Different port to avoid conflicts
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 10s
       retries: 10
-    networks:
-      - e2e-network
 
   # Backend service for E2E tests
   backend-test:
     build:
       context: .
       dockerfile: backend/Dockerfile
+    container_name: ${E2E_STACK:-semaphore-e2e}-backend
     command: pnpm run start:dev
     ports:
-      - "3001:3000"  # Different port to avoid conflicts
+      - "${E2E_BACKEND_PORT:-3001}:3000"  # Different port to avoid conflicts
     environment:
       - NODE_ENV=test
-      - DATABASE_URL=postgresql://semaphore:semaphore@postgres-test:5432/semaphore_e2e_test
-      - REDIS_HOST=redis-test
+      - DATABASE_URL=postgresql://semaphore:semaphore@${E2E_STACK:-semaphore-e2e}-pg:5432/semaphore_e2e_test
+      - REDIS_HOST=${E2E_STACK:-semaphore-e2e}-redis
       - REDIS_PORT=6379
       - JWT_SECRET=e2e-test-jwt-secret-change-in-production
       - JWT_REFRESH_SECRET=e2e-test-refresh-secret-change-in-production
@@ -68,19 +88,20 @@ services:
         condition: service_healthy
       redis-test:
         condition: service_healthy
-    networks:
-      - e2e-network
 
   # Frontend service for E2E tests
   frontend-test:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+    container_name: ${E2E_STACK:-semaphore-e2e}-frontend
     command: pnpm run dev -- --host 0.0.0.0
     ports:
-      - "5174:5173"  # Different port to avoid conflicts
+      - "${E2E_FRONTEND_PORT:-5174}:5173"  # Different port to avoid conflicts
     environment:
       - NODE_ENV=test
+      # vite.config.e2e.ts proxies /api and /socket.io to this run's backend
+      - E2E_BACKEND_URL=http://${E2E_STACK:-semaphore-e2e}-backend:3000
     volumes:
       - ./frontend:/app/frontend
       - ./shared:/app/shared
@@ -94,30 +115,34 @@ services:
     working_dir: /app/frontend
     depends_on:
       - backend-test
-    networks:
-      - e2e-network
 
-  # Playwright test runner
+  # Playwright test runner (scripts/run-e2e.sh runs it with `compose run`).
+  # It shares frontend-test's network namespace, so the browser opens the app
+  # at http://localhost:5173: localhost is a secure context (crypto.randomUUID,
+  # getUserMedia), a container hostname is not. It also takes frontend-test's
+  # mounts (volumes_from), so it runs this checkout's specs with the frontend
+  # image's node_modules (hoisted to /app/node_modules, see .npmrc):
+  # @playwright/test at the version whose browsers this image ships (keep the
+  # tag in sync with frontend/package.json). Reports land in
+  # frontend/playwright-report and frontend/test-results.
   playwright:
     image: mcr.microsoft.com/playwright:v1.60.0-jammy
-    volumes:
-      - ./frontend:/app
-      - ./frontend/playwright-report:/app/playwright-report
-      - ./frontend/test-results:/app/test-results
-    working_dir: /app
+    network_mode: "service:frontend-test"
+    volumes_from:
+      - frontend-test
+    working_dir: /app/frontend
     environment:
-      - E2E_BASE_URL=http://frontend-test:5173
+      - E2E_BASE_URL=http://localhost:5173
       - CI=true
-    command: npx playwright test --reporter=html
+    command: /app/node_modules/.bin/playwright test --reporter=html
     depends_on:
       - frontend-test
       - backend-test
-    networks:
-      - e2e-network
 
 networks:
-  e2e-network:
-    driver: bridge
+  default:
+    external: true
+    name: semaphore-test
 
 volumes:
   postgres-test-data:
