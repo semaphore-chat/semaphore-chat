@@ -15,6 +15,14 @@ updates:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
+    # Must be >= pnpm's minimumReleaseAge (3 days, pnpm-workspace.yaml).
+    # Dependabot doesn't read that setting (dependabot-core#13405), so without
+    # a cooldown it proposes releases under 3 days old and pnpm rejects them
+    # (ERR_PNPM_NO_MATURE_MATCHING_VERSION), failing the whole group for the
+    # week. 4 days leaves a day of margin. Security updates skip this cooldown
+    # but pnpm still holds them until they are 3 days old.
+    cooldown:
+      default-days: 4
     groups:
       security:
         applies-to: security-updates

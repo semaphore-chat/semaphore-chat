@@ -73,7 +73,7 @@ export const LinkPreviewCard: React.FC<LinkPreviewCardProps> = React.memo(
       }
     };
 
-    let hostname = "";
+    let hostname: string;
     try {
       hostname = new URL(preview.url).hostname;
     } catch {

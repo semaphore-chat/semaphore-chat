@@ -65,7 +65,6 @@ export const useDeviceSettings = () => {
       logger.dev('Microphone permission granted');
     } catch (error) {
       logger.warn('Failed to get microphone permission:', error);
-      micPermission = false;
     }
 
     // Request video permission independently
@@ -76,7 +75,6 @@ export const useDeviceSettings = () => {
       logger.dev('Camera permission granted');
     } catch (error) {
       logger.warn('Failed to get camera permission:', error);
-      cameraPermission = false;
     }
 
     setPermissions({

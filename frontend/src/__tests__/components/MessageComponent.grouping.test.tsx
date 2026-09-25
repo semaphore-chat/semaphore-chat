@@ -183,7 +183,7 @@ describe('MessageComponent grouping and author line', () => {
           renderWithProviders(withMatrixTheme(<MessageComponent message={msg()} grouped={grouped} />, entry));
           expect(screen.getByText('hello there')).toBeInTheDocument();
         } catch (error) {
-          throw new Error(`[${themeLabel(entry)} grouped=${grouped}] ${(error as Error).message}`);
+          throw new Error(`[${themeLabel(entry)} grouped=${grouped}] ${(error as Error).message}`, { cause: error });
         } finally {
           cleanup();
         }
