@@ -611,6 +611,29 @@ describe('SocketProvider', () => {
       expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
     });
 
+    it('drops a refresh still pending from TOKEN_EXPIRING', async () => {
+      const mockSocket = createTestSocket();
+      mockGetSocketSingleton.mockReturnValue(mockSocket);
+      mockRefreshToken.mockResolvedValue(null);
+
+      render(<SocketProvider><TestConsumer /></SocketProvider>);
+
+      await act(async () => {
+        mockSocket.simulateEvent(ServerEvents.TOKEN_EXPIRING, {
+          expiresAt: new Date().toISOString(),
+        });
+        mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
+          reason: 'LOGGED_OUT',
+        });
+        mockSocket.simulateEvent('disconnect', 'io server disconnect');
+        await vi.advanceTimersByTimeAsync(TOKEN_REFRESH_JITTER_MS);
+      });
+
+      // Only the session-end refresh, not the delayed one
+      expect(mockRefreshToken).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).toHaveBeenCalledTimes(1);
+    });
+
     it('does not count toward the server-disconnect circuit breaker', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);

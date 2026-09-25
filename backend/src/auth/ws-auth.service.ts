@@ -29,7 +29,7 @@ export interface WsAuthResult {
 /**
  * Authenticates a WebSocket access token: the same checks JwtStrategy runs for
  * REST (signature and expiry, revocation, the user exists and isn't banned).
- * Shared by the connection middleware, WsJwtAuthGuard and REAUTHENTICATE.
+ * Shared by the connection middleware and REAUTHENTICATE.
  */
 @Injectable()
 export class WsAuthService {

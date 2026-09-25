@@ -122,6 +122,11 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         const sessionEnd = sessionEndReason.current;
         if (sessionEnd) {
           sessionEndReason.current = null;
+          // A refresh pending from TOKEN_EXPIRING is superseded by this one
+          if (tokenRefreshTimer.current) {
+            clearTimeout(tokenRefreshTimer.current);
+            tokenRefreshTimer.current = null;
+          }
           logger.warn(
             `[Socket] Session ended by the server (${sessionEnd}), refreshing token`
           );
