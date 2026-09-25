@@ -1,12 +1,15 @@
 name: Frontend Tests
 
+# PRs to main always start this workflow, even when no frontend file changed,
+# so its jobs always report a check and can be required checks in the main
+# ruleset. A workflow-level `paths` filter would skip the whole workflow, and a
+# required check that is never reported blocks the PR forever. The `changes`
+# job applies the path filter instead: when it reports no frontend changes the
+# other jobs are skipped, and GitHub counts a skipped job as passing. Pushes
+# to main keep the workflow-level filter; required checks only apply to PRs.
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'shared/**'
-      - '.github/workflows/frontend-tests.yml'
   push:
     branches: [main]
     paths:
@@ -25,9 +28,38 @@ permissions:
   contents: read
 
 jobs:
-  checks:
-    name: Lint, Type Check & Build
+  # PRs only. On pushes it is skipped, its output is empty, and every job below
+  # runs. Keep the filter in sync with the push `paths` above.
+  changes:
+    name: Detect frontend changes
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      # Lists the PR's files through the API, so no checkout is needed.
+      - name: Filter frontend paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - 'shared/**'
+              - '.github/workflows/frontend-tests.yml'
+
+  # The jobs below skip only when `changes` positively reported no frontend
+  # changes (output 'false'). If `changes` was skipped (a push) or failed, the
+  # output is empty and they run: a broken filter runs the tests rather than
+  # skipping them, which would count as passing. `!cancelled()` lets them start
+  # after a skipped or failed `changes`.
+  checks:
+    name: Frontend Lint, Type Check & Build
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
 
     steps:
       - name: Checkout code
@@ -69,8 +101,10 @@ jobs:
         run: pnpm run check:bundle-budget
 
   test:
-    name: Unit Tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    name: Frontend Unit Tests (shard ${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +132,7 @@ jobs:
         run: pnpm exec openapi-ts
 
       # Vitest splits the test files across the shards. Each shard writes a
-      # blob report, which the `Unit Tests` job merges into one pass/fail
+      # blob report, which the `Frontend Unit Tests` job merges into one pass/fail
       # summary. It also writes its raw coverage-final.json, which
       # scripts/merge-coverage-shards.mjs merges (that file explains why
       # `vitest --merge-reports --coverage` is not used). Passing --reporter
@@ -125,20 +159,20 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-  # Keeps the check name used before sharding ("Unit Tests"). It fails unless
-  # every shard passed, and prints the merged Vitest summary and coverage
-  # table. On main it hands coverage-summary.json to the `badge` job.
+  # The one check to require for the unit tests, rather than each shard's. It
+  # fails unless every shard passed, and prints the merged Vitest summary and
+  # coverage table. On main it hands coverage-summary.json to the `badge` job.
   coverage:
-    name: Unit Tests
+    name: Frontend Unit Tests
     runs-on: ubuntu-latest
-    needs: test
-    if: ${{ !cancelled() }}
+    needs: [changes, test]
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
 
     steps:
       - name: Check shard results
         if: needs.test.result != 'success'
         run: |
-          echo "::error::Not every unit test shard passed (result: ${{ needs.test.result }}). See the 'Unit Tests (shard k/n)' jobs."
+          echo "::error::Not every unit test shard passed (result: ${{ needs.test.result }}). See the 'Frontend Unit Tests (shard k/n)' jobs."
           exit 1
 
       - name: Checkout code

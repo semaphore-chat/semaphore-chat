@@ -7,13 +7,15 @@ name: Electron Smoke Build
 # at release time. This workflow catches that early with a Linux --dir build
 # (no installer, no signing, no publishing) and a best-effort headless launch.
 
+# Every PR to main starts this workflow, so the smoke build always reports a
+# check and can be a required check in the main ruleset (a workflow-level
+# `paths` filter would skip the whole workflow, and a required check that is
+# never reported blocks the PR forever). The `changes` job applies the path
+# filter instead; with no frontend/shared changes the smoke build is skipped,
+# which GitHub counts as passing.
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'frontend/**'
-      - 'shared/**'
-      - '.github/workflows/electron-smoke.yml'
 
 # One in-flight run per PR ref; a newer push cancels the older run instead of
 # letting duplicate packaging builds pile up.
@@ -25,9 +27,33 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect Electron changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      electron: ${{ steps.filter.outputs.electron }}
+    steps:
+      # Lists the PR's files through the API, so no checkout is needed.
+      - name: Filter Electron-relevant paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            electron:
+              - 'frontend/**'
+              - 'shared/**'
+              - '.github/workflows/electron-smoke.yml'
+
   smoke-build:
     name: Smoke Build (Linux)
     runs-on: ubuntu-latest
+    needs: changes
+    # Skips only when `changes` positively reported no relevant changes. If
+    # `changes` failed its output is empty and the build runs: a broken filter
+    # builds rather than skipping, which would count as passing.
+    if: ${{ !cancelled() && needs.changes.outputs.electron != 'false' }}
 
     steps:
       # keep in sync with electron-build.yml
