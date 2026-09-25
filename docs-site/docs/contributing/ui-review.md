@@ -5,7 +5,9 @@ before/after screenshots of the affected screens and components at **phone,
 tablet and desktop** widths, in the PR description. The UI review tool
 produces them from the [Ladle sandbox](https://github.com/semaphore-chat/semaphore-chat/blob/main/frontend/README.md#ux-sandbox-ladle)
 (real app screens and components rendered against fake data), so no backend,
-database or LiveKit is needed.
+database or LiveKit is needed. It can only show what stories render, so a UI
+change comes with stories for the states it adds or touches: see
+[Writing Sandbox Stories](stories.md).
 
 ```bash
 frontend/scripts/ui-review/ui-review.sh --base origin/main --pr 123 --update-pr
@@ -95,8 +97,8 @@ Before publishing, check the run the way a reviewer would:
   the section's "Console issues" list usually mean a broken story or a missing
   fixture handler.
 - **Changed files no story renders** — the tool lists changed UI files that no
-  story reaches. Add a story (`frontend/src/stories/`, see the frontend README)
-  so the change can be seen.
+  story reaches. Add a story (`frontend/src/stories/`, see
+  [Writing Sandbox Stories](stories.md)) so the change can be seen.
 - **Not visible in Ladle** — `index.html`, `vite.config.ts`, `main.tsx`,
   `index.css` and `public/` are only loaded by the real app; check those
   changes in the app itself.

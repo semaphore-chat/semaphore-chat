@@ -1,6 +1,6 @@
 # Adding stories for a UI change
 
-Stories are how the UI review sees your change: a changed line that no story renders can't be screenshotted, and a state no story sets up can't be reviewed. Add stories in the same PR as the change. They're sandbox-only code (`frontend/src/stories/`), rendered by Ladle against MSW fixtures, with no backend.
+Stories are how the UI review sees your change: a changed line that no story renders can't be screenshotted, and a state no story sets up can't be reviewed. Add stories in the same PR as the change. They're sandbox-only code (`frontend/src/stories/`), rendered by Ladle against MSW fixtures, with no backend. The contributor guide with worked examples (fake socket pushes, Electron stories, a checklist of states) is `docs-site/docs/contributing/stories.md`; this file is the agent's quick reference.
 
 ## Contents
 
@@ -155,8 +155,8 @@ For each new or changed piece of UI, ask which of these could break it, and add 
 The review captures both sides with the clock frozen at `2026-09-22T18:30:00Z` (fixture epoch plus 30 minutes) and CSS animations disabled. A difference between two captures of the same code shows up as **unstable** noise. So:
 
 - Build data from a fixed `seed` and fixed ids. Don't use `Math.random()`, `Date.now()`, `crypto.randomUUID()`, or counters that depend on render order in story or fixture code.
-- Open menus and popovers only after the content under them has settled. Give images fixed sizes (`sizedImageId`), and add a condition or a `wait()` step before the click. Opening a menu while media is still sizing is exactly what makes `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` flaky.
-- Make each driver step check its own precondition: return `false` until the element it needs exists. Fixed delays alone race.
+- Open menus and popovers only after the content under them has settled. Give images fixed sizes (`sizedImageId`), and add a condition step before the click (not `wait()`, see the next rule). Opening a menu while media is still sizing is exactly what makes `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` flaky.
+- Make each driver step check its own precondition: return `false` until the element it needs exists. Fixed delays alone race, and **`wait(ms)` never completes in the review**: it measures elapsed time with `Date.now()`, which the capture freezes, so the driver stops at that step (the stories that still use it, such as `edge-chat-dm--dm-composer-loaded`, are captured stuck there). Poll a condition instead (`messageListSteady()`, the element exists), or use `setTimeout`, which still runs.
 - Don't rely on long timers. `Date` is frozen, but timers run. The capture waits for network idle, then for the DOM and network to be quiet for 0.8 s (at most 10 s), then 1.5 s more. A state that appears on a longer timer may or may not be in the shot.
 
 ## Validate

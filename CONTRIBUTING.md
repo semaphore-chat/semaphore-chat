@@ -33,7 +33,7 @@ All development is done inside Docker containers — never run `pnpm`/`npm`/`nod
 ## Pull Request Process
 
 1. Branch from `main`
-2. Ensure linting and tests pass
+2. Ensure linting and tests pass; a frontend UI change also adds or updates [sandbox stories](https://docs.semaphorechat.app/contributing/stories/) for the states it touches
 3. Open a PR with a clear description of what changed and why
 4. PRs require at least one approving review
 

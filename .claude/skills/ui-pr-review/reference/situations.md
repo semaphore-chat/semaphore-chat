@@ -88,7 +88,7 @@ What to do:
   - If not (only the menu position moved, and you didn't touch menus, media or the composer), say so in the PR text.
   - If it is, rerun `--stories <id>` once or twice and look at the result. A real change can hide behind flakiness.
 - **Don't** set `UI_REVIEW_RECHECKS=0` or raise thresholds to make it go away.
-- **A story that is unstable run after run** is worth fixing: wait for media to size before opening the menu (a condition or a `wait()` step in its driver). That is a separate change, so do it only when the user wants it in scope.
+- **A story that is unstable run after run** is worth fixing: wait for media to size before opening the menu (a condition step in its driver; `wait()` never completes under the review's frozen clock). That is a separate change, so do it only when the user wants it in scope.
 - **Mass instability** (many stories unstable, blank or half-rendered shots) usually means the machine was overloaded. That can come from another review or a heavy build running at the same time. Rerun when it's quiet, or with `UI_REVIEW_CONCURRENCY=2` or a higher `UI_REVIEW_SETTLE_MS`. The capture log `.ui-review/work/shots-*.log` marks shots whose page was still busy after the settle wait.
 
 ## Stacked PRs

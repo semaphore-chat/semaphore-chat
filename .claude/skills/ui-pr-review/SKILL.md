@@ -60,6 +60,8 @@ Read `pr-block.md` first. The counts line and the notes (probe, cap, global samp
 
 ## 2. Add stories where the change isn't shown
 
+Stories are part of every frontend change (CLAUDE.md, Testing). New or changed UI without stories covering its states is a gap to fix **in this PR**, not a follow-up. The how-to is `docs-site/docs/contributing/stories.md` ([Writing Sandbox Stories](https://docs.semaphorechat.app/contributing/stories/)).
+
 Add or extend stories when:
 
 - **"Changed files no story renders"** lists a file. Nothing can show that change until a story renders it.
@@ -73,7 +75,7 @@ Build them with the fixture builder:
 - `edgeScreen(scenario, path, { theme, offline, voice, extraHandlers, overlay })` for edge states.
 - Data comes from `buildScenario({ seed, ... })` plus the `with*` modifiers.
 
-Cover the edge cases your change can break: long and unbroken names, empty lists, many items, loading, errors, unread and mention badges, dark and light. How to write them, the helpers, story ids, per-story viewports and the determinism rules are in **[reference/stories.md](reference/stories.md)**. Two rules catch people out:
+Cover the edge cases your change can break: long and unbroken names, empty lists, many items, loading, errors, unread and mention badges, permission variants, dark and light, and Electron-only UI (`asElectron`). How to write them, the helpers, story ids, per-story viewports and the determinism rules are in **[reference/stories.md](reference/stories.md)**. Two rules catch people out:
 
 - **Every export of a story file is a story.** Put shared helpers and data in `frontend/src/stories/fixtures/` (for example `fixtures/edge/nav.ts`), not in a story file.
 - **A story that only makes sense at some widths** (a 320 px column is a phone layout) sets `MyStory.meta = { viewports: ['phone'] };`. Otherwise it is also captured at tablet and desktop, in layouts the app never produces.
