@@ -49,10 +49,10 @@ export const useResponsive = () => {
   const isTablet = effectiveIsTabletPortrait || effectiveIsTabletLandscape; // 768-1199px (use split-view tablet layout)
   const effectiveIsDesktop = electron || isDesktop;
   // The desktop layout in a window narrower than 1024px: only possible in
-  // Electron (a browser that narrow gets the phone or tablet layout). There's
-  // no room there for the inline member column next to the channel sidebar.
-  const isNarrowDesktop =
-    !isMobile && !isTablet && (isPhone || isPhoneLandscape || isTabletPortrait);
+  // Electron (a browser that narrow gets the phone or tablet layout), so it's
+  // gated on Electron explicitly. There's no room there for the inline member
+  // column next to the channel sidebar.
+  const isNarrowDesktop = electron && (isPhone || isPhoneLandscape || isTabletPortrait);
 
   // MUI breakpoint checks (for backward compatibility)
   const isXs = useMediaQuery(theme.breakpoints.only('xs')); // < 600px
