@@ -13,6 +13,10 @@ import {
   notifyAuthFailure,
   onTokenRefreshed,
 } from "./tokenService";
+import {
+  MAX_SESSION_REFRESH_ATTEMPTS,
+  sessionRefreshBackoffMs,
+} from "./sessionRefreshPolicy";
 import { ClientEvents, ServerEvents } from "@semaphore-chat/shared";
 import type {
   ReauthenticateResult,
@@ -36,8 +40,9 @@ const REAUTHENTICATE_TIMEOUT_MS = 10_000;
  * Refresh attempts, when the socket needs a fresh token to reconnect, before
  * handing back to Socket.IO's reconnection. Only a refused refresh (401/403)
  * signs out; a network or server error is retried after 1s, 2s, 4s.
+ * (Shared with the REST interceptor's retry ladder; see sessionRefreshPolicy.)
  */
-export const MAX_SESSION_REFRESH_ATTEMPTS = 4;
+export { MAX_SESSION_REFRESH_ATTEMPTS };
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [socket] = useState<Socket<
@@ -123,7 +128,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
             socket.connect();
             return;
           }
-          const delay = Math.min(1000 * Math.pow(2, attempt - 1), MAX_BACKOFF_MS);
+          const delay = sessionRefreshBackoffMs(attempt);
           logger.warn(
             `[Socket] Token refresh failed, retrying in ${delay}ms (attempt ${attempt})`
           );
