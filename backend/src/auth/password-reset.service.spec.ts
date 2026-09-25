@@ -258,6 +258,36 @@ describe('PasswordResetService', () => {
       ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
     });
 
+    it('claims the token only if it is still unexpired after the hashing', async () => {
+      mockDatabase.passwordResetToken.findUnique.mockResolvedValue({
+        id: 'token-1',
+        userId: 'user-1',
+        tokenHash: hashToken('valid-token'),
+        expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+        usedAt: null,
+        createdAt: new Date(),
+      });
+      mockDatabase.passwordResetToken.updateMany.mockResolvedValue({
+        count: 1,
+      });
+      let hashedAt!: Date;
+      mockUserService.hashPassword.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        hashedAt = new Date();
+        return 'hashed-new-password' as never;
+      });
+
+      await service.resetPassword('valid-token', 'new-password-123');
+
+      // A token that expired while bcrypt ran is not claimed: the claim
+      // compares with the time of the claim, not of the check before it
+      const [{ where, data }] =
+        mockDatabase.passwordResetToken.updateMany.mock.calls[0];
+      const claimedAt = (where as { expiresAt: { gt: Date } }).expiresAt.gt;
+      expect(claimedAt.getTime()).toBeGreaterThanOrEqual(hashedAt.getTime());
+      expect(data).toEqual({ usedAt: claimedAt });
+    });
+
     it('rejects the second of two concurrent redemptions of the same token (atomic claim)', async () => {
       const resetToken = {
         id: 'token-1',
