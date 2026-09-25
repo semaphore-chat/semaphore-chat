@@ -18,15 +18,22 @@ jest.mock('@prisma/adapter-pg', () => {
   };
 });
 
+const TEST_DATABASE_URL = 'postgresql://u:p@db-host:5432/app';
+
 describe('DatabaseService', () => {
   let service: DatabaseService;
+  let originalDatabaseUrl: string | undefined;
 
   beforeEach(async () => {
+    originalDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = TEST_DATABASE_URL;
     const { unit } = await TestBed.solitary(DatabaseService).compile();
     service = unit;
   });
 
   afterEach(() => {
+    if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+    else process.env.DATABASE_URL = originalDatabaseUrl;
     jest.clearAllMocks();
   });
 
@@ -35,19 +42,11 @@ describe('DatabaseService', () => {
   });
 
   it('connects through the pg driver adapter using DATABASE_URL', () => {
-    const original = process.env.DATABASE_URL;
-    process.env.DATABASE_URL = 'postgresql://u:p@db-host:5432/app';
-    try {
-      jest.mocked(PrismaPg).mockClear();
-      new DatabaseService();
-      expect(PrismaPg).toHaveBeenCalledTimes(1);
-      expect(PrismaPg).toHaveBeenCalledWith({
-        connectionString: 'postgresql://u:p@db-host:5432/app',
-      });
-    } finally {
-      if (original === undefined) delete process.env.DATABASE_URL;
-      else process.env.DATABASE_URL = original;
-    }
+    // The one construction is the TestBed's in beforeEach.
+    expect(PrismaPg).toHaveBeenCalledTimes(1);
+    expect(PrismaPg).toHaveBeenCalledWith({
+      connectionString: TEST_DATABASE_URL,
+    });
   });
 
   describe('onModuleInit', () => {
