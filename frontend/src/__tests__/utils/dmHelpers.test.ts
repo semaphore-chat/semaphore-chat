@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { getDmDisplayName, getDmOtherUser, formatLastMessageTime } from '../../utils/dmHelpers';
+import { getDmDisplayName, getDmHeaderName, getDmOtherUser, formatLastMessageTime } from '../../utils/dmHelpers';
 import { createDmGroup, createDmGroupMember, resetFactoryCounter } from '../test-utils/factories';
 
 beforeEach(() => {
@@ -93,5 +93,29 @@ describe('formatLastMessageTime', () => {
   it('accepts an ISO string as input', () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     expect(formatLastMessageTime(twoDaysAgo)).toBe('2d ago');
+  });
+});
+
+describe('getDmHeaderName', () => {
+  const me = createDmGroupMember({ userId: 'me', user: { id: 'me', username: 'me', displayName: 'Me', avatarUrl: null } });
+  const other = createDmGroupMember({ userId: 'u2', user: { id: 'u2', username: 'u2', displayName: 'Other Person', avatarUrl: null } });
+
+  it('is undefined while the group is loading (never "Unknown")', () => {
+    expect(getDmHeaderName(undefined, 'me')).toBeUndefined();
+  });
+
+  it('is undefined for an unnamed DM until the current user is known', () => {
+    const group = createDmGroup({ isGroup: false, members: [me, other] });
+    expect(getDmHeaderName(group, undefined)).toBeUndefined();
+  });
+
+  it("shows a group's own name even before the current user is known", () => {
+    const group = createDmGroup({ name: 'Cool Group', isGroup: true, members: [me, other] });
+    expect(getDmHeaderName(group, undefined)).toBe('Cool Group');
+  });
+
+  it('names an unnamed DM after the other member once the current user is known', () => {
+    const group = createDmGroup({ isGroup: false, members: [me, other] });
+    expect(getDmHeaderName(group, 'me')).toBe('Other Person');
   });
 });

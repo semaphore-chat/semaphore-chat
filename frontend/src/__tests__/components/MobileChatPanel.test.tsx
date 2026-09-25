@@ -30,6 +30,7 @@ vi.mock('../../hooks/useCurrentUser', () => ({
 vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
   channelsControllerFindOneOptions: () => ({ queryKey: ['channel', ''], enabled: false }),
   directMessagesControllerFindDmGroupOptions: () => ({ queryKey: ['dm', ''], enabled: false }),
+  directMessagesControllerFindUserDmGroupsOptions: () => ({ queryKey: ['dm-groups'] }),
   moderationControllerGetPinnedMessagesOptions: () => ({ queryKey: ['pinned', ''], enabled: false }),
 }));
 

@@ -7,7 +7,8 @@ import { VoiceSessionType } from "../../contexts/VoiceContext";
 
 interface DMVoiceControlsProps {
   dmGroupId: string;
-  dmGroupName: string;
+  /** Undefined while the conversation is loading: the call buttons stay disabled until it is known. */
+  dmGroupName?: string;
 }
 
 export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
@@ -26,6 +27,10 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
   // Check if we're in any voice call (DM or channel)
   const isInAnyCall = state.isConnected;
 
+  // The voice session keeps the name (the voice bar shows it and recovery needs
+  // it), so a call can only start once the conversation has loaded.
+  const canStartCall = !!dmGroupName;
+
   const handleStartVoiceCall = async () => {
     if (isInAnyCall) {
       // If already in a call, leave it first
@@ -36,6 +41,7 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
       return;
     }
 
+    if (!dmGroupName) return;
     setIsJoining(true);
     try {
       await actions.joinDmVoice(dmGroupId, dmGroupName);
@@ -55,6 +61,7 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
       return;
     }
 
+    if (!dmGroupName) return;
     setIsJoining(true);
     try {
       // Join with audio first, then enable video
@@ -94,7 +101,7 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
           <IconButton
             size="small"
             onClick={handleStartVoiceCall}
-            disabled={isJoining || (isInAnyCall && !isInThisDmCall)}
+            disabled={isJoining || !canStartCall || (isInAnyCall && !isInThisDmCall)}
             sx={{
               color: "text.secondary",
               "&:hover": {
@@ -120,7 +127,7 @@ export const DMVoiceControls: React.FC<DMVoiceControlsProps> = ({
           <IconButton
             size="small"
             onClick={handleStartVideoCall}
-            disabled={isJoining || (isInAnyCall && !isInThisDmCall)}
+            disabled={isJoining || !canStartCall || (isInAnyCall && !isInThisDmCall)}
             sx={{
               color: "text.secondary",
               "&:hover": {

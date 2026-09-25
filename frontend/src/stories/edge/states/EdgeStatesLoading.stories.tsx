@@ -5,7 +5,8 @@
  */
 import { edgeScreen, withHangingEndpoint } from '../../fixtures/edge/states';
 import { ClickOnMount } from '../../fixtures/interactions';
-import { findButtonByIconTestId, findButtonByText } from '../../fixtures/domQueries';
+import { findButtonByIconTestId, findButtonByText, findRoleButtonContaining } from '../../fixtures/domQueries';
+import { getDmDisplayName } from '../../../utils/dmHelpers';
 import {
   bigCommunityScenario,
   primaryCommunity,
@@ -17,6 +18,9 @@ import {
 const s = bigCommunityScenario;
 const chatPath = `/community/${primaryCommunity.id}/channel/${generalChannel.id}`;
 
+// Module-level (stable) so ClickOnMount's effect runs once: one click on the row.
+const firstDmName = getDmDisplayName(firstDmGroup, s.me.id);
+const findFirstDmRow = () => findRoleButtonContaining(firstDmName);
 
 /** Community channel list while `/api/channels/community/:id` is pending. */
 export const ChannelList = edgeScreen(s, `/community/${primaryCommunity.id}`, {
@@ -36,6 +40,27 @@ export const DmList = edgeScreen(s, '/direct-messages', {
 /** An open DM while its messages are pending. */
 export const DmChat = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
   extraHandlers: [withHangingEndpoint('get', `/api/messages/group/${firstDmGroup.id}`)],
+});
+
+/**
+ * A DM deep link while the conversation (`/api/direct-messages/:id`) and the
+ * DM list are both pending, so nothing knows its name yet: the header holds a
+ * neutral placeholder (it used to read "Unknown" on desktop, blank on phone).
+ */
+export const DmHeader = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
+  extraHandlers: [
+    withHangingEndpoint('get', `/api/direct-messages/${firstDmGroup.id}`),
+    withHangingEndpoint('get', '/api/direct-messages'),
+  ],
+});
+
+/**
+ * A DM picked from the DM list while the conversation itself is still pending:
+ * the header already shows the name the list row had.
+ */
+export const DmHeaderFromList = edgeScreen(s, '/direct-messages', {
+  extraHandlers: [withHangingEndpoint('get', `/api/direct-messages/${firstDmGroup.id}`)],
+  overlay: <ClickOnMount find={findFirstDmRow} />,
 });
 
 export const Notifications = edgeScreen(s, '/notifications', {

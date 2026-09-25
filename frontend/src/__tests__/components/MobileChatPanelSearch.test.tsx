@@ -32,6 +32,7 @@ vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
     queryKey: ['dm-group'],
     queryFn: async () => createDmGroup({ id: 'dm-1', isGroup: false }),
   }),
+  directMessagesControllerFindUserDmGroupsOptions: () => ({ queryKey: ['dm-groups'] }),
   moderationControllerGetPinnedMessagesOptions: () => ({ queryKey: ['pinned', ''], enabled: false }),
 }));
 

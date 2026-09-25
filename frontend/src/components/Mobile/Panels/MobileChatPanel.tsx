@@ -27,16 +27,16 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   channelsControllerFindOneOptions,
-  directMessagesControllerFindDmGroupOptions,
   moderationControllerGetPinnedMessagesOptions,
 } from '../../../api-client/@tanstack/react-query.gen';
+import { useDmGroup } from '../../../hooks/useDmGroup';
 import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
 import { BACK_SWIPE, TOUCH_TARGETS, getBackGestureEdgeZone } from '../../../utils/breakpoints';
 import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
-import { getDmDisplayName } from '../../../utils/dmHelpers';
+import { getDmHeaderName } from '../../../utils/dmHelpers';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { ChannelType } from '../../../types/channel.type';
 import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
@@ -85,10 +85,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     ...channelsControllerFindOneOptions({ path: { id: channelId || '' } }),
     enabled: !!channelId,
   });
-  const { data: dmGroup, isError: dmGroupError } = useQuery({
-    ...directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId || '' } }),
-    enabled: !!dmGroupId,
-  });
+  // Opened from the DM list, the cached list entry names the header at once.
+  const { data: dmGroup, isError: dmGroupError } = useDmGroup(dmGroupId);
 
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [showMemberDrawer, setShowMemberDrawer] = React.useState(false);
@@ -222,19 +220,26 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   });
   const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 
+  // Undefined until the DM name can be told (see getDmHeaderName).
+  const dmTitle = getDmHeaderName(dmGroup, currentUser?.id);
+
   // Determine title
   let title = '';
   if (channel) {
     const prefix = channel.type === ChannelType.VOICE ? '🔊 ' : '# ';
     title = `${prefix}${channel.name}`;
-  } else if (dmGroup) {
-    title = getDmDisplayName(dmGroup, currentUser?.id);
+  } else if (dmTitle) {
+    title = dmTitle;
   } else if (channelId && channelError) {
     // 403 / 404 / banned: the body explains; keep the app bar from going blank.
     title = 'Channel unavailable';
   } else if (dmGroupId && dmGroupError) {
     title = 'Conversation unavailable';
   }
+  // A DM with no name yet (nothing cached and the request in flight, or the
+  // current user still loading) gets a skeleton title rather than a blank or
+  // made-up name.
+  const titleLoading = !!dmGroupId && !dmTitle && !dmGroupError;
 
   // Render content based on channel type
   const renderContent = () => {
@@ -313,6 +318,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
       {/* App bar with back button */}
       <MobileAppBar
         title={title}
+        titleLoading={titleLoading}
         showBack={!hideBack}
         onBack={goBack}
         showSearch={canSearch}

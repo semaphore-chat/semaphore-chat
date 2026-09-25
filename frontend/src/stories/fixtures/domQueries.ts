@@ -56,3 +56,18 @@ export function typeIntoTextarea(text: string): boolean {
   textarea.dispatchEvent(new Event('input', { bubbles: true }));
   return true;
 }
+
+/**
+ * Find a `role="button"` element (a MUI `ListItemButton` row, e.g. a DM list
+ * entry) whose visible text contains `text`. Rows inside hidden layers (the
+ * phone's kept-alive list screen once a chat is open: `inert`/`aria-hidden`)
+ * don't count, so a re-running driver can't click them a second time.
+ */
+export function findRoleButtonContaining(text: string): HTMLElement | null {
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('[role="button"]'));
+  return (
+    rows.find(
+      (el) => !el.closest('[inert], [aria-hidden="true"]') && (el.textContent ?? '').includes(text),
+    ) ?? null
+  );
+}

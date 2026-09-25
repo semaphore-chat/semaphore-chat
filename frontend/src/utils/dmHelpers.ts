@@ -54,3 +54,19 @@ export function formatLastMessageTime(date: Date | string): string {
     return diffMinutes > 0 ? `${diffMinutes}m ago` : "Just now";
   }
 }
+
+/**
+ * The name for a DM header, or undefined while it can't be told yet: the
+ * group is still loading, or it has no name of its own and the current user
+ * (whom the derived name leaves out) hasn't loaded. Callers show a loading
+ * placeholder for undefined, never a made-up name.
+ */
+export function getDmHeaderName(
+  dmGroup: DirectMessageGroup | undefined,
+  currentUserId: string | undefined,
+): string | undefined {
+  if (!dmGroup) return undefined;
+  if (dmGroup.name) return dmGroup.name;
+  if (!currentUserId) return undefined;
+  return getDmDisplayName(dmGroup, currentUserId);
+}
