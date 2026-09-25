@@ -509,6 +509,8 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 - Frontend: `scripts/test-stack.sh <ticket> run-frontend pnpm run test` (main checkout: `docker compose run --rm frontend pnpm run test`)
 - Backend: `scripts/test-stack.sh <ticket> run-backend pnpm run test` (main checkout: `docker compose run --rm backend pnpm run test`)
 
+**Stories are required for UI changes**: when you build or change frontend UI (a component, page, layout, style, or a hook/util that drives rendering), add or update Ladle stories (`frontend/src/stories/`) in the same PR, like unit tests. Cover the states the change introduces or touches, not just the happy path: loading, empty, error, long/overflowing content, narrow phone width, permission/role variants, and Electron-only UI via `asElectron`. Stories are what the UI review screenshots, so an unstoried state is unreviewable. How to write them: `docs-site/docs/contributing/stories.md`.
+
 **UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
 
 ### Code Quality

@@ -183,6 +183,15 @@ it('shows error on failure', async () => {
 - **Action functions**: API calls, error handling, cache updates
 - **Mock external dependencies** to isolate the unit under test
 
+### Stories for UI Changes
+
+Unit tests check behaviour; sandbox stories show what the UI looks like. A
+change that builds or changes frontend UI adds or updates Ladle stories in the
+same pull request, covering the states it introduces or touches (loading,
+empty, error, long content, narrow phone width, permission variants,
+Electron-only UI). The [UI review](ui-review.md) screenshots them for the PR.
+See [Writing Sandbox Stories](stories.md).
+
 ---
 
 ## Test Stacks and the Shared Docker Network

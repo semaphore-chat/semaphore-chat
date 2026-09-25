@@ -24,6 +24,7 @@ Thanks for your interest in contributing to Semaphore Chat! Whether it's a bug r
 - Keep PRs focused — one feature or fix per PR
 - Write descriptive commit messages
 - Include tests for new features and bug fixes
+- Add or update [sandbox stories](stories.md) for frontend UI you build or change, and show them with a [UI review](ui-review.md)
 - Make sure existing tests pass before submitting
 - Update documentation if your changes affect user-facing behavior
 

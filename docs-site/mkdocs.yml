@@ -59,6 +59,7 @@ nav:
       - Overview: contributing/index.md
       - Development Setup: contributing/development-setup.md
       - Testing Guide: contributing/testing.md
+      - Writing Sandbox Stories: contributing/stories.md
       - UI Review Screenshots: contributing/ui-review.md
       - Code Patterns: contributing/code-patterns.md
       - Regenerating Screenshots: contributing/regenerating-screenshots.md
