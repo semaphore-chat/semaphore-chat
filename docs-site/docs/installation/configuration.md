@@ -15,6 +15,12 @@ Copy `backend/env.sample` to `backend/.env` to get started.
 | `JWT_REFRESH_SECRET` | Secret key for signing refresh tokens | *(must change)* |
 | `REDIS_HOST` | Redis hostname | `redis` |
 
+!!! note "`DATABASE_URL` options: SSL and connection pool"
+    The backend connects through node-postgres (`pg`), which reads the options in the URL differently from the Prisma 6 query engine that earlier releases used:
+
+    - **SSL certificates are verified.** `sslmode=require`, `prefer` and `verify-ca` behave like `verify-full`: the server certificate must chain to a trusted CA and match the hostname. Before, `sslmode=require` encrypted without checking the certificate. If your database uses a self-signed or private-CA certificate, mount the CA certificate into the container and add `sslrootcert=/path/to/ca.pem` to the URL; the certificate must also name the host in the URL. To check the CA but not the hostname, use `uselibpqcompat=true&sslmode=verify-ca&sslrootcert=/path/to/ca.pem`. To encrypt without verifying (the old behaviour, not recommended), use `sslmode=no-verify`.
+    - **Pool:** each backend process opens at most 10 connections. The backend no longer reads `connection_limit`, `pool_timeout`, `sslaccept` or `schema` from the URL. Keep the tables in the default `public` schema.
+
 !!! danger "Change the JWT secrets"
     The default secrets in `env.sample` are placeholders. Always generate strong random values for production:
     ```bash

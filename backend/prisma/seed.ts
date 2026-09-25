@@ -17,6 +17,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 import { PrismaClient, RbacActions } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 import {
   DEFAULT_MEMBER_ROLE,
@@ -25,7 +26,9 @@ import {
   DEFAULT_USER_MANAGER_ROLE,
   DEFAULT_INVITE_MANAGER_ROLE,
 } from '../src/roles/default-roles.config';
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 async function main() {
   const admin = await prisma.user.upsert({
     where: { email: 'admin@admin.fake' },

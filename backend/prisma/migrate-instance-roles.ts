@@ -9,8 +9,11 @@
  */
 
 import { PrismaClient, RbacActions, InstanceRole } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+});
 
 // Instance Admin role actions (matches DEFAULT_INSTANCE_ADMIN_ROLE in default-roles.config.ts)
 const INSTANCE_ADMIN_ACTIONS: RbacActions[] = [
