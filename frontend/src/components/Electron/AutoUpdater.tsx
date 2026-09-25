@@ -52,6 +52,9 @@ export const AutoUpdater = () => {
 
     const unsubUpdateDownloaded = electronAPI.onUpdateDownloaded((info) => {
       logger.dev('Update downloaded:', info);
+      // Carries the version too: the renderer may have missed
+      // update-available (e.g. it reloaded mid-download)
+      setUpdateInfo(info);
       setDownloading(false);
       setUpdateDownloaded(true);
     });

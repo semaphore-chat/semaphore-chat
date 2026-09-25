@@ -37,8 +37,6 @@ describe('AutoUpdater', () => {
 
   it('offers to restart when the update is downloaded, and installs on click', async () => {
     const quitAndInstall = vi.fn();
-    // electron-updater reports update-available before update-downloaded;
-    // the version shown comes from the former.
     const electronAPI = createFakeElectronAPI({
       onUpdateAvailable: emitOnSubscribe(update),
       onUpdateDownloaded: emitOnSubscribe(update),
@@ -51,6 +49,15 @@ describe('AutoUpdater', () => {
 
     await user.click(screen.getByRole('button', { name: 'Restart Now' }));
     expect(quitAndInstall).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the version when only update-downloaded was seen (renderer reloaded mid-download)', () => {
+    const electronAPI = createFakeElectronAPI({
+      onUpdateDownloaded: emitOnSubscribe(update),
+    });
+
+    renderWithProviders(<AutoUpdater />, { electronAPI });
+    expect(screen.getByText(/Version 1\.4\.0 is ready to install/)).toBeInTheDocument();
   });
 
   it('shows the update error', () => {
