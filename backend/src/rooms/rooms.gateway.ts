@@ -7,7 +7,7 @@ import {
 } from '@nestjs/websockets';
 import { RoomsService } from './rooms.service';
 import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards, UsePipes, UseFilters } from '@nestjs/common';
+import { Logger, UseGuards, UseFilters } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { TokenBlacklistService } from '@/auth/token-blacklist.service';
@@ -15,7 +15,6 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { UserService } from '@/user/user.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { ClientEvents } from '@semaphore-chat/shared';
-import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -35,7 +34,6 @@ import {
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
 export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(RoomsGateway.name);

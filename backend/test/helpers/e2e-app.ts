@@ -18,7 +18,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { HttpValidationPipe } from '@/common/pipes/http-validation.pipe';
+import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
 import * as cookieParser from 'cookie-parser';
 import * as request from 'supertest';
 import { App } from 'supertest/types';
@@ -55,12 +55,7 @@ export async function createE2eApp(options?: {
   // Mirror src/main.ts request pipeline.
   app.setGlobalPrefix('api');
   app.use(cookieParser());
-  app.useGlobalPipes(
-    new HttpValidationPipe({
-      transform: true,
-      whitelist: true,
-    }),
-  );
+  app.useGlobalPipes(new AppValidationPipe());
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
   await app.init();

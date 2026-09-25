@@ -1,6 +1,6 @@
 import { RbacGuard } from '@/auth/rbac.guard';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { Logger, UseFilters, UseGuards, UsePipes } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -11,7 +11,6 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
-import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { Server, Socket } from 'socket.io';
 import { PresenceService } from './presence.service';
 import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
@@ -30,7 +29,6 @@ import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
 export class PresenceGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

@@ -1,6 +1,7 @@
 import { WsLoggingExceptionFilter } from './ws-exception.filter';
-import { ArgumentsHost } from '@nestjs/common';
+import { ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
+import { ValidationFailedException } from '@/common/pipes/app-validation.pipe';
 
 describe('WsLoggingExceptionFilter', () => {
   let filter: WsLoggingExceptionFilter;
@@ -52,6 +53,53 @@ describe('WsLoggingExceptionFilter', () => {
           'WebSocket WsException: Test WebSocket exception',
         ),
         expect.any(String),
+      );
+    });
+
+    it('sends validation failures from the global pipe as a WsException with the class-validator errors', () => {
+      const validationErrors = [
+        {
+          property: 'channelId',
+          children: [],
+          constraints: { isString: 'channelId must be a string' },
+        },
+      ];
+      const loggerSpy = jest
+        .spyOn(filter['logger'], 'error')
+        .mockImplementation();
+
+      filter.catch(
+        new ValidationFailedException(validationErrors, [
+          'channelId must be a string',
+        ]),
+        mockHost,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'exception',
+        validationErrors,
+      );
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('WebSocket WsException'),
+        expect.any(String),
+      );
+    });
+
+    it('still reports other HTTP exceptions as an internal error', () => {
+      // Also silences BaseWsExceptionFilter's own (static) logger.
+      const loggerSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+
+      filter.catch(new BadRequestException('nope'), mockHost);
+      loggerSpy.mockRestore();
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'exception',
+        expect.objectContaining({
+          status: 'error',
+          message: 'Internal server error',
+        }),
       );
     });
 
