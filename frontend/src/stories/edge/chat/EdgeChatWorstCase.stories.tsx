@@ -21,6 +21,7 @@ import {
   wait,
   mediaSettled,
   scrollListToBottom,
+  messageListScroller,
   FIVE_FILES,
   FOUR_LINE_DRAFT,
   type DriverStep,
@@ -66,7 +67,18 @@ export const EverythingAtOnce = defineScreen(edgeChatManyMembersScenario, channe
 });
 
 const OpenThread: React.FC = () => {
-  useDriver([() => clickButtonByText(/^200 replies/)]);
+  useDriver([
+    () => !!findMessageRow('const result = await deliveryQueueConsumer'),
+    mediaSettled(),
+    () => {
+      if (clickButtonByText(/^200 replies/)) return true;
+      // Its row can be outside the rendered window once the images below it
+      // sized (the list keeps to the bottom): scroll up until it renders.
+      const list = messageListScroller();
+      if (list) list.scrollTop = Math.max(0, list.scrollTop - list.clientHeight / 2);
+      return false;
+    },
+  ]);
   return null;
 };
 

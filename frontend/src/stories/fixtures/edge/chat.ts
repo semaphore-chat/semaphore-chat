@@ -962,7 +962,7 @@ export function mediaSettled(stableTicks = 4): DriverStep {
 }
 
 /** The message list's scroll container (the nearest scrollable ancestor of a message row). */
-function messageListScroller(): HTMLElement | null {
+export function messageListScroller(): HTMLElement | null {
   let el = document.querySelector<HTMLElement>('[data-message-id]')?.parentElement ?? null;
   while (el && !(el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY))) {
     el = el.parentElement;
@@ -1012,13 +1012,20 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
   useEffect(() => {
     const key = context.channelId ? channelMessagesQueryKey(context.channelId) : dmMessagesQueryKey(context.dmId ?? '');
     let cancelled = false;
-    const tryInject = () => {
-      if (cancelled) return;
+    // Busy (see `useDriver`) until the rows are in, so a shot never misses them.
+    let busy = true;
+    markDriverBusy(1);
+    const done = () => {
+      if (!busy) return;
+      busy = false;
+      markDriverBusy(-1);
+    };
+    const keyHash = JSON.stringify(key);
+    let reinjections = 0;
+    /** Prepends the rows the cache doesn't have; false while it has no first page. */
+    const inject = (): boolean => {
       const data = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(key);
-      if (!data) {
-        setTimeout(tryInject, 100);
-        return;
-      }
+      if (!data) return false;
       specsRef.current.forEach((spec, i) => {
         const clientId = `pending-edge-chat-${i + 1}`;
         const msg: Message = {
@@ -1035,15 +1042,32 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
           sendStatus: 'pending',
           ...(spec.replyTo ? { replyToId: spec.replyTo.id } : {}),
         };
+        const current = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(key);
+        // Already there, or a window it can't go into (prepend is a no-op): nothing to write.
+        if (prependMessageToInfinite(current, msg) === current) return;
         queryClient.setQueryData(key, (old: unknown) => {
           const next = prependMessageToInfinite(old as never, msg);
           return spec.status === 'failed' ? markOptimisticFailed(next, clientId) : next;
         });
       });
+      return true;
     };
-    tryInject();
+    const poll = () => {
+      if (cancelled) return;
+      if (inject()) done();
+      else setTimeout(poll, 100);
+    };
+    poll();
+    // A refetch of the conversation replaces its first page without these
+    // rows (a shot once caught the list without them): put them back.
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (cancelled || busy || event.type !== 'updated' || JSON.stringify(event.query.queryKey) !== keyHash) return;
+      if (reinjections++ < 20) inject();
+    });
     return () => {
       cancelled = true;
+      unsubscribe();
+      done();
     };
   }, [queryClient, context.channelId, context.dmId]);
 }
