@@ -13,9 +13,9 @@
  *
  * The fake has every bridge method, with neutral results: no update events,
  * no desktop sources, secure storage available. Pass overrides to show
- * Electron-only UI, e.g. the auto-updater's "ready to install" snackbar:
+ * Electron-only UI, e.g. the auto-updater's download snackbar:
  *
- *   asElectron(Story, { onUpdateDownloaded: emitOnSubscribe({ version: '2.0.0' }) })
+ *   asElectron(Story, { onUpdateAvailable: emitOnSubscribe({ version: '2.0.0' }) })
  *
  * In Electron the API base URL comes from the active saved server
  * (`config/env.ts`), so this also saves one at this page's own origin: API
