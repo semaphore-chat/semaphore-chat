@@ -19,6 +19,8 @@ import {
   openMessageActions,
   clickActionItem,
   wait,
+  mediaSettled,
+  scrollListToBottom,
   FIVE_FILES,
   FOUR_LINE_DRAFT,
   type DriverStep,
@@ -52,6 +54,11 @@ export const DmComposerLoaded = dmStory(
   EDGE_DM_ID,
   <Drive
     steps={[
+      // Open the menu only once the messages are in, their images have sized and the
+      // list has stopped moving (else it anchors to a row still moving, and the list
+      // ends up pinned to the bottom or not depending on load timing).
+      () => !!findMessageRow('thank you!!'),
+      mediaSettled(),
       () => {
         const row = findMessageRow('thank you!!', { last: true });
         if (!row) return false;
@@ -63,6 +70,9 @@ export const DmComposerLoaded = dmStory(
       () => attachFiles(FIVE_FILES),
       wait(200),
       () => typeInto(composerTextarea()!, FOUR_LINE_DRAFT),
+      // The composer grew three times over the list: show its newest messages.
+      scrollListToBottom(),
+      mediaSettled(),
     ]}
   />,
 );

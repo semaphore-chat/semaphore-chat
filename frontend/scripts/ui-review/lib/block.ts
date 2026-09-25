@@ -409,7 +409,7 @@ function render(report: ReviewReport, opts: BlockOptions, detail: Detail, shorte
 
   const t = report.thresholds;
   out.push(
-    `<sub>Before = base, after = head; red outlines mark changed regions. Pixel tolerance: ${t.minPixels} px (pixelmatch threshold ${t.pixelmatchThreshold}, anti-aliasing ignored)${t.rechecks ? `; changes confirmed by ${plural(t.rechecks, 're-capture')} of both sides` : ''}. Regenerate: ${code(opts.command)}</sub>`,
+    `<sub>Before = base, after = head; each changed region is cropped at up to 1:1 above the full view, where red outlines mark it. Pixel tolerance: ${t.minPixels} px (pixelmatch threshold ${t.pixelmatchThreshold}, anti-aliasing ignored)${t.rechecks ? `; changes confirmed by ${plural(t.rechecks, 're-capture')} of both sides` : ''}. Regenerate: ${code(opts.command)}</sub>`,
     END_MARKER,
   );
   return `${out.join('\n')}\n`;

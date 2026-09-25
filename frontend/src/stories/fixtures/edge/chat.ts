@@ -834,41 +834,158 @@ export type DriverStep = () => boolean | void;
 /**
  * Run DOM steps in order once mounted. A step returning `false` is retried
  * (every `pollMs`, up to `timeoutMs`) — so steps can wait for data to load.
- * `wait(ms)` steps pause between actions (e.g. the long-press delay).
+ * `wait(ms)` steps pause between actions (e.g. the long-press delay), and
+ * `mediaSettled()` waits for images to load and the layout to stop moving.
+ *
+ * Time is counted with timers, never `Date.now()`: the UI review tool pins
+ * `Date.now()` (Playwright's `clock.setFixedTime`, so relative times render
+ * the same on every run) while timers keep running. A `Date.now()` based wait
+ * never ends under a pinned clock — the driver used to stop at its first
+ * `wait()` there, leaving a menu open over a list still sizing its media.
+ *
+ * While a driver runs, `<html data-story-busy>` is set: the screenshot tools
+ * (scripts/ux-shots.mjs, the UI review) don't count the story as settled
+ * until it's gone, since the waits between steps leave the DOM quiet and the
+ * page would otherwise be caught halfway through (files attached, draft not
+ * typed yet).
  */
 export function useDriver(steps: DriverStep[], { pollMs = 120, timeoutMs = 15000 } = {}): void {
   const stepsRef = useRef(steps);
   useEffect(() => {
     let cancelled = false;
+    let running = true;
     let i = 0;
-    let stepStarted = Date.now();
+    let stepTicks = 0;
+    markDriverBusy(1);
+    const stop = () => {
+      if (!running) return;
+      running = false;
+      markDriverBusy(-1);
+    };
     const tick = () => {
-      if (cancelled || i >= stepsRef.current.length) return;
-      const ok = stepsRef.current[i]();
+      if (cancelled) return;
+      if (i >= stepsRef.current.length) {
+        stop();
+        return;
+      }
+      let ok: boolean | void;
+      try {
+        ok = stepsRef.current[i]();
+      } catch (err) {
+        // A broken step must not leave the page marked busy.
+        console.warn(`[edge-chat driver] step ${i} threw`, err);
+        stop();
+        return;
+      }
       if (ok !== false) {
         i += 1;
-        stepStarted = Date.now();
+        stepTicks = 0;
         setTimeout(tick, pollMs);
-      } else if (Date.now() - stepStarted < timeoutMs) {
+      } else if (++stepTicks * pollMs < timeoutMs) {
         setTimeout(tick, pollMs);
       } else {
         console.warn(`[edge-chat driver] step ${i} timed out`);
+        stop();
       }
     };
     setTimeout(tick, pollMs);
     return () => {
       cancelled = true;
+      stop();
     };
   }, [pollMs, timeoutMs]);
 }
 
-/** A step that succeeds only after `ms` have elapsed since it was first tried. */
+/** Drivers still running on the page; `<html data-story-busy>` is set while there are any (see `useDriver`). */
+let runningDrivers = 0;
+function markDriverBusy(delta: number): void {
+  runningDrivers += delta;
+  if (runningDrivers > 0) document.documentElement.dataset.storyBusy = String(runningDrivers);
+  else delete document.documentElement.dataset.storyBusy;
+}
+
+/**
+ * A step that succeeds once `ms` have passed since it was first tried —
+ * measured with a timer, not `Date.now()` (see `useDriver`).
+ */
 export function wait(ms: number): DriverStep {
-  let first: number | null = null;
+  let state: 'idle' | 'waiting' | 'done' = 'idle';
   return () => {
-    if (first === null) first = Date.now();
-    if (Date.now() - first < ms) return false;
-    first = null;
+    if (state === 'idle') {
+      state = 'waiting';
+      setTimeout(() => {
+        state = 'done';
+      }, ms);
+      return false;
+    }
+    if (state === 'waiting') return false;
+    state = 'idle';
+    return true;
+  };
+}
+
+/** Every `<img>` has loaded (or failed), and the size of each and of every scroll container, as one string. */
+function mediaLayoutSignature(): string | null {
+  const images = Array.from(document.images);
+  if (images.some((img) => !img.complete)) return null;
+  const sizes = images.map((img) => {
+    const r = img.getBoundingClientRect();
+    return `${Math.round(r.width)}x${Math.round(r.height)}`;
+  });
+  const scrollers = Array.from(document.querySelectorAll<HTMLElement>('body *'))
+    .filter((el) => el.scrollHeight > el.clientHeight + 1)
+    .map((el) => `${el.scrollHeight}/${el.clientHeight}@${Math.round(el.scrollTop)}`);
+  return `${sizes.join(',')}|${scrollers.join(',')}`;
+}
+
+/**
+ * A step that succeeds once every image on the page has finished loading and
+ * nothing has moved for `stableTicks` driver polls in a row: image sizes,
+ * and each scroll container's height and position (a message list re-pinning
+ * to the bottom after a tall image sized). Opening a menu or long-press sheet
+ * before that anchors it to wherever the row happened to be mid-layout, and
+ * the list can end up pinned or not depending on load timing.
+ */
+export function mediaSettled(stableTicks = 4): DriverStep {
+  let last: string | null = null;
+  let same = 0;
+  return () => {
+    const sig = mediaLayoutSignature();
+    if (sig !== null && sig === last) same += 1;
+    else same = 0;
+    last = sig;
+    if (same < stableTicks) return false;
+    last = null;
+    same = 0;
+    return true;
+  };
+}
+
+/** The message list's scroll container. */
+export function messageListScroller(): HTMLElement | null {
+  return messageList();
+}
+
+/**
+ * A step that scrolls the message list to its newest message and succeeds
+ * once it has stayed there for `stableTicks` polls. Whether the list is still
+ * pinned to the bottom after a menu, a reply banner, attachments and a draft
+ * have shrunk it depends on timing (an image row re-measured before or after
+ * the list re-pinned): end the interaction here so the shot doesn't.
+ */
+export function scrollListToBottom(stableTicks = 3): DriverStep {
+  let same = 0;
+  return () => {
+    if (!document.querySelector('[data-message-id]')) return false;
+    const el = messageListScroller();
+    if (!el) return true; // every message fits: nothing to scroll
+    if (el.scrollHeight - el.clientHeight - el.scrollTop > 1) {
+      el.scrollTop = el.scrollHeight;
+      same = 0;
+      return false;
+    }
+    if (++same < stableTicks) return false;
+    same = 0;
     return true;
   };
 }
@@ -891,13 +1008,20 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
   useEffect(() => {
     const key = context.channelId ? channelMessagesQueryKey(context.channelId) : dmMessagesQueryKey(context.dmId ?? '');
     let cancelled = false;
-    const tryInject = () => {
-      if (cancelled) return;
+    // Busy (see `useDriver`) until the rows are in, so a shot never misses them.
+    let busy = true;
+    markDriverBusy(1);
+    const done = () => {
+      if (!busy) return;
+      busy = false;
+      markDriverBusy(-1);
+    };
+    const keyHash = JSON.stringify(key);
+    let reinjections = 0;
+    /** Prepends the rows the cache doesn't have; false while it has no first page. */
+    const inject = (): boolean => {
       const data = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(key);
-      if (!data) {
-        setTimeout(tryInject, 100);
-        return;
-      }
+      if (!data) return false;
       specsRef.current.forEach((spec, i) => {
         const clientId = `pending-edge-chat-${i + 1}`;
         const msg: Message = {
@@ -914,15 +1038,32 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
           sendStatus: 'pending',
           ...(spec.replyTo ? { replyToId: spec.replyTo.id } : {}),
         };
+        const current = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(key);
+        // Already there, or a window it can't go into (prepend is a no-op): nothing to write.
+        if (prependMessageToInfinite(current, msg) === current) return;
         queryClient.setQueryData(key, (old: unknown) => {
           const next = prependMessageToInfinite(old as never, msg);
           return spec.status === 'failed' ? markOptimisticFailed(next, clientId) : next;
         });
       });
+      return true;
     };
-    tryInject();
+    const poll = () => {
+      if (cancelled) return;
+      if (inject()) done();
+      else setTimeout(poll, 100);
+    };
+    poll();
+    // A refetch of the conversation replaces its first page without these
+    // rows (a shot once caught the list without them): put them back.
+    const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
+      if (cancelled || busy || event.type !== 'updated' || JSON.stringify(event.query.queryKey) !== keyHash) return;
+      if (reinjections++ < 20) inject();
+    });
     return () => {
       cancelled = true;
+      unsubscribe();
+      done();
     };
   }, [queryClient, context.channelId, context.dmId]);
 }

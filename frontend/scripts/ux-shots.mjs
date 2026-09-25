@@ -27,7 +27,8 @@
  *   UX_SHOTS_TASKS              exact story × viewport pairs to shoot, `@<file>`
  *                               with one `<story id> <viewport>` per line
  *                               (replaces UX_SHOTS_IDS/FILTER/VIEWPORTS)
- *   UX_SHOTS_QUIET_MS           after load, also wait (max 10s) until, for this
+ *   UX_SHOTS_QUIET_MS           after load, also wait (max 10s; 20s more while a
+ *                               story driver still runs, see `storyBusy`) until, for this
  *                               long, the DOM had no mutation, no request
  *                               started or finished and no script/stylesheet/
  *                               font request is pending, before the settle
@@ -35,7 +36,10 @@
  *                               behind a static "Loading..." screen; steadier
  *                               under concurrency
  *   UX_SHOTS_DISABLE_ANIMATIONS `1` — screenshots with CSS animations and
- *                               transitions stopped (spinners, skeletons)
+ *                               transitions stopped (spinners, skeletons),
+ *                               and animated images (GIF, WebP, APNG) shown
+ *                               at their first frame, so the frame caught
+ *                               doesn't depend on load timing
  */
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -64,6 +68,8 @@ const CONCURRENCY = Math.max(1, Number(process.env.UX_SHOTS_CONCURRENCY || 1));
 const FREEZE_TIME = process.env.UX_SHOTS_FREEZE_TIME || '';
 const DISABLE_ANIMATIONS = process.env.UX_SHOTS_DISABLE_ANIMATIONS === '1';
 const QUIET_MS = Number(process.env.UX_SHOTS_QUIET_MS || 0);
+/** Extra wait (ms) for a story driver still running when the settle wait ran out (see `storyBusy`). */
+const STORY_BUSY_MAX_MS = 20_000;
 
 /** All available viewports. `short` only applies to "*keyboard*" stories (see below). */
 const VIEWPORTS = {
@@ -136,16 +142,74 @@ function trackNetwork(page) {
   return { blocking: () => pending.size, idleFor: () => Date.now() - last };
 }
 
-/** DOM quiet, network quiet and nothing blocking pending, all for `quietMs`; false when `maxMs` ran out. */
+/**
+ * A story that drives itself through an interaction (`useDriver` in
+ * src/stories/fixtures/edge/chat.ts) sets `<html data-story-busy>` until its
+ * last step ran: the pauses between steps leave the DOM quiet, so without
+ * this a shot could catch it halfway. Keep in sync with
+ * scripts/ui-review/lib/settle.ts.
+ */
+function storyBusy(page) {
+  return page.evaluate(() => 'storyBusy' in document.documentElement.dataset).catch(() => false);
+}
+
+/** DOM quiet, network quiet, nothing blocking pending and no story driver running, all for `quietMs`; false when `maxMs` ran out. */
 async function waitForSettled(page, net, quietMs, maxMs = 10_000) {
   const started = Date.now();
   const left = () => maxMs - (Date.now() - started);
   while (left() > 0) {
     await waitForDomQuiet(page, quietMs, Math.max(1, left()));
-    if (net.blocking() === 0 && net.idleFor() >= quietMs) return true;
-    await sleep(Math.min(Math.max(50, net.blocking() > 0 ? 100 : quietMs - net.idleFor()), Math.max(1, left())));
+    const busy = await storyBusy(page);
+    if (!busy && net.blocking() === 0 && net.idleFor() >= quietMs) return true;
+    await sleep(Math.min(Math.max(50, busy || net.blocking() > 0 ? 100 : quietMs - net.idleFor()), Math.max(1, left())));
   }
   return false;
+}
+
+/**
+ * Shows every loaded animated image (GIF, animated WebP/PNG/AVIF) at its
+ * first frame: decodes it with WebCodecs' ImageDecoder and swaps in a PNG of
+ * that frame (same element, same intrinsic size, so the layout doesn't move).
+ * Playwright's `animations: 'disabled'` only stops CSS animations — a GIF
+ * keeps playing, so which frame a screenshot catches depends on timing.
+ * Returns how many images were frozen. Best effort: an image that can't be
+ * fetched or decoded is left alone.
+ */
+async function freezeAnimatedImages(page) {
+  return page.evaluate(async () => {
+    if (typeof ImageDecoder === 'undefined') return 0;
+    let frozen = 0;
+    for (const img of Array.from(document.images)) {
+      const src = img.currentSrc || img.src;
+      if (!img.complete || !img.naturalWidth || !src || src.startsWith('data:image/png;frozen=1;')) continue;
+      try {
+        const res = await fetch(src);
+        const type = (res.headers.get('content-type') || '').split(';')[0].trim();
+        if (!/^image\/(gif|webp|png|apng|avif)$/.test(type) || !(await ImageDecoder.isTypeSupported(type))) continue;
+        const decoder = new ImageDecoder({ data: await res.arrayBuffer(), type });
+        await decoder.tracks.ready;
+        const track = decoder.tracks.selectedTrack;
+        if (!track || !track.animated || track.frameCount <= 1) {
+          decoder.close();
+          continue;
+        }
+        const { image } = await decoder.decode({ frameIndex: 0 });
+        const canvas = document.createElement('canvas');
+        canvas.width = image.displayWidth;
+        canvas.height = image.displayHeight;
+        canvas.getContext('2d').drawImage(image, 0, 0);
+        image.close();
+        decoder.close();
+        img.removeAttribute('srcset');
+        img.src = canvas.toDataURL('image/png').replace('data:image/png;', 'data:image/png;frozen=1;');
+        await img.decode().catch(() => undefined);
+        frozen += 1;
+      } catch {
+        // leave this image as it is
+      }
+    }
+    return frozen;
+  });
 }
 
 async function fetchMeta() {
@@ -227,8 +291,19 @@ async function shootStory(browser, storyId, viewportName) {
   try {
     if (FREEZE_TIME) await page.clock.setFixedTime(new Date(FREEZE_TIME));
     await page.goto(url, { waitUntil: 'networkidle', timeout: NAV_TIMEOUT_MS });
-    if (net) settled = await waitForSettled(page, net, QUIET_MS);
+    if (net) {
+      settled = await waitForSettled(page, net, QUIET_MS);
+      // A story still driving itself when the settle cap ran out (a slow,
+      // loaded machine): give its driver more time, then settle again.
+      if (!settled && (await storyBusy(page))) {
+        await page
+          .waitForFunction(() => !('storyBusy' in document.documentElement.dataset), null, { timeout: STORY_BUSY_MAX_MS, polling: 100 })
+          .catch(() => undefined);
+        settled = await waitForSettled(page, net, QUIET_MS);
+      }
+    }
     await sleep(SETTLE_MS);
+    if (DISABLE_ANIMATIONS) await freezeAnimatedImages(page);
 
     const outSubdir = path.join(OUT_DIR, viewportName);
     await mkdir(outSubdir, { recursive: true });

@@ -289,7 +289,7 @@ import {
 
 /** Scrolled to the top of the latest page, waiting on the next older page. */
 const ScrollToTopAfterLoad: React.FC = () => {
-  // Polls instead of wait(): the capture freezes Date.now().
+  // Polls the list's state rather than waiting a fixed time.
   useDriver([messageListSteady(), scrollMessageListToLoad('top')], { pollMs: 50 });
   return null;
 };
@@ -374,7 +374,8 @@ picker.
 The UI review captures the base and your branch and compares them pixel by
 pixel, so the same code has to render the same pixels every time. The capture
 freezes the clock at `2026-09-22T18:30:00Z` (`Date.now()` and `new Date()`
-always return it; timers still run), disables CSS animations, and waits for
+always return it; timers still run), disables CSS animations, shows animated images (GIFs) at their first frame,
+and waits for
 the network and the DOM to go quiet before each shot.
 
 - **Fixed data.** Build data from a fixed `seed` and fixed ids, with dates
@@ -387,14 +388,22 @@ the network and the DOM to go quiet before each shot.
   given size), and URLs outside the app (GIFs, link previews) need a handler
   too, like the ones in `chatHandlers()`.
 - **Poll conditions, not time.** With the clock frozen, anything that measures
-  elapsed time with `Date.now()` doesn't advance during a capture: a `wait(ms)`
-  driver step never completes there, and a `ClickOnMount` never gives up.
-  Make each step check its own precondition (the element exists, the list is
-  steady) and return `false` until it holds. If you need a delay, use
-  `setTimeout`, which still runs.
+  elapsed time with `Date.now()` doesn't advance during a capture (a
+  `ClickOnMount` never gives up, a hand-rolled `Date.now()` wait never ends).
+  Drive interactions with `useDriver` (`fixtures/edge/chat.ts`): its steps and
+  its `wait(ms)` step count time with timers, which still run, so they finish
+  during a capture. Still, make each step check its own precondition (the
+  element exists, the list is steady) and return `false` until it holds; a
+  fixed `wait()` races a slow machine, so keep it for delays the app imposes
+  (a long-press, a highlight that clears after 3 s).
+- **Let the capture see the driver.** While a `useDriver` driver runs, it sets
+  `<html data-story-busy>`, and the capture waits for the last step before it
+  shoots. Timers of your own leave the DOM quiet between steps, so a shot can
+  catch the story halfway.
 - **Settle before you open.** Open menus and popovers only after the content
-  under them has settled (images sized, list positioned), or the menu anchors
-  differently from run to run and the story shows up as unstable.
+  under them has settled (images sized, list positioned: a `mediaSettled()`
+  step), or the menu anchors differently from run to run and the story shows
+  up as unstable.
 - **No animations or long timers.** CSS animations are off, so a state that
   only exists mid-animation can't be captured. The capture waits about 0.8 s
   of quiet (at most 10 s) plus 1.5 s; a state that appears on a longer timer
