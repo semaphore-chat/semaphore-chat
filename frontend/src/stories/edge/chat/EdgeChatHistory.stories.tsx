@@ -22,10 +22,24 @@ import {
   hangingPageLoads,
   messageListSteady,
   scrollMessageListToLoad,
+  wait,
+  type DriverStep,
 } from '../../fixtures/edge/chat';
 
 const unread = [{ channelId: historyChannel.id, unreadCount: historyUnreadCount, lastReadMessageId: historyLastReadId }];
 const FIRST_UNREAD_ID = 'edge-chat-history-61';
+
+/**
+ * The jump flashes its target for 3 s and then re-renders it (the highlight
+ * clears): wait that out, or the shot races the re-render (an avatar caught
+ * reloading). The driver keeps the page marked busy until then.
+ */
+const waitOutFlash = (): DriverStep[] => [() => !!findMessageRow('history message #61 —'), wait(3500)];
+
+const WaitOutFlash: React.FC = () => {
+  useDriver(waitOutFlash());
+  return null;
+};
 
 /** Opening a channel with 340 unread: the latest page (25) loads at the bottom; the last-read point is ~14 pages back, so no divider. */
 export const OpenWithHundredsUnread = defineScreen(edgeChatScenario, channelPath(historyChannel), {
@@ -40,6 +54,7 @@ const JumpAfterLoad: React.FC = () => {
     () => {
       void navigate(`${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`);
     },
+    ...waitOutFlash(),
   ]);
   return null;
 };
@@ -57,6 +72,7 @@ export const JumpFarBack = defineScreen(edgeChatScenario, channelPath(historyCha
  */
 export const ColdDeepLink = defineScreen(edgeChatScenario, `${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`, {
   extraHandlers: chatHandlers(edgeChatScenario, { unread }),
+  overlay: <WaitOutFlash />,
 });
 
 /** Scrolled to the top of the latest page, waiting on the next older page. */
