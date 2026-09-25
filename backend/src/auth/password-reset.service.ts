@@ -4,6 +4,7 @@ import { createHash, randomBytes } from 'crypto';
 import { DatabaseService } from '@/database/database.service';
 import { UserService } from '@/user/user.service';
 import { MailerService } from '@/mailer/mailer.service';
+import { SessionRevocationService } from './session-revocation.service';
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -27,6 +28,7 @@ export class PasswordResetService {
     private readonly userService: UserService,
     private readonly mailerService: MailerService,
     private readonly configService: ConfigService,
+    private readonly sessionRevocationService: SessionRevocationService,
   ) {}
 
   private hashToken(token: string): string {
@@ -85,7 +87,7 @@ export class PasswordResetService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = this.hashToken(token);
 
-    await this.databaseService.$transaction(async (tx) => {
+    const userId = await this.databaseService.$transaction(async (tx) => {
       const now = new Date();
       const resetToken = await tx.passwordResetToken.findUnique({
         where: { tokenHash },
@@ -115,6 +117,13 @@ export class PasswordResetService {
         newPassword,
         tx,
       );
+      return resetToken.userId;
     });
+
+    // Committed: end the sessions the old password opened
+    await this.sessionRevocationService.revokeAllUserSessions(
+      userId,
+      'PASSWORD_CHANGED',
+    );
   }
 }

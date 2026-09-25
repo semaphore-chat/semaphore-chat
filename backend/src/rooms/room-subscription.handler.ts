@@ -91,14 +91,21 @@ export class RoomSubscriptionHandler {
     userId,
     communityId,
   }: MembershipRemovedEvent): Promise<void> {
-    const channels = await this.databaseService.channel.findMany({
-      where: { communityId },
-      select: { id: true },
-    });
+    const [channels, aliasGroups] = await Promise.all([
+      this.databaseService.channel.findMany({
+        where: { communityId },
+        select: { id: true },
+      }),
+      this.databaseService.aliasGroup.findMany({
+        where: { communityId },
+        select: { id: true },
+      }),
+    ]);
 
     const roomsToLeave = [
       RoomName.community(communityId),
       ...channels.map((ch) => RoomName.channel(ch.id)),
+      ...aliasGroups.map((ag) => RoomName.aliasGroup(ag.id)),
     ];
 
     this.websocketService.removeSocketsFromRoom(

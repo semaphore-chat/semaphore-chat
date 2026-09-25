@@ -34,6 +34,43 @@ export interface VoicePresenceUser {
 }
 
 // =============================================================================
+// Session Lifecycle Payloads
+// =============================================================================
+
+/**
+ * Why the server ended a socket's session. Sent in SESSION_TERMINATED right
+ * before the server disconnects the socket.
+ *
+ * - TOKEN_EXPIRED: the access token expired without a REAUTHENTICATE; a
+ *   refreshed token is enough to reconnect.
+ * - LOGGED_OUT / SESSION_REVOKED / PASSWORD_CHANGED: the session (or all of
+ *   the user's sessions) was revoked; refreshing fails unless the client
+ *   holds another valid session.
+ * - ACCOUNT_BANNED / ACCOUNT_DELETED: the account can no longer sign in.
+ */
+export type SessionTerminatedReason =
+  | 'TOKEN_EXPIRED'
+  | 'LOGGED_OUT'
+  | 'SESSION_REVOKED'
+  | 'PASSWORD_CHANGED'
+  | 'ACCOUNT_BANNED'
+  | 'ACCOUNT_DELETED';
+
+export interface SessionTerminatedPayload {
+  reason: SessionTerminatedReason;
+}
+
+export interface TokenExpiringPayload {
+  /** When the socket's current access token expires (ISO 8601). */
+  expiresAt: string;
+}
+
+/** Acknowledgement of a REAUTHENTICATE request. */
+export type ReauthenticateResult =
+  | { ok: true; expiresAt: string }
+  | { ok: false; error: 'AUTH_FAILED' };
+
+// =============================================================================
 // Acknowledgment & Error Payloads
 // =============================================================================
 
@@ -372,6 +409,10 @@ export interface EgressSegmentsReadyPayload {
 // =============================================================================
 
 export type ServerEventPayloads = {
+  // Session lifecycle
+  [ServerEvents.TOKEN_EXPIRING]: TokenExpiringPayload;
+  [ServerEvents.SESSION_TERMINATED]: SessionTerminatedPayload;
+
   // Messaging: Channels
   [ServerEvents.NEW_MESSAGE]: NewMessagePayload;
   [ServerEvents.UPDATE_MESSAGE]: UpdateMessagePayload;

@@ -1,6 +1,10 @@
 export {
   type UserPresenceInfo,
   type VoicePresenceUser,
+  type SessionTerminatedReason,
+  type SessionTerminatedPayload,
+  type TokenExpiringPayload,
+  type ReauthenticateResult,
   type AckPayload,
   type ErrorPayload,
   type NewMessagePayload,

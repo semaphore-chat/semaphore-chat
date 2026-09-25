@@ -3,9 +3,8 @@ import type { Mocked } from '@suites/doubles.jest';
 import { RoomsGateway } from './rooms.gateway';
 import { RoomsService } from './rooms.service';
 import { WebsocketService } from '@/websocket/websocket.service';
-import { JwtService } from '@nestjs/jwt';
-import { UserService } from '@/user/user.service';
-import { TokenBlacklistService } from '@/auth/token-blacklist.service';
+import { WsAuthError, WsAuthService } from '@/auth/ws-auth.service';
+import { SocketSessionService } from './socket-session.service';
 import { UserFactory } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { Socket, Server } from 'socket.io';
@@ -14,9 +13,8 @@ describe('RoomsGateway', () => {
   let gateway: RoomsGateway;
   let roomsService: Mocked<RoomsService>;
   let websocketService: Mocked<WebsocketService>;
-  let jwtService: Mocked<JwtService>;
-  let userService: Mocked<UserService>;
-  let tokenBlacklistService: Mocked<TokenBlacklistService>;
+  let wsAuthService: Mocked<WsAuthService>;
+  let socketSessionService: Mocked<SocketSessionService>;
 
   const mockUser = UserFactory.build();
 
@@ -37,9 +35,8 @@ describe('RoomsGateway', () => {
     gateway = unit;
     roomsService = unitRef.get(RoomsService);
     websocketService = unitRef.get(WebsocketService);
-    jwtService = unitRef.get(JwtService);
-    userService = unitRef.get(UserService);
-    tokenBlacklistService = unitRef.get(TokenBlacklistService);
+    wsAuthService = unitRef.get(WsAuthService);
+    socketSessionService = unitRef.get(SocketSessionService);
   });
 
   afterEach(() => {
@@ -74,6 +71,18 @@ describe('RoomsGateway', () => {
     const flushPromises = () =>
       new Promise<void>((resolve) => setImmediate(resolve));
 
+    const authResult = () => {
+      const user = UserFactory.build();
+      return {
+        user: new UserEntity(user),
+        claims: {
+          sub: user.id,
+          jti: 'jti-1',
+          exp: Math.floor(Date.now() / 1000) + 3600,
+        },
+      };
+    };
+
     beforeEach(() => {
       const mockServer = { use: jest.fn() } as unknown as Server;
       gateway.afterInit(mockServer);
@@ -81,8 +90,9 @@ describe('RoomsGateway', () => {
       authMiddleware = (mockServer.use as jest.Mock).mock.calls[1][0];
     });
 
-    it('should authenticate with valid token from auth.token', async () => {
-      const user = UserFactory.build();
+    it('authenticates the auth.token and binds the socket to it', async () => {
+      const auth = authResult();
+      wsAuthService.authenticate.mockResolvedValue(auth);
       const socket = {
         handshake: {
           auth: { token: 'valid-token' },
@@ -92,21 +102,16 @@ describe('RoomsGateway', () => {
       };
       const next = jest.fn();
 
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(false);
-
       authMiddleware(socket, next);
       await flushPromises();
 
+      expect(wsAuthService.authenticate).toHaveBeenCalledWith('valid-token');
+      expect(socketSessionService.attach).toHaveBeenCalledWith(socket, auth);
       expect(next).toHaveBeenCalledWith();
-      expect(jwtService.verify).toHaveBeenCalledWith('valid-token');
-      expect((socket.handshake as any).user).toBeInstanceOf(UserEntity);
-      expect((socket.handshake as any).user.id).toBe(user.id);
     });
 
-    it('should strip Bearer prefix from token', async () => {
-      const user = UserFactory.build();
+    it('strips the Bearer prefix from the token', async () => {
+      wsAuthService.authenticate.mockResolvedValue(authResult());
       const socket = {
         handshake: {
           auth: { token: 'Bearer my-jwt-token' },
@@ -116,19 +121,15 @@ describe('RoomsGateway', () => {
       };
       const next = jest.fn();
 
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(false);
-
       authMiddleware(socket, next);
       await flushPromises();
 
-      expect(jwtService.verify).toHaveBeenCalledWith('my-jwt-token');
+      expect(wsAuthService.authenticate).toHaveBeenCalledWith('my-jwt-token');
       expect(next).toHaveBeenCalledWith();
     });
 
-    it('should fall back to authorization header', async () => {
-      const user = UserFactory.build();
+    it('falls back to the authorization header', async () => {
+      wsAuthService.authenticate.mockResolvedValue(authResult());
       const socket = {
         handshake: {
           auth: {},
@@ -138,24 +139,16 @@ describe('RoomsGateway', () => {
       };
       const next = jest.fn();
 
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(false);
-
       authMiddleware(socket, next);
       await flushPromises();
 
-      expect(jwtService.verify).toHaveBeenCalledWith('header-token');
+      expect(wsAuthService.authenticate).toHaveBeenCalledWith('header-token');
       expect(next).toHaveBeenCalledWith();
     });
 
-    it('should reject when no token is provided', () => {
+    it('rejects when no token is provided', () => {
       const socket = {
-        handshake: {
-          auth: {},
-          headers: {},
-          address: '127.0.0.1',
-        },
+        handshake: { auth: {}, headers: {}, address: '127.0.0.1' },
       };
       const next = jest.fn();
 
@@ -163,120 +156,35 @@ describe('RoomsGateway', () => {
 
       expect(next).toHaveBeenCalledWith(expect.any(Error));
       expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
+      expect(wsAuthService.authenticate).not.toHaveBeenCalled();
     });
 
-    it('should reject when JWT verification fails', () => {
-      const socket = {
-        handshake: {
-          auth: { token: 'invalid-token' },
-          headers: {},
-          address: '127.0.0.1',
-        },
-      };
-      const next = jest.fn();
+    it.each([
+      'INVALID_TOKEN',
+      'TOKEN_REVOKED',
+      'USER_NOT_FOUND',
+      'USER_BANNED',
+    ] as const)(
+      'rejects with AUTH_FAILED when authentication fails (%s)',
+      async (code) => {
+        wsAuthService.authenticate.mockRejectedValue(new WsAuthError(code));
+        const socket = {
+          handshake: {
+            auth: { token: 'token' },
+            headers: {},
+            address: '127.0.0.1',
+          },
+        };
+        const next = jest.fn();
 
-      jest.spyOn(jwtService, 'verify').mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
+        authMiddleware(socket, next);
+        await flushPromises();
 
-      authMiddleware(socket, next);
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
-    });
-
-    it('should reject when user is not found in database', async () => {
-      const socket = {
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-          address: '127.0.0.1',
-        },
-      };
-      const next = jest.fn();
-
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: 'deleted-user-id' });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(null);
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(false);
-
-      authMiddleware(socket, next);
-      await flushPromises();
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
-    });
-
-    it('should reject when user is banned', async () => {
-      const bannedUser = UserFactory.build({ banned: true });
-      const socket = {
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-          address: '127.0.0.1',
-        },
-      };
-      const next = jest.fn();
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: bannedUser.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(bannedUser);
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(false);
-
-      authMiddleware(socket, next);
-      await flushPromises();
-
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
-    });
-
-    it('should reject when token jti is blacklisted', async () => {
-      const user = UserFactory.build();
-      const socket = {
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-          address: '127.0.0.1',
-        },
-      };
-      const next = jest.fn();
-
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: user.id, jti: 'blacklisted-jti' });
-      tokenBlacklistService.isBlacklisted.mockResolvedValue(true);
-
-      authMiddleware(socket, next);
-      await flushPromises();
-
-      expect(tokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
-        'blacklisted-jti',
-      );
-      expect(next).toHaveBeenCalledWith(expect.any(Error));
-      expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
-      expect(userService.findAuthUserById).not.toHaveBeenCalled();
-    });
-
-    it('should skip blacklist check when token has no jti', async () => {
-      const user = UserFactory.build();
-      const socket = {
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-          address: '127.0.0.1',
-        },
-      };
-      const next = jest.fn();
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      authMiddleware(socket, next);
-      await flushPromises();
-
-      expect(tokenBlacklistService.isBlacklisted).not.toHaveBeenCalled();
-      expect(next).toHaveBeenCalledWith();
-    });
+        expect(next).toHaveBeenCalledWith(expect.any(Error));
+        expect((next.mock.calls[0][0] as Error).message).toBe('AUTH_FAILED');
+        expect(socketSessionService.attach).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('rate limiter middleware', () => {
@@ -394,6 +302,34 @@ describe('RoomsGateway', () => {
       await gateway.subscribeAll(client);
 
       expect(roomsService.joinAllUserRooms).toHaveBeenCalledWith(client);
+    });
+  });
+
+  describe('reauthenticate', () => {
+    it('re-authenticates the socket with the new token', async () => {
+      const client = createMockSocket();
+      const expiresAt = new Date().toISOString();
+      socketSessionService.reauthenticate.mockResolvedValue({
+        ok: true,
+        expiresAt,
+      });
+
+      await expect(
+        gateway.reauthenticate(client, { token: 'Bearer new-token' }),
+      ).resolves.toEqual({ ok: true, expiresAt });
+      expect(socketSessionService.reauthenticate).toHaveBeenCalledWith(
+        client,
+        'new-token',
+      );
+    });
+
+    it('fails without a token', async () => {
+      const client = createMockSocket();
+
+      await expect(
+        gateway.reauthenticate(client, { token: 'Bearer ' }),
+      ).resolves.toEqual({ ok: false, error: 'AUTH_FAILED' });
+      expect(socketSessionService.reauthenticate).not.toHaveBeenCalled();
     });
   });
 });

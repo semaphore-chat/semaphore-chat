@@ -20,6 +20,7 @@ import { LocalAuthGuard } from './local-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService, DeviceInfo } from './auth.service';
 import { TokenBlacklistService } from './token-blacklist.service';
+import { SessionRevocationService } from './session-revocation.service';
 import { PasswordResetService } from './password-reset.service';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -58,6 +59,7 @@ export class AuthController {
     private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly jwtService: JwtService,
     private readonly passwordResetService: PasswordResetService,
+    private readonly sessionRevocationService: SessionRevocationService,
   ) {}
 
   /**
@@ -82,11 +84,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
     const deviceInfo = this.getDeviceInfo(req);
-    const accessToken = this.authService.login(req.user);
-    const refreshToken = await this.authService.generateRefreshToken(
-      req.user.id,
-      deviceInfo,
-    );
+    const { refreshToken, sessionId } =
+      await this.authService.generateRefreshToken(req.user.id, deviceInfo);
+    const accessToken = this.authService.login(req.user, sessionId);
 
     // Always set cookies for web clients (access token for browser media, refresh for sessions)
     setAccessTokenCookie(res, accessToken);
@@ -134,10 +134,15 @@ export class AuthController {
     }
 
     const [user, jti] = await this.authService.verifyRefreshToken(refreshToken);
+    // A banned user keeps their refresh tokens (unbanning restores the
+    // session) but can't renew access while banned.
+    if (user.banned) {
+      throw new UnauthorizedException('Account has been banned');
+    }
     const deviceInfo = this.getDeviceInfo(req);
 
     // Do this in a tx so we don't have dangling refresh tokens or something weird
-    const token = await this.databaseService.$transaction(async (tx) => {
+    const rotated = await this.databaseService.$transaction(async (tx) => {
       const tokenRecord = await this.authService.validateRefreshToken(
         jti,
         refreshToken,
@@ -178,8 +183,9 @@ export class AuthController {
         consumed.familyId ?? undefined,
       );
     });
+    const { refreshToken: token, sessionId } = rotated;
 
-    const newAccessToken = this.authService.login(user);
+    const newAccessToken = this.authService.login(user, sessionId);
 
     // Always set cookies for web clients
     setAccessTokenCookie(res, newAccessToken);
@@ -249,15 +255,21 @@ export class AuthController {
       refreshToken = body.refreshToken;
     }
 
+    // The session this logout ends: its refresh tokens are deleted below,
+    // then its access tokens are revoked and its sockets disconnected.
+    let session: { userId: string; sessionId: string | null } | undefined;
+
     if (refreshToken) {
       try {
-        await this.databaseService.$transaction(async (tx) => {
+        session = await this.databaseService.$transaction(async (tx) => {
           const [user, jti] =
             await this.authService.verifyRefreshToken(refreshToken);
-
-          if (user) {
-            await this.authService.deleteRefreshToken(jti, refreshToken, tx);
-          }
+          const sessionId = await this.authService.deleteRefreshToken(
+            jti,
+            refreshToken,
+            tx,
+          );
+          return { userId: user.id, sessionId };
         });
       } catch {
         // Token may be expired or invalid — still clear the cookie
@@ -270,7 +282,23 @@ export class AuthController {
     }
 
     // Blacklist the access token so it can't be reused until expiry
-    await this.blacklistAccessToken(req);
+    const accessToken = await this.blacklistAccessToken(req);
+
+    // Revoke the rest of the session (other tabs share it) and disconnect
+    // its sockets, plus any socket using this access token.
+    const userId = session?.userId ?? accessToken?.sub;
+    if (userId) {
+      try {
+        await this.sessionRevocationService.revokeSessions(
+          userId,
+          session?.sessionId ? [session.sessionId] : [],
+          'LOGGED_OUT',
+          accessToken?.jti ? [accessToken.jti] : [],
+        );
+      } catch {
+        this.logger.warn('Failed to revoke the session during logout');
+      }
+    }
 
     // Always clear access token cookie on logout
     clearAccessTokenCookie(res);
@@ -282,18 +310,22 @@ export class AuthController {
    * Extract and blacklist the current access token from the request.
    * Verifies the token signature before blacklisting to prevent attackers
    * from injecting arbitrary JTIs/TTLs into Redis.
+   * @returns The verified token's claims, if there was a valid token
    */
-  private async blacklistAccessToken(req: Request): Promise<void> {
+  private async blacklistAccessToken(
+    req: Request,
+  ): Promise<{ sub: string; jti?: string } | undefined> {
     try {
       // Try to get access token from cookie or Authorization header
       const accessToken =
         (req.cookies as Record<string, string>)?.access_token ||
         req.headers.authorization?.replace('Bearer ', '');
 
-      if (!accessToken) return;
+      if (!accessToken) return undefined;
 
       // Verify the token — only blacklist tokens we actually issued
       const payload = await this.jwtService.verifyAsync<{
+        sub: string;
         jti?: string;
         exp?: number;
       }>(accessToken);
@@ -301,9 +333,11 @@ export class AuthController {
       if (payload.jti && payload.exp) {
         await this.tokenBlacklistService.blacklist(payload.jti, payload.exp);
       }
+      return payload;
     } catch {
       // Best-effort: don't fail logout if token is expired/invalid
       this.logger.debug('Failed to blacklist access token during logout');
+      return undefined;
     }
   }
 

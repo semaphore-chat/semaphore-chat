@@ -210,7 +210,8 @@ export class UserController {
 
   /**
    * Set a new password for a user (admin password override).
-   * Revokes the user's refresh tokens; access tokens stay valid until expiry.
+   * Ends the user's sessions: refresh and access tokens revoked, sockets
+   * disconnected.
    */
   @Patch('admin/:id/password')
   @UseGuards(JwtAuthGuard, RbacGuard)

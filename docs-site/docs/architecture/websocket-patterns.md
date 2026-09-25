@@ -107,6 +107,7 @@ Ask these five questions for each new WebSocket event:
 | `EGRESS_SEGMENTS_READY` | `TrimPreview.tsx` | Triggers one-time refetch, not ongoing state |
 | `REPLAY_BUFFER_STOPPED/FAILED` | `useReplayBuffer.ts` | Session-scoped flag, resets on disconnect |
 | `NEW_NOTIFICATION` (side effects) | `useNotificationSideEffects.ts` | Sound/desktop notification, not data |
+| `TOKEN_EXPIRING` / `SESSION_TERMINATED` | `SocketProvider.tsx` | Connection lifecycle: refresh and re-authenticate, or reconnect ([Socket Sessions](backend.md#socket-sessions)) |
 
 ---
 

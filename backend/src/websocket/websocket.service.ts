@@ -2,7 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server } from 'socket.io';
 import {
   ClientToServerEvents,
+  ServerEvents,
   ServerToClientEvents,
+  SessionTerminatedReason,
 } from '@semaphore-chat/shared';
 import { toWirePayload } from './websocket-wire.util';
 
@@ -86,6 +88,27 @@ export class WebsocketService {
         `Failed to remove sockets in "${sourceRoom}" from rooms`,
         error,
       );
+    }
+  }
+
+  /**
+   * End the session of every socket in `room`, on every instance: tell the
+   * client why (SESSION_TERMINATED), then disconnect it. The event is written
+   * before the close, so the client receives it first.
+   */
+  terminateSessionsInRoom(room: string, reason: SessionTerminatedReason): void {
+    if (!this.server) {
+      this.logger.error(
+        'Attempted to disconnect sockets before server was initialized',
+      );
+      return;
+    }
+
+    try {
+      this.server.to(room).emit(ServerEvents.SESSION_TERMINATED, { reason });
+      this.server.in(room).disconnectSockets(true);
+    } catch (error) {
+      this.logger.error(`Failed to disconnect sockets in "${room}"`, error);
     }
   }
 

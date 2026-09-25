@@ -5,6 +5,8 @@ export enum ClientEvents {
   // Connection & Room Management
   SUBSCRIBE_ALL = 'subscribeAll',
   PRESENCE_ONLINE = 'presenceOnline',
+  /** Swap the socket's access token for a fresh one (see TOKEN_EXPIRING). */
+  REAUTHENTICATE = 'reauthenticate',
 
   // Messaging: Channels
   SEND_MESSAGE = 'sendMessage',

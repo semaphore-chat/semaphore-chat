@@ -4,34 +4,38 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UserService } from '@/user/user.service';
-import { UserEntity } from '@/user/dto/user-response.dto';
+import { ServerEvents } from '@semaphore-chat/shared';
 import {
   extractTokenFromHandshake,
   AuthenticatedSocket,
+  getSocketAuth,
 } from '@/common/utils/socket.utils';
 import { Socket } from 'socket.io';
-import { TokenBlacklistService } from './token-blacklist.service';
+import { WsAuthError, WsAuthService } from './ws-auth.service';
 
 @Injectable()
 export class WsJwtAuthGuard implements CanActivate {
   private readonly logger = new Logger(WsJwtAuthGuard.name);
 
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly userService: UserService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
-  ) {}
+  constructor(private readonly wsAuthService: WsAuthService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    this.logger.debug('WsJwtAuthGuard canActivate called');
-
     if (context.getType() !== 'ws') return true;
     const client = context.switchToWs().getClient<Socket>();
 
-    // Short-circuit: user already authenticated by connection middleware
+    // Authenticated by the connection middleware. Its token may have expired
+    // since: the socket's expiry timer disconnects it, but don't let a
+    // message slip through in between (e.g. a delayed timer).
     if ((client as AuthenticatedSocket).handshake.user) {
+      const auth = getSocketAuth(client);
+      if (auth && auth.exp * 1000 <= Date.now()) {
+        this.logger.debug(`Socket ${client.id} used an expired token`);
+        client.emit(ServerEvents.SESSION_TERMINATED, {
+          reason: 'TOKEN_EXPIRED',
+        });
+        client.disconnect(true);
+        return false;
+      }
       return true;
     }
 
@@ -44,38 +48,15 @@ export class WsJwtAuthGuard implements CanActivate {
       return false;
     }
     try {
-      const payload = this.jwtService.verify<{ sub: string; jti?: string }>(
-        token,
-      );
-
-      if (payload.jti) {
-        const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(
-          payload.jti,
-        );
-        if (isBlacklisted) {
-          this.logger.warn('Blacklisted token used for WebSocket connection');
-          client.disconnect(true);
-          return false;
-        }
-      }
-
-      // Narrowed select: this user object lives on the socket for the whole
-      // connection — it must never hold sensitive columns.
-      const user = await this.userService.findAuthUserById(payload.sub);
-      if (!user) throw new Error('User not found');
-
-      if (user.banned) {
-        this.logger.warn(
-          `Banned user ${user.id} attempted WebSocket connection`,
-        );
-        client.disconnect(true);
-        return false;
-      }
-
-      (client as AuthenticatedSocket).handshake.user = new UserEntity(user);
+      const { user } = await this.wsAuthService.authenticate(token);
+      (client as AuthenticatedSocket).handshake.user = user;
       return true;
     } catch (error) {
-      this.logger.error('JWT verification failed', error);
+      if (error instanceof WsAuthError) {
+        this.logger.warn(`WebSocket authentication failed: ${error.code}`);
+      } else {
+        this.logger.error('WebSocket authentication failed', error);
+      }
       client.disconnect(true);
       return false;
     }

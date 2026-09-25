@@ -1,628 +1,145 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { ServerEvents } from '@semaphore-chat/shared';
 import { WsJwtAuthGuard } from './ws-jwt-auth.guard';
-import { JwtService } from '@nestjs/jwt';
-import { UserService } from '@/user/user.service';
-import { TokenBlacklistService } from './token-blacklist.service';
+import { WsAuthError, WsAuthService } from './ws-auth.service';
 import {
   UserFactory,
   createMockHttpExecutionContext,
   createMockWsExecutionContext,
-  expectNoSensitiveUserFields,
 } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 
 describe('WsJwtAuthGuard', () => {
   let guard: WsJwtAuthGuard;
-  let jwtService: Mocked<JwtService>;
-  let userService: Mocked<UserService>;
-  let tokenBlacklistService: Mocked<TokenBlacklistService>;
+  let wsAuthService: Mocked<WsAuthService>;
+
+  const nowSeconds = () => Math.floor(Date.now() / 1000);
+
+  const createClient = (handshake: Record<string, unknown>, data = {}) => ({
+    id: 'socket-123',
+    handshake: { headers: {}, ...handshake },
+    data,
+    emit: jest.fn(),
+    disconnect: jest.fn(),
+  });
+
+  const authResult = (user = UserFactory.build()) => ({
+    user: new UserEntity(user),
+    claims: { sub: user.id, jti: 'jti-1', exp: nowSeconds() + 3600 },
+  });
 
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(WsJwtAuthGuard).compile();
 
     guard = unit;
-    jwtService = unitRef.get(JwtService);
-    userService = unitRef.get(UserService);
-    tokenBlacklistService = unitRef.get(TokenBlacklistService);
+    wsAuthService = unitRef.get(WsAuthService);
   });
 
   afterEach(() => {
     jest.clearAllMocks();
   });
 
-  describe('Non-WebSocket contexts', () => {
-    it('should allow access for HTTP contexts', async () => {
+  describe('non-WebSocket contexts', () => {
+    it('allows HTTP contexts', async () => {
       const context = createMockHttpExecutionContext({});
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).not.toHaveBeenCalled();
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(wsAuthService.authenticate).not.toHaveBeenCalled();
     });
 
-    it('should allow access for non-ws context types', async () => {
-      const context = {
-        getType: jest.fn().mockReturnValue('rpc'),
-      } as any;
+    it('allows other context types', async () => {
+      const context = { getType: jest.fn().mockReturnValue('rpc') } as any;
 
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
     });
   });
 
-  describe('Token extraction from auth.token', () => {
-    it('should authenticate with valid token from auth.token', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-123',
-        handshake: {
-          auth: { token: 'valid-token-123' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).toHaveBeenCalledWith('valid-token-123');
-      expect(userService.findAuthUserById).toHaveBeenCalledWith(user.id);
-
-      expect((mockClient.handshake as any).user).toBeInstanceOf(UserEntity);
-      expect((mockClient.handshake as any).user.id).toBe(user.id);
-      expect(mockClient.disconnect).not.toHaveBeenCalled();
-    });
-
-    it('should handle Bearer token in auth.token', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-bearer',
-        handshake: {
-          auth: { token: 'Bearer bearer-token-456' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).toHaveBeenCalledWith('bearer-token-456');
-    });
-  });
-
-  describe('Token extraction from authorization header', () => {
-    it('should authenticate with valid token from authorization header', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-header',
-        handshake: {
-          auth: {},
-          headers: { authorization: 'header-token-789' },
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).toHaveBeenCalledWith('header-token-789');
-    });
-
-    it('should handle Bearer token in authorization header', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-bearer-header',
-        handshake: {
-          auth: {},
-          headers: { authorization: 'Bearer header-bearer-token' },
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).toHaveBeenCalledWith('header-bearer-token');
-    });
-
-    it('should prioritize auth.token over authorization header', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-priority',
-        handshake: {
-          auth: { token: 'auth-token' },
-          headers: { authorization: 'header-token' },
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      await guard.canActivate(context);
-
-      expect(jwtService.verify).toHaveBeenCalledWith('auth-token');
-    });
-  });
-
-  describe('Missing token scenarios', () => {
-    it('should disconnect client and return false when no token provided', async () => {
-      const mockClient = {
-        id: 'socket-no-token',
-        handshake: {
-          auth: {},
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-      expect(jwtService.verify).not.toHaveBeenCalled();
-    });
-
-    it('should reject non-string token in auth.token', async () => {
-      const mockClient = {
-        id: 'socket-invalid-type',
-        handshake: {
-          auth: { token: 12345 },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should reject non-string token in authorization header', async () => {
-      const mockClient = {
-        id: 'socket-invalid-header',
-        handshake: {
-          auth: {},
-          headers: { authorization: 12345 },
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('JWT verification failure', () => {
-    it('should disconnect client when JWT verification fails', async () => {
-      const mockClient = {
-        id: 'socket-invalid-jwt',
-        handshake: {
-          auth: { token: 'invalid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should disconnect client when JWT is expired', async () => {
-      const mockClient = {
-        id: 'socket-expired',
-        handshake: {
-          auth: { token: 'expired-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockImplementation(() => {
-        throw new Error('Token expired');
-      });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('User not found', () => {
-    it('should disconnect client when user not found', async () => {
-      const mockClient = {
-        id: 'socket-no-user',
-        handshake: {
-          auth: { token: 'valid-token-no-user' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: 'nonexistent-user-id' });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(null);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should disconnect client when user service throws error', async () => {
-      const mockClient = {
-        id: 'socket-user-error',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: 'user-id' });
-      jest
-        .spyOn(userService, 'findAuthUserById')
-        .mockRejectedValue(new Error('Database error'));
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-  });
-
-  describe('User attachment to handshake', () => {
-    it('should attach user as UserEntity to handshake on successful authentication', async () => {
-      const user = UserFactory.buildComplete({ banned: false });
-      const mockClient = {
-        id: 'socket-attach',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      await guard.canActivate(context);
-
-      expect((mockClient.handshake as any).user).toBeInstanceOf(UserEntity);
-      expect((mockClient.handshake as any).user.id).toBe(user.id);
-    });
-
-    it('should not leak sensitive fields in attached user', async () => {
-      const user = UserFactory.buildComplete({ banned: false });
-      const mockClient = {
-        id: 'socket-sensitive',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      await guard.canActivate(context);
-
-      expectNoSensitiveUserFields((mockClient.handshake as any).user);
-    });
-
-    it('should not attach user when authentication fails', async () => {
-      const mockClient = {
-        id: 'socket-no-attach',
-        handshake: {
-          auth: { token: 'invalid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockImplementation(() => {
-        throw new Error('Invalid token');
-      });
-
-      await guard.canActivate(context);
-
-      expect((mockClient.handshake as any).user).toBeUndefined();
-    });
-  });
-
-  describe('Short-circuit when user already attached by middleware', () => {
-    it('should return true immediately if handshake.user is already set', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-pre-auth',
-        handshake: {
-          user: new UserEntity(user),
-          auth: { token: 'some-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(jwtService.verify).not.toHaveBeenCalled();
-      expect(userService.findAuthUserById).not.toHaveBeenCalled();
-      expect(mockClient.disconnect).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Edge cases', () => {
-    it('should handle undefined handshake.auth', async () => {
-      const mockClient = {
-        id: 'socket-no-auth',
-        handshake: {
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should handle undefined handshake.headers', async () => {
-      const mockClient = {
-        id: 'socket-no-headers',
-        handshake: {
-          auth: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should handle empty string token', async () => {
-      const mockClient = {
-        id: 'socket-empty-token',
-        handshake: {
-          auth: { token: '' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-    });
-
-    it('should handle token with only "Bearer " prefix', async () => {
-      const mockClient = {
-        id: 'socket-bearer-only',
-        handshake: {
-          auth: { token: 'Bearer ' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-      // Empty string after stripping "Bearer " is treated as missing token
-      expect(jwtService.verify).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Token blacklist checks', () => {
-    it('should disconnect client and return false when token is blacklisted', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-blacklisted',
-        handshake: {
-          auth: { token: 'blacklisted-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: user.id, jti: 'revoked-jti' });
-      jest
-        .spyOn(tokenBlacklistService, 'isBlacklisted')
-        .mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-      expect(tokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
-        'revoked-jti',
+  describe('socket authenticated by the connection middleware', () => {
+    it('allows a socket whose token is still valid, without re-checking it', async () => {
+      const client = createClient(
+        { user: new UserEntity(UserFactory.build()) },
+        { auth: { userId: 'u', exp: nowSeconds() + 60 } },
       );
-      // Should not attempt to look up the user
-      expect(userService.findAuthUserById).not.toHaveBeenCalled();
+      const context = createMockWsExecutionContext({ client });
+
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(wsAuthService.authenticate).not.toHaveBeenCalled();
+      expect(client.disconnect).not.toHaveBeenCalled();
     });
 
-    it('should allow connection when token has jti but is not blacklisted', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-valid-jti',
-        handshake: {
-          auth: { token: 'valid-token-with-jti' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: user.id, jti: 'valid-jti' });
-      jest
-        .spyOn(tokenBlacklistService, 'isBlacklisted')
-        .mockResolvedValue(false);
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(tokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
-        'valid-jti',
+    it('ends the session of a socket whose token has expired', async () => {
+      const client = createClient(
+        { user: new UserEntity(UserFactory.build()) },
+        { auth: { userId: 'u', exp: nowSeconds() - 1 } },
       );
-      expect(userService.findAuthUserById).toHaveBeenCalledWith(user.id);
-      expect(mockClient.disconnect).not.toHaveBeenCalled();
-    });
+      const context = createMockWsExecutionContext({ client });
+      const wsClient = context.switchToWs().getClient();
 
-    it('should skip blacklist check when token has no jti', async () => {
-      const user = UserFactory.build();
-      const mockClient = {
-        id: 'socket-no-jti',
-        handshake: {
-          auth: { token: 'token-without-jti' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(tokenBlacklistService.isBlacklisted).not.toHaveBeenCalled();
-      expect(mockClient.disconnect).not.toHaveBeenCalled();
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+      expect(wsClient.emit).toHaveBeenCalledWith(
+        ServerEvents.SESSION_TERMINATED,
+        { reason: 'TOKEN_EXPIRED' },
+      );
+      expect(wsClient.disconnect).toHaveBeenCalledWith(true);
     });
   });
 
-  describe('Banned user rejection', () => {
-    it('should disconnect client and return false when user is banned', async () => {
-      const bannedUser = UserFactory.build({ banned: true });
-      const mockClient = {
-        id: 'socket-banned-user',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
+  describe('fallback authentication from the handshake', () => {
+    it('authenticates the auth.token and attaches the user', async () => {
+      const result = authResult();
+      wsAuthService.authenticate.mockResolvedValue(result);
+      const client = createClient({ auth: { token: 'Bearer valid-token' } });
+      const context = createMockWsExecutionContext({ client });
 
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: bannedUser.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(bannedUser);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
-      // Should not attach user to handshake
-      expect((mockClient.handshake as any).user).toBeUndefined();
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(wsAuthService.authenticate).toHaveBeenCalledWith('valid-token');
+      expect((client.handshake as any).user).toBe(result.user);
     });
 
-    it('should allow connection when user is not banned', async () => {
-      const user = UserFactory.build({ banned: false });
-      const mockClient = {
-        id: 'socket-not-banned',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
+    it('falls back to the authorization header', async () => {
+      wsAuthService.authenticate.mockResolvedValue(authResult());
+      const client = createClient({
+        auth: {},
+        headers: { authorization: 'Bearer header-token' },
+      });
+      const context = createMockWsExecutionContext({ client });
 
-      jest.spyOn(jwtService, 'verify').mockReturnValue({ sub: user.id });
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(user);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(mockClient.disconnect).not.toHaveBeenCalled();
-      expect((mockClient.handshake as any).user).toBeInstanceOf(UserEntity);
+      await expect(guard.canActivate(context)).resolves.toBe(true);
+      expect(wsAuthService.authenticate).toHaveBeenCalledWith('header-token');
     });
 
-    it('should check ban status after blacklist check passes', async () => {
-      const bannedUser = UserFactory.build({ banned: true });
-      const mockClient = {
-        id: 'socket-banned-with-jti',
-        handshake: {
-          auth: { token: 'valid-token' },
-          headers: {},
-        },
-        disconnect: jest.fn(),
-      };
-      const context = createMockWsExecutionContext({ client: mockClient });
+    it('disconnects when no token is provided', async () => {
+      const client = createClient({ auth: {} });
+      const context = createMockWsExecutionContext({ client });
 
-      jest
-        .spyOn(jwtService, 'verify')
-        .mockReturnValue({ sub: bannedUser.id, jti: 'valid-jti' });
-      jest
-        .spyOn(tokenBlacklistService, 'isBlacklisted')
-        .mockResolvedValue(false);
-      jest.spyOn(userService, 'findAuthUserById').mockResolvedValue(bannedUser);
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+      expect(client.disconnect).toHaveBeenCalledWith(true);
+      expect(wsAuthService.authenticate).not.toHaveBeenCalled();
+    });
 
-      const result = await guard.canActivate(context);
+    it.each([
+      'INVALID_TOKEN',
+      'TOKEN_REVOKED',
+      'USER_NOT_FOUND',
+      'USER_BANNED',
+    ] as const)('disconnects when authentication fails (%s)', async (code) => {
+      wsAuthService.authenticate.mockRejectedValue(new WsAuthError(code));
+      const client = createClient({ auth: { token: 'token' } });
+      const context = createMockWsExecutionContext({ client });
 
-      expect(result).toBe(false);
-      expect(tokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
-        'valid-jti',
-      );
-      expect(userService.findAuthUserById).toHaveBeenCalledWith(bannedUser.id);
-      expect(mockClient.disconnect).toHaveBeenCalledWith(true);
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+      expect(client.disconnect).toHaveBeenCalledWith(true);
+      expect((client.handshake as any).user).toBeUndefined();
+    });
+
+    it('disconnects when authentication throws unexpectedly', async () => {
+      wsAuthService.authenticate.mockRejectedValue(new Error('DB down'));
+      const client = createClient({ auth: { token: 'token' } });
+      const context = createMockWsExecutionContext({ client });
+
+      await expect(guard.canActivate(context)).resolves.toBe(false);
+      expect(client.disconnect).toHaveBeenCalledWith(true);
     });
   });
 });

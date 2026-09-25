@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { PasswordResetService } from './password-reset.service';
 import { UserService } from '@/user/user.service';
 import { MailerService } from '@/mailer/mailer.service';
+import { SessionRevocationService } from './session-revocation.service';
 import { createMockDatabase } from '@/test-utils';
 import { UserFactory } from '@/test-utils/factories';
 
@@ -18,6 +19,9 @@ describe('PasswordResetService', () => {
     sendPasswordResetEmail: jest.Mock;
   };
   let mockConfigService: ConfigService;
+  let mockSessionRevocationService: {
+    revokeAllUserSessions: jest.Mock;
+  };
 
   const hashToken = (token: string) =>
     createHash('sha256').update(token).digest('hex');
@@ -40,11 +44,16 @@ describe('PasswordResetService', () => {
       ),
     } as unknown as ConfigService;
 
+    mockSessionRevocationService = {
+      revokeAllUserSessions: jest.fn().mockResolvedValue(undefined),
+    };
+
     service = new PasswordResetService(
       mockDatabase as never,
       mockUserService as unknown as UserService,
       mockMailerService as unknown as MailerService,
       mockConfigService,
+      mockSessionRevocationService as unknown as SessionRevocationService,
     );
   });
 
@@ -141,6 +150,9 @@ describe('PasswordResetService', () => {
       expect(
         mockUserService.resetPasswordAndRevokeSessions,
       ).not.toHaveBeenCalled();
+      expect(
+        mockSessionRevocationService.revokeAllUserSessions,
+      ).not.toHaveBeenCalled();
     });
 
     it('throws BadRequestException for an expired token', async () => {
@@ -211,6 +223,10 @@ describe('PasswordResetService', () => {
       expect(
         mockUserService.resetPasswordAndRevokeSessions,
       ).toHaveBeenCalledWith('user-1', 'new-password-123', mockDatabase);
+      // After the commit: revoke the access tokens, disconnect the sockets
+      expect(
+        mockSessionRevocationService.revokeAllUserSessions,
+      ).toHaveBeenCalledWith('user-1', 'PASSWORD_CHANGED');
     });
 
     it('rejects the second of two concurrent redemptions of the same token (atomic claim)', async () => {

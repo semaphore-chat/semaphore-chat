@@ -92,7 +92,10 @@ describe('RoomsService', () => {
       const userId = 'user-123';
       const client = createMockClient(userId);
 
-      mockDatabase.membership.findMany.mockResolvedValue([]);
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'community-1' },
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([]);
       mockDatabase.channelMembership.findMany.mockResolvedValue([
         { channelId: 'private-1' },
         { channelId: 'private-2' },
@@ -105,7 +108,8 @@ describe('RoomsService', () => {
       expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
         where: {
           userId,
-          channel: { isPrivate: true },
+          // Only in communities the user is still a member of
+          channel: { isPrivate: true, communityId: { in: ['community-1'] } },
         },
         select: { channelId: true },
       });
@@ -136,7 +140,7 @@ describe('RoomsService', () => {
         select: { groupId: true },
       });
       expect(mockDatabase.aliasGroupMember.findMany).toHaveBeenCalledWith({
-        where: { userId },
+        where: { userId, aliasGroup: { communityId: { in: [] } } },
         select: { aliasGroupId: true },
       });
       expect(client.join).toHaveBeenCalledWith('dm:dm-1');
@@ -185,12 +189,13 @@ describe('RoomsService', () => {
       expect(client.join).toHaveBeenCalledWith('c3-ch2');
     });
 
-    it('should query private channels without community filter', async () => {
+    it("should query private channels of all the user's communities in one query", async () => {
       const userId = 'user-priv';
       const client = createMockClient(userId);
 
       mockDatabase.membership.findMany.mockResolvedValue([
         { communityId: 'c-1' },
+        { communityId: 'c-2' },
       ]);
       mockDatabase.channel.findMany.mockResolvedValue([]);
       mockDatabase.channelMembership.findMany.mockResolvedValue([
@@ -202,12 +207,13 @@ describe('RoomsService', () => {
 
       await service.joinAllUserRooms(client);
 
-      // Private channel query uses userId + isPrivate filter, NOT communityId
-      // This ensures we get private channels from ALL communities in one query
+      // One query across communities, limited to those the user is still a
+      // member of: a channel membership left behind in a community the user
+      // was removed or banned from must not rejoin its room
       expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
         where: {
           userId,
-          channel: { isPrivate: true },
+          channel: { isPrivate: true, communityId: { in: ['c-1', 'c-2'] } },
         },
         select: { channelId: true },
       });

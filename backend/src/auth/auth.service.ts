@@ -8,6 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
+import { SessionRevocationService } from './session-revocation.service';
 
 export interface DeviceInfo {
   userAgent?: string;
@@ -38,6 +39,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly databaseService: DatabaseService,
     configService: ConfigService,
+    private readonly sessionRevocationService: SessionRevocationService,
   ) {
     this.jwtRefreshSecret = configService.get<string>('JWT_REFRESH_SECRET');
     if (!this.jwtRefreshSecret) {
@@ -64,13 +66,19 @@ export class AuthService {
     return null;
   }
 
-  login(user: UserEntity) {
+  /**
+   * Sign an access token.
+   * @param sessionId - The refresh token family the token is issued from
+   *   (`sid` claim), so revoking the session revokes its access tokens.
+   */
+  login(user: UserEntity, sessionId?: string) {
     const jti = randomUUID();
     const payload = {
       username: user.username,
       sub: user.id,
       role: user.role,
       jti,
+      ...(sessionId ? { sid: sessionId } : {}),
     };
     return this.jwtService.sign(payload);
   }
@@ -104,8 +112,9 @@ export class AuthService {
     deviceInfo?: DeviceInfo,
     tx?: Prisma.TransactionClient,
     familyId?: string,
-  ) {
+  ): Promise<{ refreshToken: string; sessionId: string }> {
     const jti = randomUUID();
+    const sessionId = familyId ?? randomUUID();
     const refreshToken = this.jwtService.sign(
       { sub: userId, jti },
       {
@@ -137,11 +146,12 @@ export class AuthService {
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
         lastUsedAt: new Date(),
-        familyId: familyId ?? randomUUID(),
+        familyId: sessionId,
       },
     });
 
-    return refreshToken;
+    // The family id is the session id access tokens carry (`sid`)
+    return { refreshToken, sessionId };
   }
 
   /**
@@ -211,12 +221,13 @@ export class AuthService {
   /**
    * Delete a refresh token outright (used for logout).
    * Also deletes all consumed tokens in the same family.
+   * @returns The deleted session's id (family id), if it has one
    */
   async deleteRefreshToken(
     jti: string,
     refreshToken: string,
     tx?: Prisma.TransactionClient,
-  ) {
+  ): Promise<string | null> {
     const client = tx ?? this.databaseService;
     const token = await this.findMatchingToken(jti, refreshToken, tx);
 
@@ -234,6 +245,7 @@ export class AuthService {
     } else {
       await client.refreshToken.delete({ where: { id: token.id } });
     }
+    return token.familyId;
   }
 
   /**
@@ -347,32 +359,77 @@ export class AuthService {
   }
 
   /**
-   * Revoke a specific session (delete refresh token)
+   * Revoke a specific session: delete its refresh tokens, revoke the access
+   * tokens issued from it and disconnect its sockets.
+   * @param sessionId - The session's current refresh token id (what
+   *   getUserSessions lists as the session id)
    */
   async revokeSession(userId: string, sessionId: string): Promise<boolean> {
-    const result = await this.databaseService.refreshToken.deleteMany({
-      where: {
-        id: sessionId,
-        userId, // Ensure user can only revoke their own sessions
-      },
+    const token = await this.databaseService.refreshToken.findFirst({
+      // userId: a user can only revoke their own sessions
+      where: { id: sessionId, userId },
+      select: { id: true, familyId: true },
+    });
+    if (!token) return false;
+
+    await this.databaseService.refreshToken.deleteMany({
+      where: token.familyId
+        ? { familyId: token.familyId, userId }
+        : { id: token.id, userId },
     });
 
-    return result.count > 0;
+    if (token.familyId) {
+      await this.sessionRevocationService.revokeSessions(
+        userId,
+        [token.familyId],
+        'SESSION_REVOKED',
+      );
+    }
+
+    return true;
   }
 
   /**
-   * Revoke all sessions except the current one
+   * Revoke all sessions except the current one: delete their refresh tokens,
+   * revoke the access tokens issued from them and disconnect their sockets.
    */
   async revokeAllOtherSessions(
     userId: string,
     currentTokenId: string,
   ): Promise<number> {
+    const current = await this.databaseService.refreshToken.findFirst({
+      where: { id: currentTokenId, userId },
+      select: { familyId: true },
+    });
+    const currentFamilyId = current?.familyId ?? null;
+
+    const others = await this.databaseService.refreshToken.findMany({
+      where: { userId, id: { not: currentTokenId } },
+      select: { familyId: true },
+    });
+    const otherFamilyIds = [
+      ...new Set(
+        others
+          .map((t) => t.familyId)
+          .filter((f): f is string => !!f && f !== currentFamilyId),
+      ),
+    ];
+
+    // By family, not by the rows read above: a refresh racing this rotates
+    // into a new row of the same family, which must go too.
     const result = await this.databaseService.refreshToken.deleteMany({
       where: {
         userId,
         id: { not: currentTokenId },
+        OR: [{ familyId: { in: otherFamilyIds } }, { familyId: null }],
       },
     });
+
+    await this.sessionRevocationService.revokeSessions(
+      userId,
+      otherFamilyIds,
+      'SESSION_REVOKED',
+    );
 
     return result.count;
   }

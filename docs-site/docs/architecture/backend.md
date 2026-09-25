@@ -91,6 +91,13 @@ EventEmitter2 (domain events) --> RoomSubscriptionHandler --> WebsocketService
 3. **Refresh**: `POST /auth/refresh` -> validates refresh token -> issues new pair
 4. **RBAC**: `RbacGuard` checks user's roles against `@RequiredActions()` decorator
 
+Access tokens live 1 hour and carry a session id (`sid`, the refresh token
+family). Revocation is remembered in Redis until the tokens would have
+expired anyway (`TokenBlacklistService`): logout revokes that token and its
+session, revoking a session revokes all of its tokens, and a password reset
+revokes every token the user holds. REST (`JwtStrategy`) and WebSocket auth
+check the same revocations.
+
 ### RBAC Pattern
 
 ```typescript
@@ -116,6 +123,27 @@ The guard resolves the resource (channel -> community), loads the user's roles f
 - **PresenceGateway** -- User connect/disconnect, online status
 
 Both gateways use `JwtWsGuard` for authentication.
+
+### Socket Sessions
+
+A socket authenticates once, in `RoomsGateway`'s connection middleware, and
+stays bound to that access token (`SocketSessionService`):
+
+- It joins `user:<id>`, `session:<sid>` and `token:<jti>` right away. Ending
+  sessions (`SessionRevocationService` -> domain event ->
+  `SessionRevocationHandler`) disconnects exactly those rooms with
+  `disconnectSockets()`, on every instance through the Redis adapter. The
+  client first gets `SESSION_TERMINATED` with the reason: `LOGGED_OUT`,
+  `SESSION_REVOKED`, `PASSWORD_CHANGED`, `ACCOUNT_BANNED`, `ACCOUNT_DELETED`
+  or `TOKEN_EXPIRED`.
+- It ends when its token expires. Two minutes before, the server sends
+  `TOKEN_EXPIRING`; the client refreshes its token and sends it with
+  `REAUTHENTICATE`, which keeps the connection. `SocketProvider` does this,
+  and refreshes and reconnects after a `SESSION_TERMINATED` disconnect (or
+  signs out when the session can't be refreshed).
+
+A community ban or kick doesn't end the session: it takes the user's sockets
+out of that community's rooms (`RoomSubscriptionHandler`).
 
 ### WebsocketService
 

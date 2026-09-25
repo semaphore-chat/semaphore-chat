@@ -7,10 +7,29 @@ import {
   ClientToServerEvents,
 } from "./SocketContext";
 import { logger } from "./logger";
-import { refreshToken, notifyAuthFailure } from "./tokenService";
+import {
+  refreshToken,
+  notifyAuthFailure,
+  onTokenRefreshed,
+} from "./tokenService";
+import { ClientEvents, ServerEvents } from "@semaphore-chat/shared";
+import type {
+  ReauthenticateResult,
+  SessionTerminatedPayload,
+  SessionTerminatedReason,
+} from "@semaphore-chat/shared";
 
 const MAX_SERVER_DISCONNECT_RETRIES = 3;
 const MAX_BACKOFF_MS = 10_000;
+
+/**
+ * TOKEN_EXPIRING arrives two minutes before the socket's token expires. Wait
+ * a random part of this before refreshing, so several tabs (each with its own
+ * socket and token) don't refresh at the same moment: they share the refresh
+ * cookie, and two refreshes racing with the same cookie read as token reuse.
+ */
+export const TOKEN_REFRESH_JITTER_MS = 30_000;
+const REAUTHENTICATE_TIMEOUT_MS = 10_000;
 
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const [socket] = useState<Socket<
@@ -31,6 +50,9 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
   const serverDisconnectCount = useRef(0);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHandlingAuthFailure = useRef(false);
+  // Why the server is about to disconnect us (SESSION_TERMINATED)
+  const sessionEndReason = useRef<SessionTerminatedReason | null>(null);
+  const tokenRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Track connection state via socket events
   useEffect(() => {
@@ -39,7 +61,48 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     const onConnect = () => {
       logger.dev("[Socket] Connected:", socket.id);
       serverDisconnectCount.current = 0;
+      sessionEndReason.current = null;
       setIsConnected(true);
+    };
+
+    // Give the live socket the new token whenever it is refreshed (after
+    // TOKEN_EXPIRING, or a REST 401), so it outlives the token it connected
+    // with. Reconnects pick up the latest token through the auth callback.
+    const reauthenticate = (token: string) => {
+      if (!socket.connected) return;
+      socket
+        .timeout(REAUTHENTICATE_TIMEOUT_MS)
+        .emitWithAck(ClientEvents.REAUTHENTICATE, { token: `Bearer ${token}` })
+        .then((result: ReauthenticateResult) => {
+          if (result.ok) {
+            logger.dev("[Socket] Re-authenticated until", result.expiresAt);
+          } else {
+            logger.warn("[Socket] Re-authentication rejected", result.error);
+          }
+        })
+        // Neither is fatal: at worst the server ends the session when the old
+        // token expires, and we reconnect with a fresh one.
+        .catch((err: unknown) => {
+          logger.warn("[Socket] Re-authentication failed", err);
+        });
+    };
+    const unsubscribeTokenRefreshed = onTokenRefreshed(reauthenticate);
+
+    const onTokenExpiring = () => {
+      if (tokenRefreshTimer.current) return;
+      const delay = Math.random() * TOKEN_REFRESH_JITTER_MS;
+      logger.dev(`[Socket] Token expiring, refreshing in ${Math.round(delay)}ms`);
+      tokenRefreshTimer.current = setTimeout(() => {
+        tokenRefreshTimer.current = null;
+        // Success re-authenticates through onTokenRefreshed. Failure is left
+        // to the expiry: the server ends the session, and the disconnect
+        // handler below tries once more before signing out.
+        void refreshToken();
+      }, delay);
+    };
+
+    const onSessionTerminated = ({ reason }: SessionTerminatedPayload) => {
+      sessionEndReason.current = reason;
     };
 
     const onDisconnect = (reason: string) => {
@@ -51,6 +114,31 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         if (reconnectTimer.current) {
           clearTimeout(reconnectTimer.current);
           reconnectTimer.current = null;
+        }
+
+        // The server ended our session (token expired, logged out, banned,
+        // ...). A fresh token is the only way back: refresh and reconnect,
+        // or sign out when the session can't be refreshed any more.
+        const sessionEnd = sessionEndReason.current;
+        if (sessionEnd) {
+          sessionEndReason.current = null;
+          logger.warn(
+            `[Socket] Session ended by the server (${sessionEnd}), refreshing token`
+          );
+          refreshToken()
+            .then((newToken) => {
+              if (newToken) {
+                socket.connect();
+              } else {
+                logger.error("[Socket] Session can't be refreshed, logging out");
+                notifyAuthFailure();
+              }
+            })
+            .catch(() => {
+              logger.error("[Socket] Token refresh failed, logging out");
+              notifyAuthFailure();
+            });
+          return;
         }
 
         serverDisconnectCount.current++;
@@ -114,6 +202,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
     socket.on("connect_error", onConnectError);
+    socket.on(ServerEvents.TOKEN_EXPIRING, onTokenExpiring);
+    socket.on(ServerEvents.SESSION_TERMINATED, onSessionTerminated);
 
     // If the socket connected before this effect ran (or during a
     // StrictMode cleanup/re-register cycle), sync state now.
@@ -125,8 +215,15 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
       socket.off("connect_error", onConnectError);
+      socket.off(ServerEvents.TOKEN_EXPIRING, onTokenExpiring);
+      socket.off(ServerEvents.SESSION_TERMINATED, onSessionTerminated);
+      unsubscribeTokenRefreshed();
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
+      }
+      if (tokenRefreshTimer.current) {
+        clearTimeout(tokenRefreshTimer.current);
+        tokenRefreshTimer.current = null;
       }
     };
   }, [socket]);

@@ -2,19 +2,17 @@ import {
   WebSocketGateway,
   SubscribeMessage,
   ConnectedSocket,
+  MessageBody,
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
 import { RoomsService } from './rooms.service';
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards, UseFilters } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
 import { RbacGuard } from '@/auth/rbac.guard';
-import { TokenBlacklistService } from '@/auth/token-blacklist.service';
+import { WsAuthService } from '@/auth/ws-auth.service';
 import { WebsocketService } from '@/websocket/websocket.service';
-import { UserService } from '@/user/user.service';
-import { UserEntity } from '@/user/dto/user-response.dto';
-import { ClientEvents } from '@semaphore-chat/shared';
+import { ClientEvents, ReauthenticateResult } from '@semaphore-chat/shared';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -23,6 +21,8 @@ import {
   AuthenticatedSocket,
   extractTokenFromHandshake,
 } from '@/common/utils/socket.utils';
+import { SocketSessionService } from './socket-session.service';
+import { ReauthenticateDto } from './dto/reauthenticate.dto';
 
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway({
@@ -48,9 +48,8 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
   constructor(
     private readonly roomsService: RoomsService,
     private readonly websocketService: WebsocketService,
-    private readonly jwtService: JwtService,
-    private readonly userService: UserService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly wsAuthService: WsAuthService,
+    private readonly socketSessionService: SocketSessionService,
   ) {}
 
   afterInit(server: Server) {
@@ -86,7 +85,8 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
       next();
     });
 
-    // Auth middleware — validates JWT and attaches user before connection
+    // Auth middleware — validates JWT and binds the socket to its token
+    // (user, rooms, expiry) before connection
     server.use((socket, next) => {
       const token = extractTokenFromHandshake(socket.handshake);
 
@@ -95,45 +95,15 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
         return;
       }
 
-      let payload: { sub: string; jti?: string };
-      try {
-        payload = this.jwtService.verify<{ sub: string; jti?: string }>(token);
-      } catch {
-        next(new Error('AUTH_FAILED'));
-        return;
-      }
-
-      const checkBlacklistAndUser = async () => {
-        if (payload.jti) {
-          const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(
-            payload.jti,
-          );
-          if (isBlacklisted) {
-            next(new Error('AUTH_FAILED'));
-            return;
-          }
-        }
-
-        // Narrowed select: this user object lives on the socket for the
-        // whole connection — it must never hold sensitive columns.
-        const user = await this.userService.findAuthUserById(payload.sub);
-        if (!user) {
+      this.wsAuthService
+        .authenticate(token)
+        .then((auth) => {
+          this.socketSessionService.attach(socket, auth);
+          next();
+        })
+        .catch(() => {
           next(new Error('AUTH_FAILED'));
-          return;
-        }
-
-        if (user.banned) {
-          next(new Error('AUTH_FAILED'));
-          return;
-        }
-
-        (socket as AuthenticatedSocket).handshake.user = new UserEntity(user);
-        next();
-      };
-
-      checkBlacklistAndUser().catch(() => {
-        next(new Error('AUTH_FAILED'));
-      });
+        });
     });
   }
 
@@ -146,5 +116,20 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
     const user = getSocketUser(client);
     this.logger.debug(`User ${user.id} subscribing to all rooms`);
     return this.roomsService.joinAllUserRooms(client as AuthenticatedSocket);
+  }
+
+  /**
+   * Swap the socket's access token for a fresh one (after TOKEN_EXPIRING, or
+   * whenever the client refreshed its token), so the socket outlives the
+   * token it connected with.
+   */
+  @SubscribeMessage(ClientEvents.REAUTHENTICATE)
+  async reauthenticate(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() dto: ReauthenticateDto,
+  ): Promise<ReauthenticateResult> {
+    const token = extractTokenFromHandshake({ auth: { token: dto.token } });
+    if (!token) return { ok: false, error: 'AUTH_FAILED' };
+    return this.socketSessionService.reauthenticate(client, token);
   }
 }

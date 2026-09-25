@@ -30,6 +30,8 @@ describe('RoomSubscriptionHandler', () => {
 
     // Default: user not in any voice channel
     voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+    // Default: community has no alias groups
+    mockDatabase.aliasGroup.findMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -120,6 +122,27 @@ describe('RoomSubscriptionHandler', () => {
           'channel-2',
           'private-channel-3',
         ],
+      );
+    });
+
+    it("should also remove user from the community's alias group rooms", async () => {
+      const userId = 'user-123';
+      const communityId = 'community-456';
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'channel-1' }]);
+      mockDatabase.aliasGroup.findMany.mockResolvedValue([
+        { id: 'alias-1' },
+        { id: 'alias-2' },
+      ]);
+
+      await handler.onMembershipRemoved({ userId, communityId });
+
+      expect(mockDatabase.aliasGroup.findMany).toHaveBeenCalledWith({
+        where: { communityId },
+        select: { id: true },
+      });
+      expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
+        `user:${userId}`,
+        [`community:${communityId}`, 'channel-1', 'alias-1', 'alias-2'],
       );
     });
   });

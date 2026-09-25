@@ -2,6 +2,12 @@
  * Events emitted by the server and handled by the client.
  */
 export enum ServerEvents {
+  // Session lifecycle
+  /** The socket's access token expires soon: refresh it and REAUTHENTICATE. */
+  TOKEN_EXPIRING = 'tokenExpiring',
+  /** Sent right before the server disconnects the socket, with the reason. */
+  SESSION_TERMINATED = 'sessionTerminated',
+
   // Messaging: Channels
   NEW_MESSAGE = 'newMessage',
   UPDATE_MESSAGE = 'updateMessage',
