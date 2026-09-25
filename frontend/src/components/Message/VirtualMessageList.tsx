@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -78,7 +79,9 @@ export interface VirtualMessageListProps {
   onAtBottomChange?: (atBottom: boolean) => void;
 
   /**
-   * Reports the currently visible item index range [start, end] on scroll.
+   * Reports the currently visible item index range [start, end] on scroll,
+   * and — since a list that fits the viewport never scrolls — the whole
+   * range whenever such a list is measured or changes.
    * Consumed by read-tracking (fed to markAsRead) in MessageContainer.
    */
   onVisibleRangeChange?: (startIndex: number, endIndex: number) => void;
@@ -128,6 +131,15 @@ export interface VirtualMessageListProps {
  *   Both positioning paths use the double-rAF re-assert pattern (a single
  *   rAF races virtua's measurement readiness on first mount).
  * - **atBottom**: derived from virtua's scroll offset, reported upward for FABs.
+ * - **Visible range without scrolling**: read tracking is fed from the
+ *   visible range, which virtua only reports through `onScroll`. A list short
+ *   enough to fit the viewport never scrolls (scrolling to its last row is a
+ *   no-op), so it would never be marked read. While the content fits, the
+ *   whole range [0, len - 1] is reported instead whenever the rendered rows
+ *   are measured or resized (a ResizeObserver on our own row elements: this
+ *   covers opening the conversation, a new message arriving, a context
+ *   switch) and whenever the consumer's callback changes (e.g. the socket
+ *   connecting after mount). An overflowing list is left to `onScroll`.
  * - **Typing-indicator spacer**: the "X is typing..." line (TypingIndicator)
  *   floats over the bottom of this list, so the newest row carries a
  *   permanent `TYPING_INDICATOR_HEIGHT` spacer (always present, so no layout
@@ -437,6 +449,60 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
     }, [len]);
 
     useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+
+    // ── Visible range while the whole list fits (see the module doc) ──
+    const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
+    onVisibleRangeChangeRef.current = onVisibleRangeChange;
+
+    /** Reports [0, len - 1] when every row fits the viewport, where no
+     * scroll event will ever report it. Waits for virtua to measure the
+     * viewport; virtua's scrollSize is max(content, viewport), so the content
+     * fits exactly when the two are equal. */
+    const reportRangeIfFits = useCallback(() => {
+      const handle = vlistRef.current;
+      const report = onVisibleRangeChangeRef.current;
+      const count = orderedMessagesRef.current.length;
+      if (!handle || !report || count === 0) return;
+      const { scrollSize, viewportSize } = handle;
+      if (viewportSize <= 0 || scrollSize - viewportSize >= 1) return;
+      report(0, count - 1);
+    }, []);
+
+    // One ResizeObserver for the rendered rows: our own row elements,
+    // attached through `observeRow` as virtua mounts them (their first
+    // notification is the initial measurement). Created in a layout effect,
+    // after virtua created its own observer during its child layout effects,
+    // so within a delivery virtua has already recorded the new sizes by the
+    // time this one runs (observers are notified in creation order).
+    const rowObserverRef = useRef<ResizeObserver | null>(null);
+    useLayoutEffect(() => {
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver(() => {
+        reportRangeIfFits();
+      });
+      rowObserverRef.current = observer;
+      // Rows that mounted before the observer existed.
+      listContainerRef.current
+        ?.querySelectorAll("[data-message-id]")
+        .forEach((row) => observer.observe(row));
+      return () => {
+        observer.disconnect();
+        rowObserverRef.current = null;
+      };
+    }, [reportRangeIfFits]);
+
+    const observeRow = useCallback((row: HTMLDivElement | null) => {
+      const observer = rowObserverRef.current;
+      if (!row || !observer) return;
+      observer.observe(row);
+      return () => observer.unobserve(row);
+    }, []);
+
+    // A new consumer callback (markAsRead is re-created when the socket
+    // connects or read tracking is enabled) gets the current range too.
+    useEffect(() => {
+      reportRangeIfFits();
+    }, [onVisibleRangeChange, reportRangeIfFits]);
 
     // Pending positioning frames (initial positioning AND the highlight/anchor
     // jump below share this — they're mutually exclusive in any given commit).
@@ -765,7 +831,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
               : rowKey;
 
             return (
-              <div key={key} data-message-id={message.id} role="listitem">
+              <div key={key} ref={observeRow} data-message-id={message.id} role="listitem">
                 {showDaySeparator && <DaySeparator date={message.sentAt} />}
                 {showDividerBefore && (
                   <UnreadMessageDivider unreadCount={unreadCount} />
