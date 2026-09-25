@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **Prisma 7** — The backend moves from Prisma 6.19 to 7.10. The database client now connects through node-postgres (`@prisma/adapter-pg`) instead of Prisma's Rust query engine, and the migrate CLI reads the database URL from `backend/prisma.config.ts`.
+- **Prisma 7** — The backend moves from Prisma 6.19 to 7.9.1 (pinned exactly: the `prisma@7.10.0` CLI was published without npm provenance). The database client now connects through node-postgres (`@prisma/adapter-pg`) instead of Prisma's Rust query engine, and the migrate CLI reads the database URL from `backend/prisma.config.ts`.
 
 ### Upgrade notes
 

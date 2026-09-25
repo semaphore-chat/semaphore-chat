@@ -24,6 +24,16 @@ updates:
     # but pnpm still holds them until they are 3 days old.
     cooldown:
       default-days: 4
+    # Prisma is pinned exactly to 7.9.1 because the prisma@7.10.0 CLI has no
+    # npm provenance (published with a token outside trusted publishing).
+    # Skip that one release for all Prisma packages so the group stays in
+    # lockstep; later versions are still proposed. Check a proposed prisma
+    # release's provenance (npm view prisma@<ver> dist.attestations) first.
+    ignore:
+      - dependency-name: "prisma"
+        versions: ["7.10.0"]
+      - dependency-name: "@prisma/*"
+        versions: ["7.10.0"]
     groups:
       security:
         applies-to: security-updates
