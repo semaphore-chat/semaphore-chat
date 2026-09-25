@@ -7,28 +7,15 @@ on:
     tags:
       - 'v*.*.*'        # Full release
       - 'docker-v*.*.*' # Docker-only release
+  # Every PR to main starts this workflow, so the image checks are always
+  # reported and can be required checks in the main ruleset (a workflow-level
+  # `paths` filter would skip the whole workflow, and a required check that
+  # is never reported blocks the PR forever). The `changes` job decides
+  # whether the PR can affect an image; if not, the build jobs are skipped,
+  # which GitHub counts as passing.
   pull_request:
     branches:
       - main
-    # Deny-list, deliberately not an allow-list: skip only PRs that cannot
-    # change either image or its Trivy result (docs, the Helm chart, root-level
-    # Markdown, other CI config). Everything else — Dockerfiles, lockfile,
-    # package.json files, patches/, shared/, .npmrc, .trivyignore, and any file
-    # a Dockerfile starts COPYing in the future — still triggers a build + scan,
-    # so a Dockerfile or dependency change can't slip through. Pushes to main
-    # and release tags are unfiltered and always build, scan and publish.
-    # Known GitHub limit (shared with backend-tests.yml): path filters only see
-    # the first 300 changed files, so a >300-file PR whose first 300 are all
-    # excluded paths would skip the PR-time build + scan. That only loses early
-    # feedback; the merged commit is still built, scanned and published.
-    paths:
-      - '**'
-      - '!docs/**'
-      - '!docs-site/**'
-      - '!helm/**'
-      - '!*.md'
-      - '!.github/**'
-      - '.github/workflows/docker-publish.yml'
   workflow_dispatch:
     inputs:
       version:
@@ -75,9 +62,56 @@ env:
 # - ignore-error=true: a cache-service hiccup must never fail a publish.
 
 jobs:
+  # PRs only. Pushes to main, release tags and manual dispatch are unfiltered:
+  # `changes` is skipped, its outputs are empty, and both images build, scan
+  # and publish.
+  #
+  # Deny-list, deliberately not an allow-list: skip only PRs that cannot
+  # change either image or its Trivy result (docs, the Helm chart, root-level
+  # Markdown, other CI config). Everything else — Dockerfiles, lockfile,
+  # package.json files, patches/, shared/, .npmrc, .trivyignore, and any file
+  # a Dockerfile starts COPYing in the future — still builds + scans, so a
+  # Dockerfile or dependency change can't slip through. This workflow file
+  # is under the excluded .github/**, so it gets its own filter.
+  changes:
+    name: Detect image changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      images: ${{ steps.filter.outputs.images }}
+      workflow: ${{ steps.filter.outputs.workflow }}
+    steps:
+      # Lists the PR's files through the API (up to 3000), so no checkout is
+      # needed.
+      - name: Filter image-relevant paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          # A file counts if it matches a pattern and none of the '!' ones.
+          predicate-quantifier: some-with-excludes
+          filters: |
+            images:
+              - '**'
+              - '!docs/**'
+              - '!docs-site/**'
+              - '!helm/**'
+              - '!*.md'
+              - '!.github/**'
+            workflow:
+              - '.github/workflows/docker-publish.yml'
+
+  # The jobs below skip only when `changes` positively reported no image
+  # changes ('false'). If `changes` was skipped (not a PR) or failed, the
+  # outputs are empty and they run: a broken filter builds and scans rather
+  # than skipping, which would count as passing. `!cancelled()` lets them
+  # start after a skipped or failed `changes`.
   build-backend:
     name: Build Backend Image
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.images != 'false' || needs.changes.outputs.workflow == 'true') }}
     # packages: write is only used by the GHCR push (non-PR runs; job-level
     # permissions can't vary by event). No step creates GitHub attestations
     # or uses OIDC, so attestations/id-token are not requested.
@@ -191,6 +225,8 @@ jobs:
   build-frontend:
     name: Build Frontend Image
     runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.images != 'false' || needs.changes.outputs.workflow == 'true') }}
     # packages: write is only used by the GHCR push (non-PR runs; job-level
     # permissions can't vary by event). No step creates GitHub attestations
     # or uses OIDC, so attestations/id-token are not requested.
@@ -308,8 +344,8 @@ jobs:
   summary:
     name: Build Summary
     runs-on: ubuntu-latest
-    needs: [build-backend, build-frontend]
-    if: always()
+    needs: [changes, build-backend, build-frontend]
+    if: ${{ always() && (needs.changes.outputs.images != 'false' || needs.changes.outputs.workflow == 'true') }}
 
     steps:
       - name: Check build status

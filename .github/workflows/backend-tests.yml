@@ -1,12 +1,15 @@
 name: Backend Tests
 
+# PRs to main always start this workflow, even when no backend file changed,
+# so its jobs always report a check and can be required checks in the main
+# ruleset. A workflow-level `paths` filter would skip the whole workflow, and a
+# required check that is never reported blocks the PR forever. The `changes`
+# job applies the path filter instead: when it reports no backend changes the
+# other jobs are skipped, and GitHub counts a skipped job as passing. Pushes
+# to main keep the workflow-level filter; required checks only apply to PRs.
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'backend/**'
-      - 'shared/**'
-      - '.github/workflows/backend-tests.yml'
   push:
     branches: [main]
     paths:
@@ -22,11 +25,41 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # PRs only. On pushes it is skipped, its output is empty, and every job below
+  # runs. Keep the filter in sync with the push `paths` above.
+  changes:
+    name: Detect backend changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      # Lists the PR's files through the API, so no checkout is needed.
+      - name: Filter backend paths
+        uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'shared/**'
+              - '.github/workflows/backend-tests.yml'
+
+  # The jobs below skip only when `changes` positively reported no backend
+  # changes (output 'false'). If `changes` was skipped (a push) or failed, the
+  # output is empty and they run: a broken filter runs the tests rather than
+  # skipping them, which would count as passing. `!cancelled()` lets them start
+  # after a skipped or failed `changes`.
+
   # ESLint and tsc share one job so the install + prisma generate happens once
   # (they were separate jobs doing identical setup). Neither is on the critical
   # path — Unit Tests / E2E Tests take ~2x longer.
   lint:
-    name: Lint & Type Check
+    name: Backend Lint & Type Check
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -67,7 +100,9 @@ jobs:
         run: pnpm run lint
 
   test:
-    name: Unit Tests
+    name: Backend Unit Tests
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -171,7 +206,9 @@ jobs:
           git push origin badges
 
   e2e:
-    name: E2E Tests
+    name: Backend E2E Tests
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.backend != 'false' }}
     runs-on: ubuntu-latest
 
     env:
