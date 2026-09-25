@@ -8,6 +8,7 @@ import {
   refreshToken,
   clearTokens,
   onAuthFailure,
+  type SignOutReason,
 } from "../utils/tokenService";
 import { disconnectSocket } from "../utils/socketSingleton";
 import { userControllerGetProfile } from "../api-client/sdk.gen";
@@ -24,6 +25,7 @@ import { SpeakingProvider } from "../contexts/SpeakingContext";
 import { ThreadPanelProvider } from "../contexts/ThreadPanelContext";
 import { UserProfileProvider } from "../contexts/UserProfileContext";
 import { logger } from "../utils/logger";
+import type { LoginLocationState } from "../pages/LoginPage";
 
 enum AuthState {
   Loading = "loading",
@@ -34,6 +36,8 @@ enum AuthState {
 
 export function AuthGate() {
   const [authState, setAuthState] = useState<AuthState>(AuthState.Loading);
+  // Why the server signed us out, for the login page to explain
+  const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const navigate = useNavigate();
 
   // Phase 1: Onboarding check (no auth required)
@@ -69,9 +73,10 @@ export function AuthGate() {
   // expired while the user was browsing). The interceptor calls
   // notifyAuthFailure() instead of performing navigation/cleanup itself.
   useEffect(() => {
-    return onAuthFailure(() => {
+    return onAuthFailure((reason) => {
       disconnectSocket();
       clearTokens();
+      setSignOutReason(reason ?? null);
       setAuthState(AuthState.Unauthenticated);
     });
   }, []);
@@ -164,7 +169,10 @@ export function AuthGate() {
   }
 
   if (authState === AuthState.Unauthenticated) {
-    return <Navigate to="/login" replace />;
+    const state: LoginLocationState | undefined = signOutReason
+      ? { signOutReason }
+      : undefined;
+    return <Navigate to="/login" replace state={state} />;
   }
 
   // Authenticated — render providers and child routes

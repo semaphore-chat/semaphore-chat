@@ -15,8 +15,28 @@ import {
   authControllerLoginMutation,
   instanceControllerGetPublicSettingsOptions,
 } from "../api-client/@tanstack/react-query.gen";
-import { useNavigate, Link as RouterLink } from "react-router-dom";
-import { setAccessToken, storeElectronRefreshToken } from "../utils/tokenService";
+import { useNavigate, useLocation, Link as RouterLink } from "react-router-dom";
+import {
+  setAccessToken,
+  storeElectronRefreshToken,
+  type SignOutReason,
+} from "../utils/tokenService";
+
+/** Router state AuthGate passes when the server signed the user out. */
+export interface LoginLocationState {
+  signOutReason?: SignOutReason;
+}
+
+/**
+ * Sign-outs worth explaining. The others (logged out, session revoked or
+ * expired) are what the user expects, or not theirs to act on.
+ */
+const SIGN_OUT_MESSAGES: Partial<Record<SignOutReason, string>> = {
+  PASSWORD_CHANGED:
+    "Your password was changed, so you were signed out. Sign in with the new password.",
+  ACCOUNT_BANNED: "You were signed out because this account was banned.",
+  ACCOUNT_DELETED: "You were signed out because this account was deleted.",
+};
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
@@ -24,6 +44,11 @@ const LoginPage: React.FC = () => {
   const { mutateAsync: login, isPending: isLoading, error } = useMutation(authControllerLoginMutation());
   const { data: publicSettings } = useQuery(instanceControllerGetPublicSettingsOptions());
   const navigate = useNavigate();
+  const signOutReason = (useLocation().state as LoginLocationState | null)
+    ?.signOutReason;
+  const signOutMessage = signOutReason
+    ? SIGN_OUT_MESSAGES[signOutReason]
+    : undefined;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -80,7 +105,7 @@ const LoginPage: React.FC = () => {
         >
           Login
         </Typography>
-        {error && (
+        {error ? (
           <Alert
             severity="error"
             sx={{ width: "100%", marginBottom: 2 }}
@@ -88,6 +113,16 @@ const LoginPage: React.FC = () => {
           >
             {"Login failed. Please try again."}
           </Alert>
+        ) : (
+          signOutMessage && (
+            <Alert
+              severity="info"
+              sx={{ width: "100%", marginBottom: 2 }}
+              role="status"
+            >
+              {signOutMessage}
+            </Alert>
+          )
         )}
         <TextField
           id="username"

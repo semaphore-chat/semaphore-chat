@@ -14,10 +14,12 @@ vi.mock('../../utils/socketSingleton', () => ({
 }));
 
 const mockRefreshToken = vi.fn();
+const mockRefreshSession = vi.fn();
 const mockNotifyAuthFailure = vi.fn();
 const tokenRefreshedListeners = new Set<(token: string) => void>();
 vi.mock('../../utils/tokenService', () => ({
   refreshToken: (...args: unknown[]) => mockRefreshToken(...args),
+  refreshSession: (...args: unknown[]) => mockRefreshSession(...args),
   notifyAuthFailure: (...args: unknown[]) => mockNotifyAuthFailure(...args),
   onTokenRefreshed: (listener: (token: string) => void) => {
     tokenRefreshedListeners.add(listener);
@@ -25,13 +27,22 @@ vi.mock('../../utils/tokenService', () => ({
   },
 }));
 
+/** refreshSession() results */
+const refreshed = (token = 'fresh-token') => ({ status: 'refreshed', token }) as const;
+const REJECTED = { status: 'rejected' } as const;
+const UNAVAILABLE = { status: 'unavailable' } as const;
+
 /** What tokenService does after a successful refresh. */
 function simulateTokenRefreshed(token: string) {
   tokenRefreshedListeners.forEach((listener) => listener(token));
 }
 
 import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
-import { SocketProvider, TOKEN_REFRESH_JITTER_MS } from '../../utils/SocketProvider';
+import {
+  SocketProvider,
+  TOKEN_REFRESH_JITTER_MS,
+  MAX_SESSION_REFRESH_ATTEMPTS,
+} from '../../utils/SocketProvider';
 
 /** Reads socket and isConnected from context for assertions. */
 function TestConsumer() {
@@ -83,6 +94,7 @@ describe('SocketProvider', () => {
     vi.clearAllMocks();
     // clearAllMocks keeps implementations: reset the ones tests override
     mockRefreshToken.mockReset();
+    mockRefreshSession.mockReset();
     mockGetSocketSingleton.mockReset();
     tokenRefreshedListeners.clear();
     vi.useFakeTimers();
@@ -193,7 +205,7 @@ describe('SocketProvider', () => {
     it('should attempt token refresh on AUTH_FAILED error', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue('new-token');
+      mockRefreshSession.mockResolvedValue(refreshed('new-token'));
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
@@ -203,16 +215,16 @@ describe('SocketProvider', () => {
         await vi.runAllTimersAsync();
       });
 
-      expect(mockRefreshToken).toHaveBeenCalled();
+      expect(mockRefreshSession).toHaveBeenCalled();
       expect(mockSocket.io.opts.reconnection).toBe(true);
       expect(mockSocket.connect).toHaveBeenCalled();
       expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
     });
 
-    it('should call notifyAuthFailure when refresh returns null', async () => {
+    it('should call notifyAuthFailure when the server refuses the refresh', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue(null);
+      mockRefreshSession.mockResolvedValue(REJECTED);
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
@@ -221,33 +233,42 @@ describe('SocketProvider', () => {
         await vi.runAllTimersAsync();
       });
 
-      expect(mockRefreshToken).toHaveBeenCalled();
-      expect(mockNotifyAuthFailure).toHaveBeenCalled();
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).toHaveBeenCalledTimes(1);
       expect(mockSocket.connect).not.toHaveBeenCalled();
+      expect(mockSocket.io.opts.reconnection).toBe(true);
     });
 
-    it('should call notifyAuthFailure when refresh throws', async () => {
+    it('retries instead of signing out when the refresh fails for a network or server error', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockRejectedValue(new Error('Refresh failed'));
+      mockRefreshSession
+        .mockResolvedValueOnce(UNAVAILABLE)
+        .mockResolvedValueOnce(refreshed());
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
       await act(async () => {
         mockSocket.simulateEvent('connect_error', new Error('AUTH_FAILED'));
-        await vi.runAllTimersAsync();
+        await vi.advanceTimersByTimeAsync(0);
       });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+      expect(mockSocket.connect).not.toHaveBeenCalled();
 
-      expect(mockRefreshToken).toHaveBeenCalled();
-      expect(mockNotifyAuthFailure).toHaveBeenCalled();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(2);
+      expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
     });
 
     it('should temporarily disable reconnection during refresh', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
 
-      let resolveRefresh: (value: string | null) => void;
-      mockRefreshToken.mockImplementation(
+      let resolveRefresh: (value: unknown) => void;
+      mockRefreshSession.mockImplementation(
         () => new Promise((resolve) => { resolveRefresh = resolve; })
       );
 
@@ -261,7 +282,7 @@ describe('SocketProvider', () => {
       expect(mockSocket.io.opts.reconnection).toBe(false);
 
       await act(async () => {
-        resolveRefresh!('new-token');
+        resolveRefresh!(refreshed('new-token'));
         await vi.runAllTimersAsync();
       });
 
@@ -279,6 +300,7 @@ describe('SocketProvider', () => {
         mockSocket.simulateEvent('connect_error', new Error('timeout'));
       });
 
+      expect(mockRefreshSession).not.toHaveBeenCalled();
       expect(mockRefreshToken).not.toHaveBeenCalled();
       expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
     });
@@ -530,80 +552,169 @@ describe('SocketProvider', () => {
   });
 
   describe('session ended by the server', () => {
+    /** SESSION_TERMINATED, then the server's disconnect. */
+    function endSession(
+      mockSocket: ReturnType<typeof createTestSocket>,
+      reason: string,
+    ) {
+      mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, { reason });
+      mockSocket.connected = false;
+      mockSocket.simulateEvent('disconnect', 'io server disconnect');
+    }
+
     it('refreshes and reconnects right away when the token expired', async () => {
       const mockSocket = createTestSocket();
       mockSocket.connected = true;
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue('fresh-token');
+      mockRefreshSession.mockResolvedValue(refreshed());
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
       await act(async () => {
-        mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
-          reason: 'TOKEN_EXPIRED',
-        });
-        mockSocket.connected = false;
-        mockSocket.simulateEvent('disconnect', 'io server disconnect');
+        endSession(mockSocket, 'TOKEN_EXPIRED');
         await Promise.resolve();
       });
 
       // No backoff: the fresh token is all it takes
-      expect(mockRefreshToken).toHaveBeenCalledTimes(1);
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
       expect(mockSocket.connect).toHaveBeenCalledTimes(1);
       expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
     });
 
-    it.each(['LOGGED_OUT', 'SESSION_REVOKED', 'PASSWORD_CHANGED', 'ACCOUNT_BANNED'])(
-      'signs out when the session can no longer be refreshed (%s)',
+    it.each(['LOGGED_OUT', 'SESSION_REVOKED', 'PASSWORD_CHANGED', 'ACCOUNT_BANNED', 'ACCOUNT_DELETED'])(
+      'signs out, with the reason, when the server refuses the refresh (%s)',
       async (reason) => {
         const mockSocket = createTestSocket();
         mockSocket.connected = true;
         mockGetSocketSingleton.mockReturnValue(mockSocket);
-        mockRefreshToken.mockResolvedValue(null);
+        mockRefreshSession.mockResolvedValue(REJECTED);
 
         render(<SocketProvider><TestConsumer /></SocketProvider>);
 
         await act(async () => {
-          mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, { reason });
-          mockSocket.simulateEvent('disconnect', 'io server disconnect');
+          endSession(mockSocket, reason);
           await vi.runAllTimersAsync();
         });
 
         expect(mockNotifyAuthFailure).toHaveBeenCalledTimes(1);
+        expect(mockNotifyAuthFailure).toHaveBeenCalledWith(reason);
         expect(mockSocket.connect).not.toHaveBeenCalled();
       },
     );
 
-    it('signs out when the refresh throws', async () => {
+    it('retries with backoff, without signing out, when the refresh fails for a network or server error', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockRejectedValue(new Error('network'));
+      mockRefreshSession
+        .mockResolvedValueOnce(UNAVAILABLE)
+        .mockResolvedValueOnce(UNAVAILABLE)
+        .mockResolvedValueOnce(refreshed());
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
       await act(async () => {
-        mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
-          reason: 'TOKEN_EXPIRED',
-        });
-        mockSocket.simulateEvent('disconnect', 'io server disconnect');
+        endSession(mockSocket, 'TOKEN_EXPIRED');
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+
+      // 1s, then 2s
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(999);
+      });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2000);
+      });
+      expect(mockRefreshSession).toHaveBeenCalledTimes(3);
+
+      expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
+    });
+
+    it('treats a refresh that throws like a failed attempt, not a sign-out', async () => {
+      const mockSocket = createTestSocket();
+      mockGetSocketSingleton.mockReturnValue(mockSocket);
+      mockRefreshSession
+        .mockRejectedValueOnce(new Error('network'))
+        .mockResolvedValueOnce(refreshed());
+
+      render(<SocketProvider><TestConsumer /></SocketProvider>);
+
+      await act(async () => {
+        endSession(mockSocket, 'TOKEN_EXPIRED');
+        await vi.advanceTimersByTimeAsync(1000);
+      });
+
+      expect(mockRefreshSession).toHaveBeenCalledTimes(2);
+      expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
+    });
+
+    it('hands back to Socket.IO after the last attempt, and still signs out with the reason once the server answers', async () => {
+      const mockSocket = createTestSocket();
+      mockGetSocketSingleton.mockReturnValue(mockSocket);
+      mockRefreshSession.mockResolvedValue(UNAVAILABLE);
+
+      render(<SocketProvider><TestConsumer /></SocketProvider>);
+
+      await act(async () => {
+        endSession(mockSocket, 'PASSWORD_CHANGED');
+        await vi.runAllTimersAsync();
+      });
+
+      // Bounded: no more refreshes, the socket reconnects (Socket.IO keeps
+      // retrying while the server is out of reach)
+      expect(mockRefreshSession).toHaveBeenCalledTimes(MAX_SESSION_REFRESH_ATTEMPTS);
+      expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockSocket.io.opts.reconnection).toBe(true);
+      expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
+
+      // The server answers: the stale token is refused, and so is the session
+      mockRefreshSession.mockResolvedValue(REJECTED);
+      await act(async () => {
+        mockSocket.simulateEvent('connect_error', new Error('AUTH_FAILED'));
         await vi.runAllTimersAsync();
       });
 
       expect(mockNotifyAuthFailure).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).toHaveBeenCalledWith('PASSWORD_CHANGED');
+    });
+
+    it('stops retrying once unmounted', async () => {
+      const mockSocket = createTestSocket();
+      mockGetSocketSingleton.mockReturnValue(mockSocket);
+      mockRefreshSession.mockResolvedValue(UNAVAILABLE);
+
+      const { unmount } = render(<SocketProvider><TestConsumer /></SocketProvider>);
+
+      await act(async () => {
+        endSession(mockSocket, 'TOKEN_EXPIRED');
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      unmount();
+      await act(async () => {
+        await vi.runAllTimersAsync();
+      });
+
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
+      expect(mockSocket.connect).not.toHaveBeenCalled();
+      expect(mockSocket.io.opts.reconnection).toBe(true);
     });
 
     it('reconnects a session another tab renewed (refresh still works)', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue('token-from-new-login');
+      mockRefreshSession.mockResolvedValue(refreshed('token-from-new-login'));
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
       await act(async () => {
-        mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
-          reason: 'LOGGED_OUT',
-        });
-        mockSocket.simulateEvent('disconnect', 'io server disconnect');
+        endSession(mockSocket, 'LOGGED_OUT');
         await vi.runAllTimersAsync();
       });
 
@@ -614,7 +725,7 @@ describe('SocketProvider', () => {
     it('drops a refresh still pending from TOKEN_EXPIRING', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue(null);
+      mockRefreshSession.mockResolvedValue(REJECTED);
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
@@ -622,31 +733,26 @@ describe('SocketProvider', () => {
         mockSocket.simulateEvent(ServerEvents.TOKEN_EXPIRING, {
           expiresAt: new Date().toISOString(),
         });
-        mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
-          reason: 'LOGGED_OUT',
-        });
-        mockSocket.simulateEvent('disconnect', 'io server disconnect');
+        endSession(mockSocket, 'LOGGED_OUT');
         await vi.advanceTimersByTimeAsync(TOKEN_REFRESH_JITTER_MS);
       });
 
       // Only the session-end refresh, not the delayed one
-      expect(mockRefreshToken).toHaveBeenCalledTimes(1);
+      expect(mockRefreshToken).not.toHaveBeenCalled();
+      expect(mockRefreshSession).toHaveBeenCalledTimes(1);
       expect(mockNotifyAuthFailure).toHaveBeenCalledTimes(1);
     });
 
     it('does not count toward the server-disconnect circuit breaker', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);
-      mockRefreshToken.mockResolvedValue('fresh-token');
+      mockRefreshSession.mockResolvedValue(refreshed());
 
       render(<SocketProvider><TestConsumer /></SocketProvider>);
 
       for (let i = 0; i < 3; i++) {
         await act(async () => {
-          mockSocket.simulateEvent(ServerEvents.SESSION_TERMINATED, {
-            reason: 'TOKEN_EXPIRED',
-          });
-          mockSocket.simulateEvent('disconnect', 'io server disconnect');
+          endSession(mockSocket, 'TOKEN_EXPIRED');
           await vi.runAllTimersAsync();
         });
       }
@@ -670,7 +776,7 @@ describe('SocketProvider', () => {
         mockSocket.simulateEvent('disconnect', 'io server disconnect');
       });
 
-      expect(mockRefreshToken).not.toHaveBeenCalled();
+      expect(mockRefreshSession).not.toHaveBeenCalled();
       act(() => {
         vi.advanceTimersByTime(1000);
       });
