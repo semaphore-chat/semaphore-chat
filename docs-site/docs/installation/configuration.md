@@ -99,9 +99,11 @@ Configuration for the replay buffer / screen recording feature. Requires LiveKit
 
 If Semaphore Chat runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting, session IPs and refresh token checks use the real client address instead of the proxy's. (A refresh token presented again moments after it was rotated is only honoured for the client that rotated it, by IP address and user agent. Without `TRUST_PROXY`, every client has the proxy's address and only the user agent tells them apart.)
 
+Set it to the exact number of reverse proxy hops in front of the backend, usually `1`. Never set it higher than the real count, and never to `true`. The backend then takes the client address from the `X-Forwarded-For` header, so its port must only be reachable through the proxy. A client that reaches the backend directly can put any IP in that header. With Docker Compose, publish the backend port on `127.0.0.1` only (`"127.0.0.1:3000:3000"`), or not at all.
+
 | Variable | Description | Default |
 |----------|------------|---------|
-| `TRUST_PROXY` | Number of trusted proxy hops, a subnet name, or a specific IP | `1` |
+| `TRUST_PROXY` | Number of trusted proxy hops, a subnet name, or a specific IP | unset (no proxy trusted) |
 
 Common values:
 
@@ -109,7 +111,7 @@ Common values:
 |-------|-------------|
 | `1` | Single reverse proxy (Nginx, Traefik, k8s ingress) |
 | `2` | CDN → reverse proxy → Semaphore Chat |
-| `loopback` | Proxy runs on the same host (localhost) |
+| `loopback` | Proxy connects over localhost (not with Docker, where the proxy's traffic arrives from the Docker network) |
 | `10.0.0.0/8` | Trust a specific internal subnet |
 
 !!! warning "Never use `true` in production"

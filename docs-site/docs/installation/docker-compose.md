@@ -78,6 +78,7 @@ Copy the Compose file for your chosen setup:
           LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
           REPLAY_SEGMENTS_PATH: /app/storage/replay-segments
           REPLAY_EGRESS_OUTPUT_PATH: /out
+          # Caddy is the one proxy hop. The backend publishes no port, so it is only reachable through Caddy.
           TRUST_PROXY: 1
         volumes:
           - uploads:/app/backend/uploads
@@ -238,7 +239,9 @@ Copy the Compose file for your chosen setup:
         image: ghcr.io/semaphore-chat/semaphore-backend:latest
         restart: unless-stopped
         ports:
-          - "3000:3000"
+          # Localhost only: clients must reach the backend through your reverse proxy,
+          # or they can spoof their IP with an X-Forwarded-For header.
+          - "127.0.0.1:3000:3000"
         environment:
           DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
           REDIS_HOST: redis
@@ -248,6 +251,7 @@ Copy the Compose file for your chosen setup:
           LIVEKIT_INTERNAL_URL: http://livekit:7880
           LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
           LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+          # Must equal the number of proxy hops in front of the backend. See "Reverse proxy and HTTPS".
           TRUST_PROXY: 1
           REPLAY_SEGMENTS_PATH: /app/storage/replay-segments
           REPLAY_EGRESS_OUTPUT_PATH: /out
@@ -393,12 +397,15 @@ Copy the Compose file for your chosen setup:
         image: ghcr.io/semaphore-chat/semaphore-backend:latest
         restart: unless-stopped
         ports:
-          - "3000:3000"
+          # Localhost only: clients must reach the backend through your reverse proxy,
+          # or they can spoof their IP with an X-Forwarded-For header.
+          - "127.0.0.1:3000:3000"
         environment:
           DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
           REDIS_HOST: redis
           JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
           JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+          # Must equal the number of proxy hops in front of the backend. See "Reverse proxy and HTTPS".
           TRUST_PROXY: 1
           # Uncomment and fill in to enable voice/video:
           # LIVEKIT_URL: ${LIVEKIT_URL:-}
@@ -560,7 +567,6 @@ docker compose up -d
     |------|----------|---------|
     | 443 | TCP | Your reverse proxy |
     | 5173 | TCP | Frontend (or proxy to it) |
-    | 3000 | TCP | Backend API (or proxy to it) |
     | 7880 | TCP | LiveKit signaling (or proxy to it) |
     | 7881 | TCP | LiveKit WebRTC (TCP) |
     | 7882 | UDP | LiveKit WebRTC (UDP) |
@@ -657,6 +663,8 @@ If you chose the "With Caddy" setup, this is already handled. For the other setu
 - Proxy `your-domain.com` to the frontend (port 5173) — the frontend's nginx handles `/api` and `/socket.io` routing to the backend internally
 - Proxy `lk.your-domain.com` to LiveKit signaling (port 7880)
 - Ensure WebSocket upgrade headers are forwarded for LiveKit
+
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` straight to the backend (port 3000), as in the diagram above, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops. The examples bind the backend to `127.0.0.1` so that only a proxy on the same host can reach it. Never publish port 3000 beyond that: a client that reaches the backend directly can spoof its IP. See [Reverse proxy](configuration.md#reverse-proxy).
 
 ### Data persistence
 

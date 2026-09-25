@@ -118,10 +118,14 @@ activity only a minute later, after its grace window: the list can't tell
 the holder of a stolen token when to replay it. `DELETE /auth/sessions/:id`
 takes that id (or, for older clients, a refresh token id).
 
-`POST /auth/refresh` is rate-limited per user (the user of the presented
-token, once its signature checks out) rather than per IP
-(`RefreshThrottlerGuard`): every page load refreshes, and many users can
-share one address.
+`POST /auth/refresh` is rate-limited per presented token (its `jti`, once
+its signature checks out) rather than per IP (`RefreshThrottlerGuard`):
+every page load refreshes, and many users can share one address. Not per
+user either: a logged-out or rotated token stays validly signed, so whoever
+holds one of a user's old tokens could otherwise use up that user's quota.
+A request without a valid token is limited per IP. A refresh token that
+fails verification (expired, signed with another secret, malformed) gets a
+401, like any refused session.
 
 On the client, `tokenService` refreshes under a Web Lock, so tabs take turns
 instead of sending the same cookie at once. It signs out only when the server
@@ -130,7 +134,10 @@ the REST call that needed the refresh fails with a retryable 503. Retries
 stop 12 seconds after the first attempt (`sessionRefreshPolicy.ts`), so one
 that re-presents a rotated token still lands inside the grace window. On a
 page load (`AuthGate`) the app keeps showing "Connecting..." and tries again
-while the server can't answer, instead of showing the login page.
+while the server can't answer, instead of showing the login page. After
+about 40 seconds of that (`PAGE_LOAD_REFRESH_ROUNDS`), it says it can't
+reach the server and offers "Try again" and "Sign in again", so a server
+that keeps failing doesn't leave the user on the spinner.
 
 ### RBAC Pattern
 
