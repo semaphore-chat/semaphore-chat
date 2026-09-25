@@ -15,7 +15,7 @@ import {
 } from "./tokenService";
 import {
   MAX_SESSION_REFRESH_ATTEMPTS,
-  sessionRefreshBackoffMs,
+  nextSessionRefreshDelayMs,
 } from "./sessionRefreshPolicy";
 import { ClientEvents, ServerEvents } from "@semaphore-chat/shared";
 import type {
@@ -39,8 +39,9 @@ const REAUTHENTICATE_TIMEOUT_MS = 10_000;
 /**
  * Refresh attempts, when the socket needs a fresh token to reconnect, before
  * handing back to Socket.IO's reconnection. Only a refused refresh (401/403)
- * signs out; a network or server error is retried after 1s, 2s, 4s.
- * (Shared with the REST interceptor's retry ladder; see sessionRefreshPolicy.)
+ * signs out; a network or server error is retried after 1s, 2s, 4s, within
+ * the retry budget (SESSION_REFRESH_RETRY_BUDGET_MS). (Shared with the REST
+ * interceptor's retry ladder; see sessionRefreshPolicy.)
  */
 export { MAX_SESSION_REFRESH_ATTEMPTS };
 
@@ -90,12 +91,13 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     /**
      * Get a fresh token and reconnect with it. Signs out only when the
      * server refuses the session (401/403). A network or server error is
-     * retried with backoff; after MAX_SESSION_REFRESH_ATTEMPTS the socket
-     * reconnects anyway: Socket.IO keeps retrying while the server is out of
-     * reach, and once it answers, the stale token comes back as AUTH_FAILED
-     * and this runs again.
+     * retried with backoff; after MAX_SESSION_REFRESH_ATTEMPTS, or once the
+     * retry budget (see sessionRefreshPolicy) is spent, the socket reconnects
+     * anyway: Socket.IO keeps retrying while the server is out of reach, and
+     * once it answers, the stale token comes back as AUTH_FAILED and this
+     * runs again.
      */
-    const recoverSession = (attempt = 1) => {
+    const recoverSession = (attempt = 1, startedAt = Date.now()) => {
       isRecoveringSession.current = true;
       socket.io.opts.reconnection = false;
 
@@ -120,7 +122,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
             notifyAuthFailure(lastSessionEnd.current ?? undefined);
             return;
           }
-          if (attempt >= MAX_SESSION_REFRESH_ATTEMPTS) {
+          const delay = nextSessionRefreshDelayMs(attempt, startedAt);
+          if (delay === null) {
             logger.warn(
               "[Socket] Token refresh keeps failing, reconnecting to wait for the server"
             );
@@ -128,13 +131,12 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
             socket.connect();
             return;
           }
-          const delay = sessionRefreshBackoffMs(attempt);
           logger.warn(
             `[Socket] Token refresh failed, retrying in ${delay}ms (attempt ${attempt})`
           );
           sessionRefreshRetryTimer.current = setTimeout(() => {
             sessionRefreshRetryTimer.current = null;
-            recoverSession(attempt + 1);
+            recoverSession(attempt + 1, startedAt);
           }, delay);
         });
     };

@@ -126,6 +126,37 @@ describe('tokenService refreshSessionWithRetry', () => {
     expect(mockPost).toHaveBeenCalledTimes(MAX_SESSION_REFRESH_ATTEMPTS);
   });
 
+  it('sends no retry later than the retry budget after the first attempt', async () => {
+    // Every attempt hangs until the request timeout. The first one's
+    // response may have been lost after the server rotated the token: a
+    // retry must reach the server well inside its 30 s grace window, or it
+    // ends the session itself.
+    const { SESSION_REFRESH_RETRY_BUDGET_MS } = await import(
+      '../../utils/sessionRefreshPolicy'
+    );
+    const sentAt: number[] = [];
+    const start = Date.now();
+    mockPost.mockImplementation(() => {
+      sentAt.push(Date.now() - start);
+      return new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new AxiosError('timeout exceeded', AxiosError.ECONNABORTED)),
+          ts.REFRESH_REQUEST_TIMEOUT_MS,
+        ),
+      );
+    });
+
+    const promise = ts.refreshSessionWithRetry();
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    await expect(promise).resolves.toEqual({ status: 'unavailable' });
+    // One retry, 1 s after the first attempt timed out; the next would go
+    // out past the budget
+    expect(sentAt).toEqual([0, ts.REFRESH_REQUEST_TIMEOUT_MS + 1000]);
+    expect(Math.max(...sentAt)).toBeLessThanOrEqual(SESSION_REFRESH_RETRY_BUDGET_MS);
+    expect(SESSION_REFRESH_RETRY_BUDGET_MS).toBeLessThanOrEqual(15_000);
+  });
+
   it('answers unavailable without a request during the cooldown after giving up', async () => {
     mockPost.mockRejectedValue(httpError(503));
     const first = ts.refreshSessionWithRetry();
@@ -216,14 +247,14 @@ describe('tokenService refresh request', () => {
     removeLocks();
   });
 
-  it('times out after 15s so a hung request cannot hold the cross-tab lock', async () => {
+  it('times out after 10s so a hung request cannot hold the cross-tab lock', async () => {
     mockPost.mockResolvedValue(ok());
     await ts.refreshSession();
 
     expect(mockPost).toHaveBeenCalledWith(
       expect.stringContaining('/auth/refresh'),
       {},
-      expect.objectContaining({ timeout: 15_000, withCredentials: true }),
+      expect.objectContaining({ timeout: 10_000, withCredentials: true }),
     );
   });
 
@@ -235,7 +266,7 @@ describe('tokenService refresh request', () => {
     expect(mockPost).toHaveBeenCalledWith(
       expect.stringContaining('/auth/refresh'),
       { refreshToken: 'rt' },
-      expect.objectContaining({ timeout: 15_000 }),
+      expect.objectContaining({ timeout: 10_000 }),
     );
   });
 
@@ -247,6 +278,80 @@ describe('tokenService refresh request', () => {
 
     mockPost.mockRejectedValue(new AxiosError('timeout exceeded', AxiosError.ETIMEDOUT));
     await expect(ts.refreshSession()).resolves.toEqual({ status: 'unavailable' });
+  });
+});
+
+describe('tokenService refreshSessionUntilAnswered', () => {
+  let ts: TokenService;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    ts = await import('../../utils/tokenService');
+    window.electronAPI = undefined;
+    mockPost.mockReset();
+    removeLocks();
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('keeps trying through the pauses until the server refreshes the session', async () => {
+    mockPost.mockRejectedValue(httpError(429));
+    const promise = ts.refreshSessionUntilAnswered();
+
+    // A whole ladder, then the pause, then another ladder...
+    await vi.advanceTimersByTimeAsync(7_000 + ts.REFRESH_COOLDOWN_MS + 1_000);
+    expect(mockPost.mock.calls.length).toBeGreaterThan(4);
+    mockPost.mockResolvedValue(ok('back'));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(promise).resolves.toEqual({ status: 'refreshed', token: 'back' });
+  });
+
+  it('stops when the server refuses the session', async () => {
+    mockPost.mockRejectedValueOnce(httpError(503)).mockRejectedValue(httpError(401));
+    const promise = ts.refreshSessionUntilAnswered();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    await expect(promise).resolves.toEqual({ status: 'rejected' });
+  });
+
+  it('stops waiting when aborted', async () => {
+    mockPost.mockRejectedValue(httpError(503));
+    const abort = new AbortController();
+    const promise = ts.refreshSessionUntilAnswered(abort.signal);
+    await vi.advanceTimersByTimeAsync(8_000);
+
+    abort.abort();
+    await expect(promise).resolves.toEqual({ status: 'unavailable' });
+    mockPost.mockClear();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockPost).not.toHaveBeenCalled();
+  });
+});
+
+describe('sessionRefreshPolicy nextSessionRefreshDelayMs', () => {
+  it('backs off 1s, 2s, 4s and stops after the last attempt', async () => {
+    const { nextSessionRefreshDelayMs, MAX_SESSION_REFRESH_ATTEMPTS } = await import(
+      '../../utils/sessionRefreshPolicy'
+    );
+    const start = 1_000_000;
+    expect(nextSessionRefreshDelayMs(1, start, start)).toBe(1000);
+    expect(nextSessionRefreshDelayMs(2, start, start + 1000)).toBe(2000);
+    expect(nextSessionRefreshDelayMs(3, start, start + 3000)).toBe(4000);
+    expect(nextSessionRefreshDelayMs(MAX_SESSION_REFRESH_ATTEMPTS, start, start + 7000)).toBeNull();
+  });
+
+  it('stops when the retry would go out past the budget', async () => {
+    const { nextSessionRefreshDelayMs, SESSION_REFRESH_RETRY_BUDGET_MS } = await import(
+      '../../utils/sessionRefreshPolicy'
+    );
+    const start = 1_000_000;
+    expect(nextSessionRefreshDelayMs(1, start, start + SESSION_REFRESH_RETRY_BUDGET_MS - 1000)).toBe(1000);
+    expect(nextSessionRefreshDelayMs(1, start, start + SESSION_REFRESH_RETRY_BUDGET_MS - 999)).toBeNull();
+    expect(nextSessionRefreshDelayMs(2, start, start + 11_000)).toBeNull();
   });
 });
 

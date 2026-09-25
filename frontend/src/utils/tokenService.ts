@@ -9,10 +9,7 @@ import axios from "axios";
 import { getApiUrl } from "../config/env";
 import { isElectron } from "./platform";
 import { logger } from "./logger";
-import {
-  MAX_SESSION_REFRESH_ATTEMPTS,
-  sessionRefreshBackoffMs,
-} from "./sessionRefreshPolicy";
+import { nextSessionRefreshDelayMs } from "./sessionRefreshPolicy";
 import type { SessionTerminatedReason } from "@semaphore-chat/shared";
 
 // Event emitter for token refresh notifications
@@ -61,9 +58,11 @@ export const REFRESH_COOLDOWN_MS = 10_000;
 
 /**
  * Timeout for the /auth/refresh request. A hung request would otherwise hold
- * the cross-tab refresh lock (and every other tab's refresh) forever.
+ * the cross-tab refresh lock (and every other tab's refresh) forever. Short
+ * enough that a retry after a timeout still goes out within the retry budget
+ * (SESSION_REFRESH_RETRY_BUDGET_MS), well inside the server's grace window.
  */
-export const REFRESH_REQUEST_TIMEOUT_MS = 15_000;
+export const REFRESH_REQUEST_TIMEOUT_MS = 10_000;
 
 /** Web Lock that serializes refreshes across tabs of this origin. */
 export const REFRESH_LOCK_NAME = "semaphore:auth-refresh";
@@ -491,30 +490,40 @@ export function refreshSession(): Promise<RefreshResult> {
 
 /**
  * Wait `ms`, or less if a refresh elsewhere (e.g. the socket's) produces a
- * token meanwhile.
- * @returns That token, or null when the wait ran out
+ * token meanwhile, or `signal` aborts.
+ * @returns That token, or null when the wait ran out or was aborted
  */
-function waitForBackoffOrRefresh(ms: number): Promise<string | null> {
+function waitForBackoffOrRefresh(
+  ms: number,
+  signal?: AbortSignal
+): Promise<string | null> {
   return new Promise((resolve) => {
-    let unsubscribe = () => {};
-    const timer = setTimeout(() => {
-      unsubscribe();
+    if (signal?.aborted) {
       resolve(null);
-    }, ms);
-    unsubscribe = onTokenRefreshed((token) => {
+      return;
+    }
+    let unsubscribe = () => {};
+    const finish = (token: string | null) => {
       clearTimeout(timer);
       unsubscribe();
+      signal?.removeEventListener("abort", onAbort);
       resolve(token);
-    });
+    };
+    const onAbort = () => finish(null);
+    const timer = setTimeout(() => finish(null), ms);
+    unsubscribe = onTokenRefreshed((token) => finish(token));
+    signal?.addEventListener("abort", onAbort);
   });
 }
 
 async function runRefreshLadder(): Promise<RefreshResult> {
+  const startedAt = Date.now();
   for (let attempt = 1; ; attempt++) {
     const result = await refreshSession();
     if (result.status !== "unavailable") return result;
 
-    if (attempt >= MAX_SESSION_REFRESH_ATTEMPTS) {
+    const delay = nextSessionRefreshDelayMs(attempt, startedAt);
+    if (delay === null) {
       logger.warn(
         `[TokenService] Refresh unavailable after ${attempt} attempts, pausing for ${REFRESH_COOLDOWN_MS}ms`
       );
@@ -522,7 +531,6 @@ async function runRefreshLadder(): Promise<RefreshResult> {
       return result;
     }
 
-    const delay = sessionRefreshBackoffMs(attempt);
     logger.warn(
       `[TokenService] Refresh unavailable, retrying in ${delay}ms (attempt ${attempt})`
     );
@@ -535,8 +543,10 @@ async function runRefreshLadder(): Promise<RefreshResult> {
  * Refresh the session, retrying while the server can't answer.
  *
  * Tries refreshSession() up to MAX_SESSION_REFRESH_ATTEMPTS times, 1s, 2s,
- * 4s apart, and stops as soon as it is refreshed or rejected (or another
- * caller's refresh produces a token during a wait). When every attempt is
+ * 4s apart, but sends no retry later than SESSION_REFRESH_RETRY_BUDGET_MS
+ * after the first attempt (a retry past the server's grace window would end
+ * the session; see sessionRefreshPolicy). Stops as soon as it is refreshed
+ * or rejected (or another caller's refresh produces a token during a wait). When every attempt is
  * unavailable, calls answer unavailable at once, without a request, for
  * REFRESH_COOLDOWN_MS; any successful refresh ends that pause early.
  *
@@ -555,6 +565,32 @@ export function refreshSessionWithRetry(): Promise<RefreshResult> {
     retryLadderPromise = null;
   });
   return retryLadderPromise;
+}
+
+/**
+ * Refresh the session, waiting for a server that can't answer: retries
+ * (refreshSessionWithRetry, then again after each of its pauses) until the
+ * server refreshes or refuses the session, or a refresh elsewhere produces
+ * a token.
+ *
+ * For a page load (AuthGate): when the server can't be reached, is
+ * overloaded or rate-limits the refresh (429), showing the login page would
+ * sign out a user whose session is fine.
+ * @param signal - Stops waiting; the result is then "unavailable"
+ */
+export async function refreshSessionUntilAnswered(
+  signal?: AbortSignal
+): Promise<RefreshResult> {
+  for (;;) {
+    const result = await refreshSessionWithRetry();
+    if (result.status !== "unavailable" || signal?.aborted) return result;
+
+    const pause = Math.max(refreshCooldownUntil - Date.now(), 1000);
+    logger.warn(`[TokenService] Server unavailable, trying again in ${pause}ms`);
+    const token = await waitForBackoffOrRefresh(pause, signal);
+    if (token) return { status: "refreshed", token };
+    if (signal?.aborted) return { status: "unavailable" };
+  }
 }
 
 /**

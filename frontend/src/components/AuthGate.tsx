@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, Navigate, useNavigate } from "react-router-dom";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { onboardingControllerGetStatusOptions } from "../api-client/@tanstack/react-query.gen";
 import {
   getAccessToken,
-  refreshToken,
+  refreshSessionUntilAnswered,
   clearTokens,
   onAuthFailure,
   type SignOutReason,
@@ -39,6 +39,9 @@ export function AuthGate() {
   // Why the server signed us out, for the login page to explain
   const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const navigate = useNavigate();
+  // Ends a session refresh still waiting for the server when AuthGate unmounts
+  const refreshAbort = useRef<AbortController | null>(null);
+  useEffect(() => () => refreshAbort.current?.abort(), []);
 
   // Phase 1: Onboarding check (no auth required)
   const {
@@ -94,6 +97,24 @@ export function AuthGate() {
     if (path) navigate(path);
   }, [authState, navigate]);
 
+  /**
+   * Get an access token through the refresh token (cookie, or Electron's
+   * stored token). Only a refused session (401/403, no refresh token) means
+   * signing in again. When the server can't answer (network error, 5xx,
+   * 429), keep "Connecting..." and try again (refreshSessionUntilAnswered):
+   * the login page would sign out a user whose session is fine.
+   * @returns Whether the session was refreshed, or null if AuthGate went
+   *   away meanwhile
+   */
+  async function refreshSessionOnLoad(): Promise<boolean | null> {
+    refreshAbort.current?.abort();
+    const abort = new AbortController();
+    refreshAbort.current = abort;
+    const result = await refreshSessionUntilAnswered(abort.signal);
+    if (abort.signal.aborted) return null;
+    return result.status === "refreshed";
+  }
+
   async function validateToken() {
     const token = getAccessToken();
 
@@ -101,17 +122,11 @@ export function AuthGate() {
       // No in-memory token (e.g. page refresh). Attempt silent refresh
       // using httpOnly refresh_token cookie (web) or stored token (Electron).
       logger.dev("[AuthGate] No token in memory, attempting silent refresh...");
-      try {
-        const newToken = await refreshToken();
-        if (newToken) {
-          setAuthState(AuthState.Authenticated);
-          return;
-        }
-      } catch {
-        // Refresh failed — user must log in
-      }
-
-      setAuthState(AuthState.Unauthenticated);
+      const refreshed = await refreshSessionOnLoad();
+      if (refreshed === null) return;
+      setAuthState(
+        refreshed ? AuthState.Authenticated : AuthState.Unauthenticated
+      );
       return;
     }
 
@@ -129,14 +144,11 @@ export function AuthGate() {
 
     // Server rejected the token (or network error) — try explicit refresh
     logger.dev("[AuthGate] Server validation failed, attempting refresh...");
-    try {
-      const newToken = await refreshToken();
-      if (newToken) {
-        setAuthState(AuthState.Authenticated);
-        return;
-      }
-    } catch {
-      // Refresh failed
+    const refreshed = await refreshSessionOnLoad();
+    if (refreshed === null) return;
+    if (refreshed) {
+      setAuthState(AuthState.Authenticated);
+      return;
     }
 
     disconnectSocket();

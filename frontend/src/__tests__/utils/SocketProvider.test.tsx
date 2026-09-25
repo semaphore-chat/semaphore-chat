@@ -685,6 +685,27 @@ describe('SocketProvider', () => {
       expect(mockNotifyAuthFailure).toHaveBeenCalledWith('PASSWORD_CHANGED');
     });
 
+    it('sends no retry past the retry budget when attempts are slow (a retry past the grace window ends the session)', async () => {
+      const mockSocket = createTestSocket();
+      mockGetSocketSingleton.mockReturnValue(mockSocket);
+      // Each attempt runs into the 10 s request timeout
+      mockRefreshSession.mockImplementation(
+        () => new Promise((resolve) => setTimeout(() => resolve(UNAVAILABLE), 10_000)),
+      );
+
+      render(<SocketProvider><TestConsumer /></SocketProvider>);
+
+      await act(async () => {
+        endSession(mockSocket, 'TOKEN_EXPIRED');
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+
+      // 0 s, then 11 s; the next would go out at 23 s
+      expect(mockRefreshSession).toHaveBeenCalledTimes(2);
+      expect(mockSocket.connect).toHaveBeenCalledTimes(1);
+      expect(mockNotifyAuthFailure).not.toHaveBeenCalled();
+    });
+
     it('stops retrying once unmounted', async () => {
       const mockSocket = createTestSocket();
       mockGetSocketSingleton.mockReturnValue(mockSocket);

@@ -124,6 +124,13 @@ describe('AuthGate', () => {
     socketProviderMounted = false;
     mockDisconnectSocket.mockReset();
     takeStashedDeepLinkRoute(); // discard any leftover stash from a prior test
+    // No session to refresh unless a test says otherwise (the server's
+    // answer without a refresh cookie)
+    server.use(
+      http.post(`${BASE_URL}/api/auth/refresh`, () =>
+        HttpResponse.json({ message: 'No refresh token provided' }, { status: 401 }),
+      ),
+    );
   });
 
   // ─── Loading State ─────────────────────────────────────────────
@@ -433,21 +440,66 @@ describe('AuthGate', () => {
       expect(mockDisconnectSocket).toHaveBeenCalled();
     });
 
-    it('redirects to /login when refresh returns a network error', async () => {
-      setAccessToken(expiredToken());
+    it.each([
+      ['a network error', () => HttpResponse.error()],
+      ['a 503', () => HttpResponse.json({ message: 'Unavailable' }, { status: 503 })],
+      ['a 429', () => HttpResponse.json({ message: 'Too Many Requests' }, { status: 429 })],
+    ])(
+      'keeps connecting instead of showing the login page when the refresh gets %s',
+      async (_, failure) => {
+        setAccessToken(expiredToken());
+        const freshToken = validToken();
+        let attempts = 0;
+        mockOnboardingOk();
+        mockProfileUnauthorized();
+        server.use(
+          http.post(`${BASE_URL}/api/auth/refresh`, () => {
+            attempts++;
+            // The interceptor's refresh (profile 401) and AuthGate's first
+            // one fail; the server answers again after that
+            return attempts <= 2 ? failure() : HttpResponse.json({ accessToken: freshToken });
+          }),
+        );
 
+        renderAuthGate();
+
+        await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(1));
+        expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+        expect(screen.getByText('Connecting...')).toBeInTheDocument();
+        await waitFor(
+          () => {
+            expect(screen.getByTestId('home')).toBeInTheDocument();
+          },
+          { timeout: 8000 },
+        );
+        expect(getAccessToken()).toBe(freshToken);
+      },
+      15_000,
+    );
+
+    it('keeps connecting on a page load (no token yet) while the server is unavailable', async () => {
+      const freshToken = validToken();
+      let attempts = 0;
       mockOnboardingOk();
-      mockProfileUnauthorized();
       server.use(
-        http.post(`${BASE_URL}/api/auth/refresh`, () => HttpResponse.error()),
+        http.post(`${BASE_URL}/api/auth/refresh`, () => {
+          attempts++;
+          return attempts === 1
+            ? HttpResponse.json({ message: 'Unavailable' }, { status: 503 })
+            : HttpResponse.json({ accessToken: freshToken });
+        }),
       );
 
       renderAuthGate();
 
-      await waitFor(() => {
-        expect(screen.getByTestId('login')).toBeInTheDocument();
-      });
-      expect(getAccessToken()).toBeNull();
+      await waitFor(() => expect(attempts).toBe(1));
+      expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('home')).toBeInTheDocument();
+        },
+        { timeout: 4000 },
+      );
     });
 
     it('does not mount SocketProvider during refresh attempt', async () => {
