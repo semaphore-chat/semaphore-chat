@@ -97,7 +97,7 @@ Configuration for the replay buffer / screen recording feature. Requires LiveKit
 
 ### Reverse proxy
 
-If Semaphore Chat runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting and session IPs use the real client address instead of the proxy's.
+If Semaphore Chat runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting, session IPs and refresh token checks use the real client address instead of the proxy's. (A refresh token presented again moments after it was rotated is only honoured for the client that rotated it, by IP address and user agent. Without `TRUST_PROXY`, every client has the proxy's address and only the user agent tells them apart.)
 
 | Variable | Description | Default |
 |----------|------------|---------|

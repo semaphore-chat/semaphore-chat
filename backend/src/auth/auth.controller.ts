@@ -23,6 +23,7 @@ import { TokenBlacklistService } from './token-blacklist.service';
 import { SessionRevocationService } from './session-revocation.service';
 import { PasswordResetService } from './password-reset.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DatabaseService } from '@/database/database.service';
@@ -33,6 +34,7 @@ import {
   lockUserForSessionRevocation,
   lockUserForTokenRotation,
 } from './session-lock.util';
+import { databaseNow } from './db-clock.util';
 
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -58,8 +60,16 @@ import { Public } from './public.decorator';
 /** How a refresh ended, decided in its transaction. */
 type RefreshOutcome =
   | { kind: 'issued'; refreshToken: string; accessToken: string }
-  /** A consumed token presented outside the grace window. */
-  | { kind: 'reused'; tokenId: string; familyId: string | null }
+  /**
+   * A consumed token presented outside the grace window, or within it by
+   * another client than the one that rotated it.
+   */
+  | {
+      kind: 'reused';
+      tokenId: string;
+      familyId: string | null;
+      why: 'after the grace window' | 'by another client';
+    }
   /** A token of a revoked session, or issued before a password reset. */
   | { kind: 'revoked'; tokenId: string; familyId: string | null };
 
@@ -120,7 +130,8 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ short: { limit: 4, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
+  // Limited per user, not per IP (restored tabs, NATs): see the guard
+  @UseGuards(RefreshThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiBody({ type: RefreshRequestDto })
@@ -157,6 +168,19 @@ export class AuthController {
     }
     const deviceInfo = this.getDeviceInfo(req);
 
+    // Check the token against its stored hash (bcrypt) before the
+    // transaction: a token row's hash never changes, and concurrent
+    // refreshes waiting on its lock (below) would each hold a database
+    // connection through it
+    const validated = await this.authService.validateRefreshToken(
+      jti,
+      refreshToken,
+    );
+    if (!validated) {
+      this.logger.error('Could not find token by id');
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
     // Do this in a tx so we don't have dangling refresh tokens or something weird
     const outcome = await this.databaseService.$transaction(
       async (tx): Promise<RefreshOutcome> => {
@@ -171,41 +195,53 @@ export class AuthController {
         // consumed and get the same successor (grace window below)
         await lockRefreshToken(tx, jti);
 
-        const tokenRecord = await this.authService.validateRefreshToken(
-          jti,
-          refreshToken,
-          tx,
-        );
-
+        // Its state now: consumed by a refresh, or deleted by a revocation,
+        // since it was validated
+        const tokenRecord = await this.authService.reloadRefreshToken(jti, tx);
         if (!tokenRecord) {
-          this.logger.error('Could not find token by id');
           throw new UnauthorizedException('Invalid refresh token');
         }
 
         if (tokenRecord.consumed) {
           // Reuse detection: a token already rotated outside the grace
-          // window means someone is replaying a stolen token
+          // window means someone is replaying a stolen token. Both times
+          // are the database's, so instances with clocks that disagree
+          // agree on the window.
+          const now = await databaseNow(tx);
           if (
             !this.refreshTokenGraceService.isWithinGraceWindow(
               tokenRecord.consumedAt,
+              now,
             )
           ) {
             return {
               kind: 'reused',
               tokenId: tokenRecord.id,
               familyId: tokenRecord.familyId,
+              why: 'after the grace window',
             };
           }
 
           // Within it: another tab (or a retry of a lost response) of the
-          // same session. It gets the token the rotation returned, so the
-          // session stays one chain of tokens.
+          // same client. It gets the token the rotation returned, so the
+          // session stays one chain of tokens. Another client is replaying
+          // a stolen token: reuse, as outside the window.
           const successor = await this.authService.findGraceSuccessor(
             tokenRecord,
             refreshToken,
+            deviceInfo,
+            now,
             tx,
           );
-          if (!successor) {
+          if (successor.kind === 'other-client') {
+            return {
+              kind: 'reused',
+              tokenId: tokenRecord.id,
+              familyId: tokenRecord.familyId,
+              why: 'by another client',
+            };
+          }
+          if (successor.kind === 'none') {
             this.logger.warn(
               `Refresh token rotated moments ago has no live successor. Family: ${tokenRecord.familyId}, User: ${user.id}`,
             );
@@ -252,11 +288,12 @@ export class AuthController {
 
         // Consume (not delete) old token so reuse can be detected later
         const consumed = await this.authService.consumeRefreshToken(
-          jti,
-          refreshToken,
+          tokenRecord.id,
           tx,
         );
-        // Generate new token in the same family
+        // Generate new token in the same family. Its bcrypt hash runs under
+        // the locks, but only the refresh that rotates pays for it: the ones
+        // waiting behind it take the grace path, which hashes nothing.
         const next = await this.authService.generateRefreshToken(
           user.id,
           deviceInfo,
@@ -285,7 +322,7 @@ export class AuthController {
     // the token they delete
     if (outcome.kind === 'reused') {
       this.logger.warn(
-        `Refresh token reuse detected! Family: ${outcome.familyId}, User: ${user.id}`,
+        `Refresh token reuse detected (${outcome.why})! Family: ${outcome.familyId}, User: ${user.id}`,
       );
       if (outcome.familyId) {
         // A stolen token: end the session everywhere, including the access
@@ -515,7 +552,7 @@ export class AuthController {
   }
 
   /**
-   * Revoke a specific session
+   * Revoke a session by its id from GET /auth/sessions (or a refresh token id)
    */
   @UseGuards(JwtAuthGuard)
   @Delete('sessions/:sessionId')

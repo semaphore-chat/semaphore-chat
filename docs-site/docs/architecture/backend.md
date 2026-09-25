@@ -101,17 +101,36 @@ check the same revocations.
 Refresh tokens rotate on every refresh. A rotated token presented again
 within 30 seconds (tabs sharing the refresh cookie, a retry after a lost
 response) gets the token it was rotated to, not a new one
-(`RefreshTokenGraceService`), so the session never forks. Presented later, it
-counts as stolen: the whole session is revoked, including its access tokens
-and sockets. Logins, refreshes and revocations of a user's sessions are
-serialized with a lock on the user's row (`session-lock.util.ts`), so none of
-them can leave a token behind that a concurrent password reset or logout
-should have removed.
+(`RefreshTokenGraceService`), so the session never forks. Only the client
+that did the rotation gets it: the same user agent and IP address (the same
+/64 for IPv6, `client-match.util.ts`; `req.ip`, so behind a reverse proxy
+set `TRUST_PROXY`). Presented later, or within the window by another client,
+it counts as stolen: the whole session is revoked, including its access
+tokens and sockets. Rotation times come from the database's clock, so
+backend instances with clocks that disagree agree on the window. Logins,
+refreshes and revocations of a user's sessions are serialized with a lock on
+the user's row (`session-lock.util.ts`), so none of them can leave a token
+behind that a concurrent password reset or logout should have removed.
+
+`GET /auth/sessions` lists a session by its id (the token family, the `sid`
+of its access tokens), which rotations don't change, and shows a rotation's
+activity only a minute later, after its grace window: the list can't tell
+the holder of a stolen token when to replay it. `DELETE /auth/sessions/:id`
+takes that id (or, for older clients, a refresh token id).
+
+`POST /auth/refresh` is rate-limited per user (the user of the presented
+token, once its signature checks out) rather than per IP
+(`RefreshThrottlerGuard`): every page load refreshes, and many users can
+share one address.
 
 On the client, `tokenService` refreshes under a Web Lock, so tabs take turns
 instead of sending the same cookie at once. It signs out only when the server
 refuses the session (401/403); a network error, 5xx or 429 is retried, and
-the REST call that needed the refresh fails with a retryable 503.
+the REST call that needed the refresh fails with a retryable 503. Retries
+stop 12 seconds after the first attempt (`sessionRefreshPolicy.ts`), so one
+that re-presents a rotated token still lands inside the grace window. On a
+page load (`AuthGate`) the app keeps showing "Connecting..." and tries again
+while the server can't answer, instead of showing the login page.
 
 ### RBAC Pattern
 

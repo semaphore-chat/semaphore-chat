@@ -30,7 +30,7 @@ import { REDIS_CLIENT } from '@/redis/redis.constants';
 export const REFRESH_TOKEN_REUSE_GRACE_MS = 30_000;
 
 const SUCCESSOR_PREFIX = 'auth:refresh-successor:';
-/** Redis keeps the successor a little longer than the window (clock skew). */
+/** Redis keeps the successor a little longer than the window. */
 const SUCCESSOR_TTL_SECONDS =
   Math.ceil(REFRESH_TOKEN_REUSE_GRACE_MS / 1000) + 5;
 const IV_BYTES = 12;
@@ -52,11 +52,14 @@ export class RefreshTokenGraceService {
 
   /**
    * Whether a token rotated at `consumedAt` is still within the grace window.
+   * @param now - The database's current time (see databaseNow), the clock
+   *   `consumedAt` was stamped with
    */
-  isWithinGraceWindow(consumedAt: Date | null, now = Date.now()): boolean {
+  isWithinGraceWindow(consumedAt: Date | null, now: Date): boolean {
     if (!consumedAt) return false;
-    const age = now - consumedAt.getTime();
-    return age >= 0 && age <= REFRESH_TOKEN_REUSE_GRACE_MS;
+    // No lower bound: a rotation that seems to lie in the future (a clock
+    // that disagrees) is no sign of a stolen token
+    return now.getTime() - consumedAt.getTime() <= REFRESH_TOKEN_REUSE_GRACE_MS;
   }
 
   /**
@@ -102,6 +105,8 @@ export class RefreshTokenGraceService {
         'aes-256-gcm',
         this.keyFor(refreshToken),
         iv,
+        // Reject a truncated tag instead of checking fewer bytes
+        { authTagLength: TAG_BYTES },
       );
       decipher.setAuthTag(tag);
       return Buffer.concat([

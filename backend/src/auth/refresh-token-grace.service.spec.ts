@@ -1,4 +1,5 @@
 import type Redis from 'ioredis';
+import { createCipheriv, createHash, randomBytes } from 'crypto';
 import {
   REFRESH_TOKEN_REUSE_GRACE_MS,
   RefreshTokenGraceService,
@@ -22,13 +23,16 @@ describe('RefreshTokenGraceService', () => {
   });
 
   describe('isWithinGraceWindow', () => {
-    const now = 1_700_000_000_000;
+    const nowMs = 1_700_000_000_000;
+    const now = new Date(nowMs);
 
     it('accepts a rotation within the window', () => {
-      expect(service.isWithinGraceWindow(new Date(now - 1000), now)).toBe(true);
+      expect(service.isWithinGraceWindow(new Date(nowMs - 1000), now)).toBe(
+        true,
+      );
       expect(
         service.isWithinGraceWindow(
-          new Date(now - REFRESH_TOKEN_REUSE_GRACE_MS),
+          new Date(nowMs - REFRESH_TOKEN_REUSE_GRACE_MS),
           now,
         ),
       ).toBe(true);
@@ -37,11 +41,21 @@ describe('RefreshTokenGraceService', () => {
     it('refuses a rotation past the window, or none', () => {
       expect(
         service.isWithinGraceWindow(
-          new Date(now - REFRESH_TOKEN_REUSE_GRACE_MS - 1),
+          new Date(nowMs - REFRESH_TOKEN_REUSE_GRACE_MS - 1),
           now,
         ),
       ).toBe(false);
       expect(service.isWithinGraceWindow(null, now)).toBe(false);
+    });
+
+    it('accepts a rotation stamped by a clock ahead of this one', () => {
+      // Clock skew is no sign of a stolen token
+      expect(service.isWithinGraceWindow(new Date(nowMs + 1000), now)).toBe(
+        true,
+      );
+      expect(service.isWithinGraceWindow(new Date(nowMs + 60_000), now)).toBe(
+        true,
+      );
     });
 
     it('is a short window', () => {
@@ -96,6 +110,25 @@ describe('RefreshTokenGraceService', () => {
       await expect(service.recall('jti-0', 'old-token')).resolves.toBeNull();
 
       store.set('auth:refresh-successor:jti-0', 'bm90IGEgY2lwaGVydGV4dA==');
+      await expect(service.recall('jti-0', 'old-token')).resolves.toBeNull();
+    });
+
+    it('rejects a truncated authentication tag', async () => {
+      // A valid tag for an empty message, cut to 4 bytes (which GCM would
+      // otherwise accept as a shorter tag)
+      const key = createHash('sha256')
+        .update('semaphore:refresh-successor\0')
+        .update('old-token')
+        .digest();
+      const iv = randomBytes(12);
+      const cipher = createCipheriv('aes-256-gcm', key, iv);
+      cipher.final();
+      const truncated = cipher.getAuthTag().subarray(0, 4);
+      store.set(
+        'auth:refresh-successor:jti-0',
+        Buffer.concat([iv, truncated]).toString('base64'),
+      );
+
       await expect(service.recall('jti-0', 'old-token')).resolves.toBeNull();
     });
   });

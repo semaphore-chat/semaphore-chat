@@ -164,6 +164,8 @@ describe('AuthController', () => {
     };
 
     const refreshIssuedAt = 1_700_000_000;
+    /** The database's clock (databaseNow). */
+    const dbNow = new Date('2030-01-01T00:00:00.000Z');
     /** Whether the refresh transaction has committed. */
     let committed: boolean;
 
@@ -184,11 +186,20 @@ describe('AuthController', () => {
         committed = true;
         return result;
       });
-      // The user row lock (session-lock.util)
-      mockDatabase.$queryRaw.mockResolvedValue([{ banned: false }]);
+      // The user row lock (session-lock.util), or the database's clock
+      mockDatabase.$queryRaw.mockImplementation((strings: string[]) =>
+        Promise.resolve(
+          strings.join('?').includes('clock_timestamp()')
+            ? [{ now: dbNow }]
+            : [{ banned: false }],
+        ),
+      );
       tokenBlacklistService.isRevoked.mockResolvedValue(false);
       jest
         .spyOn(authService, 'validateRefreshToken')
+        .mockResolvedValue(mockTokenRecord);
+      jest
+        .spyOn(authService, 'reloadRefreshToken')
         .mockResolvedValue(mockTokenRecord);
       jest
         .spyOn(authService, 'consumeRefreshToken')
@@ -214,11 +225,13 @@ describe('AuthController', () => {
       expect(authService.validateRefreshToken).toHaveBeenCalledWith(
         jti,
         mockRefreshToken,
+      );
+      expect(authService.reloadRefreshToken).toHaveBeenCalledWith(
+        jti,
         mockDatabase,
       );
       expect(authService.consumeRefreshToken).toHaveBeenCalledWith(
         jti,
-        mockRefreshToken,
         mockDatabase,
       );
       expect(authService.generateRefreshToken).toHaveBeenCalledWith(
@@ -292,6 +305,36 @@ describe('AuthController', () => {
       await expect(controller.refresh(req, mockRes)).rejects.toThrow(
         'Invalid refresh token',
       );
+      expect(mockDatabase.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('checks the token against its hash (bcrypt) before the transaction', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      await controller.refresh(req, mockRes);
+
+      // Refreshes waiting on the token's lock don't hold a connection
+      // through a bcrypt compare
+      expect(
+        authService.validateRefreshToken.mock.invocationCallOrder[0],
+      ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
+    });
+
+    it('refuses a token deleted (revoked) since it was checked', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+      authService.reloadRefreshToken.mockResolvedValue(null);
+
+      await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+        'Invalid refresh token',
+      );
+      expect(authService.consumeRefreshToken).not.toHaveBeenCalled();
+      expect(authService.login).not.toHaveBeenCalled();
     });
 
     it('should use transaction for token rotation', async () => {
@@ -347,8 +390,9 @@ describe('AuthController', () => {
       };
 
       beforeEach(() => {
+        // Consumed by the time it has the lock
         jest
-          .spyOn(authService, 'validateRefreshToken')
+          .spyOn(authService, 'reloadRefreshToken')
           .mockResolvedValue(consumedRecord);
       });
 
@@ -356,6 +400,7 @@ describe('AuthController', () => {
         beforeEach(() => {
           refreshTokenGraceService.isWithinGraceWindow.mockReturnValue(true);
           authService.findGraceSuccessor.mockResolvedValue({
+            kind: 'found',
             refreshToken: 'successor-token',
             sessionId: 'family-123',
             iat: 1_700_000_100,
@@ -364,16 +409,24 @@ describe('AuthController', () => {
 
         it('returns the token it was rotated to, without rotating again', async () => {
           const result = await controller.refresh(
-            { ...req, headers: { 'user-agent': 'Electron/25.0.0' } },
+            {
+              ...req,
+              ip: '203.0.113.1',
+              headers: { 'user-agent': 'Electron/25.0.0' },
+            },
             mockRes,
           );
 
+          // On the database's clock, which stamped the rotation
           expect(
             refreshTokenGraceService.isWithinGraceWindow,
-          ).toHaveBeenCalledWith(consumedRecord.consumedAt);
+          ).toHaveBeenCalledWith(consumedRecord.consumedAt, dbNow);
+          // Only for the client that rotated it
           expect(authService.findGraceSuccessor).toHaveBeenCalledWith(
             consumedRecord,
             mockRefreshToken,
+            { userAgent: 'Electron/25.0.0', ipAddress: '203.0.113.1' },
+            dbNow,
             mockDatabase,
           );
           expect(result).toEqual({
@@ -407,8 +460,31 @@ describe('AuthController', () => {
           expect(committedWhenSigned).toBe(false);
         });
 
+        it('ends the whole session when another client presents it (a stolen token)', async () => {
+          authService.findGraceSuccessor.mockResolvedValue({
+            kind: 'other-client',
+          });
+          let committedWhenRevoked: boolean | undefined;
+          authService.revokeReusedSession.mockImplementation(() => {
+            committedWhenRevoked = committed;
+            return Promise.resolve();
+          });
+
+          await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+            'Invalid refresh token',
+          );
+
+          expect(authService.revokeReusedSession).toHaveBeenCalledWith(
+            mockUser.id,
+            'family-123',
+          );
+          expect(committedWhenRevoked).toBe(true);
+          expect(authService.login).not.toHaveBeenCalled();
+          expect(mockRes.cookie).not.toHaveBeenCalled();
+        });
+
         it('refuses, without ending the session, when there is nothing to hand out', async () => {
-          authService.findGraceSuccessor.mockResolvedValue(null);
+          authService.findGraceSuccessor.mockResolvedValue({ kind: 'none' });
 
           await expect(controller.refresh(req, mockRes)).rejects.toThrow(
             'Invalid refresh token',
@@ -469,7 +545,7 @@ describe('AuthController', () => {
 
         it('deletes just the token when it has no session', async () => {
           jest
-            .spyOn(authService, 'validateRefreshToken')
+            .spyOn(authService, 'reloadRefreshToken')
             .mockResolvedValue({ ...consumedRecord, familyId: null });
 
           await expect(controller.refresh(req, mockRes)).rejects.toThrow(
@@ -503,7 +579,7 @@ describe('AuthController', () => {
         expect(mockDatabase.$queryRaw.mock.calls[0][1]).toBe(mockUser.id);
         expect(mockDatabase.$queryRaw.mock.calls[1][1]).toBe(jti);
         expect(mockDatabase.$queryRaw.mock.invocationCallOrder[1]).toBeLessThan(
-          authService.validateRefreshToken.mock.invocationCallOrder[0],
+          authService.reloadRefreshToken.mock.invocationCallOrder[0],
         );
       });
 
@@ -583,7 +659,7 @@ describe('AuthController', () => {
 
       it('deletes just the token of a revoked session without a family', async () => {
         jest
-          .spyOn(authService, 'validateRefreshToken')
+          .spyOn(authService, 'reloadRefreshToken')
           .mockResolvedValue({ ...mockTokenRecord, familyId: null });
         tokenBlacklistService.isRevoked.mockResolvedValue(true);
 

@@ -1,6 +1,6 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
-import { AuthService } from './auth.service';
+import { AuthService, SESSION_ACTIVITY_DELAY_MS } from './auth.service';
 import { UserService } from '../user/user.service';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
@@ -16,7 +16,10 @@ import {
 } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { SessionRevocationService } from './session-revocation.service';
-import { RefreshTokenGraceService } from './refresh-token-grace.service';
+import {
+  REFRESH_TOKEN_REUSE_GRACE_MS,
+  RefreshTokenGraceService,
+} from './refresh-token-grace.service';
 
 // Mock bcrypt — hashSync must return a value so the DUMMY_HASH class property initializes
 jest.mock('bcrypt', () => ({
@@ -239,6 +242,32 @@ describe('AuthService', () => {
       expect(mockDatabase.refreshToken.create).not.toHaveBeenCalled();
     });
 
+    it('stores a token prepared ahead without signing or hashing again', async () => {
+      mockDatabase.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.generateRefreshToken(
+        'user-123',
+        undefined,
+        undefined,
+        'family-1',
+        { id: 'jti-9', refreshToken: 'prepared-token', tokenHash: 'hash-9' },
+      );
+
+      expect(result).toEqual({
+        refreshToken: 'prepared-token',
+        sessionId: 'family-1',
+      });
+      expect(jwtService.sign).not.toHaveBeenCalled();
+      expect(bcrypt.hash).not.toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          id: 'jti-9',
+          tokenHash: 'hash-9',
+          familyId: 'family-1',
+        }),
+      });
+    });
+
     it('should delete existing sessions for same device on fresh login (no familyId)', async () => {
       const userId = 'user-123';
       const deviceInfo = {
@@ -454,68 +483,60 @@ describe('AuthService', () => {
   });
 
   describe('consumeRefreshToken', () => {
-    it('should mark token as consumed and return token record', async () => {
-      const jti = 'token-jti-123';
-      const refreshToken = 'valid-token';
-      const mockToken = RefreshTokenFactory.build({
-        id: jti,
+    it("marks the token consumed at the database's time and returns it", async () => {
+      const dbNow = new Date('2030-01-01T00:00:00.000Z');
+      const consumed = RefreshTokenFactory.build({
+        id: 'token-jti-123',
         familyId: 'family-1',
+        consumed: true,
+        consumedAt: dbNow,
       });
+      mockDatabase.$queryRaw.mockResolvedValue([{ now: dbNow }]);
+      mockDatabase.refreshToken.update.mockResolvedValue(consumed);
 
-      mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(true as never);
-      mockDatabase.refreshToken.update.mockResolvedValue(mockToken);
-
-      const result = await service.consumeRefreshToken(jti, refreshToken);
-
-      expect(mockDatabase.refreshToken.update).toHaveBeenCalledWith({
-        where: { id: jti },
-        data: { consumed: true, consumedAt: expect.any(Date) },
-      });
-      expect(result).toEqual(mockToken);
-    });
-
-    it('should throw UnauthorizedException when token not found', async () => {
-      mockDatabase.refreshToken.findUnique.mockResolvedValue(null);
-
-      await expect(
-        service.consumeRefreshToken('nonexistent', 'token'),
-      ).rejects.toThrow(UnauthorizedException);
-
-      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
-    });
-
-    it('should throw UnauthorizedException when token hash does not match', async () => {
-      const jti = 'token-jti-123';
-      const mockToken = RefreshTokenFactory.build({ id: jti });
-
-      mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(false as never);
-
-      await expect(
-        service.consumeRefreshToken(jti, 'wrong-token'),
-      ).rejects.toThrow(UnauthorizedException);
-
-      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
-    });
-
-    it('should use transaction client when provided', async () => {
-      const mockTx = createMockDatabase();
-      const jti = 'token-jti-123';
-      const mockToken = RefreshTokenFactory.build({ id: jti });
-
-      mockTx.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(true as never);
-      mockTx.refreshToken.update.mockResolvedValue(mockToken);
-
-      await service.consumeRefreshToken(
-        jti,
-        'token',
-        mockTx as unknown as Parameters<typeof service.consumeRefreshToken>[2],
+      const result = await service.consumeRefreshToken(
+        'token-jti-123',
+        mockDatabase as any,
       );
 
-      expect(mockTx.refreshToken.update).toHaveBeenCalled();
-      expect(mockDatabase.refreshToken.update).not.toHaveBeenCalled();
+      const [strings] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(/clock_timestamp\(\)/);
+      expect(mockDatabase.refreshToken.update).toHaveBeenCalledWith({
+        where: { id: 'token-jti-123' },
+        data: { consumed: true, consumedAt: dbNow },
+      });
+      expect(result).toEqual(consumed);
+      // Validated before the transaction: no bcrypt under the locks
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('reloadRefreshToken', () => {
+    it('reads the token again, without bcrypt', async () => {
+      const token = RefreshTokenFactory.build({ id: 'jti-1' });
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(token);
+
+      await expect(
+        service.reloadRefreshToken('jti-1', mockDatabase as any),
+      ).resolves.toEqual(token);
+      expect(mockDatabase.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { id: 'jti-1' },
+      });
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['gone', null],
+      [
+        'expired',
+        RefreshTokenFactory.build({ expiresAt: new Date(Date.now() - 1000) }),
+      ],
+    ])('returns null when it is %s', async (_, token) => {
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(token);
+
+      await expect(
+        service.reloadRefreshToken('jti-1', mockDatabase as any),
+      ).resolves.toBeNull();
     });
   });
 
@@ -590,6 +611,110 @@ describe('AuthService', () => {
     });
   });
 
+  describe('getUserSessions', () => {
+    const at = (minutesAgo: number) =>
+      new Date(Date.now() - minutesAgo * 60_000);
+
+    it('lists sessions by family, with the activity the delayed query picked', async () => {
+      mockDatabase.refreshToken.findMany.mockResolvedValue([
+        { id: 'live-a', familyId: 'family-a' },
+        { id: 'live-b', familyId: 'family-b' },
+      ]);
+      mockDatabase.refreshToken.findFirst.mockResolvedValue({
+        id: 'consumed-b',
+        familyId: 'family-b',
+      });
+      mockDatabase.$queryRaw.mockResolvedValue([
+        {
+          familyId: 'family-a',
+          deviceName: 'Chrome on Windows',
+          ipAddress: '203.0.113.1',
+          lastUsedAt: at(30),
+          expiresAt: at(-60),
+          sessionCreatedAt: at(600),
+        },
+        {
+          familyId: 'family-b',
+          deviceName: null,
+          ipAddress: null,
+          lastUsedAt: at(5),
+          expiresAt: at(-60),
+          sessionCreatedAt: at(10),
+        },
+      ]);
+
+      const sessions = await service.getUserSessions('user-1', 'consumed-b');
+
+      expect(sessions).toEqual([
+        {
+          id: 'family-b',
+          deviceName: 'Unknown Device',
+          ipAddress: null,
+          createdAt: at(10),
+          lastUsedAt: at(5),
+          expiresAt: at(-60),
+          // The current session, also when its cookie was rotated since
+          isCurrent: true,
+        },
+        {
+          id: 'family-a',
+          deviceName: 'Chrome on Windows',
+          ipAddress: '203.0.113.1',
+          createdAt: at(600),
+          lastUsedAt: at(30),
+          expiresAt: at(-60),
+          isCurrent: false,
+        },
+      ]);
+      const [strings, ...values] = mockDatabase.$queryRaw.mock.calls[0];
+      const sql = (strings as string[]).join('?');
+      // Rotations newer than the delay don't show
+      expect(sql).toMatch(/DISTINCT ON \(t."familyId"\)/);
+      expect(sql).toMatch(/clock_timestamp\(\)/);
+      expect(values).toEqual(
+        expect.arrayContaining([
+          SESSION_ACTIVITY_DELAY_MS / 1000,
+          'user-1',
+          ['family-a', 'family-b'],
+        ]),
+      );
+      expect(SESSION_ACTIVITY_DELAY_MS).toBeGreaterThan(
+        REFRESH_TOKEN_REUSE_GRACE_MS,
+      );
+    });
+
+    it('lists a token without a family as a session of its own', async () => {
+      mockDatabase.refreshToken.findMany.mockResolvedValue([
+        {
+          id: 'legacy',
+          familyId: null,
+          deviceName: 'Firefox',
+          ipAddress: null,
+          createdAt: at(60),
+          lastUsedAt: at(60),
+          expiresAt: at(-60),
+        },
+      ]);
+      mockDatabase.refreshToken.findFirst.mockResolvedValue({
+        id: 'legacy',
+        familyId: null,
+      });
+
+      const sessions = await service.getUserSessions('user-1', 'legacy');
+
+      expect(sessions).toEqual([
+        expect.objectContaining({ id: 'legacy', isCurrent: true }),
+      ]);
+      expect(mockDatabase.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('lists nothing without a live token', async () => {
+      mockDatabase.refreshToken.findMany.mockResolvedValue([]);
+
+      await expect(service.getUserSessions('user-1')).resolves.toEqual([]);
+    });
+  });
+
   describe('revokeSession', () => {
     it('should delete the whole family, revoke the session and disconnect it', async () => {
       mockDatabase.refreshToken.findFirst.mockResolvedValue({
@@ -598,11 +723,15 @@ describe('AuthService', () => {
       });
       mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 3 });
 
-      const result = await service.revokeSession('user-1', 'token-1');
+      const result = await service.revokeSession('user-1', 'family-1');
 
       expect(result).toBe(true);
+      // By session (family) id, or by a token id as before
       expect(mockDatabase.refreshToken.findFirst).toHaveBeenCalledWith({
-        where: { id: 'token-1', userId: 'user-1' },
+        where: {
+          userId: 'user-1',
+          OR: [{ familyId: 'family-1' }, { id: 'family-1' }],
+        },
         select: { id: true, familyId: true },
       });
       expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
@@ -725,7 +854,14 @@ describe('AuthService', () => {
         (strings as string[]).join('?'),
       );
 
+    const prepared = {
+      id: 'jti-1',
+      refreshToken: 'new-refresh-token',
+      tokenHash: 'hash-1',
+    };
+
     beforeEach(() => {
+      jest.spyOn(service, 'prepareRefreshToken').mockResolvedValue(prepared);
       jest.spyOn(service, 'generateRefreshToken').mockResolvedValue({
         refreshToken: 'new-refresh-token',
         sessionId: 'family-1',
@@ -750,8 +886,23 @@ describe('AuthService', () => {
         user.id,
         { userAgent: 'Chrome' },
         mockDatabase,
+        undefined,
+        prepared,
       );
       expect(service.login).toHaveBeenCalledWith(user, 'family-1');
+    });
+
+    it('hashes the refresh token before the transaction takes its locks', async () => {
+      mockDatabase.$queryRaw.mockResolvedValue([
+        { hashedPassword: '$2b$10$checked-hash' },
+      ]);
+
+      await service.issueLoginTokens(user, {});
+
+      expect(service.prepareRefreshToken).toHaveBeenCalledWith(user.id);
+      expect(
+        (service.prepareRefreshToken as jest.Mock).mock.invocationCallOrder[0],
+      ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
     });
 
     it('locks the user (shared) before it issues anything', async () => {
@@ -822,6 +973,9 @@ describe('AuthService', () => {
       consumed: true,
       consumedAt,
     });
+    // The client that rotated jti-0 (stored on its successor) and asks again
+    const client = { ipAddress: '203.0.113.1', userAgent: 'Chrome' };
+    const now = new Date();
     const live = RefreshTokenFactory.build({
       id: 'jti-1',
       userId: 'user-1',
@@ -829,7 +983,16 @@ describe('AuthService', () => {
       consumed: false,
       consumedAt: null,
       expiresAt: new Date(Date.now() + 86_400_000),
+      ...client,
     });
+    const find = (tokenId = 'token-0', from = client) =>
+      service.findGraceSuccessor(
+        presented,
+        tokenId,
+        from,
+        now,
+        mockDatabase as any,
+      );
 
     beforeEach(() => {
       mockDatabase.$queryRaw.mockResolvedValue([]);
@@ -847,9 +1010,8 @@ describe('AuthService', () => {
       refreshTokenGraceService.recall.mockResolvedValue('token-1');
       mockDatabase.refreshToken.findUnique.mockResolvedValue(live);
 
-      await expect(
-        service.findGraceSuccessor(presented, 'token-0', mockDatabase as any),
-      ).resolves.toEqual({
+      await expect(find()).resolves.toEqual({
+        kind: 'found',
         refreshToken: 'token-1',
         sessionId: 'family-1',
         iat: 1_700_000_100,
@@ -882,9 +1044,14 @@ describe('AuthService', () => {
           ),
       );
 
-      await expect(
-        service.findGraceSuccessor(presented, 'token-0', mockDatabase as any),
-      ).resolves.toMatchObject({ refreshToken: 'token-2' });
+      await expect(find()).resolves.toMatchObject({
+        kind: 'found',
+        refreshToken: 'token-2',
+      });
+      expect(refreshTokenGraceService.isWithinGraceWindow).toHaveBeenCalledWith(
+        expect.any(Date),
+        now,
+      );
       expect(refreshTokenGraceService.recall).toHaveBeenLastCalledWith(
         'jti-1',
         'token-1',
@@ -944,12 +1111,54 @@ describe('AuthService', () => {
           refreshTokenGraceService.isWithinGraceWindow.mockReturnValue(false);
         },
       ],
-    ])('returns null when %s', async (_, arrange) => {
+    ])('finds none when %s', async (_, arrange) => {
       arrange();
 
+      await expect(find()).resolves.toEqual({ kind: 'none' });
+    });
+
+    it.each([
+      ['another IP address', { ...client, ipAddress: '198.51.100.7' }],
+      ['another user agent', { ...client, userAgent: 'Firefox' }],
+      ['no address', { ...client, ipAddress: '' }],
+    ])(
+      'refuses a client with %s than the rotation (a stolen token)',
+      async (_, other) => {
+        refreshTokenGraceService.recall.mockResolvedValue('token-1');
+        mockDatabase.refreshToken.findUnique.mockResolvedValue(live);
+
+        await expect(find('token-0', other)).resolves.toEqual({
+          kind: 'other-client',
+        });
+      },
+    );
+
+    it('refuses a client that did not do a later rotation of the chain', async () => {
+      refreshTokenGraceService.recall.mockImplementation((jti: string) =>
+        Promise.resolve(jti === 'jti-0' ? 'token-1' : 'token-2'),
+      );
+      mockDatabase.refreshToken.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(
+            where.id === 'jti-1'
+              ? { ...live, consumed: true, consumedAt: new Date() }
+              : { ...live, id: 'jti-2', ipAddress: '198.51.100.7' },
+          ),
+      );
+
+      await expect(find()).resolves.toEqual({ kind: 'other-client' });
+    });
+
+    it('serves the same client from another address of its IPv6 /64', async () => {
+      refreshTokenGraceService.recall.mockResolvedValue('token-1');
+      mockDatabase.refreshToken.findUnique.mockResolvedValue({
+        ...live,
+        ipAddress: '2001:db8:5:6::10',
+      });
+
       await expect(
-        service.findGraceSuccessor(presented, 'token-0', mockDatabase as any),
-      ).resolves.toBeNull();
+        find('token-0', { ...client, ipAddress: '2001:db8:5:6:a:b:c:d' }),
+      ).resolves.toMatchObject({ kind: 'found' });
     });
 
     it('gives up on an endless chain', async () => {
@@ -960,9 +1169,7 @@ describe('AuthService', () => {
         consumedAt: new Date(),
       });
 
-      await expect(
-        service.findGraceSuccessor(presented, 'token-0', mockDatabase as any),
-      ).resolves.toBeNull();
+      await expect(find()).resolves.toEqual({ kind: 'none' });
     });
   });
 
