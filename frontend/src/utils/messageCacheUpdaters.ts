@@ -106,6 +106,18 @@ export function findMessageInInfinite(
 // `prependOrReconcileOptimistic` below for the content-equality rule that
 // replaces it.
 
+/** Prefix of the temporary id (and clientId) of an optimistic message. */
+export const OPTIMISTIC_ID_PREFIX = 'pending-';
+
+/**
+ * True for an optimistic message's temporary id (`pending-<uuid>`), which the
+ * server has never seen. Such an id must never go over the wire as a
+ * message reference (e.g. a read mark).
+ */
+export function isOptimisticMessageId(id: string): boolean {
+  return id.startsWith(OPTIMISTIC_ID_PREFIX);
+}
+
 /** True if a cached row is a not-yet-settled optimistic message. */
 function isOptimisticRow(message: unknown): boolean {
   const status = (message as Message).sendStatus;

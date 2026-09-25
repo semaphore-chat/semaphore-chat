@@ -19,6 +19,7 @@ function splitFirstSentence(text: string): [string, string] {
 import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
+import { isOptimisticMessageId } from "../../utils/messageCacheUpdaters";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { useResponsive } from "../../hooks/useResponsive";
 import { useAnchoredModeTransition } from "../../hooks/useAnchoredModeTransition";
@@ -101,6 +102,11 @@ interface MessageContainerProps {
   // Read receipts
   channelId?: string;
   directMessageGroupId?: string;
+}
+
+/** An optimistic row the server hasn't confirmed yet (its id is temporary). */
+function isUnconfirmed(message: Message): boolean {
+  return message.sendStatus !== undefined || isOptimisticMessageId(message.id);
 }
 
 const MessageContainer: React.FC<MessageContainerProps> = ({
@@ -279,17 +285,63 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // history via a jump are marked read exactly as before. Out-of-range
   // indices (estimate overshoot at the list edge) are clamped; empty/invalid
   // ranges are ignored.
+  //
+  // Own sends: an optimistic row (sendStatus 'pending'/'failed') has a
+  // temporary pending-<uuid> id the server has never seen, so the mark goes
+  // to the newest *confirmed* message in the range instead. The clientIds of
+  // the optimistic rows skipped that way are kept, because the ack swaps a
+  // row's id in place (same clientId key, same height): no new range is
+  // reported, so the effect below marks the real id when one is confirmed
+  // while still in view. markAsRead applies the usual debounce and
+  // background-tab rules to that mark too.
   const orderedMessagesRef = useRef(orderedMessages);
   orderedMessagesRef.current = orderedMessages;
+  const unconfirmedInViewRef = useRef<Set<string>>(new Set());
   const handleVisibleRangeChange = useCallback(
     (startIndex: number, endIndex: number) => {
       const ordered = orderedMessagesRef.current;
       if (ordered.length === 0 || endIndex < 0 || endIndex < startIndex) return;
-      const latestVisible = ordered[Math.min(endIndex, ordered.length - 1)];
-      if (latestVisible) markAsRead(latestVisible.id);
+      const last = Math.min(endIndex, ordered.length - 1);
+      const first = Math.min(Math.max(startIndex, 0), last);
+      const unconfirmed = new Set<string>();
+      let newestConfirmed: Message | undefined;
+      for (let i = last; i >= first; i--) {
+        const message = ordered[i];
+        if (!isUnconfirmed(message)) {
+          newestConfirmed = message;
+          break;
+        }
+        if (message.clientId) unconfirmed.add(message.clientId);
+      }
+      unconfirmedInViewRef.current = unconfirmed;
+      if (newestConfirmed) markAsRead(newestConfirmed.id);
     },
     [markAsRead],
   );
+
+  useEffect(() => {
+    const unconfirmed = unconfirmedInViewRef.current;
+    if (unconfirmed.size === 0) return;
+    // Newest first: optimistic rows sit at the live edge, so the scan stops
+    // at the tail once every tracked row is found. Every confirmed one leaves
+    // the set (so an older one can't be marked on a later update), and the
+    // first confirmed is the newest, the one to mark.
+    let newlyConfirmed: Message | undefined;
+    const stillPending = new Set<string>();
+    let seen = 0;
+    for (let i = orderedMessages.length - 1; i >= 0 && seen < unconfirmed.size; i--) {
+      const message = orderedMessages[i];
+      if (!message.clientId || !unconfirmed.has(message.clientId)) continue;
+      seen += 1;
+      if (isUnconfirmed(message)) stillPending.add(message.clientId);
+      else newlyConfirmed ??= message;
+    }
+    // Keep only the rows still waiting for their ack: confirmed ones are
+    // done, and ones no longer in the list (deleted, or replaced by a
+    // separately inserted echo) would otherwise force a full scan each time.
+    unconfirmedInViewRef.current = stillPending;
+    if (newlyConfirmed) markAsRead(newlyConfirmed.id);
+  }, [orderedMessages, markAsRead]);
 
   // Read receipts - determine where to show unread divider
   const { lastReadMessageId: getLastReadMessageId, unreadCount: getUnreadCount } = useReadReceipts();
