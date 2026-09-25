@@ -71,3 +71,15 @@ export function findRoleButtonContaining(text: string): HTMLElement | null {
     ) ?? null
   );
 }
+
+/**
+ * The scrollable (`overflow-y: auto`, content taller than the box) elements
+ * inside `root`, `root` included — e.g. a drawer's list, to scroll it.
+ */
+export function findScrollablesIn(root: Element | null | undefined): HTMLElement[] {
+  if (!root) return [];
+  return [root, ...Array.from(root.querySelectorAll('*'))].filter(
+    (el): el is HTMLElement =>
+      el instanceof HTMLElement && getComputedStyle(el).overflowY === 'auto' && el.scrollHeight > el.clientHeight,
+  );
+}

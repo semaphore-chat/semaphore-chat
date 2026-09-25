@@ -1,7 +1,21 @@
 import { defineScreen } from '../fixtures/screenStory';
 import { asElectron } from '../fixtures/electron';
-import { ClickOnMount } from '../fixtures/interactions';
+import { ClickOnMount, ScrollToBottomOnMount } from '../fixtures/interactions';
+import { findScrollablesIn } from '../fixtures/domQueries';
 import { bigCommunityScenario, primaryCommunity, generalChannel, firstDmGroup } from '../fixtures/scenarios';
+import { edgeScreen } from '../fixtures/edge/states';
+import {
+  defineNavScreen,
+  navBase,
+  navHandlers,
+  withChannels,
+  withDmGroups,
+  withMembers,
+  makeUsers,
+  DM_POOL,
+  NAV_COMMUNITY,
+  NAV_FIRST_CHANNEL,
+} from '../fixtures/edge/nav';
 import { VoiceConnected } from './VoiceConnected.stories';
 
 /*
@@ -51,3 +65,37 @@ export const DmChatMembersOpen = asElectron(
   }),
 );
 DmChatMembersOpen.meta = { viewports: ['tablet'] };
+
+/** 30 members plus me in a community, connected to its voice channel. */
+const voiceMembersScenario = withMembers(
+  withChannels(navBase(), NAV_COMMUNITY, ['general', 'random', 'help'], ['Lounge']),
+  NAV_COMMUNITY,
+  makeUsers(30, { seed: 'electron-voice-members' }),
+);
+const membersDrawerScrollables = () =>
+  findScrollablesIn(document.querySelector('button[aria-label="Close members"]')?.closest('.MuiDrawer-paper'));
+
+/** Connected to voice with the members drawer open and scrolled to the end:
+ * the last (offline) members sit above the fixed voice bar, not behind it. */
+export const VoiceMembersOpenScrolled = asElectron(
+  edgeScreen(voiceMembersScenario, `/community/${NAV_COMMUNITY}/channel/${NAV_FIRST_CHANNEL}`, {
+    voice: true,
+    extraHandlers: navHandlers(voiceMembersScenario),
+    overlay: (
+      <>
+        <ClickOnMount find={showMembersButton} />
+        <ScrollToBottomOnMount find={membersDrawerScrollables} />
+      </>
+    ),
+  }),
+);
+VoiceMembersOpenScrolled.meta = { viewports: ['tablet'] };
+
+/** 12 DMs; the sixth is an unnamed 15-person group whose name is every member's. */
+const longNameDms = withDmGroups(navBase(), DM_POOL, 12);
+const unnamedBigGroup = longNameDms.dmGroups.find((g) => g.members.length >= 10 && !g.name)!;
+
+/** An unnamed 15-person group DM: the long name truncates, and the call and
+ * members buttons stay in the header. */
+export const DmChatLongName = asElectron(defineNavScreen(longNameDms, `/direct-messages/${unnamedBigGroup.id}`));
+DmChatLongName.meta = { viewports: ['tablet'] };
