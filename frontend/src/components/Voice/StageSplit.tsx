@@ -71,7 +71,7 @@ export const StageSplit: React.FC<StageSplitProps> = ({
   }, [storageKey]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    let delta = 0;
+    let delta: number;
     if (e.key === 'ArrowUp') delta = -0.05;
     else if (e.key === 'ArrowDown') delta = 0.05;
     else return;

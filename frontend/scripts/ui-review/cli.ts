@@ -113,7 +113,7 @@ function viewportsFromMeta(file: string, { strict }: { strict: boolean }): Recor
       const own = storyViewports(story.meta);
       if (own) out[id] = own;
     } catch (err) {
-      if (strict) throw new Error(`story ${id} (${story.filePath}): ${(err as Error).message}`);
+      if (strict) throw new Error(`story ${id} (${story.filePath}): ${(err as Error).message}`, { cause: err });
     }
   }
   return out;

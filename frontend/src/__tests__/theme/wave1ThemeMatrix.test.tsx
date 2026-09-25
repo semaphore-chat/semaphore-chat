@@ -127,7 +127,7 @@ async function eachTheme(
       await assert();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`[${themeLabel(entry)}] ${message}`);
+      throw new Error(`[${themeLabel(entry)}] ${message}`, { cause: error });
     } finally {
       cleanup();
     }
