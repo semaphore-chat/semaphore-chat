@@ -7,6 +7,7 @@ version: 2
 # - Security updates are grouped too (applies-to: security-updates), so an
 #   advisory wave becomes one PR instead of one job per package.
 # - Majors are never grouped: each gets its own PR for a changelog review.
+#   Exception: the Prisma packages, which must move in lockstep (see below).
 updates:
   # npm: the whole pnpm workspace
   - package-ecosystem: "npm"
@@ -23,12 +24,33 @@ updates:
     # but pnpm still holds them until they are 3 days old.
     cooldown:
       default-days: 4
+    # Prisma is pinned exactly to 7.9.1 because the prisma@7.10.0 CLI has no
+    # npm provenance (published with a token outside trusted publishing).
+    # Skip that one release for all Prisma packages so the group stays in
+    # lockstep; later versions are still proposed. Check a proposed prisma
+    # release's provenance (npm view prisma@<ver> dist.attestations) first.
+    ignore:
+      - dependency-name: "prisma"
+        versions: ["7.10.0"]
+      - dependency-name: "@prisma/*"
+        versions: ["7.10.0"]
     groups:
       security:
         applies-to: security-updates
         patterns:
           - "*"
         update-types:
+          - "minor"
+          - "patch"
+      # The Prisma CLI (prisma) and client (@prisma/client, @prisma/adapter-pg)
+      # must be on the same version, so they update in one PR, majors
+      # included: #468/#473 bumped them separately and neither could build.
+      prisma:
+        patterns:
+          - "prisma"
+          - "@prisma/*"
+        update-types:
+          - "major"
           - "minor"
           - "patch"
       production-minor-patch:

@@ -79,6 +79,9 @@ COPY --from=builder --chown=nestjs:nodejs /app/backend/dist ./backend/dist
 COPY --from=builder --chown=nestjs:nodejs /app/backend/node_modules ./backend/node_modules
 COPY --from=builder --chown=nestjs:nodejs /app/backend/package.json ./backend/
 COPY --from=builder --chown=nestjs:nodejs /app/backend/prisma ./backend/prisma
+# The migrate CLI (docker-entrypoint.sh, the Helm migration job) reads the
+# database URL from prisma.config.ts (Prisma 7).
+COPY --from=builder --chown=nestjs:nodejs /app/backend/prisma.config.ts ./backend/
 COPY --from=builder --chown=nestjs:nodejs /app/backend/docker-entrypoint.sh ./backend/
 
 WORKDIR /app/backend

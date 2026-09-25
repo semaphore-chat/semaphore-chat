@@ -216,6 +216,8 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
   --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)"
 ```
 
+If the database requires SSL, note that `sslmode=require` in the URI verifies the server certificate. For a self-signed or private-CA certificate, see [`DATABASE_URL` options](https://docs.semaphorechat.app/installation/configuration/#core).
+
 ### Scenario 4: Manual TLS Certificates
 
 Bring your own certificates:

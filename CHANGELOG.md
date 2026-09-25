@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Changed
+
+- **Prisma 7** — The backend moves from Prisma 6.19 to 7.9.1 (pinned exactly: the `prisma@7.10.0` CLI was published without npm provenance). The database client now connects through node-postgres (`@prisma/adapter-pg`) instead of Prisma's Rust query engine, and the migrate CLI reads the database URL from `backend/prisma.config.ts`.
+
+### Upgrade notes
+
+- **Database SSL:** `sslmode=require` (also `prefer` and `verify-ca`) in `DATABASE_URL` now verifies the server certificate, like `verify-full`. Before, it encrypted without checking the certificate. Instances that connect to a database with a self-signed or private-CA certificate must add `sslrootcert=/path/to/ca.pem` (with the CA certificate mounted into the container; the certificate must also match the hostname, or use `uselibpqcompat=true&sslmode=verify-ca&sslrootcert=...`) or, to keep the old unverified behaviour, use `sslmode=no-verify`. Otherwise the backend fails to connect at startup. `prisma migrate deploy` still uses its own driver, so the migration step can succeed while the app fails. Instances without SSL in `DATABASE_URL` (the Docker Compose and bundled Helm PostgreSQL defaults) are unaffected. See [Configuration](https://docs.semaphorechat.app/installation/configuration/).
+- **Connection pool:** each backend process now opens at most 10 database connections (node-postgres' default; before it was Prisma's `2 × CPUs + 1`). The backend no longer reads the `connection_limit`, `pool_timeout`, `sslaccept` and `schema` URL parameters.
+- **Custom images:** an image built from a customised `backend/Dockerfile.prod` must also copy `backend/prisma.config.ts` into the runtime stage. Without it, `migrate deploy` (the entrypoint and the Helm migration job) fails with `The datasource.url property is required in your Prisma config file`.
+
 ## [0.4.3] - 2026-08-19
 
 ### Fixed

@@ -1,13 +1,12 @@
+// The connection URL lives in prisma.config.ts (Prisma 7 no longer reads it
+// here); the app and the ts-node scripts connect through @prisma/adapter-pg.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 generator client {
-  provider        = "prisma-client-js"
-  output          = "../../node_modules/.prisma/client"
-  binaryTargets   = ["native", "linux-musl-openssl-3.0.x"]
-  previewFeatures = ["fullTextSearchPostgres"]
+  provider = "prisma-client-js"
+  output   = "../../node_modules/.prisma/client"
 }
 
 model Message {
