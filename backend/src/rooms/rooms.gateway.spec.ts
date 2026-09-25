@@ -273,6 +273,19 @@ describe('RoomsGateway', () => {
     });
   });
 
+  describe('handleConnection', () => {
+    it('re-checks the session now that the socket is connected and in its rooms', async () => {
+      // The middleware can't: a disconnect sent to the rooms skips a socket
+      // that is still connecting
+      const client = createMockSocket();
+      socketSessionService.confirmBinding.mockResolvedValue(true);
+
+      await gateway.handleConnection(client);
+
+      expect(socketSessionService.confirmBinding).toHaveBeenCalledWith(client);
+    });
+  });
+
   describe('handleDisconnect', () => {
     it('should not emit any presence events (handled by PresenceGateway)', () => {
       const client = createMockSocket();

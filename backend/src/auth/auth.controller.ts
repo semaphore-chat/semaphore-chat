@@ -27,6 +27,10 @@ import { Request, Response } from 'express';
 import { DatabaseService } from '@/database/database.service';
 import { AuthenticatedRequest } from '@/types';
 import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie-helper';
+import {
+  lockUserForSessionRevocation,
+  lockUserForTokenRotation,
+} from './session-lock.util';
 
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -133,7 +137,8 @@ export class AuthController {
       throw new UnauthorizedException('No refresh token provided');
     }
 
-    const [user, jti] = await this.authService.verifyRefreshToken(refreshToken);
+    const [user, jti, refreshIssuedAt] =
+      await this.authService.verifyRefreshToken(refreshToken);
     // A banned user keeps their refresh tokens (unbanning restores the
     // session) but can't renew access while banned.
     if (user.banned) {
@@ -143,6 +148,13 @@ export class AuthController {
 
     // Do this in a tx so we don't have dangling refresh tokens or something weird
     const rotated = await this.databaseService.$transaction(async (tx) => {
+      // First: a revocation of the user's sessions either completes before
+      // this rotation or waits for it and then deletes its new token too
+      const locked = await lockUserForTokenRotation(tx, user.id);
+      if (!locked || locked.banned) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       const tokenRecord = await this.authService.validateRefreshToken(
         jti,
         refreshToken,
@@ -169,6 +181,28 @@ export class AuthController {
         throw new UnauthorizedException('Invalid refresh token');
       }
 
+      // A revoked session (logout, revoke session) or a token issued before
+      // a password reset can't renew itself, even if its row survived
+      const revoked = await this.tokenBlacklistService.isRevoked({
+        sub: user.id,
+        sid: tokenRecord.familyId ?? undefined,
+        iat: refreshIssuedAt,
+      });
+      if (revoked) {
+        this.logger.warn(
+          `Refresh with a revoked session. Family: ${tokenRecord.familyId}, User: ${user.id}`,
+        );
+        // Not on the tx, like the reuse case above
+        if (tokenRecord.familyId) {
+          await this.authService.invalidateTokenFamily(tokenRecord.familyId);
+        } else {
+          await this.databaseService.refreshToken.deleteMany({
+            where: { id: tokenRecord.id },
+          });
+        }
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       // Consume (not delete) old token so reuse can be detected later
       const consumed = await this.authService.consumeRefreshToken(
         jti,
@@ -176,16 +210,21 @@ export class AuthController {
         tx,
       );
       // Generate new token in the same family
-      return this.authService.generateRefreshToken(
+      const next = await this.authService.generateRefreshToken(
         user.id,
         deviceInfo,
         tx,
         consumed.familyId ?? undefined,
       );
+      // Signed before the commit: a password reset waiting for this
+      // rotation sets its cutoff after the commit, so the cutoff covers
+      // this access token too
+      return {
+        ...next,
+        accessToken: this.authService.login(user, next.sessionId),
+      };
     });
-    const { refreshToken: token, sessionId } = rotated;
-
-    const newAccessToken = this.authService.login(user, sessionId);
+    const { refreshToken: token, accessToken: newAccessToken } = rotated;
 
     // Always set cookies for web clients
     setAccessTokenCookie(res, newAccessToken);
@@ -264,6 +303,10 @@ export class AuthController {
         session = await this.databaseService.$transaction(async (tx) => {
           const [user, jti] =
             await this.authService.verifyRefreshToken(refreshToken);
+          // Serialized with refreshes: one racing this logout either
+          // completes first (its new token is deleted below) or finds its
+          // token gone
+          await lockUserForSessionRevocation(tx, user.id);
           const sessionId = await this.authService.deleteRefreshToken(
             jti,
             refreshToken,

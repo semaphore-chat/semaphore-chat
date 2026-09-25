@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { SessionRevocationService } from './session-revocation.service';
+import { lockUserForSessionRevocation } from './session-lock.util';
 
 export interface DeviceInfo {
   userAgent?: string;
@@ -83,12 +84,18 @@ export class AuthService {
     return this.jwtService.sign(payload);
   }
 
+  /**
+   * Verify a refresh token's signature and expiry and load its user.
+   * @returns The user, the token id (jti) and when the token was issued
+   *   (iat, seconds since epoch)
+   */
   async verifyRefreshToken(
     refreshToken: string,
-  ): Promise<[UserEntity, string]> {
+  ): Promise<[UserEntity, string, number?]> {
     const payload = await this.jwtService.verifyAsync<{
       sub: string;
       jti: string;
+      iat?: number;
     }>(refreshToken, {
       secret: this.jwtRefreshSecret,
       ignoreExpiration: false,
@@ -104,7 +111,7 @@ export class AuthService {
       throw new UnauthorizedException('Could not find user');
     }
 
-    return [new UserEntity(user), payload.jti];
+    return [new UserEntity(user), payload.jti, payload.iat];
   }
 
   async generateRefreshToken(
@@ -365,23 +372,29 @@ export class AuthService {
    *   getUserSessions lists as the session id)
    */
   async revokeSession(userId: string, sessionId: string): Promise<boolean> {
-    const token = await this.databaseService.refreshToken.findFirst({
-      // userId: a user can only revoke their own sessions
-      where: { id: sessionId, userId },
-      select: { id: true, familyId: true },
-    });
-    if (!token) return false;
+    const familyId = await this.databaseService.$transaction(async (tx) => {
+      // Serialized with refreshes (see session-lock.util)
+      await lockUserForSessionRevocation(tx, userId);
+      const token = await tx.refreshToken.findFirst({
+        // userId: a user can only revoke their own sessions
+        where: { id: sessionId, userId },
+        select: { id: true, familyId: true },
+      });
+      if (!token) return undefined;
 
-    await this.databaseService.refreshToken.deleteMany({
-      where: token.familyId
-        ? { familyId: token.familyId, userId }
-        : { id: token.id, userId },
+      await tx.refreshToken.deleteMany({
+        where: token.familyId
+          ? { familyId: token.familyId, userId }
+          : { id: token.id, userId },
+      });
+      return token.familyId;
     });
+    if (familyId === undefined) return false;
 
-    if (token.familyId) {
+    if (familyId) {
       await this.sessionRevocationService.revokeSessions(
         userId,
-        [token.familyId],
+        [familyId],
         'SESSION_REVOKED',
       );
     }
@@ -397,33 +410,38 @@ export class AuthService {
     userId: string,
     currentTokenId: string,
   ): Promise<number> {
-    const current = await this.databaseService.refreshToken.findFirst({
-      where: { id: currentTokenId, userId },
-      select: { familyId: true },
-    });
-    const currentFamilyId = current?.familyId ?? null;
+    const { count, otherFamilyIds } = await this.databaseService.$transaction(
+      async (tx) => {
+        // Serialized with refreshes (see session-lock.util)
+        await lockUserForSessionRevocation(tx, userId);
+        const current = await tx.refreshToken.findFirst({
+          where: { id: currentTokenId, userId },
+          select: { familyId: true },
+        });
+        const currentFamilyId = current?.familyId ?? null;
 
-    const others = await this.databaseService.refreshToken.findMany({
-      where: { userId, id: { not: currentTokenId } },
-      select: { familyId: true },
-    });
-    const otherFamilyIds = [
-      ...new Set(
-        others
-          .map((t) => t.familyId)
-          .filter((f): f is string => !!f && f !== currentFamilyId),
-      ),
-    ];
+        const others = await tx.refreshToken.findMany({
+          where: { userId, id: { not: currentTokenId } },
+          select: { familyId: true },
+        });
+        const familyIds = [
+          ...new Set(
+            others
+              .map((t) => t.familyId)
+              .filter((f): f is string => !!f && f !== currentFamilyId),
+          ),
+        ];
 
-    // By family, not by the rows read above: a refresh racing this rotates
-    // into a new row of the same family, which must go too.
-    const result = await this.databaseService.refreshToken.deleteMany({
-      where: {
-        userId,
-        id: { not: currentTokenId },
-        OR: [{ familyId: { in: otherFamilyIds } }, { familyId: null }],
+        const result = await tx.refreshToken.deleteMany({
+          where: {
+            userId,
+            id: { not: currentTokenId },
+            OR: [{ familyId: { in: familyIds } }, { familyId: null }],
+          },
+        });
+        return { count: result.count, otherFamilyIds: familyIds };
       },
-    });
+    );
 
     await this.sessionRevocationService.revokeSessions(
       userId,
@@ -431,6 +449,6 @@ export class AuthService {
       'SESSION_REVOKED',
     );
 
-    return result.count;
+    return count;
   }
 }

@@ -23,6 +23,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
 
+import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -488,6 +489,9 @@ export class UserService {
   ): Promise<User> {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
+    // Serialized with refreshes (see session-lock.util): the delete below
+    // also removes the token a racing refresh rotated in
+    await lockUserForSessionRevocation(tx, userId);
     const user = await tx.user.update({
       where: { id: userId },
       data: { hashedPassword },

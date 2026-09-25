@@ -321,15 +321,18 @@ describe('AuthService', () => {
       jest.spyOn(jwtService, 'verifyAsync').mockResolvedValue({
         sub: mockUser.id,
         jti,
+        iat: 1_700_000_000,
       });
       jest.spyOn(userService, 'findById').mockResolvedValue(mockUser);
 
-      const [user, returnedJti] =
+      const [user, returnedJti, issuedAt] =
         await service.verifyRefreshToken(refreshToken);
 
       expect(user).toBeInstanceOf(UserEntity);
       expect(user.id).toBe(mockUser.id);
       expect(returnedJti).toBe(jti);
+      // Refresh checks the session's revocation against it
+      expect(issuedAt).toBe(1_700_000_000);
       expect(jwtService.verifyAsync).toHaveBeenCalledWith(refreshToken, {
         secret: 'test-refresh-secret',
         ignoreExpiration: false,
@@ -608,6 +611,24 @@ describe('AuthService', () => {
       );
     });
 
+    it('should lock the user against refreshes before reading the session', async () => {
+      mockDatabase.refreshToken.findFirst.mockResolvedValue({
+        id: 'token-1',
+        familyId: 'family-1',
+      });
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.revokeSession('user-1', 'token-1');
+
+      expect(mockDatabase.$transaction).toHaveBeenCalled();
+      const [strings, userId] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(/FOR NO KEY UPDATE/);
+      expect(userId).toBe('user-1');
+      expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDatabase.refreshToken.findFirst.mock.invocationCallOrder[0],
+      );
+    });
+
     it('should delete just the token when it has no family', async () => {
       mockDatabase.refreshToken.findFirst.mockResolvedValue({
         id: 'token-1',
@@ -669,6 +690,22 @@ describe('AuthService', () => {
         'user-1',
         ['family-a', 'family-b'],
         'SESSION_REVOKED',
+      );
+    });
+
+    it('should lock the user against refreshes before reading the sessions', async () => {
+      mockDatabase.refreshToken.findFirst.mockResolvedValue(null);
+      mockDatabase.refreshToken.findMany.mockResolvedValue([]);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
+
+      await service.revokeAllOtherSessions('user-1', 'current-token');
+
+      expect(mockDatabase.$transaction).toHaveBeenCalled();
+      const [strings, userId] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(/FOR NO KEY UPDATE/);
+      expect(userId).toBe('user-1');
+      expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDatabase.refreshToken.findFirst.mock.invocationCallOrder[0],
       );
     });
   });

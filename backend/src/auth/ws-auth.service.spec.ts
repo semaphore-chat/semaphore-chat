@@ -92,4 +92,47 @@ describe('WsAuthService', () => {
       code: 'USER_BANNED',
     });
   });
+
+  describe('sessionEndReason', () => {
+    const claims = { sub: 'user-1', jti: 'jti-1', sid: 'sid-1', iat: 1 };
+
+    beforeEach(() => {
+      tokenBlacklistService.revocationOf.mockResolvedValue(null);
+      userService.findAuthUserById.mockResolvedValue(
+        UserFactory.build({ id: 'user-1', banned: false }),
+      );
+    });
+
+    it('is null while the session stands', async () => {
+      await expect(service.sessionEndReason(claims)).resolves.toBeNull();
+      expect(tokenBlacklistService.revocationOf).toHaveBeenCalledWith(claims);
+      expect(userService.findAuthUserById).toHaveBeenCalledWith('user-1');
+    });
+
+    it.each([
+      ['token', 'LOGGED_OUT'],
+      ['session', 'SESSION_REVOKED'],
+      ['user', 'PASSWORD_CHANGED'],
+    ] as const)('maps a revoked %s to %s', async (revocation, reason) => {
+      tokenBlacklistService.revocationOf.mockResolvedValue(revocation);
+
+      await expect(service.sessionEndReason(claims)).resolves.toBe(reason);
+    });
+
+    it('reports a deleted or banned account first', async () => {
+      tokenBlacklistService.revocationOf.mockResolvedValue('user');
+
+      userService.findAuthUserById.mockResolvedValue(
+        UserFactory.build({ id: 'user-1', banned: true }),
+      );
+      await expect(service.sessionEndReason(claims)).resolves.toBe(
+        'ACCOUNT_BANNED',
+      );
+
+      userService.findAuthUserById.mockResolvedValue(null);
+      await expect(service.sessionEndReason(claims)).resolves.toBe(
+        'ACCOUNT_DELETED',
+      );
+    });
+  });
 });

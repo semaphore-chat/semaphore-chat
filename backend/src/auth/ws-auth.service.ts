@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { SessionTerminatedReason } from '@semaphore-chat/shared';
 import { JwtService } from '@nestjs/jwt';
 import { UserService } from '@/user/user.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
@@ -66,5 +67,34 @@ export class WsAuthService {
       user: new UserEntity(user),
       claims: { ...claims, exp: claims.exp },
     };
+  }
+
+  /**
+   * Check a token that already authenticated once more: why its session has
+   * ended since, or null if it is still valid. For sockets that joined their
+   * revocation rooms after authenticating: a revocation in between missed
+   * them, but it wrote its state (Redis, the user row) before it sent the
+   * disconnect, so this sees it.
+   */
+  async sessionEndReason(
+    claims: AccessTokenClaims,
+  ): Promise<SessionTerminatedReason | null> {
+    const [revocation, user] = await Promise.all([
+      this.tokenBlacklistService.revocationOf(claims),
+      this.userService.findAuthUserById(claims.sub),
+    ]);
+
+    if (!user) return 'ACCOUNT_DELETED';
+    if (user.banned) return 'ACCOUNT_BANNED';
+    switch (revocation) {
+      case 'token':
+        return 'LOGGED_OUT'; // only logout revokes a single access token
+      case 'session':
+        return 'SESSION_REVOKED';
+      case 'user':
+        return 'PASSWORD_CHANGED';
+      default:
+        return null;
+    }
   }
 }

@@ -16,6 +16,10 @@ import { RoomsService } from '@/rooms/rooms.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import type { Server as IoServer } from 'socket.io';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
+import { UserService } from '@/user/user.service';
+import { AuthService } from '@/auth/auth.service';
+import { REDIS_CLIENT } from '@/redis/redis.constants';
+import type Redis from 'ioredis';
 import {
   createE2eApp,
   E2eApp,
@@ -622,6 +626,247 @@ describe('WebSocket gateways (e2e)', () => {
 
       // The socket itself is fine
       await expect(isServed(client)).resolves.toBe(true);
+    });
+
+    /**
+     * The security review's race probes, made deterministic: the next call
+     * of a service method is held, so a revocation lands in its window.
+     */
+    describe('races', () => {
+      const sleep = (ms: number) =>
+        new Promise((resolve) => setTimeout(resolve, ms));
+
+      /**
+       * Hold the next call of `target[method]`: `before` ms before it runs
+       * the original, `after` ms after. Resolves once that call started.
+       */
+      function holdNextCall(
+        target: object,
+        method: string,
+        { before = 0, after = 0 }: { before?: number; after?: number },
+      ): Promise<void> {
+        const methods = target as Record<
+          string,
+          (...args: unknown[]) => Promise<unknown>
+        >;
+        const original = methods[method].bind(target);
+        return new Promise((entered) => {
+          jest
+            .spyOn(methods, method)
+            .mockImplementationOnce(async (...args: unknown[]) => {
+              entered();
+              await sleep(before);
+              const result = await original(...args);
+              await sleep(after);
+              return result;
+            });
+        });
+      }
+
+      /** Send a request now (supertest only sends once awaited). */
+      function send(test: request.Test): Promise<request.Response> {
+        return test.then((res) => res);
+      }
+
+      function sessionIdOf(accessToken: string): string {
+        const { sid } = app
+          .get(JwtService)
+          .decode<{ sid: string }>(accessToken);
+        return sid;
+      }
+
+      it('a logout during the handshake still ends the socket', async () => {
+        await register('ws-race-connect-logout');
+        const session = await login('ws-race-connect-logout', 'Laptop');
+        // The user lookup has run (not revoked yet) but the socket hasn't
+        // joined its rooms: the logout's disconnect can't reach it
+        const held = holdNextCall(app.get(UserService), 'findAuthUserById', {
+          after: 300,
+        });
+        let end!: ReturnType<typeof sessionEnd>;
+        const opening = open(session.accessToken, (client) => {
+          end = sessionEnd(client, 3000);
+        }).catch((err: Error) => err);
+        await held;
+
+        await request(app.getHttpServer())
+          .post('/api/auth/logout')
+          .set('Authorization', `Bearer ${session.accessToken}`)
+          .set('Cookie', session.refreshCookie)
+          .expect(201);
+
+        await opening;
+        await expect(end).resolves.toEqual({
+          terminated: 'LOGGED_OUT',
+          disconnect: 'io server disconnect',
+        });
+      });
+
+      it('an instance ban during the handshake still ends the socket', async () => {
+        const target = await register('ws-race-connect-ban');
+        const session = await login('ws-race-connect-ban', 'Laptop');
+        const held = holdNextCall(app.get(UserService), 'findAuthUserById', {
+          after: 300,
+        });
+        let end!: ReturnType<typeof sessionEnd>;
+        const opening = open(session.accessToken, (client) => {
+          end = sessionEnd(client, 3000);
+        }).catch((err: Error) => err);
+        await held;
+
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/ban`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ banned: true })
+          .expect(200);
+
+        await opening;
+        await expect(end).resolves.toEqual({
+          terminated: 'ACCOUNT_BANNED',
+          disconnect: 'io server disconnect',
+        });
+      });
+
+      it('a session revoked while re-authenticating with its token ends the socket', async () => {
+        await register('ws-race-reauth');
+        const laptop = await login('ws-race-reauth', 'Laptop');
+        const phone = await login('ws-race-reauth', 'Phone');
+        const client = await open(laptop.accessToken);
+        const end = sessionEnd(client, 3000);
+
+        // Re-authenticate with the phone session's token while the laptop
+        // revokes the phone session
+        const held = holdNextCall(app.get(UserService), 'findAuthUserById', {
+          after: 300,
+        });
+        const reauth = client
+          .timeout(5000)
+          .emitWithAck(ClientEvents.REAUTHENTICATE, {
+            token: `Bearer ${phone.accessToken}`,
+          })
+          .catch((err: Error) => err);
+        await held;
+        await request(app.getHttpServer())
+          .delete('/api/auth/sessions')
+          .set('Authorization', `Bearer ${laptop.accessToken}`)
+          .set('Cookie', laptop.refreshCookie)
+          .expect(200);
+
+        await expect(end).resolves.toEqual({
+          terminated: 'SESSION_REVOKED',
+          disconnect: 'io server disconnect',
+        });
+        await expect(reauth).resolves.not.toEqual(
+          expect.objectContaining({ ok: true }),
+        );
+      });
+
+      it('a refresh racing a password reset leaves no working token', async () => {
+        const target = await register('ws-race-refresh-reset');
+        const session = await login('ws-race-refresh-reset', 'Laptop');
+
+        // The refresh has consumed its token and is about to insert the next
+        // one when the reset runs
+        const held = holdNextCall(
+          app.get(AuthService),
+          'generateRefreshToken',
+          {
+            before: 300,
+          },
+        );
+        const refreshing = send(
+          request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('User-Agent', userAgents.Laptop)
+            .set('Cookie', session.refreshCookie),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        const raced = await refreshing;
+        // It went first (see session-lock.util) and got new tokens
+        expect(raced.status).toBe(200);
+
+        // Its access token is revoked like every other one of the user
+        const racedAccessToken = (raced.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${racedAccessToken}`)
+          .expect(401);
+        await expect(connect({ token: racedAccessToken })).rejects.toThrow(
+          'AUTH_FAILED',
+        );
+
+        // And its refresh token is gone, not just refused while the
+        // password-reset cutoff lives (an hour, an access token's lifetime)
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-user:${target.id}`);
+        const racedCookie = extractCookie(
+          getSetCookies(raced),
+          'refresh_token',
+        )!;
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', racedCookie)
+          .expect(401);
+      });
+
+      it('a refresh racing a logout leaves no working token, even once the session marker expires', async () => {
+        await register('ws-race-refresh-logout');
+        const session = await login('ws-race-refresh-logout', 'Laptop');
+
+        const held = holdNextCall(
+          app.get(AuthService),
+          'generateRefreshToken',
+          {
+            before: 300,
+          },
+        );
+        const refreshing = send(
+          request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('User-Agent', userAgents.Laptop)
+            .set('Cookie', session.refreshCookie),
+        );
+        await held;
+        // Another tab of the session logs out
+        await request(app.getHttpServer())
+          .post('/api/auth/logout')
+          .set('Authorization', `Bearer ${session.accessToken}`)
+          .set('Cookie', session.refreshCookie)
+          .expect(201);
+        const raced = await refreshing;
+        // It went first (see session-lock.util) and got new tokens
+        expect(raced.status).toBe(200);
+
+        const racedAccessToken = (raced.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${racedAccessToken}`)
+          .expect(401);
+
+        // The revoked-session marker lives an hour (an access token's
+        // lifetime); the session's refresh tokens must not outlive it
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-session:${sessionIdOf(racedAccessToken)}`);
+        const racedCookie = extractCookie(
+          getSetCookies(raced),
+          'refresh_token',
+        )!;
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', racedCookie)
+          .expect(401);
+      });
     });
   });
 });

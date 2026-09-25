@@ -3,6 +3,7 @@ import {
   SubscribeMessage,
   ConnectedSocket,
   MessageBody,
+  OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
 } from '@nestjs/websockets';
@@ -35,7 +36,9 @@ import { ReauthenticateDto } from './dto/reauthenticate.dto';
   pingInterval: 25000,
 })
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
-export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
+export class RoomsGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
+{
   private readonly logger = new Logger(RoomsGateway.name);
   private readonly connectionAttempts = new Map<
     string,
@@ -105,6 +108,17 @@ export class RoomsGateway implements OnGatewayDisconnect, OnGatewayInit {
           next(new Error('AUTH_FAILED'));
         });
     });
+  }
+
+  /**
+   * The connection middleware authenticated the socket and then joined its
+   * rooms, but a revocation in between sent its disconnect before the socket
+   * was in them, and one sent while the socket was still connecting skipped
+   * it (a disconnect only reaches connected sockets). Check again now that it
+   * is connected; revocations after this reach it through its rooms.
+   */
+  async handleConnection(client: Socket) {
+    await this.socketSessionService.confirmBinding(client);
   }
 
   handleDisconnect(client: Socket) {

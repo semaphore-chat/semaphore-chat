@@ -26,6 +26,9 @@ export interface AccessTokenClaims {
   exp?: number;
 }
 
+/** What revoked a token (see TokenBlacklistService.revocationOf). */
+export type TokenRevocation = 'token' | 'session' | 'user' | null;
+
 /**
  * Redis-backed access token revocation. Access tokens are stateless JWTs, so
  * revoking one before it expires means remembering it here until it would
@@ -96,19 +99,28 @@ export class TokenBlacklistService {
    * session, or a cutoff for its user. One Redis round trip.
    */
   async isRevoked(claims: AccessTokenClaims): Promise<boolean> {
+    return (await this.revocationOf(claims)) !== null;
+  }
+
+  /**
+   * What revoked an access token, if anything: its jti (`token`), its
+   * session (`session`) or a cutoff for its user (`user`). One Redis round
+   * trip.
+   */
+  async revocationOf(claims: AccessTokenClaims): Promise<TokenRevocation> {
     const [blacklisted, sessionRevoked, userCutoff] = await this.redis.mget(
       `${BLACKLIST_PREFIX}${claims.jti ?? ''}`,
       `${REVOKED_SESSION_PREFIX}${claims.sid ?? ''}`,
       `${REVOKED_USER_PREFIX}${claims.sub}`,
     );
 
-    if (claims.jti && blacklisted !== null) return true;
-    if (claims.sid && sessionRevoked !== null) return true;
+    if (claims.jti && blacklisted !== null) return 'token';
+    if (claims.sid && sessionRevoked !== null) return 'session';
     if (userCutoff !== null) {
       // A token without iat can't prove it was issued after the cutoff.
-      if (typeof claims.iat !== 'number') return true;
-      if (claims.iat <= Number(userCutoff)) return true;
+      if (typeof claims.iat !== 'number') return 'user';
+      if (claims.iat <= Number(userCutoff)) return 'user';
     }
-    return false;
+    return null;
   }
 }

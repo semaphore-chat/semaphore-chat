@@ -66,7 +66,15 @@ describe('SocketSessionService', () => {
       await TestBed.solitary(SocketSessionService).compile();
     service = unit;
     wsAuthService = unitRef.get(WsAuthService);
+    wsAuthService.sessionEndReason.mockResolvedValue(null);
   });
+
+  /** A promise and its resolve function. */
+  function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((r) => (resolve = r));
+    return { promise, resolve };
+  }
 
   afterEach(() => {
     service.onModuleDestroy();
@@ -166,6 +174,81 @@ describe('SocketSessionService', () => {
     });
   });
 
+  describe('confirmBinding', () => {
+    it('keeps a socket whose session still stands', async () => {
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult({ iat: 1000 }));
+
+      await expect(service.confirmBinding(asSocket(socket))).resolves.toBe(
+        true,
+      );
+
+      expect(wsAuthService.sessionEndReason).toHaveBeenCalledWith({
+        sub: user.id,
+        jti: 'jti-1',
+        sid: 'sid-1',
+        iat: 1000,
+      });
+      expect(socket.disconnect).not.toHaveBeenCalled();
+    });
+
+    it('ends the session of a socket revoked before it joined its rooms', async () => {
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult({ exp: nowSeconds() + 600 }));
+      wsAuthService.sessionEndReason.mockResolvedValue('LOGGED_OUT');
+
+      await expect(service.confirmBinding(asSocket(socket))).resolves.toBe(
+        false,
+      );
+
+      expect(socket.emit).toHaveBeenCalledWith(
+        ServerEvents.SESSION_TERMINATED,
+        { reason: 'LOGGED_OUT' },
+      );
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      // No expiry timer left behind
+      socket.emit.mockClear();
+      jest.advanceTimersByTime(601_000);
+      expect(socket.emit).not.toHaveBeenCalled();
+    });
+
+    it('fails closed when the check itself fails', async () => {
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult());
+      wsAuthService.sessionEndReason.mockRejectedValue(new Error('redis down'));
+
+      await expect(service.confirmBinding(asSocket(socket))).resolves.toBe(
+        false,
+      );
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('disconnects a socket without a binding', async () => {
+      const socket = createSocket();
+
+      await expect(service.confirmBinding(asSocket(socket))).resolves.toBe(
+        false,
+      );
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+      expect(wsAuthService.sessionEndReason).not.toHaveBeenCalled();
+    });
+
+    it('leaves a socket alone that re-authenticated meanwhile', async () => {
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult());
+      const check = deferred<'SESSION_REVOKED'>();
+      wsAuthService.sessionEndReason.mockReturnValueOnce(check.promise);
+
+      const confirming = service.confirmBinding(asSocket(socket));
+      // A newer token is bound (and checked on its own) in the meantime
+      socket.data.auth = { userId: user.id, jti: 'jti-2', exp: 0 };
+      check.resolve('SESSION_REVOKED');
+
+      await expect(confirming).resolves.toBe(false);
+      expect(socket.disconnect).not.toHaveBeenCalled();
+    });
+  });
+
   describe('reauthenticate', () => {
     it('swaps in the new token: rooms, user, expiry', async () => {
       const socket = createSocket();
@@ -240,6 +323,62 @@ describe('SocketSessionService', () => {
       ).resolves.toEqual({ ok: false, error: 'AUTH_FAILED' });
       expect((socket.data.auth as { userId: string }).userId).toBe(user.id);
       expect(socket.leave).not.toHaveBeenCalled();
+    });
+
+    it('ends the session when the new token is revoked while it is swapped in', async () => {
+      // The revocation landed after the token's check but before the socket
+      // joined the new session's rooms: its disconnect missed the socket
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult());
+      wsAuthService.authenticate.mockResolvedValue(
+        authResult({ jti: 'jti-2', sid: 'sid-2' }),
+      );
+      wsAuthService.sessionEndReason.mockResolvedValue('SESSION_REVOKED');
+
+      await expect(
+        service.reauthenticate(asSocket(socket), 'fresh'),
+      ).resolves.toEqual({ ok: false, error: 'AUTH_FAILED' });
+
+      // Checked again only once the socket was in the new rooms
+      expect(socket.join).toHaveBeenLastCalledWith([
+        `user:${user.id}`,
+        'session:sid-2',
+        'token:jti-2',
+      ]);
+      expect(socket.join.mock.invocationCallOrder.at(-1)).toBeLessThan(
+        wsAuthService.sessionEndReason.mock.invocationCallOrder[0],
+      );
+      expect(wsAuthService.sessionEndReason).toHaveBeenCalledWith(
+        expect.objectContaining({ jti: 'jti-2', sid: 'sid-2' }),
+      );
+      expect(socket.emit).toHaveBeenCalledWith(
+        ServerEvents.SESSION_TERMINATED,
+        { reason: 'SESSION_REVOKED' },
+      );
+      expect(socket.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('leaves the rooms of a token swapped in by a concurrent REAUTHENTICATE', async () => {
+      const socket = createSocket();
+      service.attach(asSocket(socket), authResult());
+      const first = deferred<WsAuthResult>();
+      const second = deferred<WsAuthResult>();
+      wsAuthService.authenticate
+        .mockReturnValueOnce(first.promise)
+        .mockReturnValueOnce(second.promise);
+
+      // Both start while the socket holds jti-1
+      const reauth1 = service.reauthenticate(asSocket(socket), 'token-2');
+      const reauth2 = service.reauthenticate(asSocket(socket), 'token-3');
+      first.resolve(authResult({ jti: 'jti-2', sid: 'sid-2' }));
+      await reauth1;
+      second.resolve(authResult({ jti: 'jti-3', sid: 'sid-3' }));
+      await reauth2;
+
+      // The second swap leaves the first one's rooms, not jti-1's again
+      expect(socket.leave).toHaveBeenCalledWith('token:jti-2');
+      expect(socket.leave).toHaveBeenCalledWith('session:sid-2');
+      expect(socket.data.auth).toMatchObject({ jti: 'jti-3', sid: 'sid-3' });
     });
 
     it('rejects when the socket disconnected while the token was checked', async () => {

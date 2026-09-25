@@ -30,6 +30,8 @@ export interface SocketAuthData {
   jti?: string;
   /** Session id (refresh token family). */
   sid?: string;
+  /** Access token issue time (seconds since epoch). */
+  iat?: number;
   /** Access token expiry (seconds since epoch). */
   exp: number;
 }

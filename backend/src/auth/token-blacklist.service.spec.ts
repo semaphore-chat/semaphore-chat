@@ -107,6 +107,28 @@ describe('TokenBlacklistService', () => {
       ).resolves.toBe(false);
     });
 
+    it('says what revoked the token', async () => {
+      await expect(
+        service.revocationOf({ sub: 'user-1', jti: 'j', sid: 's', iat: 1 }),
+      ).resolves.toBeNull();
+
+      await service.revokeAllUserTokens('user-1');
+      await expect(
+        service.revocationOf({ sub: 'user-1', jti: 'j', sid: 's', iat: 1 }),
+      ).resolves.toBe('user');
+
+      await service.revokeSession('s');
+      await expect(
+        service.revocationOf({ sub: 'user-1', jti: 'j', sid: 's', iat: 1 }),
+      ).resolves.toBe('session');
+
+      // The jti (logout) first
+      await service.blacklist('j', now() + 100);
+      await expect(
+        service.revocationOf({ sub: 'user-1', jti: 'j', sid: 's', iat: 1 }),
+      ).resolves.toBe('token');
+    });
+
     it('checks everything in one round trip', async () => {
       await service.isRevoked({ sub: 'user-1', jti: 'j', sid: 's', iat: 1 });
 

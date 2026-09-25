@@ -854,6 +854,24 @@ describe('UserService', () => {
       });
     });
 
+    it('should lock the user against refreshes before deleting the refresh tokens', async () => {
+      // A refresh racing the reset either finds its token gone, or commits
+      // first and the delete (a later statement) sees its new token
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue(target);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.setUserPassword(target.id, 'new-password-123', 'admin-id');
+
+      const [strings, userId] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(/FOR NO KEY UPDATE/);
+      expect(userId).toBe(target.id);
+      expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDatabase.refreshToken.deleteMany.mock.invocationCallOrder[0],
+      );
+    });
+
     it('should revoke the access tokens and disconnect the sockets after the update', async () => {
       const target = UserFactory.build({ role: InstanceRole.USER });
       mockDatabase.user.findUnique.mockResolvedValue(target);
