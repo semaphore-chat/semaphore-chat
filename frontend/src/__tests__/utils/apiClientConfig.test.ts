@@ -149,6 +149,90 @@ describe('REST 401 interceptor (configureApiClient)', () => {
     expect(authFailure).not.toHaveBeenCalled();
   });
 
+  describe('requests with a body', () => {
+    /** A protected POST endpoint that echoes what it received. */
+    function protectedPost(validToken: string, seen: unknown[]) {
+      return http.post(`${API}${PROTECTED}`, async ({ request }) => {
+        const auth = request.headers.get('Authorization');
+        const contentType = request.headers.get('Content-Type') ?? '';
+        const body = contentType.startsWith('multipart/form-data')
+          ? Object.fromEntries((await request.formData()).entries())
+          : await request.json();
+        seen.push({ auth, body });
+        if (auth === `Bearer ${validToken}`) {
+          return HttpResponse.json({ ok: true, body });
+        }
+        return HttpResponse.json({ statusCode: 401 }, { status: 401 });
+      });
+    }
+
+    it('retries a JSON body after the refresh', async () => {
+      const seen: unknown[] = [];
+      server.use(protectedPost('fresh', seen), refreshEndpoint(200, 'fresh'));
+
+      const result = await client.post({
+        url: PROTECTED,
+        body: { text: 'hello' },
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(result.response?.status).toBe(200);
+      expect(seen).toEqual([
+        { auth: 'Bearer expired', body: { text: 'hello' } },
+        { auth: 'Bearer fresh', body: { text: 'hello' } },
+      ]);
+    });
+
+    it('retries a form body after the refresh', async () => {
+      const seen: unknown[] = [];
+      server.use(protectedPost('fresh', seen), refreshEndpoint(200, 'fresh'));
+      const form = new FormData();
+      form.append('name', 'avatar');
+
+      const result = await client.post({
+        url: PROTECTED,
+        body: form,
+        bodySerializer: null,
+        headers: { 'Content-Type': null },
+      });
+
+      expect(result.response?.status).toBe(200);
+      expect(seen).toEqual([
+        { auth: 'Bearer expired', body: { name: 'avatar' } },
+        { auth: 'Bearer fresh', body: { name: 'avatar' } },
+      ]);
+    });
+
+    it('retries a JSON body with the current token when the token changed in flight', async () => {
+      tokenService.setAccessToken('old');
+      const seen: unknown[] = [];
+      server.use(
+        http.post(`${API}${PROTECTED}`, async ({ request }) => {
+          const auth = request.headers.get('Authorization');
+          seen.push({ auth, body: await request.json() });
+          if (auth === 'Bearer old') {
+            tokenService.setAccessToken('new');
+            return HttpResponse.json({ statusCode: 401 }, { status: 401 });
+          }
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+
+      const result = await client.post({
+        url: PROTECTED,
+        body: { text: 'hello' },
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      expect(result.response?.status).toBe(200);
+      expect(seen).toEqual([
+        { auth: 'Bearer old', body: { text: 'hello' } },
+        { auth: 'Bearer new', body: { text: 'hello' } },
+      ]);
+      expect(mockRefreshSessionWithRetry).not.toHaveBeenCalled();
+    });
+  });
+
   it('shares one refresh request between concurrent 401s', async () => {
     let refreshRequests = 0;
     server.use(

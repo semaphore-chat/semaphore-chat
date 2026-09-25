@@ -1,4 +1,5 @@
 import { client } from './api-client/client.gen';
+import { getValidRequestBody } from './api-client/core/utils.gen';
 import { getApiBaseUrl } from './config/env';
 import {
   getAccessToken,
@@ -16,11 +17,41 @@ function isOnPublicRoute(): boolean {
   );
 }
 
-/** Send `request` again with `token`. */
-function retryWithToken(request: Request, token: string): Promise<Response> {
-  const retryRequest = request.clone();
-  retryRequest.headers.set('Authorization', `Bearer ${token}`);
-  return fetch(retryRequest);
+/** What the generated client built the request's body from. */
+type RequestBodyOptions = Parameters<typeof getValidRequestBody>[0];
+
+/**
+ * Send `request` again with `token`.
+ *
+ * fetch() has consumed the original request's body by now (`request.clone()`
+ * would throw), so the retry sends the body the client built it from again.
+ * A form body gets a new multipart boundary, so its old Content-Type goes.
+ */
+function retryWithToken(
+  request: Request,
+  token: string,
+  opts: RequestBodyOptions,
+): Promise<Response> {
+  // Copied entry by entry: new Headers(request.headers) trips over a Headers
+  // object from another realm (as in jsdom)
+  const headers = new Headers();
+  request.headers.forEach((value, name) => headers.set(name, value));
+  headers.set('Authorization', `Bearer ${token}`);
+  const body =
+    request.body === null ? null : (getValidRequestBody(opts) as BodyInit | null);
+  if (body instanceof FormData) {
+    headers.delete('Content-Type');
+  }
+  return fetch(
+    new Request(request.url, {
+      method: request.method,
+      headers,
+      body,
+      credentials: request.credentials,
+      redirect: request.redirect,
+      signal: request.signal,
+    }),
+  );
 }
 
 /**
@@ -60,7 +91,7 @@ export function configureApiClient() {
     return request;
   });
 
-  client.interceptors.response.use(async (response, request) => {
+  client.interceptors.response.use(async (response, request, opts) => {
     if (response.status !== 401) {
       return response;
     }
@@ -78,14 +109,14 @@ export function configureApiClient() {
     // refresh token, and the server is strict about reusing one).
     const currentToken = getAccessToken();
     if (currentToken && request.headers.get('Authorization') !== `Bearer ${currentToken}`) {
-      return retryWithToken(request, currentToken);
+      return retryWithToken(request, currentToken, opts);
     }
 
     // Concurrent 401s share one refresh (and its retries).
     const result = await refreshSessionWithRetry();
 
     if (result.status === 'refreshed') {
-      return retryWithToken(request, result.token);
+      return retryWithToken(request, result.token, opts);
     }
 
     if (result.status === 'unavailable') {
