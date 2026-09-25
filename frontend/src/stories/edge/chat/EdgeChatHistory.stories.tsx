@@ -19,6 +19,9 @@ import {
   historyUnreadCount,
   findMessageRow,
   useDriver,
+  hangingPageLoads,
+  messageListSteady,
+  scrollMessageListToLoad,
 } from '../../fixtures/edge/chat';
 
 const unread = [{ channelId: historyChannel.id, unreadCount: historyUnreadCount, lastReadMessageId: historyLastReadId }];
@@ -54,4 +57,30 @@ export const JumpFarBack = defineScreen(edgeChatScenario, channelPath(historyCha
  */
 export const ColdDeepLink = defineScreen(edgeChatScenario, `${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`, {
   extraHandlers: chatHandlers(edgeChatScenario, { unread }),
+});
+
+/** Scrolled to the top of the latest page, waiting on the next older page. */
+const ScrollToTopAfterLoad: React.FC = () => {
+  // Polls instead of wait(): the capture freezes Date.now(). Fast polling
+  // also finishes inside the capture's 500ms DOM-quiet window.
+  useDriver([messageListSteady(), scrollMessageListToLoad('top')], { pollMs: 50 });
+  return null;
+};
+
+/** Loading an older page while scrolled to the top: a thin bar on the list's top edge, the rows don't move. */
+export const LoadingOlderPage = defineScreen(edgeChatScenario, channelPath(historyChannel), {
+  extraHandlers: [hangingPageLoads('older'), ...chatHandlers(edgeChatScenario, { unread })],
+  overlay: <ScrollToTopAfterLoad />,
+});
+
+/** Scrolled to the bottom of an anchored window, waiting on the next newer page. */
+const ScrollToBottomAfterJump: React.FC = () => {
+  useDriver([messageListSteady(), scrollMessageListToLoad('bottom')], { pollMs: 50 });
+  return null;
+};
+
+/** Loading a newer page at the bottom of a deep-linked (anchored) window: a thin bar on the list's bottom edge. */
+export const LoadingNewerPage = defineScreen(edgeChatScenario, `${channelPath(historyChannel)}?highlight=${FIRST_UNREAD_ID}`, {
+  extraHandlers: [hangingPageLoads('newer'), ...chatHandlers(edgeChatScenario, { unread })],
+  overlay: <ScrollToBottomAfterJump />,
 });
