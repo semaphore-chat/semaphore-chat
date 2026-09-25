@@ -262,4 +262,26 @@ describe('VideoTile', () => {
       expect(strip()).toHaveStyle({ opacity: '1' });
     });
   });
+
+  describe('video element muting', () => {
+    // The <video> elements only ever get a video track attached (remote audio
+    // plays through AudioRenderer), so they are muted for every tile — which
+    // is also what livekit's attach() does to an element with no audio track.
+    it.each([
+      { prop: 'videoTrack', source: 'camera', isLocal: false },
+      { prop: 'videoTrack', source: 'camera', isLocal: true },
+      { prop: 'screenTrack', source: 'screen_share', isLocal: false },
+      { prop: 'screenTrack', source: 'screen_share', isLocal: true },
+    ] as const)('mutes the $source video element (isLocal: $isLocal)', ({ prop, source, isLocal }) => {
+      const pub = createMockTrackPublication(source);
+      const { container } = renderTile({
+        isLocal,
+        [prop]: pub as unknown as VideoTileProps['videoTrack'],
+      });
+
+      const video = container.querySelector('video')!;
+      expect(video.muted).toBe(true);
+      expect(pub.track.attach).toHaveBeenCalledWith(video);
+    });
+  });
 });

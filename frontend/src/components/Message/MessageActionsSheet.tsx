@@ -20,11 +20,8 @@ import AddIcon from '@mui/icons-material/Add';
 import { MobileSheet } from '../Mobile/common/MobileSheet';
 import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import { getMessageActions, type MessageAction } from './messageActions';
-import { EMOJI_CATEGORIES } from './EmojiPicker';
+import { QUICK_REACTIONS } from './emojiData';
 import type { MessageContextMenuProps } from './MessageContextMenu';
-
-/** Common emoji for the quick-reaction row (first row of "Frequently Used"). */
-export const QUICK_REACTIONS = EMOJI_CATEGORIES['Frequently Used'].slice(0, 8);
 
 export interface MessageActionsSheetProps extends MessageContextMenuProps {
   /** Add a specific reaction from the quick-reaction row. */

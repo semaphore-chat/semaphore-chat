@@ -100,6 +100,7 @@ const ClipCard: React.FC<{
           minHeight: '150px',
         }}
       >
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- user-recorded voice-channel clip; no caption track exists for it */}
         <video
           controls
           style={{ width: '100%', maxHeight: '200px', display: 'block' }}

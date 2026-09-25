@@ -24,9 +24,8 @@ const UserName: React.FC<{ userId: string }> = ({ userId }) => {
 };
 
 export const ReactionTooltip: React.FC<ReactionTooltipProps> = ({ userIds, children }) => {
-  const safeUserIds = userIds ?? [];
-  const displayUserIds = useMemo(() => safeUserIds.slice(0, 15), [safeUserIds]);
-  const remainingCount = safeUserIds.length - displayUserIds.length;
+  const displayUserIds = useMemo(() => (userIds ?? []).slice(0, 15), [userIds]);
+  const remainingCount = (userIds?.length ?? 0) - displayUserIds.length;
   
   const tooltipContent = (
     <Box sx={{ maxWidth: 200 }}>

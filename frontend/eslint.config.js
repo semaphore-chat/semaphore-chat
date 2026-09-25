@@ -6,18 +6,17 @@ import jsxA11y from 'eslint-plugin-jsx-a11y'
 import tseslint from 'typescript-eslint'
 
 // jsx-a11y's own "recommended" preset ships most rules at 'error'. This repo
-// wants it advisory (warn) rather than build-breaking while the codebase
-// catches up — downgrade every enabled rule's severity to 'warn' but keep
-// each rule's own options (and leave anything explicitly 'off' alone).
+// runs it at 'warn' (downgrade every enabled rule's severity but keep each
+// rule's own options, and leave anything explicitly 'off' alone), so the
+// editor shows a11y findings as warnings rather than errors. They still fail
+// `pnpm run lint` — see the NOTE below.
 //
-// NOTE on package.json's `lint` script (`--max-warnings 40`):
-// that ceiling was bumped 20 -> 45 to make room for ~41 pre-existing
-// warnings this ruleset surfaced across the app (mostly jsx-a11y/no-autofocus
-// and jsx-a11y/media-has-caption — real, easy a11y wins), none of which were
-// introduced or fixed by the PR that added jsx-a11y, then ratcheted down to 40
-// after retiring 5 `: any` warnings from AdminDebugPage.tsx. Burning the
-// remaining ~41 jsx-a11y count down further is tracked as a follow-up, not
-// scoped into this PR — see task-pr15-report.md's "Concerns"/follow-ups.
+// NOTE on package.json's `lint` / `lint:fix` scripts (`--max-warnings 0`):
+// every warning was fixed, so any new warning fails lint (and CI). Fix it
+// rather than raising the cap. Where a fix would be wrong (e.g. autoFocus on
+// the first field of a dialog the user just opened, or a <video>/<audio> with
+// no caption source), use a single-line
+// `// eslint-disable-next-line <rule> -- <why>` with the reason after `--`.
 function toWarnOnly(rules) {
   return Object.fromEntries(
     Object.entries(rules).map(([ruleId, config]) => {

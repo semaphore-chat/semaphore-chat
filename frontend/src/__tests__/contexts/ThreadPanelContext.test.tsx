@@ -1,10 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import {
-  ThreadPanelProvider,
-  useThreadPanel,
-} from '../../contexts/ThreadPanelContext';
+import { useThreadPanel } from '../../contexts/ThreadPanelContext';
+import { ThreadPanelProvider } from '../../contexts/ThreadPanelProvider';
 
 function TestConsumer() {
   const { openThreadId, openThread, closeThread } = useThreadPanel();

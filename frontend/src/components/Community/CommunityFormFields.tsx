@@ -38,6 +38,7 @@ const CommunityFormFields: React.FC<CommunityFormFieldsProps> = ({
         helperText={errors.name}
         required
         fullWidth
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- name is the first field of the create/edit community form; keeps the existing focus behaviour
         autoFocus
       />
 

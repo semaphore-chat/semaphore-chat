@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatFileSize } from '../../utils/format';
+import { formatFileSize, formatPlaybackTime } from '../../utils/format';
 
 describe('formatFileSize', () => {
   it('returns "0 Bytes" for 0', () => {
@@ -36,5 +36,19 @@ describe('formatFileSize', () => {
   it('returns "0 Bytes" for NaN and Infinity', () => {
     expect(formatFileSize(NaN)).toBe('0 Bytes');
     expect(formatFileSize(Infinity)).toBe('0 Bytes');
+  });
+});
+
+describe('formatPlaybackTime', () => {
+  it('formats 0 as "0:00"', () => {
+    expect(formatPlaybackTime(0)).toBe('0:00');
+  });
+
+  it('formats 65 as "1:05"', () => {
+    expect(formatPlaybackTime(65)).toBe('1:05');
+  });
+
+  it('formats 3661 as "61:01"', () => {
+    expect(formatPlaybackTime(3661)).toBe('61:01');
   });
 });

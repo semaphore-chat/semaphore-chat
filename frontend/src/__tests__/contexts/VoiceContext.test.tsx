@@ -2,11 +2,11 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
-  VoiceProvider,
   useVoice,
   useVoiceDispatch,
   VoiceActionType,
 } from '../../contexts/VoiceContext';
+import { VoiceProvider } from '../../contexts/VoiceProvider';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { defaultPlacement, isValidPlacement, type PipPlacement } from '../../utils/pipPosition';
