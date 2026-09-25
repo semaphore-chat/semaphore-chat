@@ -15,7 +15,7 @@ export class CommunityFactory {
       banner: overrides.banner || null,
       description: overrides.description || null,
       ...overrides,
-    } as Community;
+    };
   }
 
   static buildWithAvatar(overrides: Partial<Community> = {}): Community {

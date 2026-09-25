@@ -62,14 +62,12 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUnique.mockResolvedValue(null);
       mockDatabase.membership.create.mockResolvedValue(membership);
       mockDatabase.channel.findMany.mockResolvedValue([]);
-      communityService.addMemberToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      communityService.addMemberToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       const result = await service.create(createDto);
@@ -171,10 +169,10 @@ describe('MembershipService', () => {
         new Error('Channel not found'),
       );
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       const loggerWarnSpy = jest
@@ -207,17 +205,15 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUnique.mockResolvedValue(null);
       mockDatabase.membership.create.mockResolvedValue(membership);
       mockDatabase.channel.findMany.mockResolvedValue([]);
-      communityService.addMemberToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      communityService.addMemberToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole
-        .mockResolvedValueOnce(null as any)
-        .mockResolvedValueOnce(memberRole as any);
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(memberRole);
       communityRolesService.createMemberRoleForCommunity.mockResolvedValue(
-        'member-role-id' as any,
+        'member-role-id',
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       const loggerLogSpy = jest
@@ -251,14 +247,10 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUnique.mockResolvedValue(null);
       mockDatabase.membership.create.mockResolvedValue(membership);
       mockDatabase.channel.findMany.mockResolvedValue([]);
-      communityService.addMemberToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
-      communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        null as any,
-      );
+      communityService.addMemberToGeneralChannel.mockResolvedValue(undefined);
+      communityRolesService.getCommunityMemberRole.mockResolvedValue(null);
       communityRolesService.createMemberRoleForCommunity.mockResolvedValue(
-        'member-role-id' as any,
+        'member-role-id',
       );
 
       const loggerErrorSpy = jest
@@ -290,11 +282,9 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUnique.mockResolvedValue(null);
       mockDatabase.membership.create.mockResolvedValue(membership);
       mockDatabase.channel.findMany.mockResolvedValue([]);
-      communityService.addMemberToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      communityService.addMemberToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockRejectedValue(
         new Error('Role assignment failed'),

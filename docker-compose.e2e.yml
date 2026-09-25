@@ -126,7 +126,7 @@ services:
   # tag in sync with frontend/package.json). Reports land in
   # frontend/playwright-report and frontend/test-results.
   playwright:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.63.0-jammy
     network_mode: "service:frontend-test"
     volumes_from:
       - frontend-test

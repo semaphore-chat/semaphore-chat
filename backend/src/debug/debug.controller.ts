@@ -63,6 +63,11 @@ export class DebugController {
     // local signature for this one call, rather than reintroducing `any`
     // on the DTO or widening sendToRoom's real signature for every other
     // caller.
+    //
+    // typescript-eslint >= 8.70 reports this assertion as unnecessary, but
+    // its autofix breaks type-check (TS2345: `string` is not assignable to
+    // `keyof ServerEventPayloads`), so the rule is off for this statement.
+    /* eslint-disable @typescript-eslint/no-unnecessary-type-assertion */
     const sent = (
       this.websocketService.sendToRoom as (
         room: string,
@@ -70,6 +75,7 @@ export class DebugController {
         payload: unknown,
       ) => boolean
     )(room, dto.event, dto.payload);
+    /* eslint-enable @typescript-eslint/no-unnecessary-type-assertion */
 
     return {
       success: sent,

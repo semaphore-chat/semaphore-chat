@@ -46,7 +46,7 @@ const makeFile = (
     filename: '',
     path: '',
     ...overrides,
-  } as Express.Multer.File;
+  };
 };
 
 describe('ResourceTypeFileValidator', () => {

@@ -39,7 +39,7 @@ describe('FriendsController', () => {
           user: { id: 'f2', username: 'bob', displayName: 'Bob' },
         },
       ];
-      friendsService.getFriends.mockResolvedValue(friends as any);
+      friendsService.getFriends.mockResolvedValue(friends);
 
       const result = await controller.getFriends(mockReq);
 

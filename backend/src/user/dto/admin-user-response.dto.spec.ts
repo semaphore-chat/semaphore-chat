@@ -41,7 +41,7 @@ describe('AdminUserEntity', () => {
         username: 'testuser',
         storageQuotaBytes: BigInt(0),
         storageUsedBytes: BigInt(0),
-      } as any);
+      });
 
       const plain = instanceToPlain(user);
 
@@ -54,8 +54,8 @@ describe('AdminUserEntity', () => {
         id: 'user-123',
         username: 'testuser',
         storageQuotaBytes: null as any,
-        storageUsedBytes: undefined as any,
-      } as any);
+        storageUsedBytes: undefined,
+      });
 
       const plain = instanceToPlain(user);
 
@@ -70,7 +70,7 @@ describe('AdminUserEntity', () => {
         hashedPassword: 'secret-hash',
         storageQuotaBytes: BigInt(0),
         storageUsedBytes: BigInt(0),
-      } as any);
+      });
 
       const plain = instanceToPlain(user);
 

@@ -10,7 +10,7 @@ export class MembershipFactory {
       communityId: overrides.communityId || this.generateId(),
       joinedAt: overrides.joinedAt || new Date(),
       ...overrides,
-    } as Membership;
+    };
   }
 
   static buildMany(

@@ -30,7 +30,7 @@ describe('InstanceSettingsResponseDto', () => {
         name: 'Semaphore Chat',
         defaultStorageQuotaBytes: BigInt(0),
         maxFileSizeBytes: BigInt(0),
-      } as any);
+      });
 
       const plain = instanceToPlain(settings);
 
@@ -43,8 +43,8 @@ describe('InstanceSettingsResponseDto', () => {
         id: 'settings-123',
         name: 'Semaphore Chat',
         defaultStorageQuotaBytes: null as any,
-        maxFileSizeBytes: undefined as any,
-      } as any);
+        maxFileSizeBytes: undefined,
+      });
 
       const plain = instanceToPlain(settings);
 

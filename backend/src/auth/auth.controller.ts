@@ -124,8 +124,7 @@ export class AuthController {
 
     // Get refresh token from cookie or body (for Electron)
     let refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
 
     // For Electron, also check the request body
     const body = req.body as { refreshToken?: string } | undefined;
@@ -287,8 +286,7 @@ export class AuthController {
   ): Promise<LogoutResponseDto> {
     // Get refresh token from cookie or body (Electron sends tokens in body, not cookies)
     let refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     const body = req.body as LogoutRequestDto | undefined;
     if (!refreshToken && body?.refreshToken) {
       refreshToken = body.refreshToken;
@@ -399,8 +397,7 @@ export class AuthController {
    */
   private async getCurrentTokenId(req: Request): Promise<string | undefined> {
     const refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
 
     if (!refreshToken) {
       return undefined;

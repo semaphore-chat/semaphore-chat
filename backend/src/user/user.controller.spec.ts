@@ -47,7 +47,7 @@ describe('UserController', () => {
         email: 'newuser@example.com',
       });
 
-      service.createUser.mockResolvedValue(createdUser as any);
+      service.createUser.mockResolvedValue(createdUser);
 
       const result = await controller.register(createUserDto);
 
@@ -69,7 +69,7 @@ describe('UserController', () => {
         email: 'test@test.com',
       };
 
-      service.createUser.mockResolvedValue(UserFactory.build() as any);
+      service.createUser.mockResolvedValue(UserFactory.build());
 
       await controller.register(createUserDto);
 
@@ -87,7 +87,7 @@ describe('UserController', () => {
     it('should return user profile', async () => {
       const userProfile = UserFactory.build({ id: mockUser.id });
 
-      service.findById.mockResolvedValue(userProfile as any);
+      service.findById.mockResolvedValue(userProfile);
 
       const result = await controller.getProfile(mockRequest);
 
@@ -97,7 +97,7 @@ describe('UserController', () => {
     });
 
     it('should throw NotFoundException when user not found', async () => {
-      service.findById.mockResolvedValue(null as any);
+      service.findById.mockResolvedValue(null);
 
       await expect(controller.getProfile(mockRequest)).rejects.toThrow(
         NotFoundException,
@@ -123,7 +123,7 @@ describe('UserController', () => {
         }),
       );
 
-      service.updateProfile.mockResolvedValue(updatedUser as any);
+      service.updateProfile.mockResolvedValue(updatedUser);
 
       const result = await controller.updateProfile(
         mockRequest,
@@ -141,7 +141,7 @@ describe('UserController', () => {
       const updateProfileDto: UpdateProfileDto = { displayName: 'Test' };
 
       service.updateProfile.mockResolvedValue(
-        new UserEntity(UserFactory.build()) as any,
+        new UserEntity(UserFactory.build()),
       );
 
       await controller.updateProfile(mockRequest, updateProfileDto);
@@ -158,7 +158,7 @@ describe('UserController', () => {
       const username = 'testuser';
       const foundUser = UserFactory.build({ username });
 
-      service.findByUsername.mockResolvedValue(foundUser as any);
+      service.findByUsername.mockResolvedValue(foundUser);
 
       const result = await controller.getUserByName(username);
 
@@ -170,7 +170,7 @@ describe('UserController', () => {
     it('should throw NotFoundException when user not found by username', async () => {
       const username = 'nonexistent';
 
-      service.findByUsername.mockResolvedValue(null as any);
+      service.findByUsername.mockResolvedValue(null);
 
       await expect(controller.getUserByName(username)).rejects.toThrow(
         NotFoundException,
@@ -189,7 +189,7 @@ describe('UserController', () => {
         new UserEntity(UserFactory.build({ username: 'john2' })),
       ];
 
-      service.searchUsers.mockResolvedValue(mockUsers as any);
+      service.searchUsers.mockResolvedValue(mockUsers);
 
       const result = await controller.searchUsers(query);
 
@@ -205,7 +205,7 @@ describe('UserController', () => {
       const query = 'user';
       const communityId = 'community-123';
 
-      service.searchUsers.mockResolvedValue([] as any);
+      service.searchUsers.mockResolvedValue([]);
 
       await controller.searchUsers(query, communityId);
 
@@ -220,7 +220,7 @@ describe('UserController', () => {
       const query = 'test';
       const limit = 10;
 
-      service.searchUsers.mockResolvedValue([] as any);
+      service.searchUsers.mockResolvedValue([]);
 
       await controller.searchUsers(query, undefined, limit);
 
@@ -233,7 +233,7 @@ describe('UserController', () => {
       const userId = 'user-123';
       const foundUser = UserFactory.build({ id: userId });
 
-      service.findById.mockResolvedValue(foundUser as any);
+      service.findById.mockResolvedValue(foundUser);
 
       const result = await controller.getUserById(userId);
 
@@ -245,7 +245,7 @@ describe('UserController', () => {
     it('should throw NotFoundException when user not found by ID', async () => {
       const userId = 'nonexistent-id';
 
-      service.findById.mockResolvedValue(null as any);
+      service.findById.mockResolvedValue(null);
 
       await expect(controller.getUserById(userId)).rejects.toThrow(
         NotFoundException,
@@ -263,7 +263,7 @@ describe('UserController', () => {
         continuationToken: 'token-123',
       };
 
-      service.findAll.mockResolvedValue(mockResponse as any);
+      service.findAll.mockResolvedValue(mockResponse);
 
       const result = await controller.findAllUsers();
 
@@ -278,7 +278,7 @@ describe('UserController', () => {
         continuationToken: undefined,
       };
 
-      service.findAll.mockResolvedValue(mockResponse as any);
+      service.findAll.mockResolvedValue(mockResponse);
 
       const result = await controller.findAllUsers(limit);
 
@@ -293,7 +293,7 @@ describe('UserController', () => {
       service.findAll.mockResolvedValue({
         users: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllUsers(limit, continuationToken);
 

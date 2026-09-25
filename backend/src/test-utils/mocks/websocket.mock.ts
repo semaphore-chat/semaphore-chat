@@ -96,7 +96,7 @@ export function createMockWebsocketService(): MockWebsocketService {
     joinSocketsToRoom: jest.fn().mockResolvedValue(undefined),
     setServer: jest.fn(),
     sendToAll: jest.fn(),
-  } as unknown as MockWebsocketService;
+  };
 }
 
 /**

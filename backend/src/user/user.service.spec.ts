@@ -175,7 +175,7 @@ describe('UserService', () => {
     });
 
     it('should return null for invalid invite', async () => {
-      inviteService.validateInviteCode.mockResolvedValue(null as any);
+      inviteService.validateInviteCode.mockResolvedValue(null);
 
       const result = await service.getInvite('invalid-code');
 
@@ -265,7 +265,7 @@ describe('UserService', () => {
 
     it('should throw NotFoundException when invite not found', async () => {
       mockDatabase.user.findFirst.mockResolvedValue(null);
-      inviteService.validateInviteCode.mockResolvedValue(null as any);
+      inviteService.validateInviteCode.mockResolvedValue(null);
 
       await expect(
         service.createUser('invalid-code', 'user', 'password'),
@@ -291,14 +291,12 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       await service.createUser('invite-code', 'user', 'password');
@@ -325,14 +323,12 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       await service.createUser('invite-code', 'user', 'password');
@@ -357,14 +353,12 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       await service.createUser('invite-code', 'user', 'password');
@@ -394,17 +388,15 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole
-        .mockResolvedValueOnce(null as any) // First call returns null
-        .mockResolvedValueOnce(memberRole as any); // Second call returns created role
+        .mockResolvedValueOnce(null) // First call returns null
+        .mockResolvedValueOnce(memberRole); // Second call returns created role
       communityRolesService.createMemberRoleForCommunity.mockResolvedValue(
-        'role-id-123' as any,
+        'role-id-123',
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       await service.createUser('invite-code', 'user', 'password');
@@ -432,10 +424,10 @@ describe('UserService', () => {
         new Error('Channel error'),
       );
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       const result = await service.createUser(
@@ -460,9 +452,7 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockRejectedValue(
         new Error('Role error'),
       );
@@ -491,11 +481,9 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       // The (mocked) tx-nested role mutation records its bump on the
       // collector the service passes in, like the real implementation does.
@@ -549,11 +537,9 @@ describe('UserService', () => {
       inviteService.validateInviteCode.mockResolvedValue(invite as any);
       inviteService.redeemInviteWithTx.mockResolvedValue(invite as any);
       mockDatabase.user.create.mockResolvedValue(newUser);
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
       communityRolesService.getCommunityMemberRole.mockResolvedValue(
-        memberRole as any,
+        memberRole,
       );
       communityRolesService.assignUserToCommunityRole.mockImplementation(((
         userId: string,

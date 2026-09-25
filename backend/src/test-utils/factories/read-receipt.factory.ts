@@ -14,7 +14,7 @@ export class ReadReceiptFactory {
       lastReadMessageId: overrides.lastReadMessageId || this.generateId(),
       lastReadAt: overrides.lastReadAt || new Date(),
       ...overrides,
-    } as ReadReceipt;
+    };
   }
 
   static buildForChannel(overrides: Partial<ReadReceipt> = {}): ReadReceipt {

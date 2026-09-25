@@ -88,9 +88,7 @@ describe('MessagesController', () => {
       const enrichedMessage = { ...mockMessage, attachments: [] };
 
       service.create.mockResolvedValue(mockMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.create(mockRequest, createDto);
 
@@ -128,13 +126,13 @@ describe('MessagesController', () => {
         parentMessageId: null,
         replyCount: 0,
         lastReplyAt: null,
-      } as any;
+      };
 
       const mockMessage = {};
       service.create.mockResolvedValue(mockMessage as any);
       service.enrichMessageWithFileMetadata.mockReturnValue({
         attachments: [],
-      } as any);
+      });
 
       await controller.create(mockRequest, createDto);
 
@@ -174,7 +172,7 @@ describe('MessagesController', () => {
       service.findAllForDirectMessageGroup.mockResolvedValue({
         messages: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllForGroup(groupId, limit, continuationToken);
 
@@ -214,7 +212,7 @@ describe('MessagesController', () => {
       service.findAllForChannel.mockResolvedValue({
         messages: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllForChannel(channelId, 100);
 
@@ -232,7 +230,7 @@ describe('MessagesController', () => {
       service.findAllForChannel.mockResolvedValue({
         messages: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllForChannel(channelId, 50);
 
@@ -250,7 +248,7 @@ describe('MessagesController', () => {
       service.findAllForChannel.mockResolvedValue({
         messages: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllForChannel(channelId, 200);
 
@@ -268,7 +266,7 @@ describe('MessagesController', () => {
       service.findAllForChannel.mockResolvedValue({
         messages: [],
         continuationToken: undefined,
-      } as any);
+      });
 
       await controller.findAllForChannel(channelId, 100);
 
@@ -507,9 +505,7 @@ describe('MessagesController', () => {
       const enrichedMessage = { ...mockMessage, attachments: [] };
 
       service.findOne.mockResolvedValue(mockMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.findOne(messageId);
 
@@ -552,9 +548,7 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.update(messageId, updateDto);
 
@@ -610,9 +604,7 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       await controller.update(messageId, updateDto);
 
@@ -635,7 +627,7 @@ describe('MessagesController', () => {
       service.enrichMessageWithFileMetadata.mockReturnValue({
         ...updatedMessage,
         attachments: [],
-      } as any);
+      });
 
       await controller.update(messageId, updateDto);
       await controller.update(messageId, updateDto);
@@ -661,9 +653,7 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
       (linkPreviewsQueue.add as jest.Mock).mockRejectedValue(
         new Error('redis boom'),
       );
@@ -697,9 +687,7 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
+      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       await controller.update(messageId, updateDto);
 
@@ -766,7 +754,7 @@ describe('MessagesController', () => {
       const messageId = 'msg-789';
       const mockMessage = MessageFactory.build({
         channelId: 'channel-123',
-      } as any);
+      });
 
       service.findOne.mockResolvedValue(mockMessage as any);
       service.remove.mockResolvedValue(void 0 as any);

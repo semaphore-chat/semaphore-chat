@@ -10,7 +10,7 @@ export class AliasGroupFactory {
       communityId: overrides.communityId || this.generateId(),
       createdAt: overrides.createdAt || new Date(),
       ...overrides,
-    } as AliasGroup;
+    };
   }
 
   static buildMany(
@@ -39,7 +39,7 @@ export class AliasGroupMemberFactory {
       aliasGroupId: overrides.aliasGroupId || this.generateId(),
       userId: overrides.userId || this.generateId(),
       ...overrides,
-    } as AliasGroupMember;
+    };
   }
 
   static buildMany(

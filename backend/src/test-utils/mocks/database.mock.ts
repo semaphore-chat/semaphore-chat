@@ -167,7 +167,7 @@ export function createMockDatabase(): MockDatabaseService {
     // NestJS lifecycle methods
     onModuleInit: jest.fn().mockResolvedValue(undefined),
     onModuleDestroy: jest.fn().mockResolvedValue(undefined),
-  } as unknown as MockDatabaseService;
+  };
 
   return mockDb;
 }

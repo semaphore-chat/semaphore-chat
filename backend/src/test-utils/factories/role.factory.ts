@@ -16,7 +16,7 @@ export class RoleFactory {
       position: overrides.position ?? 50,
       createdAt: overrides.createdAt || new Date(),
       ...overrides,
-    } as Role;
+    };
   }
 
   static buildAdmin(overrides: Partial<Role> = {}): Role {

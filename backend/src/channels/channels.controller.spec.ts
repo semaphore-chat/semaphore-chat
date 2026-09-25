@@ -110,7 +110,7 @@ describe('ChannelsController', () => {
 
       channelsService.update.mockResolvedValue(updatedChannel as any);
 
-      const result = await controller.update(channelId, updateDto as any);
+      const result = await controller.update(channelId, updateDto);
 
       expect(result).toEqual(updatedChannel);
       expect(channelsService.update).toHaveBeenCalledWith(channelId, updateDto);

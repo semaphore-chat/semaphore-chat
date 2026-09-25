@@ -12,7 +12,7 @@ export class DirectMessageGroupFactory {
       createdAt: overrides.createdAt || new Date(),
       isGroup: overrides.isGroup ?? false,
       ...overrides,
-    } as DirectMessageGroup;
+    };
   }
 
   static buildDirectMessage(

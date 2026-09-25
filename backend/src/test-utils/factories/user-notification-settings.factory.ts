@@ -21,7 +21,7 @@ export class UserNotificationSettingsFactory {
       createdAt: overrides.createdAt || new Date(),
       updatedAt: overrides.updatedAt || new Date(),
       ...overrides,
-    } as UserNotificationSettings;
+    };
   }
 
   static buildWithDND(

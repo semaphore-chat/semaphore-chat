@@ -14,7 +14,7 @@ export class ChannelNotificationOverrideFactory {
       createdAt: overrides.createdAt || new Date(),
       updatedAt: overrides.updatedAt || new Date(),
       ...overrides,
-    } as ChannelNotificationOverride;
+    };
   }
 
   static buildAllMessages(

@@ -11,7 +11,7 @@ export class ChannelMembershipFactory {
       joinedAt: overrides.joinedAt || new Date(),
       addedBy: overrides.addedBy || null,
       ...overrides,
-    } as ChannelMembership;
+    };
   }
 
   static buildWithAddedBy(

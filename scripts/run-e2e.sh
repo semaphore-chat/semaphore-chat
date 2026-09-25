@@ -120,7 +120,7 @@ hand_back() {
   [ "$(id -u)" != 0 ] || return 0
   docker run --rm --network none --entrypoint sh \
     -v "$PROJECT_ROOT/frontend:/w/frontend" -v "$PROJECT_ROOT/backend:/w/backend" -v "$PROJECT_ROOT/shared:/w/shared" \
-    mcr.microsoft.com/playwright:v1.60.0-jammy \
+    mcr.microsoft.com/playwright:v1.63.0-jammy \
     -c "find /w -name node_modules -prune -o -user 0 -exec chown -h $(id -u):$(id -g) {} +" >/dev/null 2>&1 || true
 }
 

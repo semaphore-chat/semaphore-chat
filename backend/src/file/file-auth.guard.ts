@@ -7,7 +7,6 @@ import {
 import { SignedUrlService } from './signed-url.service';
 import { DatabaseService } from '@/database/database.service';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
-import { UserEntity } from '@/user/dto/user-response.dto';
 import { Request } from 'express';
 
 @Injectable()
@@ -46,11 +45,10 @@ export class FileAuthGuard implements CanActivate {
         throw new UnauthorizedException('User not found or banned');
       }
 
-      // Signed-URL auth only selects PUBLIC_USER_SELECT + banned — a
-      // narrower shape than the full Prisma User row UserEntity requires
-      // (`implements User`). This documents that intentional partial-object
-      // stand-in instead of casting the whole `req` to `any`.
-      req.user = user as unknown as UserEntity;
+      // Signed-URL auth only selects PUBLIC_USER_SELECT + banned, a
+      // narrower row than a full Prisma User; that shape is assignable to
+      // req.user's type as-is, so no cast is needed.
+      req.user = user;
       return true;
     }
 

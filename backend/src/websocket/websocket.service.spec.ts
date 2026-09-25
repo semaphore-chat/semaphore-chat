@@ -24,7 +24,7 @@ describe('WebsocketService', () => {
     const { unit } = await TestBed.solitary(WebsocketService).compile();
 
     service = unit;
-    looseService = service as unknown as typeof looseService;
+    looseService = service;
   });
 
   afterEach(() => {

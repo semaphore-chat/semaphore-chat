@@ -104,7 +104,7 @@ describe('WebhooksController', () => {
       const created = { id: 'wh-1', url: 'https://x/api/webhooks/wh-1/tok' };
       webhooksService.create.mockResolvedValue(created as any);
 
-      const result = await controller.create('channel-1', dto as any, req);
+      const result = await controller.create('channel-1', dto, req);
 
       expect(result).toEqual(created);
       expect(webhooksService.create).toHaveBeenCalledWith(
@@ -206,7 +206,7 @@ describe('WebhookExecutionController', () => {
 
     const result = await controller.execute('wh-1', 'tok-1', {
       content: 'hello',
-    } as any);
+    });
 
     expect(result).toEqual({ id: 'message-1' });
     expect(webhooksService.execute).toHaveBeenCalledWith(

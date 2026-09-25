@@ -12,7 +12,7 @@ function buildMessageWithIncludes(
   overrides: Record<string, unknown> = {},
   fileOverrides: Array<Record<string, unknown>> = [],
 ) {
-  const base: any = MessageFactory.build(overrides as any);
+  const base: any = MessageFactory.build(overrides);
   return {
     ...base,
     spans: (base.spans || []).map((s: any, i: number) => ({

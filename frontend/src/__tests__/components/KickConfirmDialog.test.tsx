@@ -1,6 +1,5 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
-import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import KickConfirmDialog from '../../components/Moderation/KickConfirmDialog';
 
@@ -20,9 +19,6 @@ const defaultProps = {
   userName: 'TestUser',
 };
 
-beforeAll(() => server.listen());
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
 
 describe('KickConfirmDialog', () => {
   beforeEach(() => {

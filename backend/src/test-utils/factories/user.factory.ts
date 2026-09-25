@@ -29,7 +29,7 @@ export class UserFactory {
       storageQuotaBytes: overrides.storageQuotaBytes ?? BigInt(0),
       storageUsedBytes: overrides.storageUsedBytes ?? BigInt(0),
       ...overrides,
-    } as User;
+    };
   }
 
   static buildOwner(overrides: Partial<User> = {}): User {

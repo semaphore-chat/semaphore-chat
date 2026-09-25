@@ -220,7 +220,7 @@ describe('LivekitWebhookController', () => {
           LiveKitEgressStatus.COMPLETE,
         );
 
-        replayService.handleEgressEnded.mockResolvedValue(undefined as any);
+        replayService.handleEgressEnded.mockResolvedValue(undefined);
 
         const result = await controller.handleWebhook(
           req as any,
@@ -244,7 +244,7 @@ describe('LivekitWebhookController', () => {
           'Egress failed due to network error',
         );
 
-        replayService.handleEgressEnded.mockResolvedValue(undefined as any);
+        replayService.handleEgressEnded.mockResolvedValue(undefined);
 
         await controller.handleWebhook(req as any, 'Bearer token', body);
 
@@ -262,7 +262,7 @@ describe('LivekitWebhookController', () => {
           LiveKitEgressStatus.ABORTED,
         );
 
-        replayService.handleEgressEnded.mockResolvedValue(undefined as any);
+        replayService.handleEgressEnded.mockResolvedValue(undefined);
 
         await controller.handleWebhook(req as any, 'Bearer token', body);
 

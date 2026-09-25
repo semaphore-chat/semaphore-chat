@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -27,9 +27,6 @@ const defaultProps = {
   onClose: vi.fn(),
 };
 
-beforeAll(() => server.listen());
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
 
 describe('ResetPasswordDialog', () => {
   beforeEach(() => {

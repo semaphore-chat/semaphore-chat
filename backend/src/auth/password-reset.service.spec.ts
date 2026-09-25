@@ -89,7 +89,7 @@ describe('PasswordResetService', () => {
       mockDatabase.passwordResetToken.deleteMany.mockResolvedValue({
         count: 1,
       });
-      mockDatabase.passwordResetToken.create.mockResolvedValue({} as never);
+      mockDatabase.passwordResetToken.create.mockResolvedValue({});
 
       await service.requestReset('user@example.com');
 
@@ -128,7 +128,7 @@ describe('PasswordResetService', () => {
       mockDatabase.passwordResetToken.deleteMany.mockResolvedValue({
         count: 0,
       });
-      mockDatabase.passwordResetToken.create.mockResolvedValue({} as never);
+      mockDatabase.passwordResetToken.create.mockResolvedValue({});
       mockMailerService.sendPasswordResetEmail.mockRejectedValue(
         new Error('SMTP exploded'),
       );

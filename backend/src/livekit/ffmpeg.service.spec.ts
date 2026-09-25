@@ -81,9 +81,9 @@ describe('FfmpegService', () => {
     const outputPath = '/uploads/replays/user1/clip.mp4';
 
     beforeEach(() => {
-      storageService.ensureDirectory.mockResolvedValue(undefined as any);
-      storageService.writeFile.mockResolvedValue(undefined as any);
-      storageService.deleteDirectory.mockResolvedValue(undefined as any);
+      storageService.ensureDirectory.mockResolvedValue(undefined);
+      storageService.writeFile.mockResolvedValue(undefined);
+      storageService.deleteDirectory.mockResolvedValue(undefined);
       storageService.getFileStats.mockResolvedValue({
         size: 1024,
         mtime: new Date(),

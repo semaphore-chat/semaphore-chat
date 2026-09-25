@@ -19,8 +19,7 @@ const REDIS_TIMEOUT_MS = 1500;
 const WARN_INTERVAL_MS = 30_000;
 
 export type PermissionScope =
-  | { kind: 'instance' }
-  | { kind: 'community'; communityId: string };
+  { kind: 'instance' } | { kind: 'community'; communityId: string };
 
 /**
  * A deferred epoch bump, described as data so it can be collected inside a

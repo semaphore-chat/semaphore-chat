@@ -48,7 +48,7 @@ describe('LivekitController', () => {
         roomId: 'channel-123',
       };
 
-      service.generateToken.mockResolvedValue(mockTokenResponse as any);
+      service.generateToken.mockResolvedValue(mockTokenResponse);
 
       const result = await controller.generateToken(
         createTokenDto,
@@ -74,7 +74,7 @@ describe('LivekitController', () => {
         token: 'token',
         identity: mockUser.id,
         roomId: 'channel-789',
-      } as any);
+      });
 
       await controller.generateToken(createTokenDto, mockRequest);
 
@@ -94,7 +94,7 @@ describe('LivekitController', () => {
         token: 'token',
         identity: mockUser.id,
         roomId: 'channel-123',
-      } as any);
+      });
 
       await controller.generateToken(createTokenDto, mockRequest);
 
@@ -119,7 +119,7 @@ describe('LivekitController', () => {
         roomId: 'dm-group-123',
       };
 
-      service.generateToken.mockResolvedValue(mockTokenResponse as any);
+      service.generateToken.mockResolvedValue(mockTokenResponse);
 
       const result = await controller.generateDmToken(
         createTokenDto,
@@ -145,7 +145,7 @@ describe('LivekitController', () => {
         token: 'dm-token',
         identity: mockUser.id,
         roomId: 'dm-group-456',
-      } as any);
+      });
 
       await controller.generateDmToken(createTokenDto, mockRequest);
 
@@ -165,7 +165,7 @@ describe('LivekitController', () => {
         token: 'dm-token',
         identity: mockUser.id,
         roomId: 'dm-group-789',
-      } as any);
+      });
 
       await controller.generateDmToken(createTokenDto, mockRequest);
 
@@ -181,7 +181,7 @@ describe('LivekitController', () => {
         url: 'wss://livekit.example.com',
       };
 
-      service.getConnectionInfo.mockReturnValue(mockConnectionInfo as any);
+      service.getConnectionInfo.mockReturnValue(mockConnectionInfo);
 
       const result = controller.getConnectionInfo();
 
@@ -192,7 +192,7 @@ describe('LivekitController', () => {
     it('should call service method without parameters', () => {
       service.getConnectionInfo.mockReturnValue({
         url: 'wss://test.livekit.io',
-      } as any);
+      });
 
       controller.getConnectionInfo();
 

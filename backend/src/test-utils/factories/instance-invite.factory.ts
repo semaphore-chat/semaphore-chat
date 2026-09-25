@@ -18,7 +18,7 @@ export class InstanceInviteFactory {
       createdAt: overrides.createdAt || new Date(),
       disabled: overrides.disabled ?? false,
       ...overrides,
-    } as InstanceInvite;
+    };
   }
 
   static buildUnlimited(

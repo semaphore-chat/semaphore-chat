@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen, within, waitFor } from '@testing-library/react';
 import { Chip } from '@mui/material';
 import { http, HttpResponse } from 'msw';
@@ -46,9 +46,6 @@ async function typeAndWaitForResults(user: ReturnType<typeof import('@testing-li
   }, { timeout: 2000 });
 }
 
-beforeAll(() => server.listen());
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
 
 describe('UserSearchAutocomplete', () => {
   it('does not fetch results until user types', async () => {

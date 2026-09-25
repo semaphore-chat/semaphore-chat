@@ -63,10 +63,10 @@ describe('CommunityService', () => {
         createdAt: new Date(),
       } as any);
       communityRolesService.createDefaultCommunityRoles.mockResolvedValue(
-        'admin-role-id' as any,
+        'admin-role-id',
       );
       communityRolesService.assignUserToCommunityRole.mockResolvedValue(
-        undefined as any,
+        undefined,
       );
 
       const result = await service.create(createDto, user.id);
@@ -176,7 +176,7 @@ describe('CommunityService', () => {
       mockDatabase.membership.create.mockResolvedValue({});
       channelsService.createDefaultGeneralChannel.mockResolvedValue({} as any);
       communityRolesService.createDefaultCommunityRoles.mockResolvedValue(
-        'admin-role-id' as any,
+        'admin-role-id',
       );
       // Fails after the role mutations would have collected bumps.
       communityRolesService.assignUserToCommunityRole.mockRejectedValue(
@@ -466,9 +466,7 @@ describe('CommunityService', () => {
       const communityId = 'community-123';
       const userId = 'user-456';
 
-      channelsService.addUserToGeneralChannel.mockResolvedValue(
-        undefined as any,
-      );
+      channelsService.addUserToGeneralChannel.mockResolvedValue(undefined);
 
       await service.addMemberToGeneralChannel(communityId, userId);
 
