@@ -277,9 +277,12 @@ export default function MessageInput({
   }, [setupCursorTracking, canCompose]);
 
   // Focus on mount, and again if posting becomes possible (e.g. a timeout
-  // expires) since the input only mounts then.
+  // expires) since the input only mounts then. Without scrolling: on phone the
+  // chat screen is still sliding in (off to the right) when this runs, and a
+  // scrolling focus() would scroll the overflow-hidden screen container
+  // sideways, leaving the whole chat shifted left once the slide ends.
   useEffect(() => {
-    if (canCompose) inputRef.current?.focus();
+    if (canCompose) inputRef.current?.focus({ preventScroll: true });
   }, [canCompose]);
 
   // --- Mention system: server-backed (channels) or local (DMs) ---
