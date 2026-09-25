@@ -152,12 +152,14 @@ For each new or changed piece of UI, ask which of these could break it, and add 
 
 ## Determinism rules
 
-The review captures both sides with the clock frozen at `2026-09-22T18:30:00Z` (fixture epoch plus 30 minutes) and CSS animations disabled. A difference between two captures of the same code shows up as **unstable** noise. So:
+The review captures both sides with `Date.now()` pinned to `2026-09-22T18:30:00Z` (fixture epoch plus 30 minutes; timers keep running), CSS animations disabled and animated images (GIF, animated WebP/PNG) shown at their first frame. A difference between two captures of the same code shows up as **unstable** noise. So:
 
 - Build data from a fixed `seed` and fixed ids. Don't use `Math.random()`, `Date.now()`, `crypto.randomUUID()`, or counters that depend on render order in story or fixture code.
-- Open menus and popovers only after the content under them has settled. Give images fixed sizes (`sizedImageId`), and add a condition step before the click (not `wait()`, see the next rule). Opening a menu while media is still sizing is exactly what makes `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` flaky.
-- Make each driver step check its own precondition: return `false` until the element it needs exists. Fixed delays alone race, and **`wait(ms)` never completes in the review**: it measures elapsed time with `Date.now()`, which the capture freezes, so the driver stops at that step (the stories that still use it, such as `edge-chat-dm--dm-composer-loaded`, are captured stuck there). Poll a condition instead (`messageListSteady()`, the element exists), or use `setTimeout`, which still runs.
-- Don't rely on long timers. `Date` is frozen, but timers run. The capture waits for network idle, then for the DOM and network to be quiet for 0.8 s (at most 10 s), then 1.5 s more. A state that appears on a longer timer may or may not be in the shot.
+- **Never measure time with `Date.now()` in a driver.** It doesn't move during a review, so a `Date.now()` based wait never ends and the story stops halfway. Drive interactions with `useDriver` (`fixtures/edge/chat.ts`), whose `wait(ms)` steps count time with timers and so do finish during a review.
+- Drive multi-step interactions with `useDriver`. While it runs it sets `<html data-story-busy>`, and the capture waits for that to clear (at most 10 s, then 20 s more). Timers of your own leave the DOM quiet between steps, so a shot can catch the story halfway.
+- **Prefer polling a condition to a fixed `wait()`.** Make each driver step check its own precondition: return `false` until the element it needs exists or the state it needs is reached (`messageListSteady()`, `mediaSettled()`). A fixed delay works but races a slow machine. Keep `wait()` for delays the app itself imposes, such as a long-press or a highlight that clears after 3 s.
+- Open menus and popovers only after the content under them has settled. Give images fixed sizes (`sizedImageId`), and put a `mediaSettled()` step (every image loaded, and image sizes and scroll positions unchanged for a few polls) before the step that opens the menu. A menu opened while media is still sizing anchors to a row that is still moving, and the list may end up pinned to the bottom or not.
+- Don't rely on long timers outside a driver. The capture waits for network idle, then for the DOM and network to be quiet for 0.8 s (at most 10 s), then 1.5 s more. A state that appears on a longer timer may or may not be in the shot.
 
 ## Validate
 

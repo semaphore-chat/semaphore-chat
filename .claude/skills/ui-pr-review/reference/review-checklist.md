@@ -39,15 +39,21 @@ jq -r '"uncovered: \(.uncovered | join(", "))", "not visible in Ladle: \(.appOnl
 ## Reading a composite
 
 - **Title bar:** the story id, a status badge (changed in amber, unstable in purple, new in green, removed in red), the viewport and its size, and the share of pixels changed.
-- **Panels:**
-  - `before · base <sha>` | `after · head <sha>`. A `+` after the head sha means uncommitted edits were included.
-  - A third **diff** panel appears on phone only, with differing pixels in red.
-  - New stories show only "after", and removed stories only "before".
-- **Red outlines** mark the changed regions on every panel.
-- **Scale:** phone panels are 1:1. Tablet panels are scaled a little, and desktop panels to about half. When the panels are scaled down and the change is small, a **zoom row** below shows the changed region at up to 1:1.
+A composite is at most 860 px wide, so a PR description shows it without scaling it down (GitHub displays images up to about 880 px wide). From top to bottom:
+
+- **Title bar:** the story id, a status badge (changed in amber, unstable in purple, new in green, removed in red), the viewport and its size, and the share of pixels changed.
+- **Changed region** crops (changed and unstable shots): each changed area with some context around it, at 1:1 (the caption gives the scale):
+  - `before · base <sha>` | `after · head <sha>` | **diff** side by side when all three fit. The diff shows the differing pixels in red. A `+` after the head sha means uncommitted edits were included.
+  - Wider regions show before | after, or before above after.
+  - At most three regions are cropped, the biggest. The caption of the full view says how many more are only outlined there.
+  - None on a phone shot unless the diff panel fits: its full view is already 1:1.
+- **Full view:** the whole page, with **red outlines** around every changed region.
+  - Usually before | after side by side: 1:1 on phone, about 50% on tablet and 30% on desktop. That is for finding your way, the crops above are for reading.
+  - When a change covers too much of a tablet or desktop page to crop, there are no crops, and before is shown above after at the full width (1:1 on tablet, about 58% on desktop).
+  - New stories show only "after", and removed stories only "before", as large as fits.
 - **Tall pages** are cropped to a window around the change. Open the raw shot to see the rest of the page.
 
-Compare "before" and "after" inside every outline, then scan the whole "after" panel. The outlines show where pixels differ, not everything that is wrong: a bug that is also on the base has no outline.
+Compare "before" and "after" in every crop, then scan the whole "after" panel of the full view. The outlines show where pixels differ, not everything that is wrong: a bug that is also on the base has no outline.
 
 ## The checklist in detail
 

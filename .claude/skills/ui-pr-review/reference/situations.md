@@ -68,14 +68,15 @@ What to do:
 
 ## Flaky and unstable stories
 
-Some stories render nondeterministically. The known ones:
+A story renders nondeterministically when the frame the screenshot catches depends on timing. No story is known to be flaky at the moment. The causes found so far, and what now prevents them:
 
-- `edge-chat-worst-case--everything-at-once`
-- `edge-chat-dm--dm-composer-loaded`
+- **A driver step that waits with `Date.now()`.** The review pins `Date.now()`, so such a wait never ends: `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` used to stop at their first `wait()` with a menu open over a list still sizing its media, and the menu and the list's scroll position came out differently from load to load. `wait()` and `useDriver` now count time with timers, and the two stories wait for their images to size (`mediaSettled()`) before opening the menu.
+- **A shot taken halfway through a driver.** The pauses between steps leave the DOM quiet, so the settle wait could end with the files attached but the draft not typed yet. `useDriver` sets `<html data-story-busy>` while it runs, and the capture doesn't count the page as settled until it's gone.
+- **An animated GIF.** Stopping CSS animations doesn't stop a GIF (`tour--chat`'s sprite): the capture shows every animated image at its first frame.
 
-Both open a menu while media is still sizing, so the menu anchors differently from one load to the next.
+See [stories.md](stories.md#determinism-rules) for the rules a new story has to follow.
 
-How the tool handles it:
+How the tool handles a flaky story:
 
 - Every **changed** shot (a story at one viewport) is captured again on both sides, twice by default (`UI_REVIEW_RECHECKS=2`).
 - A change is confirmed only if the base-vs-head difference **reproduces inside its own region** on every re-capture.
@@ -84,11 +85,11 @@ How the tool handles it:
 
 What to do:
 
-- **For an unstable shot, or a "changed" shot in a known flaky story,** decide whether the difference is in the area your change touches.
-  - If not (only the menu position moved, and you didn't touch menus, media or the composer), say so in the PR text.
+- **For an unstable shot,** decide whether the difference is in the area your change touches.
+  - If not (say only a menu's position moved, and you didn't touch menus, media or the composer), say so in the PR text.
   - If it is, rerun `--stories <id>` once or twice and look at the result. A real change can hide behind flakiness.
 - **Don't** set `UI_REVIEW_RECHECKS=0` or raise thresholds to make it go away.
-- **A story that is unstable run after run** is worth fixing: wait for media to size before opening the menu (a condition step in its driver; `wait()` never completes under the review's frozen clock). That is a separate change, so do it only when the user wants it in scope.
+- **A story that is unstable run after run** is worth fixing, usually with one of the fixes above: a condition step before the interaction, `mediaSettled()` before opening a menu over images, the story's steps in `useDriver` rather than bare timers. Check the fix with a few runs of `--base HEAD --stories <id>` on the committed fix: base and head are then the same code, so anything but "unchanged" is still flaky. A story fix is a separate change, so do it only when the user wants it in scope.
 - **Mass instability** (many stories unstable, blank or half-rendered shots) usually means the machine was overloaded. That can come from another review or a heavy build running at the same time. Rerun when it's quiet, or with `UI_REVIEW_CONCURRENCY=2` or a higher `UI_REVIEW_SETTLE_MS`. The capture log `.ui-review/work/shots-*.log` marks shots whose page was still busy after the settle wait.
 
 ## Stacked PRs

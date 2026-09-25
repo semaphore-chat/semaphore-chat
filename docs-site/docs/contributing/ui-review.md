@@ -19,8 +19,9 @@ For a change it:
 2. renders them on the merge-base and on your working tree, at phone/tablet/desktop;
 3. pixel-diffs each pair and sorts stories into **changed / new / removed / unchanged**
    (and **unstable**: stories whose difference did not reproduce when captured again);
-4. renders labelled before | after composites (changed regions outlined, plus a
-   1:1 zoom on small changes);
+4. renders labelled before/after composites narrow enough for a PR description
+   (each changed region cropped at up to 1:1, above a full view with the
+   changed regions outlined);
 5. optionally publishes the images to the `pr-screenshots` branch and writes a
    section into the PR description (between `<!-- ui-review:start -->` and
    `<!-- ui-review:end -->`; the rest of the description is left untouched).
@@ -87,7 +88,9 @@ Before publishing, check the run the way a reviewer would:
 - **Unstable stories** — their difference did not reproduce on a re-capture, so
   it may or may not come from your change; look at the composite. A story that
   is unstable run after run is worth fixing (usually a race between a
-  menu/popover opening and media or data settling).
+  menu/popover opening and media or data settling, or a story timing its
+  steps with `Date.now()`, which the review pins — see the determinism rules
+  below).
 - **Changed files with no visible change** — the section lists changed files
   whose captured stories run the code but show nothing different (e.g. the
   component renders a closed dialog), and files no probed story runs at all.
@@ -207,12 +210,23 @@ image unless its dependency manifests differ, in which case an image is built
 from the base's own lockfile. Before capturing, both servers load every
 selected story once, so Vite's first transform of their chunks doesn't happen
 during a timed capture. Screenshots come from `scripts/ux-shots.mjs`
-(story × viewport task mode, the same list on both sides) with the clock
-frozen at a fixed instant, CSS animations disabled, and a settle wait: the
-page counts as ready once, for 800 ms, the DOM has not changed, no request
-started or finished and no script, stylesheet or font is still loading — a
-lazy route whose chunk is still in flight behind a static "Loading..." screen
-is not "ready". Identical code renders identical pixels.
+(story × viewport task mode, the same list on both sides) with `Date.now()`
+pinned to a fixed instant (timers keep running), CSS animations disabled,
+animated images (GIF, animated WebP/PNG) shown at their first frame, and a
+settle wait: the page counts as ready once, for 800 ms, the DOM has not
+changed, no request started or finished, no script, stylesheet or font is
+still loading — a lazy route whose chunk is still in flight behind a static
+"Loading..." screen is not "ready" — and no story driver is still running (a
+story that drives an interaction with `useDriver` sets
+`<html data-story-busy>` until its last step ran). Identical code renders
+identical pixels.
+
+**Determinism rules for stories:** a story driver must never measure time
+with `Date.now()` (it doesn't move during a review, so the wait never ends);
+use `useDriver` with its `wait(ms)` steps, which count time with timers. Open
+a menu over images only after a `mediaSettled()` step (images loaded, sizes
+and scroll positions stable), or it anchors to a row that is still moving.
+The full list is in `.claude/skills/ui-pr-review/reference/stories.md`.
 
 Each story is shot at phone, tablet and desktop, except `*keyboard*` stories
 (only `phone-short`, 390×500) and stories that name their own viewports in
@@ -237,9 +251,9 @@ about 8/255, and renders are exact run to run). A shot is **changed** when more
 than 24 pixels differ or the page size changed; **new** when the story has no
 base; **removed** when it has no head.
 
-A few stories render nondeterministically (for example a menu opened while
-media is still sizing: the menu anchors differently from load to load). To
-keep those out of "changed", every changed shot (that story at that viewport)
+A story can still render nondeterministically (for example a menu opened
+while media is still sizing: the menu anchors differently from load to load).
+To keep those out of "changed", every changed shot (that story at that viewport)
 is **captured again on both sides**, twice by default (`UI_REVIEW_RECHECKS`).
 A change is confirmed only if the base-vs-head difference **reproduces inside
 its own region** (the changed boxes plus a small margin) on every re-capture;
@@ -249,10 +263,20 @@ elsewhere on the page on a re-capture (a list scrolled differently once) don't
 matter either way. A flaky story can still come out "changed" when every
 re-capture happens to reproduce the same difference.
 
-Composites are drawn by Chromium from an HTML template (the
-before | after panels, a diff panel on phone, red outlines around changed
-regions, and a 1:1 zoom row when the panels had to be scaled down), then
-encoded as WebP at most 1600 px wide.
+Composites are drawn by Chromium from an HTML template, then encoded as WebP
+at most 860 px wide: GitHub shows PR-description images at most about 880 px
+wide, so a wider composite would be scaled down until its text is too small
+to read. Top to bottom:
+
+- a title bar (story id, status, viewport, share of pixels changed);
+- for a change, each changed region (the changed pixels plus some context;
+  nearby ones merged, at most the three biggest) cropped at up to 1:1:
+  before | after | diff side by side when the three fit, else before | after,
+  else before above after;
+- a full view of the page with every changed region outlined in red: before |
+  after side by side (1:1 on phone, reduced on tablet and desktop, where it
+  is for orientation). A change too big to crop on a tablet or desktop page
+  gets no crops; before is shown above after at the full width instead.
 
 ### Publishing
 
