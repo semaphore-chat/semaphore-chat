@@ -24,7 +24,11 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD:?REDIS_PASSWORD required}
       - FILE_UPLOAD_DEST=/app/uploads
     ports:
-      - "${BACKEND_PORT:-3000}:3000"
+      # Localhost only. The frontend reaches the backend over the Compose network,
+      # and env.sample sets TRUST_PROXY=1 (the frontend's nginx is that one hop),
+      # so a client that reached this port directly could spoof its IP with an
+      # X-Forwarded-For header.
+      - "127.0.0.1:${BACKEND_PORT:-3000}:3000"
     volumes:
       # Persist uploaded files and generated thumbnails across container recreates
       - uploads:/app/uploads

@@ -27,7 +27,12 @@ backend:
     tag: "latest"
 
   # Trust proxy setting for Express (required behind ingress/load balancer).
-  # Number of proxy hops, a subnet, or a specific IP.
+  # Number of proxy hops in front of the backend, a subnet, or a specific IP.
+  # The ingress controller routes /api and /socket.io straight to the backend
+  # (ClusterIP), so it is one hop. Count a proxy in front of the ingress (e.g. a
+  # CDN) only if the ingress passes its X-Forwarded-For through (ingress-nginx
+  # does not by default). Never set it higher than the real count or to "true":
+  # clients could spoof their IP. Empty = no proxy trusted (TRUST_PROXY unset).
   # See: https://expressjs.com/en/guide/behind-proxies.html
   trustProxy: "1"
 

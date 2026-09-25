@@ -20,6 +20,7 @@ import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
 import * as cookieParser from 'cookie-parser';
+import type { Application } from 'express';
 import * as request from 'supertest';
 import { App } from 'supertest/types';
 import { Response } from 'supertest';
@@ -43,6 +44,12 @@ export async function createE2eApp(options?: {
    * failure.
    */
   logger?: LoggerService | false;
+  /**
+   * Express's `trust proxy` setting, as src/main.ts sets it from
+   * TRUST_PROXY. With 'loopback', supertest requests can pose as other
+   * clients through an X-Forwarded-For header (req.ip).
+   */
+  trustProxy?: boolean | number | string;
 }): Promise<E2eApp> {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
@@ -53,6 +60,12 @@ export async function createE2eApp(options?: {
   });
 
   // Mirror src/main.ts request pipeline.
+  if (options?.trustProxy !== undefined) {
+    (app.getHttpAdapter().getInstance() as Application).set(
+      'trust proxy',
+      options.trustProxy,
+    );
+  }
   app.setGlobalPrefix('api');
   app.use(cookieParser());
   app.useGlobalPipes(new AppValidationPipe());

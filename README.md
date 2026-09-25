@@ -127,6 +127,7 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+      # Caddy is the one proxy hop. The backend publishes no port, so it is only reachable through Caddy.
       TRUST_PROXY: 1
       REPLAY_SEGMENTS_PATH: /app/storage/replay-segments
       REPLAY_EGRESS_OUTPUT_PATH: /out
@@ -304,7 +305,9 @@ services:
     image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      # Localhost only: clients must reach the backend through your reverse proxy,
+      # or they can spoof their IP with an X-Forwarded-For header.
+      - "127.0.0.1:3000:3000"
     environment:
       DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
       REDIS_HOST: redis
@@ -314,6 +317,7 @@ services:
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:?Set LIVEKIT_API_KEY in .env}
       LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+      # Must equal the number of proxy hops in front of the backend. See "Reverse proxy routing".
       TRUST_PROXY: 1
       REPLAY_SEGMENTS_PATH: /app/storage/replay-segments
       REPLAY_EGRESS_OUTPUT_PATH: /out
@@ -449,6 +453,8 @@ The frontend's built-in nginx already proxies `/api` and `/socket.io` to the bac
 |--------|-------------|-------|
 | `your-domain.com` | `localhost:5173` | Frontend (handles `/api` and `/socket.io` internally) |
 | `lk.your-domain.com` | `localhost:7880` | LiveKit signaling — ensure WebSocket upgrade headers are forwarded |
+
+Routed this way, the frontend's nginx is the backend's one trusted proxy hop (`TRUST_PROXY: 1`), so the backend sees every client as your reverse proxy's address. For real client IPs (per-client rate limiting, session IPs), also route `/api` and `/socket.io` on `your-domain.com` straight to `localhost:3000`, and have your proxy set `X-Forwarded-For`. Keep `TRUST_PROXY` equal to the real number of hops, and never publish port 3000 beyond localhost: a client that reaches the backend directly can spoof its IP.
 
 #### Download the IP watcher script
 

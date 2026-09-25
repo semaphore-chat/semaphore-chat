@@ -18,6 +18,7 @@ import type { Server as IoServer } from 'socket.io';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
 import { UserService } from '@/user/user.service';
 import { AuthService } from '@/auth/auth.service';
+import { DatabaseService } from '@/database/database.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import type Redis from 'ioredis';
 import {
@@ -119,7 +120,8 @@ describe('WebSocket gateways (e2e)', () => {
         }
       });
 
-    app = await createE2eApp();
+    // Requests can pose as other clients (X-Forwarded-For)
+    app = await createE2eApp({ trustProxy: 'loopback' });
     await app.listen(0, '127.0.0.1');
     const server = app.getHttpServer() as unknown as Server;
     const { port } = server.address() as AddressInfo;
@@ -629,6 +631,447 @@ describe('WebSocket gateways (e2e)', () => {
     });
 
     /**
+     * Refresh token reuse: tabs sharing one cookie may present the same
+     * refresh token at the same time. Within the grace window that is the
+     * same session and gets the token the first refresh rotated to; after
+     * it, it's a stolen token and the whole session ends.
+     */
+    describe('refresh token reuse', () => {
+      /** The raw refresh token of a `refresh_token=<jwt>` cookie. */
+      function tokenOf(refreshCookie: string): string {
+        return refreshCookie.slice(refreshCookie.indexOf('=') + 1);
+      }
+
+      function jtiOf(refreshCookie: string): string {
+        return app
+          .get(JwtService)
+          .decode<{ jti: string }>(tokenOf(refreshCookie)).jti;
+      }
+
+      function refreshRequest(refreshCookie: string): request.Test {
+        return request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', refreshCookie);
+      }
+
+      /** Move a consumed refresh token's rotation back in time. */
+      async function rotatedAgo(refreshCookie: string, ms: number) {
+        await app.get(DatabaseService).refreshToken.update({
+          where: { id: jtiOf(refreshCookie) },
+          data: { consumedAt: new Date(Date.now() - ms) },
+        });
+      }
+
+      /** The session's refresh tokens that can still be used. */
+      async function liveTokensOf(accessToken: string) {
+        const { sid } = app
+          .get(JwtService)
+          .decode<{ sid: string }>(accessToken);
+        return app.get(DatabaseService).refreshToken.findMany({
+          where: { familyId: sid, consumed: false },
+        });
+      }
+
+      it('concurrent refreshes with one cookie all succeed with the same new token', async () => {
+        await register('ws-reuse-concurrent');
+        const session = await login('ws-reuse-concurrent', 'Laptop');
+        const client = await open(session.accessToken);
+
+        // Ten restored tabs refresh at once with the shared cookie
+        const responses = await Promise.all(
+          Array.from({ length: 10 }, () =>
+            refreshRequest(session.refreshCookie).then((res) => res),
+          ),
+        );
+
+        expect(responses.map((res) => res.status)).toEqual(Array(10).fill(200));
+        const cookies = new Set(
+          responses.map((res) =>
+            extractCookie(getSetCookies(res), 'refresh_token'),
+          ),
+        );
+        // One rotation: every tab got the same successor, no fork
+        expect(cookies.size).toBe(1);
+        const [successor] = [...cookies] as string[];
+        expect(successor).not.toEqual(session.refreshCookie);
+        const accessTokens = responses.map(
+          (res) => (res.body as { accessToken: string }).accessToken,
+        );
+        const live = await liveTokensOf(accessTokens[0]);
+        expect(live.map((t) => t.id)).toEqual([jtiOf(successor)]);
+
+        // Every tab's access token works and the session lives on
+        for (const accessToken of accessTokens) {
+          await request(app.getHttpServer())
+            .get('/api/users/profile')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(200);
+        }
+        await expect(isServed(client)).resolves.toBe(true);
+        await refreshRequest(successor).expect(200);
+      });
+
+      it('a retry with the rotated cookie gets the latest token of the session', async () => {
+        await register('ws-reuse-retry');
+        const session = await login('ws-reuse-retry', 'Laptop');
+        const first = await refresh(session.refreshCookie, 'Laptop');
+        const second = await refresh(first.refreshCookie, 'Laptop');
+
+        // The first response got lost; the client retries with the old
+        // cookie a moment later
+        const retried = await refreshRequest(session.refreshCookie).expect(200);
+
+        expect(extractCookie(getSetCookies(retried), 'refresh_token')).toEqual(
+          second.refreshCookie,
+        );
+        const retriedAccessToken = (retried.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${retriedAccessToken}`)
+          .expect(200);
+        await refreshRequest(second.refreshCookie).expect(200);
+      });
+
+      it('reuse after the grace window ends the whole session', async () => {
+        await register('ws-reuse-late');
+        const session = await login('ws-reuse-late', 'Laptop');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+        const phone = await login('ws-reuse-late', 'Phone');
+        const client = await open(rotated.accessToken);
+        const phoneSocket = await open(phone.accessToken);
+        const end = sessionEnd(client);
+
+        await rotatedAgo(session.refreshCookie, 60_000);
+        await refreshRequest(session.refreshCookie).expect(401);
+
+        // The holder of the rotated token is signed out everywhere
+        await expect(end).resolves.toEqual({
+          terminated: 'SESSION_REVOKED',
+          disconnect: 'io server disconnect',
+        });
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${rotated.accessToken}`)
+          .expect(401);
+        await refreshRequest(rotated.refreshCookie).expect(401);
+        await expect(connect({ token: rotated.accessToken })).rejects.toThrow(
+          'AUTH_FAILED',
+        );
+        // Other sessions are not affected
+        await expect(isServed(phoneSocket)).resolves.toBe(true);
+      });
+
+      it('the grace window does not bring back a revoked session', async () => {
+        await register('ws-reuse-revoked');
+        const session = await login('ws-reuse-revoked', 'Laptop');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+
+        await request(app.getHttpServer())
+          .post('/api/auth/logout')
+          .set('Authorization', `Bearer ${rotated.accessToken}`)
+          .set('Cookie', rotated.refreshCookie)
+          .expect(201);
+
+        await refreshRequest(session.refreshCookie).expect(401);
+      });
+
+      it('the grace window does not outlive a password reset', async () => {
+        const target = await register('ws-reuse-reset');
+        const session = await login('ws-reuse-reset', 'Laptop');
+        await refresh(session.refreshCookie, 'Laptop');
+
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        // Even once the cutoff is gone
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-user:${target.id}`);
+
+        await refreshRequest(session.refreshCookie).expect(401);
+      });
+
+      /**
+       * The grace window serves only the client that did the rotation (its
+       * IP and user agent). Anyone else presenting a rotated token is
+       * replaying a stolen one, and the session ends, as outside the window.
+       * Without this, a thief who never rotates could ride every rotation of
+       * the victim from anywhere (the security review's probe).
+       */
+      describe('another client within the window', () => {
+        /** A refresh from a given address (X-Forwarded-For) and agent. */
+        function refreshFrom(
+          refreshCookie: string,
+          client: { ip?: string; userAgent?: string },
+        ): request.Test {
+          const req = request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('User-Agent', client.userAgent ?? userAgents.Laptop)
+            .set('Cookie', refreshCookie);
+          return client.ip ? req.set('X-Forwarded-For', client.ip) : req;
+        }
+
+        /** Rotate as the victim, from `ip`, and open its socket. */
+        async function victimRotates(username: string, ip: string) {
+          await register(username);
+          const session = await login(username, 'Laptop');
+          const res = await refreshFrom(session.refreshCookie, { ip }).expect(
+            200,
+          );
+          const rotated = {
+            accessToken: (res.body as { accessToken: string }).accessToken,
+            refreshCookie: extractCookie(getSetCookies(res), 'refresh_token')!,
+          };
+          const client = await open(rotated.accessToken);
+          return { session, rotated, client, end: sessionEnd(client) };
+        }
+
+        async function expectSessionRevoked(rotated: {
+          accessToken: string;
+          refreshCookie: string;
+        }) {
+          await request(app.getHttpServer())
+            .get('/api/users/profile')
+            .set('Authorization', `Bearer ${rotated.accessToken}`)
+            .expect(401);
+          await refreshRequest(rotated.refreshCookie).expect(401);
+        }
+
+        it('a replay from another IP ends the session', async () => {
+          const { session, rotated, end } = await victimRotates(
+            'ws-grace-other-ip',
+            '203.0.113.10',
+          );
+
+          // The thief replays the stolen cookie right after the rotation,
+          // with the victim's user agent
+          await refreshFrom(session.refreshCookie, {
+            ip: '198.51.100.7',
+          }).expect(401);
+
+          await expect(end).resolves.toEqual({
+            terminated: 'SESSION_REVOKED',
+            disconnect: 'io server disconnect',
+          });
+          await expectSessionRevoked(rotated);
+        });
+
+        it('a replay with another user agent ends the session', async () => {
+          const { session, rotated, end } = await victimRotates(
+            'ws-grace-other-ua',
+            '203.0.113.11',
+          );
+
+          await refreshFrom(session.refreshCookie, {
+            ip: '203.0.113.11',
+            userAgent: userAgents.Phone,
+          }).expect(401);
+
+          await expect(end).resolves.toEqual({
+            terminated: 'SESSION_REVOKED',
+            disconnect: 'io server disconnect',
+          });
+          await expectSessionRevoked(rotated);
+        });
+
+        it('a thief who never rotates cannot ride a rotation', async () => {
+          // The review's probe: the thief waits for the victim to rotate,
+          // then replays the token it stole, to get the victim's new one
+          const { session, rotated, end } = await victimRotates(
+            'ws-grace-ride',
+            '203.0.113.12',
+          );
+
+          const ride = await refreshFrom(session.refreshCookie, {
+            ip: '198.51.100.8',
+          });
+
+          expect(ride.status).toBe(401);
+          expect(extractCookie(getSetCookies(ride), 'refresh_token')).toBe(
+            undefined,
+          );
+          await expect(end).resolves.toMatchObject({
+            terminated: 'SESSION_REVOKED',
+          });
+          await expectSessionRevoked(rotated);
+        });
+
+        it('the same client is served, also from another IPv6 privacy address of its /64', async () => {
+          const { session, rotated, client } = await victimRotates(
+            'ws-grace-same-client',
+            '2001:db8:5:6::10',
+          );
+
+          const retried = await refreshFrom(session.refreshCookie, {
+            ip: '2001:db8:5:6:a:b:c:d',
+          }).expect(200);
+
+          expect(
+            extractCookie(getSetCookies(retried), 'refresh_token'),
+          ).toEqual(rotated.refreshCookie);
+          await expect(isServed(client)).resolves.toBe(true);
+        });
+
+        it('a replay from another /64 ends the session', async () => {
+          const { session, rotated } = await victimRotates(
+            'ws-grace-other-64',
+            '2001:db8:5:6::10',
+          );
+
+          await refreshFrom(session.refreshCookie, {
+            ip: '2001:db8:5:7::10',
+          }).expect(401);
+
+          await expectSessionRevoked(rotated);
+        });
+      });
+
+      it('a rotation stamped by an instance whose clock runs ahead is still in the window', async () => {
+        await register('ws-grace-skew');
+        const session = await login('ws-grace-skew', 'Laptop');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+        // The rotating instance's clock was 2 s ahead of this one's
+        await rotatedAgo(session.refreshCookie, -2_000);
+
+        const retried = await refreshRequest(session.refreshCookie).expect(200);
+
+        expect(extractCookie(getSetCookies(retried), 'refresh_token')).toEqual(
+          rotated.refreshCookie,
+        );
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${rotated.accessToken}`)
+          .expect(200);
+      });
+    });
+
+    /**
+     * GET /auth/sessions: a session is its token family, and the list must
+     * not tell anyone (e.g. the holder of a stolen access token) when the
+     * session rotates its refresh token: that is when a stolen, rotated
+     * token would still be in its grace window.
+     */
+    describe('sessions list', () => {
+      type Listed = {
+        id: string;
+        isCurrent: boolean;
+        lastUsedAt: string;
+        createdAt: string;
+        expiresAt: string;
+        ipAddress: string | null;
+      };
+
+      async function listSessions(session: {
+        accessToken: string;
+        refreshCookie: string;
+      }): Promise<Listed[]> {
+        const res = await request(app.getHttpServer())
+          .get('/api/auth/sessions')
+          .set('Authorization', `Bearer ${session.accessToken}`)
+          .set('Cookie', session.refreshCookie)
+          .expect(200);
+        return res.body as Listed[];
+      }
+
+      function sidOf(accessToken: string): string {
+        return app.get(JwtService).decode<{ sid: string }>(accessToken).sid;
+      }
+
+      function jtiOf(refreshCookie: string): string {
+        return app.get(JwtService).decode<{
+          jti: string;
+        }>(refreshCookie.slice(refreshCookie.indexOf('=') + 1)).jti;
+      }
+
+      /** Make the user's sessions look ten minutes old. */
+      async function age(username: string) {
+        const tenMinutesAgo = new Date(Date.now() - 600_000);
+        await app.get(DatabaseService).refreshToken.updateMany({
+          where: { user: { username } },
+          data: { createdAt: tenMinutesAgo, lastUsedAt: tenMinutesAgo },
+        });
+      }
+
+      it('lists each session by its session id, which a rotation does not change', async () => {
+        await register('ws-sessions-id');
+        const session = await login('ws-sessions-id', 'Laptop');
+
+        const before = await listSessions(session);
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+        const after = await listSessions(rotated);
+
+        expect(before.map((s) => s.id)).toEqual([sidOf(session.accessToken)]);
+        expect(after.map((s) => s.id)).toEqual([sidOf(session.accessToken)]);
+        expect(after[0].isCurrent).toBe(true);
+      });
+
+      it('does not change when a session rotates', async () => {
+        await register('ws-sessions-oracle');
+        const session = await login('ws-sessions-oracle', 'Laptop');
+        await login('ws-sessions-oracle', 'Phone');
+        // Older sessions, so a rotation would stand out
+        await age('ws-sessions-oracle');
+
+        // A thief polls with the stolen access token and cookie
+        const before = await listSessions(session);
+        await refresh(session.refreshCookie, 'Laptop');
+        const after = await listSessions(session);
+
+        expect(after).toEqual(before);
+      });
+
+      it('shows a rotation once its grace window is over', async () => {
+        await register('ws-sessions-later');
+        const session = await login('ws-sessions-later', 'Laptop');
+        await age('ws-sessions-later');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+        const twoMinutesAgo = new Date(Date.now() - 120_000);
+        await app.get(DatabaseService).refreshToken.update({
+          where: { id: jtiOf(rotated.refreshCookie) },
+          data: { createdAt: twoMinutesAgo, lastUsedAt: twoMinutesAgo },
+        });
+
+        const [listed] = await listSessions(rotated);
+
+        expect(new Date(listed.lastUsedAt)).toEqual(twoMinutesAgo);
+      });
+
+      it('revokes a session by the id the list gives it (or, as before, by a token id)', async () => {
+        await register('ws-sessions-revoke');
+        const laptop = await login('ws-sessions-revoke', 'Laptop');
+        const phone = await login('ws-sessions-revoke', 'Phone');
+        const other = (await listSessions(laptop)).find((s) => !s.isCurrent)!;
+        expect(other.id).toBe(sidOf(phone.accessToken));
+
+        await request(app.getHttpServer())
+          .delete(`/api/auth/sessions/${other.id}`)
+          .set('Authorization', `Bearer ${laptop.accessToken}`)
+          .expect(200);
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Phone)
+          .set('Cookie', phone.refreshCookie)
+          .expect(401);
+
+        // A client from before sessions were listed by session id
+        const phoneAgain = await login('ws-sessions-revoke', 'Phone');
+        await request(app.getHttpServer())
+          .delete(`/api/auth/sessions/${jtiOf(phoneAgain.refreshCookie)}`)
+          .set('Authorization', `Bearer ${laptop.accessToken}`)
+          .expect(200);
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Phone)
+          .set('Cookie', phoneAgain.refreshCookie)
+          .expect(401);
+      });
+    });
+
+    /**
      * The security review's race probes, made deterministic: the next call
      * of a service method is held, so a revocation lands in its window.
      */
@@ -816,6 +1259,83 @@ describe('WebSocket gateways (e2e)', () => {
           .post('/api/auth/refresh')
           .set('User-Agent', userAgents.Laptop)
           .set('Cookie', racedCookie)
+          .expect(401);
+      });
+
+      it('a login racing a password reset leaves no working token', async () => {
+        const target = await register('ws-race-login-reset');
+
+        // The login has checked the old password when the reset runs
+        const held = holdNextCall(app.get(AuthService), 'validateUser', {
+          after: 300,
+        });
+        const loggingIn = send(
+          request(app.getHttpServer())
+            .post('/api/auth/login')
+            .set('User-Agent', userAgents.Laptop)
+            .send({ username: 'ws-race-login-reset', password }),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        const raced = await loggingIn;
+
+        // The password it checked is no longer the account's password
+        expect(raced.status).toBe(401);
+        expect(extractCookie(getSetCookies(raced), 'refresh_token')).toBe(
+          undefined,
+        );
+        // It left no session behind
+        await expect(
+          app
+            .get(DatabaseService)
+            .refreshToken.count({ where: { userId: target.id } }),
+        ).resolves.toBe(0);
+      });
+
+      it('a login that goes before a password reset loses its tokens to the reset', async () => {
+        const target = await register('ws-race-login-first');
+
+        // The login is issuing its tokens when the reset runs
+        const held = holdNextCall(
+          app.get(AuthService),
+          'generateRefreshToken',
+          { before: 300 },
+        );
+        const loggingIn = send(
+          request(app.getHttpServer())
+            .post('/api/auth/login')
+            .set('User-Agent', userAgents.Laptop)
+            .send({ username: 'ws-race-login-first', password }),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        const raced = await loggingIn;
+        expect(raced.status).toBe(200);
+
+        // Its access token is revoked with the user's other tokens
+        const racedAccessToken = (raced.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${racedAccessToken}`)
+          .expect(401);
+        // And its refresh token is gone, not just refused while the cutoff
+        // (an hour) lives
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-user:${target.id}`);
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', extractCookie(getSetCookies(raced), 'refresh_token')!)
           .expect(401);
       });
 

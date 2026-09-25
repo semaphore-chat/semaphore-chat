@@ -249,7 +249,7 @@
             }
           }
         },
-        "summary": "Revoke a specific session",
+        "summary": "Revoke a session by its id from GET /auth/sessions (or a refresh token id)",
         "tags": [
           "Auth"
         ]
@@ -701,7 +701,7 @@
             }
           }
         },
-        "summary": "Set a new password for a user (admin password override).\nRevokes the user's refresh tokens; access tokens stay valid until expiry.",
+        "summary": "Set a new password for a user (admin password override).\nEnds the user's sessions: refresh and access tokens revoked, sockets\ndisconnected.",
         "tags": [
           "User"
         ]
@@ -7794,7 +7794,8 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "The session id: stable for the whole session (refresh token rotations\ndon't change it). Pass it to DELETE /auth/sessions/{sessionId}."
           },
           "deviceName": {
             "type": "string"
@@ -7805,11 +7806,13 @@
           },
           "createdAt": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "description": "When the session started (its oldest refresh token still stored)"
           },
           "lastUsedAt": {
             "format": "date-time",
-            "type": "string"
+            "type": "string",
+            "description": "Last activity, delayed by about a minute"
           },
           "expiresAt": {
             "format": "date-time",

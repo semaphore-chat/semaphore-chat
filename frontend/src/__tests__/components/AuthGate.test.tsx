@@ -1,10 +1,20 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
-import { notifyAuthFailure, setAccessToken, getAccessToken, clearTokens } from '../../utils/tokenService';
+import {
+  notifyAuthFailure,
+  setAccessToken,
+  getAccessToken,
+  clearTokens,
+  endRefreshCooldown,
+} from '../../utils/tokenService';
+import {
+  MAX_SESSION_REFRESH_ATTEMPTS,
+  PAGE_LOAD_REFRESH_ROUNDS,
+} from '../../utils/sessionRefreshPolicy';
 import { stashDeepLinkRoute, takeStashedDeepLinkRoute } from '../../utils/deepLinkStash';
 import { Route, Routes, useLocation } from 'react-router-dom';
 
@@ -124,6 +134,15 @@ describe('AuthGate', () => {
     socketProviderMounted = false;
     mockDisconnectSocket.mockReset();
     takeStashedDeepLinkRoute(); // discard any leftover stash from a prior test
+    // tokenService is shared by every test: no pause left by a failed one
+    endRefreshCooldown();
+    // No session to refresh unless a test says otherwise (the server's
+    // answer without a refresh cookie)
+    server.use(
+      http.post(`${BASE_URL}/api/auth/refresh`, () =>
+        HttpResponse.json({ message: 'No refresh token provided' }, { status: 401 }),
+      ),
+    );
   });
 
   // ─── Loading State ─────────────────────────────────────────────
@@ -393,6 +412,29 @@ describe('AuthGate', () => {
       });
     });
 
+    it('redirects to /login when the page-load refresh gets a 401 (e.g. an expired or foreign-secret refresh token)', async () => {
+      let attempts = 0;
+      mockOnboardingOk();
+      server.use(
+        http.post(`${BASE_URL}/api/auth/refresh`, () => {
+          attempts++;
+          return HttpResponse.json(
+            { message: 'Invalid refresh token', statusCode: 401 },
+            { status: 401 },
+          );
+        }),
+      );
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+      // Refused, not unavailable: no retries
+      expect(attempts).toBe(1);
+      expect(screen.queryByText('Connecting...')).not.toBeInTheDocument();
+    });
+
     it('clears both access and refresh tokens on failed refresh', async () => {
       setAccessToken(expiredToken());
       localStorage.setItem('refreshToken', 'old-refresh-token');
@@ -433,21 +475,172 @@ describe('AuthGate', () => {
       expect(mockDisconnectSocket).toHaveBeenCalled();
     });
 
-    it('redirects to /login when refresh returns a network error', async () => {
-      setAccessToken(expiredToken());
+    it.each([
+      ['a network error', () => HttpResponse.error()],
+      ['a 503', () => HttpResponse.json({ message: 'Unavailable' }, { status: 503 })],
+      ['a 429', () => HttpResponse.json({ message: 'Too Many Requests' }, { status: 429 })],
+    ])(
+      'keeps connecting instead of showing the login page when the refresh gets %s',
+      async (_, failure) => {
+        setAccessToken(expiredToken());
+        const freshToken = validToken();
+        let attempts = 0;
+        mockOnboardingOk();
+        mockProfileUnauthorized();
+        server.use(
+          http.post(`${BASE_URL}/api/auth/refresh`, () => {
+            attempts++;
+            // The interceptor's refresh (profile 401) and AuthGate's first
+            // one fail; the server answers again after that
+            return attempts <= 2 ? failure() : HttpResponse.json({ accessToken: freshToken });
+          }),
+        );
 
+        renderAuthGate();
+
+        await waitFor(() => expect(attempts).toBeGreaterThanOrEqual(1));
+        expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+        expect(screen.getByText('Connecting...')).toBeInTheDocument();
+        await waitFor(
+          () => {
+            expect(screen.getByTestId('home')).toBeInTheDocument();
+          },
+          { timeout: 8000 },
+        );
+        expect(getAccessToken()).toBe(freshToken);
+      },
+      15_000,
+    );
+
+    it('keeps connecting on a page load (no token yet) while the server is unavailable', async () => {
+      const freshToken = validToken();
+      let attempts = 0;
       mockOnboardingOk();
-      mockProfileUnauthorized();
       server.use(
-        http.post(`${BASE_URL}/api/auth/refresh`, () => HttpResponse.error()),
+        http.post(`${BASE_URL}/api/auth/refresh`, () => {
+          attempts++;
+          return attempts === 1
+            ? HttpResponse.json({ message: 'Unavailable' }, { status: 503 })
+            : HttpResponse.json({ accessToken: freshToken });
+        }),
       );
 
       renderAuthGate();
 
-      await waitFor(() => {
-        expect(screen.getByTestId('login')).toBeInTheDocument();
+      await waitFor(() => expect(attempts).toBe(1));
+      expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+      await waitFor(
+        () => {
+          expect(screen.getByTestId('home')).toBeInTheDocument();
+        },
+        { timeout: 4000 },
+      );
+    });
+
+    /**
+     * Retrying while the server can't answer is right for a restart, but a
+     * server that keeps failing (a persistent 5xx) must not trap the user on
+     * "Connecting..." forever: after a few rounds, AuthGate says so and
+     * offers to try again or to sign in again.
+     */
+    describe('when the server keeps failing', () => {
+      const unavailableText = "Can't reach the server";
+      let attempts = 0;
+      let serverBack = false;
+      let freshToken: string;
+
+      beforeEach(() => {
+        attempts = 0;
+        serverBack = false;
+        freshToken = validToken();
+        vi.useFakeTimers({
+          shouldAdvanceTime: true,
+          toFake: ['setTimeout', 'clearTimeout', 'Date'],
+        });
+        mockOnboardingOk();
+        server.use(
+          http.post(`${BASE_URL}/api/auth/refresh`, () => {
+            attempts++;
+            return serverBack
+              ? HttpResponse.json({ accessToken: freshToken })
+              : HttpResponse.json({ message: 'Internal server error' }, { status: 500 });
+          }),
+        );
       });
-      expect(getAccessToken()).toBeNull();
+
+      afterEach(() => {
+        vi.useRealTimers();
+      });
+
+      /** Let the retries and pauses run until AuthGate gives up. */
+      async function renderUntilUnavailable() {
+        const result = renderAuthGate();
+        for (let i = 0; i < 40 && !screen.queryByText(unavailableText); i++) {
+          await act(() => vi.advanceTimersByTimeAsync(2_000));
+        }
+        return result;
+      }
+
+      it('keeps connecting for a while, then offers to try again or sign in again', async () => {
+        renderAuthGate();
+        await act(() => vi.advanceTimersByTimeAsync(5_000));
+        expect(screen.getByText('Connecting...')).toBeInTheDocument();
+        expect(screen.queryByText(unavailableText)).not.toBeInTheDocument();
+
+        for (let i = 0; i < 40 && !screen.queryByText(unavailableText); i++) {
+          await act(() => vi.advanceTimersByTimeAsync(2_000));
+        }
+
+        expect(screen.getByText(unavailableText)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument();
+        expect(screen.queryByText('Connecting...')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('login')).not.toBeInTheDocument();
+        expect(attempts).toBe(PAGE_LOAD_REFRESH_ROUNDS * MAX_SESSION_REFRESH_ATTEMPTS);
+
+        // It stops asking the server meanwhile
+        await act(() => vi.advanceTimersByTimeAsync(120_000));
+        expect(attempts).toBe(PAGE_LOAD_REFRESH_ROUNDS * MAX_SESSION_REFRESH_ATTEMPTS);
+      }, 20_000);
+
+      it('"Try again" refreshes at once and signs in once the server answers', async () => {
+        await renderUntilUnavailable();
+        const before = attempts;
+        serverBack = true;
+
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('home')).toBeInTheDocument();
+        });
+        expect(attempts).toBe(before + 1);
+        expect(getAccessToken()).toBe(freshToken);
+      }, 20_000);
+
+      it('"Try again" shows "Connecting..." and gives up again if the server still fails', async () => {
+        await renderUntilUnavailable();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(await screen.findByText('Connecting...')).toBeInTheDocument();
+        for (let i = 0; i < 40 && !screen.queryByText(unavailableText); i++) {
+          await act(() => vi.advanceTimersByTimeAsync(2_000));
+        }
+        expect(screen.getByText(unavailableText)).toBeInTheDocument();
+      }, 20_000);
+
+      it('"Sign in again" goes to the login page and forgets the stored session', async () => {
+        localStorage.setItem('refreshToken', 'stored-refresh-token');
+        await renderUntilUnavailable();
+
+        fireEvent.click(screen.getByRole('button', { name: 'Sign in again' }));
+
+        await waitFor(() => {
+          expect(screen.getByTestId('login')).toBeInTheDocument();
+        });
+        expect(localStorage.getItem('refreshToken')).toBeNull();
+        expect(getAccessToken()).toBeNull();
+      }, 20_000);
     });
 
     it('does not mount SocketProvider during refresh attempt', async () => {

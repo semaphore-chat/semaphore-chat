@@ -22,15 +22,19 @@ import { AuthService, DeviceInfo } from './auth.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { SessionRevocationService } from './session-revocation.service';
 import { PasswordResetService } from './password-reset.service';
+import { RefreshTokenGraceService } from './refresh-token-grace.service';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DatabaseService } from '@/database/database.service';
 import { AuthenticatedRequest } from '@/types';
 import { setAccessTokenCookie, clearAccessTokenCookie } from './cookie-helper';
 import {
+  lockRefreshToken,
   lockUserForSessionRevocation,
   lockUserForTokenRotation,
 } from './session-lock.util';
+import { databaseNow } from './db-clock.util';
 
 import { JwtService } from '@nestjs/jwt';
 import {
@@ -53,6 +57,22 @@ import {
 } from './dto/password-reset-request.dto';
 import { Public } from './public.decorator';
 
+/** How a refresh ended, decided in its transaction. */
+type RefreshOutcome =
+  | { kind: 'issued'; refreshToken: string; accessToken: string }
+  /**
+   * A consumed token presented outside the grace window, or within it by
+   * another client than the one that rotated it.
+   */
+  | {
+      kind: 'reused';
+      tokenId: string;
+      familyId: string | null;
+      why: 'after the grace window' | 'by another client';
+    }
+  /** A token of a revoked session, or issued before a password reset. */
+  | { kind: 'revoked'; tokenId: string; familyId: string | null };
+
 @Controller('auth')
 export class AuthController {
   private readonly logger = new Logger(AuthController.name);
@@ -64,6 +84,7 @@ export class AuthController {
     private readonly jwtService: JwtService,
     private readonly passwordResetService: PasswordResetService,
     private readonly sessionRevocationService: SessionRevocationService,
+    private readonly refreshTokenGraceService: RefreshTokenGraceService,
   ) {}
 
   /**
@@ -88,9 +109,9 @@ export class AuthController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
     const deviceInfo = this.getDeviceInfo(req);
-    const { refreshToken, sessionId } =
-      await this.authService.generateRefreshToken(req.user.id, deviceInfo);
-    const accessToken = this.authService.login(req.user, sessionId);
+    // Refused if a password reset committed since the password was checked
+    const { refreshToken, accessToken } =
+      await this.authService.issueLoginTokens(req.user, deviceInfo);
 
     // Always set cookies for web clients (access token for browser media, refresh for sessions)
     setAccessTokenCookie(res, accessToken);
@@ -109,7 +130,9 @@ export class AuthController {
   }
 
   @Public()
-  @Throttle({ short: { limit: 4, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
+  // Limited per presented token, not per IP (restored tabs, NATs) or per
+  // user (a stolen old token would lock the user out): see the guard
+  @UseGuards(RefreshThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   @ApiBody({ type: RefreshRequestDto })
@@ -145,85 +168,187 @@ export class AuthController {
     }
     const deviceInfo = this.getDeviceInfo(req);
 
+    // Check the token against its stored hash (bcrypt) before the
+    // transaction: a token row's hash never changes, and concurrent
+    // refreshes waiting on its lock (below) would each hold a database
+    // connection through it
+    const validated = await this.authService.validateRefreshToken(
+      jti,
+      refreshToken,
+    );
+    if (!validated) {
+      this.logger.error('Could not find token by id');
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+
     // Do this in a tx so we don't have dangling refresh tokens or something weird
-    const rotated = await this.databaseService.$transaction(async (tx) => {
-      // First: a revocation of the user's sessions either completes before
-      // this rotation or waits for it and then deletes its new token too
-      const locked = await lockUserForTokenRotation(tx, user.id);
-      if (!locked || locked.banned) {
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      const tokenRecord = await this.authService.validateRefreshToken(
-        jti,
-        refreshToken,
-        tx,
-      );
-
-      if (!tokenRecord) {
-        this.logger.error('Could not find token by id');
-        throw new UnauthorizedException('Invalid refresh token');
-      }
-
-      // Reuse detection: if the token has already been consumed, someone
-      // is replaying a stolen token. Invalidate the entire token family.
-      if (tokenRecord.consumed) {
-        this.logger.warn(
-          `Refresh token reuse detected! Family: ${tokenRecord.familyId}, User: ${user.id}`,
-        );
-        if (tokenRecord.familyId) {
-          // Deliberately NOT on the tx: the UnauthorizedException below rolls
-          // the transaction back, which would silently undo the family
-          // invalidation (the deletes must survive the rejected request).
-          await this.authService.invalidateTokenFamily(tokenRecord.familyId);
+    const outcome = await this.databaseService.$transaction(
+      async (tx): Promise<RefreshOutcome> => {
+        // First: a revocation of the user's sessions either completes before
+        // this rotation or waits for it and then deletes its new token too
+        const locked = await lockUserForTokenRotation(tx, user.id);
+        if (!locked || locked.banned) {
+          throw new UnauthorizedException('Invalid refresh token');
         }
-        throw new UnauthorizedException('Invalid refresh token');
-      }
+        // Then the token: refreshes with the same token (tabs sharing a
+        // cookie) go one at a time, so the ones after the first see it
+        // consumed and get the same successor (grace window below)
+        await lockRefreshToken(tx, jti);
 
-      // A revoked session (logout, revoke session) or a token issued before
-      // a password reset can't renew itself, even if its row survived
-      const revoked = await this.tokenBlacklistService.isRevoked({
-        sub: user.id,
-        sid: tokenRecord.familyId ?? undefined,
-        iat: refreshIssuedAt,
-      });
-      if (revoked) {
-        this.logger.warn(
-          `Refresh with a revoked session. Family: ${tokenRecord.familyId}, User: ${user.id}`,
-        );
-        // Not on the tx, like the reuse case above
-        if (tokenRecord.familyId) {
-          await this.authService.invalidateTokenFamily(tokenRecord.familyId);
-        } else {
-          await this.databaseService.refreshToken.deleteMany({
-            where: { id: tokenRecord.id },
+        // Its state now: consumed by a refresh, or deleted by a revocation,
+        // since it was validated
+        const tokenRecord = await this.authService.reloadRefreshToken(jti, tx);
+        if (!tokenRecord) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
+
+        if (tokenRecord.consumed) {
+          // Reuse detection: a token already rotated outside the grace
+          // window means someone is replaying a stolen token. Both times
+          // are the database's, so instances with clocks that disagree
+          // agree on the window.
+          const now = await databaseNow(tx);
+          if (
+            !this.refreshTokenGraceService.isWithinGraceWindow(
+              tokenRecord.consumedAt,
+              now,
+            )
+          ) {
+            return {
+              kind: 'reused',
+              tokenId: tokenRecord.id,
+              familyId: tokenRecord.familyId,
+              why: 'after the grace window',
+            };
+          }
+
+          // Within it: another tab (or a retry of a lost response) of the
+          // same client. It gets the token the rotation returned, so the
+          // session stays one chain of tokens. Another client is replaying
+          // a stolen token: reuse, as outside the window.
+          const successor = await this.authService.findGraceSuccessor(
+            tokenRecord,
+            refreshToken,
+            deviceInfo,
+            now,
+            tx,
+          );
+          if (successor.kind === 'other-client') {
+            return {
+              kind: 'reused',
+              tokenId: tokenRecord.id,
+              familyId: tokenRecord.familyId,
+              why: 'by another client',
+            };
+          }
+          if (successor.kind === 'none') {
+            this.logger.warn(
+              `Refresh token rotated moments ago has no live successor. Family: ${tokenRecord.familyId}, User: ${user.id}`,
+            );
+            throw new UnauthorizedException('Invalid refresh token');
+          }
+          const successorRevoked = await this.tokenBlacklistService.isRevoked({
+            sub: user.id,
+            sid: successor.sessionId ?? undefined,
+            iat: successor.iat,
           });
+          if (successorRevoked) {
+            return {
+              kind: 'revoked',
+              tokenId: tokenRecord.id,
+              familyId: successor.sessionId,
+            };
+          }
+          return {
+            kind: 'issued',
+            refreshToken: successor.refreshToken,
+            // Signed before the commit, like a rotation's (below)
+            accessToken: this.authService.login(
+              user,
+              successor.sessionId ?? undefined,
+            ),
+          };
         }
-        throw new UnauthorizedException('Invalid refresh token');
-      }
 
-      // Consume (not delete) old token so reuse can be detected later
-      const consumed = await this.authService.consumeRefreshToken(
-        jti,
-        refreshToken,
-        tx,
+        // A revoked session (logout, revoke session) or a token issued
+        // before a password reset can't renew itself, even if its row
+        // survived
+        const revoked = await this.tokenBlacklistService.isRevoked({
+          sub: user.id,
+          sid: tokenRecord.familyId ?? undefined,
+          iat: refreshIssuedAt,
+        });
+        if (revoked) {
+          return {
+            kind: 'revoked',
+            tokenId: tokenRecord.id,
+            familyId: tokenRecord.familyId,
+          };
+        }
+
+        // Consume (not delete) old token so reuse can be detected later
+        const consumed = await this.authService.consumeRefreshToken(
+          tokenRecord.id,
+          tx,
+        );
+        // Generate new token in the same family. Its bcrypt hash runs under
+        // the locks, but only the refresh that rotates pays for it: the ones
+        // waiting behind it take the grace path, which hashes nothing.
+        const next = await this.authService.generateRefreshToken(
+          user.id,
+          deviceInfo,
+          tx,
+          consumed.familyId ?? undefined,
+        );
+        // Before the commit: a refresh with the same token waiting for this
+        // one's lock finds it
+        await this.refreshTokenGraceService.remember(
+          jti,
+          refreshToken,
+          next.refreshToken,
+        );
+        return {
+          kind: 'issued',
+          refreshToken: next.refreshToken,
+          // Signed before the commit: a password reset waiting for this
+          // rotation sets its cutoff after the commit, so the cutoff covers
+          // this access token too
+          accessToken: this.authService.login(user, next.sessionId),
+        };
+      },
+    );
+
+    // Deletes run after the transaction, which holds locks on the user and
+    // the token they delete
+    if (outcome.kind === 'reused') {
+      this.logger.warn(
+        `Refresh token reuse detected (${outcome.why})! Family: ${outcome.familyId}, User: ${user.id}`,
       );
-      // Generate new token in the same family
-      const next = await this.authService.generateRefreshToken(
-        user.id,
-        deviceInfo,
-        tx,
-        consumed.familyId ?? undefined,
+      if (outcome.familyId) {
+        // A stolen token: end the session everywhere, including the access
+        // tokens and sockets of whoever holds its current token
+        await this.authService.revokeReusedSession(user.id, outcome.familyId);
+      } else {
+        await this.databaseService.refreshToken.deleteMany({
+          where: { id: outcome.tokenId },
+        });
+      }
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    if (outcome.kind === 'revoked') {
+      this.logger.warn(
+        `Refresh with a revoked session. Family: ${outcome.familyId}, User: ${user.id}`,
       );
-      // Signed before the commit: a password reset waiting for this
-      // rotation sets its cutoff after the commit, so the cutoff covers
-      // this access token too
-      return {
-        ...next,
-        accessToken: this.authService.login(user, next.sessionId),
-      };
-    });
-    const { refreshToken: token, accessToken: newAccessToken } = rotated;
+      if (outcome.familyId) {
+        await this.authService.invalidateTokenFamily(outcome.familyId);
+      } else {
+        await this.databaseService.refreshToken.deleteMany({
+          where: { id: outcome.tokenId },
+        });
+      }
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+    const { refreshToken: token, accessToken: newAccessToken } = outcome;
 
     // Always set cookies for web clients
     setAccessTokenCookie(res, newAccessToken);
@@ -425,7 +550,7 @@ export class AuthController {
   }
 
   /**
-   * Revoke a specific session
+   * Revoke a session by its id from GET /auth/sessions (or a refresh token id)
    */
   @UseGuards(JwtAuthGuard)
   @Delete('sessions/:sessionId')
