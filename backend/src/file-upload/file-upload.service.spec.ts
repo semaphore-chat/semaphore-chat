@@ -81,7 +81,7 @@ describe('FileUploadService', () => {
       quotaBytes: 1000000000,
       requestedBytes: 1024,
       remainingBytes: 999998976,
-    } as any);
+    });
     storageQuotaService.incrementUserStorage.mockResolvedValue(undefined);
 
     // Mock crypto

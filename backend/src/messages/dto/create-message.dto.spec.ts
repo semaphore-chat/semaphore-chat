@@ -93,7 +93,7 @@ describe('CreateMessageDto', () => {
   it('should require spans to have at least one element', async () => {
     const dto = createDto({
       channelId: validUUID,
-      spans: [] as any,
+      spans: [],
       attachments: [],
     });
 

@@ -50,7 +50,7 @@ describe('NotificationsController', () => {
       notificationsService.getUnreadCount.mockResolvedValue(5);
 
       const query = { unreadOnly: false, limit: 50, offset: 0 };
-      const result = await controller.getNotifications(mockReq, query as any);
+      const result = await controller.getNotifications(mockReq, query);
 
       expect(result.notifications).toHaveLength(1);
       expect(result.notifications[0].communityId).toBe('c-1');
@@ -71,7 +71,7 @@ describe('NotificationsController', () => {
       );
       notificationsService.getUnreadCount.mockResolvedValue(1);
 
-      const result = await controller.getNotifications(mockReq, {} as any);
+      const result = await controller.getNotifications(mockReq, {});
 
       expect(result.notifications[0].communityId).toBeNull();
     });

@@ -20,7 +20,7 @@ export class RefreshTokenFactory {
       consumed: false,
       consumedAt: null,
       ...overrides,
-    } as RefreshToken;
+    };
   }
 
   static buildExpired(overrides: Partial<RefreshToken> = {}): RefreshToken {

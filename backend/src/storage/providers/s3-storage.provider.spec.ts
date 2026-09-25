@@ -28,8 +28,7 @@ jest.mock('@aws-sdk/client-s3', () => ({
 const mockUploadDone = jest.fn();
 const mockUploadCtor = jest.fn();
 let progressListener:
-  | ((progress: { loaded?: number; total?: number }) => void)
-  | undefined;
+  ((progress: { loaded?: number; total?: number }) => void) | undefined;
 
 jest.mock('@aws-sdk/lib-storage', () => ({
   Upload: jest.fn().mockImplementation((opts: unknown) => {

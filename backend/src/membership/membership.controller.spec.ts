@@ -43,7 +43,7 @@ describe('MembershipController', () => {
         communityId: 'community-123',
       });
 
-      service.create.mockResolvedValue(mockMembership as any);
+      service.create.mockResolvedValue(mockMembership);
 
       const result = await controller.create(createDto);
 
@@ -63,7 +63,7 @@ describe('MembershipController', () => {
         continuationToken: undefined,
       };
 
-      service.findAllForCommunity.mockResolvedValue(mockResponse as any);
+      service.findAllForCommunity.mockResolvedValue(mockResponse);
 
       const result = await controller.findAllForCommunity(
         communityId,
@@ -83,7 +83,7 @@ describe('MembershipController', () => {
       const communityId = 'community-123';
       const mockResponse = { members: [], continuationToken: undefined };
 
-      service.findAllForCommunity.mockResolvedValue(mockResponse as any);
+      service.findAllForCommunity.mockResolvedValue(mockResponse);
 
       await controller.findAllForCommunity(communityId, 9999, 'some-token');
 
@@ -101,7 +101,7 @@ describe('MembershipController', () => {
       const query = 'john';
       const mockResults = [MembershipFactory.build()];
 
-      service.searchMembers.mockResolvedValue(mockResults as any);
+      service.searchMembers.mockResolvedValue(mockResults);
 
       const result = await controller.searchCommunityMembers(
         communityId,
@@ -121,7 +121,7 @@ describe('MembershipController', () => {
       const communityId = 'community-456';
       const query = 'test';
 
-      service.searchMembers.mockResolvedValue([] as any);
+      service.searchMembers.mockResolvedValue([]);
 
       await controller.searchCommunityMembers(communityId, query, 25);
 
@@ -135,7 +135,7 @@ describe('MembershipController', () => {
     it('should use empty string when query is not provided', async () => {
       const communityId = 'community-789';
 
-      service.searchMembers.mockResolvedValue([] as any);
+      service.searchMembers.mockResolvedValue([]);
 
       await controller.searchCommunityMembers(communityId, '', 10);
 
@@ -151,7 +151,7 @@ describe('MembershipController', () => {
         MembershipFactory.build({ userId }),
       ];
 
-      service.findAllForUser.mockResolvedValue(mockMemberships as any);
+      service.findAllForUser.mockResolvedValue(mockMemberships);
 
       const result = await controller.findAllForUser(userId, mockRequest);
 
@@ -181,7 +181,7 @@ describe('MembershipController', () => {
         MembershipFactory.build({ userId: mockUser.id }),
       ];
 
-      service.findAllForUser.mockResolvedValue(mockMemberships as any);
+      service.findAllForUser.mockResolvedValue(mockMemberships);
 
       const result = await controller.findMyMemberships(mockRequest);
 
@@ -190,7 +190,7 @@ describe('MembershipController', () => {
     });
 
     it('should use authenticated user ID from request', async () => {
-      service.findAllForUser.mockResolvedValue([] as any);
+      service.findAllForUser.mockResolvedValue([]);
 
       await controller.findMyMemberships(mockRequest);
 
@@ -207,7 +207,7 @@ describe('MembershipController', () => {
         communityId,
       });
 
-      service.findOne.mockResolvedValue(mockMembership as any);
+      service.findOne.mockResolvedValue(mockMembership);
 
       const result = await controller.findOne(userId, communityId);
 
@@ -221,7 +221,7 @@ describe('MembershipController', () => {
       const userId = 'user-123';
       const communityId = 'community-123';
 
-      service.remove.mockResolvedValue(undefined as any);
+      service.remove.mockResolvedValue(undefined);
 
       await controller.remove(userId, communityId);
 
@@ -233,7 +233,7 @@ describe('MembershipController', () => {
     it('should allow user to leave community', async () => {
       const communityId = 'community-123';
 
-      service.remove.mockResolvedValue(undefined as any);
+      service.remove.mockResolvedValue(undefined);
 
       await controller.leaveCommunity(communityId, mockRequest);
 
@@ -243,7 +243,7 @@ describe('MembershipController', () => {
     it('should use authenticated user ID', async () => {
       const communityId = 'community-456';
 
-      service.remove.mockResolvedValue(undefined as any);
+      service.remove.mockResolvedValue(undefined);
 
       await controller.leaveCommunity(communityId, mockRequest);
 

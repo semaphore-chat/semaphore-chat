@@ -43,7 +43,7 @@ describe('CommunityController', () => {
 
       service.create.mockResolvedValue(createdCommunity as any);
 
-      const result = await controller.create(createDto as any, mockReq);
+      const result = await controller.create(createDto, mockReq);
 
       expect(result).toEqual(createdCommunity);
       expect(service.create).toHaveBeenCalledWith(createDto, 'user-123');
@@ -114,7 +114,7 @@ describe('CommunityController', () => {
 
       service.update.mockResolvedValue(updatedCommunity as any);
 
-      const result = await controller.update(communityId, updateDto as any);
+      const result = await controller.update(communityId, updateDto);
 
       expect(result).toEqual(updatedCommunity);
       expect(service.update).toHaveBeenCalledWith(communityId, updateDto);

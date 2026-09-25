@@ -1,8 +1,7 @@
-import { describe, it, expect, vi, beforeEach, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { MessageReactions } from '../../components/Message/MessageReactions';
-import { server } from '../msw/server';
 import type { Reaction } from '../../types/message.type';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
@@ -18,9 +17,6 @@ vi.mock('../../components/Message/ReactionTooltip', () => ({
 }));
 
 describe('MessageReactions', () => {
-  beforeAll(() => server.listen());
-  afterAll(() => server.close());
-  afterEach(() => server.resetHandlers());
 
   beforeEach(() => {
     vi.clearAllMocks();

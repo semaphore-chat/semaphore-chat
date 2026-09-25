@@ -27,7 +27,7 @@ export class FfmpegProvider {
    * Create a new FFmpeg command instance
    */
   createCommand(): FfmpegCommand {
-    return ffmpeg() as unknown as FfmpegCommand;
+    return ffmpeg();
   }
 
   /**

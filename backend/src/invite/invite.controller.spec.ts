@@ -47,7 +47,7 @@ describe('InviteController', () => {
 
       service.createInvite.mockResolvedValue(createdInvite as any);
 
-      const result = await controller.createInvite(mockReq, createDto as any);
+      const result = await controller.createInvite(mockReq, createDto);
 
       expect(result).toEqual(createdInvite);
       expect(service.createInvite).toHaveBeenCalledWith(
@@ -132,7 +132,7 @@ describe('InviteController', () => {
       const mockReq = { user: mockUser } as any;
       const code = 'DELETE123';
 
-      service.deleteInvite.mockResolvedValue(undefined as any);
+      service.deleteInvite.mockResolvedValue(undefined);
 
       const result = await controller.deleteInvite(mockReq, code);
 

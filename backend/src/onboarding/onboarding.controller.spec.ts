@@ -88,8 +88,8 @@ describe('OnboardingController', () => {
       const mockCommunity = CommunityFactory.build({ id: 'community-123' });
 
       service.completeSetup.mockResolvedValue({
-        adminUser: mockAdmin as any,
-        defaultCommunity: mockCommunity as any,
+        adminUser: mockAdmin,
+        defaultCommunity: mockCommunity,
       });
 
       const result = await controller.setupInstance(validSetupDto);
@@ -110,7 +110,7 @@ describe('OnboardingController', () => {
       const mockAdmin = UserFactory.build({ id: 'admin-456' });
 
       service.completeSetup.mockResolvedValue({
-        adminUser: mockAdmin as any,
+        adminUser: mockAdmin,
         defaultCommunity: null,
       });
 
@@ -156,7 +156,7 @@ describe('OnboardingController', () => {
     it('should pass setup token from DTO to service', async () => {
       const mockAdmin = UserFactory.build();
       service.completeSetup.mockResolvedValue({
-        adminUser: mockAdmin as any,
+        adminUser: mockAdmin,
         defaultCommunity: null,
       });
 
@@ -171,8 +171,8 @@ describe('OnboardingController', () => {
       const mockCommunity = CommunityFactory.build({ id: 'comm-id' });
 
       service.completeSetup.mockResolvedValue({
-        adminUser: mockAdmin as any,
-        defaultCommunity: mockCommunity as any,
+        adminUser: mockAdmin,
+        defaultCommunity: mockCommunity,
       });
 
       const result = await controller.setupInstance(validSetupDto);

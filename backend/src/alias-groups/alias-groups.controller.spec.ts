@@ -53,7 +53,7 @@ describe('AliasGroupsController', () => {
       service.createAliasGroup = jest.fn().mockResolvedValue(mockGroup);
       const dto = { name: 'Admins' };
 
-      const result = await controller.createAliasGroup('comm-1', dto as any);
+      const result = await controller.createAliasGroup('comm-1', dto);
 
       expect(service.createAliasGroup).toHaveBeenCalledWith('comm-1', dto);
       expect(result).toBe(mockGroup);
@@ -78,7 +78,7 @@ describe('AliasGroupsController', () => {
         .mockResolvedValue({ ...mockGroup, name: 'Mods' });
       const dto = { name: 'Mods' };
 
-      const result = await controller.updateAliasGroup('group-1', dto as any);
+      const result = await controller.updateAliasGroup('group-1', dto);
 
       expect(service.updateAliasGroup).toHaveBeenCalledWith('group-1', dto);
       expect(result.name).toBe('Mods');
@@ -99,7 +99,7 @@ describe('AliasGroupsController', () => {
     it('passes groupId and userId to the service', async () => {
       service.addMember = jest.fn().mockResolvedValue(undefined);
 
-      await controller.addMember('group-1', { userId: 'user-3' } as any);
+      await controller.addMember('group-1', { userId: 'user-3' });
 
       expect(service.addMember).toHaveBeenCalledWith('group-1', 'user-3');
     });
@@ -121,7 +121,7 @@ describe('AliasGroupsController', () => {
 
       await controller.updateMembers('group-1', {
         memberIds: ['user-1', 'user-3'],
-      } as any);
+      });
 
       expect(service.updateMembers).toHaveBeenCalledWith('group-1', [
         'user-1',

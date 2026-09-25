@@ -82,7 +82,7 @@ describe('AppearanceSettingsService', () => {
 
       const result = await service.updateUserSettings('user-1', {
         themeMode: 'light',
-      } as any);
+      });
 
       expect(
         databaseService.userAppearanceSettings.upsert,
@@ -100,7 +100,7 @@ describe('AppearanceSettingsService', () => {
       );
 
       const dto = { themeMode: 'dark', accentColor: 'purple' };
-      await service.updateUserSettings('user-1', dto as any);
+      await service.updateUserSettings('user-1', dto);
 
       expect(
         databaseService.userAppearanceSettings.upsert,

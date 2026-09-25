@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -15,9 +15,6 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 
 const BASE_URL = 'http://localhost:3000';
 
-beforeAll(() => server.listen());
-afterAll(() => server.close());
-afterEach(() => server.resetHandlers());
 
 describe('ForgotPasswordPage', () => {
   it('renders the email form', () => {

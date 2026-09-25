@@ -48,7 +48,7 @@ export function createMockHttpExecutionContext(
     getArgByIndex: jest.fn(),
     switchToRpc: jest.fn(),
     switchToWs: jest.fn(),
-  } as unknown as ExecutionContext;
+  };
 }
 
 /**
@@ -85,7 +85,7 @@ export function createMockWsExecutionContext(
     getArgByIndex: jest.fn(),
     switchToHttp: jest.fn(),
     switchToRpc: jest.fn(),
-  } as unknown as ExecutionContext;
+  };
 }
 
 /**

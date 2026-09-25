@@ -28,7 +28,7 @@ describe('WsLoggingExceptionFilter', () => {
       getArgByIndex: jest.fn(),
       getArgs: jest.fn(),
       getType: jest.fn(),
-    } as any;
+    };
   });
 
   afterEach(() => {

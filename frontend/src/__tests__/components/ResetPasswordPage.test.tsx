@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
@@ -26,8 +26,6 @@ const renderWithToken = (token = 'raw-reset-token') =>
     routerProps: { initialEntries: [`/reset-password?token=${token}`] },
   });
 
-beforeAll(() => server.listen());
-afterAll(() => server.close());
 
 beforeEach(() => {
   mockNavigate.mockReset();

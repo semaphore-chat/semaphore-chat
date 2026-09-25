@@ -194,7 +194,7 @@ describe('RolesController', () => {
       const result = await controller.updateRole(
         communityId,
         roleId,
-        updateRoleDto as any,
+        updateRoleDto,
         req,
       );
 
@@ -214,7 +214,7 @@ describe('RolesController', () => {
       const communityId = 'community-456';
       const roleId = 'role-999';
 
-      service.deleteRole.mockResolvedValue(undefined as any);
+      service.deleteRole.mockResolvedValue(undefined);
 
       const result = await controller.deleteRole(communityId, roleId);
 
@@ -231,11 +231,11 @@ describe('RolesController', () => {
         roleId: 'role-333',
       };
 
-      service.assignUserToCommunityRole.mockResolvedValue(undefined as any);
+      service.assignUserToCommunityRole.mockResolvedValue(undefined);
 
       const result = await controller.assignRoleToUser(
         communityId,
-        assignRoleDto as any,
+        assignRoleDto,
       );
 
       expect(result).toBeUndefined();
@@ -253,7 +253,7 @@ describe('RolesController', () => {
       const userId = 'user-555';
       const roleId = 'role-666';
 
-      service.removeUserFromCommunityRole.mockResolvedValue(undefined as any);
+      service.removeUserFromCommunityRole.mockResolvedValue(undefined);
 
       const result = await controller.removeRoleFromUser(
         communityId,

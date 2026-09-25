@@ -28,7 +28,7 @@ describe('GiphyProvider', () => {
       ok,
       status,
       json: () => Promise.resolve(body),
-    } as Response);
+    });
   }
 
   describe('key-absent path', () => {

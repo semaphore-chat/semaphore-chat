@@ -69,7 +69,7 @@ describe('ReadReceiptsGateway', () => {
     });
 
     it('calls readReceiptsService.markAsRead with the correct userId and payload', async () => {
-      await gateway.handleMarkAsRead(channelPayload as any, makeClient());
+      await gateway.handleMarkAsRead(channelPayload, makeClient());
 
       expect(readReceiptsService.markAsRead).toHaveBeenCalledWith(
         'user-1',
@@ -78,7 +78,7 @@ describe('ReadReceiptsGateway', () => {
     });
 
     it('calls notificationsService.markContextNotificationsAsRead for the context', async () => {
-      await gateway.handleMarkAsRead(channelPayload as any, makeClient());
+      await gateway.handleMarkAsRead(channelPayload, makeClient());
 
       expect(
         notificationsService.markContextNotificationsAsRead,
@@ -86,7 +86,7 @@ describe('ReadReceiptsGateway', () => {
     });
 
     it('emits READ_RECEIPT_UPDATED to user room', async () => {
-      await gateway.handleMarkAsRead(channelPayload as any, makeClient());
+      await gateway.handleMarkAsRead(channelPayload, makeClient());
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'user:user-1',
@@ -99,7 +99,7 @@ describe('ReadReceiptsGateway', () => {
     });
 
     it('does NOT emit to a channel room for channel contexts (privacy)', async () => {
-      await gateway.handleMarkAsRead(channelPayload as any, makeClient());
+      await gateway.handleMarkAsRead(channelPayload, makeClient());
 
       const roomCalls = (
         websocketService.sendToRoom as jest.Mock
@@ -117,7 +117,7 @@ describe('ReadReceiptsGateway', () => {
         lastReadAt: '2024-06-01T00:00:00Z',
       });
 
-      await gateway.handleMarkAsRead(dmPayload as any, makeClient());
+      await gateway.handleMarkAsRead(dmPayload, makeClient());
 
       // First call: user room
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
@@ -177,7 +177,7 @@ describe('ReadReceiptsGateway', () => {
         lastReadAt: '2024-06-01T00:00:00Z',
       });
 
-      await gateway.handleMarkAsRead(dmPayload as any, makeClient());
+      await gateway.handleMarkAsRead(dmPayload, makeClient());
 
       expect(
         notificationsService.markContextNotificationsAsRead,

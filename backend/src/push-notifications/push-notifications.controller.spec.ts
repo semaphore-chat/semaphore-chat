@@ -77,7 +77,7 @@ describe('PushNotificationsController', () => {
         endpoint: 'https://push.example.com',
         keys: { p256dh: 'key', auth: 'auth' },
       };
-      const result = await controller.subscribe(makeReq(), dto as any);
+      const result = await controller.subscribe(makeReq(), dto);
 
       expect(service.subscribe).toHaveBeenCalledWith('user-1', dto);
       expect(result.success).toBe(true);
@@ -102,7 +102,7 @@ describe('PushNotificationsController', () => {
 
       const result = await controller.unsubscribe(makeReq(), {
         endpoint: 'https://push.example.com',
-      } as any);
+      });
 
       expect(service.unsubscribe).toHaveBeenCalledWith(
         'user-1',

@@ -31,7 +31,7 @@ describe('WebhooksService', () => {
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(WebhooksService)
       .mock(DatabaseService)
-      .final(mockDatabaseService as unknown as DatabaseService)
+      .final(mockDatabaseService)
       .compile();
 
     service = unit;

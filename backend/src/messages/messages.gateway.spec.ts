@@ -36,7 +36,7 @@ describe('MessagesGateway', () => {
     );
     moderationService.isUserTimedOut.mockResolvedValue({
       isTimedOut: false,
-    } as any);
+    });
     messageDispatchService.dispatch.mockResolvedValue(undefined);
     readReceiptsService.markAsRead.mockResolvedValue({
       channelId: null,
@@ -281,7 +281,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.addReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleAddReaction(payload as any, mockClient);
+      await gateway.handleAddReaction(payload, mockClient);
 
       expect(reactionsService.addReaction).toHaveBeenCalledWith(
         'msg-789',
@@ -318,7 +318,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.addReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleAddReaction(payload as any, mockClient);
+      await gateway.handleAddReaction(payload, mockClient);
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'dm:dm-group-999',
@@ -345,7 +345,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.addReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleAddReaction(payload as any, mockClient);
+      await gateway.handleAddReaction(payload, mockClient);
 
       expect(reactionsService.addReaction).toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
@@ -370,7 +370,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.removeReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleRemoveReaction(payload as any, mockClient);
+      await gateway.handleRemoveReaction(payload, mockClient);
 
       expect(reactionsService.removeReaction).toHaveBeenCalledWith(
         'msg-222',
@@ -408,7 +408,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.removeReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleRemoveReaction(payload as any, mockClient);
+      await gateway.handleRemoveReaction(payload, mockClient);
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'dm:dm-group-333',
@@ -436,7 +436,7 @@ describe('MessagesGateway', () => {
 
       reactionsService.removeReaction.mockResolvedValue(updatedMessage as any);
 
-      await gateway.handleRemoveReaction(payload as any, mockClient);
+      await gateway.handleRemoveReaction(payload, mockClient);
 
       expect(reactionsService.removeReaction).toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
@@ -453,10 +453,7 @@ describe('MessagesGateway', () => {
         to: mockTo,
       } as any;
 
-      gateway.handleTypingStart(
-        { channelId: 'channel-typing' } as any,
-        mockClient,
-      );
+      gateway.handleTypingStart({ channelId: 'channel-typing' }, mockClient);
 
       // client.to() (not sendToRoom) so the sender is excluded from the broadcast
       expect(mockTo).toHaveBeenCalledWith('channel-typing');

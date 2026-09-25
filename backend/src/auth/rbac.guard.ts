@@ -116,8 +116,7 @@ export class RbacGuard implements CanActivate {
       switch (resourceOptions.source) {
         case ResourceIdSource.BODY:
           return (req.body as Record<string, unknown>)?.[key] as
-            | string
-            | undefined;
+            string | undefined;
         case ResourceIdSource.QUERY:
           return req.query?.[key] as string | undefined;
         case ResourceIdSource.PARAM:

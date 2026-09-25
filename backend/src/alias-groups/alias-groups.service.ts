@@ -132,7 +132,7 @@ export class AliasGroupsService {
       throw new NotFoundException('Alias group not found');
     }
 
-    return this.transformGroupWithMembers(group as AliasGroupQueryResult);
+    return this.transformGroupWithMembers(group);
   }
 
   /**
@@ -279,7 +279,7 @@ export class AliasGroupsService {
       `Updated alias group ${groupId}: renamed from "${group.name}" to "${dto.name}"`,
     );
 
-    return this.transformGroupWithMembers(updated as AliasGroupQueryResult);
+    return this.transformGroupWithMembers(updated);
   }
 
   /**
@@ -519,7 +519,7 @@ export class AliasGroupsService {
       return null;
     }
 
-    return this.transformGroupWithMembers(group as AliasGroupQueryResult);
+    return this.transformGroupWithMembers(group);
   }
 
   /**

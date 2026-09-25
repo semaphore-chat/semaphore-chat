@@ -140,20 +140,19 @@ describe('readFileHeader', () => {
 
   const makeFile = (
     overrides: Partial<Express.Multer.File>,
-  ): Express.Multer.File =>
-    ({
-      fieldname: 'file',
-      originalname: 'test.bin',
-      encoding: '7bit',
-      mimetype: 'application/octet-stream',
-      size: 0,
-      buffer: undefined as unknown as Buffer,
-      stream: null as never,
-      destination: '',
-      filename: '',
-      path: '',
-      ...overrides,
-    }) as Express.Multer.File;
+  ): Express.Multer.File => ({
+    fieldname: 'file',
+    originalname: 'test.bin',
+    encoding: '7bit',
+    mimetype: 'application/octet-stream',
+    size: 0,
+    buffer: undefined as unknown as Buffer,
+    stream: null as never,
+    destination: '',
+    filename: '',
+    path: '',
+    ...overrides,
+  });
 
   it('reads the leading bytes from file.path (disk storage)', async () => {
     const filePath = join(tempDir, 'disk.png');

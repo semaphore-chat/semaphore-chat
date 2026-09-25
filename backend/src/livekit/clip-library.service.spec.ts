@@ -192,7 +192,7 @@ describe('ClipLibraryService', () => {
       mockDatabaseService.replayClip.findFirst.mockResolvedValue(clip);
       mockDatabaseService.replayClip.delete.mockResolvedValue(clip);
       mockDatabaseService.file.delete.mockResolvedValue(clip.file);
-      storageService.deleteFile.mockResolvedValue(undefined as any);
+      storageService.deleteFile.mockResolvedValue(undefined);
 
       await service.deleteClip('user-123', 'clip-1');
 

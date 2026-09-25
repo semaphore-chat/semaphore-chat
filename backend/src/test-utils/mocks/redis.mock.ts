@@ -173,7 +173,7 @@ export function createMockRedis(): MockRedisClient {
 
     // Lifecycle
     quit: jest.fn(() => Promise.resolve()),
-  } as unknown as MockRedisClient;
+  };
 }
 
 /**

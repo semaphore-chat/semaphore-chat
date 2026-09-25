@@ -38,7 +38,7 @@ describe('MessageDispatchService', () => {
     linkPreviewsQueue = unitRef.get(getQueueToken(LINK_PREVIEWS_QUEUE));
 
     messagesService.enrichMessageWithFileMetadata.mockReturnValue(
-      enrichedMessage as any,
+      enrichedMessage,
     );
     (messageFanoutQueue.add as jest.Mock).mockResolvedValue(undefined);
     (linkPreviewsQueue.add as jest.Mock).mockResolvedValue(undefined);

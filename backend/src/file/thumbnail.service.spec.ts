@@ -61,7 +61,7 @@ describe('ThumbnailService', () => {
     service = unit;
     storageService = unitRef.get(StorageService);
 
-    storageService.ensureDirectory.mockResolvedValue(undefined as any);
+    storageService.ensureDirectory.mockResolvedValue(undefined);
   });
 
   afterEach(() => {

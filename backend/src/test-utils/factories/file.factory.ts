@@ -27,7 +27,7 @@ export class FileFactory {
         ? overrides.thumbnailPath
         : null) as string | null,
       ...overrides,
-    } as File;
+    };
   }
 
   static buildImage(overrides: Partial<File> = {}): File {
