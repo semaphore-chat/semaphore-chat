@@ -697,7 +697,8 @@ const messageList = () => document.querySelector<HTMLElement>('[role="list"][ari
 
 /**
  * A driver step that succeeds once the message list has made its initial
- * scroll and then held its scroll position and height for `polls` polls in a
+ * scroll and then held its scroll position, content height and viewport
+ * height for `polls` polls in a
  * row (initial positioning, row measuring and deep-link centering are done).
  */
 export function messageListSteady(polls = 3): DriverStep {
@@ -706,7 +707,7 @@ export function messageListSteady(polls = 3): DriverStep {
   return () => {
     const list = messageList();
     if (!list || list.scrollTop === 0) return false;
-    const now = `${list.scrollTop}/${list.scrollHeight}`;
+    const now = `${list.scrollTop}/${list.scrollHeight}/${list.clientHeight}`;
     same = now === last ? same + 1 : 0;
     last = now;
     return same >= polls;
@@ -724,7 +725,7 @@ export function scrollMessageListToLoad(edge: 'top' | 'bottom'): DriverStep {
     if (!list) return false;
     const atEdge = edge === 'top' ? list.scrollTop === 0 : list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
     if (atEdge && list.getAttribute('aria-busy') === 'true') return true;
-    list.scrollTop = edge === 'top' ? 0 : list.scrollHeight;
+    list.scrollTop = edge === 'top' ? 0 : list.scrollHeight - list.clientHeight;
     return false;
   };
 }
