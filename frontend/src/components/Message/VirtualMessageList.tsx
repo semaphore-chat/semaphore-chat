@@ -525,11 +525,18 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       };
     }, [reportRangeIfFits]);
 
+    // Row ref. React 19 calls the returned cleanup when the row unmounts
+    // (virtua recycling it, or the message going away) instead of calling
+    // the ref with null. The cleanup is returned even when there is no
+    // observer yet, and resolves the observer when it runs, because a row
+    // can be observed later by the effect above (rows that mounted first, or
+    // after the effect re-ran with a new observer).
     const observeRow = useCallback((row: HTMLDivElement | null) => {
-      const observer = rowObserverRef.current;
-      if (!row || !observer) return;
-      observer.observe(row);
-      return () => observer.unobserve(row);
+      if (!row) return;
+      rowObserverRef.current?.observe(row);
+      return () => {
+        rowObserverRef.current?.unobserve(row);
+      };
     }, []);
 
     // A new consumer callback (markAsRead is re-created when the socket

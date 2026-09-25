@@ -1245,6 +1245,31 @@ describe('VirtualMessageList', () => {
       expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
     });
 
+    it('stops observing rows that unmount (virtua recycling them, or messages removed)', () => {
+      installFakeResizeObserver();
+      const initial = messages(3);
+      const { rerender } = render(<VirtualMessageList {...baseProps} orderedMessages={initial} />);
+      const [observer] = FakeResizeObserver.instances;
+      // msg-0 mounted before the observer existed (picked up by the effect);
+      // `newer` mounts after it (observed through the row ref).
+      const oldest = rowEl('msg-0')!;
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+        />,
+      );
+      const newer = rowEl('newer')!;
+      expect(observer.observed.has(oldest)).toBe(true);
+      expect(observer.observed.has(newer)).toBe(true);
+
+      rerender(<VirtualMessageList {...baseProps} orderedMessages={initial.slice(1)} />);
+
+      expect(observer.observed.has(oldest)).toBe(false);
+      expect(observer.observed.has(newer)).toBe(false);
+      expect(observer.observed.size).toBe(2);
+    });
+
     it('keeps following the newest row after a new message arrives', () => {
       const initial = messages(5);
       installFakeResizeObserver();
