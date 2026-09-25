@@ -827,6 +827,20 @@ describe('UserService', () => {
       expect(result.id).toBe(target.id);
     });
 
+    it('hashes the new password (bcrypt) before the transaction', async () => {
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue(target);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.setUserPassword(target.id, 'new-password-123', 'admin-id');
+
+      // The transaction doesn't hold a database connection through it
+      expect(
+        (bcrypt.hash as jest.Mock).mock.invocationCallOrder[0],
+      ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
+    });
+
     it('should revoke all refresh tokens for the user', async () => {
       const target = UserFactory.build({ role: InstanceRole.USER });
       mockDatabase.user.findUnique.mockResolvedValue(target);

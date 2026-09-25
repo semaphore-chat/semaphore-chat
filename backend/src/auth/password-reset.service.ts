@@ -87,22 +87,30 @@ export class PasswordResetService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = this.hashToken(token);
 
+    const resetToken = await this.databaseService.passwordResetToken.findUnique(
+      { where: { tokenHash } },
+    );
+
+    if (
+      !resetToken ||
+      resetToken.usedAt ||
+      resetToken.expiresAt <= new Date()
+    ) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    // bcrypt before the transaction: neither the claimed token's row nor a
+    // database connection is held through it
+    const hashedPassword = await this.userService.hashPassword(newPassword);
+
     const userId = await this.databaseService.$transaction(async (tx) => {
-      const now = new Date();
-      const resetToken = await tx.passwordResetToken.findUnique({
-        where: { tokenHash },
-      });
-
-      if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= now) {
-        throw new BadRequestException('Invalid or expired reset token');
-      }
-
       // Atomically claim the token by conditioning the update on it still
-      // being unused AND unexpired (using the same `now` as the check
-      // above). If two requests race to redeem the same token, or the
-      // token expires between the check and the claim, only one
-      // `updateMany` can match — the loser gets count 0 and fails with the
-      // same generic error, never touching the password.
+      // being unused AND unexpired now (the check above was before bcrypt).
+      // If two requests race to redeem the same token, or the token
+      // expires between the check and the claim, only one `updateMany` can
+      // match — the loser gets count 0 and fails with the same generic
+      // error, never touching the password.
+      const now = new Date();
       const { count } = await tx.passwordResetToken.updateMany({
         where: { id: resetToken.id, usedAt: null, expiresAt: { gt: now } },
         data: { usedAt: now },
@@ -114,7 +122,7 @@ export class PasswordResetService {
 
       await this.userService.resetPasswordAndRevokeSessions(
         resetToken.userId,
-        newPassword,
+        hashedPassword,
         tx,
       );
       return resetToken.userId;

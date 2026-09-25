@@ -439,17 +439,23 @@ export class AuthService {
   }
 
   /**
-   * Delete a refresh token outright (used for logout).
-   * Also deletes all consumed tokens in the same family.
+   * Delete a refresh token outright (used for logout), with the consumed
+   * tokens of its session (family).
+   *
+   * Call with the token checked (checkRefreshToken) before the transaction
+   * and the user locked (lockUserForSessionRevocation): this reads it again
+   * under the lock, without bcrypt (a token row's hash and family never
+   * change), for its current state. A refresh may have rotated it
+   * meanwhile (its successor is in the same family and goes too), or a
+   * revocation deleted it.
    * @returns The deleted session's id (family id), if it has one
+   * @throws UnauthorizedException if the token is gone
    */
   async deleteRefreshToken(
     jti: string,
-    refreshToken: string,
-    tx?: Prisma.TransactionClient,
+    tx: Prisma.TransactionClient,
   ): Promise<string | null> {
-    const client = tx ?? this.databaseService;
-    const token = await this.findMatchingToken(jti, refreshToken, tx);
+    const token = await tx.refreshToken.findUnique({ where: { id: jti } });
 
     if (!token) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -457,15 +463,30 @@ export class AuthService {
 
     // Delete this token and all tokens in the same family
     if (token.familyId) {
-      await client.refreshToken.deleteMany({
+      await tx.refreshToken.deleteMany({
         where: {
           familyId: token.familyId,
         },
       });
     } else {
-      await client.refreshToken.delete({ where: { id: token.id } });
+      await tx.refreshToken.delete({ where: { id: token.id } });
     }
     return token.familyId;
+  }
+
+  /**
+   * Check a refresh token against its stored hash, expired or not.
+   *
+   * Runs bcrypt, so call it before taking locks: a token row's hash never
+   * changes, so only a read of its state needs to run under the lock
+   * (deleteRefreshToken, reloadRefreshToken).
+   * @returns The token record, or null if there is none or it doesn't match
+   */
+  async checkRefreshToken(
+    jti: string,
+    refreshToken: string,
+  ): Promise<RefreshToken | null> {
+    return this.findMatchingToken(jti, refreshToken);
   }
 
   /**
@@ -479,7 +500,7 @@ export class AuthService {
     jti: string,
     refreshToken: string,
   ): Promise<RefreshToken | null> {
-    const token = await this.findMatchingToken(jti, refreshToken);
+    const token = await this.checkRefreshToken(jti, refreshToken);
     if (token && token.expiresAt > new Date()) {
       return token;
     }
@@ -517,13 +538,8 @@ export class AuthService {
     return result.count;
   }
 
-  private async findMatchingToken(
-    jti: string,
-    refreshToken: string,
-    tx?: Prisma.TransactionClient,
-  ) {
-    const client = tx ?? this.databaseService;
-    const token = await client.refreshToken.findUnique({
+  private async findMatchingToken(jti: string, refreshToken: string) {
+    const token = await this.databaseService.refreshToken.findUnique({
       where: { id: jti },
     });
 

@@ -423,18 +423,24 @@ export class AuthController {
 
     if (refreshToken) {
       try {
+        const [user, jti] =
+          await this.authService.verifyRefreshToken(refreshToken);
+        // Check the token against its stored hash (bcrypt) before the
+        // transaction: a token row's hash never changes, and refreshes and
+        // revocations waiting on the user's lock (below) would wait through
+        // it too
+        if (!(await this.authService.checkRefreshToken(jti, refreshToken))) {
+          throw new UnauthorizedException('Invalid refresh token');
+        }
         session = await this.databaseService.$transaction(async (tx) => {
-          const [user, jti] =
-            await this.authService.verifyRefreshToken(refreshToken);
           // Serialized with refreshes: one racing this logout either
           // completes first (its new token is deleted below) or finds its
           // token gone
           await lockUserForSessionRevocation(tx, user.id);
-          const sessionId = await this.authService.deleteRefreshToken(
-            jti,
-            refreshToken,
-            tx,
-          );
+          // Reads the token again under the lock: a refresh may have
+          // rotated it (its successor goes with the family), or a
+          // revocation deleted it, since it was checked
+          const sessionId = await this.authService.deleteRefreshToken(jti, tx);
           return { userId: user.id, sessionId };
         });
       } catch {

@@ -689,6 +689,20 @@ describe('AuthController', () => {
     } as any;
 
     const jti = 'token-id-123';
+    const mockTokenRecord = {
+      id: jti,
+      userId: mockUser.id,
+      tokenHash: 'hashed',
+      familyId: 'family-123',
+      consumed: false,
+      consumedAt: null,
+      expiresAt: new Date(Date.now() + 86400000),
+      createdAt: new Date(),
+      lastUsedAt: new Date(),
+      deviceName: 'Chrome',
+      userAgent: null,
+      ipAddress: null,
+    };
 
     beforeEach(() => {
       mockDatabase.$transaction.mockImplementation((callback: any) => {
@@ -697,6 +711,9 @@ describe('AuthController', () => {
       jest
         .spyOn(authService, 'verifyRefreshToken')
         .mockResolvedValue([mockUser, jti]);
+      jest
+        .spyOn(authService, 'checkRefreshToken')
+        .mockResolvedValue(mockTokenRecord);
       jest
         .spyOn(authService, 'deleteRefreshToken')
         .mockResolvedValue('family-123');
@@ -715,7 +732,6 @@ describe('AuthController', () => {
       );
       expect(authService.deleteRefreshToken).toHaveBeenCalledWith(
         jti,
-        mockRefreshToken,
         mockDatabase,
       );
       expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
@@ -738,6 +754,62 @@ describe('AuthController', () => {
       expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
         authService.deleteRefreshToken.mock.invocationCallOrder[0],
       );
+    });
+
+    it('checks the token against its hash (bcrypt) before the transaction takes its locks', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      await controller.logout(req, mockRes);
+
+      // Refreshes and revocations waiting on the user's lock don't wait
+      // through a bcrypt compare
+      expect(authService.checkRefreshToken).toHaveBeenCalledWith(
+        jti,
+        mockRefreshToken,
+      );
+      expect(
+        authService.checkRefreshToken.mock.invocationCallOrder[0],
+      ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
+      expect(
+        authService.verifyRefreshToken.mock.invocationCallOrder[0],
+      ).toBeLessThan(mockDatabase.$transaction.mock.invocationCallOrder[0]);
+    });
+
+    it('takes no lock for a token that does not match its hash', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {},
+      };
+      authService.checkRefreshToken.mockResolvedValue(null);
+
+      const result = await controller.logout(req, mockRes);
+
+      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(mockDatabase.$transaction).not.toHaveBeenCalled();
+      expect(authService.deleteRefreshToken).not.toHaveBeenCalled();
+      expect(sessionRevocationService.revokeSessions).not.toHaveBeenCalled();
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
+    });
+
+    it('still logs out when the token was deleted (revoked) since it was checked', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {},
+      };
+      // Read again under the lock: gone
+      authService.deleteRefreshToken.mockRejectedValue(
+        new UnauthorizedException('Invalid refresh token'),
+      );
+
+      const result = await controller.logout(req, mockRes);
+
+      expect(result).toEqual({ message: 'Logged out successfully' });
+      expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
     });
 
     it('should revoke the session and disconnect its sockets', async () => {
@@ -831,7 +903,6 @@ describe('AuthController', () => {
 
       expect(authService.deleteRefreshToken).toHaveBeenCalledWith(
         jti,
-        mockRefreshToken,
         mockDatabase,
       );
       expect(result).toEqual({ message: 'Logged out successfully' });

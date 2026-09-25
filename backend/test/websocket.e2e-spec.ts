@@ -1081,12 +1081,17 @@ describe('WebSocket gateways (e2e)', () => {
 
       /**
        * Hold the next call of `target[method]`: `before` ms before it runs
-       * the original, `after` ms after. Resolves once that call started.
+       * the original, `after` ms after, then until `until` settles.
+       * Resolves once that call started.
        */
       function holdNextCall(
         target: object,
         method: string,
-        { before = 0, after = 0 }: { before?: number; after?: number },
+        {
+          before = 0,
+          after = 0,
+          until,
+        }: { before?: number; after?: number; until?: Promise<unknown> },
       ): Promise<void> {
         const methods = target as Record<
           string,
@@ -1103,6 +1108,7 @@ describe('WebSocket gateways (e2e)', () => {
               await sleep(before);
               const result = await original(...args);
               await sleep(after);
+              await until?.catch(() => undefined);
               return result;
             });
         });
@@ -1337,6 +1343,95 @@ describe('WebSocket gateways (e2e)', () => {
           .set('User-Agent', userAgents.Laptop)
           .set('Cookie', extractCookie(getSetCookies(raced), 'refresh_token')!)
           .expect(401);
+      });
+
+      it('a refresh that rotates the token after a logout checked it loses its tokens to the logout', async () => {
+        await register('ws-race-logout-refresh');
+        const session = await login('ws-race-logout-refresh', 'Laptop');
+
+        // The logout has checked its token (bcrypt, before its transaction)
+        // and not locked the user yet when another tab of the session
+        // rotates the token
+        let rotated!: () => void;
+        const rotation = new Promise<void>((resolve) => (rotated = resolve));
+        const held = holdNextCall(app.get(AuthService), 'checkRefreshToken', {
+          until: rotation,
+        });
+        const loggingOut = send(
+          request(app.getHttpServer())
+            .post('/api/auth/logout')
+            .set('Authorization', `Bearer ${session.accessToken}`)
+            .set('Cookie', session.refreshCookie),
+        );
+        await held;
+        const raced = await send(
+          request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('User-Agent', userAgents.Laptop)
+            .set('Cookie', session.refreshCookie),
+        );
+        rotated();
+        expect(raced.status).toBe(200);
+        expect((await loggingOut).status).toBe(201);
+
+        // The logout read the token again under its lock: rotated, so it
+        // ended the session the rotation continued
+        const racedAccessToken = (raced.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${racedAccessToken}`)
+          .expect(401);
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-session:${sessionIdOf(racedAccessToken)}`);
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', extractCookie(getSetCookies(raced), 'refresh_token')!)
+          .expect(401);
+      });
+
+      it('a logout whose token is revoked after it checked it still logs out', async () => {
+        await register('ws-race-logout-revoke');
+        const laptop = await login('ws-race-logout-revoke', 'Laptop');
+        const phone = await login('ws-race-logout-revoke', 'Phone');
+
+        // The phone revokes the laptop's session between the laptop's
+        // logout checking its token and locking the user
+        let revoked!: () => void;
+        const revocation = new Promise<void>((resolve) => (revoked = resolve));
+        const held = holdNextCall(app.get(AuthService), 'checkRefreshToken', {
+          until: revocation,
+        });
+        const loggingOut = send(
+          request(app.getHttpServer())
+            .post('/api/auth/logout')
+            .set('Authorization', `Bearer ${laptop.accessToken}`)
+            .set('Cookie', laptop.refreshCookie),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .delete(`/api/auth/sessions/${sessionIdOf(laptop.accessToken)}`)
+          .set('Authorization', `Bearer ${phone.accessToken}`)
+          .expect(200);
+        revoked();
+
+        const loggedOut = await loggingOut;
+        expect(loggedOut.status).toBe(201);
+        // Cleared
+        expect(extractCookie(getSetCookies(loggedOut), 'refresh_token')).toBe(
+          'refresh_token=',
+        );
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${laptop.accessToken}`)
+          .expect(401);
+        // The phone's session is untouched
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${phone.accessToken}`)
+          .expect(200);
       });
 
       it('a refresh racing a logout leaves no working token, even once the session marker expires', async () => {
