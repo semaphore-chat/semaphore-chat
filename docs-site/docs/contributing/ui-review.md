@@ -223,10 +223,11 @@ identical pixels.
 
 **Determinism rules for stories:** a story driver must never measure time
 with `Date.now()` (it doesn't move during a review, so the wait never ends);
-use `useDriver` with its `wait(ms)` steps, which count time with timers. Open
-a menu over images only after a `mediaSettled()` step (images loaded, sizes
-and scroll positions stable), or it anchors to a row that is still moving.
-The full list is in `.claude/skills/ui-pr-review/reference/stories.md`.
+use `useDriver`, whose steps and `wait(ms)` count time with timers, and
+prefer steps that poll for a condition over fixed waits. Open a menu over
+images only after a `mediaSettled()` step (images loaded, sizes and scroll
+positions stable), or it anchors to a row that is still moving. The full list
+is in [Writing stories](./stories.md#determinism-rules).
 
 Each story is shot at phone, tablet and desktop, except `*keyboard*` stories
 (only `phone-short`, 390×500) and stories that name their own viewports in
