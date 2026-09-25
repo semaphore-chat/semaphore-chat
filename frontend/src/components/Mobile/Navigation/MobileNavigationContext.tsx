@@ -186,10 +186,14 @@ const MobileNavigationContext = createContext<MobileNavigationContextType | unde
   undefined
 );
 
-// Helper to determine active tab from screen (+ pathname for 'route' screens).
-// Returns null for 'user-profile': someone else's profile belongs to whichever
-// tab the user came from (chat, DMs, notifications), not to the Profile tab.
-const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | null => {
+/**
+ * The bottom tab a screen belongs to (+ pathname for 'route' screens).
+ * Returns null for 'user-profile': someone else's profile belongs to whichever
+ * tab the user came from (chat, DMs, notifications), not to the Profile tab.
+ * Friends is part of the Messages area (the DM page's "Friends" tab; picking a
+ * friend opens a DM), so /friends highlights Messages.
+ */
+export const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | null => {
   switch (screen) {
     case 'channels':
     case 'chat':
@@ -209,6 +213,7 @@ const getTabFromScreen = (screen: ScreenType, pathname: string): MobileTab | nul
       if (pathname.startsWith('/community')) return 'home';
       if (pathname.startsWith('/profile') || pathname.startsWith('/settings')) return 'profile';
       if (pathname.startsWith('/direct-messages')) return 'messages';
+      if (matchPath('/friends/*', pathname)) return 'messages';
       return 'home';
   }
 };
