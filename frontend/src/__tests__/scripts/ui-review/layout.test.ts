@@ -50,6 +50,20 @@ describe('focusRegions', () => {
     expect(regions).toHaveLength(2);
     expect(regions[0].y).toBeLessThan(regions[1].y);
   });
+
+  it('merges a region that only the merge of two later ones reaches', () => {
+    // X is near neither A nor B, but near A ∪ B; X comes first.
+    const regions = focusRegions(
+      [
+        { x: 324, y: 0, width: 212, height: 72 }, // X → 300-560 × 0-96
+        { x: 0, y: 0, width: 236, height: 200 }, // A → 0-260 × 0-224
+        { x: 274, y: 264, width: 212, height: 48 }, // B → 250-510 × 240-336
+      ],
+      1440,
+      900,
+    );
+    expect(regions).toEqual([{ x: 0, y: 0, width: 560, height: 336 }]);
+  });
 });
 
 describe('compositeLayout', () => {
@@ -173,6 +187,10 @@ describe('compositeHtml', () => {
     expect(html).not.toContain('class="box"');
     expect(html).toContain('most of the page changed');
     expect(compositeHtml(desktop({ boxes: [{ x: 600, y: 300, width: 80, height: 32 }] }))).toContain('class="box"');
+    // Measured against the window shown of a very tall page, not the whole page.
+    const tall = compositeHtml(input({ before: img(390, 6000), after: img(390, 6000), diff: img(390, 6000), boxes: [{ x: 0, y: 4600, width: 390, height: 1000 }] }));
+    expect(tall).not.toContain('class="box"');
+    expect(tall).toContain('most of the page changed');
   });
 
   it('labels the crops and the full view', () => {

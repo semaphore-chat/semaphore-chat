@@ -131,12 +131,19 @@ const near = (a: Box, b: Box, gap: number) =>
  */
 export function focusRegions(boxes: Box[], pageWidth: number, pageHeight: number): Box[] {
   const regions = boxes.map((b) => grow(b, FOCUS_MARGIN, pageWidth, pageHeight));
-  for (let i = 0; i < regions.length; i++) {
-    for (let j = i + 1; j < regions.length; j++) {
-      if (near(regions[i], regions[j], FOCUS_JOIN)) {
-        regions[i] = unionBox([regions[i], regions[j]])!;
-        regions.splice(j, 1);
-        j = i; // the grown region may now reach earlier ones
+  // Merge pairs until a whole pass merges nothing: a grown region can reach
+  // any other one, earlier in the list or later.
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let i = 0; i < regions.length && !merged; i++) {
+      for (let j = i + 1; j < regions.length; j++) {
+        if (near(regions[i], regions[j], FOCUS_JOIN)) {
+          regions[i] = unionBox([regions[i], regions[j]])!;
+          regions.splice(j, 1);
+          merged = true;
+          break;
+        }
       }
     }
   }
@@ -248,11 +255,15 @@ export function compositeHtml(input: CompositeInput, options: LayoutOptions = {}
   const captionBits = [focus.length ? 'Full view' : isDiff ? 'Changed' : 'Screenshot', pct(full.scale)];
   if (focus.length && hidden > 0) captionBits.push(`${hidden} more changed region${hidden === 1 ? '' : 's'} outlined below`);
   const fullView: Box = { x: 0, y: full.crop.top, width: Math.round(full.panelWidth / full.scale), height: full.crop.height };
-  // A region covering most of the page (a list that shifted) outlines nothing
-  // useful, and its edges would just cut through the page.
-  const pageArea = fullView.width * Math.max(1, ...full.panels.map((p) => p.image.height));
+  // A region covering most of the shown page (a list that shifted) outlines
+  // nothing useful, and its edges would just cut through the page. Measured
+  // within the full view, which is a window of a very tall page.
+  const viewArea = Math.max(1, fullView.width * fullView.height);
+  const visibleArea = (b: Box) =>
+    Math.max(0, Math.min(b.x + b.width, fullView.x + fullView.width) - Math.max(b.x, fullView.x)) *
+    Math.max(0, Math.min(b.y + b.height, fullView.y + fullView.height) - Math.max(b.y, fullView.y));
   const changedAreas = regions.length ? regions : input.boxes;
-  const outlines = isDiff ? changedAreas.filter((b) => b.width * b.height <= 0.5 * pageArea) : [];
+  const outlines = isDiff ? changedAreas.filter((b) => visibleArea(b) <= 0.5 * viewArea) : [];
   if (isDiff && outlines.length < changedAreas.length) captionBits.push('most of the page changed');
   const fullHtml =
     `<div class="caption">${captionBits.join(' · ')}</div>` +

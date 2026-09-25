@@ -868,7 +868,15 @@ export function useDriver(steps: DriverStep[], { pollMs = 120, timeoutMs = 15000
         stop();
         return;
       }
-      const ok = stepsRef.current[i]();
+      let ok: boolean | void;
+      try {
+        ok = stepsRef.current[i]();
+      } catch (err) {
+        // A broken step must not leave the page marked busy.
+        console.warn(`[edge-chat driver] step ${i} threw`, err);
+        stop();
+        return;
+      }
       if (ok !== false) {
         i += 1;
         stepTicks = 0;
