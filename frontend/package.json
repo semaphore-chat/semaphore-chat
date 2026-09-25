@@ -71,7 +71,7 @@
     "@hey-api/client-fetch": "^0.13.1",
     "@livekit/components-react": "^2.9.24",
     "@mui/icons-material": "^7.0.2",
-    "@mui/material": "^7.0.2",
+    "@mui/material": "^9.4.0",
     "@semaphore-chat/shared": "workspace:*",
     "@tanstack/react-query": "^5.103.2",
     "axios": "^1.20.0",
