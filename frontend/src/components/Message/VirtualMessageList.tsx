@@ -9,10 +9,9 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { Box } from "@mui/material";
+import { Box, LinearProgress } from "@mui/material";
 import { VList, type VListHandle } from "virtua";
 import MessageComponent from "./MessageComponent";
-import MessageSkeleton from "./MessageSkeleton";
 import { UnreadMessageDivider } from "./UnreadMessageDivider";
 import { DaySeparator } from "./DaySeparator";
 import { dayMarkers, shouldGroupWithPrevious } from "../../utils/messageGrouping";
@@ -816,15 +815,14 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
         // the context-menu restore when a row is removed while its menu is
         // still closing (see MessageComponent's listContainerRef usage).
         tabIndex={-1}
-        sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}
+        sx={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          position: "relative",
+        }}
       >
-        {isLoadingMore && (
-          <Box sx={{ p: 2, textAlign: "center", flexShrink: 0 }}>
-            <MessageSkeleton />
-            <MessageSkeleton />
-            <MessageSkeleton />
-          </Box>
-        )}
         {/* role="list"/"listitem" rather than the ARIA "feed" pattern:
             feed's aria-posinset/aria-setsize imply an honest, stable total
             item count, which this virtualized + paginated + cap-evicted
@@ -840,6 +838,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
           ref={vlistRef}
           role="list"
           aria-label="Messages"
+          aria-busy={isLoadingMore || Boolean(isLoadingNewer)}
           shift={isPrepend}
           onScroll={handleScroll}
           style={{ flex: 1, minHeight: 0 }}
@@ -909,12 +908,15 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
             );
           })}
         </VList>
+        {/* Page-load indicators: a thin bar pinned to the edge the page is
+            loading into, absolutely positioned so it takes no layout space
+            (an in-flow placeholder would resize the VList mid-scroll). The
+            list's aria-busy tells assistive tech instead. */}
+        {isLoadingMore && (
+          <PageLoadBar edge="top" testId="load-older-progress" />
+        )}
         {isLoadingNewer && (
-          <Box sx={{ p: 2, textAlign: "center", flexShrink: 0 }}>
-            <MessageSkeleton />
-            <MessageSkeleton />
-            <MessageSkeleton />
-          </Box>
+          <PageLoadBar edge="bottom" testId="load-newer-progress" />
         )}
       </Box>
     );
@@ -922,5 +924,28 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
 );
 
 VirtualMessageList.displayName = "VirtualMessageList";
+
+/** Thin indeterminate bar overlaid on one edge of the message list. */
+const PageLoadBar = ({
+  edge,
+  testId,
+}: {
+  edge: "top" | "bottom";
+  testId: string;
+}) => (
+  <LinearProgress
+    aria-hidden="true"
+    data-testid={testId}
+    sx={{
+      position: "absolute",
+      left: 0,
+      right: 0,
+      [edge]: 0,
+      height: 2,
+      zIndex: 1,
+      pointerEvents: "none",
+    }}
+  />
+);
 
 export default VirtualMessageList;
