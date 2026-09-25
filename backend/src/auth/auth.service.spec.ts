@@ -422,9 +422,7 @@ describe('AuthService', () => {
       ['no jti', { sub: 'user-1' }],
       ['a non-string sub', { sub: 42, jti: 'jti-123' }],
     ])('refuses a validly signed token with %s', async (_, payload) => {
-      jest
-        .spyOn(jwtService, 'verifyAsync')
-        .mockResolvedValue(payload as unknown as object);
+      jest.spyOn(jwtService, 'verifyAsync').mockResolvedValue(payload);
 
       await expect(service.verifyRefreshToken('token')).rejects.toThrow(
         UnauthorizedException,
@@ -594,39 +592,97 @@ describe('AuthService', () => {
     });
   });
 
+  describe('checkRefreshToken', () => {
+    it('returns the token when it matches its hash', async () => {
+      const token = RefreshTokenFactory.build({ id: 'jti-1' });
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(token);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      await expect(
+        service.checkRefreshToken('jti-1', 'valid-token'),
+      ).resolves.toEqual(token);
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'valid-token',
+        token.tokenHash,
+      );
+    });
+
+    it('returns an expired token too (logout still deletes it)', async () => {
+      const token = RefreshTokenFactory.build({
+        id: 'jti-1',
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(token);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      await expect(
+        service.checkRefreshToken('jti-1', 'valid-token'),
+      ).resolves.toEqual(token);
+    });
+
+    it('returns null when the token does not match its hash', async () => {
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(
+        RefreshTokenFactory.build({ id: 'jti-1' }),
+      );
+      mockBcrypt.compare.mockResolvedValue(false as never);
+
+      await expect(
+        service.checkRefreshToken('jti-1', 'wrong-token'),
+      ).resolves.toBeNull();
+    });
+
+    it('still runs bcrypt when the token does not exist (timing)', async () => {
+      mockDatabase.refreshToken.findUnique.mockResolvedValue(null);
+      mockBcrypt.compare.mockResolvedValue(true as never);
+
+      await expect(
+        service.checkRefreshToken('nonexistent', 'token'),
+      ).resolves.toBeNull();
+      expect(bcrypt.compare).toHaveBeenCalledWith('token', expect.anything());
+    });
+  });
+
   describe('deleteRefreshToken', () => {
-    it('should delete all tokens in the family when familyId exists', async () => {
+    it("reads the token again under the caller's lock and deletes its family, without bcrypt", async () => {
       const jti = 'token-jti-123';
-      const refreshToken = 'valid-token';
       const mockToken = RefreshTokenFactory.build({
         id: jti,
         familyId: 'family-1',
       });
 
       mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(true as never);
       mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 2 });
 
-      const sessionId = await service.deleteRefreshToken(jti, refreshToken);
+      const sessionId = await service.deleteRefreshToken(
+        jti,
+        mockDatabase as any,
+      );
 
+      expect(mockDatabase.refreshToken.findUnique).toHaveBeenCalledWith({
+        where: { id: jti },
+      });
       expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
         where: {
           familyId: 'family-1',
         },
       });
       expect(sessionId).toBe('family-1');
+      // Checked before the transaction (checkRefreshToken): no bcrypt
+      // under the locks
+      expect(bcrypt.compare).not.toHaveBeenCalled();
     });
 
     it('should delete single token when no familyId', async () => {
       const jti = 'token-jti-123';
-      const refreshToken = 'valid-token';
       const mockToken = RefreshTokenFactory.build({ id: jti, familyId: null });
 
       mockDatabase.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(true as never);
       mockDatabase.refreshToken.delete.mockResolvedValue(mockToken);
 
-      const sessionId = await service.deleteRefreshToken(jti, refreshToken);
+      const sessionId = await service.deleteRefreshToken(
+        jti,
+        mockDatabase as any,
+      );
 
       expect(mockDatabase.refreshToken.delete).toHaveBeenCalledWith({
         where: { id: jti },
@@ -634,15 +690,17 @@ describe('AuthService', () => {
       expect(sessionId).toBeNull();
     });
 
-    it('should throw UnauthorizedException when token not found', async () => {
+    it('throws UnauthorizedException when the token is gone (revoked since it was checked)', async () => {
       mockDatabase.refreshToken.findUnique.mockResolvedValue(null);
 
       await expect(
-        service.deleteRefreshToken('nonexistent', 'token'),
+        service.deleteRefreshToken('nonexistent', mockDatabase as any),
       ).rejects.toThrow(UnauthorizedException);
+      expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.delete).not.toHaveBeenCalled();
     });
 
-    it('should use transaction client when provided', async () => {
+    it('uses the transaction client', async () => {
       const mockTx = createMockDatabase();
       const jti = 'token-jti-123';
       const mockToken = RefreshTokenFactory.build({
@@ -651,16 +709,16 @@ describe('AuthService', () => {
       });
 
       mockTx.refreshToken.findUnique.mockResolvedValue(mockToken);
-      mockBcrypt.compare.mockResolvedValue(true as never);
       mockTx.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
 
       await service.deleteRefreshToken(
         jti,
-        'token',
-        mockTx as unknown as Parameters<typeof service.deleteRefreshToken>[2],
+        mockTx as unknown as Parameters<typeof service.deleteRefreshToken>[1],
       );
 
+      expect(mockTx.refreshToken.findUnique).toHaveBeenCalled();
       expect(mockTx.refreshToken.deleteMany).toHaveBeenCalled();
+      expect(mockDatabase.refreshToken.findUnique).not.toHaveBeenCalled();
       expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
     });
   });

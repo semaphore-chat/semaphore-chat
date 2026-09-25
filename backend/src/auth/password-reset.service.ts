@@ -87,16 +87,20 @@ export class PasswordResetService {
   async resetPassword(token: string, newPassword: string): Promise<void> {
     const tokenHash = this.hashToken(token);
 
+    const now = new Date();
+    const resetToken = await this.databaseService.passwordResetToken.findUnique(
+      { where: { tokenHash } },
+    );
+
+    if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= now) {
+      throw new BadRequestException('Invalid or expired reset token');
+    }
+
+    // bcrypt before the transaction: neither the claimed token's row nor a
+    // database connection is held through it
+    const hashedPassword = await this.userService.hashPassword(newPassword);
+
     const userId = await this.databaseService.$transaction(async (tx) => {
-      const now = new Date();
-      const resetToken = await tx.passwordResetToken.findUnique({
-        where: { tokenHash },
-      });
-
-      if (!resetToken || resetToken.usedAt || resetToken.expiresAt <= now) {
-        throw new BadRequestException('Invalid or expired reset token');
-      }
-
       // Atomically claim the token by conditioning the update on it still
       // being unused AND unexpired (using the same `now` as the check
       // above). If two requests race to redeem the same token, or the
@@ -114,7 +118,7 @@ export class PasswordResetService {
 
       await this.userService.resetPasswordAndRevokeSessions(
         resetToken.userId,
-        newPassword,
+        hashedPassword,
         tx,
       );
       return resetToken.userId;

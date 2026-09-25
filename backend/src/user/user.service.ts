@@ -24,6 +24,9 @@ import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
 
 import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
+/** A password hashed for storing (UserService.hashPassword). */
+export type HashedPassword = string & { readonly __hashedPassword: true };
+
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -471,24 +474,32 @@ export class UserService {
   }
 
   /**
+   * Hash a password for storing (bcrypt). It is slow, so call it before a
+   * transaction takes locks (resetPasswordAndRevokeSessions).
+   */
+  async hashPassword(password: string): Promise<HashedPassword> {
+    return (await bcrypt.hash(password, 10)) as HashedPassword;
+  }
+
+  /**
    * Core password reset logic shared by the admin override
    * (`setUserPassword`) and the self-service email flow
-   * (`PasswordResetService`): hashes the new password, updates the user, and
-   * revokes all of their refresh tokens so sessions can no longer be renewed.
+   * (`PasswordResetService`): updates the user's password, and revokes all
+   * of their refresh tokens so sessions can no longer be renewed.
    *
    * Accepts an explicit transaction client so callers can atomically pair
    * this with other writes (e.g. marking a password-reset token as used).
    * Once the transaction commits, callers must call
    * `SessionRevocationService.revokeAllUserSessions(userId, 'PASSWORD_CHANGED')`
    * to revoke the outstanding access tokens and disconnect the sockets.
+   * @param hashedPassword - The new password, hashed (hashPassword) before
+   *   the transaction: nothing waits on its locks through bcrypt
    */
   async resetPasswordAndRevokeSessions(
     userId: string,
-    newPassword: string,
+    hashedPassword: HashedPassword,
     tx: Prisma.TransactionClient,
   ): Promise<User> {
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
     // Serialized with refreshes (see session-lock.util): the delete below
     // also removes the token a racing refresh rotated in
     await lockUserForSessionRevocation(tx, userId);
@@ -532,8 +543,9 @@ export class UserService {
       }
     }
 
+    const hashedPassword = await this.hashPassword(newPassword);
     const updatedUser = await this.databaseService.$transaction((tx) =>
-      this.resetPasswordAndRevokeSessions(targetUserId, newPassword, tx),
+      this.resetPasswordAndRevokeSessions(targetUserId, hashedPassword, tx),
     );
     await this.sessionRevocationService.revokeAllUserSessions(
       targetUserId,
