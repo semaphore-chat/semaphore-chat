@@ -46,7 +46,7 @@ import {
   type Box,
   type ShotStatus,
 } from './lib/classify.ts';
-import { compositeHtml, type CompositeInput } from './lib/layout.ts';
+import { compositeHtml, COMPOSITE_MAX_WIDTH, type CompositeInput } from './lib/layout.ts';
 import {
   renderBlock,
   rawGithubUrl,
@@ -556,7 +556,7 @@ async function stepFinalize(flags: Flags) {
       continue;
     }
     const target = path.join(out, 'composites', `${path.basename(job.out, '.png')}.webp`);
-    const info = await sharp(job.out).resize({ width: 1600, withoutEnlargement: true }).webp({ quality: 82, effort: 5 }).toFile(target);
+    const info = await sharp(job.out).resize({ width: COMPOSITE_MAX_WIDTH, withoutEnlargement: true }).webp({ quality: 82, effort: 5 }).toFile(target);
     bytes += info.size;
   }
   for (const story of report.stories) {
