@@ -20,7 +20,7 @@ Each one cost real time. The fix is already in the code; this list explains why 
 11. **`recordVideo` captures CSS pixels.** `deviceScaleFactor: 2` doesn't raise the video resolution, and a `size` larger than the viewport letterboxes the frame. Scenes record at 1x, at exactly the viewport size (1440×900, or 390×844 for phone). Screenshots use 2x.
 12. **Playwright video has no mouse cursor.** `record.mjs` injects an overlay (an arrow on desktop, a touch dot on phone) that follows real mouse events. Wherever the pointer stops, the app shows its hover state. See "Cursor parking" below.
 13. **On a phone, Enter in the composer inserts a newline.** Tap the send button (`button:has([data-testid="SendIcon"])`) instead.
-14. **A phone thread opens scrolled to the newest reply**, which cuts the first reply's name row in half. The `thread-phone` shot uses `prepare: 'threadFromTop'` (`PREPARE` in `shots.mjs`).
+14. **A phone thread used to open scrolled to the newest reply**, which cut the first reply's name row in half under the pinned original message. Phone threads now open at the top, with the original message scrolling with the replies, but the `thread-phone` shot keeps `prepare: 'threadFromTop'` (`PREPARE` in `shots.mjs`, which scrolls `[data-testid="thread-scroll"]` to the top) as a guard.
 
 ## The fake server (`showcaseStory.ts`)
 

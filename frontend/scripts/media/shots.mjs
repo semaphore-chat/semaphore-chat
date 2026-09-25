@@ -20,15 +20,12 @@ import { SHOTS, VIDEOS, SECTIONS } from './catalog.mjs';
 
 /** Page tweaks a shot can ask for (`prepare` in catalog.mjs), run just before the screenshot. */
 const PREPARE = {
-  // Threads open scrolled to the newest reply, which on a phone leaves the
-  // first reply's name row cut in half under the original message. Show the
-  // thread from its first reply instead (all five replies still fit).
+  // Show the thread from the top: the original message and the first reply.
+  // A phone thread already opens there (ThreadPanel), so this only guards the
+  // shot against a thread that was scrolled before the capture.
   async threadFromTop(page) {
     const moved = await page.evaluate(() => {
-      const label = Array.from(document.querySelectorAll('.MuiTypography-caption')).find(
-        (el) => el.textContent?.trim() === 'Original message',
-      );
-      const replies = label?.parentElement?.nextElementSibling;
+      const replies = document.querySelector('[data-testid="thread-scroll"]');
       if (!replies) return false;
       replies.scrollTop = 0;
       return true;
