@@ -19,6 +19,8 @@ import {
   clickActionItem,
   clickButtonByText,
   wait,
+  mediaSettled,
+  scrollListToBottom,
   FIVE_FILES,
   FOUR_LINE_DRAFT,
   type DriverStep,
@@ -27,6 +29,11 @@ import {
 const WorstComposer: React.FC = () => {
   useInjectOptimisticMessages({ channelId: worstChannel.id }, [{ text: 'sending this before I lose it', status: 'failed' }]);
   const steps: DriverStep[] = [
+    // Open the menu only once the messages are in, their images have sized and the
+    // list has stopped moving (else it anchors to a row still moving, and the list
+    // ends up pinned to the bottom or not depending on load timing).
+    () => !!findMessageRow('const result = await deliveryQueueConsumer'),
+    mediaSettled(),
     () => {
       const row = findMessageRow('const result = await deliveryQueueConsumer', { last: true });
       if (!row) return false;
@@ -38,6 +45,9 @@ const WorstComposer: React.FC = () => {
     () => attachFiles(FIVE_FILES),
     wait(200),
     () => typeInto(composerTextarea()!, FOUR_LINE_DRAFT),
+    // The composer grew three times over the list: show its newest messages.
+    scrollListToBottom(),
+    mediaSettled(),
   ];
   useDriver(steps);
   return null;
