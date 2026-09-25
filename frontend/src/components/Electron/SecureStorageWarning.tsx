@@ -21,6 +21,7 @@
 
 import { useEffect } from 'react';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useElectronAPI } from '../../contexts/ElectronContext';
 import {
   consumePendingSecureStorageWarning,
   onSecureStorageWarning,
@@ -31,9 +32,11 @@ const SECURE_STORAGE_WARNING_MESSAGE =
 
 export const SecureStorageWarning = () => {
   const { showNotification } = useNotification();
+  // Null outside Electron.
+  const isElectron = useElectronAPI() !== null;
 
   useEffect(() => {
-    if (!window.electronAPI?.isElectron) return;
+    if (!isElectron) return;
 
     // Consume any warning that became pending before this component mounted.
     if (consumePendingSecureStorageWarning()) {
@@ -43,7 +46,7 @@ export const SecureStorageWarning = () => {
     return onSecureStorageWarning(() => {
       showNotification(SECURE_STORAGE_WARNING_MESSAGE, 'warning');
     });
-  }, [showNotification]);
+  }, [isElectron, showNotification]);
 
   return null;
 };

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AxiosError, type AxiosResponse } from 'axios';
+import { createFakeElectronAPI } from '../test-utils/fakeElectronAPI';
 
 vi.mock('../../utils/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), dev: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -15,6 +16,7 @@ vi.mock('axios', async (importOriginal) => {
 });
 
 type TokenService = typeof import('../../utils/tokenService');
+type ElectronBridge = typeof import('../../utils/electronBridge');
 
 /** An axios error with an HTTP response of `status`. */
 function httpError(status: number): AxiosError {
@@ -46,14 +48,16 @@ function removeLocks() {
 
 describe('tokenService refreshSessionWithRetry', () => {
   let ts: TokenService;
-  let originalElectronAPI: typeof window.electronAPI;
+  let bridge: ElectronBridge;
 
   beforeEach(async () => {
     // Fresh module state (single-flight promises, cooldown) for every test
     vi.resetModules();
     ts = await import('../../utils/tokenService');
-    originalElectronAPI = window.electronAPI;
-    window.electronAPI = undefined;
+    // The bridge module tokenService just loaded (resetModules gave it a
+    // fresh instance, not the one a static import would see).
+    bridge = await import('../../utils/electronBridge');
+    bridge.setElectronAPIOverride(null);
     mockPost.mockReset();
     removeLocks();
     vi.useFakeTimers();
@@ -61,7 +65,6 @@ describe('tokenService refreshSessionWithRetry', () => {
 
   afterEach(() => {
     vi.useRealTimers();
-    window.electronAPI = originalElectronAPI;
     removeLocks();
   });
 
@@ -231,19 +234,20 @@ describe('tokenService refreshSessionWithRetry', () => {
 
 describe('tokenService refresh request', () => {
   let ts: TokenService;
-  let originalElectronAPI: typeof window.electronAPI;
+  let bridge: ElectronBridge;
 
   beforeEach(async () => {
     vi.resetModules();
     ts = await import('../../utils/tokenService');
-    originalElectronAPI = window.electronAPI;
-    window.electronAPI = undefined;
+    // The bridge module tokenService just loaded (resetModules gave it a
+    // fresh instance, not the one a static import would see).
+    bridge = await import('../../utils/electronBridge');
+    bridge.setElectronAPIOverride(null);
     mockPost.mockReset();
     removeLocks();
   });
 
   afterEach(() => {
-    window.electronAPI = originalElectronAPI;
     removeLocks();
   });
 
@@ -259,7 +263,7 @@ describe('tokenService refresh request', () => {
   });
 
   it('times out Electron refreshes too', async () => {
-    window.electronAPI = { isElectron: true, getRefreshToken: vi.fn().mockResolvedValue('rt') };
+    bridge.setElectronAPIOverride(createFakeElectronAPI({ getRefreshToken: vi.fn().mockResolvedValue('rt') }));
     mockPost.mockResolvedValue(ok());
     await ts.refreshSession();
 
@@ -287,7 +291,7 @@ describe('tokenService refreshSessionUntilAnswered', () => {
   beforeEach(async () => {
     vi.resetModules();
     ts = await import('../../utils/tokenService');
-    window.electronAPI = undefined;
+    (await import('../../utils/electronBridge')).setElectronAPIOverride(null);
     mockPost.mockReset();
     removeLocks();
     vi.useFakeTimers();
@@ -411,19 +415,20 @@ describe('sessionRefreshPolicy nextSessionRefreshDelayMs', () => {
 
 describe('tokenService cross-tab refresh lock', () => {
   let ts: TokenService;
-  let originalElectronAPI: typeof window.electronAPI;
+  let bridge: ElectronBridge;
 
   beforeEach(async () => {
     vi.resetModules();
     ts = await import('../../utils/tokenService');
-    originalElectronAPI = window.electronAPI;
-    window.electronAPI = undefined;
+    // The bridge module tokenService just loaded (resetModules gave it a
+    // fresh instance, not the one a static import would see).
+    bridge = await import('../../utils/electronBridge');
+    bridge.setElectronAPIOverride(null);
     mockPost.mockReset();
     removeLocks();
   });
 
   afterEach(() => {
-    window.electronAPI = originalElectronAPI;
     removeLocks();
   });
 

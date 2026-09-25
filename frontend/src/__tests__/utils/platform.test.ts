@@ -14,16 +14,18 @@ import {
   isSecureContext,
   Platform,
 } from '../../utils/platform';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+import { createFakeElectronAPI } from '../test-utils/fakeElectronAPI';
 
 describe('platform utilities', () => {
   const originalUserAgent = navigator.userAgent;
 
   beforeEach(() => {
-    delete window.electronAPI;
+    // A web browser unless a test installs a bridge (setup.ts clears it after each test).
+    setElectronAPIOverride(null);
   });
 
   afterEach(() => {
-    delete window.electronAPI;
     Object.defineProperty(navigator, 'userAgent', {
       value: originalUserAgent,
       configurable: true,
@@ -31,8 +33,8 @@ describe('platform utilities', () => {
   });
 
   describe('isElectron', () => {
-    it('returns true when window.electronAPI.isElectron is true', () => {
-      window.electronAPI = { isElectron: true };
+    it('returns true when the Electron bridge is present', () => {
+      setElectronAPIOverride({ isElectron: true });
       expect(isElectron()).toBe(true);
     });
 
@@ -47,14 +49,14 @@ describe('platform utilities', () => {
     });
 
     it('returns false when running in electron', () => {
-      window.electronAPI = { isElectron: true };
+      setElectronAPIOverride({ isElectron: true });
       expect(isWeb()).toBe(false);
     });
   });
 
   describe('isWayland', () => {
     it('returns true when electron and isWayland is true', () => {
-      window.electronAPI = { isElectron: true, isWayland: true };
+      setElectronAPIOverride({ isElectron: true, isWayland: true });
       expect(isWayland()).toBe(true);
     });
 
@@ -63,7 +65,7 @@ describe('platform utilities', () => {
     });
 
     it('returns false when electron but isWayland is not set', () => {
-      window.electronAPI = { isElectron: true };
+      setElectronAPIOverride({ isElectron: true });
       expect(isWayland()).toBe(false);
     });
   });
@@ -98,7 +100,7 @@ describe('platform utilities', () => {
 
   describe('getPlatform', () => {
     it('returns Platform.ELECTRON when electron', () => {
-      window.electronAPI = { isElectron: true };
+      setElectronAPIOverride({ isElectron: true });
       expect(getPlatform()).toBe(Platform.ELECTRON);
     });
 
@@ -121,10 +123,10 @@ describe('platform utilities', () => {
 
   describe('hasElectronFeature', () => {
     it('returns true when electron and the feature function exists', () => {
-      window.electronAPI = {
+      setElectronAPIOverride({
         isElectron: true,
         getDesktopSources: async () => [],
-      };
+      });
       expect(hasElectronFeature('getDesktopSources')).toBe(true);
     });
 
@@ -133,15 +135,16 @@ describe('platform utilities', () => {
     });
 
     it('returns false when electron but feature does not exist', () => {
-      window.electronAPI = { isElectron: true };
+      setElectronAPIOverride({ isElectron: true });
       expect(hasElectronFeature('getDesktopSources')).toBe(false);
     });
   });
 
   describe('getElectronAPI', () => {
     it('returns the electronAPI when in electron', () => {
-      window.electronAPI = { isElectron: true };
-      expect(getElectronAPI()).toBe(window.electronAPI);
+      const api = createFakeElectronAPI();
+      setElectronAPIOverride(api);
+      expect(getElectronAPI()).toBe(api);
     });
 
     it('returns null when not in electron', () => {
@@ -151,10 +154,10 @@ describe('platform utilities', () => {
 
   describe('supportsScreenCapture', () => {
     it('returns true in electron with getDesktopSources', () => {
-      window.electronAPI = {
+      setElectronAPIOverride({
         isElectron: true,
         getDesktopSources: async () => [],
-      };
+      });
       expect(supportsScreenCapture()).toBe(true);
     });
 
@@ -182,18 +185,24 @@ describe('platform utilities', () => {
       expect(supportsSystemAudio()).toBe(false);
     });
 
+    it('checks the bridge it is given instead of the global one', () => {
+      expect(supportsSystemAudio(createFakeElectronAPI({ platform: 'win32' }))).toBe(true);
+      expect(supportsSystemAudio(createFakeElectronAPI({ platform: 'linux' }))).toBe(false);
+      expect(supportsSystemAudio(null)).toBe(false);
+    });
+
     it('returns true in electron on non-linux platform', () => {
-      window.electronAPI = { isElectron: true, platform: 'win32' };
+      setElectronAPIOverride({ isElectron: true, platform: 'win32' });
       expect(supportsSystemAudio()).toBe(true);
     });
 
     it('returns true in electron on macOS', () => {
-      window.electronAPI = { isElectron: true, platform: 'darwin' };
+      setElectronAPIOverride({ isElectron: true, platform: 'darwin' });
       expect(supportsSystemAudio()).toBe(true);
     });
 
     it('returns false in electron on linux', () => {
-      window.electronAPI = { isElectron: true, platform: 'linux' };
+      setElectronAPIOverride({ isElectron: true, platform: 'linux' });
       expect(supportsSystemAudio()).toBe(false);
     });
   });

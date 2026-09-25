@@ -1,18 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useDeepLinks } from '../../hooks/useDeepLinks';
-import type { DeepLinkRoute } from '../../types/electron-api';
+import type { DeepLinkRoute, ElectronAPI } from '../../types/electron-api';
+import { createElectronWrapper, createFakeElectronAPI } from '../test-utils';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => {
   const actual = await importOriginal<typeof import('react-router-dom')>();
   return { ...actual, useNavigate: () => mockNavigate };
 });
-
-let mockIsElectronValue = true;
-vi.mock('../../utils/platform', () => ({
-  isElectron: () => mockIsElectronValue,
-}));
 
 let mockIsAuthenticatedValue = true;
 vi.mock('../../utils/tokenService', () => ({
@@ -40,6 +36,9 @@ describe('useDeepLinks', () => {
     return mockUnsubscribe;
   });
   const mockNotifyDeepLinkReady = vi.fn();
+  let electronAPI: ElectronAPI | null;
+  const renderUseDeepLinks = () =>
+    renderHook(() => useDeepLinks(), { wrapper: createElectronWrapper(electronAPI) });
 
   beforeEach(() => {
     mockNavigate.mockReset();
@@ -48,58 +47,59 @@ describe('useDeepLinks', () => {
     mockNotifyDeepLinkReady.mockReset();
     mockOnDeepLink.mockClear();
     deepLinkCallback = undefined;
-    mockIsElectronValue = true;
     mockIsAuthenticatedValue = true;
 
-    (window as unknown as { electronAPI: unknown }).electronAPI = {
+    electronAPI = createFakeElectronAPI({
       onDeepLink: mockOnDeepLink,
       notifyDeepLinkReady: mockNotifyDeepLinkReady,
-    };
+    });
   });
 
   it('does nothing when not running in Electron', () => {
-    mockIsElectronValue = false;
-    renderHook(() => useDeepLinks());
+    electronAPI = null;
+    renderUseDeepLinks();
     expect(mockOnDeepLink).not.toHaveBeenCalled();
+    expect(mockNotifyDeepLinkReady).not.toHaveBeenCalled();
   });
 
-  it('does nothing when electronAPI.onDeepLink is unavailable', () => {
-    (window as unknown as { electronAPI: unknown }).electronAPI = {};
-    expect(() => renderHook(() => useDeepLinks())).not.toThrow();
+  it('does nothing when electronAPI.onDeepLink is unavailable (older desktop build)', () => {
+    electronAPI = { ...createFakeElectronAPI({ notifyDeepLinkReady: mockNotifyDeepLinkReady }), onDeepLink: undefined };
+    expect(() => renderUseDeepLinks()).not.toThrow();
+    expect(mockNotifyDeepLinkReady).not.toHaveBeenCalled();
   });
 
   it('sends the deep-link:ready signal on mount', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     expect(mockNotifyDeepLinkReady).toHaveBeenCalledTimes(1);
   });
 
   it('navigates to the community route when authenticated', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     deepLinkCallback?.({ type: 'community', communityId: COMMUNITY_ID });
     expect(mockNavigate).toHaveBeenCalledWith(`/community/${COMMUNITY_ID}`);
   });
 
   it('navigates to the channel route when authenticated', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     deepLinkCallback?.({ type: 'channel', communityId: COMMUNITY_ID, channelId: CHANNEL_ID });
     expect(mockNavigate).toHaveBeenCalledWith(`/community/${COMMUNITY_ID}/channel/${CHANNEL_ID}`);
   });
 
   it('navigates to the DM inbox route when authenticated', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     deepLinkCallback?.({ type: 'dm-inbox' });
     expect(mockNavigate).toHaveBeenCalledWith('/direct-messages');
   });
 
   it('navigates to a specific DM route when authenticated', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     deepLinkCallback?.({ type: 'dm', dmGroupId: DM_GROUP_ID });
     expect(mockNavigate).toHaveBeenCalledWith(`/direct-messages/${DM_GROUP_ID}`);
   });
 
   it('navigates to the invite route immediately, even when unauthenticated', () => {
     mockIsAuthenticatedValue = false;
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     deepLinkCallback?.({ type: 'invite', inviteCode: 'AbCd12_-xyZ9' });
     expect(mockNavigate).toHaveBeenCalledWith('/join/AbCd12_-xyZ9');
     expect(mockStashDeepLinkRoute).not.toHaveBeenCalled();
@@ -107,7 +107,7 @@ describe('useDeepLinks', () => {
 
   it('stashes (does not navigate) an auth-required route when unauthenticated', () => {
     mockIsAuthenticatedValue = false;
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     const route: DeepLinkRoute = { type: 'community', communityId: COMMUNITY_ID };
     deepLinkCallback?.(route);
     expect(mockStashDeepLinkRoute).toHaveBeenCalledWith(route);
@@ -115,7 +115,7 @@ describe('useDeepLinks', () => {
   });
 
   it('ignores an unrecognized route shape without navigating or stashing', () => {
-    renderHook(() => useDeepLinks());
+    renderUseDeepLinks();
     // @ts-expect-error deliberately malformed for the ignore-path test
     deepLinkCallback?.({ type: 'not-a-real-route' });
     expect(mockNavigate).not.toHaveBeenCalled();
@@ -123,7 +123,7 @@ describe('useDeepLinks', () => {
   });
 
   it('unsubscribes on unmount', () => {
-    const { unmount } = renderHook(() => useDeepLinks());
+    const { unmount } = renderUseDeepLinks();
     expect(mockUnsubscribe).not.toHaveBeenCalled();
     unmount();
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);

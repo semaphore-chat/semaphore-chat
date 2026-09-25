@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { logger } from '../../utils/logger';
 import { supportsSystemAudio } from '../../utils/platform';
+import { useElectronAPI } from '../../contexts/ElectronContext';
 
 // TypeScript types for screen share settings
 export type ResolutionPreset = 'native' | '4k' | '1440p' | '1080p' | '720p' | '480p';
@@ -99,9 +100,10 @@ export const ScreenSourcePicker: React.FC<ScreenSourcePickerProps> = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
+  const electronAPI = useElectronAPI();
 
   // Check platform capability for system audio
-  const systemAudioSupported = supportsSystemAudio();
+  const systemAudioSupported = supportsSystemAudio(electronAPI);
 
   // Settings state — force enableAudio off when system audio is not supported
   const [settings, setSettings] = useState<ScreenShareSettings>(() => {
@@ -126,11 +128,11 @@ export const ScreenSourcePicker: React.FC<ScreenSourcePickerProps> = ({
 
       try {
         // Check if Electron API is available
-        if (!window.electronAPI?.getDesktopSources) {
+        if (!electronAPI?.getDesktopSources) {
           throw new Error('Screen capture is only available in the desktop app');
         }
 
-        const desktopSources = await window.electronAPI.getDesktopSources(['screen', 'window']);
+        const desktopSources = await electronAPI.getDesktopSources(['screen', 'window']);
 
         if (!desktopSources || desktopSources.length === 0) {
           throw new Error('No screens or windows available to share');
@@ -146,7 +148,7 @@ export const ScreenSourcePicker: React.FC<ScreenSourcePickerProps> = ({
     };
 
     fetchSources();
-  }, [open]);
+  }, [electronAPI, open]);
 
   const handleSourceClick = (sourceId: string) => {
     setSelectedSourceId(sourceId);

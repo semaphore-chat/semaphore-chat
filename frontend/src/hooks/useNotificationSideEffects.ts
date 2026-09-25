@@ -25,7 +25,7 @@ import {
 } from '../utils/notifications';
 import { isNotificationShown, markNotificationAsShown } from '../utils/notificationTracking';
 import { getActiveDmGroupId } from '../utils/activeDmTracking';
-import { isElectron, getElectronAPI } from '../utils/platform';
+import { useElectronAPI } from '../contexts/ElectronContext';
 import { useWindowFocus } from './useWindowFocus';
 import { logger } from '../utils/logger';
 import { playSound as playSoundEffect, Sounds, type SoundName } from './useSound';
@@ -56,6 +56,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
   const navigate = useNavigate();
   const location = useLocation();
   const isFocused = useWindowFocus();
+  const electronAPI = useElectronAPI();
   const notificationsRef = useRef<Map<string, NewNotificationPayload>>(new Map());
 
   // Notification settings for Do-Not-Disturb evaluation (cache is updated
@@ -168,9 +169,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
 
   // Electron notification click handler
   useEffect(() => {
-    if (!isElectron()) return;
-
-    const electronAPI = getElectronAPI();
+    // Null outside Electron.
     if (!electronAPI?.onNotificationClick) return;
 
     const unsubscribe = electronAPI.onNotificationClick((notificationId: string) => {
@@ -181,7 +180,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
     return () => {
       unsubscribe?.();
     };
-  }, [handleNotificationClicked]);
+  }, [electronAPI, handleNotificationClicked]);
 
   const requestPermission = useCallback(async () => {
     const { requestNotificationPermission } = await import('../utils/notifications');

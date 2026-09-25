@@ -7,13 +7,14 @@
 
 import { logger } from './logger';
 import { isElectron } from './platform';
+import { getElectronAPI } from './electronBridge';
 import type { DesktopSource } from '../types/electron-api';
 
 /**
  * Get available desktop sources for screen capture
  */
 export async function getDesktopSources(types: string[] = ['window', 'screen']): Promise<DesktopSource[]> {
-  const electronAPI = window.electronAPI;
+  const electronAPI = getElectronAPI();
 
   if (!electronAPI?.getDesktopSources) {
     logger.error('Electron desktop capture API not available');
@@ -32,7 +33,7 @@ export async function getDesktopSources(types: string[] = ['window', 'screen']):
  * Get a media stream for the selected source
  */
 export async function getElectronScreenStream(sourceId: string): Promise<MediaStream | null> {
-  const electronAPI = window.electronAPI;
+  const electronAPI = getElectronAPI();
 
   if (!electronAPI?.getScreenStream) {
     logger.error('Electron screen stream API not available');

@@ -20,8 +20,14 @@ import { server } from './msw/server';
 configure({ asyncUtilTimeout: 5000 });
 
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
-afterEach(() => {
+afterEach(async () => {
   server.resetHandlers();
+  // A test that faked the Electron bridge (setElectronAPIOverride) must not
+  // leave the next test running "in Electron". Imported here rather than at
+  // the top so that after a test's vi.resetModules() this clears the bridge
+  // instance the test's modules actually use, not a stale one.
+  const { setElectronAPIOverride } = await import('../utils/electronBridge');
+  setElectronAPIOverride(undefined);
   // Composer drafts (useComposerDraft) live in sessionStorage; don't let one
   // test's unsent text show up in the next test's composer.
   try {
