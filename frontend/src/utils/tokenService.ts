@@ -568,28 +568,52 @@ export function refreshSessionWithRetry(): Promise<RefreshResult> {
 }
 
 /**
+ * End the pause after a failed refresh ladder (refreshSessionWithRetry), so
+ * the next refresh goes out at once. For a retry the user asked for (the
+ * page load's "Try again"), not for automatic retries.
+ */
+export function endRefreshCooldown(): void {
+  refreshCooldownUntil = 0;
+}
+
+/**
  * Refresh the session, waiting for a server that can't answer: retries
  * (refreshSessionWithRetry, then again after each of its pauses) until the
- * server refreshes or refuses the session, or a refresh elsewhere produces
- * a token.
+ * server refreshes or refuses the session, a refresh elsewhere produces a
+ * token, or `maxRounds` ladders have failed. A pause left by an earlier
+ * failed ladder (e.g. the REST interceptor's) is waited out first.
  *
  * For a page load (AuthGate): when the server can't be reached, is
  * overloaded or rate-limits the refresh (429), showing the login page would
  * sign out a user whose session is fine.
  * @param signal - Stops waiting; the result is then "unavailable"
+ * @param options.maxRounds - Give up ("unavailable") after this many failed
+ *   ladders (default: never)
  */
 export async function refreshSessionUntilAnswered(
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  { maxRounds = Infinity }: { maxRounds?: number } = {}
 ): Promise<RefreshResult> {
-  for (;;) {
+  for (let round = 1; ; round++) {
+    // Before a round: the pause of the ladder that failed last, at least 1 s
+    // between two rounds
+    const pause = Math.max(
+      refreshCooldownUntil - Date.now(),
+      round > 1 ? 1000 : 0
+    );
+    if (pause > 0) {
+      logger.warn(`[TokenService] Server unavailable, trying again in ${pause}ms`);
+      const token = await waitForBackoffOrRefresh(pause, signal);
+      if (token) return { status: "refreshed", token };
+      if (signal?.aborted) return { status: "unavailable" };
+    }
+
     const result = await refreshSessionWithRetry();
     if (result.status !== "unavailable" || signal?.aborted) return result;
-
-    const pause = Math.max(refreshCooldownUntil - Date.now(), 1000);
-    logger.warn(`[TokenService] Server unavailable, trying again in ${pause}ms`);
-    const token = await waitForBackoffOrRefresh(pause, signal);
-    if (token) return { status: "refreshed", token };
-    if (signal?.aborted) return { status: "unavailable" };
+    if (round >= maxRounds) {
+      logger.warn(`[TokenService] Server unavailable after ${round} rounds, giving up`);
+      return result;
+    }
   }
 }
 

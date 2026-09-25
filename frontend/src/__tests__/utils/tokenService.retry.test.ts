@@ -330,6 +330,60 @@ describe('tokenService refreshSessionUntilAnswered', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(mockPost).not.toHaveBeenCalled();
   });
+
+  it('gives up as unavailable after maxRounds failed ladders', async () => {
+    mockPost.mockRejectedValue(httpError(503));
+    let settled = false;
+    const promise = ts
+      .refreshSessionUntilAnswered(undefined, { maxRounds: 2 })
+      .finally(() => {
+        settled = true;
+      });
+
+    // First ladder (0, 1, 3, 7 s), the pause, then the second ladder
+    await vi.advanceTimersByTimeAsync(7_000 + ts.REFRESH_COOLDOWN_MS);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(8_000);
+
+    await expect(promise).resolves.toEqual({ status: 'unavailable' });
+    expect(mockPost).toHaveBeenCalledTimes(8);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(mockPost).toHaveBeenCalledTimes(8);
+  });
+
+  it("waits out a pause another caller's failed ladder left before its first round", async () => {
+    mockPost.mockRejectedValue(httpError(503));
+    const earlier = ts.refreshSessionWithRetry();
+    await vi.advanceTimersByTimeAsync(7_000);
+    await expect(earlier).resolves.toEqual({ status: 'unavailable' });
+    expect(mockPost).toHaveBeenCalledTimes(4);
+
+    const promise = ts.refreshSessionUntilAnswered(undefined, { maxRounds: 1 });
+    await vi.advanceTimersByTimeAsync(ts.REFRESH_COOLDOWN_MS - 1_000);
+    // Still paused: its one round hasn't started
+    expect(mockPost).toHaveBeenCalledTimes(4);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    await expect(promise).resolves.toEqual({ status: 'unavailable' });
+    expect(mockPost).toHaveBeenCalledTimes(8);
+  });
+
+  it('ends the pause at once on endRefreshCooldown (a retry the user asked for)', async () => {
+    mockPost.mockRejectedValue(httpError(503));
+    const earlier = ts.refreshSessionWithRetry();
+    await vi.advanceTimersByTimeAsync(7_000);
+    await earlier;
+    mockPost.mockReset();
+    mockPost.mockResolvedValue(ok('again'));
+
+    ts.endRefreshCooldown();
+
+    await expect(ts.refreshSessionUntilAnswered()).resolves.toEqual({
+      status: 'refreshed',
+      token: 'again',
+    });
+    expect(mockPost).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sessionRefreshPolicy nextSessionRefreshDelayMs', () => {

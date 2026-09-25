@@ -49,3 +49,12 @@ export function nextSessionRefreshDelayMs(
   if (now + delay - startedAt > SESSION_REFRESH_RETRY_BUDGET_MS) return null;
   return delay;
 }
+
+/**
+ * Refresh ladders (each up to MAX_SESSION_REFRESH_ATTEMPTS attempts, then a
+ * pause) a page load (AuthGate) runs while the server can't answer, before
+ * it stops and offers to try again or sign in again: about 40 s. Retrying
+ * rides out a restart, but a server that keeps failing (a persistent 5xx)
+ * must not trap the user on "Connecting..." with no way out.
+ */
+export const PAGE_LOAD_REFRESH_ROUNDS = 3;
