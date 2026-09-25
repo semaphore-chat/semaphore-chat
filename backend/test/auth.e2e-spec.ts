@@ -5,11 +5,15 @@ import {
   seedInstanceInvite,
   extractCookie,
   getSetCookies,
+  registerUser,
   E2eApp,
   E2E_INVITE_CODE,
 } from './helpers/e2e-app';
+import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
+import { RefreshThrottlerGuard } from '@/auth/refresh-throttler.guard';
 
 /**
  * Full authentication lifecycle against real Postgres + Redis:
@@ -31,7 +35,8 @@ describe('Auth flow (e2e)', () => {
   let refreshCookie: string;
 
   beforeAll(async () => {
-    app = await createE2eApp();
+    // Requests can pose as other clients (X-Forwarded-For)
+    app = await createE2eApp({ trustProxy: 'loopback' });
     await resetDatabase(app);
     await seedInstanceInvite(app);
   });
@@ -173,6 +178,63 @@ describe('Auth flow (e2e)', () => {
     it('rejects refresh without any token', async () => {
       await request(app.getHttpServer()).post('/api/auth/refresh').expect(401);
     });
+
+    // A token that fails verification is a refused session: 401, so the
+    // client goes to the login page. A 5xx here would read as "server
+    // unavailable" and keep the client retrying (e.g. after an admin rotates
+    // JWT_REFRESH_SECRET, or an Electron app's stored token expires).
+    describe('with a token that fails verification', () => {
+      const unverifiable = async (): Promise<[string, string][]> => {
+        const user = await app
+          .get(DatabaseService)
+          .user.findFirstOrThrow({ where: { username: creds.username } });
+        // Not the app's JwtService: its default sign options set expiresIn
+        const jwt = new JwtService({});
+        const secret = app.get(ConfigService).get<string>('JWT_REFRESH_SECRET');
+        const now = Math.floor(Date.now() / 1000);
+        return [
+          [
+            'expired',
+            jwt.sign(
+              {
+                sub: user.id,
+                jti: randomUUID(),
+                iat: now - 3600,
+                exp: now - 60,
+              },
+              { secret },
+            ),
+          ],
+          [
+            'signed with another secret',
+            jwt.sign(
+              { sub: user.id, jti: randomUUID() },
+              { secret: 'not-the-refresh-secret', expiresIn: '30d' },
+            ),
+          ],
+          ['malformed', 'garbage.x.y'],
+        ];
+      };
+
+      it('answers 401 for a web cookie', async () => {
+        for (const [kind, token] of await unverifiable()) {
+          const res = await request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('Cookie', `refresh_token=${token}`);
+          expect({ kind, status: res.status }).toEqual({ kind, status: 401 });
+        }
+      });
+
+      it("answers 401 for an Electron client's body token", async () => {
+        for (const [kind, token] of await unverifiable()) {
+          const res = await request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('User-Agent', 'SemaphoreChat/1.0 Electron/37.0.0')
+            .send({ refreshToken: token });
+          expect({ kind, status: res.status }).toEqual({ kind, status: 401 });
+        }
+      });
+    });
   });
 
   describe('protected routes', () => {
@@ -204,6 +266,91 @@ describe('Auth flow (e2e)', () => {
         .get('/api/users/profile')
         .set('Authorization', 'Bearer definitely-not-a-jwt')
         .expect(401);
+    });
+  });
+
+  /**
+   * RefreshThrottlerGuard (skipped under NODE_ENV=test elsewhere, enabled
+   * here) limits refreshes per presented token. Keyed by the token's user,
+   * anyone holding one of a victim's validly signed tokens (even one that
+   * was logged out, rotated or revoked) could use up the victim's quota and
+   * lock their live sessions out (the security review's probe).
+   */
+  describe('refresh rate limit', () => {
+    let skip: jest.SpyInstance;
+
+    beforeEach(() => {
+      skip = jest
+        .spyOn(
+          RefreshThrottlerGuard.prototype as unknown as {
+            shouldSkip(): Promise<boolean>;
+          },
+          'shouldSkip',
+        )
+        .mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+      skip.mockRestore();
+    });
+
+    it("a stolen, logged-out token doesn't lock out the victim's live session", async () => {
+      const username = 'e2e-throttle-victim';
+      await registerUser(app, {
+        username,
+        password: creds.password,
+        email: `${username}@test.local`,
+      });
+      /** Log in as a device of its own (sessions are per user agent). */
+      const loginAs = async (userAgent: string) => {
+        const res = await request(app.getHttpServer())
+          .post('/api/auth/login')
+          .set('User-Agent', userAgent)
+          .send({ username, password: creds.password })
+          .expect(200);
+        return {
+          accessToken: (res.body as { accessToken: string }).accessToken,
+          refreshCookie: extractCookie(getSetCookies(res), 'refresh_token')!,
+        };
+      };
+      const laptop = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0';
+      const phone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0) Safari';
+      const laptopSession = await loginAs(laptop);
+      const stolen = laptopSession.refreshCookie;
+      const live = (await loginAs(phone)).refreshCookie;
+      // The stolen token's session has ended; its token is still validly
+      // signed for 30 days
+      await request(app.getHttpServer())
+        .post('/api/auth/logout')
+        .set('User-Agent', laptop)
+        .set('Authorization', `Bearer ${laptopSession.accessToken}`)
+        .set('Cookie', stolen)
+        .expect(201);
+
+      // The thief replays it from another address until throttled
+      const replays = await Promise.all(
+        Array.from({ length: 15 }, () =>
+          request(app.getHttpServer())
+            .post('/api/auth/refresh')
+            .set('X-Forwarded-For', '198.51.100.7')
+            .set('User-Agent', 'curl/8.0')
+            .set('Cookie', stolen),
+        ),
+      );
+      const statuses = replays.map((res) => res.status);
+      expect(statuses).toContain(429);
+      expect(statuses.filter((status) => status !== 429)).toEqual(
+        Array(10).fill(401),
+      );
+
+      // The victim's live session, on another device and address, still
+      // refreshes
+      await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('X-Forwarded-For', '203.0.113.9')
+        .set('User-Agent', phone)
+        .set('Cookie', live)
+        .expect(200);
     });
   });
 });

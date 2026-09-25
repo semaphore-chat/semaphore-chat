@@ -2,7 +2,12 @@ import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { AuthService, SESSION_ACTIVITY_DELAY_MS } from './auth.service';
 import { UserService } from '../user/user.service';
-import { JwtService } from '@nestjs/jwt';
+import {
+  JsonWebTokenError,
+  JwtService,
+  NotBeforeError,
+  TokenExpiredError,
+} from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
 import { ConfigService } from '@nestjs/config';
 import { UnauthorizedException } from '@nestjs/common';
@@ -394,6 +399,55 @@ describe('AuthService', () => {
       await expect(service.verifyRefreshToken('valid-token')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    // A refresh token that fails verification is a refused session (401),
+    // not a server error: the client signs in again instead of retrying
+    it.each([
+      ['an expired', new TokenExpiredError('jwt expired', new Date(0))],
+      ['a foreign-secret', new JsonWebTokenError('invalid signature')],
+      ['a malformed', new JsonWebTokenError('invalid token')],
+      ['a not yet valid', new NotBeforeError('jwt not active', new Date())],
+    ])('maps %s token to UnauthorizedException', async (_, error) => {
+      jest.spyOn(jwtService, 'verifyAsync').mockRejectedValue(error);
+
+      await expect(service.verifyRefreshToken('token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(userService.findById).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['no sub', { jti: 'jti-123' }],
+      ['no jti', { sub: 'user-1' }],
+      ['a non-string sub', { sub: 42, jti: 'jti-123' }],
+    ])('refuses a validly signed token with %s', async (_, payload) => {
+      jest
+        .spyOn(jwtService, 'verifyAsync')
+        .mockResolvedValue(payload as unknown as object);
+
+      await expect(service.verifyRefreshToken('token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(userService.findById).not.toHaveBeenCalled();
+    });
+
+    it('passes a server error (e.g. the database) on as is', async () => {
+      jest.spyOn(jwtService, 'verifyAsync').mockResolvedValue({
+        sub: 'user-1',
+        jti: 'jti-123',
+      });
+      const dbError = new Error('connection refused');
+      jest.spyOn(userService, 'findById').mockRejectedValue(dbError);
+
+      await expect(service.verifyRefreshToken('token')).rejects.toBe(dbError);
+    });
+
+    it('passes an unexpected verification error on as is', async () => {
+      const error = new Error('secret provider failed');
+      jest.spyOn(jwtService, 'verifyAsync').mockRejectedValue(error);
+
+      await expect(service.verifyRefreshToken('token')).rejects.toBe(error);
     });
   });
 

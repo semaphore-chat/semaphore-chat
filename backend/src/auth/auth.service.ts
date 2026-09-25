@@ -2,7 +2,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { UserService } from '../user/user.service';
 import * as bcrypt from 'bcrypt';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { JwtService } from '@nestjs/jwt';
+import { JsonWebTokenError, JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
 import { ConfigService } from '@nestjs/config';
 import { Prisma, RefreshToken } from '@prisma/client';
@@ -275,22 +275,37 @@ export class AuthService {
 
   /**
    * Verify a refresh token's signature and expiry and load its user.
+   *
+   * A token that fails verification (expired, not yet valid, signed with
+   * another secret, e.g. after JWT_REFRESH_SECRET was rotated, or
+   * malformed) is refused with UnauthorizedException, so clients answer it
+   * by signing in again. Other errors (the database) pass on as they are:
+   * a 5xx tells clients to try again later.
    * @returns The user, the token id (jti) and when the token was issued
    *   (iat, seconds since epoch)
    */
   async verifyRefreshToken(
     refreshToken: string,
   ): Promise<[UserEntity, string, number?]> {
-    const payload = await this.jwtService.verifyAsync<{
-      sub: string;
-      jti: string;
-      iat?: number;
-    }>(refreshToken, {
-      secret: this.jwtRefreshSecret,
-      ignoreExpiration: false,
-    });
+    let payload: { sub?: unknown; jti?: unknown; iat?: number } | undefined;
+    try {
+      payload = await this.jwtService.verifyAsync(refreshToken, {
+        secret: this.jwtRefreshSecret,
+        ignoreExpiration: false,
+      });
+    } catch (error) {
+      // TokenExpiredError and NotBeforeError extend JsonWebTokenError
+      if (error instanceof JsonWebTokenError) {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+      throw error;
+    }
 
-    if (!payload) {
+    if (
+      !payload ||
+      typeof payload.sub !== 'string' ||
+      typeof payload.jti !== 'string'
+    ) {
       throw new UnauthorizedException('Could not verify refresh token');
     }
 

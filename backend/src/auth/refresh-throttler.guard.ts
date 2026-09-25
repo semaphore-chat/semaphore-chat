@@ -12,22 +12,35 @@ import {
 } from '@nestjs/throttler';
 
 /**
- * Rate limit of POST /auth/refresh, per user rather than per IP.
+ * Rate limit of POST /auth/refresh, per presented refresh token rather than
+ * per IP or per user.
  *
  * Every page load refreshes (access tokens live only in the page's memory),
  * so a browser restoring ten tabs refreshes ten times at once, and an
  * office behind one NAT address refreshes for everyone in it. A tight
  * per-IP limit turns that into 429s and sessions that fail to load. The
- * limit here is keyed by the user of the presented refresh token instead,
- * once its signature checks out (an HMAC, no database): `refresh-user:<id>`.
- * A request without a validly signed token is keyed by its IP
- * (`refresh-ip:<ip>`); it is refused before any bcrypt or database work.
+ * limit here is keyed by the presented refresh token's id instead, once its
+ * signature and expiry check out (an HMAC, no database):
+ * `refresh-jti:<jti>`. Tabs sharing a cookie share a jti, so they share the
+ * limit.
+ *
+ * Not by its user: the signature check doesn't tell a live token from one
+ * that was logged out, rotated or revoked (only the database does), and such
+ * a token stays validly signed for up to 30 days. Keyed by user, anyone
+ * holding one of a victim's old tokens could use up the victim's quota and
+ * lock their live sessions out. Keyed by token, a stale stolen token only
+ * throttles itself.
+ *
+ * A request without a validly signed token (or one without a jti) is keyed
+ * by its IP (`refresh-ip:<ip>`); it is refused before any bcrypt or
+ * database work.
  *
  * The app-wide per-IP tiers of the global ThrottlerGuard (app.module.ts)
  * still apply to the route as to every other one; they're generous enough
- * for a NAT. The names here (`refreshShort` / `refreshLong`) are private to
- * this guard, so neither guard's tiers or `@Throttle()` metadata affect the
- * other's (see WebhookThrottlerGuard for the same pattern).
+ * for a NAT and bound what one address can send with any number of tokens.
+ * The names here (`refreshShort` / `refreshLong`) are private to this guard,
+ * so neither guard's tiers or `@Throttle()` metadata affect the other's (see
+ * WebhookThrottlerGuard for the same pattern).
  *
  * Skipped under NODE_ENV=test, like the global guard.
  */
@@ -55,17 +68,17 @@ export class RefreshThrottlerGuard extends ThrottlerGuard {
   }
 
   protected async getTracker(req: Record<string, unknown>): Promise<string> {
-    const userId = await this.presentedTokenUser(req);
-    if (userId) return `refresh-user:${userId}`;
+    const jti = await this.presentedTokenId(req);
+    if (jti) return `refresh-jti:${jti}`;
     return `refresh-ip:${(req.ip as string | undefined) ?? 'unknown'}`;
   }
 
   /**
-   * The user of the refresh token the request presents, where the
+   * The id (jti) of the refresh token the request presents, where the
    * controller reads it (the cookie, or the body for Electron), if its
    * signature and expiry check out.
    */
-  private async presentedTokenUser(
+  private async presentedTokenId(
     req: Record<string, unknown>,
   ): Promise<string | undefined> {
     const cookies = req.cookies as Record<string, string> | undefined;
@@ -81,11 +94,11 @@ export class RefreshThrottlerGuard extends ThrottlerGuard {
     }
     if (!token) return undefined;
     try {
-      const { sub } = await this.jwtService.verifyAsync<{ sub?: string }>(
+      const { jti } = await this.jwtService.verifyAsync<{ jti?: unknown }>(
         token,
         { secret: this.configService.get<string>('JWT_REFRESH_SECRET') },
       );
-      return typeof sub === 'string' ? sub : undefined;
+      return typeof jti === 'string' && jti !== '' ? jti : undefined;
     } catch {
       return undefined;
     }
@@ -93,8 +106,8 @@ export class RefreshThrottlerGuard extends ThrottlerGuard {
 
   private configureRefreshThrottlers(): void {
     const throttlers: ThrottlerOptions[] = [
-      // Tabs refresh one after another (a cross-tab lock); several devices
-      // of the user may do so at the same moment
+      // Tabs refresh one after another (a cross-tab lock), or, without the
+      // lock, all at once with the same cookie (the same token)
       { name: 'refreshShort', ttl: 1_000, limit: 10 },
       { name: 'refreshLong', ttl: 60_000, limit: 60 },
     ];

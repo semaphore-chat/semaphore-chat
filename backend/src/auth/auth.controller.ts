@@ -130,7 +130,8 @@ export class AuthController {
   }
 
   @Public()
-  // Limited per user, not per IP (restored tabs, NATs): see the guard
+  // Limited per presented token, not per IP (restored tabs, NATs) or per
+  // user (a stolen old token would lock the user out): see the guard
   @UseGuards(RefreshThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
