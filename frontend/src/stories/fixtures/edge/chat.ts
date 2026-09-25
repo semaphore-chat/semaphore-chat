@@ -961,13 +961,9 @@ export function mediaSettled(stableTicks = 4): DriverStep {
   };
 }
 
-/** The message list's scroll container (the nearest scrollable ancestor of a message row). */
+/** The message list's scroll container. */
 export function messageListScroller(): HTMLElement | null {
-  let el = document.querySelector<HTMLElement>('[data-message-id]')?.parentElement ?? null;
-  while (el && !(el.scrollHeight > el.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowY))) {
-    el = el.parentElement;
-  }
-  return el;
+  return messageList();
 }
 
 /**

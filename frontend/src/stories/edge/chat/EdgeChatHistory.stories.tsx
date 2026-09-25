@@ -77,8 +77,8 @@ export const ColdDeepLink = defineScreen(edgeChatScenario, `${channelPath(histor
 
 /** Scrolled to the top of the latest page, waiting on the next older page. */
 const ScrollToTopAfterLoad: React.FC = () => {
-  // Polls instead of wait(): the capture freezes Date.now(). Fast polling
-  // also finishes inside the capture's 500ms DOM-quiet window.
+  // Waits on the list's state rather than a fixed wait(); fast polling keeps
+  // the steps quick (the capture waits for the driver either way).
   useDriver([messageListSteady(), scrollMessageListToLoad('top')], { pollMs: 50 });
   return null;
 };
