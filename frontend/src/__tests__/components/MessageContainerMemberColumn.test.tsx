@@ -2,7 +2,8 @@
  * Task 17 — below 1024px the member list is never an inline third column
  * (the tablet split view keeps at most two columns). It opens as an overlay
  * from the app bar instead (see MobileChatPanelTablet.test.tsx). At 1024px and
- * up, and in Electron at desktop width, the inline column stays.
+ * up, and in Electron at any width (always the desktop layout), the inline
+ * column stays.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
@@ -107,6 +108,15 @@ describe('MessageContainer inline member column', () => {
   it('is shown in Electron at desktop width (Review Focus #1)', () => {
     platform.electron = true;
     stubViewportWidth(1440);
+    renderContainer();
+    expect(screen.getByTestId('member-list')).toBeInTheDocument();
+  });
+
+  // The desktop layout has no members button to open an overlay from, so in
+  // Electron (always the desktop layout) the column stays inline at any width.
+  it.each([820, 1023])('is shown in an Electron window at %ipx (desktop layout)', (width) => {
+    platform.electron = true;
+    stubViewportWidth(width);
     renderContainer();
     expect(screen.getByTestId('member-list')).toBeInTheDocument();
   });

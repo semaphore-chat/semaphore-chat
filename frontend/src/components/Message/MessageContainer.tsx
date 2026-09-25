@@ -308,6 +308,8 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // Hide member list on mobile or when explicitly disabled. Below 1024px
   // (tablet portrait) the split view keeps at most two columns, so the list
   // isn't inline there either — the tablet app bar opens it as an overlay.
+  // (Electron is always the desktop layout, so isTabletPortrait is false
+  // there and the column stays inline at any window width.)
   const shouldShowMemberList =
     showMemberList && !isMobile && !isTabletPortrait && memberListComponent;
 

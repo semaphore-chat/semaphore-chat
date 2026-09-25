@@ -3,6 +3,10 @@
  *
  * Provides responsive breakpoint detection for different device types.
  * Aligns with DEVICE_BREAKPOINTS from utils/breakpoints.ts
+ *
+ * Electron is a desktop app: it always gets the desktop layout and pointer UI,
+ * whatever the window width (its minimum width, 800px, is in the tablet range).
+ * So in Electron every phone/tablet flag below is false and isDesktop is true.
  */
 
 import { useTheme } from '@mui/material/styles';
@@ -31,12 +35,19 @@ export const useResponsive = () => {
   );
   const isDesktop = useMediaQuery(`(min-width: ${DEVICE_BREAKPOINTS.DESKTOP}px)`);
 
-  // Electron is a desktop app — never use mobile layout regardless of window size
+  // Electron is a desktop app — never use the phone or tablet layout,
+  // regardless of window size
   const electron = isElectron();
 
+  const effectiveIsPhone = !electron && isPhone;
+  const effectiveIsPhoneLandscape = !electron && isPhoneLandscape;
+  const effectiveIsTabletPortrait = !electron && isTabletPortrait;
+  const effectiveIsTabletLandscape = !electron && isTabletLandscape;
+
   // Grouped checks for convenience
-  const isMobile = electron ? false : (isPhone || isPhoneLandscape); // < 768px (use single-column mobile layout)
-  const isTablet = isTabletPortrait || isTabletLandscape; // 768-1199px (use split-view tablet layout)
+  const isMobile = effectiveIsPhone || effectiveIsPhoneLandscape; // < 768px (use single-column mobile layout)
+  const isTablet = effectiveIsTabletPortrait || effectiveIsTabletLandscape; // 768-1199px (use split-view tablet layout)
+  const effectiveIsDesktop = electron || isDesktop;
 
   // MUI breakpoint checks (for backward compatibility)
   const isXs = useMediaQuery(theme.breakpoints.only('xs')); // < 600px
@@ -50,28 +61,26 @@ export const useResponsive = () => {
   const isLandscape = useMediaQuery('(orientation: landscape)');
 
   // Device type
-  const effectiveIsPhone = electron ? false : isPhone;
-  const effectiveIsPhoneLandscape = electron ? false : isPhoneLandscape;
   const deviceType: DeviceType = isMobile ? 'phone' : isTablet ? 'tablet' : 'desktop';
 
   // Touch capability
   const isTouchDevice = useMediaQuery('(hover: none) and (pointer: coarse)');
 
   // Should use mobile/tablet-optimized UI (touch-friendly, larger targets)
-  const shouldUseTouchUI = electron ? false : (isTouchDevice || isMobile || isTablet);
+  const shouldUseTouchUI = !electron && (isTouchDevice || isMobile || isTablet);
 
   return {
     // Device type
     isMobile,    // < 768px - single column layout (always false on Electron)
-    isTablet,    // 768-1199px - split view layout
-    isDesktop,   // >= 1200px - full desktop layout
+    isTablet,    // 768-1199px - split view layout (always false on Electron)
+    isDesktop: effectiveIsDesktop, // >= 1200px - full desktop layout (always true on Electron)
     deviceType,
 
     // Granular phone/tablet detection
     isPhone: effectiveIsPhone,           // < 600px (always false on Electron)
     isPhoneLandscape: effectiveIsPhoneLandscape,  // 600-767px (always false on Electron)
-    isTabletPortrait,  // 768-1023px
-    isTabletLandscape, // 1024-1199px
+    isTabletPortrait: effectiveIsTabletPortrait,   // 768-1023px (always false on Electron)
+    isTabletLandscape: effectiveIsTabletLandscape, // 1024-1199px (always false on Electron)
 
     // MUI breakpoints (backward compatibility)
     isXs,
@@ -86,7 +95,7 @@ export const useResponsive = () => {
 
     // Capabilities
     isTouchDevice,
-    shouldUseTouchUI,
+    shouldUseTouchUI, // always false on Electron
   };
 };
 
@@ -103,18 +112,22 @@ export const useMobileBreakpoint = (): boolean => {
 
 /**
  * Hook for tablet detection
- * Returns true for tablet portrait and landscape (768-1199px)
+ * Returns true for tablet portrait and landscape (768-1199px).
+ * Always false in Electron (mirrors the Electron gate in useResponsive).
  */
 export const useTabletBreakpoint = (): boolean => {
-  return useMediaQuery(
+  const matches = useMediaQuery(
     `(min-width: ${DEVICE_BREAKPOINTS.PHONE_LANDSCAPE}px) and (max-width: ${DEVICE_BREAKPOINTS.DESKTOP - 1}px)`
   );
+  return matches && !isElectron();
 };
 
 /**
  * Hook for detecting if we should show mobile/tablet UI
- * Returns true for anything < 1200px
+ * Returns true for anything < 1200px.
+ * Always false in Electron (mirrors the Electron gate in useResponsive).
  */
 export const useCompactLayout = (): boolean => {
-  return useMediaQuery(`(max-width: ${DEVICE_BREAKPOINTS.DESKTOP - 1}px)`);
+  const matches = useMediaQuery(`(max-width: ${DEVICE_BREAKPOINTS.DESKTOP - 1}px)`);
+  return matches && !isElectron();
 };

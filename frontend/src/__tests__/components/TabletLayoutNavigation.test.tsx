@@ -7,7 +7,8 @@
  * - No back button in tablet chat (the sidebar is always visible).
  * - Below 1024px the member list is not an inline third column; it opens as
  *   an overlay from the app bar's members button.
- * - Electron / desktop width keeps the inline member list (Review Focus #1).
+ * - Electron never gets this layout (see TouchLayoutsChrome.test.tsx); it and
+ *   desktop width keep the inline member list (Review Focus #1).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
@@ -202,21 +203,8 @@ describe('TabletLayout: sidebar navigation only', () => {
     expect(screen.getByRole('button', { name: 'Go back' })).toBeInTheDocument();
   });
 
-  it('an Electron window at tablet width also drops the sidebar on dedicated pages', () => {
-    platform.electron = true;
-    nav.currentScreen = 'route';
-    inStore(<TabletLayout />);
-    expect(screen.queryByTestId('tablet-sidebar')).not.toBeInTheDocument();
-  });
-
-  it('a narrow Electron window on the tablet layout gets no bottom nav either', () => {
-    platform.electron = true;
-    nav.currentScreen = 'chat';
-    nav.channelId = 'ch-1';
-    inStore(<TabletLayout />);
-    expect(document.querySelector('.MuiBottomNavigation-root')).toBeNull();
-    expect(screen.getByRole('navigation', { name: 'Main' })).toBeInTheDocument();
-  });
+  // Electron never mounts TabletLayout (it's a desktop app, so Layout picks
+  // DesktopLayout at every width): see "Layout choice" in TouchLayoutsChrome.test.tsx.
 });
 
 describe('TabletNavHeader', () => {
