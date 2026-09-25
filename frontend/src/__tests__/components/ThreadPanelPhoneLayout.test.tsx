@@ -15,6 +15,7 @@ import type { Message } from '../../types/message.type';
 const repliesState = vi.hoisted(() => ({
   replies: [] as Message[],
   isLoading: false,
+  error: null as Error | null,
 }));
 
 vi.mock('../../hooks/useResponsive', () => ({
@@ -28,7 +29,7 @@ vi.mock('../../hooks/useThreadReplies', () => ({
     replies: repliesState.replies,
     continuationToken: null,
     isLoading: repliesState.isLoading,
-    error: null,
+    error: repliesState.error,
     refetch: vi.fn(),
   }),
 }));
@@ -55,6 +56,7 @@ describe('ThreadPanel phone layout (first reply below the original message)', ()
     vi.clearAllMocks();
     repliesState.replies = replies;
     repliesState.isLoading = false;
+    repliesState.error = null;
     Element.prototype.scrollIntoView = scrollIntoView;
   });
 
@@ -115,6 +117,37 @@ describe('ThreadPanel phone layout (first reply below the original message)', ()
 
     repliesState.replies = [createMessage({ id: 'q1' })];
     rerender(<ThreadPanel parentMessage={createMessage({ id: 'p2' })} channelId="ch1" fullScreen />);
+
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('opens at the top on phones when the replies arrive after a failed load and Retry', () => {
+    repliesState.replies = [];
+    repliesState.isLoading = true;
+    const { rerender } = renderWithProviders(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
+
+    // First load fails: no data, not loading, error set.
+    repliesState.isLoading = false;
+    repliesState.error = new Error('500');
+    rerender(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
+
+    // Retry: pending again (no data), then the replies arrive.
+    repliesState.isLoading = true;
+    repliesState.error = null;
+    rerender(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
+    repliesState.replies = replies;
+    repliesState.isLoading = false;
+    rerender(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
+
+    expect(screen.getByTestId('message-r1')).toBeInTheDocument();
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('does not scroll an open thread when the layout crosses the phone breakpoint', () => {
+    const { rerender } = renderWithProviders(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
+
+    rerender(<ThreadPanel parentMessage={parent} channelId="ch1" />);
+    rerender(<ThreadPanel parentMessage={parent} channelId="ch1" fullScreen />);
 
     expect(scrollIntoView).not.toHaveBeenCalled();
   });

@@ -79,20 +79,29 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   // Subscription status via TanStack Query
   const { isSubscribed, toggleSubscription } = useThreadSubscription(parentMessageId);
 
-  // The thread whose replies have finished loading since it was opened.
+  // The thread whose replies have loaded since it was opened, and how many
+  // replies it had when this effect last looked.
   const openedThreadRef = useRef<string | null>(null);
+  const seenReplyCountRef = useRef(0);
 
   // Scroll to bottom when new replies come in. On a phone the thread opens at
   // the top instead, on the original message and the first reply; the drawer
   // opens on the newest loaded reply, under its pinned original message.
+  // A failed load does not count as opened: after Retry the replies arrive as
+  // a first load, not as new replies. Only a change in the reply count
+  // scrolls an opened thread, so crossing the phone breakpoint does not.
   useEffect(() => {
     if (openedThreadRef.current !== parentMessageId) {
-      if (isLoading) return;
+      if (isLoading || error) return;
       openedThreadRef.current = parentMessageId;
+      seenReplyCountRef.current = replies.length;
       if (fullScreen) return;
+    } else if (replies.length === seenReplyCountRef.current) {
+      return;
     }
+    seenReplyCountRef.current = replies.length;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies.length, isLoading, parentMessageId, fullScreen]);
+  }, [replies.length, isLoading, error, parentMessageId, fullScreen]);
 
   const handleClose = () => {
     closeThread();
