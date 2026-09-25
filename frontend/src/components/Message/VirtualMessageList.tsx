@@ -26,6 +26,8 @@ const LOAD_MORE_INDEX_PROXIMITY = 8;
 const LOAD_NEWER_INDEX_PROXIMITY = 8;
 /** Distance from the bottom (px) within which the list is considered pinned. */
 const BOTTOM_PIN_THRESHOLD_PX = 40;
+/** Growth (px) of a rendered row that counts as growing (ignores sub-pixel layout noise). */
+const ROW_GROWTH_EPSILON_PX = 0.5;
 /**
  * Previous-array prefix scanned by the cap-eviction disambiguation
  * (`isCapEvictionAppend`): one more than the 50-message anchored "around"
@@ -114,7 +116,12 @@ export interface VirtualMessageListProps {
  * - **Newer pagination (anchored)**: near the end of the visible range,
  *   `onLoadNewer` fires (mirrors the older-load trigger; in-flight-guarded).
  * - **Stick-to-bottom**: normal mode only — a newer message appending while
- *   pinned scrolls to the last item. Disabled in anchored mode (a newer page
+ *   pinned scrolls to the last item, and so does a rendered row growing while
+ *   pinned (a reaction added to the newest message, an image or GIF finishing
+ *   loading, a link preview expanding: virtua keeps the scroll offset when a
+ *   row in view resizes, so the bottom would move below the fold; the same
+ *   row ResizeObserver as the visible-range report below detects it).
+ *   Disabled in anchored mode (a newer page
  *   landing below the viewport must not yank the reader off their spot — see
  *   the stick-to-bottom effect below for the full rationale) and, for normal
  *   mode, effectively never fires while detached from the live edge either:
@@ -468,6 +475,16 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       report(0, count - 1);
     }, []);
 
+    // Stay pinned when a rendered row grows (see the module doc): read by the
+    // row observer below, which is created once.
+    const scrollToBottomRef = useRef(scrollToBottom);
+    scrollToBottomRef.current = scrollToBottom;
+    const modeRef = useRef(mode);
+    modeRef.current = mode;
+    // Last seen height per rendered row element. A row without an entry has
+    // just mounted: its first notification is a measurement, not growth.
+    const rowHeightsRef = useRef(new WeakMap<Element, number>());
+
     // One ResizeObserver for the rendered rows: our own row elements,
     // attached through `observeRow` as virtua mounts them (their first
     // notification is the initial measurement). Created in a layout effect,
@@ -477,7 +494,24 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
     const rowObserverRef = useRef<ResizeObserver | null>(null);
     useLayoutEffect(() => {
       if (typeof ResizeObserver === "undefined") return;
-      const observer = new ResizeObserver(() => {
+      const observer = new ResizeObserver((entries) => {
+        const heights = rowHeightsRef.current;
+        let grew = false;
+        for (const entry of entries) {
+          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+          const previous = heights.get(entry.target);
+          heights.set(entry.target, height);
+          if (previous !== undefined && height > previous + ROW_GROWTH_EPSILON_PX) grew = true;
+        }
+        // virtua keeps the scroll offset when a row in view grows (it only
+        // compensates for rows entirely above the viewport), so the bottom
+        // moves down out of view. Follow it while pinned, like the
+        // stick-to-bottom on a new message (normal mode only, same reasons).
+        // A shrinking row needs nothing: the browser clamps a scrollTop past
+        // the new end, so a pinned list stays at the bottom.
+        if (grew && modeRef.current === 'normal' && pinnedRef.current) {
+          scrollToBottomRef.current();
+        }
         reportRangeIfFits();
       });
       rowObserverRef.current = observer;

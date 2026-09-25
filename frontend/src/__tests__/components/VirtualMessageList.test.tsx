@@ -1164,4 +1164,107 @@ describe('VirtualMessageList', () => {
       expect(onVisibleRangeChange).toHaveBeenCalledWith(40, 49);
     });
   });
+
+  // virtua keeps the scroll position when a row resizes (it only compensates
+  // for rows above the viewport), so a row in view that grows pushes the
+  // bottom of the list below the fold: a reaction added to the newest
+  // message, an image or GIF finishing loading, a link preview expanding.
+  describe('stays pinned when a rendered row grows', () => {
+    const renderPinned = (props: Partial<React.ComponentProps<typeof VirtualMessageList>> = {}) => {
+      installFakeResizeObserver();
+      const utils = render(
+        <VirtualMessageList {...baseProps} orderedMessages={messages(5)} {...props} />,
+      );
+      // First measurement of the rendered rows.
+      resizeRows({ 'msg-2': 60, 'msg-3': 60, 'msg-4': 60 });
+      return utils;
+    };
+    const bottomScrolls = () =>
+      fakeHandle.scrollToIndex.mock.calls.filter(
+        ([index, opts]) => index === 4 && (opts as { align?: string })?.align === 'end',
+      );
+
+    it('scrolls back to the bottom when the newest row grows while pinned (reaction added)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600)); // at the bottom → pinned
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it('also when an earlier row in view grows (an image finishing loading)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-3': 300 });
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it("does not scroll for a row's first measurement (a row mounting is not growth)", () => {
+      installFakeResizeObserver();
+      render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} />);
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-3': 60, 'msg-4': 60 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not jump when the reader has scrolled up', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(100)); // 500px from the bottom
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not scroll when a row shrinks (the browser keeps a pinned list at the bottom)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 40 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not scroll in anchored mode (stick-to-bottom is normal mode only)', () => {
+      renderPinned({ mode: 'anchored' });
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('keeps following the newest row after a new message arrives', () => {
+      const initial = messages(5);
+      installFakeResizeObserver();
+      const { rerender } = render(
+        <VirtualMessageList {...baseProps} orderedMessages={initial} />,
+      );
+      resizeRows({ 'msg-4': 60 });
+      act(() => capturedProps.onScroll?.(600));
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+        />,
+      );
+      resizeRows({ newer: 60 });
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ newer: 400 }); // its GIF loads
+
+      expect(fakeHandle.scrollToIndex).toHaveBeenCalledWith(5, { align: 'end' });
+    });
+  });
 });
