@@ -15,18 +15,27 @@ jobs:
     if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:
+      # Only reads PR/commit metadata, so GITHUB_TOKEN is enough here; only
+      # the auto-merge step below needs AUTOMERGE_TOKEN.
       - name: Fetch Dependabot metadata
         id: metadata
         uses: dependabot/fetch-metadata@v3
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      # Needs the repo setting "Allow GitHub Actions to create and approve pull
-      # requests" (Settings -> Actions -> General). While it's off, `gh pr review
-      # --approve` exits 1, and that used to fail this whole job and skip the
-      # auto-merge step. Non-fatal now: with the setting off, auto-merge is still
-      # queued and the PR merges once a maintainer approves (the main ruleset
-      # requires 1 approving review) and CI is green.
+      # Approval runs as github-actions[bot] via GITHUB_TOKEN, which needs the
+      # repo setting "Allow GitHub Actions to create and approve pull requests"
+      # (Settings -> Actions -> General). That setting is enabled. The step is
+      # still non-fatal: if the setting is ever turned off, `gh pr review
+      # --approve` exits 1, auto-merge is still queued below, and the PR merges
+      # once a maintainer approves (the main ruleset requires 1 approving
+      # review) and CI is green.
+      #
+      # Approval deliberately stays on GITHUB_TOKEN rather than AUTOMERGE_TOKEN
+      # (see the auto-merge step): AUTOMERGE_TOKEN is a PAT that belongs to a
+      # maintainer, so an approval made with it would count as that
+      # maintainer's own review, i.e. a human sign-off nobody actually gave.
+      # A github-actions[bot] approval is honest about being automated.
       #
       # Approval additionally requires Dependabot to be the one who triggered
       # this run (github.actor covers the push that fired the event,
@@ -46,12 +55,39 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Auto-merge is performed later by GitHub as whoever enabled it. If that
+      # is github-actions (GITHUB_TOKEN), the resulting push to main is a
+      # GITHUB_TOKEN event, and those never trigger workflows, so none of
+      # main's push workflows (tests, E2E, Docker publish, ...) run for the
+      # merge commit. Enabling it with AUTOMERGE_TOKEN makes the merge the
+      # token owner's push, which does trigger them.
+      #
+      # AUTOMERGE_TOKEN is a fine-grained PAT scoped to this repository only,
+      # with "Contents: Read and write" and "Pull requests: Read and write".
+      # It must be stored under BOTH Settings -> Secrets and variables ->
+      # Actions AND -> Dependabot, with the same name: runs triggered by
+      # Dependabot can only read Dependabot secrets, while other runs (e.g.
+      # after a maintainer pushes to the Dependabot branch) read Actions
+      # secrets. The PAT expires; rotate it
+      # before then and update both secrets. Dependabot's github-actions
+      # updates edit files under .github/workflows/, and GitHub only lets a
+      # token change workflow files if it also has "Workflows: Read and
+      # write"; if such a merge is refused, grant that permission too.
+      #
+      # If the secret is missing, empty or unreadable (e.g. only stored as an
+      # Actions secret), fall back to GITHUB_TOKEN so the PR still merges, and
+      # warn that main's post-merge workflows won't run for this merge.
       - name: Enable auto-merge for patch and minor updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
-        run: gh pr merge --auto --squash "$PR_URL"
+        run: |
+          if [ "$HAS_AUTOMERGE_TOKEN" != "true" ]; then
+            echo "::warning::AUTOMERGE_TOKEN secret is missing or unavailable to this run; enabling auto-merge with GITHUB_TOKEN instead. main's push workflows (tests, E2E, Docker publish) will NOT run for this merge. Store AUTOMERGE_TOKEN as both an Actions and a Dependabot secret."
+          fi
+          gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_AUTOMERGE_TOKEN: ${{ secrets.AUTOMERGE_TOKEN != '' }}
+          GH_TOKEN: ${{ secrets.AUTOMERGE_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Comment on major updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
