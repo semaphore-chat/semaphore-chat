@@ -1,7 +1,7 @@
 /**
  * Theming: the six most-used screens in light and dark mode (default "teal"
  * accent, "minimal" intensity — `theme/constants.ts` `defaultSettings`),
- * plus two non-default accents. Each story serves its settings from
+ * plus non-default accents and intensities. Each story serves its settings from
  * `GET /api/appearance-settings`; the app's own `useThemeSync()` applies
  * them (see `fixtures/edge/states.ts`), independent of Ladle's theme toggle.
  */
@@ -46,6 +46,18 @@ export const AccentRoseVibrantDark = edgeScreen(s, screens.channelChat, {
 });
 export const AccentAmberBalancedLight = edgeScreen(s, screens.channelChat, {
   theme: { mode: 'light', accentColor: 'amber', intensity: 'balanced' },
+});
+/**
+ * App-bar contrast at the extremes: the most tinted light bar ("purple"
+ * vibrant, pale lavender) and a dark bar with an accent whose own contrast
+ * text is dark ("lime"). The notification bell inherits the bar's colour, so
+ * it must stay clearly visible on both.
+ */
+export const AccentPurpleVibrantLight = edgeScreen(s, screens.channelChat, {
+  theme: { mode: 'light', accentColor: 'purple', intensity: 'vibrant' },
+});
+export const AccentLimeVibrantDark = edgeScreen(s, screens.channelChat, {
+  theme: { mode: 'dark', accentColor: 'lime', intensity: 'vibrant' },
 });
 /** Accent in context of the unread/selected states of the channel list. */
 export const AccentRoseVibrantDarkChannelList = edgeScreen(s, screens.channelList, {
