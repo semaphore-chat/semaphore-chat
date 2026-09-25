@@ -18,6 +18,7 @@ import type { Server as IoServer } from 'socket.io';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
 import { UserService } from '@/user/user.service';
 import { AuthService } from '@/auth/auth.service';
+import { DatabaseService } from '@/database/database.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import type Redis from 'ioredis';
 import {
@@ -629,6 +630,172 @@ describe('WebSocket gateways (e2e)', () => {
     });
 
     /**
+     * Refresh token reuse: tabs sharing one cookie may present the same
+     * refresh token at the same time. Within the grace window that is the
+     * same session and gets the token the first refresh rotated to; after
+     * it, it's a stolen token and the whole session ends.
+     */
+    describe('refresh token reuse', () => {
+      /** The raw refresh token of a `refresh_token=<jwt>` cookie. */
+      function tokenOf(refreshCookie: string): string {
+        return refreshCookie.slice(refreshCookie.indexOf('=') + 1);
+      }
+
+      function jtiOf(refreshCookie: string): string {
+        return app
+          .get(JwtService)
+          .decode<{ jti: string }>(tokenOf(refreshCookie)).jti;
+      }
+
+      function refreshRequest(refreshCookie: string): request.Test {
+        return request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', refreshCookie);
+      }
+
+      /** Move a consumed refresh token's rotation back in time. */
+      async function rotatedAgo(refreshCookie: string, ms: number) {
+        await app.get(DatabaseService).refreshToken.update({
+          where: { id: jtiOf(refreshCookie) },
+          data: { consumedAt: new Date(Date.now() - ms) },
+        });
+      }
+
+      /** The session's refresh tokens that can still be used. */
+      async function liveTokensOf(accessToken: string) {
+        const { sid } = app
+          .get(JwtService)
+          .decode<{ sid: string }>(accessToken);
+        return app.get(DatabaseService).refreshToken.findMany({
+          where: { familyId: sid, consumed: false },
+        });
+      }
+
+      it('concurrent refreshes with one cookie all succeed with the same new token', async () => {
+        await register('ws-reuse-concurrent');
+        const session = await login('ws-reuse-concurrent', 'Laptop');
+        const client = await open(session.accessToken);
+
+        // Ten restored tabs refresh at once with the shared cookie
+        const responses = await Promise.all(
+          Array.from({ length: 10 }, () =>
+            refreshRequest(session.refreshCookie).then((res) => res),
+          ),
+        );
+
+        expect(responses.map((res) => res.status)).toEqual(Array(10).fill(200));
+        const cookies = new Set(
+          responses.map((res) =>
+            extractCookie(getSetCookies(res), 'refresh_token'),
+          ),
+        );
+        // One rotation: every tab got the same successor, no fork
+        expect(cookies.size).toBe(1);
+        const [successor] = [...cookies] as string[];
+        expect(successor).not.toEqual(session.refreshCookie);
+        const accessTokens = responses.map(
+          (res) => (res.body as { accessToken: string }).accessToken,
+        );
+        const live = await liveTokensOf(accessTokens[0]);
+        expect(live.map((t) => t.id)).toEqual([jtiOf(successor)]);
+
+        // Every tab's access token works and the session lives on
+        for (const accessToken of accessTokens) {
+          await request(app.getHttpServer())
+            .get('/api/users/profile')
+            .set('Authorization', `Bearer ${accessToken}`)
+            .expect(200);
+        }
+        await expect(isServed(client)).resolves.toBe(true);
+        await refreshRequest(successor).expect(200);
+      });
+
+      it('a retry with the rotated cookie gets the latest token of the session', async () => {
+        await register('ws-reuse-retry');
+        const session = await login('ws-reuse-retry', 'Laptop');
+        const first = await refresh(session.refreshCookie, 'Laptop');
+        const second = await refresh(first.refreshCookie, 'Laptop');
+
+        // The first response got lost; the client retries with the old
+        // cookie a moment later
+        const retried = await refreshRequest(session.refreshCookie).expect(200);
+
+        expect(extractCookie(getSetCookies(retried), 'refresh_token')).toEqual(
+          second.refreshCookie,
+        );
+        const retriedAccessToken = (retried.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${retriedAccessToken}`)
+          .expect(200);
+        await refreshRequest(second.refreshCookie).expect(200);
+      });
+
+      it('reuse after the grace window ends the whole session', async () => {
+        await register('ws-reuse-late');
+        const session = await login('ws-reuse-late', 'Laptop');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+        const phone = await login('ws-reuse-late', 'Phone');
+        const client = await open(rotated.accessToken);
+        const phoneSocket = await open(phone.accessToken);
+        const end = sessionEnd(client);
+
+        await rotatedAgo(session.refreshCookie, 60_000);
+        await refreshRequest(session.refreshCookie).expect(401);
+
+        // The holder of the rotated token is signed out everywhere
+        await expect(end).resolves.toEqual({
+          terminated: 'SESSION_REVOKED',
+          disconnect: 'io server disconnect',
+        });
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${rotated.accessToken}`)
+          .expect(401);
+        await refreshRequest(rotated.refreshCookie).expect(401);
+        await expect(connect({ token: rotated.accessToken })).rejects.toThrow(
+          'AUTH_FAILED',
+        );
+        // Other sessions are not affected
+        await expect(isServed(phoneSocket)).resolves.toBe(true);
+      });
+
+      it('the grace window does not bring back a revoked session', async () => {
+        await register('ws-reuse-revoked');
+        const session = await login('ws-reuse-revoked', 'Laptop');
+        const rotated = await refresh(session.refreshCookie, 'Laptop');
+
+        await request(app.getHttpServer())
+          .post('/api/auth/logout')
+          .set('Authorization', `Bearer ${rotated.accessToken}`)
+          .set('Cookie', rotated.refreshCookie)
+          .expect(201);
+
+        await refreshRequest(session.refreshCookie).expect(401);
+      });
+
+      it('the grace window does not outlive a password reset', async () => {
+        const target = await register('ws-reuse-reset');
+        const session = await login('ws-reuse-reset', 'Laptop');
+        await refresh(session.refreshCookie, 'Laptop');
+
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        // Even once the cutoff is gone
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-user:${target.id}`);
+
+        await refreshRequest(session.refreshCookie).expect(401);
+      });
+    });
+
+    /**
      * The security review's race probes, made deterministic: the next call
      * of a service method is held, so a revocation lands in its window.
      */
@@ -816,6 +983,83 @@ describe('WebSocket gateways (e2e)', () => {
           .post('/api/auth/refresh')
           .set('User-Agent', userAgents.Laptop)
           .set('Cookie', racedCookie)
+          .expect(401);
+      });
+
+      it('a login racing a password reset leaves no working token', async () => {
+        const target = await register('ws-race-login-reset');
+
+        // The login has checked the old password when the reset runs
+        const held = holdNextCall(app.get(AuthService), 'validateUser', {
+          after: 300,
+        });
+        const loggingIn = send(
+          request(app.getHttpServer())
+            .post('/api/auth/login')
+            .set('User-Agent', userAgents.Laptop)
+            .send({ username: 'ws-race-login-reset', password }),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        const raced = await loggingIn;
+
+        // The password it checked is no longer the account's password
+        expect(raced.status).toBe(401);
+        expect(extractCookie(getSetCookies(raced), 'refresh_token')).toBe(
+          undefined,
+        );
+        // It left no session behind
+        await expect(
+          app
+            .get(DatabaseService)
+            .refreshToken.count({ where: { userId: target.id } }),
+        ).resolves.toBe(0);
+      });
+
+      it('a login that goes before a password reset loses its tokens to the reset', async () => {
+        const target = await register('ws-race-login-first');
+
+        // The login is issuing its tokens when the reset runs
+        const held = holdNextCall(
+          app.get(AuthService),
+          'generateRefreshToken',
+          { before: 300 },
+        );
+        const loggingIn = send(
+          request(app.getHttpServer())
+            .post('/api/auth/login')
+            .set('User-Agent', userAgents.Laptop)
+            .send({ username: 'ws-race-login-first', password }),
+        );
+        await held;
+        await request(app.getHttpServer())
+          .patch(`/api/users/admin/${target.id}/password`)
+          .set('Authorization', `Bearer ${token}`)
+          .send({ password: 'BrandNewPassword1!' })
+          .expect(200);
+        const raced = await loggingIn;
+        expect(raced.status).toBe(200);
+
+        // Its access token is revoked with the user's other tokens
+        const racedAccessToken = (raced.body as { accessToken: string })
+          .accessToken;
+        await request(app.getHttpServer())
+          .get('/api/users/profile')
+          .set('Authorization', `Bearer ${racedAccessToken}`)
+          .expect(401);
+        // And its refresh token is gone, not just refused while the cutoff
+        // (an hour) lives
+        await app
+          .get<Redis>(REDIS_CLIENT)
+          .del(`token:revoked-user:${target.id}`);
+        await request(app.getHttpServer())
+          .post('/api/auth/refresh')
+          .set('User-Agent', userAgents.Laptop)
+          .set('Cookie', extractCookie(getSetCookies(raced), 'refresh_token')!)
           .expect(401);
       });
 

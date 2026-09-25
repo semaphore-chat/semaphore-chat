@@ -5,11 +5,22 @@ import { UserEntity } from '@/user/dto/user-response.dto';
 import { JwtService } from '@nestjs/jwt';
 import { DatabaseService } from '@/database/database.service';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { Prisma, RefreshToken } from '@prisma/client';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { randomUUID } from 'crypto';
 import { SessionRevocationService } from './session-revocation.service';
-import { lockUserForSessionRevocation } from './session-lock.util';
+import {
+  lockRefreshToken,
+  lockUserForLogin,
+  lockUserForSessionRevocation,
+} from './session-lock.util';
+import { RefreshTokenGraceService } from './refresh-token-grace.service';
+
+/**
+ * How many rotations findGraceSuccessor follows. Each is a refresh within the
+ * grace window; more than this in 30 s is not a browser.
+ */
+const MAX_GRACE_HOPS = 5;
 
 export interface DeviceInfo {
   userAgent?: string;
@@ -41,6 +52,7 @@ export class AuthService {
     private readonly databaseService: DatabaseService,
     configService: ConfigService,
     private readonly sessionRevocationService: SessionRevocationService,
+    private readonly refreshTokenGraceService: RefreshTokenGraceService,
   ) {
     this.jwtRefreshSecret = configService.get<string>('JWT_REFRESH_SECRET');
     if (!this.jwtRefreshSecret) {
@@ -82,6 +94,127 @@ export class AuthService {
       ...(sessionId ? { sid: sessionId } : {}),
     };
     return this.jwtService.sign(payload);
+  }
+
+  /**
+   * Issue the tokens of a new session for a user whose password was just
+   * checked (LocalStrategy).
+   *
+   * Serialized with password resets through the user row lock (see
+   * session-lock.util): a reset that commits first changed the password, so
+   * the login is refused (the password it checked is no longer the
+   * account's); one that comes second deletes the refresh token issued here
+   * and sets its cutoff after this access token was signed.
+   * @param user - The user as loaded when the password was checked, with
+   *   the password hash it was checked against
+   */
+  async issueLoginTokens(
+    user: UserEntity,
+    deviceInfo: DeviceInfo,
+  ): Promise<{ refreshToken: string; accessToken: string }> {
+    return this.databaseService.$transaction(async (tx) => {
+      const current = await lockUserForLogin(tx, user.id);
+      if (!current || current.hashedPassword !== user.hashedPassword) {
+        this.logger.warn(
+          `Login refused: the password of user ${user.id} changed while signing in`,
+        );
+        throw new UnauthorizedException();
+      }
+      const { refreshToken, sessionId } = await this.generateRefreshToken(
+        user.id,
+        deviceInfo,
+        tx,
+      );
+      // Signed before the commit (see above)
+      return { refreshToken, accessToken: this.login(user, sessionId) };
+    });
+  }
+
+  /**
+   * The session's current refresh token, for a refresh token presented again
+   * within the grace window after it was rotated (see
+   * RefreshTokenGraceService): what the rotation that consumed it returned,
+   * or what that token was rotated to in turn.
+   *
+   * Hands out an existing token, never a new one, so the session doesn't
+   * fork. Call in the refresh's transaction, with the presented token locked
+   * (lockRefreshToken).
+   * @returns The token and its session, or null if there is nothing to hand
+   *   out (not remembered, revoked, expired, rotated outside the window)
+   */
+  async findGraceSuccessor(
+    presented: RefreshToken,
+    presentedToken: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<{
+    refreshToken: string;
+    sessionId: string | null;
+    iat?: number;
+  } | null> {
+    let current = { record: presented, token: presentedToken };
+    for (let hop = 0; hop < MAX_GRACE_HOPS; hop++) {
+      const successor = await this.refreshTokenGraceService.recall(
+        current.record.id,
+        current.token,
+      );
+      if (!successor) return null;
+
+      let claims: { sub: string; jti: string; iat?: number };
+      try {
+        claims = await this.jwtService.verifyAsync(successor, {
+          secret: this.jwtRefreshSecret,
+        });
+      } catch {
+        return null;
+      }
+      // A rotation of the successor in progress finishes first
+      await lockRefreshToken(tx, claims.jti);
+      const record = await tx.refreshToken.findUnique({
+        where: { id: claims.jti },
+      });
+      if (
+        !record ||
+        record.userId !== presented.userId ||
+        (presented.familyId !== null &&
+          record.familyId !== presented.familyId) ||
+        record.expiresAt <= new Date()
+      ) {
+        return null;
+      }
+      if (!record.consumed) {
+        return {
+          refreshToken: successor,
+          sessionId: record.familyId,
+          iat: claims.iat,
+        };
+      }
+      if (
+        !this.refreshTokenGraceService.isWithinGraceWindow(record.consumedAt)
+      ) {
+        return null;
+      }
+      current = { record, token: successor };
+    }
+    return null;
+  }
+
+  /**
+   * End a session whose refresh token was reused outside the grace window
+   * (a stolen token): delete its refresh tokens, revoke its access tokens
+   * and disconnect its sockets.
+   */
+  async revokeReusedSession(userId: string, familyId: string): Promise<void> {
+    await this.databaseService.$transaction(async (tx) => {
+      // Serialized with refreshes (see session-lock.util): a rotation of the
+      // session in progress completes first and its new token goes too
+      await lockUserForSessionRevocation(tx, userId);
+      await tx.refreshToken.deleteMany({ where: { familyId, userId } });
+    });
+    await this.sessionRevocationService.revokeSessions(
+      userId,
+      [familyId],
+      'SESSION_REVOKED',
+    );
   }
 
   /**

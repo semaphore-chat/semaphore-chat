@@ -8,11 +8,14 @@ import {
   E2eApp,
   E2E_INVITE_CODE,
 } from './helpers/e2e-app';
+import { JwtService } from '@nestjs/jwt';
+import { DatabaseService } from '@/database/database.service';
 
 /**
  * Full authentication lifecycle against real Postgres + Redis:
  * invite-gated registration → login (access token + refresh cookie) →
- * refresh rotation (+ reuse detection) → protected route access.
+ * refresh rotation (+ grace window and reuse detection) → protected route
+ * access.
  */
 describe('Auth flow (e2e)', () => {
   let app: E2eApp;
@@ -122,7 +125,28 @@ describe('Auth flow (e2e)', () => {
         .expect(200);
     });
 
+    it('answers a retry with the consumed token within the grace window with the same new token', async () => {
+      // A second tab (or a retry after a lost response) presenting the token
+      // the first refresh just rotated
+      const res = await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('Cookie', refreshCookie)
+        .expect(200);
+
+      expect(extractCookie(getSetCookies(res), 'refresh_token')).toEqual(
+        rotatedRefreshCookie,
+      );
+    });
+
     it('rejects reuse of the consumed (pre-rotation) refresh token and invalidates the family', async () => {
+      // Past the grace window, the consumed token is a stolen one
+      const consumed = refreshCookie.slice(refreshCookie.indexOf('=') + 1);
+      const { jti } = app.get(JwtService).decode<{ jti: string }>(consumed);
+      await app.get(DatabaseService).refreshToken.update({
+        where: { id: jti },
+        data: { consumedAt: new Date(Date.now() - 60_000) },
+      });
+
       // Reusing the consumed token is rejected...
       await request(app.getHttpServer())
         .post('/api/auth/refresh')
@@ -137,6 +161,13 @@ describe('Auth flow (e2e)', () => {
         .post('/api/auth/refresh')
         .set('Cookie', rotatedRefreshCookie)
         .expect(401);
+
+      // The session is revoked, not just its refresh tokens: its access
+      // tokens stop working too
+      await request(app.getHttpServer())
+        .get('/api/users/profile')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(401);
     });
 
     it('rejects refresh without any token', async () => {
@@ -145,6 +176,15 @@ describe('Auth flow (e2e)', () => {
   });
 
   describe('protected routes', () => {
+    beforeAll(async () => {
+      // A new session: reuse detection above ended the previous one
+      const res = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ username: creds.username, password: creds.password })
+        .expect(200);
+      accessToken = (res.body as { accessToken: string }).accessToken;
+    });
+
     it('allows access with a valid bearer token', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/users/profile')

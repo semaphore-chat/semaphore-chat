@@ -98,6 +98,21 @@ session, revoking a session revokes all of its tokens, and a password reset
 revokes every token the user holds. REST (`JwtStrategy`) and WebSocket auth
 check the same revocations.
 
+Refresh tokens rotate on every refresh. A rotated token presented again
+within 30 seconds (tabs sharing the refresh cookie, a retry after a lost
+response) gets the token it was rotated to, not a new one
+(`RefreshTokenGraceService`), so the session never forks. Presented later, it
+counts as stolen: the whole session is revoked, including its access tokens
+and sockets. Logins, refreshes and revocations of a user's sessions are
+serialized with a lock on the user's row (`session-lock.util.ts`), so none of
+them can leave a token behind that a concurrent password reset or logout
+should have removed.
+
+On the client, `tokenService` refreshes under a Web Lock, so tabs take turns
+instead of sending the same cookie at once. It signs out only when the server
+refuses the session (401/403); a network error, 5xx or 429 is retried, and
+the REST call that needed the refresh fails with a retryable 503.
+
 ### RBAC Pattern
 
 ```typescript
