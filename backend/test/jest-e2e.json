@@ -7,6 +7,7 @@
   "maxWorkers": 1,
   "testTimeout": 30000,
   "transform": {
+    "/node_modules/.+\\.js$": "<rootDir>/jest-esm-transformer.js",
     "^.+\\.(t|j)s$": "ts-jest"
   },
   "moduleNameMapper": {
@@ -15,6 +16,6 @@
     "^@semaphore-chat/shared/(.*)$": "<rootDir>/../../shared/src/$1"
   },
   "transformIgnorePatterns": [
-    "node_modules/(?!uuid)"
+    "node_modules/(?!(uuid|@nestjs/config)/)"
   ]
 }
