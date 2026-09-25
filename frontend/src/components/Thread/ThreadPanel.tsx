@@ -6,7 +6,9 @@
  *
  * `fullScreen` (phone): rendered as a full-screen layer with an app-bar style
  * header, a back arrow instead of the close X, 44px touch targets and
- * safe-area padding top and bottom.
+ * safe-area padding top and bottom. There the original message scrolls with
+ * the replies (instead of staying pinned above them, as in the drawer) and
+ * the thread opens at the top, so the first reply is never cut off under it.
  */
 
 import React, { useEffect, useRef, useCallback } from "react";
@@ -77,10 +79,29 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   // Subscription status via TanStack Query
   const { isSubscribed, toggleSubscription } = useThreadSubscription(parentMessageId);
 
-  // Scroll to bottom when new replies come in
+  // The thread whose replies have loaded since it was opened, and how many
+  // replies it had when this effect last looked.
+  const openedThreadRef = useRef<string | null>(null);
+  const seenReplyCountRef = useRef(0);
+
+  // Scroll to bottom when new replies come in. On a phone the thread opens at
+  // the top instead, on the original message and the first reply; the drawer
+  // opens on the newest loaded reply, under its pinned original message.
+  // A failed load does not count as opened: after Retry the replies arrive as
+  // a first load, not as new replies. Only a change in the reply count
+  // scrolls an opened thread, so crossing the phone breakpoint does not.
   useEffect(() => {
+    if (openedThreadRef.current !== parentMessageId) {
+      if (isLoading || error) return;
+      openedThreadRef.current = parentMessageId;
+      seenReplyCountRef.current = replies.length;
+      if (fullScreen) return;
+    } else if (replies.length === seenReplyCountRef.current) {
+      return;
+    }
+    seenReplyCountRef.current = replies.length;
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [replies.length]);
+  }, [replies.length, isLoading, error, parentMessageId, fullScreen]);
 
   const handleClose = () => {
     closeThread();
@@ -117,6 +138,100 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   }, [continuationToken, isLoading, queryClient, parentMessageId]);
 
   const contextId = channelId || directMessageGroupId || "";
+
+  // "Original message" block: pinned above the replies in the drawer; on a
+  // phone it scrolls with them (see the replies scroller below).
+  const originalMessage = (
+    <Box
+      data-testid="thread-original-message"
+      sx={{
+        p: 2,
+        flexShrink: 0,
+        backgroundColor: alpha(theme.palette.primary.main, 0.04),
+        borderBottom: 1,
+        borderColor: "divider",
+      }}
+    >
+      <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
+        Original message
+      </Typography>
+      <MessageComponent
+        message={parentMessage}
+        contextId={contextId}
+        communityId={communityId}
+        isThreadParent
+      />
+    </Box>
+  );
+
+  const replyList = (
+    <>
+      {/* Load more button */}
+      {continuationToken && (
+        <Box sx={{ textAlign: "center", py: 1 }}>
+          <Button
+            size="small"
+            onClick={handleLoadMore}
+            disabled={isLoading}
+          >
+            Load more replies
+          </Button>
+        </Box>
+      )}
+
+      <ListState
+        isLoading={isLoading}
+        error={error}
+        onRetry={() => void refetch()}
+        isEmpty={replies.length === 0}
+        size="compact"
+        errorTitle="Couldn't load replies"
+        skeleton={
+          <Box sx={{ p: 2 }} role="progressbar" aria-label="Loading replies" aria-busy="true">
+            {[1, 2, 3].map((i) => (
+              <Box key={i} sx={{ mb: 2 }}>
+                <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
+              </Box>
+            ))}
+          </Box>
+        }
+        empty={
+          <Box
+            sx={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              py: 4,
+              px: 2,
+            }}
+          >
+            <ChatBubbleOutlineIcon sx={{ fontSize: 'icon.5xl', color: "text.disabled", mb: 2 }} />
+            <Typography variant="body2" color="text.secondary" textAlign="center">
+              No replies yet
+            </Typography>
+            <Typography variant="caption" color="text.secondary" textAlign="center">
+              Be the first to reply to this message
+            </Typography>
+          </Box>
+        }
+      >
+        {replies.map((reply, index) => (
+          <React.Fragment key={reply.id}>
+            {index > 0 && <Divider sx={{ my: 1 }} />}
+            <MessageComponent
+              message={reply}
+              contextId={contextId}
+              communityId={communityId}
+              isThreadReply
+            />
+          </React.Fragment>
+        ))}
+      </ListState>
+
+      <div ref={messagesEndRef} />
+    </>
+  );
 
   const subscriptionLabel = isSubscribed ? "Turn off notifications" : "Get notified about replies";
   const subscriptionButton = (
@@ -206,100 +321,29 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
         </Box>
       )}
 
-      {/* Parent Message */}
-      <Box
-        sx={{
-          p: 2,
-          flexShrink: 0,
-          backgroundColor: alpha(theme.palette.primary.main, 0.04),
-          borderBottom: 1,
-          borderColor: "divider",
-        }}
-      >
-        <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: "block" }}>
-          Original message
-        </Typography>
-        <MessageComponent
-          message={parentMessage}
-          contextId={contextId}
-          communityId={communityId}
-          isThreadParent
-        />
-      </Box>
+      {/* Parent message: pinned above the replies in the drawer */}
+      {!fullScreen && originalMessage}
 
       {/* Replies */}
       <Box
+        data-testid="thread-scroll"
         sx={{
           flex: 1,
           minHeight: 0,
           overflowY: "auto",
-          p: 1,
+          ...(!fullScreen && { p: 1 }),
         }}
       >
-        {/* Load more button */}
-        {continuationToken && (
-          <Box sx={{ textAlign: "center", py: 1 }}>
-            <Button
-              size="small"
-              onClick={handleLoadMore}
-              disabled={isLoading}
-            >
-              Load more replies
-            </Button>
-          </Box>
+        {/* Phone: the original message scrolls with the replies, so it never
+            covers the first one and a long one can't squeeze the list out. */}
+        {fullScreen ? (
+          <>
+            {originalMessage}
+            <Box sx={{ p: 1 }}>{replyList}</Box>
+          </>
+        ) : (
+          replyList
         )}
-
-        <ListState
-          isLoading={isLoading}
-          error={error}
-          onRetry={() => void refetch()}
-          isEmpty={replies.length === 0}
-          size="compact"
-          errorTitle="Couldn't load replies"
-          skeleton={
-            <Box sx={{ p: 2 }} role="progressbar" aria-label="Loading replies" aria-busy="true">
-              {[1, 2, 3].map((i) => (
-                <Box key={i} sx={{ mb: 2 }}>
-                  <Skeleton variant="rectangular" height={60} sx={{ borderRadius: 1 }} />
-                </Box>
-              ))}
-            </Box>
-          }
-          empty={
-            <Box
-              sx={{
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                py: 4,
-                px: 2,
-              }}
-            >
-              <ChatBubbleOutlineIcon sx={{ fontSize: 'icon.5xl', color: "text.disabled", mb: 2 }} />
-              <Typography variant="body2" color="text.secondary" textAlign="center">
-                No replies yet
-              </Typography>
-              <Typography variant="caption" color="text.secondary" textAlign="center">
-                Be the first to reply to this message
-              </Typography>
-            </Box>
-          }
-        >
-          {replies.map((reply, index) => (
-            <React.Fragment key={reply.id}>
-              {index > 0 && <Divider sx={{ my: 1 }} />}
-              <MessageComponent
-                message={reply}
-                contextId={contextId}
-                communityId={communityId}
-                isThreadReply
-              />
-            </React.Fragment>
-          ))}
-        </ListState>
-
-        <div ref={messagesEndRef} />
       </Box>
 
       {/* Message Input */}
