@@ -57,14 +57,10 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions) {
-    // Socket.IO Redis adapter types are incomplete — the adapter constructor
-    // returns a type incompatible with the Server.adapter() signature, but
-    // this is the documented usage pattern from @socket.io/redis-adapter.
-
     const server = super.createIOServer(port, options);
-
+    // Only once connectToRedis() has built the adapter; until then the
+    // server keeps Socket.IO's default in-memory adapter.
     if (this.adapterConstructor) server.adapter(this.adapterConstructor);
-
     return server;
   }
 }

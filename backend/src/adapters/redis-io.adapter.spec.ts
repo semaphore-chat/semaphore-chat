@@ -1,3 +1,4 @@
+import { IoAdapter } from '@nestjs/platform-socket.io';
 import { RedisIoAdapter } from './redis-io.adapter';
 import { ConfigService } from '@nestjs/config';
 import { INestApplicationContext } from '@nestjs/common';
@@ -233,24 +234,30 @@ describe('RedisIoAdapter', () => {
     let mockSuperServer: any;
 
     beforeEach(async () => {
-      // Create mock server that will be returned by super.createIOServer
+      // Stub the parent IoAdapter.createIOServer so the real subclass logic
+      // runs against a fake Socket.IO server.
       mockSuperServer = {
         adapter: jest.fn(),
       };
-
-      // Mock the super.createIOServer method
       jest
-        .spyOn(RedisIoAdapter.prototype as any, 'createIOServer')
-        .mockImplementation(function (this: any) {
-          if (this.adapterConstructor) {
-            // If adapter is set, use it
-            mockSuperServer.adapter(this.adapterConstructor);
-          }
-          return mockSuperServer;
-        });
+        .spyOn(IoAdapter.prototype, 'createIOServer')
+        .mockReturnValue(mockSuperServer);
 
       // Connect to Redis to set up adapter
       await adapter.connectToRedis();
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('keeps the default adapter when connectToRedis() has not run', () => {
+      const unconnected = new RedisIoAdapter(mockApp);
+
+      const server = unconnected.createIOServer(3001);
+
+      expect(server).toBe(mockSuperServer);
+      expect(mockSuperServer.adapter).not.toHaveBeenCalled();
     });
 
     it('should create IO server with adapter', () => {
