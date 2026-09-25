@@ -48,6 +48,11 @@ export const useResponsive = () => {
   const isMobile = effectiveIsPhone || effectiveIsPhoneLandscape; // < 768px (use single-column mobile layout)
   const isTablet = effectiveIsTabletPortrait || effectiveIsTabletLandscape; // 768-1199px (use split-view tablet layout)
   const effectiveIsDesktop = electron || isDesktop;
+  // The desktop layout in a window narrower than 1024px: only possible in
+  // Electron (a browser that narrow gets the phone or tablet layout). There's
+  // no room there for the inline member column next to the channel sidebar.
+  const isNarrowDesktop =
+    !isMobile && !isTablet && (isPhone || isPhoneLandscape || isTabletPortrait);
 
   // MUI breakpoint checks (for backward compatibility)
   const isXs = useMediaQuery(theme.breakpoints.only('xs')); // < 600px
@@ -74,6 +79,7 @@ export const useResponsive = () => {
     isMobile,    // < 768px - single column layout (always false on Electron)
     isTablet,    // 768-1199px - split view layout (always false on Electron)
     isDesktop: effectiveIsDesktop, // >= 1200px - full desktop layout (always true on Electron)
+    isNarrowDesktop, // desktop layout < 1024px wide (only an Electron window)
     deviceType,
 
     // Granular phone/tablet detection

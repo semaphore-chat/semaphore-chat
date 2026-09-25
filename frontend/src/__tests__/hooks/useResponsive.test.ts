@@ -108,6 +108,13 @@ describe('useResponsive', () => {
       expect(result.current.deviceType).toBe('tablet');
       expect(result.current.shouldUseTouchUI).toBe(true);
     });
+
+    it('never flags isNarrowDesktop (a narrow browser gets the phone or tablet layout)', () => {
+      for (const setViewport of [setViewportPhone, setViewportPhoneLandscape, setViewportTabletPortrait, setViewportDesktop]) {
+        setViewport();
+        expect(renderHook(() => useResponsive()).result.current.isNarrowDesktop).toBe(false);
+      }
+    });
   });
 
   describe('Electron', () => {
@@ -160,6 +167,17 @@ describe('useResponsive', () => {
       expect(result.current.isMobile).toBe(false);
       expect(result.current.isDesktop).toBe(true);
       expect(result.current.deviceType).toBe('desktop');
+    });
+
+    it('flags the desktop layout below 1024px as narrow (isNarrowDesktop)', () => {
+      setViewportTabletPortrait();
+      expect(renderHook(() => useResponsive()).result.current.isNarrowDesktop).toBe(true);
+      setViewportPhoneLandscape();
+      expect(renderHook(() => useResponsive()).result.current.isNarrowDesktop).toBe(true);
+      setViewportTabletLandscape();
+      expect(renderHook(() => useResponsive()).result.current.isNarrowDesktop).toBe(false);
+      setViewportDesktop();
+      expect(renderHook(() => useResponsive()).result.current.isNarrowDesktop).toBe(false);
     });
 
     it('returns shouldUseTouchUI=false at tablet viewport, even on a touch screen', () => {

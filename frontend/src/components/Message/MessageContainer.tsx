@@ -131,7 +131,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   channelId,
   directMessageGroupId,
 }) => {
-  const { isMobile, isTabletPortrait } = useResponsive();
+  const { isMobile, isTabletPortrait, isNarrowDesktop } = useResponsive();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [emptyTitle, emptyDescription] = splitFirstSentence(emptyStateMessage);
@@ -308,10 +308,11 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // Hide member list on mobile or when explicitly disabled. Below 1024px
   // (tablet portrait) the split view keeps at most two columns, so the list
   // isn't inline there either — the tablet app bar opens it as an overlay.
-  // (Electron is always the desktop layout, so isTabletPortrait is false
-  // there and the column stays inline at any window width.)
+  // Electron is always the desktop layout, and below 1024px there the rail
+  // and channel sidebar leave no room for it either: the chat header's
+  // members button (MemberListDrawerButton) opens it as a drawer instead.
   const shouldShowMemberList =
-    showMemberList && !isMobile && !isTabletPortrait && memberListComponent;
+    showMemberList && !isMobile && !isTabletPortrait && !isNarrowDesktop && memberListComponent;
 
   if (isLoading) {
     return (

@@ -2,6 +2,8 @@ import React from "react";
 import { Box, Typography, IconButton, Skeleton } from "@mui/material";
 import { ArrowBack } from "@mui/icons-material";
 import { DMVoiceControls } from "../DirectMessage/DMVoiceControls";
+import { MemberListDrawerButton } from "../Message/MemberListDrawerButton";
+import { VoiceSessionType } from "../../contexts/VoiceContext";
 
 interface DMChatHeaderProps {
   dmGroupId: string;
@@ -59,8 +61,14 @@ export const DMChatHeader: React.FC<DMChatHeaderProps> = ({
           </Typography>
         </Box>
 
-        {/* Right side: Voice controls (disabled until the name is known) */}
-        {!unavailable && <DMVoiceControls dmGroupId={dmGroupId} dmGroupName={dmGroupName} />}
+        {/* Right side: Voice controls (disabled until the name is known), and
+            the members drawer in a narrow desktop window */}
+        {!unavailable && (
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+            <DMVoiceControls dmGroupId={dmGroupId} dmGroupName={dmGroupName} />
+            <MemberListDrawerButton contextType={VoiceSessionType.Dm} contextId={dmGroupId} />
+          </Box>
+        )}
       </Box>
     </>
   );
