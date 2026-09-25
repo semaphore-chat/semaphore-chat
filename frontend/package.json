@@ -84,7 +84,6 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.5.3",
     "socket.io-client": "^4.8.3",
-    "uuid": "^13.0.2",
     "virtua": "^0.49.2"
   },
   "devDependencies": {
@@ -99,7 +98,6 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@types/semver": "^7.7.1",
-    "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "@vitest/coverage-v8": "^4.1.11",
     "rollup-plugin-visualizer": "^5.14.0",
