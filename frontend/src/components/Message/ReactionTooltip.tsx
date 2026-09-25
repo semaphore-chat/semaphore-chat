@@ -4,7 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { userControllerGetUserByIdOptions } from '../../api-client/@tanstack/react-query.gen';
 
 interface ReactionTooltipProps {
-  userIds: string[];
+  /** Users who reacted; a missing list renders an empty tooltip. */
+  userIds?: string[] | null;
   children: React.ReactElement;
 }
 

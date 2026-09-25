@@ -26,7 +26,7 @@ function mockUsers() {
 async function hover(userIds: string[] | null) {
   mockUsers();
   const { user } = renderWithProviders(
-    <ReactionTooltip userIds={userIds as string[]}>
+    <ReactionTooltip userIds={userIds}>
       <button type="button">reaction</button>
     </ReactionTooltip>,
   );
