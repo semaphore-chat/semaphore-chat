@@ -8,7 +8,7 @@ import { INestApplicationContext, Logger } from '@nestjs/common';
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
   private configService: ConfigService;
-  private readonly logger = new Logger(RedisIoAdapter.name);
+  private readonly redisLogger = new Logger(RedisIoAdapter.name);
 
   constructor(app: INestApplicationContext) {
     super(app);
@@ -21,7 +21,7 @@ export class RedisIoAdapter extends IoAdapter {
     const redisPort = this.configService.get<string>('REDIS_PORT') || '6379';
     const redisPassword = this.configService.get<string>('REDIS_PASSWORD');
 
-    this.logger.log(
+    this.redisLogger.log(
       `Connecting to Redis for Socket.IO adapter: ${redisHost}:${redisPort}`,
     );
 
@@ -35,23 +35,23 @@ export class RedisIoAdapter extends IoAdapter {
 
     // Add error handlers
     pubClient.on('error', (err) => {
-      this.logger.error('Redis pub client error:', err);
+      this.redisLogger.error('Redis pub client error:', err);
     });
     subClient.on('error', (err) => {
-      this.logger.error('Redis sub client error:', err);
+      this.redisLogger.error('Redis sub client error:', err);
     });
 
     pubClient.on('connect', () => {
-      this.logger.log('Redis pub client connected');
+      this.redisLogger.log('Redis pub client connected');
     });
     subClient.on('connect', () => {
-      this.logger.log('Redis sub client connected');
+      this.redisLogger.log('Redis sub client connected');
     });
 
     await Promise.all([pubClient.connect(), subClient.connect()]);
 
     this.adapterConstructor = createAdapter(pubClient, subClient);
-    this.logger.log(
+    this.redisLogger.log(
       'Redis Socket.IO adapter configured successfully for multi-pod coordination',
     );
   }
@@ -60,11 +60,11 @@ export class RedisIoAdapter extends IoAdapter {
     // Socket.IO Redis adapter types are incomplete — the adapter constructor
     // returns a type incompatible with the Server.adapter() signature, but
     // this is the documented usage pattern from @socket.io/redis-adapter.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+
     const server = super.createIOServer(port, options);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
-    server.adapter(this.adapterConstructor);
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-return
+
+    if (this.adapterConstructor) server.adapter(this.adapterConstructor);
+
     return server;
   }
 }

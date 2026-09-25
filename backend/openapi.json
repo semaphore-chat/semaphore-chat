@@ -290,7 +290,7 @@
         "parameters": [
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "number"
@@ -298,7 +298,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -416,7 +416,7 @@
           },
           {
             "name": "communityId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -424,7 +424,7 @@
           },
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "number"
@@ -2009,13 +2009,18 @@
                   "properties": {
                     "status": {
                       "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded"
+                      ],
                       "example": "ok"
                     },
                     "info": {
                       "type": "object",
                       "example": {
                         "database": {
-                          "status": "up"
+                          "status": "up",
+                          "responseTime": 12
                         }
                       },
                       "additionalProperties": {
@@ -2025,7 +2030,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2042,7 +2056,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2053,7 +2076,8 @@
                       "type": "object",
                       "example": {
                         "database": {
-                          "status": "up"
+                          "status": "up",
+                          "responseTime": 12
                         }
                       },
                       "additionalProperties": {
@@ -2063,7 +2087,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2083,13 +2116,18 @@
                   "properties": {
                     "status": {
                       "type": "string",
+                      "enum": [
+                        "error",
+                        "shutting_down"
+                      ],
                       "example": "error"
                     },
                     "info": {
                       "type": "object",
                       "example": {
                         "database": {
-                          "status": "up"
+                          "status": "up",
+                          "responseTime": 12
                         }
                       },
                       "additionalProperties": {
@@ -2099,7 +2137,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2111,7 +2158,8 @@
                       "example": {
                         "redis": {
                           "status": "down",
-                          "message": "Could not connect"
+                          "message": "Could not connect",
+                          "responseTime": 3005
                         }
                       },
                       "additionalProperties": {
@@ -2121,7 +2169,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2132,11 +2189,13 @@
                       "type": "object",
                       "example": {
                         "database": {
-                          "status": "up"
+                          "status": "up",
+                          "responseTime": 12
                         },
                         "redis": {
                           "status": "down",
-                          "message": "Could not connect"
+                          "message": "Could not connect",
+                          "responseTime": 3005
                         }
                       },
                       "additionalProperties": {
@@ -2146,7 +2205,16 @@
                         ],
                         "properties": {
                           "status": {
-                            "type": "string"
+                            "type": "string",
+                            "enum": [
+                              "up",
+                              "degraded",
+                              "down"
+                            ]
+                          },
+                          "responseTime": {
+                            "type": "number",
+                            "description": "Time the health indicator took to respond, in ms"
                           }
                         },
                         "additionalProperties": true
@@ -2373,7 +2441,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -2381,7 +2449,7 @@
           },
           {
             "name": "search",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -2526,7 +2594,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -2584,7 +2652,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -3384,9 +3452,6 @@
                 }
               }
             }
-          },
-          "201": {
-            "description": ""
           }
         },
         "tags": [
@@ -3979,7 +4044,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -4931,7 +4996,7 @@
           },
           {
             "name": "action",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5018,7 +5083,7 @@
         "parameters": [
           {
             "name": "channelId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5026,7 +5091,7 @@
           },
           {
             "name": "directMessageGroupId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5057,7 +5122,7 @@
         "parameters": [
           {
             "name": "channelId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5065,7 +5130,7 @@
           },
           {
             "name": "directMessageGroupId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5138,7 +5203,7 @@
           },
           {
             "name": "channelId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -5146,7 +5211,7 @@
           },
           {
             "name": "directMessageGroupId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -6315,16 +6380,6 @@
                 }
               }
             }
-          },
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageStatsDto"
-                }
-              }
-            }
           }
         },
         "summary": "Recalculate user's storage usage (admin only)",
@@ -6797,7 +6852,7 @@
           },
           {
             "name": "continuationToken",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -7810,7 +7865,7 @@
             "type": "string",
             "minLength": 2,
             "maxLength": 32,
-            "pattern": "/^[a-zA-Z0-9_-]+$/"
+            "pattern": "^[a-zA-Z0-9_-]+$"
           },
           "password": {
             "type": "string",
@@ -7832,11 +7887,11 @@
         "type": "object",
         "properties": {
           "role": {
-            "type": "string",
             "enum": [
               "OWNER",
               "USER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -7927,11 +7982,11 @@
         "type": "object",
         "properties": {
           "role": {
-            "type": "string",
             "enum": [
               "OWNER",
               "USER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -8043,11 +8098,11 @@
         "type": "object",
         "properties": {
           "role": {
-            "type": "string",
             "enum": [
               "OWNER",
               "USER"
-            ]
+            ],
+            "type": "string"
           }
         },
         "required": [
@@ -8212,6 +8267,7 @@
           },
           "createdBy": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/InviteCreatorDto"
@@ -8344,13 +8400,13 @@
         "type": "object",
         "properties": {
           "resourceType": {
-            "type": "string",
+            "nullable": true,
             "enum": [
               "COMMUNITY",
               "CHANNEL",
               "INSTANCE"
             ],
-            "nullable": true
+            "type": "string"
           },
           "userId": {
             "type": "string"
@@ -8623,11 +8679,11 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "TEXT",
               "VOICE"
-            ]
+            ],
+            "type": "string"
           },
           "isPrivate": {
             "type": "boolean"
@@ -8660,11 +8716,11 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "TEXT",
               "VOICE"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -8928,7 +8984,6 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "PLAINTEXT",
               "USER_MENTION",
@@ -8937,7 +8992,8 @@
               "ALIAS_MENTION",
               "CODE_BLOCK",
               "EMOJI"
-            ]
+            ],
+            "type": "string"
           },
           "text": {
             "type": "string",
@@ -9137,7 +9193,6 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "PLAINTEXT",
               "USER_MENTION",
@@ -9146,7 +9201,8 @@
               "ALIAS_MENTION",
               "CODE_BLOCK",
               "EMOJI"
-            ]
+            ],
+            "type": "string"
           },
           "emojiId": {
             "type": "string",
@@ -9254,14 +9310,14 @@
         "type": "object",
         "properties": {
           "fileType": {
-            "type": "string",
             "enum": [
               "IMAGE",
               "VIDEO",
               "AUDIO",
               "DOCUMENT",
               "OTHER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -9321,6 +9377,7 @@
           },
           "replyTo": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ReplyToPreviewDto"
@@ -9329,6 +9386,7 @@
           },
           "webhook": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/WebhookInfoDto"
@@ -9494,6 +9552,7 @@
           },
           "webhook": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/WebhookInfoDto"
@@ -10065,23 +10124,23 @@
         "type": "object",
         "properties": {
           "durationMinutes": {
-            "type": "number",
             "description": "Duration preset in minutes (optional if using custom range)\nUser selects from: 1, 2, 5, or 10 minutes",
             "enum": [
               1,
               2,
               5,
               10
-            ]
+            ],
+            "type": "number"
           },
           "destination": {
-            "type": "string",
             "description": "Where to save/post the clip\n- 'library': Save to user's clip library only\n- 'dm': Save to library and send to specified DM group\n- 'channel': Save to library and post to specified channel",
             "enum": [
               "library",
               "dm",
               "channel"
-            ]
+            ],
+            "type": "string"
           },
           "startSeconds": {
             "type": "number",
@@ -10207,12 +10266,12 @@
         "type": "object",
         "properties": {
           "destination": {
-            "type": "string",
             "description": "Where to share the clip\n- 'channel': Post to specified channel\n- 'dm': Send to specified DM group",
             "enum": [
               "channel",
               "dm"
-            ]
+            ],
+            "type": "string"
           },
           "targetChannelId": {
             "type": "string",
@@ -10233,11 +10292,11 @@
         "type": "object",
         "properties": {
           "destination": {
-            "type": "string",
             "enum": [
               "channel",
               "dm"
-            ]
+            ],
+            "type": "string"
           },
           "messageId": {
             "type": "string"
@@ -10369,14 +10428,14 @@
         "type": "object",
         "properties": {
           "fileType": {
-            "type": "string",
             "enum": [
               "IMAGE",
               "VIDEO",
               "AUDIO",
               "DOCUMENT",
               "OTHER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -10583,11 +10642,11 @@
         "type": "object",
         "properties": {
           "role": {
-            "type": "string",
             "enum": [
               "OWNER",
               "USER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -10638,6 +10697,7 @@
         "properties": {
           "user": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -10646,6 +10706,7 @@
           },
           "moderator": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -10732,6 +10793,7 @@
         "properties": {
           "user": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -10740,6 +10802,7 @@
           },
           "moderator": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -10844,14 +10907,14 @@
         "type": "object",
         "properties": {
           "fileType": {
-            "type": "string",
             "enum": [
               "IMAGE",
               "VIDEO",
               "AUDIO",
               "DOCUMENT",
               "OTHER"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -10960,6 +11023,7 @@
           },
           "author": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/PinnedMessageAuthorDto"
@@ -11009,7 +11073,6 @@
         "type": "object",
         "properties": {
           "action": {
-            "type": "string",
             "enum": [
               "BAN_USER",
               "UNBAN_USER",
@@ -11019,7 +11082,8 @@
               "DELETE_MESSAGE",
               "PIN_MESSAGE",
               "UNPIN_MESSAGE"
-            ]
+            ],
+            "type": "string"
           },
           "metadata": {
             "type": "object",
@@ -11028,6 +11092,7 @@
           },
           "moderator": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -11036,6 +11101,7 @@
           },
           "targetUser": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/ModerationUserDto"
@@ -11293,14 +11359,14 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "USER_MENTION",
               "SPECIAL_MENTION",
               "DIRECT_MESSAGE",
               "CHANNEL_MESSAGE",
               "THREAD_REPLY"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -11346,6 +11412,7 @@
           },
           "message": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/NotificationMessageDto"
@@ -11486,15 +11553,15 @@
           },
           "dndStartTime": {
             "type": "string",
-            "pattern": "/^([01]\\d|2[0-3]):([0-5]\\d)$/"
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
           },
           "dndEndTime": {
             "type": "string",
-            "pattern": "/^([01]\\d|2[0-3]):([0-5]\\d)$/"
+            "pattern": "^([01]\\d|2[0-3]):([0-5]\\d)$"
           },
           "dndTimezone": {
             "type": "string",
-            "pattern": "/^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$/"
+            "pattern": "^[A-Za-z_]+(\\/[A-Za-z0-9_+-]+)*$"
           },
           "defaultChannelLevel": {
             "type": "string",
@@ -11562,14 +11629,14 @@
         "type": "object",
         "properties": {
           "type": {
-            "type": "string",
             "enum": [
               "USER_MENTION",
               "SPECIAL_MENTION",
               "DIRECT_MESSAGE",
               "CHANNEL_MESSAGE",
               "THREAD_REPLY"
-            ]
+            ],
+            "type": "string"
           },
           "customMessage": {
             "type": "string"
@@ -11978,6 +12045,7 @@
           },
           "lastMessage": {
             "nullable": true,
+            "type": "object",
             "allOf": [
               {
                 "$ref": "#/components/schemas/DmGroupLastMessageDto"
@@ -12046,7 +12114,6 @@
         "type": "object",
         "properties": {
           "resourceType": {
-            "type": "string",
             "enum": [
               "USER_AVATAR",
               "USER_BANNER",
@@ -12056,7 +12123,8 @@
               "CUSTOM_EMOJI",
               "REPLAY_CLIP",
               "SOUNDBOARD_SOUND"
-            ]
+            ],
+            "type": "string"
           },
           "resourceId": {
             "type": "string",
@@ -12071,17 +12139,16 @@
         "type": "object",
         "properties": {
           "fileType": {
-            "type": "string",
             "enum": [
               "IMAGE",
               "VIDEO",
               "AUDIO",
               "DOCUMENT",
               "OTHER"
-            ]
+            ],
+            "type": "string"
           },
           "resourceType": {
-            "type": "string",
             "enum": [
               "USER_AVATAR",
               "USER_BANNER",
@@ -12091,15 +12158,16 @@
               "CUSTOM_EMOJI",
               "REPLAY_CLIP",
               "SOUNDBOARD_SOUND"
-            ]
+            ],
+            "type": "string"
           },
           "storageType": {
-            "type": "string",
             "enum": [
               "LOCAL",
               "S3",
               "AZURE_BLOB"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -12446,12 +12514,12 @@
         "type": "object",
         "properties": {
           "registrationMode": {
-            "type": "string",
             "enum": [
               "OPEN",
               "INVITE_ONLY",
               "CLOSED"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -12510,12 +12578,12 @@
         "type": "object",
         "properties": {
           "registrationMode": {
-            "type": "string",
             "enum": [
               "OPEN",
               "INVITE_ONLY",
               "CLOSED"
-            ]
+            ],
+            "type": "string"
           },
           "name": {
             "type": "string",
@@ -12646,11 +12714,11 @@
         "type": "object",
         "properties": {
           "role": {
-            "type": "string",
             "enum": [
               "OWNER",
               "USER"
-            ]
+            ],
+            "type": "string"
           },
           "friendshipId": {
             "type": "string"
@@ -12704,12 +12772,12 @@
         "type": "object",
         "properties": {
           "status": {
-            "type": "string",
             "enum": [
               "PENDING",
               "ACCEPTED",
               "BLOCKED"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -12766,21 +12834,21 @@
         "type": "object",
         "properties": {
           "status": {
-            "type": "string",
             "nullable": true,
             "enum": [
               "PENDING",
               "ACCEPTED",
               "BLOCKED"
-            ]
+            ],
+            "type": "string"
           },
           "direction": {
-            "type": "string",
+            "nullable": true,
             "enum": [
               "sent",
               "received"
             ],
-            "nullable": true
+            "type": "string"
           },
           "friendshipId": {
             "type": "string",
@@ -12797,12 +12865,12 @@
         "type": "object",
         "properties": {
           "status": {
-            "type": "string",
             "enum": [
               "PENDING",
               "ACCEPTED",
               "BLOCKED"
-            ]
+            ],
+            "type": "string"
           },
           "id": {
             "type": "string"
@@ -13151,7 +13219,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 50,
-            "pattern": "/^[a-zA-Z0-9_-]+$/"
+            "pattern": "^[a-zA-Z0-9_-]+$"
           },
           "memberIds": {
             "type": "array",
@@ -13232,7 +13300,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 50,
-            "pattern": "/^[a-zA-Z0-9_-]+$/"
+            "pattern": "^[a-zA-Z0-9_-]+$"
           }
         },
         "required": [
@@ -13303,8 +13371,7 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string",
-            "pattern": "CUSTOM_EMOJI_NAME_REGEX"
+            "type": "string"
           },
           "fileId": {
             "type": "string",
@@ -13361,7 +13428,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 50,
-            "pattern": "/^[a-zA-Z0-9 _-]+$/"
+            "pattern": "^[a-zA-Z0-9 _-]+$"
           },
           "emoji": {
             "type": "string",

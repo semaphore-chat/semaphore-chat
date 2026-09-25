@@ -187,7 +187,7 @@ import { isElectron, hasElectronFeature } from './utils/platform';
 - **Run e2e tests**: `docker compose run backend pnpm run test:e2e`
 - **Lint code**: `docker compose run backend pnpm run lint`
 - **Build**: `docker compose run backend pnpm run build`
-- **Single test**: `docker compose run backend pnpm exec jest <test-pattern>`
+- **Single test**: `docker compose run backend pnpm run test <test-pattern>` (not `pnpm exec jest`: the `test` script sets the Node flag Jest needs to load the ESM-only NestJS packages)
 
 ### Frontend Development (React + Vite in Docker)
 
@@ -249,7 +249,7 @@ Every network create/remove adds/removes a `br-*` bridge with an IPv4 address on
 ```bash
 scripts/test-stack.sh <ticket> up                                  # <ticket>-pg, <ticket>-redis, <ticket>-minio on semaphore-test
 scripts/test-stack.sh <ticket> run pnpm run prisma:migrate         # backend container, DATABASE_URL/REDIS_*/S3_* -> the ticket's containers
-scripts/test-stack.sh <ticket> run pnpm exec jest <pattern>
+scripts/test-stack.sh <ticket> run pnpm run test <pattern>
 scripts/test-stack.sh <ticket> run pnpm run test:e2e               # backend e2e (migrate first)
 scripts/test-stack.sh <ticket> run-backend pnpm run type-check     # no services needed: type-check, lint, unit tests, build
 scripts/test-stack.sh <ticket> run-frontend pnpm run type-check    # likewise for the frontend (lint, test, build)

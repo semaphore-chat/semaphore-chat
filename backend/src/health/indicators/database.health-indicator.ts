@@ -1,14 +1,21 @@
 import { Injectable } from '@nestjs/common';
-import { HealthIndicatorResult, HealthCheckError } from '@nestjs/terminus';
+import {
+  HealthIndicatorResult,
+  HealthIndicatorService,
+} from '@nestjs/terminus';
 import { DatabaseService } from '@/database/database.service';
 
 const CHECK_TIMEOUT_MS = 3000;
 
 @Injectable()
 export class DatabaseHealthIndicator {
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly healthIndicatorService: HealthIndicatorService,
+  ) {}
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
     try {
       await Promise.race([
         this.databaseService.$executeRaw`SELECT 1`,
@@ -19,11 +26,9 @@ export class DatabaseHealthIndicator {
           ),
         ),
       ]);
-      return { [key]: { status: 'up' } };
+      return indicator.up();
     } catch {
-      throw new HealthCheckError('Database check failed', {
-        [key]: { status: 'down' },
-      });
+      return indicator.down();
     }
   }
 }

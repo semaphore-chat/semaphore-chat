@@ -2,7 +2,7 @@ import { TestBed } from '@suites/unit';
 import { RedisHealthIndicator } from './redis.health-indicator';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { createMockRedis } from '@/test-utils';
-import { HealthCheckError } from '@nestjs/terminus';
+import { HealthIndicatorService } from '@nestjs/terminus';
 
 describe('RedisHealthIndicator', () => {
   let indicator: RedisHealthIndicator;
@@ -14,6 +14,8 @@ describe('RedisHealthIndicator', () => {
     const { unit } = await TestBed.solitary(RedisHealthIndicator)
       .mock(REDIS_CLIENT)
       .final(mockRedis)
+      .mock(HealthIndicatorService)
+      .final(new HealthIndicatorService())
       .compile();
 
     indicator = unit;
@@ -30,29 +32,15 @@ describe('RedisHealthIndicator', () => {
     expect(mockRedis.ping).toHaveBeenCalled();
   });
 
-  it('should throw HealthCheckError when Redis is unreachable', async () => {
+  it('should return down when Redis is unreachable', async () => {
     mockRedis.ping.mockRejectedValue(new Error('Connection refused'));
 
-    await expect(indicator.isHealthy('redis')).rejects.toThrow(
-      HealthCheckError,
-    );
+    const result = await indicator.isHealthy('redis');
+
+    expect(result).toEqual({ redis: { status: 'down' } });
   });
 
-  it('should include down status in error details', async () => {
-    mockRedis.ping.mockRejectedValue(new Error('timeout'));
-
-    try {
-      await indicator.isHealthy('redis');
-      fail('Expected HealthCheckError');
-    } catch (error) {
-      expect(error).toBeInstanceOf(HealthCheckError);
-      expect((error as HealthCheckError).causes).toEqual({
-        redis: { status: 'down' },
-      });
-    }
-  });
-
-  it('should throw HealthCheckError when ping times out', async () => {
+  it('should return down when ping times out', async () => {
     jest.useFakeTimers();
 
     mockRedis.ping.mockReturnValue(new Promise(() => {}));
@@ -60,7 +48,9 @@ describe('RedisHealthIndicator', () => {
     const healthPromise = indicator.isHealthy('redis');
     jest.advanceTimersByTime(3000);
 
-    await expect(healthPromise).rejects.toThrow(HealthCheckError);
+    await expect(healthPromise).resolves.toEqual({
+      redis: { status: 'down' },
+    });
 
     jest.useRealTimers();
   });

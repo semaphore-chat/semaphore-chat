@@ -24,7 +24,7 @@
 #                       backend/, with DATABASE_URL, REDIS_*, S3_* pointing at
 #                       this ticket's containers by name (see `env`), e.g.
 #                         run pnpm run prisma:migrate
-#                         run pnpm exec jest src/messages
+#                         run pnpm run test src/messages
 #                         run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e'
 #   run-backend [-e K=V]... <cmd...>
 #                       The same container and environment as `run`, without
