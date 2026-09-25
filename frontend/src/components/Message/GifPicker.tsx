@@ -101,6 +101,7 @@ const GifPickerContent: React.FC<{
           placeholder="Search GIFs..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- search field of a picker popover/sheet the user just opened (same as EmojiPicker)
           autoFocus
           fullWidth
           sx={{

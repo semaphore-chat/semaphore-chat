@@ -78,6 +78,7 @@ const CreateChannelDialog: React.FC<CreateChannelDialogProps> = ({
     <ResponsiveDialog open={open} onClose={handleClose} maxWidth="sm" fullWidth title="Create New Channel">
       <DialogContent>
         <TextField
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of a dialog the user just opened (WAI-ARIA dialog pattern: move focus into it)
           autoFocus
           label="Channel Name"
           value={formData.name}

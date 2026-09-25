@@ -47,7 +47,7 @@ vi.mock('../../utils/SocketProvider', () => ({
 vi.mock('../../contexts/AvatarCacheContext', () => ({
   AvatarCacheProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('../../contexts/VoiceContext', () => ({
+vi.mock('../../contexts/VoiceProvider', () => ({
   VoiceProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../../contexts/RoomContext', () => ({
@@ -56,10 +56,10 @@ vi.mock('../../contexts/RoomContext', () => ({
 vi.mock('../../contexts/SpeakingContext', () => ({
   SpeakingProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('../../contexts/ThreadPanelContext', () => ({
+vi.mock('../../contexts/ThreadPanelProvider', () => ({
   ThreadPanelProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('../../contexts/UserProfileContext', () => ({
+vi.mock('../../contexts/UserProfileProvider', () => ({
   UserProfileProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 vi.mock('../../components/ConnectionStatusBanner', () => ({

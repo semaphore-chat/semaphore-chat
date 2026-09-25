@@ -18,6 +18,8 @@ interface CommunityFormFieldsProps {
   onNameChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onDescriptionChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   errors: FormErrors;
+  /** Focus the name field on mount (the create page; not the edit page). */
+  autoFocusName?: boolean;
 }
 
 const CommunityFormFields: React.FC<CommunityFormFieldsProps> = ({
@@ -26,6 +28,7 @@ const CommunityFormFields: React.FC<CommunityFormFieldsProps> = ({
   onNameChange,
   onDescriptionChange,
   errors,
+  autoFocusName = false,
 }) => {
   return (
     <FormFields>
@@ -38,7 +41,8 @@ const CommunityFormFields: React.FC<CommunityFormFieldsProps> = ({
         helperText={errors.name}
         required
         fullWidth
-        autoFocus
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- only the create page asks for it: the user just chose to create a community
+        autoFocus={autoFocusName}
       />
 
       <TextField

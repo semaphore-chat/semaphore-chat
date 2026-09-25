@@ -305,7 +305,9 @@ describe('ScreenShareVolumeControl', () => {
     const { participant } = createMockParticipant('user-1');
     const user = userEvent.setup();
     render(
-      <div onClick={onTileClick}>
+      // Stands in for the clickable tile; presentation role: it is only a
+      // click-capture surface for the propagation check.
+      <div role="presentation" onClick={onTileClick}>
         {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
         <ScreenShareVolumeControl participant={participant as any} />
       </div>,

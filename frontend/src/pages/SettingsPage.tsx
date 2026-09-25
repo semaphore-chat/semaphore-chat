@@ -30,11 +30,8 @@ import NotificationSettings from '../components/Settings/NotificationSettings';
 import InstallAppSettings from '../components/Settings/InstallAppSettings';
 import VoiceSettings from '../components/Settings/VoiceSettings';
 import SessionsSettings from '../components/Settings/SessionsSettings';
-import {
-  useTheme,
-  accentColors,
-  type ThemeIntensity,
-} from '../contexts/ThemeContext';
+import { useTheme, type ThemeIntensity } from '../contexts/ThemeContext';
+import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
 
@@ -399,6 +396,7 @@ const SettingsPage: React.FC = () => {
           </Typography>
 
           <TextField
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of a dialog the user just opened (WAI-ARIA dialog pattern: move focus into it)
             autoFocus
             fullWidth
             label="Backend URL"

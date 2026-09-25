@@ -7,7 +7,7 @@
  *
  * Three pieces:
  *
- * 1. `createMediaRoom()` — a richer variant of `fixtures/fakeRoom.tsx`'s
+ * 1. `createMediaRoom()` — a richer variant of `fixtures/fakeRoom.ts`'s
  *    fake LiveKit `Room`. That stub returns `undefined` from every
  *    `getTrackPublication()`, which the app reads as "mic off" for every
  *    participant (so the base `VoiceConnected` story shows everyone muted).

@@ -19,9 +19,9 @@ import {
   defaultSettings,
 } from '../theme/constants';
 
-// Re-export types and constants for backward compatibility
+// Re-export types for backward compatibility (constants such as
+// accentColors are imported from ../theme/constants directly).
 export type { ThemeMode, AccentColor, ThemeIntensity, ThemeSettings };
-export { accentColors } from '../theme/constants';
 
 // Callback type for server sync
 type OnSettingsChangeCallback = (settings: ThemeSettings) => void;

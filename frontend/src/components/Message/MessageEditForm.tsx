@@ -46,6 +46,7 @@ export const MessageEditForm: React.FC<MessageEditFormProps> = ({
           value={editText}
           onChange={(e) => onTextChange(e.target.value)}
           fullWidth
+          // eslint-disable-next-line jsx-a11y/no-autofocus -- inline editor the user just opened with Edit; typing must go straight into it
           autoFocus
           multiline
           maxRows={4}

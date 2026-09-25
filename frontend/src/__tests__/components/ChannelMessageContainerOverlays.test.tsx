@@ -10,7 +10,7 @@ import { screen, act, waitFor } from '@testing-library/react';
 import { renderWithProviders, createChannel } from '../test-utils';
 import { createMessage } from '../test-utils/factories';
 import ChannelMessageContainer from '../../components/Channel/ChannelMessageContainer';
-import { ThreadPanelProvider } from '../../contexts/ThreadPanelContext';
+import { ThreadPanelProvider } from '../../contexts/ThreadPanelProvider';
 import { DEVICE_BREAKPOINTS } from '../../utils/breakpoints';
 import type { Message } from '../../types/message.type';
 

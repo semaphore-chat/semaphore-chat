@@ -341,6 +341,7 @@ const SoundboardManagement: React.FC<SoundboardManagementProps> = ({
               onChange={(e) => setName(e.target.value)}
               inputProps={{ maxLength: 50 }}
               fullWidth
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of a dialog the user just opened (WAI-ARIA dialog pattern: move focus into it)
               autoFocus
             />
             <TextField

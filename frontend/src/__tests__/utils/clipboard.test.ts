@@ -8,6 +8,7 @@ vi.mock('../../utils/platform', () => ({
 }));
 
 import { isElectron, getElectronAPI } from '../../utils/platform';
+import type { ElectronAPI } from '../../types/electron-api';
 
 describe('copyToClipboard', () => {
   beforeEach(() => {
@@ -33,7 +34,7 @@ describe('copyToClipboard', () => {
   it('uses Electron writeClipboard API when running in Electron', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
     const mockWriteClipboard = vi.fn();
-    vi.mocked(getElectronAPI).mockReturnValue({ writeClipboard: mockWriteClipboard } as any);
+    vi.mocked(getElectronAPI).mockReturnValue({ writeClipboard: mockWriteClipboard } as unknown as ElectronAPI);
 
     await copyToClipboard('electron text');
 
@@ -52,7 +53,7 @@ describe('copyToClipboard', () => {
 
   it('falls back to navigator.clipboard when Electron API lacks writeClipboard', async () => {
     vi.mocked(isElectron).mockReturnValue(true);
-    vi.mocked(getElectronAPI).mockReturnValue({} as any);
+    vi.mocked(getElectronAPI).mockReturnValue({} as unknown as ElectronAPI);
 
     await copyToClipboard('no method');
 

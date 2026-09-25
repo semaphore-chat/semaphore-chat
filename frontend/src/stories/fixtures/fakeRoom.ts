@@ -43,8 +43,6 @@
  * `createMediaRoom()`, which publishes simulated feeds.
  */
 import type { LocalParticipant, Participant, RemoteParticipant, Room } from 'livekit-client';
-import { RoomContext } from '../../contexts/RoomContextDef';
-import React from 'react';
 
 type Handler = (...args: unknown[]) => void;
 
@@ -105,14 +103,3 @@ export function createFakeVoiceRoom(me: FakeVoiceParticipant, others: FakeVoiceP
     once: emitter.once.bind(emitter),
   } as unknown as Room;
 }
-
-/**
- * Shadows `AuthenticatedShell`'s real `RoomProvider` for descendants — must
- * be rendered as (a descendant of) `SandboxShell`'s `children` slot, which is
- * INSIDE that real provider, not wrapped around `SandboxShell` itself.
- */
-export const FakeRoomProvider: React.FC<{ room: Room; children: React.ReactNode }> = ({ room, children }) => (
-  <RoomContext.Provider value={{ room, setRoom: () => {}, getRoom: () => room }}>
-    {children}
-  </RoomContext.Provider>
-);

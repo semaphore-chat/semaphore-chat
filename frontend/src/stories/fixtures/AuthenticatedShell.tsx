@@ -11,17 +11,18 @@
  * SpeakingProvider > ThreadPanelProvider > UserProfileProvider.
  *
  * `voiceState` seeds VoiceProvider's reducer via the small `initialState`
- * seam added to `contexts/VoiceContext.tsx` for exactly this purpose.
+ * seam added to `contexts/VoiceProvider.tsx` for exactly this purpose.
  */
 import React from 'react';
 import { SocketContext } from '../../utils/SocketContext';
 import { AvatarCacheProvider } from '../../contexts/AvatarCacheContext';
 import { NotificationProvider } from '../../contexts/NotificationContext';
-import { VoiceProvider, type VoiceState } from '../../contexts/VoiceContext';
+import { type VoiceState } from '../../contexts/VoiceContext';
+import { VoiceProvider } from '../../contexts/VoiceProvider';
 import { RoomProvider } from '../../contexts/RoomContext';
 import { SpeakingProvider } from '../../contexts/SpeakingContext';
-import { ThreadPanelProvider } from '../../contexts/ThreadPanelContext';
-import { UserProfileProvider } from '../../contexts/UserProfileContext';
+import { ThreadPanelProvider } from '../../contexts/ThreadPanelProvider';
+import { UserProfileProvider } from '../../contexts/UserProfileProvider';
 import { createFakeSocket } from './fakeSocket';
 import { configureMockAuth } from './auth';
 

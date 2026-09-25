@@ -38,3 +38,13 @@ export const downloadBlob = (blobUrl: string, filename: string): void => {
   link.click();
   document.body.removeChild(link);
 };
+
+/**
+ * Formats a playback position in seconds as `m:ss` (minutes are not capped
+ * or zero-padded), e.g. 0 → "0:00", 65.9 → "1:05", 3600 → "60:00".
+ */
+export const formatPlaybackTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};

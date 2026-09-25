@@ -130,6 +130,7 @@ const AddFriendDialog: React.FC<AddFriendDialogProps> = ({ open, onClose }) => {
             onChange={(value) => setSelectedUser(value as UserOption | null)}
             label="Search for a user"
             placeholder="Type to search users..."
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of a dialog the user just opened (WAI-ARIA dialog pattern: move focus into it)
             autoFocus
             getOptionDisabled={(user) => relationshipMap.has(user.id)}
             renderOptionExtra={(user) => {

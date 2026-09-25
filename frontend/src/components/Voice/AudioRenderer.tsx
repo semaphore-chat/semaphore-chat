@@ -62,6 +62,7 @@ const ParticipantAudio: React.FC<ParticipantAudioProps> = ({ participant, audioP
   }, [audioPublication, audioPublication.track, audioPublication.source, participant.identity]);
 
   return (
+    // eslint-disable-next-line jsx-a11y/media-has-caption -- live WebRTC voice with no UI; there is no caption source to attach
     <audio
       ref={audioRef}
       autoPlay

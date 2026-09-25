@@ -292,6 +292,7 @@ const AdminRolesPage: React.FC = () => {
         <DialogTitle>{editingRole ? "Edit Role" : "Create Instance Role"}</DialogTitle>
         <DialogContent>
           <TextField
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of a dialog the user just opened (WAI-ARIA dialog pattern: move focus into it)
             autoFocus
             margin="dense"
             label="Role Name"

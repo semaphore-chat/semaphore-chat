@@ -104,9 +104,12 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionInfo?.totalDurationSeconds]);
 
-  // Initialize HLS.js player
+  // Initialize HLS.js player. Only whether a duration is known matters here,
+  // not its value: a "Refresh segments" that grows maxDuration reloads the
+  // player through retryKey, so depending on the number would add nothing.
+  const hasMaxDuration = maxDuration > 0;
   useEffect(() => {
-    if (!videoRef.current || !sessionInfo?.hasActiveSession || !maxDuration) return;
+    if (!videoRef.current || !sessionInfo?.hasActiveSession || !hasMaxDuration) return;
 
     const video = videoRef.current;
     // HLS.js sends Authorization header via xhrSetup; Safari native uses cookie auth
@@ -225,7 +228,7 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
       setError('Video preview is not supported in this browser.');
       setIsLoading(false);
     }
-  }, [sessionInfo?.hasActiveSession, isInitialized, retryKey]);
+  }, [sessionInfo?.hasActiveSession, isInitialized, retryKey, hasMaxDuration]);
 
   // Handle video time update - constrain to selection
   // This effect depends on isLoading to ensure it runs AFTER HLS is initialized
@@ -454,6 +457,7 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
             {error}
           </Alert>
         )}
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- live replay-buffer preview of a voice session; no caption track exists for it */}
         <video
           ref={videoRef}
           style={{
@@ -505,7 +509,7 @@ export const TrimPreview: React.FC<TrimPreviewProps> = ({ onRangeChange }) => {
           color={loopEnabled ? 'primary' : 'default'}
           size="small"
           sx={{ ml: 2 }}
-          aria-pressed={loopEnabled}
+          aria-checked={loopEnabled}
           role="switch"
           aria-label="Toggle loop playback"
         />

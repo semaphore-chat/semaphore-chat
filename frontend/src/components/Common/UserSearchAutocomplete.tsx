@@ -111,6 +111,7 @@ const UserSearchAutocomplete: React.FC<UserSearchAutocompleteProps> = ({
         label={label}
         placeholder={placeholder}
         margin="normal"
+        // eslint-disable-next-line jsx-a11y/no-autofocus -- opt-in pass-through (default false); only enabled by callers rendering it as the first field of a just-opened dialog
         autoFocus={autoFocus}
         InputProps={{
           ...params.InputProps,

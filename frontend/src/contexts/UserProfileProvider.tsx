@@ -1,27 +1,6 @@
-/**
- * UserProfileContext
- *
- * Context for managing user profile modal state.
- * Allows any component to trigger viewing a user's profile.
- */
-
-import React, { createContext, useContext, useState, useCallback, ReactNode } from "react";
+import React, { useState, useCallback, ReactNode } from "react";
 import { UserProfileModal } from "../components/Profile";
-
-interface UserProfileContextType {
-  openProfile: (userId: string) => void;
-  closeProfile: () => void;
-}
-
-const UserProfileContext = createContext<UserProfileContextType | null>(null);
-
-export const useUserProfile = () => {
-  const context = useContext(UserProfileContext);
-  if (!context) {
-    throw new Error("useUserProfile must be used within a UserProfileProvider");
-  }
-  return context;
-};
+import { UserProfileContext } from "./UserProfileContext";
 
 interface UserProfileProviderProps {
   children: ReactNode;

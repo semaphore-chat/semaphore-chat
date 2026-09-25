@@ -1,11 +1,6 @@
 import React from 'react';
 import { Box, Typography } from '@mui/material';
-
-export const formatTime = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
-};
+import { formatPlaybackTime } from '../../utils/format';
 
 interface TrimTimelineProps {
   startTime: number;
@@ -56,7 +51,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
               fontSize: 'scale.2xs',
             }}
           >
-            {formatTime(t)}
+            {formatPlaybackTime(t)}
           </Typography>
         ))}
       </Box>
@@ -167,7 +162,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
           aria-valuemin={0}
           aria-valuemax={maxDuration}
           aria-valuenow={startTime}
-          aria-valuetext={`Start at ${formatTime(startTime)}`}
+          aria-valuetext={`Start at ${formatPlaybackTime(startTime)}`}
           tabIndex={0}
           sx={{
             position: 'absolute',
@@ -213,7 +208,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
           aria-valuemin={0}
           aria-valuemax={maxDuration}
           aria-valuenow={endTime}
-          aria-valuetext={`End at ${formatTime(endTime)}`}
+          aria-valuetext={`End at ${formatPlaybackTime(endTime)}`}
           tabIndex={0}
           sx={{
             position: 'absolute',
@@ -290,7 +285,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
             }}
           />
           <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-            Start: {formatTime(startTime)}
+            Start: {formatPlaybackTime(startTime)}
           </Typography>
         </Box>
         <Box
@@ -304,12 +299,12 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
           }}
         >
           <Typography variant="body1" sx={{ fontFamily: 'monospace', fontWeight: 700 }}>
-            Duration: {formatTime(selectedDuration)}
+            Duration: {formatPlaybackTime(selectedDuration)}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, order: 2 }}>
           <Typography variant="body2" sx={{ fontFamily: 'monospace', fontWeight: 600 }}>
-            End: {formatTime(endTime)}
+            End: {formatPlaybackTime(endTime)}
           </Typography>
           <Box
             sx={{
@@ -328,7 +323,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
         color="text.secondary"
         sx={{ display: 'block', textAlign: 'center', mt: 1 }}
       >
-        Drag the green and red handles to adjust your clip range. Buffer: {formatTime(maxDuration)} total
+        Drag the green and red handles to adjust your clip range. Buffer: {formatPlaybackTime(maxDuration)} total
       </Typography>
     </>
   );

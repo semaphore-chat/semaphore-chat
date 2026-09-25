@@ -55,6 +55,7 @@ export const SoundPreviewButton: React.FC<SoundPreviewButtonProps> = ({
         </span>
       </Tooltip>
       {blobUrl && (
+        // eslint-disable-next-line jsx-a11y/media-has-caption -- hidden player for a short soundboard sound effect; no speech to caption
         <audio
           ref={audioRef}
           src={blobUrl}

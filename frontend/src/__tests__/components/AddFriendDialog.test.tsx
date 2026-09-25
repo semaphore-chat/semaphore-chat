@@ -47,11 +47,19 @@ vi.mock('../../components/Common/UserSearchAutocomplete', () => ({
         {mockSearchUsers.map((user) => {
           const disabled = getOptionDisabled?.(user as unknown as Record<string, unknown>) ?? false;
           return (
+            // Option markup like MUI Autocomplete's (role="option",
+            // tabIndex -1), plus Enter so the mock is keyboard-operable.
             <li
               key={user.id}
+              role="option"
+              aria-selected={false}
+              tabIndex={-1}
               aria-disabled={disabled || undefined}
               onClick={() => {
                 if (!disabled) onChange(user);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !disabled) onChange(user);
               }}
             >
               <span>{user.displayName || user.username}</span>

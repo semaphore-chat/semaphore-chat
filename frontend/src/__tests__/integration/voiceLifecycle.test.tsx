@@ -66,7 +66,7 @@ vi.mock('livekit-client', () => {
 // Import AFTER the mock. These resolve the mocked module above.
 import { RoomEvent, Track } from 'livekit-client';
 import type { Room as LKRoom, RemoteParticipant as LKRemoteParticipant } from 'livekit-client';
-import { VoiceProvider } from '../../contexts/VoiceContext';
+import { VoiceProvider } from '../../contexts/VoiceProvider';
 import { RoomContext } from '../../contexts/RoomContextDef';
 import { TrackSubscriptionProvider } from '../../components/Voice/TrackSubscriptionProvider';
 import { useTrackSubscriptionActions } from '../../hooks/useTrackSubscription';

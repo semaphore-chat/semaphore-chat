@@ -161,6 +161,7 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
               error={Boolean(error) && !testing}
               helperText={error && !testing ? error : 'Enter the full URL including https://'}
               sx={{ mb: 2 }}
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- first field of the wizard step the user just advanced to
               autoFocus
             />
             <TextField

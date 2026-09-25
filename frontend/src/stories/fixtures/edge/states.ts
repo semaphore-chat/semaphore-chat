@@ -44,7 +44,8 @@ import { setUpdateAvailable } from '../../../utils/swUpdate';
 import { SandboxShell } from '../SandboxShell';
 import { StoryRoutes } from '../StoryRoutes';
 import { makeHandlers } from '../handlers';
-import { createFakeVoiceRoom, FakeRoomProvider } from '../fakeRoom';
+import { createFakeVoiceRoom } from '../fakeRoom';
+import { FakeRoomProvider } from '../FakeRoomProvider';
 import type { LadleStoryComponent } from '../screenStory';
 import type { Scenario } from '../types';
 

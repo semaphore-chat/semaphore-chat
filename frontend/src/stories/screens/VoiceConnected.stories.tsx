@@ -4,7 +4,8 @@ import { makeHandlers } from '../fixtures/handlers';
 import type { LadleStoryComponent } from '../fixtures/screenStory';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { bigCommunityScenario, primaryCommunity, primaryVoiceChannel } from '../fixtures/scenarios';
-import { createFakeVoiceRoom, FakeRoomProvider } from '../fixtures/fakeRoom';
+import { createFakeVoiceRoom } from '../fixtures/fakeRoom';
+import { FakeRoomProvider } from '../fixtures/FakeRoomProvider';
 
 /**
  * Voice-connected state, viewing the joined voice channel: the persistent
@@ -14,7 +15,7 @@ import { createFakeVoiceRoom, FakeRoomProvider } from '../fixtures/fakeRoom';
  * compact list. Both the stage and `VoiceChannelUserList` read participants
  * from the LiveKit `Room` object (`voiceState.room`) while "connected", not
  * the REST voice-presence query, so this needs a fake `Room`, not just
- * fixture data. See `fixtures/fakeRoom.tsx` for exactly what that stub
+ * fixture data. See `fixtures/fakeRoom.ts` for exactly what that stub
  * implements and what it deliberately leaves un-faked (real video feeds —
  * the edge voice stories use `createMediaRoom()` for those).
  *

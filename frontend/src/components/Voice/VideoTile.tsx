@@ -197,7 +197,10 @@ const VideoTile: React.FC<VideoTileProps> = ({
           ref={screenRef}
           autoPlay
           playsInline
-          muted={isLocal}
+          // Video-only: just the screen-share video track is attached here
+          // (livekit's attach() mutes an element with no audio track anyway);
+          // remote audio plays through AudioRenderer.
+          muted
           style={{
             width: '100%',
             height: '100%',
@@ -210,7 +213,8 @@ const VideoTile: React.FC<VideoTileProps> = ({
           ref={videoRef}
           autoPlay
           playsInline
-          muted={isLocal}
+          // Video-only: just the camera track is attached (see above).
+          muted
           style={{
             width: '100%',
             height: '100%',

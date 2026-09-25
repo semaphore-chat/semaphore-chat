@@ -24,6 +24,8 @@ interface CommunityFormContentProps {
   onDescriptionChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onAvatarChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onBannerChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+  /** Focus the name field on mount (the create page; not the edit page). */
+  autoFocusName?: boolean;
 }
 
 const CommunityFormContent: React.FC<CommunityFormContentProps> = ({
@@ -34,6 +36,7 @@ const CommunityFormContent: React.FC<CommunityFormContentProps> = ({
   onDescriptionChange,
   onAvatarChange,
   onBannerChange,
+  autoFocusName,
 }) => {
   return (
     <FormContent>
@@ -54,6 +57,7 @@ const CommunityFormContent: React.FC<CommunityFormContentProps> = ({
         onNameChange={onNameChange}
         onDescriptionChange={onDescriptionChange}
         errors={formErrors}
+        autoFocusName={autoFocusName}
       />
     </FormContent>
   );

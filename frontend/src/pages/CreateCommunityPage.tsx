@@ -77,6 +77,7 @@ const CreateCommunityPage: React.FC = () => {
         onDescriptionChange={handleInputChange("description")}
         onAvatarChange={handleInputChange("avatar")}
         onBannerChange={handleInputChange("banner")}
+        autoFocusName
       />
     </CommunityFormLayout>
   );
