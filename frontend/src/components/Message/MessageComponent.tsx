@@ -506,7 +506,9 @@ function MessageComponentInner({
                 )}
               </>
             ) : (
-              <Typography variant="body1" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+              // component="div": spans can render block content (a code block's <pre>),
+              // which a <p> must not contain. MUI's body1 zeroes the margin either way.
+              <Typography component="div" variant="body1" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                 {renderMessageSpans(message.spans, emojiById)}
                 {grouped && (
                   <>
