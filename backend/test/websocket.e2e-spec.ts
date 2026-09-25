@@ -649,7 +649,9 @@ describe('WebSocket gateways (e2e)', () => {
           string,
           (...args: unknown[]) => Promise<unknown>
         >;
-        const original = methods[method].bind(target);
+        const originalMethod = methods[method];
+        const original = (...args: unknown[]) =>
+          Reflect.apply(originalMethod, target, args);
         return new Promise((entered) => {
           jest
             .spyOn(methods, method)
