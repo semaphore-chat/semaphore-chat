@@ -36,7 +36,7 @@ import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
 import { isSwipeExemptTarget } from '../../../utils/swipeExempt';
 import { BACK_SWIPE, TOUCH_TARGETS, getBackGestureEdgeZone } from '../../../utils/breakpoints';
 import { useOverlayHistory } from '../../../hooks/useOverlayHistory';
-import { getDmDisplayName } from '../../../utils/dmHelpers';
+import { getDmHeaderName } from '../../../utils/dmHelpers';
 import { useCurrentUser } from '../../../hooks/useCurrentUser';
 import { ChannelType } from '../../../types/channel.type';
 import ChannelMessageContainer from '../../Channel/ChannelMessageContainer';
@@ -220,22 +220,26 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   });
   const swipeHandlers = { onTouchStart, onTouchMove, onTouchEnd, onTouchCancel };
 
+  // Undefined until the DM name can be told (see getDmHeaderName).
+  const dmTitle = getDmHeaderName(dmGroup, currentUser?.id);
+
   // Determine title
   let title = '';
   if (channel) {
     const prefix = channel.type === ChannelType.VOICE ? '🔊 ' : '# ';
     title = `${prefix}${channel.name}`;
-  } else if (dmGroup) {
-    title = getDmDisplayName(dmGroup, currentUser?.id);
+  } else if (dmTitle) {
+    title = dmTitle;
   } else if (channelId && channelError) {
     // 403 / 404 / banned: the body explains; keep the app bar from going blank.
     title = 'Channel unavailable';
   } else if (dmGroupId && dmGroupError) {
     title = 'Conversation unavailable';
   }
-  // A DM with no name yet (nothing cached, request in flight) gets a skeleton
-  // title rather than a blank or placeholder name.
-  const titleLoading = !!dmGroupId && !dmGroup && !dmGroupError;
+  // A DM with no name yet (nothing cached and the request in flight, or the
+  // current user still loading) gets a skeleton title rather than a blank or
+  // made-up name.
+  const titleLoading = !!dmGroupId && !dmTitle && !dmGroupError;
 
   // Render content based on channel type
   const renderContent = () => {

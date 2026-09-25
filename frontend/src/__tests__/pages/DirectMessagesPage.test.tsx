@@ -63,8 +63,9 @@ vi.mock('../../hooks/useResponsive', () => ({
   useResponsive: () => ({ isMobile: mockIsMobile }),
 }));
 
+let mockCurrentUser: { id: string } | undefined = { id: 'current-user' };
 vi.mock('../../hooks/useCurrentUser', () => ({
-  useCurrentUser: () => ({ user: { id: 'current-user' } }),
+  useCurrentUser: () => ({ user: mockCurrentUser }),
 }));
 
 vi.mock('../../components/Voice', () => ({
@@ -120,6 +121,7 @@ describe('DirectMessagesPage', () => {
     mockDmGroupRequest = 'ok';
     mockVoiceState = { isConnected: false, contextType: null, currentDmGroupId: null };
     mockIsMobile = false;
+    mockCurrentUser = { id: 'current-user' };
   });
 
   describe.each([
@@ -148,6 +150,19 @@ describe('DirectMessagesPage', () => {
 
       expect(screen.getByTestId('dm-chat-header')).toHaveTextContent('Bob Builder');
       expect(screen.queryByTestId('dm-chat-header-loading')).not.toBeInTheDocument();
+    });
+
+    it('keeps the placeholder while the current user is loading (the name leaves them out)', () => {
+      mockDmGroupRequest = 'pending';
+      mockCurrentUser = undefined;
+      const queryClient = createTestQueryClient();
+      queryClient.setQueryData(directMessagesControllerFindUserDmGroupsQueryKey(), [
+        createDmGroup({ id: 'dm-1', isGroup: false, members: [me, bob] }),
+      ]);
+      renderDmPage('/direct-messages/dm-1', queryClient);
+
+      expect(screen.getByTestId('dm-chat-header-loading')).toBeInTheDocument();
+      expect(screen.queryByText('Me')).not.toBeInTheDocument();
     });
 
     it('shows the loaded name once the DM arrives', async () => {

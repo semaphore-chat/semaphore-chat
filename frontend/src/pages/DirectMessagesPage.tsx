@@ -11,7 +11,7 @@ import { StageSplit } from "../components/Voice/StageSplit";
 import { useQuery } from "@tanstack/react-query";
 import { friendsControllerGetPendingRequestsOptions } from "../api-client/@tanstack/react-query.gen";
 import { styled } from "@mui/material/styles";
-import { getDmDisplayName } from "../utils/dmHelpers";
+import { getDmHeaderName } from "../utils/dmHelpers";
 import { useDmGroup } from "../hooks/useDmGroup";
 import { setActiveDmGroupId } from "../utils/activeDmTracking";
 import { useCurrentUser } from "../hooks/useCurrentUser";
@@ -94,11 +94,9 @@ const DirectMessagesPage: React.FC = () => {
 
   // Picked from the DM list, the cached list entry names the header at once.
   const { data: selectedDmGroup, isError: selectedDmGroupError } = useDmGroup(selectedDmGroupId);
-  // Undefined while the conversation loads with nothing cached: the header
-  // shows a skeleton instead of a made-up name.
-  const selectedDmGroupName = selectedDmGroup
-    ? getDmDisplayName(selectedDmGroup, currentUser?.id)
-    : undefined;
+  // Undefined while the name can't be told yet (nothing cached, or the current
+  // user still loading): the header shows a skeleton, not a made-up name.
+  const selectedDmGroupName = getDmHeaderName(selectedDmGroup, currentUser?.id);
   const selectedDmGroupUnavailable = !selectedDmGroup && selectedDmGroupError;
 
   const isDmStage = Boolean(
