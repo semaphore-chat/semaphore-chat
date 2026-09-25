@@ -12,10 +12,7 @@ import {
 export class WsAuthError extends Error {
   constructor(
     readonly code:
-      | 'INVALID_TOKEN'
-      | 'TOKEN_REVOKED'
-      | 'USER_NOT_FOUND'
-      | 'USER_BANNED',
+      'INVALID_TOKEN' | 'TOKEN_REVOKED' | 'USER_NOT_FOUND' | 'USER_BANNED',
   ) {
     super(code);
     this.name = 'WsAuthError';
