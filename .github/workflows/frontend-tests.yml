@@ -31,13 +31,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -78,13 +78,13 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -118,7 +118,7 @@ jobs:
       # shard can still merge with the other shards' results from the first
       # attempt.
       - name: Upload shard results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: vitest-shard-${{ matrix.shard }}
           path: frontend/vitest-shards/
@@ -142,13 +142,13 @@ jobs:
           exit 1
 
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: 'pnpm'
@@ -158,7 +158,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Download shard results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: vitest-shard-*
           path: frontend/vitest-shards
@@ -198,7 +198,7 @@ jobs:
 
       - name: Upload coverage summary for the badge
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage-summary
           path: frontend/coverage/coverage-summary.json
@@ -219,10 +219,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download coverage summary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: frontend-coverage-summary
           path: ${{ runner.temp }}/coverage
