@@ -752,6 +752,91 @@ describe('MessageContainer', () => {
       expect(mockMarkAsRead).toHaveBeenCalledWith('msg-0');
     });
 
+    describe('optimistic sends (pending-<uuid> ids)', () => {
+      // Newest-first like useMessages: the optimistic row is the newest.
+      const pendingRow = (overrides: Record<string, unknown> = {}) =>
+        createMessage({ id: 'pending-abc', clientId: 'pending-abc', sendStatus: 'pending', ...overrides });
+      const history = () => manyMessages(5); // ordered[k] = msg-(4 - k)
+
+      it('marks the newest confirmed message when the range ends on a pending row', () => {
+        renderWithProviders(
+          <MessageContainer {...defaultProps} messages={[pendingRow(), ...history()]} channelId="ch-1" />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 5));
+        expect(mockMarkAsRead).toHaveBeenCalledTimes(1);
+        expect(mockMarkAsRead).toHaveBeenCalledWith('msg-0');
+      });
+
+      it('skips failed rows too', () => {
+        renderWithProviders(
+          <MessageContainer
+            {...defaultProps}
+            messages={[pendingRow(), pendingRow({ id: 'pending-def', clientId: 'pending-def', sendStatus: 'failed' }), ...history()]}
+            channelId="ch-1"
+          />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 6));
+        expect(mockMarkAsRead).toHaveBeenCalledWith('msg-0');
+        expect(mockMarkAsRead.mock.calls.flat().some((id) => String(id).startsWith('pending-'))).toBe(false);
+      });
+
+      it('marks nothing when every visible row is still pending', () => {
+        renderWithProviders(
+          <MessageContainer {...defaultProps} messages={[pendingRow(), ...history()]} channelId="ch-1" />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(5, 5));
+        expect(mockMarkAsRead).not.toHaveBeenCalled();
+      });
+
+      it('marks the real id when a visible pending row is confirmed (id swap on ack)', () => {
+        const { rerender } = renderWithProviders(
+          <MessageContainer {...defaultProps} messages={[pendingRow(), ...history()]} channelId="ch-1" />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 5));
+        mockMarkAsRead.mockClear();
+
+        rerender(
+          <MessageContainer
+            {...defaultProps}
+            messages={[pendingRow({ id: 'msg-real', sendStatus: undefined }), ...history()]}
+            channelId="ch-1"
+          />,
+        );
+        expect(mockMarkAsRead).toHaveBeenCalledTimes(1);
+        expect(mockMarkAsRead).toHaveBeenCalledWith('msg-real');
+      });
+
+      it('does not mark a confirmed row that left the visible range before the ack', () => {
+        const { rerender } = renderWithProviders(
+          <MessageContainer {...defaultProps} messages={[pendingRow(), ...history()]} channelId="ch-1" />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 5));
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 2));
+        mockMarkAsRead.mockClear();
+
+        rerender(
+          <MessageContainer
+            {...defaultProps}
+            messages={[pendingRow({ id: 'msg-real', sendStatus: undefined }), ...history()]}
+            channelId="ch-1"
+          />,
+        );
+        expect(mockMarkAsRead).not.toHaveBeenCalled();
+      });
+
+      it('does not re-mark on unrelated re-renders', () => {
+        const messages = [pendingRow(), ...history()];
+        const { rerender } = renderWithProviders(
+          <MessageContainer {...defaultProps} messages={messages} channelId="ch-1" />,
+        );
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 5));
+        mockMarkAsRead.mockClear();
+
+        rerender(<MessageContainer {...defaultProps} messages={[...messages]} channelId="ch-1" />);
+        expect(mockMarkAsRead).not.toHaveBeenCalled();
+      });
+    });
+
     it('ignores invalid ranges', () => {
       renderWithProviders(
         <MessageContainer {...defaultProps} messages={manyMessages(200)} channelId="ch-1" />,

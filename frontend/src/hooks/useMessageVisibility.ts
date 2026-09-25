@@ -6,7 +6,7 @@ import { MarkAsReadPayload } from "../types/read-receipt.type";
 import { readReceiptsControllerGetUnreadCountsQueryKey } from "../api-client/@tanstack/react-query.gen";
 import type { UnreadCountDto, PaginatedMessagesResponseDto } from "../api-client";
 import { channelMessagesQueryKey, dmMessagesQueryKey } from "../utils/messageQueryKeys";
-import { isDetachedFromLiveEdge } from "../utils/messageCacheUpdaters";
+import { isDetachedFromLiveEdge, isOptimisticMessageId } from "../utils/messageCacheUpdaters";
 import { useWindowFocus } from "./useWindowFocus";
 
 interface UseMessageVisibilityProps {
@@ -62,6 +62,10 @@ export const useMessageVisibility = ({
     (messageId: string) => {
       if (!socket || !enabled) return;
       if (!channelId && !directMessageGroupId) return;
+      // An optimistic message's temporary id (pending-<uuid>) doesn't exist
+      // on the server, so it can't be a read mark (the server rejects it).
+      // Callers pass the newest confirmed id instead (see MessageContainer).
+      if (isOptimisticMessageId(messageId)) return;
       if (lastMarkedMessageIdRef.current === messageId) return;
 
       // Background tabs must not silently mark messages as read — stash the

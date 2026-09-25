@@ -311,6 +311,50 @@ describe('useMessageVisibility', () => {
     });
   });
 
+  describe('optimistic (not yet confirmed) message ids', () => {
+    it('ignores a pending-<uuid> id: no optimistic clear, no emit', () => {
+      seedUnreadData([
+        { directMessageGroupId: 'dm-1', unreadCount: 2, mentionCount: 1 } as UnreadCountDto,
+      ]);
+      const { result } = renderVisibility({ directMessageGroupId: 'dm-1' });
+
+      act(() => result.current.markAsRead('pending-3f1c'));
+      act(() => vi.advanceTimersByTime(1000));
+
+      expect(getUnreadData()![0]).toMatchObject({ unreadCount: 2, mentionCount: 1 });
+      expect(getUnreadData()![0].lastReadMessageId).toBeUndefined();
+      expect(mockSocket.emit).not.toHaveBeenCalled();
+    });
+
+    it('does not let a pending id replace a real one waiting on the debounce', () => {
+      const { result } = renderVisibility({ channelId: 'ch-1' });
+
+      act(() => result.current.markAsRead('msg-1'));
+      act(() => result.current.markAsRead('pending-3f1c'));
+      act(() => vi.advanceTimersByTime(1000));
+
+      expect(mockSocket.emit).toHaveBeenCalledTimes(1);
+      expect(mockSocket.emit).toHaveBeenCalledWith(ClientEvents.MARK_AS_READ, {
+        lastReadMessageId: 'msg-1',
+        channelId: 'ch-1',
+      });
+    });
+
+    it('does not stash a pending id in a background tab for the focus replay', () => {
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      const { result } = renderVisibility({ channelId: 'ch-1' });
+
+      act(() => result.current.markAsRead('pending-3f1c'));
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      act(() => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      act(() => vi.advanceTimersByTime(1000));
+
+      expect(mockSocket.emit).not.toHaveBeenCalled();
+    });
+  });
+
   describe('background-tab auto-read gating', () => {
     it('does not optimistically clear or emit while the tab is blurred', () => {
       vi.spyOn(document, 'hasFocus').mockReturnValue(false);

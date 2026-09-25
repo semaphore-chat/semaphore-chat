@@ -17,6 +17,7 @@ import {
   markOptimisticPending,
   findMessageInInfinite,
   isDetachedFromLiveEdge,
+  OPTIMISTIC_ID_PREFIX,
 } from "../utils/messageCacheUpdaters";
 import type { Message } from "../types/message.type";
 import type { PaginatedMessagesResponseDto } from "../api-client";
@@ -147,7 +148,7 @@ export function useOptimisticSendMessage(
         return rawSendMessage(payload);
       }
 
-      const clientId = `pending-${crypto.randomUUID()}`;
+      const clientId = `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`;
       const optimisticMessage: Message = {
         ...payload,
         authorId,
