@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,6 +26,8 @@ const LOAD_MORE_INDEX_PROXIMITY = 8;
 const LOAD_NEWER_INDEX_PROXIMITY = 8;
 /** Distance from the bottom (px) within which the list is considered pinned. */
 const BOTTOM_PIN_THRESHOLD_PX = 40;
+/** Growth (px) of a rendered row that counts as growing (ignores sub-pixel layout noise). */
+const ROW_GROWTH_EPSILON_PX = 0.5;
 /**
  * Previous-array prefix scanned by the cap-eviction disambiguation
  * (`isCapEvictionAppend`): one more than the 50-message anchored "around"
@@ -78,7 +81,9 @@ export interface VirtualMessageListProps {
   onAtBottomChange?: (atBottom: boolean) => void;
 
   /**
-   * Reports the currently visible item index range [start, end] on scroll.
+   * Reports the currently visible item index range [start, end] on scroll,
+   * and — since a list that fits the viewport never scrolls — the whole
+   * range whenever such a list is measured or changes.
    * Consumed by read-tracking (fed to markAsRead) in MessageContainer.
    */
   onVisibleRangeChange?: (startIndex: number, endIndex: number) => void;
@@ -111,7 +116,12 @@ export interface VirtualMessageListProps {
  * - **Newer pagination (anchored)**: near the end of the visible range,
  *   `onLoadNewer` fires (mirrors the older-load trigger; in-flight-guarded).
  * - **Stick-to-bottom**: normal mode only — a newer message appending while
- *   pinned scrolls to the last item. Disabled in anchored mode (a newer page
+ *   pinned scrolls to the last item, and so does a rendered row growing while
+ *   pinned (a reaction added to the newest message, an image or GIF finishing
+ *   loading, a link preview expanding: virtua keeps the scroll offset when a
+ *   row in view resizes, so the bottom would move below the fold; the same
+ *   row ResizeObserver as the visible-range report below detects it).
+ *   Disabled in anchored mode (a newer page
  *   landing below the viewport must not yank the reader off their spot — see
  *   the stick-to-bottom effect below for the full rationale) and, for normal
  *   mode, effectively never fires while detached from the live edge either:
@@ -128,6 +138,15 @@ export interface VirtualMessageListProps {
  *   Both positioning paths use the double-rAF re-assert pattern (a single
  *   rAF races virtua's measurement readiness on first mount).
  * - **atBottom**: derived from virtua's scroll offset, reported upward for FABs.
+ * - **Visible range without scrolling**: read tracking is fed from the
+ *   visible range, which virtua only reports through `onScroll`. A list short
+ *   enough to fit the viewport never scrolls (scrolling to its last row is a
+ *   no-op), so it would never be marked read. While the content fits, the
+ *   whole range [0, len - 1] is reported instead whenever the rendered rows
+ *   are measured or resized (a ResizeObserver on our own row elements: this
+ *   covers opening the conversation, a new message arriving, a context
+ *   switch) and whenever the consumer's callback changes (e.g. the socket
+ *   connecting after mount). An overflowing list is left to `onScroll`.
  * - **Typing-indicator spacer**: the "X is typing..." line (TypingIndicator)
  *   floats over the bottom of this list, so the newest row carries a
  *   permanent `TYPING_INDICATOR_HEIGHT` spacer (always present, so no layout
@@ -437,6 +456,94 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
     }, [len]);
 
     useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+
+    // ── Visible range while the whole list fits (see the module doc) ──
+    const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);
+    onVisibleRangeChangeRef.current = onVisibleRangeChange;
+
+    /** Reports [0, len - 1] when every row fits the viewport, where no
+     * scroll event will ever report it. Waits for virtua to measure the
+     * viewport; virtua's scrollSize is max(content, viewport), so the content
+     * fits exactly when the two are equal. */
+    const reportRangeIfFits = useCallback(() => {
+      const handle = vlistRef.current;
+      const report = onVisibleRangeChangeRef.current;
+      const count = orderedMessagesRef.current.length;
+      if (!handle || !report || count === 0) return;
+      const { scrollSize, viewportSize } = handle;
+      if (viewportSize <= 0 || scrollSize - viewportSize >= 1) return;
+      report(0, count - 1);
+    }, []);
+
+    // Stay pinned when a rendered row grows (see the module doc): read by the
+    // row observer below, which is created once.
+    const scrollToBottomRef = useRef(scrollToBottom);
+    scrollToBottomRef.current = scrollToBottom;
+    const modeRef = useRef(mode);
+    modeRef.current = mode;
+    // Last seen height per rendered row element. A row without an entry has
+    // just mounted: its first notification is a measurement, not growth.
+    const rowHeightsRef = useRef(new WeakMap<Element, number>());
+
+    // One ResizeObserver for the rendered rows: our own row elements,
+    // attached through `observeRow` as virtua mounts them (their first
+    // notification is the initial measurement). Created in a layout effect,
+    // after virtua created its own observer during its child layout effects,
+    // so within a delivery virtua has already recorded the new sizes by the
+    // time this one runs (observers are notified in creation order).
+    const rowObserverRef = useRef<ResizeObserver | null>(null);
+    useLayoutEffect(() => {
+      if (typeof ResizeObserver === "undefined") return;
+      const observer = new ResizeObserver((entries) => {
+        const heights = rowHeightsRef.current;
+        let grew = false;
+        for (const entry of entries) {
+          const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+          const previous = heights.get(entry.target);
+          heights.set(entry.target, height);
+          if (previous !== undefined && height > previous + ROW_GROWTH_EPSILON_PX) grew = true;
+        }
+        // virtua keeps the scroll offset when a row in view grows (it only
+        // compensates for rows entirely above the viewport), so the bottom
+        // moves down out of view. Follow it while pinned, like the
+        // stick-to-bottom on a new message (normal mode only, same reasons).
+        // A shrinking row needs nothing: the browser clamps a scrollTop past
+        // the new end, so a pinned list stays at the bottom.
+        if (grew && modeRef.current === 'normal' && pinnedRef.current) {
+          scrollToBottomRef.current();
+        }
+        reportRangeIfFits();
+      });
+      rowObserverRef.current = observer;
+      // Rows that mounted before the observer existed.
+      listContainerRef.current
+        ?.querySelectorAll("[data-message-id]")
+        .forEach((row) => observer.observe(row));
+      return () => {
+        observer.disconnect();
+        rowObserverRef.current = null;
+      };
+    }, [reportRangeIfFits]);
+
+    // Row ref. React 19 calls the returned cleanup when the row unmounts
+    // (virtua recycling it, or the message going away) instead of calling
+    // the ref with null. The cleanup is returned even when there is no
+    // observer yet, and resolves the observer when it runs, because a row
+    // can be observed later by the effect above (rows that mounted first, or
+    // after the effect re-ran with a new observer).
+    const observeRow = useCallback((row: HTMLDivElement | null) => {
+      if (!row) return;
+      rowObserverRef.current?.observe(row);
+      return () => {
+        rowObserverRef.current?.unobserve(row);
+      };
+    }, []);
+
+    // A new consumer callback (markAsRead is re-created when the socket
+    // connects or read tracking is enabled) gets the current range too.
+    useEffect(() => {
+      reportRangeIfFits();
+    }, [onVisibleRangeChange, reportRangeIfFits]);
 
     // Pending positioning frames (initial positioning AND the highlight/anchor
     // jump below share this — they're mutually exclusive in any given commit).
@@ -765,7 +872,7 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
               : rowKey;
 
             return (
-              <div key={key} data-message-id={message.id} role="listitem">
+              <div key={key} ref={observeRow} data-message-id={message.id} role="listitem">
                 {showDaySeparator && <DaySeparator date={message.sentAt} />}
                 {showDividerBefore && (
                   <UnreadMessageDivider unreadCount={unreadCount} />

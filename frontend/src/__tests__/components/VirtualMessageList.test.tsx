@@ -86,6 +86,57 @@ function makeHandle(overrides: Partial<FakeHandle> = {}): FakeHandle {
   };
 }
 
+// ── ResizeObserver stand-in ────────────────────────────────────────────
+// jsdom has no ResizeObserver (and no layout), so tests that exercise the
+// row observer install this fake with vi.stubGlobal and deliver
+// notifications by hand via resizeRows().
+class FakeResizeObserver {
+  static instances: FakeResizeObserver[] = [];
+  readonly observed = new Set<Element>();
+  constructor(readonly callback: ResizeObserverCallback) {
+    FakeResizeObserver.instances.push(this);
+  }
+  observe(el: Element) {
+    this.observed.add(el);
+  }
+  unobserve(el: Element) {
+    this.observed.delete(el);
+  }
+  disconnect() {
+    this.observed.clear();
+  }
+}
+
+function installFakeResizeObserver() {
+  FakeResizeObserver.instances = [];
+  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+}
+
+const rowEl = (id: string) => document.querySelector(`[data-message-id="${id}"]`);
+
+/** Deliver a ResizeObserver notification, as the browser would after layout,
+ * for the given rows (message id -> new height in px) to every observer
+ * currently watching them. */
+function resizeRows(heights: Record<string, number>) {
+  for (const observer of FakeResizeObserver.instances) {
+    const entries = Object.entries(heights)
+      .map(([id, height]) => ({ target: rowEl(id), height }))
+      .filter(({ target }) => target !== null && observer.observed.has(target))
+      .map(({ target, height }) => ({
+        target,
+        contentRect: { height } as DOMRectReadOnly,
+        borderBoxSize: [{ blockSize: height, inlineSize: 600 }],
+      }));
+    if (entries.length === 0) continue;
+    act(() =>
+      observer.callback(
+        entries as unknown as ResizeObserverEntry[],
+        observer as unknown as ResizeObserver,
+      ),
+    );
+  }
+}
+
 beforeEach(() => {
   resetFactoryCounter();
   capturedProps = {};
@@ -986,6 +1037,259 @@ describe('VirtualMessageList', () => {
     it('passes the channel context type by default', () => {
       render(<VirtualMessageList {...baseProps} orderedMessages={messages(1)} />);
       expect(screen.getByTestId('msg-msg-0')).toHaveAttribute('data-context-type', 'channel');
+    });
+  });
+
+  // Read tracking is fed from the visible range, which was only ever reported
+  // from virtua's onScroll. A conversation short enough to fit the viewport
+  // never scrolls (scrolling to the last row is a no-op), so it was never
+  // marked read.
+  describe('visible range when the whole list fits (no scroll event)', () => {
+    // virtua's scrollSize is max(content, viewport), so "fits" means equal.
+    const fitting = () => makeHandle({ scrollSize: 400, viewportSize: 400 });
+
+    it('reports the whole list as visible on mount when it fits the viewport', () => {
+      fakeHandle = fitting();
+      const onVisibleRangeChange = vi.fn();
+      render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(3)}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      expect(onVisibleRangeChange).toHaveBeenCalledWith(0, 2);
+    });
+
+    it('does not report before virtua has measured the viewport', () => {
+      fakeHandle = makeHandle({ scrollSize: 0, viewportSize: 0 });
+      const onVisibleRangeChange = vi.fn();
+      render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(3)}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      expect(onVisibleRangeChange).not.toHaveBeenCalled();
+    });
+
+    it('reports once the rows are measured and turn out to fit', () => {
+      installFakeResizeObserver();
+      fakeHandle = makeHandle({ scrollSize: 0, viewportSize: 0 });
+      const onVisibleRangeChange = vi.fn();
+      render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(3)}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      expect(onVisibleRangeChange).not.toHaveBeenCalled();
+
+      // virtua measures the viewport and the rows; the rows' first
+      // ResizeObserver notifications follow.
+      fakeHandle.viewportSize = 400;
+      fakeHandle.scrollSize = 400;
+      resizeRows({ 'msg-0': 60, 'msg-1': 60, 'msg-2': 84 });
+
+      expect(onVisibleRangeChange).toHaveBeenCalledWith(0, 2);
+    });
+
+    it('reports the new newest message when one arrives while the list still fits', () => {
+      installFakeResizeObserver();
+      fakeHandle = fitting();
+      const onVisibleRangeChange = vi.fn();
+      const initial = messages(3);
+      const { rerender } = render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={initial}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      onVisibleRangeChange.mockClear();
+
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      // The new row mounts and is measured.
+      resizeRows({ newer: 60 });
+
+      expect(onVisibleRangeChange).toHaveBeenLastCalledWith(0, 3);
+    });
+
+    it('reports to a new callback (e.g. the socket connected after mount)', () => {
+      fakeHandle = fitting();
+      const first = vi.fn();
+      const { rerender } = render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(3)}
+          onVisibleRangeChange={first}
+        />,
+      );
+      const second = vi.fn();
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(3)}
+          onVisibleRangeChange={second}
+        />,
+      );
+      expect(second).toHaveBeenCalledWith(0, 2);
+    });
+
+    it('leaves an overflowing list to the scroll path (no report without a scroll)', () => {
+      installFakeResizeObserver();
+      // Default handle: 1000px of content in a 400px viewport.
+      const onVisibleRangeChange = vi.fn();
+      render(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={messages(50)}
+          onVisibleRangeChange={onVisibleRangeChange}
+        />,
+      );
+      resizeRows({ 'msg-48': 60, 'msg-49': 60 });
+      expect(onVisibleRangeChange).not.toHaveBeenCalled();
+
+      // Scrolling still reports, as before.
+      fakeHandle.findItemIndex = vi.fn().mockReturnValueOnce(40).mockReturnValueOnce(49);
+      act(() => capturedProps.onScroll?.(600));
+      expect(onVisibleRangeChange).toHaveBeenCalledWith(40, 49);
+    });
+  });
+
+  // virtua keeps the scroll position when a row resizes (it only compensates
+  // for rows above the viewport), so a row in view that grows pushes the
+  // bottom of the list below the fold: a reaction added to the newest
+  // message, an image or GIF finishing loading, a link preview expanding.
+  describe('stays pinned when a rendered row grows', () => {
+    const renderPinned = (props: Partial<React.ComponentProps<typeof VirtualMessageList>> = {}) => {
+      installFakeResizeObserver();
+      const utils = render(
+        <VirtualMessageList {...baseProps} orderedMessages={messages(5)} {...props} />,
+      );
+      // First measurement of the rendered rows.
+      resizeRows({ 'msg-2': 60, 'msg-3': 60, 'msg-4': 60 });
+      return utils;
+    };
+    const bottomScrolls = () =>
+      fakeHandle.scrollToIndex.mock.calls.filter(
+        ([index, opts]) => index === 4 && (opts as { align?: string })?.align === 'end',
+      );
+
+    it('scrolls back to the bottom when the newest row grows while pinned (reaction added)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600)); // at the bottom → pinned
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it('also when an earlier row in view grows (an image finishing loading)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-3': 300 });
+
+      expect(bottomScrolls()).toHaveLength(1);
+    });
+
+    it("does not scroll for a row's first measurement (a row mounting is not growth)", () => {
+      installFakeResizeObserver();
+      render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} />);
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-3': 60, 'msg-4': 60 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not jump when the reader has scrolled up', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(100)); // 500px from the bottom
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not scroll when a row shrinks (the browser keeps a pinned list at the bottom)', () => {
+      renderPinned();
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 40 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('does not scroll in anchored mode (stick-to-bottom is normal mode only)', () => {
+      renderPinned({ mode: 'anchored' });
+      act(() => capturedProps.onScroll?.(600));
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ 'msg-4': 96 });
+
+      expect(fakeHandle.scrollToIndex).not.toHaveBeenCalled();
+    });
+
+    it('stops observing rows that unmount (virtua recycling them, or messages removed)', () => {
+      installFakeResizeObserver();
+      const initial = messages(3);
+      const { rerender } = render(<VirtualMessageList {...baseProps} orderedMessages={initial} />);
+      const [observer] = FakeResizeObserver.instances;
+      // msg-0 mounted before the observer existed (picked up by the effect);
+      // `newer` mounts after it (observed through the row ref).
+      const oldest = rowEl('msg-0')!;
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+        />,
+      );
+      const newer = rowEl('newer')!;
+      expect(observer.observed.has(oldest)).toBe(true);
+      expect(observer.observed.has(newer)).toBe(true);
+
+      rerender(<VirtualMessageList {...baseProps} orderedMessages={initial.slice(1)} />);
+
+      expect(observer.observed.has(oldest)).toBe(false);
+      expect(observer.observed.has(newer)).toBe(false);
+      expect(observer.observed.size).toBe(2);
+    });
+
+    it('keeps following the newest row after a new message arrives', () => {
+      const initial = messages(5);
+      installFakeResizeObserver();
+      const { rerender } = render(
+        <VirtualMessageList {...baseProps} orderedMessages={initial} />,
+      );
+      resizeRows({ 'msg-4': 60 });
+      act(() => capturedProps.onScroll?.(600));
+      rerender(
+        <VirtualMessageList
+          {...baseProps}
+          orderedMessages={[...initial, createMessage({ id: 'newer' })]}
+        />,
+      );
+      resizeRows({ newer: 60 });
+      fakeHandle.scrollToIndex.mockClear();
+
+      resizeRows({ newer: 400 }); // its GIF loads
+
+      expect(fakeHandle.scrollToIndex).toHaveBeenCalledWith(5, { align: 'end' });
     });
   });
 });
