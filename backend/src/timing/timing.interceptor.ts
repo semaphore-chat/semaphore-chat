@@ -16,11 +16,19 @@ export class TimingInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const start = Date.now();
     const label = this.getLabel(context);
+    // Since Nest 12 global interceptors run for gateway handlers too, i.e.
+    // on every WebSocket message (typing, presence, ...); keep those out of
+    // the info log.
+    const logAtDebug = context.getType() === 'ws';
 
     return next.handle().pipe(
       tap(() => {
-        const duration = Date.now() - start;
-        this.logger.log(`${label} - ${duration}ms`);
+        const message = `${label} - ${Date.now() - start}ms`;
+        if (logAtDebug) {
+          this.logger.debug(message);
+        } else {
+          this.logger.log(message);
+        }
       }),
     );
   }

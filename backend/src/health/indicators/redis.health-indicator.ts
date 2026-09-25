@@ -1,5 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { HealthIndicatorResult, HealthCheckError } from '@nestjs/terminus';
+import {
+  HealthIndicatorResult,
+  HealthIndicatorService,
+} from '@nestjs/terminus';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import Redis from 'ioredis';
 
@@ -7,9 +10,13 @@ const CHECK_TIMEOUT_MS = 3000;
 
 @Injectable()
 export class RedisHealthIndicator {
-  constructor(@Inject(REDIS_CLIENT) private readonly redis: Redis) {}
+  constructor(
+    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly healthIndicatorService: HealthIndicatorService,
+  ) {}
 
   async isHealthy(key: string): Promise<HealthIndicatorResult> {
+    const indicator = this.healthIndicatorService.check(key);
     try {
       await Promise.race([
         this.redis.ping(),
@@ -20,11 +27,9 @@ export class RedisHealthIndicator {
           ),
         ),
       ]);
-      return { [key]: { status: 'up' } };
+      return indicator.up();
     } catch {
-      throw new HealthCheckError('Redis check failed', {
-        [key]: { status: 'down' },
-      });
+      return indicator.down();
     }
   }
 }

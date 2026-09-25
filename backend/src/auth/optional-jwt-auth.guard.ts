@@ -1,5 +1,5 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
+import { Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { AuthGuard, AuthModuleOptions } from '@nestjs/passport';
 import { UserEntity } from '@/user/dto/user-response.dto';
 
 /**
@@ -18,6 +18,15 @@ import { UserEntity } from '@/user/dto/user-response.dto';
  */
 @Injectable()
 export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
+  // Nest 12 no longer lets a subclass inherit its parent's @Optional()
+  // constructor markers (see the v12 migration guide), so without this
+  // constructor Nest would require AuthModuleOptions in every module that
+  // provides this guard (FileModule doesn't import PassportModule) and fail
+  // to boot. Re-declaring it keeps the v11 behavior on every 12.x release.
+  constructor(@Optional() options?: AuthModuleOptions) {
+    super(options);
+  }
+
   handleRequest<TUser = UserEntity>(
     err: Error | null,
     user: TUser | false,

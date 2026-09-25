@@ -1,3 +1,4 @@
+import { Test } from '@nestjs/testing';
 import { OptionalJwtAuthGuard } from './optional-jwt-auth.guard';
 import { UnauthorizedException } from '@nestjs/common';
 
@@ -6,6 +7,19 @@ describe('OptionalJwtAuthGuard', () => {
 
   beforeEach(() => {
     guard = new OptionalJwtAuthGuard();
+  });
+
+  it('resolves through DI in a module that does not import PassportModule', async () => {
+    // FileModule provides this guard without PassportModule. Nest 12 doesn't
+    // inherit @Optional() constructor markers, so without the guard's own
+    // constructor this fails with UnknownDependenciesException.
+    const moduleRef = await Test.createTestingModule({
+      providers: [OptionalJwtAuthGuard],
+    }).compile();
+
+    expect(moduleRef.get(OptionalJwtAuthGuard)).toBeInstanceOf(
+      OptionalJwtAuthGuard,
+    );
   });
 
   describe('handleRequest', () => {

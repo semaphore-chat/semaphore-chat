@@ -4,6 +4,7 @@ import { AuthGuard } from '@nestjs/passport';
 import { Request as ExpressRequest } from 'express';
 import { Socket } from 'socket.io';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { AuthenticatedSocket } from '@/common/utils/socket.utils';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -12,6 +13,20 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext) {
+    // Since Nest 12, global guards (this one is the APP_GUARD) also run for
+    // WebSocket gateway handlers. Gateways authenticate the socket on connect
+    // (RoomsGateway's middleware reads the token from the handshake `auth`
+    // payload, where the web client sends it, and sets handshake.user), and
+    // Passport's JWT strategy here only reads the Authorization header, so it
+    // would reject every message from an authenticated web client. Accept
+    // sockets the middleware already authenticated, like WsJwtAuthGuard does.
+    if (context.getType() === 'ws') {
+      const client = context.switchToWs().getClient<AuthenticatedSocket>();
+      if (client?.handshake?.user) {
+        return true;
+      }
+    }
+
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),

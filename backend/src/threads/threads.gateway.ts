@@ -5,7 +5,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { RbacGuard } from '@/auth/rbac.guard';
-import { Logger, UseFilters, UseGuards, UsePipes } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -17,7 +17,6 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { RbacActions } from '@prisma/client';
 import { ThreadsService } from './threads.service';
@@ -44,7 +43,6 @@ import { toWireMessage } from '@/common/utils/message-wire.utils';
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
 export class ThreadsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

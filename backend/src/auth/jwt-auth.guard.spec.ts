@@ -281,4 +281,41 @@ describe('JwtAuthGuard', () => {
       superCanActivate.mockRestore();
     });
   });
+
+  describe('WebSocket handlers (Nest 12 runs global guards there too)', () => {
+    let superCanActivate: jest.SpyInstance;
+
+    beforeEach(() => {
+      superCanActivate = jest
+        .spyOn(Object.getPrototypeOf(JwtAuthGuard.prototype), 'canActivate')
+        .mockReturnValue(false);
+    });
+
+    afterEach(() => {
+      superCanActivate.mockRestore();
+    });
+
+    it('accepts sockets the connection middleware authenticated', async () => {
+      const context = createMockWsExecutionContext({
+        client: { id: 'socket-1', handshake: { user: { id: 'user-1' } } },
+      });
+
+      const result = await guard.canActivate(context);
+
+      expect(result).toBe(true);
+      expect(superCanActivate).not.toHaveBeenCalled();
+    });
+
+    it('falls back to Passport for sockets without an authenticated user', async () => {
+      const context = createMockWsExecutionContext({
+        client: { id: 'socket-1', handshake: { headers: {} } },
+      });
+      jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
+
+      const result = await guard.canActivate(context);
+
+      expect(result).toBe(false);
+      expect(superCanActivate).toHaveBeenCalledWith(context);
+    });
+  });
 });

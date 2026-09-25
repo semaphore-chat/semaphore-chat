@@ -140,6 +140,68 @@ describe('TimingInterceptor', () => {
     }
   });
 
+  describe('WebSocket handlers', () => {
+    class TestGateway {
+      handleTyping() {}
+    }
+
+    let debugSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      debugSpy = jest.spyOn(Logger.prototype, 'debug').mockImplementation();
+      Reflect.defineMetadata(
+        'message',
+        'typingStart',
+        TestGateway.prototype.handleTyping,
+      );
+      mockExecutionContext = {
+        getType: jest.fn().mockReturnValue('ws'),
+        getClass: jest.fn().mockReturnValue(TestGateway),
+        getHandler: jest
+          .fn()
+          .mockReturnValue(TestGateway.prototype.handleTyping),
+      } as any;
+    });
+
+    afterEach(() => {
+      debugSpy.mockRestore();
+    });
+
+    it('logs gateway handler timing at debug level, not info', async () => {
+      await new Promise<void>((resolve) => {
+        interceptor
+          .intercept(mockExecutionContext, mockCallHandler)
+          .subscribe({ complete: resolve });
+      });
+
+      expect(loggerSpy).not.toHaveBeenCalled();
+      expect(debugSpy).toHaveBeenCalledTimes(1);
+      expect(debugSpy.mock.calls[0][0]).toMatch(
+        /^WS TestGateway:typingStart - \d+ms$/,
+      );
+    });
+
+    it('keeps HTTP timing at info level', async () => {
+      mockExecutionContext = {
+        getType: jest.fn().mockReturnValue('http'),
+        switchToHttp: jest.fn().mockReturnValue({
+          getRequest: jest
+            .fn()
+            .mockReturnValue({ method: 'GET', url: '/api/test' }),
+        }),
+      } as any;
+
+      await new Promise<void>((resolve) => {
+        interceptor
+          .intercept(mockExecutionContext, mockCallHandler)
+          .subscribe({ complete: resolve });
+      });
+
+      expect(debugSpy).not.toHaveBeenCalled();
+      expect(loggerSpy).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it('should measure elapsed time', (done) => {
     const result$ = interceptor.intercept(
       mockExecutionContext,

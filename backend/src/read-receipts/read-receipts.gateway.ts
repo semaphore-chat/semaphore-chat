@@ -1,5 +1,5 @@
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { Logger, UseFilters, UseGuards, UsePipes } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -11,7 +11,6 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { ReadReceiptsService } from './read-receipts.service';
 import { MarkAsReadDto } from './dto/mark-as-read.dto';
 import { Server, Socket } from 'socket.io';
@@ -33,7 +32,6 @@ import { WebsocketService } from '@/websocket/websocket.service';
   pingTimeout: 60000,
   pingInterval: 25000,
 })
-@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard)
 export class ReadReceiptsGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

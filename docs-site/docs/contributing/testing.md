@@ -21,7 +21,7 @@ docker compose run --rm backend pnpm run test
 docker compose run --rm backend pnpm run test:e2e
 
 # Single test file
-docker compose run --rm backend pnpm exec jest <test-pattern>
+docker compose run --rm backend pnpm run test <test-pattern>
 
 # With coverage
 docker compose run --rm backend pnpm run test -- --coverage
@@ -218,7 +218,7 @@ network is never unused and a prune can't delete it.
 ```bash
 scripts/test-stack.sh <ticket> up                                # <ticket>-pg, <ticket>-redis, <ticket>-minio
 scripts/test-stack.sh <ticket> run pnpm run prisma:migrate       # backend container on semaphore-test
-scripts/test-stack.sh <ticket> run pnpm exec jest <test-pattern>
+scripts/test-stack.sh <ticket> run pnpm run test <test-pattern>
 scripts/test-stack.sh <ticket> run pnpm run test:e2e             # backend e2e suite (migrate first)
 scripts/test-stack.sh <ticket> run -e KEY=VALUE -- <cmd...>        # extra or overriding environment
 scripts/test-stack.sh <ticket> run-backend pnpm run type-check   # no services: type-check, lint, unit tests, build

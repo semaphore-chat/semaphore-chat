@@ -7,7 +7,7 @@ import {
 import { VoicePresenceService } from './voice-presence.service';
 import { Socket } from 'socket.io';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { UseGuards, UsePipes, UseFilters } from '@nestjs/common';
+import { UseGuards, UseFilters } from '@nestjs/common';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { ClientEvents } from '@semaphore-chat/shared';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -17,7 +17,6 @@ import {
   RbacResourceType,
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
-import { wsValidationPipe } from '@/common/pipes/ws-validation.pipe';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -41,7 +40,6 @@ class VoiceChannelEventDto {
  */
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway()
-@UsePipes(wsValidationPipe)
 @UseGuards(WsThrottleGuard, WsJwtAuthGuard, RbacGuard)
 export class VoicePresenceGateway {
   constructor(private readonly voicePresenceService: VoicePresenceService) {}

@@ -44,7 +44,7 @@ docker compose run --rm backend bash
 docker compose run --rm backend pnpm run test
 
 # Run a single test file
-docker compose run --rm backend pnpm exec jest <test-pattern>
+docker compose run --rm backend pnpm run test <test-pattern>
 
 # Lint
 docker compose run --rm backend pnpm run lint
