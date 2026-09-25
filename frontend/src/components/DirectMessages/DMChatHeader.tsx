@@ -37,8 +37,10 @@ export const DMChatHeader: React.FC<DMChatHeaderProps> = ({
           minHeight: 64,
         }}
       >
-        {/* Left side: Back button + Name */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flex: 1 }}>
+        {/* Left side: Back button + Name. minWidth 0 lets the noWrap name
+            truncate: a long (e.g. unnamed group) name must not push the call
+            and members buttons out of the header. */}
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, flex: 1, minWidth: 0 }}>
           {showBackButton && onBack && (
             <IconButton onClick={onBack} size="small" edge="start">
               <ArrowBack />
@@ -64,7 +66,7 @@ export const DMChatHeader: React.FC<DMChatHeaderProps> = ({
         {/* Right side: Voice controls (disabled until the name is known), and
             the members drawer in a narrow desktop window */}
         {!unavailable && (
-          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, flexShrink: 0 }}>
             <DMVoiceControls dmGroupId={dmGroupId} dmGroupName={dmGroupName} />
             <MemberListDrawerButton contextType={VoiceSessionType.Dm} contextId={dmGroupId} />
           </Box>

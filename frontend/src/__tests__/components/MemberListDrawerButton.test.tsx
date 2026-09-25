@@ -12,6 +12,7 @@ import { renderWithProviders } from '../test-utils';
 import { MemberListDrawerButton } from '../../components/Message/MemberListDrawerButton';
 import { DMChatHeader } from '../../components/DirectMessages/DMChatHeader';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
+import { BOTTOM_CHROME_ORDER, BottomChromeProvider, useChromeItem } from '../../contexts/BottomChromeContext';
 
 const platform = vi.hoisted(() => ({ electron: false }));
 vi.mock('../../utils/platform', async (importOriginal) => ({
@@ -70,6 +71,25 @@ const renderButton = () =>
     />,
   );
 
+/** Stands in for the connected VoiceBottomBar: registers its height with BottomChromeContext. */
+const FakeVoiceBar = ({ height }: { height: number }) => {
+  useChromeItem({ id: 'voice-bar', order: BOTTOM_CHROME_ORDER.VOICE_BAR, height });
+  return null;
+};
+
+const openDrawerPaper = async (voiceBarHeight?: number) => {
+  platform.electron = true;
+  stubViewportWidth(820);
+  const { user } = renderWithProviders(
+    <BottomChromeProvider>
+      {voiceBarHeight !== undefined && <FakeVoiceBar height={voiceBarHeight} />}
+      <MemberListDrawerButton contextType={VoiceSessionType.Channel} contextId="ch-1" communityId="c-1" />
+    </BottomChromeProvider>,
+  );
+  await user.click(screen.getByRole('button', { name: 'Show members' }));
+  return screen.getByTestId('member-list').closest('.MuiDrawer-paper') as HTMLElement;
+};
+
 beforeEach(() => {
   platform.electron = false;
   memberListProps.last = null;
@@ -108,6 +128,19 @@ describe('MemberListDrawerButton', () => {
     await vi.waitFor(() => expect(screen.queryByTestId('member-list')).not.toBeInTheDocument());
   });
 
+  // The desktop voice bar is position: fixed at zIndex 1300, above the
+  // temporary drawer (1200): without room reserved for it, the last members
+  // sit behind the bar and can't be scrolled into view.
+  it('keeps the bottom of the list clear of the voice bar while connected to voice', async () => {
+    const paper = await openDrawerPaper(64);
+    expect(paper).toHaveStyle({ paddingBottom: '64px' });
+  });
+
+  it('uses the whole height when not connected to voice', async () => {
+    const paper = await openDrawerPaper();
+    expect(paper).toHaveStyle({ paddingBottom: '0px' });
+  });
+
   it.each([1024, 1199, 1440])('renders nothing in an Electron window %ipx wide (inline column)', (width) => {
     platform.electron = true;
     stubViewportWidth(width);
@@ -130,6 +163,19 @@ describe('DMChatHeader members button', () => {
     await user.click(screen.getByRole('button', { name: 'Show members' }));
     expect(screen.getByTestId('member-list')).toBeInTheDocument();
     expect(memberListProps.last).toMatchObject({ contextType: VoiceSessionType.Dm, contextId: 'dm-1' });
+  });
+
+  // Below 1024px this button is the only way to the member list, so a long
+  // (e.g. unnamed group) name must truncate instead of pushing it off-screen.
+  it('truncates a long name instead of pushing the buttons out of the header', () => {
+    platform.electron = true;
+    stubViewportWidth(820);
+    const longName = Array.from({ length: 15 }, (_, i) => `Participant Number ${i + 1}`).join(', ');
+    renderWithProviders(<DMChatHeader dmGroupId="dm-1" dmGroupName={longName} />);
+    const title = screen.getByRole('heading', { name: longName });
+    expect(title.parentElement).toHaveStyle({ minWidth: '0px' });
+    const controls = screen.getByRole('button', { name: 'Show members' }).parentElement as HTMLElement;
+    expect(controls).toHaveStyle({ flexShrink: '0' });
   });
 
   it('is not offered for an unavailable conversation', () => {

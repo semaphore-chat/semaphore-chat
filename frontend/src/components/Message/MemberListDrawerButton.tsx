@@ -12,6 +12,7 @@ import { Box, Drawer, IconButton, Tooltip, Typography } from "@mui/material";
 import { Close as CloseIcon, People as PeopleIcon } from "@mui/icons-material";
 import MemberListContainer from "./MemberListContainer";
 import { useResponsive } from "../../hooks/useResponsive";
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from "../../contexts/BottomChromeContext";
 import type { VoiceSessionType } from "../../contexts/VoiceContext";
 
 interface MemberListDrawerButtonProps {
@@ -29,6 +30,10 @@ export const MemberListDrawerButton: React.FC<MemberListDrawerButtonProps> = ({
 }) => {
   const { isNarrowDesktop } = useResponsive();
   const [open, setOpen] = React.useState(false);
+  // The desktop voice bar is position: fixed above temporary drawers (zIndex
+  // 1300 vs 1200), so reserve its measured height (0 when not connected) at
+  // the bottom, or the last members sit behind it and can't be scrolled to.
+  const voiceBarHeight = useBottomChromeOffset(BOTTOM_CHROME_ORDER.COMPOSER).px;
 
   if (!isNarrowDesktop) return null;
 
@@ -43,7 +48,7 @@ export const MemberListDrawerButton: React.FC<MemberListDrawerButtonProps> = ({
         anchor="right"
         open={open}
         onClose={() => setOpen(false)}
-        PaperProps={{ sx: { width: 280, maxWidth: "85vw" } }}
+        PaperProps={{ sx: { width: 280, maxWidth: "85vw", paddingBottom: `${voiceBarHeight}px` } }}
       >
         <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
           <Box
