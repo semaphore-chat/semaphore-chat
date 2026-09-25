@@ -5,7 +5,13 @@
  * This utility helps maintain clean separation between platform-specific code.
  */
 
-import type { ElectronAPI } from "../types/electron-api";
+import type { ElectronAPI } from '../types/electron-api';
+import { getElectronAPI } from './electronBridge';
+
+// Re-exported so existing `utils/platform` imports keep working; the bridge
+// itself lives in electronBridge.ts (the only module that reads
+// `window.electronAPI`).
+export { getElectronAPI };
 
 /**
  * Platform types
@@ -18,10 +24,10 @@ export enum Platform {
 
 /**
  * Check if running in Electron environment
- * Checks for electronAPI exposed by preload script
+ * (the preload script's bridge is present, or a test/sandbox override is set)
  */
 export const isElectron = (): boolean => {
-  return typeof window !== 'undefined' && window.electronAPI?.isElectron === true;
+  return getElectronAPI() !== null;
 };
 
 /**
@@ -37,7 +43,7 @@ export const isWeb = (): boolean => {
  * the native PipeWire/XDG Desktop Portal dialog.
  */
 export const isWayland = (): boolean => {
-  return isElectron() && window.electronAPI?.isWayland === true;
+  return getElectronAPI()?.isWayland === true;
 };
 
 /**
@@ -72,14 +78,7 @@ export const getPlatform = (): Platform => {
  * Check if a specific Electron API feature is available
  */
 export const hasElectronFeature = (feature: string): boolean => {
-  return isElectron() && typeof window.electronAPI?.[feature] === 'function';
-};
-
-/**
- * Get Electron API if available
- */
-export const getElectronAPI = (): ElectronAPI | null => {
-  return isElectron() ? window.electronAPI! : null;
+  return typeof getElectronAPI()?.[feature] === 'function';
 };
 
 /**
@@ -97,10 +96,13 @@ export const supportsScreenCapture = (): boolean => {
  * - Web browsers: no (getDisplayMedia doesn't support system audio for desktop capture)
  * - Electron Windows/macOS: yes (loopback + restrictOwnAudio in Chromium 140+)
  * - Electron Linux: no (restrictOwnAudio not supported by OS)
+ *
+ * @param api - The Electron bridge to check (default: `getElectronAPI()`);
+ *   components pass `useElectronAPI()`'s value.
  */
-export const supportsSystemAudio = (): boolean => {
-  if (!isElectron()) return false;
-  if (window.electronAPI?.platform === 'linux') return false;
+export const supportsSystemAudio = (api: ElectronAPI | null = getElectronAPI()): boolean => {
+  if (!api) return false;
+  if (api.platform === 'linux') return false;
   return true;
 };
 

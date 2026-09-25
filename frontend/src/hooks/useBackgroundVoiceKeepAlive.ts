@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { isElectron } from '../utils/platform';
+import { useElectronAPI } from '../contexts/ElectronContext';
 
 interface UseBackgroundVoiceKeepAliveParams {
   isConnected: boolean;
@@ -17,6 +17,7 @@ interface UseBackgroundVoiceKeepAliveParams {
 export function useBackgroundVoiceKeepAlive({ isConnected }: UseBackgroundVoiceKeepAliveParams) {
   const lockReleaseRef = useRef<(() => void) | null>(null);
   const powerSaveIdRef = useRef<number | null>(null);
+  const electronAPI = useElectronAPI();
 
   useEffect(() => {
     if (!isConnected) return;
@@ -50,12 +51,12 @@ export function useBackgroundVoiceKeepAlive({ isConnected }: UseBackgroundVoiceK
 
     // --- Electron power save blocker ---
     let cleanedUp = false;
-    if (isElectron() && window.electronAPI?.requestPowerSaveBlock) {
-      window.electronAPI.requestPowerSaveBlock().then((id) => {
+    if (electronAPI?.requestPowerSaveBlock) {
+      electronAPI.requestPowerSaveBlock().then((id) => {
         if (typeof id === 'number') {
           if (cleanedUp) {
             // Cleanup already ran — release immediately to avoid leaking the blocker
-            window.electronAPI?.releasePowerSaveBlock?.(id)?.catch(() => {});
+            electronAPI.releasePowerSaveBlock?.(id)?.catch(() => {});
           } else {
             powerSaveIdRef.current = id;
           }
@@ -75,10 +76,10 @@ export function useBackgroundVoiceKeepAlive({ isConnected }: UseBackgroundVoiceK
       }
 
       // Release Electron power save blocker
-      if (powerSaveIdRef.current !== null && window.electronAPI?.releasePowerSaveBlock) {
-        window.electronAPI.releasePowerSaveBlock(powerSaveIdRef.current).catch(() => {});
+      if (powerSaveIdRef.current !== null && electronAPI?.releasePowerSaveBlock) {
+        electronAPI.releasePowerSaveBlock(powerSaveIdRef.current).catch(() => {});
         powerSaveIdRef.current = null;
       }
     };
-  }, [isConnected]);
+  }, [electronAPI, isConnected]);
 }

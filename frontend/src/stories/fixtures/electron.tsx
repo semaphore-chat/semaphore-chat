@@ -1,8 +1,9 @@
 /**
  * Renders a story as the Electron desktop app sees it: `isElectron()` is true
- * (a minimal `window.electronAPI` stub, as the preload script would expose),
- * so the story shows what an Electron window at that width renders — e.g. the
- * desktop layout in an 820px window, where a browser gets the tablet layout.
+ * (the Electron bridge is `createFakeElectronAPI()`, installed with
+ * `setElectronAPIOverride()`), so the story shows what an Electron window at
+ * that width renders — e.g. the desktop layout in an 820px window, where a
+ * browser gets the tablet layout.
  *
  *   export const ChannelChat = asElectron(defineScreen(scenario, path));
  *   ChannelChat.meta = { viewports: ['tablet'] };
@@ -10,9 +11,13 @@
  * Electron's minimum window width is 800px (electron/main.ts), so these
  * stories only make sense at tablet width and up.
  *
- * The stub has no methods, so every `window.electronAPI?.foo?.()` call and
- * `hasElectronFeature()` check sees an Electron without that feature. In
- * Electron the API base URL comes from the active saved server
+ * The fake has every bridge method, with neutral results: no update events,
+ * no desktop sources, secure storage available. Pass overrides to show
+ * Electron-only UI, e.g. the auto-updater's "ready to install" snackbar:
+ *
+ *   asElectron(Story, { onUpdateDownloaded: emitOnSubscribe({ version: '2.0.0' }) })
+ *
+ * In Electron the API base URL comes from the active saved server
  * (`config/env.ts`), so this also saves one at this page's own origin: API
  * and file requests keep going to `<origin>/api/...`, where MSW answers them.
  * Both are restored when the story unmounts, so the next story in an
@@ -20,6 +25,8 @@
  */
 import { useEffect } from 'react';
 import type { ElectronAPI } from '../../types/electron-api';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+import { createFakeElectronAPI } from '../../__tests__/test-utils/fakeElectronAPI';
 import type { LadleStoryComponent } from './screenStory';
 
 const SERVERS_KEY = 'semaphore:servers';
@@ -27,7 +34,6 @@ const ACTIVE_SERVER_KEY = 'semaphore:activeServerId';
 const SERVER_ID = 'ladle-electron-server';
 
 interface Saved {
-  electronAPI: ElectronAPI | undefined;
   servers: string | null;
   activeServerId: string | null;
 }
@@ -52,14 +58,13 @@ function writeStorage(key: string, value: string | null): void {
 }
 
 /** Idempotent: a second call while installed is a no-op. */
-function installElectron(): void {
+function installElectron(overrides: Partial<ElectronAPI> | undefined): void {
   if (saved) return;
   saved = {
-    electronAPI: window.electronAPI,
     servers: readStorage(SERVERS_KEY),
     activeServerId: readStorage(ACTIVE_SERVER_KEY),
   };
-  window.electronAPI = { isElectron: true, platform: 'linux' };
+  setElectronAPIOverride(createFakeElectronAPI(overrides));
   writeStorage(
     SERVERS_KEY,
     JSON.stringify([{ id: SERVER_ID, name: 'Ladle', url: window.location.origin, isActive: true }]),
@@ -69,28 +74,33 @@ function installElectron(): void {
 
 function uninstallElectron(): void {
   if (!saved) return;
-  if (saved.electronAPI === undefined) delete window.electronAPI;
-  else window.electronAPI = saved.electronAPI;
+  setElectronAPIOverride(undefined);
   writeStorage(SERVERS_KEY, saved.servers);
   writeStorage(ACTIVE_SERVER_KEY, saved.activeServerId);
   saved = null;
 }
 
-function useElectronPlatform(): void {
+function useElectronPlatform(overrides: Partial<ElectronAPI> | undefined): void {
   // In place before the story's first render: useResponsive reads
   // isElectron() while rendering. The effect re-installs after a StrictMode
   // unmount/remount and restores the browser on the real unmount.
-  installElectron();
+  installElectron(overrides);
   useEffect(() => {
-    installElectron();
+    installElectron(overrides);
     return uninstallElectron;
-  }, []);
+  }, [overrides]);
 }
 
-/** Wraps a story (keeping its MSW handlers) so it renders as in Electron. */
-export function asElectron(Story: LadleStoryComponent): LadleStoryComponent {
+/**
+ * Wraps a story (keeping its MSW handlers) so it renders as in Electron,
+ * with `overrides` replacing the fake bridge's defaults.
+ */
+export function asElectron(
+  Story: LadleStoryComponent,
+  overrides?: Partial<ElectronAPI>,
+): LadleStoryComponent {
   const ElectronStory: LadleStoryComponent = () => {
-    useElectronPlatform();
+    useElectronPlatform(overrides);
     return <Story />;
   };
   ElectronStory.msw = Story.msw;

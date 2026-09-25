@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AxiosError, type AxiosResponse } from 'axios';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+import { createFakeElectronAPI } from '../test-utils/fakeElectronAPI';
 
 vi.mock('../../utils/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), dev: vi.fn(), info: vi.fn(), debug: vi.fn() },
@@ -33,17 +35,10 @@ function httpError(status: number): AxiosError {
 }
 
 describe('tokenService refresh outcome', () => {
-  let originalElectronAPI: typeof window.electronAPI;
-
   beforeEach(() => {
-    originalElectronAPI = window.electronAPI;
-    window.electronAPI = undefined;
+    setElectronAPIOverride(null);
     clearTokens();
     mockPost.mockReset();
-  });
-
-  afterEach(() => {
-    window.electronAPI = originalElectronAPI;
   });
 
   it('returns the new token', async () => {
@@ -78,7 +73,7 @@ describe('tokenService refresh outcome', () => {
   });
 
   it('is rejected when Electron has no refresh token to send', async () => {
-    window.electronAPI = { isElectron: true, getRefreshToken: vi.fn().mockResolvedValue(null) };
+    setElectronAPIOverride(createFakeElectronAPI({ getRefreshToken: vi.fn().mockResolvedValue(null) }));
 
     await expect(refreshSession()).resolves.toEqual({ status: 'rejected' });
     expect(mockPost).not.toHaveBeenCalled();

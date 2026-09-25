@@ -24,7 +24,7 @@
 
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { isElectron } from '../utils/platform';
+import { useElectronAPI } from '../contexts/ElectronContext';
 import { isAuthenticated } from '../utils/tokenService';
 import { deepLinkRouteRequiresAuth, mapDeepLinkRouteToPath } from '../utils/deepLinkRoute';
 import { stashDeepLinkRoute } from '../utils/deepLinkStash';
@@ -33,11 +33,11 @@ import { logger } from '../utils/logger';
 
 export function useDeepLinks(): void {
   const navigate = useNavigate();
+  const electronAPI = useElectronAPI();
 
   useEffect(() => {
-    if (!isElectron()) return;
-
-    const onDeepLink = window.electronAPI?.onDeepLink;
+    // Null outside Electron.
+    const onDeepLink = electronAPI?.onDeepLink;
     if (!onDeepLink) return;
 
     const unsubscribe = onDeepLink((route: DeepLinkRoute) => {
@@ -63,8 +63,8 @@ export function useDeepLinks(): void {
     // 'deep-link:ready' handler in electron/main.ts for why this is an
     // explicit renderer->main signal rather than relying on
     // did-finish-load, which fires before this listener is attached.
-    window.electronAPI?.notifyDeepLinkReady?.();
+    electronAPI.notifyDeepLinkReady?.();
 
     return unsubscribe;
-  }, [navigate]);
+  }, [electronAPI, navigate]);
 }

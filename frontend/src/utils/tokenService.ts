@@ -8,6 +8,7 @@
 import axios from "axios";
 import { getApiUrl } from "../config/env";
 import { isElectron } from "./platform";
+import { getElectronAPI } from "./electronBridge";
 import { logger } from "./logger";
 import { nextSessionRefreshDelayMs } from "./sessionRefreshPolicy";
 import type { SessionTerminatedReason } from "@semaphore-chat/shared";
@@ -211,8 +212,9 @@ export function setAccessToken(token: string): void {
 export function clearTokens(): void {
   accessTokenInMemory = null;
   // Clear refresh token from secure storage (Electron) or localStorage (fallback)
-  if (isElectron() && window.electronAPI?.deleteRefreshToken) {
-    window.electronAPI.deleteRefreshToken().catch(() => {});
+  const electronAPI = getElectronAPI();
+  if (electronAPI?.deleteRefreshToken) {
+    electronAPI.deleteRefreshToken().catch(() => {});
   }
   localStorage.removeItem("refreshToken");
 }
@@ -302,8 +304,9 @@ export function notifyAuthFailure(reason?: SignOutReason): void {
 export async function getElectronRefreshToken(): Promise<string | null> {
   // Try secure storage first
   try {
-    if (window.electronAPI?.getRefreshToken) {
-      const token = await window.electronAPI.getRefreshToken();
+    const electronAPI = getElectronAPI();
+    if (electronAPI?.getRefreshToken) {
+      const token = await electronAPI.getRefreshToken();
       if (token) {
         return token;
       }
@@ -321,8 +324,9 @@ export async function getElectronRefreshToken(): Promise<string | null> {
  */
 export async function storeElectronRefreshToken(token: string): Promise<void> {
   try {
-    if (window.electronAPI?.storeRefreshToken) {
-      const result = await window.electronAPI.storeRefreshToken(token);
+    const electronAPI = getElectronAPI();
+    if (electronAPI?.storeRefreshToken) {
+      const result = await electronAPI.storeRefreshToken(token);
       if (result?.stored) {
         // Clean up legacy localStorage entry after successful migration
         localStorage.removeItem("refreshToken");

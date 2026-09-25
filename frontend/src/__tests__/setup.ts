@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest';
 import { configure } from '@testing-library/react';
 import { beforeAll, afterEach, afterAll } from 'vitest';
 import { server } from './msw/server';
+import { setElectronAPIOverride } from '../utils/electronBridge';
 
 // Note: axe-core a11y assertions use `expectNoAxeViolations()` from
 // `../test-utils/a11y`, not a `toHaveNoViolations` custom matcher.
@@ -22,6 +23,9 @@ configure({ asyncUtilTimeout: 5000 });
 beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
 afterEach(() => {
   server.resetHandlers();
+  // A test that faked the Electron bridge (setElectronAPIOverride) must not
+  // leave the next test running "in Electron".
+  setElectronAPIOverride(undefined);
   // Composer drafts (useComposerDraft) live in sessionStorage; don't let one
   // test's unsent text show up in the next test's composer.
   try {

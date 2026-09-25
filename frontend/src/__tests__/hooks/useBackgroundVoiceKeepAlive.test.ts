@@ -1,17 +1,13 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useBackgroundVoiceKeepAlive } from '../../hooks/useBackgroundVoiceKeepAlive';
+import { createElectronWrapper, createFakeElectronAPI } from '../test-utils';
 
 // Track mock state
-let mockIsElectron = false;
-let mockRequestPowerSaveBlock: ReturnType<typeof vi.fn>;
-let mockReleasePowerSaveBlock: ReturnType<typeof vi.fn>;
+let mockRequestPowerSaveBlock: Mock<() => Promise<number>>;
+let mockReleasePowerSaveBlock: Mock<(id: number) => Promise<void>>;
 let lockRequestSpy: ReturnType<typeof vi.fn>;
 let lockResolvers: Array<(value: void) => void> = [];
-
-vi.mock('../../utils/platform', () => ({
-  isElectron: vi.fn(() => mockIsElectron),
-}));
 
 // Save original navigator.locks descriptor so we can restore after tests
 const originalLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'locks');
@@ -19,10 +15,9 @@ const originalLocksDescriptor = Object.getOwnPropertyDescriptor(navigator, 'lock
 describe('useBackgroundVoiceKeepAlive', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsElectron = false;
     lockResolvers = [];
-    mockRequestPowerSaveBlock = vi.fn().mockResolvedValue(42);
-    mockReleasePowerSaveBlock = vi.fn().mockResolvedValue(undefined);
+    mockRequestPowerSaveBlock = vi.fn<() => Promise<number>>().mockResolvedValue(42);
+    mockReleasePowerSaveBlock = vi.fn<(id: number) => Promise<void>>().mockResolvedValue(undefined);
 
     // Setup navigator.locks mock
     lockRequestSpy = vi.fn((_name: string, _opts: unknown, cb: () => Promise<void>) => {
@@ -35,9 +30,6 @@ describe('useBackgroundVoiceKeepAlive', () => {
       writable: true,
       configurable: true,
     });
-
-    // Clean window.electronAPI
-    (window as unknown as Record<string, unknown>).electronAPI = undefined;
   });
 
   afterEach(() => {
@@ -95,14 +87,14 @@ describe('useBackgroundVoiceKeepAlive', () => {
   });
 
   it('should request power save block in Electron when connected', async () => {
-    mockIsElectron = true;
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      isElectron: true,
-      requestPowerSaveBlock: mockRequestPowerSaveBlock,
-      releasePowerSaveBlock: mockReleasePowerSaveBlock,
-    };
+    const wrapper = createElectronWrapper(
+      createFakeElectronAPI({
+        requestPowerSaveBlock: mockRequestPowerSaveBlock,
+        releasePowerSaveBlock: mockReleasePowerSaveBlock,
+      }),
+    );
 
-    renderHook(() => useBackgroundVoiceKeepAlive({ isConnected: true }));
+    renderHook(() => useBackgroundVoiceKeepAlive({ isConnected: true }), { wrapper });
 
     // Let the promise resolve
     await vi.waitFor(() => {
@@ -111,15 +103,16 @@ describe('useBackgroundVoiceKeepAlive', () => {
   });
 
   it('should release power save block in Electron on unmount', async () => {
-    mockIsElectron = true;
-    (window as unknown as Record<string, unknown>).electronAPI = {
-      isElectron: true,
-      requestPowerSaveBlock: mockRequestPowerSaveBlock,
-      releasePowerSaveBlock: mockReleasePowerSaveBlock,
-    };
+    const wrapper = createElectronWrapper(
+      createFakeElectronAPI({
+        requestPowerSaveBlock: mockRequestPowerSaveBlock,
+        releasePowerSaveBlock: mockReleasePowerSaveBlock,
+      }),
+    );
 
-    const { unmount } = renderHook(() =>
-      useBackgroundVoiceKeepAlive({ isConnected: true }),
+    const { unmount } = renderHook(
+      () => useBackgroundVoiceKeepAlive({ isConnected: true }),
+      { wrapper },
     );
 
     // Let the power save request resolve
@@ -132,10 +125,33 @@ describe('useBackgroundVoiceKeepAlive', () => {
     expect(mockReleasePowerSaveBlock).toHaveBeenCalledWith(42);
   });
 
-  it('should not request power save block in web browser', () => {
-    mockIsElectron = false;
+  it('releases the power save block as soon as it arrives if already disconnected', async () => {
+    let resolveRequest: (id: number) => void = () => {};
+    mockRequestPowerSaveBlock.mockReturnValue(new Promise<number>((resolve) => { resolveRequest = resolve; }));
+    const wrapper = createElectronWrapper(
+      createFakeElectronAPI({
+        requestPowerSaveBlock: mockRequestPowerSaveBlock,
+        releasePowerSaveBlock: mockReleasePowerSaveBlock,
+      }),
+    );
 
-    renderHook(() => useBackgroundVoiceKeepAlive({ isConnected: true }));
+    const { unmount } = renderHook(
+      () => useBackgroundVoiceKeepAlive({ isConnected: true }),
+      { wrapper },
+    );
+    unmount();
+    expect(mockReleasePowerSaveBlock).not.toHaveBeenCalled();
+
+    resolveRequest(7);
+    await vi.waitFor(() => {
+      expect(mockReleasePowerSaveBlock).toHaveBeenCalledWith(7);
+    });
+  });
+
+  it('should not request power save block in web browser', () => {
+    renderHook(() => useBackgroundVoiceKeepAlive({ isConnected: true }), {
+      wrapper: createElectronWrapper(null),
+    });
 
     expect(mockRequestPowerSaveBlock).not.toHaveBeenCalled();
   });

@@ -146,4 +146,4 @@ Use the centralized platform utility for detection:
 import { isElectron, isWeb, hasElectronFeature } from './utils/platform';
 ```
 
-Platform differences are encapsulated in hooks (e.g., `useScreenShare()` handles Electron source picker vs browser native). Keep platform checks out of components.
+Platform differences are encapsulated in hooks (e.g., `useScreenShare()` handles Electron source picker vs browser native). Keep platform checks out of components. The Electron preload API (`window.electronAPI`) is read only by `utils/electronBridge.ts`: non-React code calls `getElectronAPI()`, components and hooks call `useElectronAPI()` (overridable with `<ElectronProvider>`), and tests fake it with `createFakeElectronAPI()`. See [Code Patterns](../contributing/code-patterns.md#the-electron-bridge).

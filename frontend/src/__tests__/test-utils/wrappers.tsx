@@ -5,6 +5,8 @@ import { SocketHubContext } from '../../socket-hub/SocketHubContext';
 import { createEventBus } from '../../socket-hub/emitter';
 import type { EventBus } from '../../socket-hub/emitter';
 import type { MockSocket } from './mockSocket';
+import { ElectronProvider } from '../../contexts/ElectronProvider';
+import type { ElectronAPI } from '../../types/electron-api';
 
 interface WrapperOptions {
   queryClient: QueryClient;
@@ -52,5 +54,17 @@ export function createTestHubWrapper({ queryClient, eventBus, socket = null, isC
         </SocketContext.Provider>
       </QueryClientProvider>
     );
+  };
+}
+
+/**
+ * A renderHook wrapper that gives `useElectronAPI()` the bridge `api` (e.g.
+ * `createFakeElectronAPI({...})`, or `null` for a web browser):
+ *
+ *   renderHook(() => useDeepLinks(), { wrapper: createElectronWrapper(api) });
+ */
+export function createElectronWrapper(api: ElectronAPI | null) {
+  return function ElectronWrapper({ children }: { children: React.ReactNode }) {
+    return <ElectronProvider api={api}>{children}</ElectronProvider>;
   };
 }

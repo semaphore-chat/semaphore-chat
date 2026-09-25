@@ -69,12 +69,27 @@ if (hasElectronFeature('getDesktopSources')) {
 }
 ```
 
+#### **The Electron bridge (`window.electronAPI`)**
+
+Only `src/utils/electronBridge.ts` reads `window.electronAPI` (the preload script's API); ESLint (`no-restricted-syntax`) rejects `.electronAPI` access anywhere else. Get the API through the adapter:
+
 ```typescript
-// ❌ WRONG: Inline platform checks
-if (window.electronAPI) {  // Don't do this
-  // ...
-}
+// ✅ Non-React code (utils, services)
+import { getElectronAPI } from './utils/electronBridge';
+getElectronAPI()?.clearNotifications?.(tag);   // null outside Electron
+
+// ✅ Components and hooks
+import { useElectronAPI } from './contexts/ElectronContext';
+const electronAPI = useElectronAPI();          // null outside Electron; overridable by <ElectronProvider>
+useEffect(() => electronAPI?.onDeepLink?.(handleRoute), [electronAPI]);
 ```
+
+```typescript
+// ❌ WRONG: reading the global (lint error, and tests can't fake it cleanly)
+if (window.electronAPI?.getDesktopSources) { /* ... */ }
+```
+
+A non-null API always means Electron (`isElectron: true`); individual methods can be missing on older desktop builds, so call them optionally.
 
 #### **2. Platform-Specific Hooks**
 
@@ -103,7 +118,7 @@ const MyComponent = () => {
 // ❌ WRONG: Platform checks in component
 const MyComponent = () => {
   const handleClick = () => {
-    if (window.electronAPI?.getDesktopSources) {
+    if (hasElectronFeature('getDesktopSources')) {
       // Electron code
     } else {
       // Browser code
@@ -131,13 +146,25 @@ const MyComponent = () => {
 
 #### **4. Testing Platform Code**
 
+Fake the Electron bridge with `createFakeElectronAPI(overrides)` (`src/__tests__/test-utils/fakeElectronAPI.ts`): the whole `ElectronAPI` with harmless defaults (resolved promises, no-op actions, `on*` subscriptions returning an unsubscribe fn). Never assign `window.electronAPI` in a test.
+
 ```typescript
-// Mock platform detection in tests
-jest.mock('./utils/platform', () => ({
-  isElectron: jest.fn(() => false),  // Test web behavior
-  isWeb: jest.fn(() => true),
-}));
+import { createFakeElectronAPI, emitOnSubscribe, createElectronWrapper, renderWithProviders } from '../test-utils';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+
+// Components/hooks using useElectronAPI(): hand the tree a fake (null = web browser)
+renderWithProviders(<AutoUpdater />, {
+  electronAPI: createFakeElectronAPI({ onUpdateAvailable: emitOnSubscribe({ version: '1.4.0' }) }),
+});
+renderHook(() => useDeepLinks(), { wrapper: createElectronWrapper(createFakeElectronAPI({ onDeepLink })) });
+
+// Non-React code and isElectron()/hasElectronFeature(): swap the global bridge
+const api = createFakeElectronAPI({ getRefreshToken: vi.fn().mockResolvedValue('rt') });
+setElectronAPIOverride(api);          // null = web browser; src/__tests__/setup.ts resets it after each test
+expect(api.getRefreshToken).toHaveBeenCalled();
 ```
+
+The provider only reaches `useElectronAPI()`; code that also calls `isElectron()` (layout, `useResponsive`) needs `setElectronAPIOverride()`. After `vi.resetModules()`, set the override on the freshly imported `electronBridge` module. Mocking `utils/platform` (`vi.mock('../../utils/platform', () => ({ isElectron: vi.fn(() => false) }))`) still works for pure detection. Ladle: `asElectron(Story, overrides)` (`src/stories/fixtures/electron.tsx`) renders a story as Electron with the fake.
 
 #### **5. Common Pitfalls**
 
@@ -153,16 +180,12 @@ navigator.mediaDevices.getDisplayMedia = myCustomFunction;
 session.defaultSession.setDisplayMediaRequestHandler(...)
 ```
 
-❌ **Don't**: Scatter platform checks throughout components
-```typescript
-// Hard to maintain
-if (window.electronAPI) { /* ... */ }
-if (window.electronAPI?.feature) { /* ... */ }
-```
+❌ **Don't**: Read `window.electronAPI` or scatter platform checks throughout components
 
-✅ **Do**: Centralize in utility or hooks
+✅ **Do**: Centralize in the adapter, utility or hooks
 ```typescript
 import { isElectron, hasElectronFeature } from './utils/platform';
+import { useElectronAPI } from './contexts/ElectronContext';
 ```
 
 ## Development Commands

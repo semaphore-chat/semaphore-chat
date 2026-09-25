@@ -14,19 +14,17 @@ import {
   consumePendingSecureStorageWarning,
 } from '../../utils/tokenService';
 import { logger } from '../../utils/logger';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+import { createFakeElectronAPI } from '../test-utils/fakeElectronAPI';
 
 describe('tokenService — Electron secure storage', () => {
-  let originalElectronAPI: typeof window.electronAPI;
-
   beforeEach(() => {
-    originalElectronAPI = window.electronAPI;
     clearTokens();
     localStorage.clear();
     vi.clearAllMocks();
   });
 
   afterEach(() => {
-    window.electronAPI = originalElectronAPI;
     localStorage.clear();
   });
 
@@ -34,19 +32,20 @@ describe('tokenService — Electron secure storage', () => {
 
   describe('getElectronRefreshToken', () => {
     it('should return token from secure storage when available', async () => {
-      window.electronAPI = {
+      const api = createFakeElectronAPI({
         getRefreshToken: vi.fn().mockResolvedValue('secure-token'),
-      };
+      });
+      setElectronAPIOverride(api);
 
       const token = await getElectronRefreshToken();
       expect(token).toBe('secure-token');
-      expect(window.electronAPI.getRefreshToken).toHaveBeenCalled();
+      expect(api.getRefreshToken).toHaveBeenCalled();
     });
 
     it('should fall back to localStorage when secure storage returns null', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         getRefreshToken: vi.fn().mockResolvedValue(null),
-      };
+      }));
       localStorage.setItem('refreshToken', 'legacy-token');
 
       const token = await getElectronRefreshToken();
@@ -54,7 +53,7 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when getRefreshToken is not available', async () => {
-      window.electronAPI = {};
+      setElectronAPIOverride({ isElectron: true });
       localStorage.setItem('refreshToken', 'legacy-token');
 
       const token = await getElectronRefreshToken();
@@ -62,7 +61,7 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when electronAPI is undefined', async () => {
-      window.electronAPI = undefined;
+      setElectronAPIOverride(null);
       localStorage.setItem('refreshToken', 'legacy-token');
 
       const token = await getElectronRefreshToken();
@@ -70,16 +69,16 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should return null when no token exists anywhere', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         getRefreshToken: vi.fn().mockResolvedValue(null),
-      };
+      }));
 
       const token = await getElectronRefreshToken();
       expect(token).toBeNull();
     });
 
     it('should return null when electronAPI is undefined and localStorage is empty', async () => {
-      window.electronAPI = undefined;
+      setElectronAPIOverride(null);
 
       const token = await getElectronRefreshToken();
       expect(token).toBeNull();
@@ -91,9 +90,9 @@ describe('tokenService — Electron secure storage', () => {
   describe('storeElectronRefreshToken', () => {
     it('should store in secure storage when available', async () => {
       const mockStore = vi.fn().mockResolvedValue({ stored: true, availability: 'available' });
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: mockStore,
-      };
+      }));
 
       await storeElectronRefreshToken('new-token');
 
@@ -102,9 +101,9 @@ describe('tokenService — Electron secure storage', () => {
 
     it('should remove localStorage entry after storing in secure storage', async () => {
       localStorage.setItem('refreshToken', 'legacy-token');
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: true, availability: 'available' }),
-      };
+      }));
 
       await storeElectronRefreshToken('new-token');
 
@@ -112,9 +111,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when safeStorage is unavailable', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'unavailable' }),
-      };
+      }));
 
       await storeElectronRefreshToken('fallback-token');
 
@@ -122,9 +121,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when the write fails despite encryption being available', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'available' }),
-      };
+      }));
 
       await storeElectronRefreshToken('fallback-token');
 
@@ -132,9 +131,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when storeRefreshToken rejects', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockRejectedValue(new Error('IPC error')),
-      };
+      }));
 
       await storeElectronRefreshToken('fallback-token');
 
@@ -142,7 +141,7 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when storeRefreshToken is not available', async () => {
-      window.electronAPI = {};
+      setElectronAPIOverride({ isElectron: true });
 
       await storeElectronRefreshToken('fallback-token');
 
@@ -150,7 +149,7 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should fall back to localStorage when electronAPI is undefined', async () => {
-      window.electronAPI = undefined;
+      setElectronAPIOverride(null);
 
       await storeElectronRefreshToken('fallback-token');
 
@@ -164,11 +163,9 @@ describe('tokenService — Electron secure storage', () => {
     it('should call deleteRefreshToken when available', () => {
       const mockDelete = vi.fn().mockResolvedValue(true);
 
-      // Mock isElectron to return true
-      window.electronAPI = {
-        isElectron: true,
+      setElectronAPIOverride(createFakeElectronAPI({
         deleteRefreshToken: mockDelete,
-      };
+      }));
 
       setAccessToken('some-token');
       clearTokens();
@@ -178,7 +175,7 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('should clear localStorage refreshToken even without electronAPI', () => {
-      window.electronAPI = undefined;
+      setElectronAPIOverride(null);
       localStorage.setItem('refreshToken', 'rt');
 
       clearTokens();
@@ -194,9 +191,9 @@ describe('tokenService — Electron secure storage', () => {
     const PENDING_KEY = 'semaphore:secureStorageWarningPending';
 
     it('logs on every unavailable store, but notifies a registered listener only once (live path)', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'unavailable' }),
-      };
+      }));
 
       const warningListener = vi.fn();
       const unsubscribe = onSecureStorageWarning(warningListener);
@@ -215,9 +212,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('notifies the listener and logs a distinct write-failure message when the write fails despite available encryption', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'available' }),
-      };
+      }));
 
       const warningListener = vi.fn();
       const unsubscribe = onSecureStorageWarning(warningListener);
@@ -243,7 +240,7 @@ describe('tokenService — Electron secure storage', () => {
       const store = vi.fn()
         .mockResolvedValueOnce({ stored: false, availability: 'unavailable' })
         .mockResolvedValueOnce({ stored: false, availability: 'available' });
-      window.electronAPI = { storeRefreshToken: store };
+      setElectronAPIOverride(createFakeElectronAPI({ storeRefreshToken: store }));
 
       await storeElectronRefreshToken('token-1');
       await storeElectronRefreshToken('token-2');
@@ -256,9 +253,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('sets the durable pending marker for a write-failure with no listener registered', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'available' }),
-      };
+      }));
 
       await storeElectronRefreshToken('token-1');
 
@@ -267,9 +264,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('does not notify listeners when secure storage is available', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: true, availability: 'available' }),
-      };
+      }));
 
       const warningListener = vi.fn();
       const unsubscribe = onSecureStorageWarning(warningListener);
@@ -287,9 +284,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('sets a durable pending marker (not the shown flag) when no listener is registered', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'unavailable' }),
-      };
+      }));
 
       // No listener registered yet — this is the common real-world case:
       // AuthGate's pre-mount silent refresh on cold launch, or
@@ -302,9 +299,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('live listener registered later still delivers and consumes any pending marker', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'unavailable' }),
-      };
+      }));
 
       // First call, no listener: sets pending.
       await storeElectronRefreshToken('token-1');
@@ -325,9 +322,9 @@ describe('tokenService — Electron secure storage', () => {
     });
 
     it('unsubscribe stops further notifications', async () => {
-      window.electronAPI = {
+      setElectronAPIOverride(createFakeElectronAPI({
         storeRefreshToken: vi.fn().mockResolvedValue({ stored: false, availability: 'unavailable' }),
-      };
+      }));
 
       const warningListener = vi.fn();
       const unsubscribe = onSecureStorageWarning(warningListener);

@@ -113,6 +113,36 @@ Quick rules:
 import { isElectron, isWeb, hasElectronFeature } from './utils/platform';
 ```
 
+### The Electron bridge
+
+The preload script exposes the Electron API as `window.electronAPI`. Only `src/utils/electronBridge.ts` reads it; ESLint rejects `.electronAPI` access anywhere else. Use:
+
+| Where | How |
+|-------|-----|
+| Non-React code (utils, services) | `getElectronAPI()` from `utils/electronBridge` (or `utils/platform`) |
+| Components and hooks | `useElectronAPI()` from `contexts/ElectronContext` |
+| Yes/no checks | `isElectron()`, `hasElectronFeature()`, `isWayland()` from `utils/platform` |
+
+`getElectronAPI()` and `useElectronAPI()` return `null` outside Electron, so a non-null value always means Electron. Individual methods can still be missing on older desktop builds, so call them optionally (`api?.checkForUpdates?.()`).
+
+### Faking Electron in tests and stories
+
+`createFakeElectronAPI(overrides)` (`src/__tests__/test-utils/fakeElectronAPI.ts`) implements the whole `ElectronAPI` with harmless defaults: queries resolve to neutral values, actions do nothing, and `on*` subscriptions return an unsubscribe function. Override what the test cares about and install it through one of the two seams. Don't assign `window.electronAPI`.
+
+```typescript
+// A component or hook that uses useElectronAPI(): give its tree a fake.
+renderWithProviders(<AutoUpdater />, {
+  electronAPI: createFakeElectronAPI({ onUpdateAvailable: emitOnSubscribe({ version: '1.4.0' }) }),
+});
+// renderHook: { wrapper: createElectronWrapper(fake) }; a web browser: electronAPI: null
+
+// Non-React code (tokenService, isElectron()): swap the global bridge.
+const api = createFakeElectronAPI({ getRefreshToken: vi.fn().mockResolvedValue('rt') });
+setElectronAPIOverride(api); // null = web browser; setup.ts clears it after each test
+```
+
+The provider only reaches `useElectronAPI()`. Code that also calls `isElectron()` (layout, `useResponsive`) needs `setElectronAPIOverride()`. Ladle stories use `asElectron(Story, overrides)` (`stories/fixtures/electron.tsx`), which installs the fake with `setElectronAPIOverride()`.
+
 ### Guidelines
 
 **Platform-specific** (use hooks): Screen capture, native file access, desktop notifications, auto-updates, system tray.
@@ -122,7 +152,7 @@ import { isElectron, isWeb, hasElectronFeature } from './utils/platform';
 ### Rules
 
 - Never override browser APIs globally (breaks LiveKit)
-- Never scatter `window.electronAPI` checks in components
+- Never read `window.electronAPI` directly: use `getElectronAPI()`, `useElectronAPI()` or the `utils/platform` checks (ESLint enforces this)
 - Centralize platform logic in utility functions or hooks
 - Let Electron intercept via `setDisplayMediaRequestHandler` in main process
 

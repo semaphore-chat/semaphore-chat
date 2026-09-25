@@ -62,6 +62,32 @@ export default tseslint.config(
       '@typescript-eslint/explicit-function-return-type': 'off',
     },
   },
+  // The Electron bridge (`window.electronAPI`) is read in ONE place,
+  // src/utils/electronBridge.ts, so tests and the Ladle sandbox can fake it
+  // through one seam. Everything else uses getElectronAPI() (non-React code),
+  // useElectronAPI() (components/hooks) or the utils/platform checks; tests
+  // use setElectronAPIOverride() / <ElectronProvider> with
+  // createFakeElectronAPI() instead of assigning the global.
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/utils/electronBridge.ts', 'src/__tests__/utils/electronBridge.test.ts'],
+    rules: {
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: "MemberExpression[property.name='electronAPI']",
+          message:
+            'Use getElectronAPI() (utils/electronBridge), useElectronAPI() (contexts/ElectronContext) or utils/platform instead of reading window.electronAPI; in tests, setElectronAPIOverride() or <ElectronProvider> with createFakeElectronAPI().',
+        },
+        {
+          selector:
+            "VariableDeclarator[init.name=/^(window|globalThis|self)$/] > ObjectPattern > Property[key.name='electronAPI']",
+          message:
+            'Use getElectronAPI() (utils/electronBridge) or useElectronAPI() (contexts/ElectronContext) instead of destructuring electronAPI from window.',
+        },
+      ],
+    },
+  },
   // Exempt Electron main/preload and service worker from no-console
   // (these run outside the browser app context where the logger utility is unavailable)
   {

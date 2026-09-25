@@ -6,6 +6,8 @@ import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import { SocketContext } from '../../utils/SocketContext';
 import { NotificationProvider } from '../../contexts/NotificationContext';
+import { ElectronProvider } from '../../contexts/ElectronProvider';
+import type { ElectronAPI } from '../../types/electron-api';
 import { generateTheme } from '../../theme/themeConfig';
 import { createTestQueryClient } from './queryClient';
 import type { MockSocket } from './mockSocket';
@@ -19,6 +21,14 @@ interface RenderWithProvidersOptions extends Omit<RenderOptions, 'wrapper'> {
   routerProps?: MemoryRouterProps;
   withRouter?: boolean;
   withTheme?: boolean;
+  /**
+   * The Electron bridge `useElectronAPI()` returns in this tree (wraps it in
+   * an `ElectronProvider`): e.g. `createFakeElectronAPI({...})`, or `null` for
+   * a web browser. Omit to leave `useElectronAPI()` on `getElectronAPI()`.
+   * Non-React code (`isElectron()`, tokenService) doesn't see it; fake that
+   * with `setElectronAPIOverride()`.
+   */
+  electronAPI?: ElectronAPI | null;
 }
 
 export function renderWithProviders(
@@ -32,6 +42,7 @@ export function renderWithProviders(
     routerProps = {},
     withRouter = true,
     withTheme = true,
+    electronAPI,
     ...renderOptions
   } = options;
 
@@ -42,6 +53,10 @@ export function renderWithProviders(
 
     // NotificationProvider wraps children (renders Snackbar for assertions)
     content = <NotificationProvider>{content}</NotificationProvider>;
+
+    if (electronAPI !== undefined) {
+      content = <ElectronProvider api={electronAPI}>{content}</ElectronProvider>;
+    }
 
     // Socket context
     content = (

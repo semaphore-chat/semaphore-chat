@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Button, LinearProgress, Snackbar, Box, Typography } from '@mui/material';
 import { Download, Refresh } from '@mui/icons-material';
 import { logger } from '../../utils/logger';
+import { useElectronAPI } from '../../contexts/ElectronContext';
 import type { UpdateInfo } from '../../types/electron-api';
 
 export const AutoUpdater = () => {
@@ -19,10 +20,11 @@ export const AutoUpdater = () => {
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isElectron, setIsElectron] = useState(false);
+  const electronAPI = useElectronAPI();
 
   useEffect(() => {
-    const electronAPI = window.electronAPI;
-    if (!electronAPI?.isElectron) return;
+    // Null outside Electron.
+    if (!electronAPI) return;
 
     setIsElectron(true);
 
@@ -68,14 +70,14 @@ export const AutoUpdater = () => {
       unsubUpdateDownloaded();
       unsubUpdateError();
     };
-  }, []);
+  }, [electronAPI]);
 
   const handleInstallUpdate = () => {
-    window.electronAPI?.quitAndInstall?.();
+    electronAPI?.quitAndInstall?.();
   };
 
   const handleCheckForUpdates = () => {
-    window.electronAPI?.checkForUpdates?.();
+    electronAPI?.checkForUpdates?.();
   };
 
   const handleDismissError = () => {
