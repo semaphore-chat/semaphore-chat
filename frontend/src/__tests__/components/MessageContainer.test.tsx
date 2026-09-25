@@ -806,6 +806,41 @@ describe('MessageContainer', () => {
         expect(mockMarkAsRead).toHaveBeenCalledWith('msg-real');
       });
 
+      it('marks each of two in-view sends as it is confirmed, never going back to the older one', () => {
+        const second = (overrides: Record<string, unknown> = {}) =>
+          pendingRow({ id: 'pending-def', clientId: 'pending-def', ...overrides });
+        const render = (messages: ReturnType<typeof createMessage>[]) => (
+          <MessageContainer {...defaultProps} messages={messages} channelId="ch-1" />
+        );
+        const { rerender } = renderWithProviders(render([second(), pendingRow(), ...history()]));
+        act(() => (lastVirtualListProps!.onVisibleRangeChange as (s: number, e: number) => void)(0, 6));
+        mockMarkAsRead.mockClear();
+
+        // The older send is confirmed first.
+        rerender(render([second(), pendingRow({ id: 'msg-a', sendStatus: undefined }), ...history()]));
+        expect(mockMarkAsRead.mock.calls).toEqual([['msg-a']]);
+
+        // Then the newer one.
+        rerender(
+          render([
+            second({ id: 'msg-b', sendStatus: undefined }),
+            pendingRow({ id: 'msg-a', sendStatus: undefined }),
+            ...history(),
+          ]),
+        );
+        expect(mockMarkAsRead.mock.calls).toEqual([['msg-a'], ['msg-b']]);
+
+        // A later update (e.g. an echo merge) marks nothing more.
+        rerender(
+          render([
+            second({ id: 'msg-b', sendStatus: undefined }),
+            pendingRow({ id: 'msg-a', sendStatus: undefined }),
+            ...history(),
+          ]),
+        );
+        expect(mockMarkAsRead.mock.calls).toEqual([['msg-a'], ['msg-b']]);
+      });
+
       it('does not mark a confirmed row that left the visible range before the ack', () => {
         const { rerender } = renderWithProviders(
           <MessageContainer {...defaultProps} messages={[pendingRow(), ...history()]} channelId="ch-1" />,

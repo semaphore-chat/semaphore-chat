@@ -322,14 +322,24 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   useEffect(() => {
     const unconfirmed = unconfirmedInViewRef.current;
     if (unconfirmed.size === 0) return;
-    // Oldest first, so the last match is the newest confirmed send.
+    // Newest first: optimistic rows sit at the live edge, so the scan stops
+    // at the tail once every tracked row is found. Every confirmed one leaves
+    // the set (so an older one can't be marked on a later update), and the
+    // first confirmed is the newest, the one to mark.
     let newlyConfirmed: Message | undefined;
-    for (const message of orderedMessages) {
+    const stillPending = new Set<string>();
+    let seen = 0;
+    for (let i = orderedMessages.length - 1; i >= 0 && seen < unconfirmed.size; i--) {
+      const message = orderedMessages[i];
       if (!message.clientId || !unconfirmed.has(message.clientId)) continue;
-      if (isUnconfirmed(message)) continue;
-      unconfirmed.delete(message.clientId);
-      newlyConfirmed = message;
+      seen += 1;
+      if (isUnconfirmed(message)) stillPending.add(message.clientId);
+      else newlyConfirmed ??= message;
     }
+    // Keep only the rows still waiting for their ack: confirmed ones are
+    // done, and ones no longer in the list (deleted, or replaced by a
+    // separately inserted echo) would otherwise force a full scan each time.
+    unconfirmedInViewRef.current = stillPending;
     if (newlyConfirmed) markAsRead(newlyConfirmed.id);
   }, [orderedMessages, markAsRead]);
 
