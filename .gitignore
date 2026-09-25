@@ -3,6 +3,7 @@
 **/node_modules
 **/build
 !frontend/build/
+frontend/build-ladle/
 **/*.tsbuildinfo
 
 # Logs

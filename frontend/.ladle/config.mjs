@@ -13,12 +13,16 @@
  *   `.ladle/public/`, not the real app's `public/` PWA assets directory.
  * - Bound to 0.0.0.0:61000 so the `ux-shots` container can reach it at
  *   `http://ladle:61000` over the Docker network.
+ * - `outDir: 'build-ladle'`: Ladle's default (`build/`) is where the
+ *   committed Electron icons and Linux packaging scripts live, and
+ *   `ladle build` empties it first.
  */
 export default {
   stories: 'src/stories/**/*.stories.tsx',
   port: 61000,
   host: '0.0.0.0',
   viteConfig: '.ladle/vite.config.ts',
+  outDir: 'build-ladle',
   addons: {
     msw: { enabled: true },
     theme: { defaultState: 'dark' },
