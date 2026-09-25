@@ -612,8 +612,8 @@ describe('AuthService', () => {
   });
 
   describe('getUserSessions', () => {
-    const at = (minutesAgo: number) =>
-      new Date(Date.now() - minutesAgo * 60_000);
+    const base = Date.now();
+    const at = (minutesAgo: number) => new Date(base - minutesAgo * 60_000);
 
     it('lists sessions by family, with the activity the delayed query picked', async () => {
       mockDatabase.refreshToken.findMany.mockResolvedValue([

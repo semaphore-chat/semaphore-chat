@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, type RefObject } from "react";
 import { Outlet, Navigate, useNavigate } from "react-router-dom";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
@@ -32,6 +32,27 @@ enum AuthState {
   NeedsOnboarding = "needs-onboarding",
   Unauthenticated = "unauthenticated",
   Authenticated = "authenticated",
+}
+
+/**
+ * Get an access token through the refresh token (cookie, or Electron's
+ * stored token). Only a refused session (401/403, no refresh token) means
+ * signing in again. When the server can't answer (network error, 5xx, 429),
+ * AuthGate keeps "Connecting..." and tries again (refreshSessionUntilAnswered):
+ * the login page would sign out a user whose session is fine.
+ * @param abortRef - Holds the AbortController of the refresh in progress; a
+ *   new call aborts the previous one, and AuthGate aborts it on unmount
+ * @returns Whether the session was refreshed, or null if aborted meanwhile
+ */
+async function refreshSessionOnLoad(
+  abortRef: RefObject<AbortController | null>
+): Promise<boolean | null> {
+  abortRef.current?.abort();
+  const abort = new AbortController();
+  abortRef.current = abort;
+  const result = await refreshSessionUntilAnswered(abort.signal);
+  if (abort.signal.aborted) return null;
+  return result.status === "refreshed";
 }
 
 export function AuthGate() {
@@ -97,24 +118,6 @@ export function AuthGate() {
     if (path) navigate(path);
   }, [authState, navigate]);
 
-  /**
-   * Get an access token through the refresh token (cookie, or Electron's
-   * stored token). Only a refused session (401/403, no refresh token) means
-   * signing in again. When the server can't answer (network error, 5xx,
-   * 429), keep "Connecting..." and try again (refreshSessionUntilAnswered):
-   * the login page would sign out a user whose session is fine.
-   * @returns Whether the session was refreshed, or null if AuthGate went
-   *   away meanwhile
-   */
-  async function refreshSessionOnLoad(): Promise<boolean | null> {
-    refreshAbort.current?.abort();
-    const abort = new AbortController();
-    refreshAbort.current = abort;
-    const result = await refreshSessionUntilAnswered(abort.signal);
-    if (abort.signal.aborted) return null;
-    return result.status === "refreshed";
-  }
-
   async function validateToken() {
     const token = getAccessToken();
 
@@ -122,7 +125,7 @@ export function AuthGate() {
       // No in-memory token (e.g. page refresh). Attempt silent refresh
       // using httpOnly refresh_token cookie (web) or stored token (Electron).
       logger.dev("[AuthGate] No token in memory, attempting silent refresh...");
-      const refreshed = await refreshSessionOnLoad();
+      const refreshed = await refreshSessionOnLoad(refreshAbort);
       if (refreshed === null) return;
       setAuthState(
         refreshed ? AuthState.Authenticated : AuthState.Unauthenticated
@@ -144,7 +147,7 @@ export function AuthGate() {
 
     // Server rejected the token (or network error) — try explicit refresh
     logger.dev("[AuthGate] Server validation failed, attempting refresh...");
-    const refreshed = await refreshSessionOnLoad();
+    const refreshed = await refreshSessionOnLoad(refreshAbort);
     if (refreshed === null) return;
     if (refreshed) {
       setAuthState(AuthState.Authenticated);
