@@ -35,7 +35,9 @@ vi.mock('virtua', async () => {
         capturedProps = props as typeof capturedProps;
         ReactMod.useImperativeHandle(ref, () => fakeHandle, []);
         return (
-          <div data-testid="vlist">{props.children as React.ReactNode}</div>
+          <div data-testid="vlist" aria-busy={props['aria-busy'] as boolean | undefined}>
+            {props.children as React.ReactNode}
+          </div>
         );
       },
     ),
@@ -50,6 +52,8 @@ vi.mock('../../components/Message/MessageComponent', () => ({
     </div>
   ),
 }));
+// No longer rendered by the list (pagination uses a thin progress bar); kept
+// mocked so the page-load tests can assert no skeleton rows come back.
 vi.mock('../../components/Message/MessageSkeleton', () => ({
   default: () => <div data-testid="message-skeleton" />,
 }));
@@ -979,46 +983,54 @@ describe('VirtualMessageList', () => {
     });
   });
 
-  describe('loading skeletons', () => {
-    it('shows top skeletons while isLoadingMore is true', () => {
+  describe('page-load indicator', () => {
+    const renderList = (props: Partial<React.ComponentProps<typeof VirtualMessageList>> = {}) =>
       render(
-        <VirtualMessageList
-          {...baseProps}
-          orderedMessages={messages(5)}
-          isLoadingMore={true}
-        />,
+        <VirtualMessageList {...baseProps} orderedMessages={messages(5)} {...props} />,
       );
-      expect(screen.getAllByTestId('message-skeleton').length).toBe(3);
-    });
 
-    it('shows bottom skeletons while isLoadingNewer is true (anchored mode)', () => {
-      render(
-        <VirtualMessageList
-          {...baseProps}
-          orderedMessages={messages(5)}
-          mode="anchored"
-          isLoadingNewer={true}
-        />,
-      );
-      expect(screen.getAllByTestId('message-skeleton').length).toBe(3);
-    });
-
-    it('shows both top and bottom skeletons when both are loading', () => {
-      render(
-        <VirtualMessageList
-          {...baseProps}
-          orderedMessages={messages(5)}
-          mode="anchored"
-          isLoadingMore={true}
-          isLoadingNewer={true}
-        />,
-      );
-      expect(screen.getAllByTestId('message-skeleton').length).toBe(6);
-    });
-
-    it('shows no skeletons when neither is loading', () => {
-      render(<VirtualMessageList {...baseProps} orderedMessages={messages(5)} />);
+    it('shows a top progress bar (no skeleton rows) while isLoadingMore is true', () => {
+      renderList({ isLoadingMore: true });
       expect(screen.queryByTestId('message-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('load-older-progress')).toBeInTheDocument();
+      expect(screen.queryByTestId('load-newer-progress')).not.toBeInTheDocument();
+      expect(screen.getByTestId('vlist')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('shows a bottom progress bar (no skeleton rows) while isLoadingNewer is true (anchored mode)', () => {
+      renderList({ mode: 'anchored', isLoadingNewer: true });
+      expect(screen.queryByTestId('message-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('load-newer-progress')).toBeInTheDocument();
+      expect(screen.queryByTestId('load-older-progress')).not.toBeInTheDocument();
+      expect(screen.getByTestId('vlist')).toHaveAttribute('aria-busy', 'true');
+    });
+
+    it('shows both bars when both directions are loading', () => {
+      renderList({ mode: 'anchored', isLoadingMore: true, isLoadingNewer: true });
+      expect(screen.getByTestId('load-older-progress')).toBeInTheDocument();
+      expect(screen.getByTestId('load-newer-progress')).toBeInTheDocument();
+    });
+
+    it('overlays the bars on the list edges without taking layout space', () => {
+      renderList({ mode: 'anchored', isLoadingMore: true, isLoadingNewer: true });
+      const container = screen.getByTestId('virtual-scroll-container');
+      expect(container).toHaveStyle({ position: 'relative' });
+      const top = screen.getByTestId('load-older-progress');
+      const bottom = screen.getByTestId('load-newer-progress');
+      expect(top).toHaveStyle({ position: 'absolute', top: '0px', height: '2px' });
+      expect(bottom).toHaveStyle({ position: 'absolute', bottom: '0px', height: '2px' });
+      // Decorative: the list's aria-busy is what assistive tech reads.
+      expect(top).toHaveAttribute('aria-hidden', 'true');
+      expect(bottom).toHaveAttribute('aria-hidden', 'true');
+      expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+
+    it('shows no indicator and is not busy when neither direction is loading', () => {
+      renderList();
+      expect(screen.queryByTestId('load-older-progress')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('load-newer-progress')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('message-skeleton')).not.toBeInTheDocument();
+      expect(screen.getByTestId('vlist')).toHaveAttribute('aria-busy', 'false');
     });
   });
 

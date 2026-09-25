@@ -41,9 +41,6 @@ vi.mock('../../components/Message/MessageComponent', () => ({
     />
   ),
 }));
-vi.mock('../../components/Message/MessageSkeleton', () => ({
-  default: () => <div data-testid="message-skeleton" />,
-}));
 vi.mock('../../components/Message/UnreadMessageDivider', () => ({
   UnreadMessageDivider: () => <div data-testid="unread-divider" />,
 }));

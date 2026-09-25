@@ -26,7 +26,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
-import { http, HttpResponse, type HttpHandler } from 'msw';
+import { delay, http, HttpResponse, type HttpHandler } from 'msw';
 import { createMessage, createSpan, createChannel, createReaction, createDmGroupMember } from '../../../__tests__/test-utils/factories';
 import type { Message, Span, FileMetadata, LinkPreview } from '../../../types/message.type';
 import { SpanType } from '../../../types/message.type';
@@ -671,11 +671,63 @@ export function chatHandlers(scenario: Scenario = edgeChatScenario, opts: ChatHa
   return handlers;
 }
 
+/**
+ * Channel message pages in one direction (a request with a continuationToken)
+ * never resolve, pinning the list in its "loading older/newer page" state.
+ * The first page and `/around/` still answer, from the handlers after this.
+ */
+export function hangingPageLoads(direction: 'older' | 'newer'): HttpHandler {
+  return http.get('/api/messages/channel/:channelId', async ({ request }) => {
+    const url = new URL(request.url);
+    const dir = url.searchParams.get('direction') === 'newer' ? 'newer' : 'older';
+    if (!url.searchParams.get('continuationToken') || dir !== direction) return undefined;
+    await delay(10 * 60_000);
+    return HttpResponse.json({ messages: [] });
+  });
+}
+
 // ── Story drivers (DOM + cache) ────────────────────────────────────────
 
 /** Mirrors useResponsive's shouldUseTouchUI (coarse pointer, phone, or tablet < 1200px). */
 export function isTouchUI(): boolean {
   return window.matchMedia('(hover: none) and (pointer: coarse)').matches || window.innerWidth < 1200;
+}
+
+const messageList = () => document.querySelector<HTMLElement>('[role="list"][aria-label="Messages"]');
+
+/**
+ * A driver step that succeeds once the message list has made its initial
+ * scroll and then held its scroll position, content height and viewport
+ * height for `polls` polls in a
+ * row (initial positioning, row measuring and deep-link centering are done).
+ */
+export function messageListSteady(polls = 3): DriverStep {
+  let last = '';
+  let same = 0;
+  return () => {
+    const list = messageList();
+    if (!list || list.scrollTop === 0) return false;
+    const now = `${list.scrollTop}/${list.scrollHeight}/${list.clientHeight}`;
+    same = now === last ? same + 1 : 0;
+    last = now;
+    return same >= polls;
+  };
+}
+
+/**
+ * A driver step that scrolls the message list to its top or bottom edge (as a
+ * user would, firing its scroll handler) and succeeds once the list is at
+ * that edge and busy loading the next page there.
+ */
+export function scrollMessageListToLoad(edge: 'top' | 'bottom'): DriverStep {
+  return () => {
+    const list = messageList();
+    if (!list) return false;
+    const atEdge = edge === 'top' ? list.scrollTop === 0 : list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
+    if (atEdge && list.getAttribute('aria-busy') === 'true') return true;
+    list.scrollTop = edge === 'top' ? 0 : list.scrollHeight - list.clientHeight;
+    return false;
+  };
 }
 
 /** The message row (`MessageComponent` Container) whose text contains `needle` (the last match with `last`). */
