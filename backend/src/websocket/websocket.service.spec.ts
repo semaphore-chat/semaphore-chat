@@ -2,6 +2,7 @@ import { TestBed } from '@suites/unit';
 import { WebsocketService } from './websocket.service';
 import { toWirePayload } from './websocket-wire.util';
 import { Server } from 'socket.io';
+import { ServerEvents } from '@semaphore-chat/shared';
 
 describe('WebsocketService', () => {
   let service: WebsocketService;
@@ -556,6 +557,50 @@ describe('WebsocketService', () => {
       expect(() => {
         service.removeSocketsFromRoom('user-123', 'channel-456');
       }).not.toThrow();
+    });
+  });
+
+  describe('terminateSessionsInRoom', () => {
+    it('tells the sockets why, then disconnects them', () => {
+      const calls: string[] = [];
+      const mockEmit = jest.fn(() => calls.push('emit'));
+      const mockDisconnectSockets = jest.fn(() => calls.push('disconnect'));
+      const mockServer = {
+        to: jest.fn().mockReturnValue({ emit: mockEmit }),
+        in: jest.fn().mockReturnValue({
+          disconnectSockets: mockDisconnectSockets,
+        }),
+      } as any;
+
+      service.setServer(mockServer);
+      service.terminateSessionsInRoom('session:abc', 'LOGGED_OUT');
+
+      expect(mockServer.to).toHaveBeenCalledWith('session:abc');
+      expect(mockEmit).toHaveBeenCalledWith(ServerEvents.SESSION_TERMINATED, {
+        reason: 'LOGGED_OUT',
+      });
+      expect(mockServer.in).toHaveBeenCalledWith('session:abc');
+      // Close the underlying connection too
+      expect(mockDisconnectSockets).toHaveBeenCalledWith(true);
+      expect(calls).toEqual(['emit', 'disconnect']);
+    });
+
+    it('should not throw when server is not initialized', () => {
+      expect(() =>
+        service.terminateSessionsInRoom('user:1', 'ACCOUNT_BANNED'),
+      ).not.toThrow();
+    });
+
+    it('should not throw on error', () => {
+      service.setServer({
+        to: jest.fn(() => {
+          throw new Error('Socket error');
+        }),
+      } as any);
+
+      expect(() =>
+        service.terminateSessionsInRoom('user:1', 'ACCOUNT_BANNED'),
+      ).not.toThrow();
     });
   });
 });

@@ -6,6 +6,7 @@ import { InviteService } from '@/invite/invite.service';
 import { ChannelsService } from '@/channels/channels.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { SessionRevocationService } from '@/auth/session-revocation.service';
 import {
   ConflictException,
   ForbiddenException,
@@ -30,6 +31,7 @@ describe('UserService', () => {
   let channelsService: Mocked<ChannelsService>;
   let communityRolesService: Mocked<CommunityRolesService>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let sessionRevocationService: Mocked<SessionRevocationService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -44,6 +46,7 @@ describe('UserService', () => {
     channelsService = unitRef.get(ChannelsService);
     communityRolesService = unitRef.get(CommunityRolesService);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    sessionRevocationService = unitRef.get(SessionRevocationService);
 
     // Mock bcrypt
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
@@ -851,6 +854,37 @@ describe('UserService', () => {
       });
     });
 
+    it('should lock the user against refreshes before deleting the refresh tokens', async () => {
+      // A refresh racing the reset either finds its token gone, or commits
+      // first and the delete (a later statement) sees its new token
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue(target);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.setUserPassword(target.id, 'new-password-123', 'admin-id');
+
+      const [strings, userId] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(/FOR NO KEY UPDATE/);
+      expect(userId).toBe(target.id);
+      expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        mockDatabase.refreshToken.deleteMany.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should revoke the access tokens and disconnect the sockets after the update', async () => {
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue(target);
+      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
+
+      await service.setUserPassword(target.id, 'new-password-123', 'admin-id');
+
+      expect(
+        sessionRevocationService.revokeAllUserSessions,
+      ).toHaveBeenCalledWith(target.id, 'PASSWORD_CHANGED');
+    });
+
     it('should throw NotFoundException when the user does not exist', async () => {
       mockDatabase.user.findUnique.mockResolvedValue(null);
 
@@ -876,6 +910,9 @@ describe('UserService', () => {
       ).rejects.toThrow(ForbiddenException);
       expect(mockDatabase.user.update).not.toHaveBeenCalled();
       expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+      expect(
+        sessionRevocationService.revokeAllUserSessions,
+      ).not.toHaveBeenCalled();
     });
 
     it('should allow an owner to reset another owner password', async () => {
@@ -928,6 +965,63 @@ describe('UserService', () => {
       // (AdminUserEntity intentionally exposes email to admins, so the
       // stricter expectNoSensitiveUserFields helper doesn't apply here)
       expect(instanceToPlain(result)).not.toHaveProperty('hashedPassword');
+    });
+  });
+
+  describe('setBanStatus', () => {
+    it("should end the user's live sockets when banning", async () => {
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue({ ...target, banned: true });
+
+      await service.setBanStatus(target.id, true, 'admin-id');
+
+      expect(mockDatabase.user.update).toHaveBeenCalledWith({
+        where: { id: target.id },
+        data: expect.objectContaining({ banned: true }),
+      });
+      expect(sessionRevocationService.endAllUserSockets).toHaveBeenCalledWith(
+        target.id,
+        'ACCOUNT_BANNED',
+      );
+    });
+
+    it('should not touch sockets when unbanning', async () => {
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.update.mockResolvedValue(target);
+
+      await service.setBanStatus(target.id, false, 'admin-id');
+
+      expect(sessionRevocationService.endAllUserSockets).not.toHaveBeenCalled();
+    });
+
+    it('should not end sockets when the ban is refused', async () => {
+      const owner = UserFactory.buildOwner();
+      mockDatabase.user.findUnique.mockResolvedValue(owner);
+
+      await expect(
+        service.setBanStatus(owner.id, true, 'admin-id'),
+      ).rejects.toThrow(ForbiddenException);
+      expect(sessionRevocationService.endAllUserSockets).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteUser', () => {
+    it("should end the deleted user's live sockets", async () => {
+      const target = UserFactory.build({ role: InstanceRole.USER });
+      mockDatabase.user.findUnique.mockResolvedValue(target);
+      mockDatabase.user.delete.mockResolvedValue(target);
+
+      await service.deleteUser(target.id, 'admin-id');
+
+      expect(mockDatabase.user.delete).toHaveBeenCalledWith({
+        where: { id: target.id },
+      });
+      expect(sessionRevocationService.endAllUserSockets).toHaveBeenCalledWith(
+        target.id,
+        'ACCOUNT_DELETED',
+      );
     });
   });
 });

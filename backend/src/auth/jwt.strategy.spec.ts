@@ -10,7 +10,7 @@ import { createMockDatabase } from '@/test-utils';
 describe('JwtStrategy', () => {
   let strategy: JwtStrategy;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
-  let mockTokenBlacklist: { isBlacklisted: jest.Mock; blacklist: jest.Mock };
+  let mockTokenBlacklist: { isRevoked: jest.Mock; blacklist: jest.Mock };
 
   const mockConfigService = {
     get: jest.fn((key: string) => {
@@ -22,7 +22,7 @@ describe('JwtStrategy', () => {
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
     mockTokenBlacklist = {
-      isBlacklisted: jest.fn().mockResolvedValue(false),
+      isRevoked: jest.fn().mockResolvedValue(false),
       blacklist: jest.fn().mockResolvedValue(undefined),
     };
 
@@ -185,14 +185,13 @@ describe('JwtStrategy', () => {
         jti: 'blacklisted-jti',
       };
 
-      mockTokenBlacklist.isBlacklisted.mockResolvedValue(true);
+      mockTokenBlacklist.isRevoked.mockResolvedValue(true);
 
       await expect(strategy.validate(payload)).rejects.toThrow(
         'Token has been revoked',
       );
-      expect(mockTokenBlacklist.isBlacklisted).toHaveBeenCalledWith(
-        'blacklisted-jti',
-      );
+      expect(mockTokenBlacklist.isRevoked).toHaveBeenCalledWith(payload);
+      expect(mockDatabase.user.findUniqueOrThrow).not.toHaveBeenCalled();
     });
 
     it('should allow tokens that are not blacklisted', async () => {
@@ -208,7 +207,7 @@ describe('JwtStrategy', () => {
         email: 'test@example.com',
       };
 
-      mockTokenBlacklist.isBlacklisted.mockResolvedValue(false);
+      mockTokenBlacklist.isRevoked.mockResolvedValue(false);
       mockDatabase.user.findUniqueOrThrow.mockResolvedValue(mockUser);
 
       const result = await strategy.validate(payload);
@@ -317,7 +316,7 @@ describe('JwtStrategy', () => {
       expect(callArgs.select.email).toBeUndefined();
     });
 
-    it('should skip blacklist check when payload has no jti', async () => {
+    it('should check revocation (session, user cutoff) when payload has no jti', async () => {
       const payload = {
         sub: 'user-123',
         username: 'testuser',
@@ -333,7 +332,7 @@ describe('JwtStrategy', () => {
 
       await strategy.validate(payload);
 
-      expect(mockTokenBlacklist.isBlacklisted).not.toHaveBeenCalled();
+      expect(mockTokenBlacklist.isRevoked).toHaveBeenCalledWith(payload);
     });
   });
 });

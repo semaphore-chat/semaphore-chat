@@ -9,17 +9,40 @@ import axios from "axios";
 import { getApiUrl } from "../config/env";
 import { isElectron } from "./platform";
 import { logger } from "./logger";
+import type { SessionTerminatedReason } from "@semaphore-chat/shared";
 
 // Event emitter for token refresh notifications
 type TokenRefreshListener = (newToken: string) => void;
 const refreshListeners: Set<TokenRefreshListener> = new Set();
 
+/**
+ * Why the user was signed out, when the server said so (SESSION_TERMINATED).
+ * The login page explains some of them.
+ */
+export type SignOutReason = SessionTerminatedReason;
+
 // Event emitter for unrecoverable auth failures (e.g. refresh token expired)
-type AuthFailureListener = () => void;
+type AuthFailureListener = (reason?: SignOutReason) => void;
 const authFailureListeners: Set<AuthFailureListener> = new Set();
 
+/**
+ * How a token refresh went:
+ * - refreshed: a new access token
+ * - rejected: the server refused the session (401/403, or no refresh token
+ *   to send); only signing in again helps
+ * - unavailable: no answer about the session (network error, 5xx, 429...);
+ *   trying again later may work
+ */
+export type RefreshResult =
+  | { status: "refreshed"; token: string }
+  | { status: "rejected" }
+  | { status: "unavailable" };
+
 // Mutex for preventing concurrent refresh attempts
-let refreshPromise: Promise<string | null> | null = null;
+let refreshPromise: Promise<RefreshResult> | null = null;
+
+/** Thrown when there is no refresh token to send (Electron). */
+class NoRefreshTokenError extends Error {}
 
 // ─── Secure Storage Availability Warning (Electron) ─────────────────────────
 //
@@ -231,11 +254,12 @@ export function onAuthFailure(listener: AuthFailureListener): () => void {
 
 /**
  * Notify all listeners of an unrecoverable auth failure.
+ * @param reason - Why the server ended the session, if it said so
  */
-export function notifyAuthFailure(): void {
+export function notifyAuthFailure(reason?: SignOutReason): void {
   authFailureListeners.forEach((listener) => {
     try {
-      listener();
+      listener(reason);
     } catch (error) {
       logger.error("[TokenService] Error in auth failure listener:", error);
     }
@@ -310,7 +334,7 @@ interface RefreshResponseBody {
   refreshToken?: string;
 }
 
-async function performRefresh(): Promise<string | null> {
+async function performRefresh(): Promise<string> {
   const isElectronApp = isElectron();
 
   try {
@@ -319,7 +343,7 @@ async function performRefresh(): Promise<string | null> {
     if (isElectronApp) {
       const refreshToken = await getElectronRefreshToken();
       if (!refreshToken) {
-        throw new Error("No refresh token available for Electron client");
+        throw new NoRefreshTokenError("No refresh token available for Electron client");
       }
 
       // For Electron, send refresh token in body
@@ -357,15 +381,20 @@ async function performRefresh(): Promise<string | null> {
   }
 }
 
+/** Whether a refresh failure means the server refused the session. */
+function isRefusal(error: unknown): boolean {
+  if (error instanceof NoRefreshTokenError) return true;
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  return status === 401 || status === 403;
+}
+
 /**
- * Refresh the access token
+ * Refresh the access token, telling a refused session (sign in again) from
+ * a failed attempt (try again later).
  *
- * This function is idempotent - concurrent calls will share the same refresh promise,
- * preventing multiple simultaneous refresh requests.
- *
- * @returns The new access token, or null if refresh failed
+ * Concurrent calls share the same refresh request.
  */
-export async function refreshToken(): Promise<string | null> {
+export function refreshSession(): Promise<RefreshResult> {
   // If a refresh is already in progress, wait for it
   if (refreshPromise) {
     logger.dev("[TokenService] Refresh already in progress, waiting...");
@@ -375,15 +404,30 @@ export async function refreshToken(): Promise<string | null> {
   logger.dev("[TokenService] Starting token refresh");
 
   refreshPromise = performRefresh()
-    .catch((error) => {
+    .then((token): RefreshResult => ({ status: "refreshed", token }))
+    .catch((error: unknown): RefreshResult => {
       logger.error("[TokenService] Refresh failed:", error);
-      return null;
+      return { status: isRefusal(error) ? "rejected" : "unavailable" };
     })
     .finally(() => {
       refreshPromise = null;
     });
 
   return refreshPromise;
+}
+
+/**
+ * Refresh the access token
+ *
+ * This function is idempotent - concurrent calls will share the same refresh promise,
+ * preventing multiple simultaneous refresh requests.
+ *
+ * @returns The new access token, or null if refresh failed (for whatever
+ *   reason; see refreshSession to tell them apart)
+ */
+export async function refreshToken(): Promise<string | null> {
+  const result = await refreshSession();
+  return result.status === "refreshed" ? result.token : null;
 }
 
 /**

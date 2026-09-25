@@ -21,7 +21,9 @@ import { RoomEvents } from '@/rooms/room-subscription.events';
 import { UserEntity } from './dto/user-response.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
+import { SessionRevocationService } from '@/auth/session-revocation.service';
 
+import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
 @Injectable()
 export class UserService {
   private readonly logger = new Logger(UserService.name);
@@ -33,6 +35,7 @@ export class UserService {
     private communityRolesService: CommunityRolesService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
+    private readonly sessionRevocationService: SessionRevocationService,
   ) {}
 
   async findByUsername(username: string): Promise<User | null> {
@@ -456,6 +459,14 @@ export class UserService {
       },
     });
 
+    // Authentication rejects banned users from now on; end the live sockets
+    if (banned) {
+      this.sessionRevocationService.endAllUserSockets(
+        targetUserId,
+        'ACCOUNT_BANNED',
+      );
+    }
+
     return new AdminUserEntity(updatedUser);
   }
 
@@ -463,11 +474,13 @@ export class UserService {
    * Core password reset logic shared by the admin override
    * (`setUserPassword`) and the self-service email flow
    * (`PasswordResetService`): hashes the new password, updates the user, and
-   * revokes all of their refresh tokens so sessions can no longer be renewed
-   * (outstanding access tokens stay valid until they expire, up to 1h).
+   * revokes all of their refresh tokens so sessions can no longer be renewed.
    *
    * Accepts an explicit transaction client so callers can atomically pair
    * this with other writes (e.g. marking a password-reset token as used).
+   * Once the transaction commits, callers must call
+   * `SessionRevocationService.revokeAllUserSessions(userId, 'PASSWORD_CHANGED')`
+   * to revoke the outstanding access tokens and disconnect the sockets.
    */
   async resetPasswordAndRevokeSessions(
     userId: string,
@@ -476,6 +489,9 @@ export class UserService {
   ): Promise<User> {
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
+    // Serialized with refreshes (see session-lock.util): the delete below
+    // also removes the token a racing refresh rotated in
+    await lockUserForSessionRevocation(tx, userId);
     const user = await tx.user.update({
       where: { id: userId },
       data: { hashedPassword },
@@ -489,8 +505,8 @@ export class UserService {
 
   /**
    * Set a new password for a user (admin override for forgetful users).
-   * Revokes all of the user's refresh tokens so sessions can no longer be
-   * renewed; outstanding access tokens stay valid until they expire (1h).
+   * Ends all of the user's sessions: refresh tokens deleted, access tokens
+   * revoked, sockets disconnected.
    */
   async setUserPassword(
     targetUserId: string,
@@ -518,6 +534,10 @@ export class UserService {
 
     const updatedUser = await this.databaseService.$transaction((tx) =>
       this.resetPasswordAndRevokeSessions(targetUserId, newPassword, tx),
+    );
+    await this.sessionRevocationService.revokeAllUserSessions(
+      targetUserId,
+      'PASSWORD_CHANGED',
     );
 
     this.logger.log(
@@ -552,6 +572,12 @@ export class UserService {
     await this.databaseService.user.delete({
       where: { id: targetUserId },
     });
+
+    // Authentication rejects the deleted user; end the live sockets
+    this.sessionRevocationService.endAllUserSockets(
+      targetUserId,
+      'ACCOUNT_DELETED',
+    );
   }
 
   /**

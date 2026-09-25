@@ -7,7 +7,9 @@ import { LocalStrategy } from './local.strategy';
 import { AuthController } from './auth.controller';
 import { JwtModule } from '@nestjs/jwt';
 import { JwtStrategy } from './jwt.strategy';
-import { TokenBlacklistService } from './token-blacklist.service';
+import { ACCESS_TOKEN_TTL_SECONDS } from './token-blacklist.service';
+import { TokenRevocationModule } from './token-revocation.module';
+import { WsAuthService } from './ws-auth.service';
 import { PasswordResetService } from './password-reset.service';
 import { RolesModule } from '@/roles/roles.module';
 import { DatabaseModule } from '@/database/database.module';
@@ -24,12 +26,13 @@ import { WsJwtAuthGuard } from './ws-jwt-auth.guard';
     DatabaseModule,
     RedisModule,
     MailerModule,
+    TokenRevocationModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: ACCESS_TOKEN_TTL_SECONDS },
       }),
     }),
   ],
@@ -37,17 +40,18 @@ import { WsJwtAuthGuard } from './ws-jwt-auth.guard';
     AuthService,
     LocalStrategy,
     JwtStrategy,
-    TokenBlacklistService,
     PasswordResetService,
     RbacGuard,
+    WsAuthService,
     WsJwtAuthGuard,
   ],
   exports: [
     AuthService,
     JwtStrategy,
     JwtModule,
-    TokenBlacklistService,
+    TokenRevocationModule,
     RbacGuard,
+    WsAuthService,
     WsJwtAuthGuard,
   ],
   controllers: [AuthController],

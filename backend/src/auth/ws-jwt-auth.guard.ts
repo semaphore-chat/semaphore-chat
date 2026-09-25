@@ -4,80 +4,48 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { UserService } from '@/user/user.service';
-import { UserEntity } from '@/user/dto/user-response.dto';
+import { ServerEvents } from '@semaphore-chat/shared';
 import {
-  extractTokenFromHandshake,
   AuthenticatedSocket,
+  getSocketAuth,
 } from '@/common/utils/socket.utils';
 import { Socket } from 'socket.io';
-import { TokenBlacklistService } from './token-blacklist.service';
 
+/**
+ * Admits messages only from sockets with a live session.
+ *
+ * Sockets authenticate once, in RoomsGateway's connection middleware, which
+ * binds them to their access token (SocketSessionService: user, rooms,
+ * expiry). Every gateway shares that server, so a socket without that binding
+ * didn't come through it: refuse it rather than authenticate it here, where
+ * the revocation rooms and expiry timer would be missing.
+ */
 @Injectable()
 export class WsJwtAuthGuard implements CanActivate {
   private readonly logger = new Logger(WsJwtAuthGuard.name);
 
-  constructor(
-    private readonly jwtService: JwtService,
-    private readonly userService: UserService,
-    private readonly tokenBlacklistService: TokenBlacklistService,
-  ) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    this.logger.debug('WsJwtAuthGuard canActivate called');
-
+  canActivate(context: ExecutionContext): boolean {
     if (context.getType() !== 'ws') return true;
     const client = context.switchToWs().getClient<Socket>();
 
-    // Short-circuit: user already authenticated by connection middleware
-    if ((client as AuthenticatedSocket).handshake.user) {
-      return true;
-    }
-
-    const token = extractTokenFromHandshake(client.handshake);
-    if (!token) {
-      this.logger.warn(
-        'No token provided in handshake. Ensure you are passing the token in the correct format.',
-      );
+    const auth = getSocketAuth(client);
+    if (!(client as AuthenticatedSocket).handshake.user || !auth) {
+      this.logger.warn(`Socket ${client.id} has no authenticated session`);
       client.disconnect(true);
       return false;
     }
-    try {
-      const payload = this.jwtService.verify<{ sub: string; jti?: string }>(
-        token,
-      );
 
-      if (payload.jti) {
-        const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(
-          payload.jti,
-        );
-        if (isBlacklisted) {
-          this.logger.warn('Blacklisted token used for WebSocket connection');
-          client.disconnect(true);
-          return false;
-        }
-      }
-
-      // Narrowed select: this user object lives on the socket for the whole
-      // connection — it must never hold sensitive columns.
-      const user = await this.userService.findAuthUserById(payload.sub);
-      if (!user) throw new Error('User not found');
-
-      if (user.banned) {
-        this.logger.warn(
-          `Banned user ${user.id} attempted WebSocket connection`,
-        );
-        client.disconnect(true);
-        return false;
-      }
-
-      (client as AuthenticatedSocket).handshake.user = new UserEntity(user);
-      return true;
-    } catch (error) {
-      this.logger.error('JWT verification failed', error);
+    // The expiry timer disconnects the socket, but don't let a message slip
+    // through in between (e.g. a delayed timer)
+    if (auth.exp * 1000 <= Date.now()) {
+      this.logger.debug(`Socket ${client.id} used an expired token`);
+      client.emit(ServerEvents.SESSION_TERMINATED, {
+        reason: 'TOKEN_EXPIRED',
+      });
       client.disconnect(true);
       return false;
     }
+
+    return true;
   }
 }

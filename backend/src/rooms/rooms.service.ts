@@ -45,12 +45,14 @@ export class RoomsService {
       }
     }
 
-    // Join all private channels the user has membership to (across all communities)
+    // Join all private channels the user has membership to, in communities
+    // they are still a member of (a leftover channel membership must not
+    // outlive the community membership)
     const privateChannelMemberships =
       await this.databaseService.channelMembership.findMany({
         where: {
           userId,
-          channel: { isPrivate: true },
+          channel: { isPrivate: true, communityId: { in: communityIds } },
         },
         select: { channelId: true },
       });
@@ -68,9 +70,9 @@ export class RoomsService {
       await client.join(RoomName.dmGroup(dm.groupId));
     }
 
-    // Join all alias groups
+    // Join all alias groups of communities the user is a member of
     const aliasGroups = await this.databaseService.aliasGroupMember.findMany({
-      where: { userId },
+      where: { userId, aliasGroup: { communityId: { in: communityIds } } },
       select: { aliasGroupId: true },
     });
     for (const ag of aliasGroups) {

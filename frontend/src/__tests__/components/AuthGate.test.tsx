@@ -6,7 +6,7 @@ import { renderWithProviders } from '../test-utils';
 import { AuthGate } from '../../components/AuthGate';
 import { notifyAuthFailure, setAccessToken, getAccessToken, clearTokens } from '../../utils/tokenService';
 import { stashDeepLinkRoute, takeStashedDeepLinkRoute } from '../../utils/deepLinkStash';
-import { Route, Routes } from 'react-router-dom';
+import { Route, Routes, useLocation } from 'react-router-dom';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -91,6 +91,16 @@ function mockProfileUnauthorized() {
   );
 }
 
+/** The login route: shows the sign-out reason AuthGate passed, if any. */
+function LoginProbe() {
+  const state = useLocation().state as { signOutReason?: string } | null;
+  return (
+    <div data-testid="login">
+      Login Page{state?.signOutReason ? ` (${state.signOutReason})` : ''}
+    </div>
+  );
+}
+
 function renderAuthGate(initialRoute = '/') {
   return renderWithProviders(
     <Routes>
@@ -99,7 +109,7 @@ function renderAuthGate(initialRoute = '/') {
         <Route path="/community/:communityId/channel/:channelId" element={<div data-testid="channel">Channel Page</div>} />
         <Route path="/settings" element={<div data-testid="settings">Settings</div>} />
       </Route>
-      <Route path="/login" element={<div data-testid="login">Login Page</div>} />
+      <Route path="/login" element={<LoginProbe />} />
       <Route path="/onboarding" element={<div data-testid="onboarding">Onboarding Page</div>} />
     </Routes>,
     { routerProps: { initialEntries: [initialRoute] } },
@@ -534,6 +544,46 @@ describe('AuthGate', () => {
       });
       expect(mockDisconnectSocket).toHaveBeenCalled();
       expect(getAccessToken()).toBeNull();
+    });
+
+    it('passes the reason the server gave to the login page', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+
+      act(() => {
+        notifyAuthFailure('ACCOUNT_BANNED');
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent(
+          'Login Page (ACCOUNT_BANNED)',
+        );
+      });
+    });
+
+    it('passes no reason when the server gave none', async () => {
+      setAccessToken(validToken());
+      mockOnboardingOk();
+
+      renderAuthGate();
+
+      await waitFor(() => {
+        expect(screen.getByTestId('home')).toBeInTheDocument();
+      });
+
+      act(() => {
+        notifyAuthFailure();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveTextContent(/^Login Page$/);
+      });
     });
 
     it('unmounts SocketProvider on notifyAuthFailure', async () => {

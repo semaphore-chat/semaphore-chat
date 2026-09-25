@@ -6,7 +6,10 @@
 
 import { ClientEvents } from '../events/client-events.enum';
 import { Span, FileMetadata } from '../types/message.types';
-import { ServerEventPayloads } from '../payloads/websocket-payloads';
+import {
+  ServerEventPayloads,
+  ReauthenticateResult,
+} from '../payloads/websocket-payloads';
 
 /**
  * Server-to-Client WebSocket event types.
@@ -25,6 +28,10 @@ export type ClientToServerEvents = {
   // Connection & Room Management
   [ClientEvents.SUBSCRIBE_ALL]: () => void;
   [ClientEvents.PRESENCE_ONLINE]: (data?: { idle?: boolean }) => void;
+  [ClientEvents.REAUTHENTICATE]: (
+    data: { token: string },
+    callback: (result: ReauthenticateResult) => void
+  ) => void;
 
   // Messaging: Channels
   [ClientEvents.SEND_MESSAGE]: (

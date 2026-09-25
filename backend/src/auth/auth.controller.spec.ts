@@ -4,6 +4,7 @@ import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { TokenBlacklistService } from './token-blacklist.service';
 import { PasswordResetService } from './password-reset.service';
+import { SessionRevocationService } from './session-revocation.service';
 import { DatabaseService } from '@/database/database.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
@@ -16,6 +17,7 @@ describe('AuthController', () => {
   let tokenBlacklistService: Mocked<TokenBlacklistService>;
   let jwtService: Mocked<JwtService>;
   let passwordResetService: Mocked<PasswordResetService>;
+  let sessionRevocationService: Mocked<SessionRevocationService>;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
 
   const mockUser = new UserEntity(UserFactory.build());
@@ -35,6 +37,7 @@ describe('AuthController', () => {
     tokenBlacklistService = unitRef.get(TokenBlacklistService);
     jwtService = unitRef.get(JwtService);
     passwordResetService = unitRef.get(PasswordResetService);
+    sessionRevocationService = unitRef.get(SessionRevocationService);
   });
 
   afterEach(() => {
@@ -57,16 +60,18 @@ describe('AuthController', () => {
 
     beforeEach(() => {
       jest.spyOn(authService, 'login').mockReturnValue(mockAccessToken);
-      jest
-        .spyOn(authService, 'generateRefreshToken')
-        .mockResolvedValue(mockRefreshToken);
+      jest.spyOn(authService, 'generateRefreshToken').mockResolvedValue({
+        refreshToken: mockRefreshToken,
+        sessionId: 'session-1',
+      });
     });
 
     it('should login web client and return only accessToken', async () => {
       const req = { ...mockReq, headers: { 'user-agent': 'Mozilla/5.0' } };
       const result = await controller.login(req, mockRes);
 
-      expect(authService.login).toHaveBeenCalledWith(mockUser);
+      // The access token carries the new session's id
+      expect(authService.login).toHaveBeenCalledWith(mockUser, 'session-1');
       expect(authService.generateRefreshToken).toHaveBeenCalledWith(
         mockUser.id,
         expect.objectContaining({ userAgent: 'Mozilla/5.0' }),
@@ -153,23 +158,40 @@ describe('AuthController', () => {
       ipAddress: null,
     };
 
+    const refreshIssuedAt = 1_700_000_000;
+    /** Whether the refresh transaction has committed. */
+    let committed: boolean;
+
+    /** The SQL of the raw queries run, in order. */
+    const rawQueries = () =>
+      mockDatabase.$queryRaw.mock.calls.map(([strings]) =>
+        (strings as string[]).join('?'),
+      );
+
     beforeEach(() => {
+      committed = false;
       jest
         .spyOn(authService, 'verifyRefreshToken')
-        .mockResolvedValue([mockUser, jti]);
+        .mockResolvedValue([mockUser, jti, refreshIssuedAt]);
       jest.spyOn(authService, 'login').mockReturnValue(mockAccessToken);
-      mockDatabase.$transaction.mockImplementation((callback: any) => {
-        return callback(mockDatabase);
+      mockDatabase.$transaction.mockImplementation(async (callback: any) => {
+        const result = await callback(mockDatabase);
+        committed = true;
+        return result;
       });
+      // The user row lock (session-lock.util)
+      mockDatabase.$queryRaw.mockResolvedValue([{ banned: false }]);
+      tokenBlacklistService.isRevoked.mockResolvedValue(false);
       jest
         .spyOn(authService, 'validateRefreshToken')
         .mockResolvedValue(mockTokenRecord);
       jest
         .spyOn(authService, 'consumeRefreshToken')
         .mockResolvedValue(mockTokenRecord);
-      jest
-        .spyOn(authService, 'generateRefreshToken')
-        .mockResolvedValue(newRefreshToken);
+      jest.spyOn(authService, 'generateRefreshToken').mockResolvedValue({
+        refreshToken: newRefreshToken,
+        sessionId: 'family-123',
+      });
     });
 
     it('should refresh tokens from cookie for web client', async () => {
@@ -200,7 +222,26 @@ describe('AuthController', () => {
         mockDatabase,
         'family-123',
       );
+      // Same session: the new access token keeps the family's session id
+      expect(authService.login).toHaveBeenCalledWith(mockUser, 'family-123');
       expect(result).toEqual({ accessToken: mockAccessToken });
+    });
+
+    it('should refuse to refresh for a banned user', async () => {
+      const bannedUser = new UserEntity(UserFactory.build({ banned: true }));
+      jest
+        .spyOn(authService, 'verifyRefreshToken')
+        .mockResolvedValue([bannedUser, jti]);
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+        'Account has been banned',
+      );
+      expect(authService.consumeRefreshToken).not.toHaveBeenCalled();
+      expect(authService.login).not.toHaveBeenCalled();
     });
 
     it('should refresh tokens from body for Electron client', async () => {
@@ -310,6 +351,94 @@ describe('AuthController', () => {
         'family-123',
       );
     });
+
+    describe('racing a revocation', () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      it('locks the user (shared) before it reads the token', async () => {
+        await controller.refresh(req, mockRes);
+
+        expect(rawQueries()).toEqual([
+          expect.stringMatching(/FROM "User" WHERE "id" = \? FOR SHARE/),
+        ]);
+        expect(mockDatabase.$queryRaw.mock.calls[0][1]).toBe(mockUser.id);
+        expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+          authService.validateRefreshToken.mock.invocationCallOrder[0],
+        );
+      });
+
+      it.each([
+        ['deleted', []],
+        ['banned', [{ banned: true }]],
+      ])('refuses a user %s by the time it has the lock', async (_, rows) => {
+        mockDatabase.$queryRaw.mockResolvedValue(rows);
+
+        await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+          UnauthorizedException,
+        );
+        expect(authService.consumeRefreshToken).not.toHaveBeenCalled();
+      });
+
+      it('signs the access token before the rotation commits', async () => {
+        // A password reset waiting for the rotation sets its cutoff after
+        // the commit: the access token must be older than that
+        let committedWhenSigned: boolean | undefined;
+        authService.login.mockImplementation(() => {
+          committedWhenSigned = committed;
+          return mockAccessToken;
+        });
+
+        await controller.refresh(req, mockRes);
+
+        expect(committedWhenSigned).toBe(false);
+      });
+
+      it('refuses a revoked session and deletes its tokens', async () => {
+        tokenBlacklistService.isRevoked.mockResolvedValue(true);
+        jest.spyOn(authService, 'invalidateTokenFamily').mockResolvedValue(2);
+
+        await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+          'Invalid refresh token',
+        );
+
+        // The session (family) and the per-user cutoff, against when this
+        // refresh token was issued
+        expect(tokenBlacklistService.isRevoked).toHaveBeenCalledWith({
+          sub: mockUser.id,
+          sid: 'family-123',
+          iat: refreshIssuedAt,
+        });
+        // Not on the tx: the rejection rolls it back
+        expect(authService.invalidateTokenFamily).toHaveBeenCalledWith(
+          'family-123',
+        );
+        expect(authService.consumeRefreshToken).not.toHaveBeenCalled();
+        expect(authService.login).not.toHaveBeenCalled();
+      });
+
+      it('deletes just the token of a revoked session without a family', async () => {
+        jest
+          .spyOn(authService, 'validateRefreshToken')
+          .mockResolvedValue({ ...mockTokenRecord, familyId: null });
+        tokenBlacklistService.isRevoked.mockResolvedValue(true);
+
+        await expect(controller.refresh(req, mockRes)).rejects.toThrow(
+          UnauthorizedException,
+        );
+
+        expect(tokenBlacklistService.isRevoked).toHaveBeenCalledWith({
+          sub: mockUser.id,
+          sid: undefined,
+          iat: refreshIssuedAt,
+        });
+        expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
+          where: { id: jti },
+        });
+      });
+    });
   });
 
   describe('logout', () => {
@@ -330,7 +459,9 @@ describe('AuthController', () => {
       jest
         .spyOn(authService, 'verifyRefreshToken')
         .mockResolvedValue([mockUser, jti]);
-      jest.spyOn(authService, 'deleteRefreshToken').mockResolvedValue();
+      jest
+        .spyOn(authService, 'deleteRefreshToken')
+        .mockResolvedValue('family-123');
     });
 
     it('should logout and clear cookie when refresh token present', async () => {
@@ -351,6 +482,104 @@ describe('AuthController', () => {
       );
       expect(mockRes.clearCookie).toHaveBeenCalledWith('refresh_token');
       expect(result).toEqual({ message: 'Logged out successfully' });
+    });
+
+    it('locks the user against refreshes before it deletes the session', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+      };
+
+      await controller.logout(req, mockRes);
+
+      const [strings, userId] = mockDatabase.$queryRaw.mock.calls[0];
+      expect((strings as string[]).join('?')).toMatch(
+        /FROM "User" WHERE "id" = \? FOR NO KEY UPDATE/,
+      );
+      expect(userId).toBe(mockUser.id);
+      expect(mockDatabase.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(
+        authService.deleteRefreshToken.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('should revoke the session and disconnect its sockets', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {},
+      };
+
+      await controller.logout(req, mockRes);
+
+      expect(sessionRevocationService.revokeSessions).toHaveBeenCalledWith(
+        mockUser.id,
+        ['family-123'],
+        'LOGGED_OUT',
+        [],
+      );
+    });
+
+    it('should also disconnect sockets using the access token', async () => {
+      const req = {
+        ...mockReq,
+        cookies: {
+          refresh_token: mockRefreshToken,
+          access_token: mockAccessToken,
+        },
+        headers: {},
+      };
+      jest.spyOn(jwtService, 'verifyAsync').mockResolvedValue({
+        sub: mockUser.id,
+        jti: 'access-jti',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      await controller.logout(req, mockRes);
+
+      expect(sessionRevocationService.revokeSessions).toHaveBeenCalledWith(
+        mockUser.id,
+        ['family-123'],
+        'LOGGED_OUT',
+        ['access-jti'],
+      );
+    });
+
+    it('should disconnect sockets of the access token when there is no refresh token', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { access_token: mockAccessToken },
+        headers: {},
+      };
+      jest.spyOn(jwtService, 'verifyAsync').mockResolvedValue({
+        sub: mockUser.id,
+        jti: 'access-jti',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      });
+
+      await controller.logout(req, mockRes);
+
+      // No session revoked: its refresh token still exists
+      expect(sessionRevocationService.revokeSessions).toHaveBeenCalledWith(
+        mockUser.id,
+        [],
+        'LOGGED_OUT',
+        ['access-jti'],
+      );
+    });
+
+    it('should not fail logout if revoking the session fails', async () => {
+      sessionRevocationService.revokeSessions.mockRejectedValue(
+        new Error('Redis down'),
+      );
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {},
+      };
+
+      await expect(controller.logout(req, mockRes)).resolves.toEqual({
+        message: 'Logged out successfully',
+      });
     });
 
     it('should logout Electron client using refresh token from body', async () => {
@@ -376,6 +605,7 @@ describe('AuthController', () => {
       const result = await controller.logout(req, mockRes);
 
       expect(authService.verifyRefreshToken).not.toHaveBeenCalled();
+      expect(sessionRevocationService.revokeSessions).not.toHaveBeenCalled();
       // Should still clear access_token cookie even when no refresh token
       expect(mockRes.clearCookie).toHaveBeenCalledWith('access_token', {
         path: '/',

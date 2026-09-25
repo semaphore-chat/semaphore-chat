@@ -21,6 +21,28 @@ export type OptionalAuthSocket = Socket & {
 };
 
 /**
+ * The access token a socket is authenticated with, kept in `socket.data` (so
+ * it is also visible through `fetchSockets()` on other instances).
+ */
+export interface SocketAuthData {
+  userId: string;
+  /** Access token id. */
+  jti?: string;
+  /** Session id (refresh token family). */
+  sid?: string;
+  /** Access token issue time (seconds since epoch). */
+  iat?: number;
+  /** Access token expiry (seconds since epoch). */
+  exp: number;
+}
+
+/** The socket's access token data, if the connection middleware set it. */
+export function getSocketAuth(client: Socket): SocketAuthData | undefined {
+  const data = client.data as { auth?: SocketAuthData } | undefined;
+  return data?.auth;
+}
+
+/**
  * Safely extracts the authenticated user from a socket connection.
  * Throws WsException if user is not authenticated.
  *

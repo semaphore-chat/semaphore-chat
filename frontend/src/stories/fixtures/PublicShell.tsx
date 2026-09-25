@@ -16,11 +16,16 @@ function createStoryQueryClient(): QueryClient {
   });
 }
 
-export const PublicShell: React.FC<{ path?: string; children: React.ReactNode }> = ({ path = '/', children }) => {
+export const PublicShell: React.FC<{
+  path?: string;
+  /** Router location state (e.g. the sign-out reason AuthGate passes to /login). */
+  state?: unknown;
+  children: React.ReactNode;
+}> = ({ path = '/', state, children }) => {
   const [queryClient] = useState(createStoryQueryClient);
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[path]}>
+      <MemoryRouter initialEntries={[state === undefined ? path : { pathname: path, state }]}>
         <Suspense
           fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 200 }}>

@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { RoomsService } from './rooms.service';
 import { RoomsGateway } from './rooms.gateway';
 import { RoomSubscriptionHandler } from './room-subscription.handler';
+import { SessionRevocationHandler } from './session-revocation.handler';
+import { SocketSessionService } from './socket-session.service';
 import { AuthModule } from '@/auth/auth.module';
 import { UserModule } from '@/user/user.module';
 import { WebsocketModule } from '@/websocket/websocket.module';
@@ -12,7 +14,13 @@ import { LivekitModule } from '@/livekit/livekit.module';
 import { RedisModule } from '@/redis/redis.module';
 
 @Module({
-  providers: [RoomsGateway, RoomsService, RoomSubscriptionHandler],
+  providers: [
+    RoomsGateway,
+    RoomsService,
+    RoomSubscriptionHandler,
+    SessionRevocationHandler,
+    SocketSessionService,
+  ],
   imports: [
     AuthModule,
     UserModule,

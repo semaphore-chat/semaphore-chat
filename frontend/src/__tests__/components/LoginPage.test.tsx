@@ -144,4 +144,51 @@ describe('LoginPage', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/');
     });
   });
+
+  describe('after the server signed the user out', () => {
+    const renderSignedOut = (signOutReason?: string) =>
+      renderWithProviders(<LoginPage />, {
+        routerProps: {
+          initialEntries: [{ pathname: '/login', state: { signOutReason } }],
+        },
+      });
+
+    it.each([
+      ['PASSWORD_CHANGED', 'Your password was changed, so you were signed out. Sign in with the new password.'],
+      ['ACCOUNT_BANNED', 'You were signed out because this account was banned.'],
+      ['ACCOUNT_DELETED', 'You were signed out because this account was deleted.'],
+    ])('explains %s', (reason, message) => {
+      renderSignedOut(reason);
+
+      expect(screen.getByRole('status')).toHaveTextContent(message);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it.each(['LOGGED_OUT', 'SESSION_REVOKED', 'TOKEN_EXPIRED', undefined])(
+      'says nothing for %s',
+      (reason) => {
+        renderSignedOut(reason);
+
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+      },
+    );
+
+    it('shows a failed login instead of the reason', async () => {
+      server.use(
+        http.post('http://localhost:3000/api/auth/login', () =>
+          HttpResponse.json({ message: 'Invalid' }, { status: 401 }),
+        ),
+      );
+      const { user } = renderSignedOut('PASSWORD_CHANGED');
+
+      await user.type(screen.getByLabelText(/username/i), 'testuser');
+      await user.type(screen.getByLabelText(/password/i), 'old-password');
+      await user.click(screen.getByRole('button', { name: /login/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('alert')).toHaveTextContent('Login failed');
+      });
+      expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    });
+  });
 });

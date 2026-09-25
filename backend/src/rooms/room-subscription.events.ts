@@ -1,3 +1,5 @@
+import type { SessionTerminatedReason } from '@semaphore-chat/shared';
+
 /**
  * Domain event types for room subscription management.
  *
@@ -34,11 +36,35 @@ export enum RoomEvents {
   ROLE_ASSIGNED = 'role.assigned',
   ROLE_UNASSIGNED = 'role.unassigned',
   USER_PROFILE_UPDATED = 'user.profile-updated',
+  AUTH_SESSIONS_REVOKED = 'auth.sessions-revoked',
+  AUTH_USER_SESSIONS_ENDED = 'auth.user-sessions-ended',
 }
 
 // =============================================================================
 // Event Payload Interfaces
 // =============================================================================
+
+/**
+ * Some of a user's sessions were revoked (logout, "revoke session"): end the
+ * sockets authenticated with them.
+ */
+export interface AuthSessionsRevokedEvent {
+  userId: string;
+  /** Session ids (refresh token family ids, the access token `sid`). */
+  sessionIds: string[];
+  /** Individual access token ids (`jti`), for tokens without a session id. */
+  tokenIds: string[];
+  reason: SessionTerminatedReason;
+}
+
+/**
+ * Every session of a user ended (password reset, instance ban, account
+ * deletion): end all of the user's sockets.
+ */
+export interface AuthUserSessionsEndedEvent {
+  userId: string;
+  reason: SessionTerminatedReason;
+}
 
 export interface MembershipCreatedEvent {
   userId: string;

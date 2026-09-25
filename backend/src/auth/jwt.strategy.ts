@@ -3,7 +3,10 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '@/database/database.service';
-import { TokenBlacklistService } from './token-blacklist.service';
+import {
+  AccessTokenClaims,
+  TokenBlacklistService,
+} from './token-blacklist.service';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { Request } from 'express';
 
@@ -34,15 +37,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string; username: string; jti?: string }) {
-    // Check if the access token has been revoked (e.g., after logout)
-    if (payload.jti) {
-      const isBlacklisted = await this.tokenBlacklistService.isBlacklisted(
-        payload.jti,
-      );
-      if (isBlacklisted) {
-        throw new UnauthorizedException('Token has been revoked');
-      }
+  async validate(payload: AccessTokenClaims & { username: string }) {
+    // Check if the access token has been revoked (logout, revoked session,
+    // password reset)
+    if (await this.tokenBlacklistService.isRevoked(payload)) {
+      throw new UnauthorizedException('Token has been revoked');
     }
 
     const user = await this.databaseService.user.findUniqueOrThrow({
