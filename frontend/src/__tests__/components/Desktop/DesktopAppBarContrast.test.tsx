@@ -29,6 +29,12 @@ vi.mock('../../../components/NavBar/NavigationLinks', () => ({
   default: () => null,
 }));
 
+// Not under test here, and it reads useColorScheme()/matchMedia, which this
+// plain ThemeProvider + jsdom setup doesn't provide.
+vi.mock('../../../components/ThemeToggle/ThemeToggle', () => ({
+  default: () => null,
+}));
+
 vi.mock('../../../components/Common/UserAvatar', () => ({
   default: () => <div data-testid="user-avatar" />,
 }));
