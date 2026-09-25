@@ -2,3 +2,62 @@ packages:
   - shared
   - backend
   - frontend
+
+# Only resolve package versions that have been on the registry for at least
+# 3 days (4320 minutes), so a lockfile refresh (`pnpm install
+# --lockfile-only`, `pnpm update`, `pnpm add`, Dependabot's updater) can't pin
+# a release that is hours old and may still be yanked or turn out to be
+# compromised. #464/#465 were opened against a lockfile with hours-old pins
+# and closed as "no longer updatable". Needs pnpm >= 10.16.
+#
+# CI's `--frozen-lockfile` installs don't resolve, so they never check this.
+# backend/Dockerfile and frontend/Dockerfile run a plain `pnpm install` on a
+# partial workspace, which re-resolves: every version the lockfile pins must
+# be >= 3 days old or listed below, or those image builds fail.
+minimumReleaseAge: 4320
+minimumReleaseAgeExclude:
+  # Every version main's lockfile already pinned that was < 3 days old when
+  # this setting was added (2026-09-24). pnpm re-checks locked versions
+  # against the cooldown whenever it re-resolves, so without these the image
+  # builds above and any lockfile refresh fail until they age. Exact versions
+  # only, so nothing newer slips through. Delete this list from 2026-09-28 on.
+  - '@nestjs/common@11.2.6'
+  - '@nestjs/core@11.2.6'
+  - '@nestjs/platform-express@11.2.6'
+  - '@nestjs/platform-socket.io@11.2.6'
+  - '@nestjs/testing@11.2.6'
+  - '@nestjs/throttler@6.7.1'
+  - '@nestjs/websockets@11.2.6'
+  - '@rollup/rollup-android-arm-eabi@4.63.5'
+  - '@rollup/rollup-android-arm64@4.63.5'
+  - '@rollup/rollup-darwin-arm64@4.63.5'
+  - '@rollup/rollup-darwin-x64@4.63.5'
+  - '@rollup/rollup-freebsd-arm64@4.63.5'
+  - '@rollup/rollup-freebsd-x64@4.63.5'
+  - '@rollup/rollup-linux-arm-gnueabihf@4.63.5'
+  - '@rollup/rollup-linux-arm-musleabihf@4.63.5'
+  - '@rollup/rollup-linux-arm64-gnu@4.63.5'
+  - '@rollup/rollup-linux-arm64-musl@4.63.5'
+  - '@rollup/rollup-linux-loong64-gnu@4.63.5'
+  - '@rollup/rollup-linux-loong64-musl@4.63.5'
+  - '@rollup/rollup-linux-ppc64-gnu@4.63.5'
+  - '@rollup/rollup-linux-ppc64-musl@4.63.5'
+  - '@rollup/rollup-linux-riscv64-gnu@4.63.5'
+  - '@rollup/rollup-linux-riscv64-musl@4.63.5'
+  - '@rollup/rollup-linux-s390x-gnu@4.63.5'
+  - '@rollup/rollup-linux-x64-gnu@4.63.5'
+  - '@rollup/rollup-linux-x64-musl@4.63.5'
+  - '@rollup/rollup-openbsd-x64@4.63.5'
+  - '@rollup/rollup-openharmony-arm64@4.63.5'
+  - '@rollup/rollup-win32-arm64-msvc@4.63.5'
+  - '@rollup/rollup-win32-ia32-msvc@4.63.5'
+  - '@rollup/rollup-win32-x64-gnu@4.63.5'
+  - '@rollup/rollup-win32-x64-msvc@4.63.5'
+  - 'baseline-browser-mapping@2.11.26'
+  - 'browserslist@4.29.1'
+  - 'caniuse-lite@1.0.30001812'
+  - 'electron-to-chromium@1.5.438'
+  - 'fs-extra@11.4.1'
+  - 'node-releases@2.0.57'
+  - 'rollup@4.63.5'
+  - 'serialize-javascript@7.1.2'
