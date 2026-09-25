@@ -29,6 +29,7 @@ vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
     queryFn: async () => createChannel({ id: 'ch1', communityId: 'c1', name: 'general' }),
   }),
   directMessagesControllerFindDmGroupOptions: () => ({ queryKey: ['dm', ''], enabled: false }),
+  directMessagesControllerFindUserDmGroupsOptions: () => ({ queryKey: ['dm-groups'] }),
   moderationControllerGetPinnedMessagesOptions: () => ({ queryKey: ['pinned', ''], queryFn: async () => [] }),
 }));
 vi.mock('../../components/Channel/ChannelMessageContainer', () => ({

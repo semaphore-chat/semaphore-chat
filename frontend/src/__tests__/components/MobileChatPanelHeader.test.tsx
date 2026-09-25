@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
-import { renderWithProviders, createDmGroup, createDmGroupMember } from '../test-utils';
+import { renderWithProviders, createDmGroup, createDmGroupMember, createTestQueryClient } from '../test-utils';
 import { MobileChatPanel } from '../../components/Mobile/Panels/MobileChatPanel';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
 
@@ -17,24 +17,33 @@ vi.mock('../../hooks/useCurrentUser', () => ({
 }));
 
 let mockDmGroup: DirectMessageGroup | undefined;
+// 'pending' holds the group request open forever; 'error' rejects it.
+let mockDmGroupRequest: 'ok' | 'pending' | 'error' = 'ok';
 vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
   channelsControllerFindOneOptions: () => ({ queryKey: ['channel', ''], enabled: false }),
   directMessagesControllerFindDmGroupOptions: () => ({
     queryKey: ['dm-group'],
-    queryFn: async () => mockDmGroup,
+    queryFn: () => {
+      if (mockDmGroupRequest === 'pending') return new Promise(() => {});
+      if (mockDmGroupRequest === 'error') return Promise.reject(new Error('Not found'));
+      return Promise.resolve(mockDmGroup);
+    },
   }),
+  directMessagesControllerFindUserDmGroupsOptions: () => ({ queryKey: ['dm-groups'] }),
   moderationControllerGetPinnedMessagesOptions: () => ({ queryKey: ['pinned', ''], enabled: false }),
 }));
 
 vi.mock('../../components/Mobile/MobileAppBar', () => ({
   default: (props: {
     title: string;
+    titleLoading?: boolean;
     showMembers?: boolean;
     onMoreClick?: (e: React.MouseEvent<HTMLElement>) => void;
     actions?: React.ReactNode;
   }) => (
     <div data-testid="mobile-app-bar">
       <span data-testid="app-bar-title">{props.title}</span>
+      {props.titleLoading && <span data-testid="app-bar-title-loading" />}
       {props.showMembers && <button>members</button>}
       <button onClick={props.onMoreClick}>more</button>
       {props.actions}
@@ -72,6 +81,36 @@ describe('MobileChatPanel header', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDmGroup = undefined;
+    mockDmGroupRequest = 'ok';
+  });
+
+  it('shows a neutral placeholder title, never "Unknown", while the DM loads', () => {
+    mockDmGroupRequest = 'pending';
+    renderWithProviders(<MobileChatPanel dmGroupId="dm-1" />);
+
+    expect(screen.getByTestId('app-bar-title-loading')).toBeInTheDocument();
+    expect(screen.getByTestId('app-bar-title')).toHaveTextContent('');
+    expect(screen.queryByText(/unknown/i)).not.toBeInTheDocument();
+  });
+
+  it('shows the name from the cached DM list immediately, before the DM loads', () => {
+    mockDmGroupRequest = 'pending';
+    const queryClient = createTestQueryClient();
+    queryClient.setQueryData(['dm-groups'], [
+      createDmGroup({ id: 'dm-1', isGroup: false, members: [me, bob] }),
+    ]);
+    renderWithProviders(<MobileChatPanel dmGroupId="dm-1" />, { queryClient });
+
+    expect(screen.getByTestId('app-bar-title')).toHaveTextContent('Bob Builder');
+    expect(screen.queryByTestId('app-bar-title-loading')).not.toBeInTheDocument();
+  });
+
+  it('says the conversation is unavailable when the DM fails to load', async () => {
+    mockDmGroupRequest = 'error';
+    renderWithProviders(<MobileChatPanel dmGroupId="dm-1" />);
+
+    expect(await screen.findByText('Conversation unavailable')).toBeInTheDocument();
+    expect(screen.queryByTestId('app-bar-title-loading')).not.toBeInTheDocument();
   });
 
   it("shows the other user's name for a 1:1 DM", async () => {

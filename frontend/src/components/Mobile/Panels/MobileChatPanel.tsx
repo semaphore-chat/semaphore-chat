@@ -27,9 +27,9 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   channelsControllerFindOneOptions,
-  directMessagesControllerFindDmGroupOptions,
   moderationControllerGetPinnedMessagesOptions,
 } from '../../../api-client/@tanstack/react-query.gen';
+import { useDmGroup } from '../../../hooks/useDmGroup';
 import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { useResponsive } from '../../../hooks/useResponsive';
 import { useSwipeGesture } from '../../../hooks/useSwipeGesture';
@@ -85,10 +85,8 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
     ...channelsControllerFindOneOptions({ path: { id: channelId || '' } }),
     enabled: !!channelId,
   });
-  const { data: dmGroup, isError: dmGroupError } = useQuery({
-    ...directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId || '' } }),
-    enabled: !!dmGroupId,
-  });
+  // Opened from the DM list, the cached list entry names the header at once.
+  const { data: dmGroup, isError: dmGroupError } = useDmGroup(dmGroupId);
 
   const [menuAnchor, setMenuAnchor] = React.useState<null | HTMLElement>(null);
   const [showMemberDrawer, setShowMemberDrawer] = React.useState(false);
@@ -235,6 +233,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
   } else if (dmGroupId && dmGroupError) {
     title = 'Conversation unavailable';
   }
+  // A DM with no name yet (nothing cached, request in flight) gets a skeleton
+  // title rather than a blank or placeholder name.
+  const titleLoading = !!dmGroupId && !dmGroup && !dmGroupError;
 
   // Render content based on channel type
   const renderContent = () => {
@@ -313,6 +314,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
       {/* App bar with back button */}
       <MobileAppBar
         title={title}
+        titleLoading={titleLoading}
         showBack={!hideBack}
         onBack={goBack}
         showSearch={canSearch}

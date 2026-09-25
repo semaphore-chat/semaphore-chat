@@ -31,6 +31,7 @@ vi.mock('../../api-client/@tanstack/react-query.gen', () => ({
     queryFn: async () => voiceChannel,
   }),
   directMessagesControllerFindDmGroupOptions: () => ({ queryKey: ['dm-group'], enabled: false }),
+  directMessagesControllerFindUserDmGroupsOptions: () => ({ queryKey: ['dm-groups'] }),
   moderationControllerGetPinnedMessagesOptions: () => ({ queryKey: ['pinned', ''], enabled: false }),
 }));
 

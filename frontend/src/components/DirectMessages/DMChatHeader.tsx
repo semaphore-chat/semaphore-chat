@@ -1,11 +1,14 @@
 import React from "react";
-import { Box, Typography, IconButton } from "@mui/material";
+import { Box, Typography, IconButton, Skeleton } from "@mui/material";
 import { ArrowBack } from "@mui/icons-material";
 import { DMVoiceControls } from "../DirectMessage/DMVoiceControls";
 
 interface DMChatHeaderProps {
   dmGroupId: string;
-  dmGroupName: string;
+  /** The conversation's name; undefined while it's loading (shows a skeleton). */
+  dmGroupName?: string;
+  /** The conversation failed to load (403/404/...): say so, and offer no calls. */
+  unavailable?: boolean;
   showBackButton?: boolean;
   onBack?: () => void;
 }
@@ -13,6 +16,7 @@ interface DMChatHeaderProps {
 export const DMChatHeader: React.FC<DMChatHeaderProps> = ({
   dmGroupId,
   dmGroupName,
+  unavailable = false,
   showBackButton = false,
   onBack,
 }) => {
@@ -39,12 +43,24 @@ export const DMChatHeader: React.FC<DMChatHeaderProps> = ({
             </IconButton>
           )}
           <Typography variant="h6" noWrap sx={{ fontWeight: 600 }}>
-            {dmGroupName}
+            {unavailable ? (
+              "Conversation unavailable"
+            ) : (
+              dmGroupName ?? (
+                <Skeleton
+                  role="progressbar"
+                  aria-label="Loading conversation"
+                  aria-busy="true"
+                  width={160}
+                  sx={{ maxWidth: "100%" }}
+                />
+              )
+            )}
           </Typography>
         </Box>
 
-        {/* Right side: Voice controls */}
-        <DMVoiceControls dmGroupId={dmGroupId} dmGroupName={dmGroupName} />
+        {/* Right side: Voice controls (disabled until the name is known) */}
+        {!unavailable && <DMVoiceControls dmGroupId={dmGroupId} dmGroupName={dmGroupName} />}
       </Box>
     </>
   );

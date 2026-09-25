@@ -13,6 +13,7 @@ import {
   Typography,
   Box,
   Avatar,
+  Skeleton,
 } from '@mui/material';
 import {
   ArrowBack as BackIcon,
@@ -27,6 +28,8 @@ import { LAYOUT_CONSTANTS } from '../../utils/breakpoints';
 interface MobileAppBarProps {
   // Title to display
   title: string;
+  // Show a skeleton in place of the title while it is loading
+  titleLoading?: boolean;
   // Optional subtitle (e.g., community name when in channel)
   subtitle?: string;
   // Optional avatar (e.g., community avatar)
@@ -52,6 +55,7 @@ interface MobileAppBarProps {
 
 const MobileAppBar: React.FC<MobileAppBarProps> = ({
   title,
+  titleLoading = false,
   subtitle,
   avatarUrl,
   showBack = false,
@@ -144,7 +148,17 @@ const MobileAppBar: React.FC<MobileAppBarProps> = ({
               lineHeight: 1.2,
             }}
           >
-            {title}
+            {titleLoading ? (
+              <Skeleton
+                role="progressbar"
+                aria-label="Loading title"
+                aria-busy="true"
+                width={140}
+                sx={{ maxWidth: '100%' }}
+              />
+            ) : (
+              title
+            )}
           </Typography>
           {subtitle && (
             <Typography

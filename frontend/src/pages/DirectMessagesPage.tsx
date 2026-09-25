@@ -9,12 +9,10 @@ import { FriendsPanel } from "../components/Friends";
 import { VideoTiles } from "../components/Voice";
 import { StageSplit } from "../components/Voice/StageSplit";
 import { useQuery } from "@tanstack/react-query";
-import {
-  directMessagesControllerFindDmGroupOptions,
-  friendsControllerGetPendingRequestsOptions,
-} from "../api-client/@tanstack/react-query.gen";
+import { friendsControllerGetPendingRequestsOptions } from "../api-client/@tanstack/react-query.gen";
 import { styled } from "@mui/material/styles";
 import { getDmDisplayName } from "../utils/dmHelpers";
+import { useDmGroup } from "../hooks/useDmGroup";
 import { setActiveDmGroupId } from "../utils/activeDmTracking";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import TwoColumnLayout from "../components/Common/TwoColumnLayout";
@@ -94,10 +92,14 @@ const DirectMessagesPage: React.FC = () => {
     return () => setActiveDmGroupId(null);
   }, [selectedDmGroupId]);
 
-  const { data: selectedDmGroup } = useQuery({
-    ...directMessagesControllerFindDmGroupOptions({ path: { id: selectedDmGroupId! } }),
-    enabled: !!selectedDmGroupId,
-  });
+  // Picked from the DM list, the cached list entry names the header at once.
+  const { data: selectedDmGroup, isError: selectedDmGroupError } = useDmGroup(selectedDmGroupId);
+  // Undefined while the conversation loads with nothing cached: the header
+  // shows a skeleton instead of a made-up name.
+  const selectedDmGroupName = selectedDmGroup
+    ? getDmDisplayName(selectedDmGroup, currentUser?.id)
+    : undefined;
+  const selectedDmGroupUnavailable = !selectedDmGroup && selectedDmGroupError;
 
   const isDmStage = Boolean(
     voiceState.isConnected &&
@@ -114,7 +116,8 @@ const DirectMessagesPage: React.FC = () => {
           <>
             <DMChatHeader
               dmGroupId={selectedDmGroupId}
-              dmGroupName={getDmDisplayName(selectedDmGroup, currentUser?.id)}
+              dmGroupName={selectedDmGroupName}
+              unavailable={selectedDmGroupUnavailable}
               showBackButton={true}
               onBack={() => setSelectedDmGroupId(undefined)}
             />
@@ -231,7 +234,8 @@ const DirectMessagesPage: React.FC = () => {
         <>
           <DMChatHeader
             dmGroupId={selectedDmGroupId}
-            dmGroupName={getDmDisplayName(selectedDmGroup, currentUser?.id)}
+            dmGroupName={selectedDmGroupName}
+            unavailable={selectedDmGroupUnavailable}
           />
           <Box sx={{ flex: 1, overflow: "hidden" }}>
             {isDmStage ? (
