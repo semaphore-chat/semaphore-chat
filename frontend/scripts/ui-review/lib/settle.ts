@@ -4,8 +4,9 @@
  * shared defaults, `SETTLE_MAX_MS`). A story counts as
  * settled once, for `quietMs` in a row:
  *   - the DOM had no mutation (data arrived, lazy routes mounted, lists measured),
- *   - no request started or finished, and
- *   - no script/stylesheet/font request is still pending.
+ *   - no request started or finished,
+ *   - no script/stylesheet/font request is still pending, and
+ *   - no story driver is running (`<html data-story-busy>`, see `storyBusy`).
  * `networkidle` plus a DOM-quiet wait alone is not enough under load: after
  * `networkidle` a lazy route's chunk can still be in flight (a cold Vite
  * transform takes seconds) while a static "Loading..." screen keeps the DOM
@@ -78,14 +79,24 @@ export async function waitForDomQuiet(page: Page, quietMs = 500, maxMs = SETTLE_
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Waits until the page is settled (see above); resolves `false` if `maxMs` ran out first. */
+/**
+ * A story that drives itself through an interaction (`useDriver` in
+ * src/stories/fixtures/edge/chat.ts) sets `<html data-story-busy>` until its
+ * last step ran: the pauses between steps leave the DOM quiet.
+ */
+function storyBusy(page: Page): Promise<boolean> {
+  return page.evaluate(() => 'storyBusy' in document.documentElement.dataset).catch(() => false);
+}
+
+/** Waits until the page is settled (see above) and no story driver is running; resolves `false` if `maxMs` ran out first. */
 export async function waitForSettled(page: Page, net: NetworkTracker, quietMs = 500, maxMs = SETTLE_MAX_MS): Promise<boolean> {
   const started = Date.now();
   const left = () => maxMs - (Date.now() - started);
   while (left() > 0) {
     await waitForDomQuiet(page, quietMs, Math.max(1, left()));
-    if (net.blocking() === 0 && net.idleFor() >= quietMs) return true;
-    await sleep(Math.min(Math.max(50, net.blocking() > 0 ? 100 : quietMs - net.idleFor()), Math.max(1, left())));
+    const busy = await storyBusy(page);
+    if (!busy && net.blocking() === 0 && net.idleFor() >= quietMs) return true;
+    await sleep(Math.min(Math.max(50, busy || net.blocking() > 0 ? 100 : quietMs - net.idleFor()), Math.max(1, left())));
   }
   return false;
 }

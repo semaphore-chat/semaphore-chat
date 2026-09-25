@@ -282,6 +282,10 @@ capture() {
   mkdir -p "$UIR"
   trap cleanup EXIT
   trap 'exit 130' INT TERM
+  # Containers an earlier --keep run left up still mount the base worktree
+  # that is replaced below (its Ladle would then serve no stories): start
+  # from fresh ones.
+  "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 
   HAS_BASE=0
   if git cat-file -e "$MERGE_BASE:frontend/.ladle/config.mjs" 2>/dev/null; then
