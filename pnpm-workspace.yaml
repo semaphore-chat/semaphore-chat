@@ -14,6 +14,14 @@ packages:
 # backend/Dockerfile and frontend/Dockerfile run a plain `pnpm install` on a
 # partial workspace, which re-resolves: every version the lockfile pins must
 # be >= 3 days old or listed below, or those image builds fail.
+#
+# Dependabot doesn't read this setting (dependabot-core#13405), so its npm
+# entry in .github/dependabot.yml has a 4-day `cooldown` to stay behind this
+# gate. Security updates skip Dependabot's cooldown, but pnpm still holds
+# them here until they are 3 days old (add an exact-version entry to
+# minimumReleaseAgeExclude to ship an urgent fix sooner).
+# electron-build.yml's `pnpm add -w @rollup/rollup-win32-x64-msvc` also
+# re-resolves, so it is subject to this gate too.
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   # Every version main's lockfile already pinned that was < 3 days old when
