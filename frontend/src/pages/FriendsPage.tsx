@@ -5,7 +5,9 @@ import { styled } from "@mui/material/styles";
 import { FriendsPanel } from "../components/Friends";
 import { useResponsive } from "../hooks/useResponsive";
 
-// Desktop: a centred card floating over the page.
+// Desktop: a centred card floating over the page. The side padding keeps it
+// off the sidebar and the window edge when the window is barely wider than
+// the card (an Electron window can be 800px).
 const Root = styled(Box)({
   display: "flex",
   height: "100%",
@@ -18,6 +20,8 @@ const Root = styled(Box)({
   justifyContent: "center",
   alignItems: "flex-start",
   paddingTop: 32,
+  paddingLeft: 16,
+  paddingRight: 16,
 });
 
 const Container = styled(Paper)(({ theme }) => ({

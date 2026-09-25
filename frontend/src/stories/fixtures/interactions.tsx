@@ -53,3 +53,27 @@ export const AttachFileOnMount: React.FC<{ filename: string; type: string; timeo
 export const TypeIntoTextareaOnMount: React.FC<{ text: string; timeoutMs?: number }> = ({ text, timeoutMs = 4000 }) => (
   <ClickOnMount find={() => (typeIntoTextarea(text) ? (document.body as HTMLElement) : null)} timeoutMs={timeoutMs} />
 );
+
+export interface ScrollToBottomOnMountProps {
+  /** The elements to scroll; polled, so they may appear (or grow) later. */
+  find: () => HTMLElement[];
+  timeoutMs?: number;
+  pollMs?: number;
+}
+
+/**
+ * Scrolls the elements `find()` returns to the bottom, again on every poll
+ * until `timeoutMs`, so content that loads (or a drawer that opens) after
+ * mount still ends up scrolled to its end — e.g. the last rows of a list.
+ */
+export const ScrollToBottomOnMount: React.FC<ScrollToBottomOnMountProps> = ({ find, timeoutMs = 4000, pollMs = 150 }) => {
+  useEffect(() => {
+    const start = Date.now();
+    const timer = setInterval(() => {
+      for (const el of find()) el.scrollTop = el.scrollHeight;
+      if (Date.now() - start >= timeoutMs) clearInterval(timer);
+    }, pollMs);
+    return () => clearInterval(timer);
+  }, [find, timeoutMs, pollMs]);
+  return null;
+};

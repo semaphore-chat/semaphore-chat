@@ -5,6 +5,7 @@ import PushPinIcon from "@mui/icons-material/PushPin";
 import LockIcon from "@mui/icons-material/Lock";
 import MessageContainerWrapper from "../Message/MessageContainerWrapper";
 import MemberListContainer from "../Message/MemberListContainer";
+import { MemberListDrawerButton } from "../Message/MemberListDrawerButton";
 import MessageSearch from "../Message/MessageSearch";
 import { PinnedMessagesPanel } from "../Moderation";
 import { ThreadPanel } from "../Thread";
@@ -214,6 +215,12 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
             <ChannelNotificationMenu
               channelId={channelId}
               channelName={channel?.name}
+            />
+            <MemberListDrawerButton
+              contextType={VoiceSessionType.Channel}
+              contextId={channelId}
+              communityId={communityId}
+              isPrivate={channel?.isPrivate}
             />
           </Box>
         </Paper>

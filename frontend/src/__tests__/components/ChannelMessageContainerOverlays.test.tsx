@@ -149,3 +149,27 @@ describe('ChannelMessageContainer overlays', () => {
     expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-fullscreen', 'false');
   });
 });
+
+describe('ChannelMessageContainer header: members drawer', () => {
+  beforeEach(() => {
+    env.electron = false;
+    env.phone = true;
+  });
+
+  it('a narrow Electron window (desktop layout) offers the member list as a drawer', async () => {
+    env.electron = true;
+    const { user } = renderContainer(false);
+    expect(screen.queryByTestId('member-list')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Show members' }));
+
+    expect(await screen.findByTestId('member-list')).toBeInTheDocument();
+    expect(screen.getByTestId('member-list').closest('.MuiDrawer-paper')).not.toBeNull();
+  });
+
+  it('desktop width has no members button (the column is inline)', () => {
+    env.phone = false;
+    renderContainer(false);
+    expect(screen.queryByRole('button', { name: 'Show members' })).not.toBeInTheDocument();
+  });
+});

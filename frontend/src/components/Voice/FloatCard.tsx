@@ -107,7 +107,7 @@ export const FloatCard: React.FC = () => {
   const { isActive: isPTTActive } = usePushToTalk();
   const micGuarded = isPTTActive || state.isServerMuted;
   const selection = useFloatTileSelection();
-  // Phone/tablet layouts (incl. an Electron window at tablet width): the
+  // Phone/tablet layouts (never in Electron, which is always desktop): the
   // composer spans the content column right above the voice bar, so the card
   // must clear it too — otherwise its default bottom-right spot sits on the
   // text field. On desktop the card's corner is over the member list, so

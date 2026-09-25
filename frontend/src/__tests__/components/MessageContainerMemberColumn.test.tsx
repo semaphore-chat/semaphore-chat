@@ -2,7 +2,9 @@
  * Task 17 — below 1024px the member list is never an inline third column
  * (the tablet split view keeps at most two columns). It opens as an overlay
  * from the app bar instead (see MobileChatPanelTablet.test.tsx). At 1024px and
- * up, and in Electron at desktop width, the inline column stays.
+ * up the inline column stays. Electron is always the desktop layout, and the
+ * same 1024px cut applies there: below it the chat header's members button
+ * opens the list as a drawer (MemberListDrawerButton.test.tsx).
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
@@ -111,9 +113,23 @@ describe('MessageContainer inline member column', () => {
     expect(screen.getByTestId('member-list')).toBeInTheDocument();
   });
 
-  it('is shown in a narrow Electron window on the desktop layout (< 768px)', () => {
+  // Electron is always the desktop layout; below 1024px the rail and channel
+  // sidebar leave no room for the column, so the chat header's members button
+  // (MemberListDrawerButton) opens it as a drawer instead.
+  it.each([700, 800, 820, 1023])(
+    'is closed in an Electron window %ipx wide (desktop layout, members in a drawer)',
+    (width) => {
+      platform.electron = true;
+      stubViewportWidth(width);
+      renderContainer();
+      expect(screen.getByTestId('message-input')).toBeInTheDocument();
+      expect(screen.queryByTestId('member-list')).not.toBeInTheDocument();
+    },
+  );
+
+  it.each([1024, 1199])('is shown in an Electron window %ipx wide (desktop layout)', (width) => {
     platform.electron = true;
-    stubViewportWidth(700);
+    stubViewportWidth(width);
     renderContainer();
     expect(screen.getByTestId('member-list')).toBeInTheDocument();
   });

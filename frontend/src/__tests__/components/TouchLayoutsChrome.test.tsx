@@ -250,6 +250,28 @@ describe('Layout choice (Review Focus #1)', () => {
     inStore(<Layout />);
     expect(screen.getByTestId('desktop-layout')).toBeInTheDocument();
   });
+
+  it('a tablet-width browser gets the tablet layout (sanity check for the Electron case)', () => {
+    stubViewportWidth(820);
+    inStore(<Layout />);
+    expect(screen.queryByTestId('desktop-layout')).not.toBeInTheDocument();
+    expect(screen.getByTestId('tablet-sidebar')).toBeInTheDocument();
+  });
+
+  // Electron's minimum window width is 800px, so every narrow Electron window
+  // falls in the tablet range. It's a desktop app: no touch tablet layout.
+  it.each([800, 820, 1023, 1024, 1199])(
+    'an Electron window %ipx wide gets the desktop layout, not the tablet one',
+    (width) => {
+      platform.electron = true;
+      voice.connected = true;
+      stubViewportWidth(width);
+      inStore(<Layout />);
+      expect(screen.getByTestId('desktop-layout')).toBeInTheDocument();
+      expect(screen.queryByTestId('tablet-sidebar')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('screen')).not.toBeInTheDocument();
+    },
+  );
 });
 
 describe('Reconnecting chip placement by layout', () => {
