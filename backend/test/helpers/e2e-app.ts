@@ -15,10 +15,10 @@ import {
   ClassSerializerInterceptor,
   INestApplication,
   LoggerService,
-  ValidationPipe,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
+import { HttpValidationPipe } from '@/common/pipes/http-validation.pipe';
 import * as cookieParser from 'cookie-parser';
 import * as request from 'supertest';
 import { App } from 'supertest/types';
@@ -56,7 +56,7 @@ export async function createE2eApp(options?: {
   app.setGlobalPrefix('api');
   app.use(cookieParser());
   app.useGlobalPipes(
-    new ValidationPipe({
+    new HttpValidationPipe({
       transform: true,
       whitelist: true,
     }),

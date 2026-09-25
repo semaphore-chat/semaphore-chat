@@ -12,11 +12,7 @@ import { CommunityModule } from './community/community.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { APP_GUARD } from '@nestjs/core';
-import {
-  ThrottlerGuard,
-  ThrottlerModule,
-  ThrottlerModuleOptions,
-} from '@nestjs/throttler';
+import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
 import { ChannelsModule } from './channels/channels.module';
@@ -53,6 +49,7 @@ import { GifsModule } from './gifs/gifs.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 import { DebugModule } from './debug/debug.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { HttpThrottlerGuard } from './throttler/http-throttler.guard';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { JobsModule } from './jobs/jobs.module';
 
@@ -146,13 +143,13 @@ import { JobsModule } from './jobs/jobs.module';
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
     },
-    // Conditionally provide ThrottlerGuard - skip in test mode
+    // Conditionally provide the (HTTP-only) ThrottlerGuard - skip in test mode
     ...(process.env.NODE_ENV === 'test'
       ? []
       : [
           {
             provide: APP_GUARD,
-            useClass: ThrottlerGuard,
+            useClass: HttpThrottlerGuard,
           },
         ]),
     WebsocketService,

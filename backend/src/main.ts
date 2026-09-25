@@ -1,16 +1,13 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
-import {
-  ClassSerializerInterceptor,
-  ConsoleLogger,
-  ValidationPipe,
-} from '@nestjs/common';
+import { ClassSerializerInterceptor, ConsoleLogger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import * as cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { TimingInterceptor } from './timing/timing.interceptor';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
+import { HttpValidationPipe } from './common/pipes/http-validation.pipe';
 
 const KNOWN_WEAK_SECRETS = [
   'some long elaborate secret that you really need to change',
@@ -101,7 +98,7 @@ async function bootstrap() {
     credentials: true,
   });
   app.useGlobalPipes(
-    new ValidationPipe({
+    new HttpValidationPipe({
       transform: true,
       whitelist: true,
     }),
