@@ -68,7 +68,7 @@ What to do:
 
 ## Flaky and unstable stories
 
-A story renders nondeterministically when the frame the screenshot catches depends on timing. No story is known to be flaky at the moment. The causes found so far, and what now prevents them:
+A story renders nondeterministically when the frame the screenshot catches depends on timing. One residual is known: `edge-chat-history--cold-deep-link` and `edge-chat-history--jump-far-back` now and then come out **unstable**, in about 2 of 11 no-change runs. In the one examined, a single row of the anchored (deep-linked) window was shifted by 1 px: a sub-pixel difference in how the list measured it. It is harmless: ignore it unless your change touches the message list. The causes found so far, and what now prevents them:
 
 - **A driver step that waits with `Date.now()`.** The review pins `Date.now()`, so such a wait never ends: `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` used to stop at their first `wait()` with a menu open over a list still sizing its media, and the menu and the list's scroll position came out differently from load to load. `wait()` and `useDriver` now count time with timers, and the two stories wait for their images to size (`mediaSettled()`) before opening the menu.
 - **A shot taken halfway through a driver.** The pauses between steps leave the DOM quiet, so the settle wait could end with the files attached but the draft not typed yet. `useDriver` sets `<html data-story-busy>` while it runs, and the capture doesn't count the page as settled until it's gone.
