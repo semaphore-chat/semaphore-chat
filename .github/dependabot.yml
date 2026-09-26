@@ -42,6 +42,13 @@ updates:
       # TypeScript 7 (native port) needs toolchain support first (#512)
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+      # Material UI 9 is a migration, not a bump (#526)
+      - dependency-name: "@mui/*"
+        update-types: ["version-update:semver-major"]
+      # Node types follow the Node 24 runtime (Dockerfiles, CI); raise this
+      # with the runtime's major
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       security:
         applies-to: security-updates

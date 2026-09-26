@@ -1,4 +1,5 @@
 import { createTheme, Theme, alpha, emphasize, getContrastRatio } from '@mui/material/styles';
+import { chipClasses } from '@mui/material/Chip';
 import type { ThemeMode, AccentColor, ThemeIntensity } from './constants';
 import { FONT_FAMILY, HTML_FONT_SIZE, TYPE_SCALE, ICON_SCALE, RADIUS_UNIT } from './tokens';
 import type { TypeScale, IconScale } from './tokens';
@@ -85,6 +86,30 @@ function blendColors(color1: string, color2: string, weight: number): string {
   const g = Math.round(g1 * weight + g2 * (1 - weight));
   const b = Math.round(b1 * weight + b2 * (1 - weight));
   return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
+/** WCAG 2.x AA minimum contrast for normal-size text (1.4.3). */
+export const WCAG_AA_TEXT_CONTRAST = 4.5;
+
+/**
+ * `preferred` when it reaches `minRatio` against every colour in `backdrops`;
+ * otherwise `preferred` mixed towards `towards` (black for light surfaces,
+ * white for dark ones) in 5% steps until it does. Keeps the accent's hue
+ * wherever it is legible and only darkens/lightens it as far as needed.
+ */
+export function readableTextColor(
+  preferred: string,
+  backdrops: string[],
+  towards: '#000000' | '#ffffff',
+  minRatio = WCAG_AA_TEXT_CONTRAST,
+): string {
+  for (let step = 0; step <= 20; step++) {
+    const candidate = step === 0 ? preferred : blendColors(towards, preferred, step / 20);
+    if (backdrops.every((backdrop) => getContrastRatio(candidate, backdrop) >= minRatio)) {
+      return candidate;
+    }
+  }
+  return towards;
 }
 
 // Accent color palettes
@@ -229,6 +254,33 @@ export function generateTheme(
     },
   };
 
+  // Tint paper background in vibrant/subtle modes
+  const paperBackground = isVibrant
+    ? blendColors(accent.primary, base.background.paper, isDark ? 0.2 : 0.22)
+    : isBalanced
+    ? blendColors(accent.primary, base.background.paper, isDark ? 0.1 : 0.08)
+    : base.background.paper;
+
+  // Chips: every chip, whatever its `color` prop, is a translucent accent tint
+  // with accent-coloured text (the MuiChip override below replaces MUI's
+  // per-colour fills). The text colour is checked against that tint over each
+  // solid surface a chip sits on (paper, page ground), at rest and in the
+  // stronger hover/focus tint, and moved towards black (light) or white (dark)
+  // until it reaches WCAG AA. accent.lighter on a pale tint was ~1.0-1.8:1 in
+  // light mode (e.g. the voice bar's "Connected" chip); dark mode keeps
+  // accent.lighter wherever it already passes.
+  const chipTint = isVibrant ? 0.3 : isBalanced ? 0.18 : 0.1;
+  const chipHoverTint = chipTint + 0.1;
+  const chipBackdrops = [paperBackground, base.background.default].flatMap((surface) => [
+    blendColors(accent.primary, surface, chipTint),
+    blendColors(accent.primary, surface, chipHoverTint),
+  ]);
+  const chipText = readableTextColor(
+    isDark ? accent.lighter : accent.dark,
+    chipBackdrops,
+    isDark ? '#ffffff' : '#000000',
+  );
+
   // Same formula MUI's SnackbarContent uses, computed from the solid ground.
   const snackbarBackground = emphasize(base.background.default, isDark ? 0.98 : 0.8);
   // Same rule as palette.getContrastText (contrastThreshold 3).
@@ -282,12 +334,7 @@ export function generateTheme(
           ? `linear-gradient(180deg, ${alpha(accent.dark, 0.12)} 0%, ${base.background.default} 100%)`
           : base.background.default,
         canvas: isBalanced && isDark ? 'transparent' : base.background.default,
-        // Tint paper background in vibrant/subtle modes
-        paper: isVibrant
-          ? blendColors(accent.primary, base.background.paper, isDark ? 0.2 : 0.22)
-          : isBalanced
-          ? blendColors(accent.primary, base.background.paper, isDark ? 0.1 : 0.08)
-          : base.background.paper,
+        paper: paperBackground,
       },
       text: base.text,
       semantic: semanticColors,
@@ -414,8 +461,9 @@ export function generateTheme(
       MuiChip: {
         styleOverrides: {
           root: {
-            backgroundColor: alpha(accent.primary, isVibrant ? 0.3 : isBalanced ? 0.18 : 0.1),
-            color: accent.lighter,
+            backgroundColor: alpha(accent.primary, chipTint),
+            // Readable on the tint in every mode/accent/intensity (see chipText).
+            color: chipText,
             border: isVibrant
               ? `1px solid ${alpha(accent.primary, 0.5)}`
               : isBalanced
@@ -424,6 +472,13 @@ export function generateTheme(
             ...(isVibrant && {
               boxShadow: `0 0 8px ${alpha(accent.primary, 0.2)}`,
             }),
+            // MUI fills a coloured clickable chip with palette[color].dark on
+            // hover/focus (a coloured deletable one on focus), under chipText:
+            // 2-3.7:1 in dark mode, worse in light. Stay on the accent tint,
+            // one step stronger, which chipText is checked against.
+            [`&.${chipClasses.clickable}:hover, &.${chipClasses.clickable}.${chipClasses.focusVisible}, &.${chipClasses.deletable}.${chipClasses.focusVisible}`]: {
+              backgroundColor: alpha(accent.primary, chipHoverTint),
+            },
           },
         },
       },

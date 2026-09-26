@@ -109,7 +109,7 @@ Check each against this list. The detail for each item, the composite anatomy an
 6. **The other viewports aren't regressed:** a phone fix must not break tablet or desktop, and the reverse.
 7. **No sandbox artefacts:** no blank or half-loaded page, stuck spinner, "Loading...", skeleton, "Story not found", error boundary, broken image, or mock-error toast you didn't intend.
 8. **Console issues** in the section (page errors, render errors, unhandled requests): an issue on the head side only is yours. It usually means a missing MSW handler or broken code.
-9. **Unstable shots:** if the difference sits where your change is, rerun that story (`--stories <id>`) and look again. Two stories are known to be flaky. See [reference/situations.md](reference/situations.md#flaky-and-unstable-stories).
+9. **Unstable shots:** if the difference sits where your change is, rerun that story (`--stories <id>`) and look again. See [reference/situations.md](reference/situations.md#flaky-and-unstable-stories).
 10. **Blind spots:** "Not visible in Ladle" files (`index.html`, `vite.config.ts`, `main.tsx`, `index.css`, `public/`), capped or sampled runs, and states no story reaches. Say in the PR what the screenshots can't show.
 
 Note each finding as you go (story, viewport, what's wrong).
@@ -164,7 +164,7 @@ Details for each are in **[reference/situations.md](reference/situations.md)**.
 - **Nothing affected:** the section says there was nothing to compare. If only non-visual frontend code changed, publishing it is fine, because it records that the check ran. If files are listed as uncovered, go back to step 2.
 - **Docker unavailable** (the script stops with "docker is required"): don't fake the section. Put a one-line note between the markers saying the UI review wasn't run and giving the command to run. The next real run replaces it. Tell the user.
 - **Global change** (`frontend/.ladle/**`, `src/theme/**`, manifests, the lockfile, tsconfigs, patches, or the shared story harness and the app shell it imports): every story is a candidate. The stories that render your other changed files are captured first, then a sample, 40 stories in total. Check that the sample covers what you meant to change (for a theme change, light and dark). Use `--stories` or `--all` when it doesn't. Which fixture files count as the harness is listed in situations.md.
-- **Flaky stories:** `edge-chat-worst-case--everything-at-once` and `edge-chat-dm--dm-composer-loaded` open a menu while media is still sizing. Each changed shot is captured twice more, and a difference that doesn't reproduce is reported as **unstable**, not changed.
+- **Flaky stories:** each changed shot is captured twice more, and a difference that doesn't reproduce is reported as **unstable**, not changed. One residual is known: `edge-chat-history--cold-deep-link` and `--jump-far-back` now and then come out unstable (a 1 px shift of one row in the anchored window, see situations.md). A story you write has to follow the determinism rules in reference/stories.md: `Date.now()` doesn't move during a review, so drive interactions with `useDriver` and its `wait()`/`mediaSettled()` steps.
 - **Housekeeping:**
   - `.github/workflows/prune-pr-screenshots.yml` removes `pr-<n>/` when a PR closes, and in a daily sweep. For a fork PR, run `pr-screenshots.sh prune --pr <n>` yourself.
   - Never commit images.
