@@ -15,7 +15,9 @@
 #                     frontend/release/linux-unpacked of this checkout). Point
 #                     it at another checkout's build to compare versions
 #                     against the same backend.
-#   --out DIR         results directory (default: frontend/.electron-smoke-out)
+#   --out DIR         results directory (default: frontend/.electron-smoke-out;
+#                     a results directory of an earlier run is emptied first,
+#                     any other non-empty directory is refused)
 #   --no-keyring      no Secret Service in the container: safeStorage falls
 #                     back to whatever Chromium does without a keyring
 #   --keep            leave the backend, LiveKit and databases running
@@ -61,8 +63,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-rm -rf "$OUT"
+# Empty the results directory from a previous run, but only one this script
+# made (it leaves a marker file): a mistyped --out can't wipe anything else.
 mkdir -p "$OUT"
+if [[ -n "$(ls -A "$OUT")" ]]; then
+  [[ -f "$OUT/.electron-smoke" ]] ||
+    die "$OUT is not empty and not an electron-smoke results directory; pass another --out"
+  find "$OUT" -mindepth 1 -delete
+fi
+touch "$OUT/.electron-smoke"
 
 STACK=("$ROOT/scripts/test-stack.sh" "$TICKET")
 BACKEND_PID=""
