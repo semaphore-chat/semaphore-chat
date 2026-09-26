@@ -35,6 +35,7 @@ import type { DirectMessageGroup } from '../../../types/direct-message.type';
 import type { MembershipResponseDto, PaginatedMessagesResponseDto, EnrichedThreadReplyDto } from '../../../api-client/types.gen';
 import { parseMessageWithMentions } from '../../../utils/mentionParser';
 import { prependMessageToInfinite, markOptimisticFailed } from '../../../utils/messageCacheUpdaters';
+import { setPendingUpload, deletePendingUpload, createPreviewUrl, type PendingFileStatus } from '../../../utils/pendingUploadStore';
 import { channelMessagesQueryKey, dmMessagesQueryKey } from '../../../utils/messageQueryKeys';
 import { buildScenario } from '../builder';
 import { placeholderPhoto } from '../avatars';
@@ -806,10 +807,7 @@ export function attachFiles(files: FakeFile[], scope: ParentNode = document): bo
   const input = scope.querySelector('input[type="file"]') as HTMLInputElement | null;
   if (!input) return false;
   const dt = new DataTransfer();
-  for (const f of files) {
-    const bytes = f.type === 'image/png' ? pngBytes(f.size?.[0] ?? 320, f.size?.[1] ?? 240, f.color ?? '#5865F2') : new Uint8Array(4096);
-    dt.items.add(new File([bytes as BlobPart], f.name, { type: f.type }));
-  }
+  for (const f of files) dt.items.add(fakeFile(f));
   input.files = dt.files;
   input.dispatchEvent(new Event('change', { bubbles: true }));
   return true;
@@ -990,21 +988,75 @@ export function scrollListToBottom(stableTicks = 3): DriverStep {
   };
 }
 
+/** A file a message is uploading, frozen in one state (utils/pendingUploadStore.ts). */
+export interface UploadSpec extends FakeFile {
+  status: PendingFileStatus;
+  /** 0..1 */
+  progress?: number;
+  error?: string;
+  /** Size shown on the tile (the generated file itself is tiny). */
+  bytes?: number;
+}
+
 export interface OptimisticSpec {
   text: string;
-  status: 'pending' | 'failed';
+  /** 'sent': acked by the server (real id), its files still uploading. */
+  status: 'pending' | 'failed' | 'sent';
   replyTo?: Message;
+  /** Files the message is uploading. */
+  uploads?: UploadSpec[];
+  /** Files already attached (the end state of an upload). */
+  attachments?: FileMetadata[];
+}
+
+/** Selector for a row `useInjectOptimisticMessages` put into the list. */
+export const INJECTED_ROW = '[data-message-id^="pending-edge-chat-"], [data-message-id^="edge-chat-sent-"]';
+
+function fakeFile(f: FakeFile): File {
+  const bytes = f.type === 'image/png' ? pngBytes(f.size?.[0] ?? 320, f.size?.[1] ?? 240, f.color ?? '#5865F2') : new Uint8Array(4096);
+  return new File([bytes as BlobPart], f.name, { type: f.type });
 }
 
 /**
  * Inject optimistic (pending/failed) rows into a channel/DM message cache
  * once its first page has loaded — the same cache transitions
  * `useOptimisticSendMessage` performs (prepend as 'pending', then
- * `markOptimisticFailed` on ack timeout).
+ * `markOptimisticFailed` on ack timeout). A spec with `uploads` also puts
+ * its files into the pending-upload store (as `utils/attachmentSend.ts`
+ * does), frozen at the given progress: nothing uploads in the sandbox.
  */
 export function useInjectOptimisticMessages(context: { channelId?: string; dmId?: string }, specs: OptimisticSpec[]): void {
   const queryClient = useQueryClient();
   const specsRef = useRef(specs);
+  useEffect(() => {
+    const clientIds: string[] = [];
+    specsRef.current.forEach((spec, i) => {
+      if (!spec.uploads) return;
+      const clientId = `pending-edge-chat-${i + 1}`;
+      clientIds.push(clientId);
+      setPendingUpload({
+        clientId,
+        messageId: spec.status === 'sent' ? `edge-chat-sent-${i + 1}` : null,
+        hasText: spec.text.trim() !== '',
+        files: spec.uploads.map((u, j) => {
+          const file = fakeFile(u);
+          return {
+            localId: `f${j}`,
+            file,
+            name: u.name,
+            size: u.bytes ?? file.size,
+            mimeType: u.type,
+            previewUrl: createPreviewUrl(file),
+            status: u.status,
+            progress: u.progress ?? (u.status === 'attaching' ? 1 : 0),
+            fileId: null,
+            error: u.error ?? null,
+          };
+        }),
+      });
+    });
+    return () => clientIds.forEach(deletePendingUpload);
+  }, []);
   useEffect(() => {
     const key = context.channelId ? channelMessagesQueryKey(context.channelId) : dmMessagesQueryKey(context.dmId ?? '');
     let cancelled = false;
@@ -1024,18 +1076,19 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
       if (!data) return false;
       specsRef.current.forEach((spec, i) => {
         const clientId = `pending-edge-chat-${i + 1}`;
+        const sent = spec.status === 'sent';
         const msg: Message = {
-          id: clientId,
+          id: sent ? `edge-chat-sent-${i + 1}` : clientId,
           clientId,
           channelId: context.channelId ?? null,
           directMessageGroupId: context.dmId ?? null,
           authorId: me.id,
           spans: composed(spec.text),
-          attachments: [],
-          pendingAttachments: 0,
+          attachments: spec.attachments ?? [],
+          pendingAttachments: spec.uploads?.length ?? 0,
           reactions: [],
           sentAt: new Date(Date.now() - (specsRef.current.length - i) * 1000).toISOString(),
-          sendStatus: 'pending',
+          ...(sent ? {} : { sendStatus: 'pending' as const }),
           ...(spec.replyTo ? { replyToId: spec.replyTo.id } : {}),
         };
         const current = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(key);

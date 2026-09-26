@@ -13,6 +13,7 @@ vi.mock('../../api-client/client.gen', () => ({
 import { useMessageFileUpload } from '../../hooks/useMessageFileUpload';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { NotificationProvider } from '../../contexts/NotificationContext';
+import { FileCacheProvider } from '../../contexts/AvatarCacheContext';
 import { channelMessagesQueryKey, dmMessagesQueryKey } from '../../utils/messageQueryKeys';
 import { getPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
 import { resetAttachmentSendsForTests } from '../../utils/attachmentSend';
@@ -39,7 +40,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
     React.createElement(
       SocketContext.Provider,
       { value: { socket: mockSocket as never, isConnected: true } },
-      React.createElement(NotificationProvider, null, children),
+      React.createElement(NotificationProvider, null, React.createElement(FileCacheProvider, null, children)),
     ),
   );
 }

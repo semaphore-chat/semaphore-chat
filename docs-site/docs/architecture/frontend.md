@@ -136,6 +136,14 @@ React contexts provide cross-cutting state:
 
 **Profile**: `useCurrentUser`, `useProfileForm`, `useCommunityForm`
 
+### Sending messages and attachments
+
+Every message sent from the channel or DM composer appears at once as an optimistic row (`sendStatus: 'pending'`, a `pending-<uuid>` id that is also its `clientId`), and the server's ack or WebSocket echo reconciles it in place without remounting it. A failed send stays in the list as `'failed'` with Retry and Delete.
+
+A message with files takes the same path through `utils/attachmentSend.ts`. The server creates the message first, with `pendingAttachments: N`. Once the send is acked, each file is uploaded to `/file-upload` with progress (XHR) and attached with `POST /messages/:id/attachments`. The per-file state (waiting, uploading with progress, attaching, failed) lives in `utils/pendingUploadStore.ts` rather than in the query cache, and `PendingAttachments` renders it under the message: a tile per file with Cancel while it uploads, and Retry and Remove when it failed. Remove releases the file's slot on the server (the attach call without a `fileId`), and a message left with no text and no files is deleted.
+
+The uploads run outside React, so leaving the conversation doesn't stop them, and the row shows their progress again on return. A page reload loses them: the message keeps the files that were already attached, and the server still counts the others as pending.
+
 ---
 
 ## Platform Separation (Web vs Electron)

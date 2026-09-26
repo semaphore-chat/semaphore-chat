@@ -4,7 +4,7 @@ import { VoiceSessionType } from "../contexts/VoiceContext";
 import { useSendMessage } from "./useSendMessage";
 import { useOptimisticSendMessage } from "./useOptimisticSendMessage";
 import { useNotification } from "../contexts/NotificationContext";
-import { useOptionalFileCache } from "../contexts/AvatarCacheContext";
+import { useFileCache } from "../contexts/AvatarCacheContext";
 import { sendMessageWithAttachments } from "../utils/attachmentSend";
 import type { Span } from "../types/message.type";
 
@@ -28,13 +28,13 @@ interface UseMessageFileUploadOptions {
 export const useMessageFileUpload = ({ contextType, contextId, authorId }: UseMessageFileUploadOptions) => {
   const queryClient = useQueryClient();
   const { showNotification } = useNotification();
-  const fileCache = useOptionalFileCache();
+  const fileCache = useFileCache();
   const { sendMessage: rawSendMessage } = useSendMessage(contextType);
   const { sendMessage: sendOptimisticMessage } = useOptimisticSendMessage(contextType, contextId);
 
   const seedFileBlob = useCallback(
     (fileId: string, file: File) => {
-      if (!fileCache || fileCache.hasBlob(fileId)) return;
+      if (fileCache.hasBlob(fileId)) return;
       fileCache.setBlob(fileId, URL.createObjectURL(file));
     },
     [fileCache],
