@@ -8,7 +8,7 @@
  */
 export function computeVoiceLevel(
   analyser: AnalyserNode,
-  dataArray: Uint8Array,
+  dataArray: Uint8Array<ArrayBuffer>,
 ): number {
   analyser.getByteFrequencyData(dataArray);
 

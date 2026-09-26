@@ -46,7 +46,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 /**
  * Convert a base64 VAPID key to Uint8Array format for PushManager
  */
-function urlBase64ToUint8Array(base64String: string): Uint8Array {
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
 
