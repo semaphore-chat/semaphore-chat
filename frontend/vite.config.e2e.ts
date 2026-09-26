@@ -74,7 +74,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      "@semaphore-chat/shared": path.resolve(__dirname, "../shared/src"),
+      "@semaphore-chat/shared": path.resolve(import.meta.dirname, "../shared/src"),
     },
   },
   base: "/",
