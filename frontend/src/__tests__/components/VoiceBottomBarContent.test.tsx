@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, fireEvent, within } from '@testing-library/react';
+import { ThemeProvider, getContrastRatio } from '@mui/material/styles';
 import { renderWithProviders } from '../test-utils';
+import { compositeOver } from '../test-utils/color';
+import { generateTheme } from '../../theme/themeConfig';
 import { VoiceBottomBarContent as VoiceBottomBar } from '../../components/Voice/VoiceBottomBarContent';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
@@ -381,6 +384,30 @@ describe('VoiceBottomBarContent', () => {
     renderWithProviders(<VoiceBottomBar />);
 
     expect(screen.getByText('Connected')).toBeInTheDocument();
+  });
+
+  // The chip used to be accent.lighter on a pale accent tint in light mode
+  // (~1.0-1.8:1). Checks the painted colours, on the bar's own surface.
+  it.each([
+    ['light', 'purple', 'vibrant'],
+    ['light', 'amber', 'balanced'],
+    ['light', 'teal', 'minimal'],
+    ['dark', 'teal', 'minimal'],
+    ['dark', 'lime', 'vibrant'],
+  ] as const)('renders the "Connected" chip at WCAG AA contrast (%s, %s, %s)', (mode, accent, intensity) => {
+    const theme = generateTheme(mode, accent, intensity);
+    renderWithProviders(
+      <ThemeProvider theme={theme}>
+        <VoiceBottomBar />
+      </ThemeProvider>,
+      // Exactly this theme, not nested inside the helper's default one.
+      { withTheme: false },
+    );
+
+    const chip = screen.getByText('Connected').closest<HTMLElement>('.MuiChip-root')!;
+    const style = getComputedStyle(chip);
+    const painted = compositeOver(style.backgroundColor, theme.palette.background.paper);
+    expect(getContrastRatio(style.color, painted)).toBeGreaterThanOrEqual(4.5);
   });
 
   it('keeps deafen on phone but moves settings into "more"', () => {

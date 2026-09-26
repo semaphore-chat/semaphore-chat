@@ -63,3 +63,27 @@ export const AccentLimeVibrantDark = edgeScreen(s, screens.channelChat, {
 export const AccentRoseVibrantDarkChannelList = edgeScreen(s, screens.channelList, {
   theme: { mode: 'dark', accentColor: 'rose', intensity: 'vibrant' },
 });
+
+/**
+ * Connected to voice: the persistent voice bar's "Connected" chip (and every
+ * other chip) is an accent tint with accent-derived text, which must stay
+ * readable (WCAG AA) in light and dark mode for every accent and intensity.
+ * Light used to be pale accent text on a pale tint (~1.0-1.8:1).
+ */
+export const VoiceBarLight = edgeScreen(s, screens.channelChat, { theme: light, voice: true });
+export const VoiceBarDark = edgeScreen(s, screens.channelChat, { theme: dark, voice: true });
+/** The most tinted light surface: "purple" vibrant (pale lavender bar and chip). */
+export const VoiceBarPurpleVibrantLight = edgeScreen(s, screens.channelChat, {
+  theme: { mode: 'light', accentColor: 'purple', intensity: 'vibrant' },
+  voice: true,
+});
+/** A bright accent whose own dark shade is too light for text on its tint: "amber" balanced. */
+export const VoiceBarAmberBalancedLight = edgeScreen(s, screens.channelChat, {
+  theme: { mode: 'light', accentColor: 'amber', intensity: 'balanced' },
+  voice: true,
+});
+/** Dark vibrant, where the chip text is lightened just enough to also pass on the hover tint. */
+export const VoiceBarLimeVibrantDark = edgeScreen(s, screens.channelChat, {
+  theme: { mode: 'dark', accentColor: 'lime', intensity: 'vibrant' },
+  voice: true,
+});
