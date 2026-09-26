@@ -114,6 +114,35 @@ describe('useScreenShare', () => {
     expect(mockToggleScreenShare).toHaveBeenCalled();
   });
 
+  it('handleSourceSelect: a refused share (main denies getDisplayMedia) resolves and clears the selection', async () => {
+    mockHasElectronFeature.mockReturnValue(true);
+    mockToggleScreenShare.mockRejectedValueOnce(new DOMException('Invalid capture constraints', 'NotAllowedError'));
+    const { result } = renderUseScreenShare();
+
+    await act(async () => {
+      await expect(
+        result.current.handleSourceSelect('source-gone', { resolution: '1080p', fps: 30, enableAudio: true } as never),
+      ).resolves.toBeUndefined();
+    });
+
+    expect(mockToggleScreenShare).toHaveBeenCalled();
+    expect(result.current.showSourcePicker).toBe(false);
+    expect(mockClearScreenShareConfig).toHaveBeenCalled();
+    expect(result.current.isScreenSharing).toBe(false);
+  });
+
+  it('web / Wayland: a cancelled or refused native picker does not reject', async () => {
+    mockToggleScreenShare.mockRejectedValueOnce(new DOMException('Permission denied', 'NotAllowedError'));
+    const { result } = renderUseScreenShare();
+
+    await act(async () => {
+      await expect(result.current.toggleScreenShare()).resolves.toBeUndefined();
+    });
+
+    expect(mockToggleScreenShare).toHaveBeenCalled();
+    expect(result.current.isScreenSharing).toBe(false);
+  });
+
   it('handleSourcePickerClose closes picker', async () => {
     mockHasElectronFeature.mockReturnValue(true);
     const { result } = renderUseScreenShare();
