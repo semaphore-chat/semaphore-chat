@@ -48,6 +48,7 @@ if any check failed.
 | Notifications | `electronAPI.showNotification` doesn't fail in main |
 | Deep link | a second instance launched with `semaphore://community/<id>/channel/<id>` routes the running one there |
 | Voice + screen share | join a voice channel (real LiveKit), open the `ScreenSourcePicker`, share a screen: main's `setDisplayMediaRequestHandler` grants it and the track publishes |
+| Screen share refused | Cancel in the picker sends no request; with main's `desktopCapturer.getSources` stubbed to return nothing, a picked source that is gone and a request with no sources at all are denied (`callback(null)`) without main-process errors, `getDisplayMedia` rejects, sharing stays off and works again afterwards |
 | Auto-updater | no uncaught updater errors (an unpacked build isn't an AppImage, so electron-updater skips the check) |
 | Logs | no renderer page errors, no uncaught main-process errors |
 

@@ -343,6 +343,105 @@ async function main() {
     await win.getByLabel('Stop screen share').first().click();
   });
 
+  // ---------------------------------------------------------- screen share denied
+  // The deny paths of main's setDisplayMediaRequestHandler. Main's
+  // desktopCapturer.getSources is stubbed to return no sources for the
+  // duration of a check (restored afterwards), which is how both "the picked
+  // source is gone" and "no sources at all" look to the handler.
+  const DENY_ERRORS = /TypeError|Video was requested|must be called with null|Uncaught|Unhandled|already been called/;
+  const stubNoSources = (on: boolean) => app.evaluate(({ desktopCapturer }, enable) => {
+    const dc = desktopCapturer as unknown as { getSources: unknown; __smokeReal?: unknown };
+    if (enable) {
+      dc.__smokeReal ??= dc.getSources;
+      dc.getSources = async () => [];
+      return (dc.getSources as () => Promise<unknown[]>)().then((s) => s.length);
+    }
+    if (dc.__smokeReal) {
+      dc.getSources = dc.__smokeReal;
+      delete dc.__smokeReal;
+    }
+    return -1;
+  }, on);
+  /** Main-process and renderer lines logged since the given marks. */
+  const since = (mainMark: number, rendererMark: number) => ({
+    main: mainLog.slice(mainMark),
+    renderer: rendererErrors.slice(rendererMark),
+  });
+  const shareIsOff = async () => {
+    await win.getByLabel('Share screen').first().waitFor({ timeout: 15_000 });
+    assert(!(await win.getByLabel('Stop screen share').count()), 'screen share shows as on');
+  };
+
+  await check('screen share: Cancel in the picker leaves sharing off (no request to main)', async () => {
+    await win.getByLabel('Share screen').first().waitFor({ timeout: 15_000 });
+    const mark = mainLog.length;
+    await win.getByLabel('Share screen').first().click();
+    const dialog = win.getByRole('dialog', { name: /choose what to share/i });
+    await dialog.waitFor({ timeout: 15_000 });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+    await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
+    await shareIsOff();
+    const requested = mainLog.slice(mark).some((l) => /=== Screen Share Request ===/.test(l));
+    assert(!requested, 'Cancel still sent a display-media request');
+  });
+
+  await check('screen share: picked source gone -> denied cleanly, sharing stays off', async () => {
+    await win.getByLabel('Share screen').first().click();
+    const dialog = win.getByRole('dialog', { name: /choose what to share/i });
+    await dialog.locator('img').first().click({ timeout: 15_000 });
+    const mainMark = mainLog.length;
+    const rendererMark = rendererErrors.length;
+    const left = await stubNoSources(true);
+    assert(left === 0, `stub not applied (${left} sources)`);
+    try {
+      await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+      await dialog.waitFor({ state: 'hidden', timeout: 10_000 });
+      await sleep(3000);
+    } finally {
+      await stubNoSources(false);
+    }
+    await shareIsOff();
+    await shot(win, '11-share-denied');
+    const { main, renderer } = since(mainMark, rendererMark);
+    assert(main.some((l) => /Selected source not found/.test(l)), 'handler did not take the source-not-found path');
+    const bad = main.filter((l) => DENY_ERRORS.test(l));
+    assert(bad.length === 0, `main: ${bad.slice(0, 2).join(' | ')}`);
+    const pageErrors = renderer.filter((l) => l.includes('pageerror'));
+    assert(pageErrors.length === 0, `renderer: ${pageErrors.slice(0, 2).join(' | ')}`);
+    return renderer.filter((l) => /screen share/i.test(l)).map((l) => l.slice(0, 140)).join(' | ') || 'no renderer errors';
+  });
+
+  await check('screen share: no sources at all -> getDisplayMedia rejects cleanly', async () => {
+    const mainMark = mainLog.length;
+    const left = await stubNoSources(true);
+    assert(left === 0, `stub not applied (${left} sources)`);
+    let outcome: string;
+    try {
+      outcome = await win.evaluate(() => navigator.mediaDevices.getDisplayMedia({ video: true })
+        .then((s) => { s.getTracks().forEach((t) => t.stop()); return 'granted'; },
+          (e: Error) => `rejected ${e.name}: ${e.message}`));
+    } finally {
+      await stubNoSources(false);
+    }
+    assert(outcome.startsWith('rejected'), `getDisplayMedia was ${outcome}`);
+    const main = mainLog.slice(mainMark);
+    assert(main.some((l) => /No screen sources available/.test(l)), 'handler did not take the no-sources path');
+    const bad = main.filter((l) => DENY_ERRORS.test(l));
+    assert(bad.length === 0, `main: ${bad.slice(0, 2).join(' | ')}`);
+    await shareIsOff();
+    return outcome;
+  });
+
+  await check('screen share still works after the denials', async () => {
+    await win.getByLabel('Share screen').first().click();
+    const dialog = win.getByRole('dialog', { name: /choose what to share/i });
+    await dialog.locator('img').first().click({ timeout: 15_000 });
+    await dialog.getByRole('button', { name: 'Share', exact: true }).click();
+    await win.getByLabel('Stop screen share').first().waitFor({ timeout: 30_000 });
+    await win.getByLabel('Stop screen share').first().click();
+    await shareIsOff();
+  });
+
   // ---------------------------------------------------------- auto-updater
   await check('auto-updater: no uncaught updater errors', async () => {
     const lines = mainLog.filter((l) => /auto-?updater|checking for update|update (not )?available|APPIMAGE/i.test(l));
@@ -359,7 +458,7 @@ async function main() {
   await check('restart: still signed in (refresh token restored)', async () => {
     await win.waitForSelector('#root > *', { state: 'attached', timeout: 20_000 });
     await sleep(3000);
-    await shot(win, '11-after-restart');
+    await shot(win, '12-after-restart');
     const hash = await win.evaluate(() => location.hash);
     assert(!hash.includes('/login'), `landed on ${hash}`);
     await win.evaluate(([c, ch]) => { location.hash = `#/community/${c}/channel/${ch}`; }, [community.id, general.id]);
