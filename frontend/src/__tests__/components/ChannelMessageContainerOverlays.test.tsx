@@ -91,6 +91,18 @@ const threadPaper = () => screen.getByTestId('thread-panel').closest('.MuiDrawer
 const overlayDepth = () =>
   ((window.history.state as Record<string, unknown> | null)?.__overlayStack as unknown[] | undefined)?.length ?? 0;
 
+// jsdom (>= 30) resolves viewport units in getComputedStyle() to pixels
+// against window.innerWidth, like a browser does, so width assertions are in
+// px for an explicit viewport. useMediaQuery is mocked above: the viewport
+// width here only feeds `vw`, not the phone/desktop layout decision.
+// (Assign, don't Object.defineProperty: Vitest's `window.innerWidth` is an
+// accessor that forwards writes to jsdom's own window, which is what jsdom
+// reads; redefining the property would cut that link.)
+const DEFAULT_INNER_WIDTH = window.innerWidth;
+function setViewportWidth(width: number) {
+  (window as { innerWidth: number }).innerWidth = width;
+}
+
 async function flush() {
   await act(async () => {
     await new Promise((r) => setTimeout(r, 20));
@@ -104,6 +116,7 @@ describe('ChannelMessageContainer overlays', () => {
   });
 
   afterEach(async () => {
+    setViewportWidth(DEFAULT_INNER_WIDTH);
     // Pop any overlay history entries a test left behind.
     while ((window.history.state as Record<string, unknown> | null)?.__overlayStack) {
       window.history.back();
@@ -112,11 +125,14 @@ describe('ChannelMessageContainer overlays', () => {
   });
 
   it('phone: opens the thread full-screen', async () => {
+    // Wider than the 400px side drawer, so 100vw and min(400px, 100vw) differ.
+    setViewportWidth(1024);
     const { user } = renderContainer();
     await user.click(screen.getByRole('button', { name: 'open thread' }));
 
     expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-fullscreen', 'true');
-    expect(threadPaper()).toHaveStyle({ width: '100vw' });
+    // 100vw: the whole viewport.
+    expect(threadPaper()).toHaveStyle({ width: '1024px' });
   });
 
   it('phone: back closes the thread and stays on the channel', async () => {
@@ -138,11 +154,15 @@ describe('ChannelMessageContainer overlays', () => {
 
   it('Electron at phone width keeps the desktop side drawer and no history entry', async () => {
     env.electron = true;
+    setViewportWidth(1024);
     const { user } = renderContainer(false);
     await user.click(screen.getByRole('button', { name: 'open thread' }));
 
     expect(screen.getByTestId('thread-panel')).toHaveAttribute('data-fullscreen', 'false');
-    expect(threadPaper()).toHaveStyle({ width: 'min(400px, 100vw)' });
+    // min(400px, 100vw): the 400px drawer, capped at the viewport width.
+    expect(threadPaper()).toHaveStyle({ width: '400px' });
+    setViewportWidth(360);
+    expect(threadPaper()).toHaveStyle({ width: '360px' });
     expect(overlayDepth()).toBe(0);
   });
 
