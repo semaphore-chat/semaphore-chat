@@ -67,14 +67,25 @@ describe('theme type scale and shape', () => {
   });
 
   it('resolves sx fontSize tokens against the theme', () => {
+    // getComputedStyle() returns font sizes in px (jsdom >= 30, like a
+    // browser), so compare against the token converted with the root font
+    // size. The wrapper's odd font size is what an unresolved token (invalid
+    // CSS, dropped) would inherit, so it can't pass by coincidence.
     render(
       <ThemeProvider theme={generateTheme('dark', 'blue', 'minimal')}>
-        <Box data-testid="text" sx={{ fontSize: 'scale.sm' }}>text</Box>
-        <Box data-testid="icon" sx={{ fontSize: 'icon.md' }}>icon</Box>
+        <div style={{ fontSize: '7px' }}>
+          <Box data-testid="text" sx={{ fontSize: 'scale.sm' }}>text</Box>
+          <Box data-testid="icon" sx={{ fontSize: 'icon.md' }}>icon</Box>
+        </div>
       </ThemeProvider>,
     );
-    expect(screen.getByTestId('text')).toHaveStyle({ fontSize: TYPE_SCALE.sm });
-    expect(screen.getByTestId('icon')).toHaveStyle({ fontSize: ICON_SCALE.md });
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const remToPx = (rem: string) => {
+      expect(rem).toMatch(/^[\d.]+rem$/);
+      return `${parseFloat(rem) * rootPx}px`;
+    };
+    expect(screen.getByTestId('text')).toHaveStyle({ fontSize: remToPx(TYPE_SCALE.sm) });
+    expect(screen.getByTestId('icon')).toHaveStyle({ fontSize: remToPx(ICON_SCALE.md) });
   });
 
   it('only references scale/icon tokens that exist (catches typos that would silently emit invalid CSS)', () => {
