@@ -77,6 +77,7 @@ describe('RedisIoAdapter', () => {
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://localhost:6379',
+        commandOptions: { timeout: undefined },
       });
       expect(mockRedisClient.duplicate).toHaveBeenCalled();
       expect(createAdapter).toHaveBeenCalled();
@@ -100,6 +101,7 @@ describe('RedisIoAdapter', () => {
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://custom-redis-host:6380',
+        commandOptions: { timeout: undefined },
       });
     });
 
@@ -122,6 +124,7 @@ describe('RedisIoAdapter', () => {
 
       expect(createClient).toHaveBeenCalledWith({
         url: 'redis://:secret-password@secure-host:6379',
+        commandOptions: { timeout: undefined },
       });
     });
 
@@ -145,6 +148,7 @@ describe('RedisIoAdapter', () => {
 
       expect(createClient).toHaveBeenCalledWith({
         url: `redis://:${encodeURIComponent(specialPassword)}@secure-host:6379`,
+        commandOptions: { timeout: undefined },
       });
     });
 
