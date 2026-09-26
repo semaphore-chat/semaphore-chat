@@ -129,7 +129,11 @@ describe('ChannelMessageContainer overlays', () => {
 
     await waitFor(() => expect(screen.queryByTestId('thread-panel')).not.toBeInTheDocument());
     expect(window.location.href).toBe(href);
-    expect(screen.getByRole('button', { name: 'open thread' })).toBeInTheDocument();
+    // The panel content unmounts as soon as the thread closes, but the modal
+    // Drawer keeps aria-hidden on its siblings until its slide-out transition
+    // ends (MUI 7.3.11 made Drawer closeAfterTransition), so wait for the
+    // channel to become accessible again instead of asserting synchronously.
+    expect(await screen.findByRole('button', { name: 'open thread' })).toBeInTheDocument();
   });
 
   it('Electron at phone width keeps the desktop side drawer and no history entry', async () => {
