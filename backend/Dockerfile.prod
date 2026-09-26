@@ -86,24 +86,15 @@ COPY --from=builder --chown=nestjs:nodejs /app/backend/docker-entrypoint.sh ./ba
 
 WORKDIR /app/backend
 
-# Rebuild bcrypt for Alpine's musl libc to prevent segfaults.
-# The builder stage downloads a glibc prebuilt binary. bcrypt's binding.gyp
-# uses node-pre-gyp template variables (module_name, etc.), so raw node-gyp
-# fails with "Undefined variable module_name". Use node-pre-gyp which resolves
-# those variables and drives the native compilation correctly.
-# Alpine's Node points node-gyp at unofficial-builds.nodejs.org which may lack
-# headers for new releases, so override disturl to the official mirror.
-RUN apk add --no-cache --virtual .build-deps python3 make g++ && \
-    cd /app/node_modules/bcrypt && \
-    npm_config_disturl=https://nodejs.org/download/release \
-    npx @mapbox/node-pre-gyp install --build-from-source && \
-    apk del .build-deps
+# No native rebuild for Alpine: bcrypt >= 6 ships prebuilt N-API binaries for
+# both glibc and musl (prebuilds/linux-x64/bcrypt.{glibc,musl}.node), and
+# node-gyp-build picks the musl one at require time. The node_modules copied
+# from the glibc builder stage therefore work here as-is.
 
 # Remove the base image's bundled npm CLI. The runtime uses `node` directly
 # (see CMD) and pnpm/corepack for tooling — npm is never invoked at runtime, but
 # its bundled deps (e.g. undici) drag HIGH CVEs into the Trivy gate. Dropping it
-# clears those and shrinks the runtime attack surface. Done after the bcrypt
-# rebuild above, which is the only step in this stage that needs npx.
+# clears those and shrinks the runtime attack surface.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # Add OCI labels for GHCR integration (including creation timestamp)
