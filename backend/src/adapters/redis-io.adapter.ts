@@ -30,7 +30,16 @@ export class RedisIoAdapter extends IoAdapter {
       ? `redis://:${encodeURIComponent(redisPassword)}@${redisHost}:${redisPort}`
       : `redis://${redisHost}:${redisPort}`;
 
-    const pubClient = createClient({ url: redisUrl });
+    // node-redis 6 gives every command a 5 s timeout by default, counted from
+    // when it is queued. The adapter publishes fire-and-forget (it never
+    // awaits or catches pubClient.publish), so during a Redis outage longer
+    // than that each queued publish rejects unhandled and Node exits. Without
+    // the timeout they wait in the offline queue and go out on reconnect, as
+    // they did with node-redis 5. duplicate() copies this to the sub client.
+    const pubClient = createClient({
+      url: redisUrl,
+      commandOptions: { timeout: undefined },
+    });
     const subClient = pubClient.duplicate();
 
     // Add error handlers
