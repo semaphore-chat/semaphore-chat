@@ -445,24 +445,15 @@ export class MessagesService {
    *
    * Idempotent per file: attaching a file that is already on the message (a
    * client retrying an attach whose response it never got, though the server
-   * had committed it) changes nothing and returns the message, instead of
-   * failing on the (messageId, fileId) unique key or releasing a second slot
-   * for the same file.
+   * had committed it, or two such requests racing) changes nothing and
+   * returns the message, instead of failing on the (messageId, fileId)
+   * unique key or releasing a second slot for the same file. The insert
+   * skips duplicates (ON CONFLICT DO NOTHING), so this holds under
+   * concurrency without aborting the transaction.
    */
   async addAttachment(messageId: string, fileId?: string) {
     return this.databaseService.$transaction(async (tx) => {
       if (fileId) {
-        const existing = await tx.messageAttachment.findUnique({
-          where: { messageId_fileId: { messageId, fileId } },
-          select: { id: true },
-        });
-        if (existing) {
-          return tx.message.findUniqueOrThrow({
-            where: { id: messageId },
-            include: MESSAGE_INCLUDE_WITH_REPLY,
-          });
-        }
-
         // Get current max position for ordering
         const maxPos = await tx.messageAttachment.aggregate({
           where: { messageId },
@@ -470,9 +461,17 @@ export class MessagesService {
         });
         const nextPosition = (maxPos._max.position ?? -1) + 1;
 
-        await tx.messageAttachment.create({
-          data: { messageId, fileId, position: nextPosition },
+        const { count } = await tx.messageAttachment.createMany({
+          data: [{ messageId, fileId, position: nextPosition }],
+          skipDuplicates: true,
         });
+        if (count === 0) {
+          // Already attached: nothing to add, no slot to release.
+          return tx.message.findUniqueOrThrow({
+            where: { id: messageId },
+            include: MESSAGE_INCLUDE_WITH_REPLY,
+          });
+        }
       }
 
       const msg = await tx.message.findUnique({

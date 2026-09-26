@@ -284,4 +284,60 @@ describe('Community messaging flow (e2e)', () => {
       channelId,
     });
   });
+
+  it('attaches a file once however often (or concurrently) the attach is retried', async () => {
+    const db = app.get(DatabaseService);
+    const created = await request(app.getHttpServer())
+      .post('/api/messages')
+      .set('Authorization', `Bearer ${ownerToken}`)
+      .send({
+        channelId,
+        spans: [
+          {
+            type: 'PLAINTEXT',
+            text: 'two files coming',
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+        attachments: [],
+        pendingAttachments: 2,
+      })
+      .expect(201);
+    const messageId = (created.body as { id: string }).id;
+    const file = await db.file.create({
+      data: {
+        filename: 'photo.png',
+        mimeType: 'image/png',
+        fileType: 'IMAGE',
+        size: 3,
+        checksum: 'e2e',
+        uploadedById: ownerId,
+        resourceType: 'MESSAGE_ATTACHMENT',
+        fileMessageId: messageId,
+        storagePath: 'e2e/photo.png',
+      },
+    });
+
+    const attach = () =>
+      request(app.getHttpServer())
+        .post(`/api/messages/${messageId}/attachments`)
+        .set('Authorization', `Bearer ${ownerToken}`)
+        .send({ fileId: file.id });
+
+    // Two racing attaches (a retry overlapping the original), then a late one.
+    const racing = await Promise.all([attach(), attach()]);
+    expect(racing.map((r) => r.status)).toEqual([201, 201]);
+    await attach().expect(201);
+
+    const rows = await db.messageAttachment.findMany({ where: { messageId } });
+    expect(rows).toHaveLength(1);
+    const message = await db.message.findUniqueOrThrow({
+      where: { id: messageId },
+    });
+    // One slot released for the one file; the other file is still pending.
+    expect(message.pendingAttachments).toBe(1);
+  });
 });

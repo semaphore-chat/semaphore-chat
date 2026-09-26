@@ -937,11 +937,8 @@ describe('MessagesService', () => {
       mockDatabase.messageAttachment.aggregate.mockResolvedValue({
         _max: { position: 0 },
       });
-      mockDatabase.messageAttachment.create.mockResolvedValue({
-        id: 'ma-1',
-        messageId,
-        fileId,
-        position: 1,
+      mockDatabase.messageAttachment.createMany.mockResolvedValue({
+        count: 1,
       });
       mockDatabase.message.findUnique.mockResolvedValue({
         pendingAttachments: 1,
@@ -955,8 +952,9 @@ describe('MessagesService', () => {
         where: { messageId },
         _max: { position: true },
       });
-      expect(mockDatabase.messageAttachment.create).toHaveBeenCalledWith({
-        data: { messageId, fileId, position: 1 },
+      expect(mockDatabase.messageAttachment.createMany).toHaveBeenCalledWith({
+        data: [{ messageId, fileId, position: 1 }],
+        skipDuplicates: true,
       });
       expect(mockDatabase.message.findUnique).toHaveBeenCalledWith({
         where: { id: messageId },
@@ -990,7 +988,7 @@ describe('MessagesService', () => {
       await service.addAttachment(messageId);
 
       expect(mockDatabase.messageAttachment.aggregate).not.toHaveBeenCalled();
-      expect(mockDatabase.messageAttachment.create).not.toHaveBeenCalled();
+      expect(mockDatabase.messageAttachment.createMany).not.toHaveBeenCalled();
       expect(mockDatabase.message.update).toHaveBeenCalledWith({
         where: { id: messageId },
         data: {
@@ -1033,7 +1031,9 @@ describe('MessagesService', () => {
       mockDatabase.messageAttachment.aggregate.mockResolvedValue({
         _max: { position: null },
       });
-      mockDatabase.messageAttachment.create.mockResolvedValue({});
+      mockDatabase.messageAttachment.createMany.mockResolvedValue({
+        count: 1,
+      });
       mockDatabase.message.findUnique.mockResolvedValue({
         pendingAttachments: 1,
       });
@@ -1044,24 +1044,27 @@ describe('MessagesService', () => {
       );
     });
 
-    it('is idempotent for a file already attached: no new row, no slot released', async () => {
+    it('is idempotent for a file already attached (duplicate insert skipped): no slot released', async () => {
       const messageId = 'msg-123';
       const fileId = 'file-123';
       const message = buildMessageWithIncludes(
         { id: messageId, pendingAttachments: 1 },
         [{ id: fileId, filename: 'photo.png' }],
       );
-      mockDatabase.messageAttachment.findUnique.mockResolvedValue({
-        id: 'ma-1',
+      mockDatabase.messageAttachment.aggregate.mockResolvedValue({
+        _max: { position: 0 },
+      });
+      mockDatabase.messageAttachment.createMany.mockResolvedValue({
+        count: 0,
       });
       mockDatabase.message.findUniqueOrThrow.mockResolvedValue(message);
 
       const result = await service.addAttachment(messageId, fileId);
 
       expect(result).toBe(message);
-      expect(mockDatabase.messageAttachment.findUnique).toHaveBeenCalledWith({
-        where: { messageId_fileId: { messageId, fileId } },
-        select: { id: true },
+      expect(mockDatabase.messageAttachment.createMany).toHaveBeenCalledWith({
+        data: [{ messageId, fileId, position: 1 }],
+        skipDuplicates: true,
       });
       expect(mockDatabase.message.findUniqueOrThrow).toHaveBeenCalledWith({
         where: { id: messageId },
@@ -1070,34 +1073,7 @@ describe('MessagesService', () => {
           attachments: expect.any(Object),
         }),
       });
-      expect(mockDatabase.messageAttachment.aggregate).not.toHaveBeenCalled();
-      expect(mockDatabase.messageAttachment.create).not.toHaveBeenCalled();
       expect(mockDatabase.message.update).not.toHaveBeenCalled();
-    });
-
-    it('attaches a file not yet on the message (existence check finds nothing)', async () => {
-      mockDatabase.messageAttachment.findUnique.mockResolvedValue(null);
-      mockDatabase.messageAttachment.aggregate.mockResolvedValue({
-        _max: { position: 2 },
-      });
-      mockDatabase.messageAttachment.create.mockResolvedValue({});
-      mockDatabase.message.findUnique.mockResolvedValue({
-        pendingAttachments: 1,
-      });
-      mockDatabase.message.update.mockResolvedValue(
-        buildMessageWithIncludes({ id: 'msg-1', pendingAttachments: 0 }),
-      );
-
-      await service.addAttachment('msg-1', 'file-9');
-
-      expect(mockDatabase.messageAttachment.create).toHaveBeenCalledWith({
-        data: { messageId: 'msg-1', fileId: 'file-9', position: 3 },
-      });
-      expect(mockDatabase.message.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: { pendingAttachments: { decrement: 1 } },
-        }),
-      );
     });
   });
 
