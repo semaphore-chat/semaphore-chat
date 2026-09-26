@@ -38,8 +38,9 @@ jobs:
       # Report-only for now: the full-workspace audit has a pre-existing
       # baseline. The transitive tar/minimatch/lodash/path-to-regexp/
       # socket.io-parser/defu/effect/axios advisories were cleared 2026-09;
-      # electron went to 39.8.10 the same month. What remains is extract-zip
-      # (no fixed version upstream; install-time only). A plain `continue-on-error`
+      # electron went to 39.8.10 the same month. The last one, extract-zip (no
+      # fixed version upstream; install-time only), left with Electron 44, which
+      # uses its own @electron-internal/extract-zip. A plain `continue-on-error`
       # job still shows a red X on PRs, so the step downgrades the failure
       # itself and surfaces the result in the step summary instead.
       # TODO: remove the `|| ...` downgrade to make this blocking once the

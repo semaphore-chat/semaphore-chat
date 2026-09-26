@@ -42,7 +42,6 @@
       "@suites/doubles.jest",
       "@swc/core",
       "bcrypt",
-      "electron",
       "esbuild",
       "msw",
       "prisma",

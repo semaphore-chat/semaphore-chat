@@ -733,9 +733,12 @@ function setupIpcHandlers() {
     }
   });
 
-  // Clipboard
+  // Clipboard. Electron 44 made clipboard.writeText async (Promise<void>);
+  // catch a rejection so it can't surface as an unhandled rejection in main.
   ipcMain.on('clipboard:write', (_event, text: string) => {
-    clipboard.writeText(text);
+    clipboard.writeText(text).catch((error: unknown) => {
+      console.error('Failed to write to clipboard:', error);
+    });
   });
 
   // Deep links: renderer signals once its `onDeepLink` listener is mounted
