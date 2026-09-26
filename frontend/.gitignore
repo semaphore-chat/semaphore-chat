@@ -1,3 +1,5 @@
 electron/dist/
 out/
 e2e/.auth/
+release/
+.electron-smoke-out/
