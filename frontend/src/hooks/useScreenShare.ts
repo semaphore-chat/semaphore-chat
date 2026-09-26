@@ -17,6 +17,7 @@ import { setScreenShareConfig, clearScreenShareConfig } from '../utils/screenSha
 import { useNotification } from '../contexts/NotificationContext';
 import { useVoice } from '../contexts/VoiceContext';
 import { playSound, Sounds } from './useSound';
+import { logger } from '../utils/logger';
 
 interface UseScreenShareReturn {
   isScreenSharing: boolean;
@@ -65,7 +66,13 @@ export const useScreenShare = (): UseScreenShareReturn => {
     } else {
       // Web or Electron on Wayland: Let browser/OS handle source selection.
       // On Wayland, the main process handler triggers the PipeWire portal.
-      await actions.toggleScreenShare();
+      try {
+        await actions.toggleScreenShare();
+      } catch (error) {
+        // Picker cancelled, or the capture refused: sharing just stays off
+        // (toggleScreenShareUnified has already logged the error).
+        logger.warn('[ScreenShare] screen share not started:', error);
+      }
     }
   }, [actions]);
 
@@ -101,7 +108,15 @@ export const useScreenShare = (): UseScreenShareReturn => {
       setScreenShareConfig(sourceId, settings);
 
       // Start screen share (LiveKit will use selected source via main.ts handler)
-      await actions.toggleScreenShare();
+      try {
+        await actions.toggleScreenShare();
+      } catch (error) {
+        // Main refused the capture (e.g. the picked window closed meanwhile,
+        // so it's no longer among the sources): sharing stays off. Drop the
+        // selection so a later request can't pick it up.
+        clearScreenShareConfig();
+        logger.warn('[ScreenShare] screen share not started:', error);
+      }
     },
     [actions]
   );

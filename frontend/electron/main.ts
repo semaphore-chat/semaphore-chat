@@ -156,6 +156,34 @@ function getIconPath(): string {
   return path.join(app.getAppPath(), 'build', 'icon.png');
 }
 
+/**
+ * Answers a `setDisplayMediaRequestHandler` request exactly once.
+ *
+ * - `deny()` passes `null`, Electron's documented way to refuse (the page's
+ *   getDisplayMedia() rejects). `{}` is not a refusal: with video requested,
+ *   Electron throws "Video was requested, but no video stream was provided"
+ *   (and still fails the request). Electron's typings declare the callback's
+ *   parameter as `Streams` only, so this is the one place that widens it to
+ *   accept `null`.
+ * - The callback is one-time: calling it again throws "One-time callback was
+ *   called more than once". Electron answers the request even when `grant()`
+ *   throws, so a later `deny()` is a no-op.
+ */
+function displayMediaResponder(callback: (streams: Electron.Streams) => void) {
+  let answered = false;
+  return {
+    grant(streams: Electron.Streams): void {
+      answered = true;
+      callback(streams);
+    },
+    deny(): void {
+      if (answered) return;
+      answered = true;
+      (callback as (streams: Electron.Streams | null) => void)(null);
+    },
+  };
+}
+
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let isQuitting = false;
@@ -982,6 +1010,8 @@ app.whenReady().then(() => {
 
   // Handle screen sharing requests from LiveKit
   session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+    const { grant, deny } = displayMediaResponder(callback);
+
     // Helper to log to both main process and renderer DevTools
     const log = (msg: string, ...args: unknown[]) => {
       console.log(msg, ...args);
@@ -1007,10 +1037,10 @@ app.whenReady().then(() => {
         const sources = await desktopCapturer.getSources({ types: ['screen', 'window'] });
         if (sources.length > 0) {
           log('PipeWire portal returned source:', sources[0].name, sources[0].id);
-          callback({ video: sources[0], audio: 'loopback' });
+          grant({ video: sources[0], audio: 'loopback' });
         } else {
           log('PipeWire portal returned no sources (user cancelled or no PipeWire)');
-          callback({});
+          deny();
         }
         return;
       }
@@ -1061,18 +1091,19 @@ app.whenReady().then(() => {
           log('Source type:', selectedSource.id.startsWith('screen:') ? 'screen' : 'window');
 
           try {
-            callback({
+            grant({
               video: selectedSource,
               audio: audioConfig,
             });
             log('Callback invoked successfully');
           } catch (callbackError) {
+            // Electron has already failed the request when the callback
+            // throws; deny() would be a no-op.
             log('ERROR: Callback threw:', String(callbackError));
-            callback({});
           }
         } else {
           log('ERROR: Selected source not found:', selectedSourceId);
-          callback({});
+          deny();
         }
       } else {
         // No source was pre-selected - fallback: auto-select the primary screen
@@ -1095,23 +1126,24 @@ app.whenReady().then(() => {
           log('Source type:', primaryScreen.id.startsWith('screen:') ? 'screen' : 'window');
 
           try {
-            callback({
+            grant({
               video: primaryScreen,
               audio: 'loopback',
             });
             log('Callback invoked successfully');
           } catch (callbackError) {
+            // Electron has already failed the request when the callback
+            // throws; deny() would be a no-op.
             log('ERROR: Callback threw:', String(callbackError));
-            callback({});
           }
         } else {
           log('ERROR: No screen sources available');
-          callback({});
+          deny();
         }
       }
     } catch (error) {
       log('ERROR: Failed to get screen source:', String(error));
-      callback({});
+      deny();
     }
   });
 
