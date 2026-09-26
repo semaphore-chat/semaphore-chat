@@ -437,9 +437,32 @@ export class MessagesService {
     );
   }
 
+  /**
+   * Attaches an uploaded file to a message and releases one of its
+   * `pendingAttachments` slots. Without a `fileId` it only releases a slot:
+   * the client gave up on that file (its upload failed and the user removed
+   * it, or cancelled it mid-upload).
+   *
+   * Idempotent per file: attaching a file that is already on the message (a
+   * client retrying an attach whose response it never got, though the server
+   * had committed it) changes nothing and returns the message, instead of
+   * failing on the (messageId, fileId) unique key or releasing a second slot
+   * for the same file.
+   */
   async addAttachment(messageId: string, fileId?: string) {
     return this.databaseService.$transaction(async (tx) => {
       if (fileId) {
+        const existing = await tx.messageAttachment.findUnique({
+          where: { messageId_fileId: { messageId, fileId } },
+          select: { id: true },
+        });
+        if (existing) {
+          return tx.message.findUniqueOrThrow({
+            where: { id: messageId },
+            include: MESSAGE_INCLUDE_WITH_REPLY,
+          });
+        }
+
         // Get current max position for ordering
         const maxPos = await tx.messageAttachment.aggregate({
           where: { messageId },
