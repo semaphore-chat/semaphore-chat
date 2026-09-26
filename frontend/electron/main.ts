@@ -805,6 +805,10 @@ function createWindow() {
 
   // Load the app
   if (process.env.NODE_ENV === 'development') {
+    // `pnpm run electron-dev` binds Vite to 127.0.0.1 so its wait-on (an IPv4
+    // probe) can't miss a server Node put on ::1. Chromium resolves
+    // `localhost` to both loopback addresses, and this origin is the one
+    // isAppOrigin() trusts and the backend's default CORS origin.
     const devUrl = 'http://localhost:5173/';
     mainWindow.loadURL(devUrl);
     mainWindow.webContents.openDevTools();

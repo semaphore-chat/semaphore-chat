@@ -38,7 +38,7 @@
     "docker:build:linux": "docker run --rm -v \"$(pwd)/..\":/project -v ~/.cache/electron:/root/.cache/electron -v ~/.cache/electron-builder:/root/.cache/electron-builder -w /project electronuserland/builder /bin/bash -c 'pnpm install --frozen-lockfile && cd frontend && pnpm exec openapi-ts && pnpm run build:linux'",
     "dev": "vite --host 0.0.0.0",
     "start": "pnpm run build-electron && pnpm run build-preload && electron .",
-    "electron-dev": "concurrently -k \"cross-env NODE_ENV=development vite\" \"wait-on http://localhost:5173 && pnpm run build-electron && pnpm run build-preload && electron .\"",
+    "electron-dev": "concurrently -k \"cross-env NODE_ENV=development vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on http://127.0.0.1:5173 && pnpm run build-electron && pnpm run build-preload && cross-env NODE_ENV=development electron .\"",
     "type-check": "tsc -b",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "lint:fix": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0 --fix",
