@@ -30,15 +30,19 @@
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { loadConfigFromFile } from 'vite';
 import { coverageConfigDefaults } from 'vitest/config';
 
 const require = createRequire(import.meta.url);
-// Use the same istanbul packages @vitest/coverage-v8 builds its reports with.
+// Use the same istanbul packages @vitest/coverage-v8 builds its reports with:
+// since Vitest 5 these are Vitest's ESM-only forks (@vitest/istanbul-lib-*,
+// with the reporters that istanbul-reports used to provide built into
+// istanbul-lib-report), resolved from coverage-v8's own location.
 const coverageV8Require = createRequire(require.resolve('@vitest/coverage-v8'));
-const libCoverage = coverageV8Require('istanbul-lib-coverage');
-const libReport = coverageV8Require('istanbul-lib-report');
-const reports = coverageV8Require('istanbul-reports');
+const importFromCoverageV8 = (name) => import(pathToFileURL(coverageV8Require.resolve(name)).href);
+const libCoverage = await importFromCoverageV8('@vitest/istanbul-lib-coverage');
+const libReport = await importFromCoverageV8('@vitest/istanbul-lib-report');
 
 const frontendRoot = path.resolve(import.meta.dirname, '..');
 
@@ -102,5 +106,11 @@ const context = libReport.createContext({
   watermarks: options.watermarks,
 });
 for (const [name, reporterOptions] of options.reporters) {
-  reports.create(name, { skipFull: options.skipFull, projectRoot: frontendRoot, ...reporterOptions }).execute(context);
+  // createAsync, as coverage-v8 does: it also loads custom reporters.
+  const report = await libReport.createAsync(name, {
+    skipFull: options.skipFull,
+    projectRoot: frontendRoot,
+    ...reporterOptions,
+  });
+  report.execute(context);
 }

@@ -4,8 +4,8 @@ import path from 'path';
 export default defineConfig({
   resolve: {
     alias: {
-      '@semaphore-chat/shared': path.resolve(__dirname, '../shared/src'),
-      'virtual:pwa-register': path.resolve(__dirname, 'src/__tests__/mocks/virtual-pwa-register.ts'),
+      '@semaphore-chat/shared': path.resolve(import.meta.dirname, '../shared/src'),
+      'virtual:pwa-register': path.resolve(import.meta.dirname, 'src/__tests__/mocks/virtual-pwa-register.ts'),
     },
   },
   test: {

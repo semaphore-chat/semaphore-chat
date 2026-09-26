@@ -36,9 +36,6 @@ updates:
         versions: ["7.10.0"]
       # Majors blocked on bigger migrations; each is tracked in an issue that
       # says when to remove its rule. Minor and patch updates still flow.
-      # plugin-react 6 needs Vite 8 (#511)
-      - dependency-name: "@vitejs/plugin-react"
-        update-types: ["version-update:semver-major"]
       # TypeScript 7 (native port) needs toolchain support first (#512)
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
