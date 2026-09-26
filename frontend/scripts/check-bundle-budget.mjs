@@ -31,6 +31,12 @@
  *       entry legitimately grows (new eager feature) — don't just bump it to
  *       silence a regression caused by an accidental eager import.
  *
+ *   (b2) The eager total (the entry chunk plus every chunk index.html
+ *       references with <link rel="modulepreload">, i.e. everything a page
+ *       load fetches before the app runs) is <= EAGER_BUDGET_BYTES. Vite 8's
+ *       Rolldown moves shared code out of the entry into small preloaded
+ *       chunks, so the entry's size alone understates what loads up front.
+ *
  *   (c) dist/index.html itself contains no <script src="...">/<link
  *       rel="modulepreload" href="..."> reference to the livekit chunk (found
  *       by the same "livekit.SignalRequest" marker, scanned across every file
@@ -58,9 +64,13 @@ const DIST_DIR = join(process.cwd(), "dist");
 const ASSETS_DIR = join(DIST_DIR, "assets");
 const INDEX_HTML = join(DIST_DIR, "index.html");
 
-// Measured post-split entry size was 1,275,014 bytes (PR-11, 2026-07).
-// +20% headroom, rounded to a clean number.
-const BUDGET_BYTES = 1_536_000; // 1500 KB
+// Measured entry size 785,676 bytes after the Vite 8 / Rolldown upgrade
+// (2026-09; was 1,275,014 at PR-11 under Rollup). +20% headroom, rounded.
+const BUDGET_BYTES = 945_000;
+
+// Measured eager total (entry + modulepreloaded chunks) 1,499,888 bytes
+// (2026-09, Vite 8). +20% headroom, rounded. See (b2) above.
+const EAGER_BUDGET_BYTES = 1_800_000;
 
 const FORBIDDEN_MARKERS = [
   { name: "livekit-client", marker: "livekit.SignalRequest" },
@@ -136,6 +146,30 @@ for (const src of scriptSrcs) {
   }
 }
 
+// --- (b2) eager total: entry + every modulepreloaded chunk ---
+{
+  const eagerRefs = new Set([
+    ...scriptSrcs,
+    ...[...indexHtml.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*\bhref="([^"]+)"/g)].map((m) => m[1]),
+  ]);
+  let eagerBytes = 0;
+  for (const ref of eagerRefs) {
+    const path = join(DIST_DIR, ref.replace(/^\.\//, ""));
+    if (existsSync(path)) eagerBytes += Buffer.byteLength(readFileSync(path, "utf-8"), "utf-8");
+  }
+  console.log(
+    `[check-bundle-budget] Eager total (entry + ${eagerRefs.size - scriptSrcs.length} preloaded chunks): ${(eagerBytes / 1024).toFixed(1)} KB`
+  );
+  if (eagerBytes > EAGER_BUDGET_BYTES) {
+    console.error(
+      `[check-bundle-budget] Eager total is ${eagerBytes} bytes, over budget of ${EAGER_BUDGET_BYTES} bytes ` +
+        `(${(eagerBytes / 1024).toFixed(1)} KB > ${(EAGER_BUDGET_BYTES / 1024).toFixed(1)} KB). Something ` +
+        `new loads on every page. If that's intended, update EAGER_BUDGET_BYTES deliberately.`
+    );
+    hadFailure = true;
+  }
+}
+
 // --- (c) index.html must not eagerly reference the livekit chunk at all ---
 //
 // Find every asset dist/assets emits that IS the livekit chunk (by content,
@@ -199,4 +233,4 @@ if (hadFailure) {
   fail("Bundle budget check failed — see errors above.");
 }
 
-console.log("[check-bundle-budget] PASS — entry chunk is within budget and free of livekit/hls code, and livekit is not eagerly fetched.");
+console.log("[check-bundle-budget] PASS — entry chunk and eager total are within budget and free of livekit/hls code, and livekit is not eagerly fetched.");
