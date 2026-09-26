@@ -31,7 +31,14 @@ test.describe('Attachments', () => {
     }
   });
 
-  test('a message with a file shows its upload, then the attachment @smoke', async ({ authenticatedPage: page }) => {
+  test('a message with a file shows its upload, then the attachment @smoke', async ({ page }) => {
+    // Sign in through the form: it sets the refresh cookie the app starts its session from.
+    await page.goto('/#/login');
+    await page.locator('#username').fill(TEST_USER.username);
+    await page.locator('#password').fill(TEST_USER.password);
+    await page.getByRole('button', { name: 'Login' }).click();
+    await expect(page.locator('#username')).toHaveCount(0, { timeout: 15000 });
+
     // Hold the upload until the pending state has been checked.
     let releaseUpload: () => void = () => {};
     const uploadHeld = new Promise<void>((resolve) => {
