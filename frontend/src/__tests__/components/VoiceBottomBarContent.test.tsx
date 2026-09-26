@@ -400,6 +400,8 @@ describe('VoiceBottomBarContent', () => {
       <ThemeProvider theme={theme}>
         <VoiceBottomBar />
       </ThemeProvider>,
+      // Exactly this theme, not nested inside the helper's default one.
+      { withTheme: false },
     );
 
     const chip = screen.getByText('Connected').closest<HTMLElement>('.MuiChip-root')!;
