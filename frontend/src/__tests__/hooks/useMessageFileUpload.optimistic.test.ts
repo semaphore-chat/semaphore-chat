@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import React from 'react';
 import { renderHook, act } from '@testing-library/react';
 import { QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
@@ -13,7 +13,10 @@ vi.mock('../../api-client/client.gen', () => ({
 import { useMessageFileUpload } from '../../hooks/useMessageFileUpload';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { NotificationProvider } from '../../contexts/NotificationContext';
-import { channelMessagesQueryKey } from '../../utils/messageQueryKeys';
+import { FileCacheProvider } from '../../contexts/AvatarCacheContext';
+import { channelMessagesQueryKey, dmMessagesQueryKey } from '../../utils/messageQueryKeys';
+import { getPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
+import { resetAttachmentSendsForTests } from '../../utils/attachmentSend';
 import { userControllerGetProfileQueryKey } from '../../api-client/@tanstack/react-query.gen';
 import type { PaginatedMessagesResponseDto } from '../../api-client';
 import {
@@ -37,7 +40,7 @@ function wrapper({ children }: { children: React.ReactNode }) {
     React.createElement(
       SocketContext.Provider,
       { value: { socket: mockSocket as never, isConnected: true } },
-      React.createElement(NotificationProvider, null, children),
+      React.createElement(NotificationProvider, null, React.createElement(FileCacheProvider, null, children)),
     ),
   );
 }
@@ -54,7 +57,12 @@ beforeEach(() => {
   queryClient.setQueryData(queryKey, createInfiniteData([]));
 });
 
-describe('useMessageFileUpload — optimistic routing (PR-13 scope guard)', () => {
+afterEach(() => {
+  resetAttachmentSendsForTests();
+  resetPendingUploadsForTests();
+});
+
+describe('useMessageFileUpload — optimistic rows', () => {
   it('inserts an optimistic pending row for a plain (no-attachment) send', async () => {
     mockSocket.emit.mockImplementation(() => {
       /* never acks — just checking the synchronous insert */
@@ -74,9 +82,9 @@ describe('useMessageFileUpload — optimistic routing (PR-13 scope guard)', () =
     expect(messages[0].sendStatus).toBe('pending');
   });
 
-  it('does NOT insert an optimistic row for a send with attachments (v1 scope exclusion)', async () => {
+  it('inserts an optimistic pending row for a send with attachments, with its files waiting', async () => {
     mockSocket.emit.mockImplementation(() => {
-      /* never acks — checking that no pending row appears regardless */
+      /* never acks — checking the synchronous insert */
     });
 
     const { result } = renderHook(
@@ -90,8 +98,34 @@ describe('useMessageFileUpload — optimistic routing (PR-13 scope guard)', () =
       void result.current.handleSendMessage('hello', [{ type: 'PLAINTEXT' as never, text: 'hello' }], [file]);
     });
 
-    // The raw (non-optimistic) sender was used — no pending row in the cache.
-    expect(cacheMessages()).toHaveLength(0);
-    expect(mockSocket.emit).toHaveBeenCalled();
+    const messages = cacheMessages();
+    expect(messages).toHaveLength(1);
+    expect(messages[0].sendStatus).toBe('pending');
+    expect(messages[0].pendingAttachments).toBe(1);
+    expect(getPendingUpload(messages[0].clientId)?.files.map((f) => [f.name, f.status])).toEqual([['photo.png', 'waiting']]);
+    expect(mockSocket.emit).toHaveBeenCalledWith(
+      'sendMessage',
+      expect.objectContaining({ channelId: 'ch-1', pendingAttachments: 1, attachments: [] }),
+      expect.any(Function),
+    );
+  });
+
+  it('does the same in a DM', async () => {
+    mockSocket.emit.mockImplementation(() => {});
+    queryClient.setQueryData(dmMessagesQueryKey('dm-1'), createInfiniteData([]));
+
+    const { result } = renderHook(
+      () => useMessageFileUpload({ contextType: VoiceSessionType.Dm, contextId: 'dm-1', authorId: 'me' }),
+      { wrapper },
+    );
+
+    act(() => {
+      void result.current.handleSendMessage('', [{ type: 'PLAINTEXT' as never, text: '' }], [new File(['x'], 'a.pdf', { type: 'application/pdf' })]);
+    });
+
+    const data = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(dmMessagesQueryKey('dm-1'));
+    const [row] = (data?.pages.flatMap((p) => p.messages) ?? []) as unknown as Message[];
+    expect(row).toMatchObject({ directMessageGroupId: 'dm-1', sendStatus: 'pending', pendingAttachments: 1 });
+    expect(mockSocket.emit).toHaveBeenCalledWith('sendDirectMessage', expect.anything(), expect.any(Function));
   });
 });

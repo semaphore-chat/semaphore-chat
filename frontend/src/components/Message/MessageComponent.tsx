@@ -16,6 +16,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useMessagePermissions } from "../../hooks/useMessagePermissions";
 import { MessageReactions } from "./MessageReactions";
 import { MessageAttachments } from "./MessageAttachments";
+import { PendingAttachments } from "./PendingAttachments";
 import { MessageLinkPreviews } from "./MessageLinkPreviews";
 import { MessageEditForm } from "./MessageEditForm";
 import { MessageToolbar } from "./MessageToolbar";
@@ -526,6 +527,8 @@ function MessageComponentInner({
               </Typography>
             )}
             <MessageAttachments attachments={message.attachments} />
+            {/* Files this client is still uploading for the message (own sends only). */}
+            <PendingAttachments message={message} />
             {!gifUrl && <MessageLinkPreviews linkPreviews={message.linkPreviews} />}
             <MessageReactions
               messageId={message.id}

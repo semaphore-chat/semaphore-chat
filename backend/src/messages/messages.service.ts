@@ -437,6 +437,20 @@ export class MessagesService {
     );
   }
 
+  /**
+   * Attaches an uploaded file to a message and releases one of its
+   * `pendingAttachments` slots. Without a `fileId` it only releases a slot:
+   * the client gave up on that file (its upload failed and the user removed
+   * it, or cancelled it mid-upload).
+   *
+   * Idempotent per file: attaching a file that is already on the message (a
+   * client retrying an attach whose response it never got, though the server
+   * had committed it, or two such requests racing) changes nothing and
+   * returns the message, instead of failing on the (messageId, fileId)
+   * unique key or releasing a second slot for the same file. The insert
+   * skips duplicates (ON CONFLICT DO NOTHING), so this holds under
+   * concurrency without aborting the transaction.
+   */
   async addAttachment(messageId: string, fileId?: string) {
     return this.databaseService.$transaction(async (tx) => {
       if (fileId) {
@@ -447,9 +461,17 @@ export class MessagesService {
         });
         const nextPosition = (maxPos._max.position ?? -1) + 1;
 
-        await tx.messageAttachment.create({
-          data: { messageId, fileId, position: nextPosition },
+        const { count } = await tx.messageAttachment.createMany({
+          data: [{ messageId, fileId, position: nextPosition }],
+          skipDuplicates: true,
         });
+        if (count === 0) {
+          // Already attached: nothing to add, no slot to release.
+          return tx.message.findUniqueOrThrow({
+            where: { id: messageId },
+            include: MESSAGE_INCLUDE_WITH_REPLY,
+          });
+        }
       }
 
       const msg = await tx.message.findUnique({

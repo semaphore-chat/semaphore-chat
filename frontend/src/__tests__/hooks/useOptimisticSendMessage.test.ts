@@ -9,10 +9,19 @@ vi.mock('../../api-client/client.gen', () => ({
   },
 }));
 
+// Uploads never really run here: a pending promise stands in for each.
+const uploadFileWithProgress = vi.fn((..._args: unknown[]) => new Promise(() => {}));
+vi.mock('../../utils/uploadFileWithProgress', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../utils/uploadFileWithProgress')>()),
+  uploadFileWithProgress: (...args: unknown[]) => uploadFileWithProgress(...args),
+}));
+
 import {
   useOptimisticSendMessage,
   useOptimisticMessageRetry,
 } from '../../hooks/useOptimisticSendMessage';
+import { sendMessageWithAttachments, resetAttachmentSendsForTests } from '../../utils/attachmentSend';
+import { getPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
 import { handleNewMessage } from '../../socket-hub/handlers/messageHandlers';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { channelMessagesQueryKey, channelAnchoredMessagesQueryKey } from '../../utils/messageQueryKeys';
@@ -516,5 +525,78 @@ describe('useOptimisticSendMessage', () => {
       expect(cacheMessages()).toHaveLength(1);
       expect(cacheMessages()[0].id).toBe('stale-1');
     });
+  });
+});
+
+describe('a failed send with attachments', () => {
+  afterEach(() => {
+    resetAttachmentSendsForTests();
+    resetPendingUploadsForTests();
+    uploadFileWithProgress.mockClear();
+  });
+
+  async function failedAttachmentRow(): Promise<Message> {
+    await sendMessageWithAttachments({
+      runtime: { queryClient, contextType: VoiceSessionType.Channel, contextId: 'ch-1' },
+      payload: payload(),
+      files: [new File(['a'], 'a.pdf', { type: 'application/pdf' }), new File(['b'], 'b.pdf', { type: 'application/pdf' })],
+      send: async () => ({ success: false, error: new Error('timed out') }),
+    });
+    const [row] = cacheMessages();
+    expect(row.sendStatus).toBe('failed');
+    return row;
+  }
+
+  it('Retry resends with the files still to upload, then uploads them to the new message', async () => {
+    const failed = await failedAttachmentRow();
+    let emitted: Record<string, unknown> | undefined;
+    mockSocket.emit.mockImplementation((_event, p, ackFn) => {
+      emitted = p as Record<string, unknown>;
+      (ackFn as (id: string) => void)('real-1');
+    });
+    const { result } = renderHook(() => useOptimisticMessageRetry(failed), {
+      wrapper: createTestWrapper({ queryClient, socket: mockSocket }),
+    });
+
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(emitted).toMatchObject({ pendingAttachments: 2, attachments: [] });
+    expect(cacheMessages()[0]).toMatchObject({ id: 'real-1', clientId: failed.clientId });
+    expect(uploadFileWithProgress).toHaveBeenCalledTimes(2);
+    expect(uploadFileWithProgress.mock.calls[0][1]).toMatchObject({ resourceId: 'real-1' });
+    expect(getPendingUpload('real-1')?.files.map((f) => f.status)).toEqual(['uploading', 'uploading']);
+  });
+
+  it('Delete drops the row and its files', async () => {
+    const failed = await failedAttachmentRow();
+    const { result } = renderHook(() => useOptimisticMessageRetry(failed), {
+      wrapper: createTestWrapper({ queryClient, socket: mockSocket }),
+    });
+    act(() => {
+      result.current.remove();
+    });
+    expect(cacheMessages()).toHaveLength(0);
+    expect(getPendingUpload(failed.clientId)).toBeUndefined();
+    expect(uploadFileWithProgress).not.toHaveBeenCalled();
+  });
+
+  it('a text-only retry announces no files', async () => {
+    const failed = createMessage({ id: 'pending-t', clientId: 'pending-t', sendStatus: 'failed', channelId: 'ch-1', authorId: 'me' });
+    queryClient.setQueryData(queryKey, createInfiniteData([failed]));
+    let emitted: Record<string, unknown> | undefined;
+    mockSocket.emit.mockImplementation((_event, p, ackFn) => {
+      emitted = p as Record<string, unknown>;
+      (ackFn as (id: string) => void)('real-t');
+    });
+    const { result } = renderHook(() => useOptimisticMessageRetry(failed), {
+      wrapper: createTestWrapper({ queryClient, socket: mockSocket }),
+    });
+    await act(async () => {
+      await result.current.retry();
+    });
+    expect(emitted).toMatchObject({ pendingAttachments: 0 });
+    expect(uploadFileWithProgress).not.toHaveBeenCalled();
   });
 });

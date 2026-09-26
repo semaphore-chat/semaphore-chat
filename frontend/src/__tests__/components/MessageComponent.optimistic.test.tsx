@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { screen, act } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import MessageComponent from '../../components/Message/MessageComponent';
 import { createMessage } from '../test-utils/factories';
 import { SpanType } from '../../types/message.type';
+import { setPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
 
 vi.mock('../../hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: { id: 'user-1', username: 'alice' } }),
@@ -170,5 +171,48 @@ describe('MessageComponent optimistic states (PR-13)', () => {
     expect(screen.getByText('a normal message')).toBeInTheDocument();
     expect(screen.queryByTestId('message-pending-icon')).not.toBeInTheDocument();
     expect(screen.queryByText('Failed to send')).not.toBeInTheDocument();
+  });
+
+  describe('with files uploading', () => {
+    afterEach(() => {
+      act(() => resetPendingUploadsForTests());
+    });
+
+    function seedFiles(clientId: string, messageId: string | null) {
+      setPendingUpload({
+        clientId,
+        messageId,
+        hasText: true,
+        files: [
+          {
+            localId: 'f0', file: new File(['x'], 'IMG_1.png'), name: 'IMG_1.png', size: 4096, mimeType: 'image/png',
+            previewUrl: null, status: messageId ? 'uploading' : 'waiting', progress: messageId ? 0.5 : 0, fileId: null, error: null,
+          },
+        ],
+      });
+    }
+
+    it('a pending channel message shows its files waiting under its text', () => {
+      seedFiles('pending-4', null);
+      const message = createMessage({
+        id: 'pending-4', clientId: 'pending-4', sendStatus: 'pending', authorId: 'user-1', channelId: 'ch-1',
+        spans: [{ type: SpanType.PLAINTEXT, text: 'photos' }], pendingAttachments: 1,
+      });
+      renderWithProviders(<MessageComponent message={message} isAuthor />);
+      expect(screen.getByTestId('message-pending-icon')).toBeInTheDocument();
+      expect(screen.getByRole('progressbar', { name: 'Uploading IMG_1.png' })).toHaveAttribute('aria-valuenow', '0');
+      expect(screen.getByText('Waiting to upload…')).toBeInTheDocument();
+    });
+
+    it('an acked DM message keeps showing upload progress, keyed by its clientId', () => {
+      seedFiles('pending-5', 'msg-5');
+      const message = createMessage({
+        id: 'msg-5', clientId: 'pending-5', authorId: 'user-1', channelId: null, directMessageGroupId: 'dm-1',
+        spans: [{ type: SpanType.PLAINTEXT, text: 'photos' }], pendingAttachments: 1,
+      });
+      renderWithProviders(<MessageComponent message={message} isAuthor />);
+      expect(screen.getByRole('progressbar', { name: 'Uploading IMG_1.png' })).toHaveAttribute('aria-valuenow', '50');
+      expect(screen.getByRole('button', { name: 'Cancel uploading IMG_1.png' })).toBeInTheDocument();
+    });
   });
 });

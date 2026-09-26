@@ -2,14 +2,10 @@ import React from "react";
 import { Box, Card, Typography, IconButton, CircularProgress, Alert } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import DownloadIcon from "@mui/icons-material/Download";
-import InsertDriveFileIcon from "@mui/icons-material/InsertDriveFile";
-import PictureAsPdfIcon from "@mui/icons-material/PictureAsPdf";
-import DescriptionIcon from "@mui/icons-material/Description";
-import CodeIcon from "@mui/icons-material/Code";
-import ArchiveIcon from "@mui/icons-material/Archive";
 import { useAuthenticatedFile } from "../../hooks/useAuthenticatedFile";
 import { FileMetadata } from "../../types/message.type";
 import { formatFileSize, downloadBlob } from "../../utils/format";
+import { getFileIcon } from "./fileTypeIcon";
 
 const DownloadCard = styled(Card)(({ theme }) => ({
   padding: theme.spacing(2),
@@ -46,21 +42,6 @@ const FileInfo = styled(Box)({
 interface DownloadLinkProps {
   metadata: FileMetadata;
 }
-
-const getFileIcon = (mimeType: string) => {
-  if (mimeType.includes("pdf")) {
-    return <PictureAsPdfIcon fontSize="large" />;
-  } else if (mimeType.includes("text") || mimeType.includes("document")) {
-    return <DescriptionIcon fontSize="large" />;
-  } else if (mimeType.includes("zip") || mimeType.includes("archive") || mimeType.includes("compressed")) {
-    return <ArchiveIcon fontSize="large" />;
-  } else if (mimeType.includes("code") || mimeType.includes("javascript") || mimeType.includes("json") || mimeType.includes("xml")) {
-    return <CodeIcon fontSize="large" />;
-  }
-  return <InsertDriveFileIcon fontSize="large" />;
-};
-
-
 
 export const DownloadLink: React.FC<DownloadLinkProps> = ({ metadata }) => {
   const { blobUrl, isLoading, error } = useAuthenticatedFile(metadata.id, {

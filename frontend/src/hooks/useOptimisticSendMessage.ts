@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useCurrentUser } from "./useCurrentUser";
 import {
   useSendMessage,
@@ -8,93 +8,29 @@ import {
   type MessageContext,
 } from "./useSendMessage";
 import { VoiceSessionType } from "../contexts/VoiceContext";
-import { channelMessagesQueryKey, dmMessagesQueryKey } from "../utils/messageQueryKeys";
 import {
   prependMessageToInfinite,
-  replaceOptimisticMessage,
   removeOptimisticMessage,
-  markOptimisticFailed,
   markOptimisticPending,
-  findMessageInInfinite,
   isDetachedFromLiveEdge,
   OPTIMISTIC_ID_PREFIX,
 } from "../utils/messageCacheUpdaters";
+import {
+  inFlightClientIds,
+  messagesQueryKeyFor,
+  reconcileAfterSend,
+  type MessagesInfiniteData,
+} from "../utils/optimisticSend";
+import {
+  discardAttachmentSend,
+  hasAttachmentSend,
+  pendingAttachmentCount,
+  startAttachmentUploads,
+} from "../utils/attachmentSend";
 import type { Message } from "../types/message.type";
-import type { PaginatedMessagesResponseDto } from "../api-client";
 
-type MessagesInfiniteData = InfiniteData<PaginatedMessagesResponseDto>;
-type MessageQueryKey = ReturnType<typeof channelMessagesQueryKey> | ReturnType<typeof dmMessagesQueryKey>;
-
-function queryKeyFor(contextType: MessageContext, contextId: string): MessageQueryKey {
-  return contextType === VoiceSessionType.Channel
-    ? channelMessagesQueryKey(contextId)
-    : dmMessagesQueryKey(contextId);
-}
-
-/**
- * Applies the outcome of a (re)send to the cache.
- *
- * Ack always wins cleanup — this runs regardless of WS-echo timing:
- * - success + the real id is already in the cache (the echo beat the ack):
- *   the optimistic row is now redundant, just remove it.
- * - success + the real id is NOT in the cache yet (ack beat the echo):
- *   promote the optimistic row in place to the real id (best-effort — we
- *   only have `messageId` from the ack, not the full enriched message, so
- *   this keeps our own locally-known content). `clientId` is intentionally
- *   KEPT (not cleared) on the promoted row so it keeps a stable React key
- *   across the id swap (see VirtualMessageList's row keying). When the echo
- *   arrives after, `prependOrReconcileOptimistic`'s id-match branch now
- *   MERGES the echo into this row instead of no-op'ing on the id-already-
- *   present check — so any richer content the echo carries (e.g. a resolved
- *   `replyTo`) still lands (fix round 1; previously permanently dropped).
- * - failure: mark 'failed' for the retry/delete UI.
- *
- * This is a no-op against a clientId that's already gone (the echo-first
- * case above already reconciled it via `prependOrReconcileOptimistic`).
- */
-function reconcileAfterSend(
-  queryClient: ReturnType<typeof useQueryClient>,
-  queryKey: MessageQueryKey,
-  clientId: string,
-  optimisticMessage: Message,
-  result: SendMessageResult,
-) {
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const typedOld = old as MessagesInfiniteData | undefined;
-    if (result.success && result.messageId) {
-      const echoAlreadyInserted = !!findMessageInInfinite(typedOld, result.messageId);
-      if (echoAlreadyInserted) {
-        return removeOptimisticMessage(typedOld, clientId);
-      }
-      const promoted: Message = {
-        ...optimisticMessage,
-        id: result.messageId,
-        sendStatus: undefined,
-      };
-      return replaceOptimisticMessage(typedOld, clientId, promoted);
-    }
-    return markOptimisticFailed(typedOld, clientId);
-  });
-}
-
-/**
- * Module-level in-flight guard (fix round 1, Important 3): prevents a
- * second submit for the SAME optimistic row's clientId from racing a send
- * that's already outstanding — e.g. a double-clicked Retry button, or Retry
- * firing while the original send is still in flight. Consulted by both
- * `sendMessage` and `retry` so they see each other's in-flight state
- * (retry runs in a different hook instance than the composer's send).
- *
- * This does NOT prevent multiple DIFFERENT optimistic rows from being in
- * flight concurrently for the same author (composer send + a retry of an
- * older failed row, or two sequential composer sends) — that's expected
- * and handled by the content-based echo correlation in
- * `prependOrReconcileOptimistic`, not by this guard.
- *
- * Module-level (not component/hook-instance state) because it must be
- * shared across every hook instance that could touch the same clientId.
- */
-const inFlightClientIds = new Set<string>();
+// reconcileAfterSend and the in-flight guard live in utils/optimisticSend.ts,
+// shared with the attachment sender (utils/attachmentSend.ts).
 
 export interface UseOptimisticSendMessageResult {
   sendMessage: (payload: NewMessagePayload) => Promise<SendMessageResult>;
@@ -121,10 +57,9 @@ export interface UseOptimisticSendMessageResult {
  *   real echo lands, and duplicating that dance here would be fragile for
  *   very little value (perceived-latency wins matter at the live edge,
  *   which is not where a detached reader's attention is anyway).
- * - Messages with pending attachments are the CALLER's responsibility to
- *   exclude — see hooks/useMessageFileUpload.ts, which routes attachment
- *   sends through the plain useSendMessage + upload-then-attach flow
- *   instead of this hook.
+ * - Messages with attachments don't come through here: useMessageFileUpload
+ *   routes them to utils/attachmentSend.ts, which inserts the same kind of
+ *   optimistic row and then runs the uploads.
  */
 export function useOptimisticSendMessage(
   contextType: MessageContext,
@@ -133,7 +68,7 @@ export function useOptimisticSendMessage(
   const queryClient = useQueryClient();
   const { user: currentUser } = useCurrentUser();
   const { sendMessage: rawSendMessage, canSend } = useSendMessage(contextType);
-  const queryKey = queryKeyFor(contextType, contextId);
+  const queryKey = messagesQueryKeyFor(contextType, contextId);
 
   const sendMessage = useCallback(
     async (payload: NewMessagePayload): Promise<SendMessageResult> => {
@@ -184,13 +119,15 @@ export function useOptimisticSendMessage(
  * the fields useMessageFileUpload's handleSendMessage builds for the
  * original (non-attachment) send.
  */
-function buildRetryPayload(message: Message, sentAt: string): NewMessagePayload {
+function buildRetryPayload(message: Message, sentAt: string, pendingAttachments: number): NewMessagePayload {
   return {
     ...(message.channelId ? { channelId: message.channelId } : {}),
     ...(message.directMessageGroupId ? { directMessageGroupId: message.directMessageGroupId } : {}),
     authorId: message.authorId,
     spans: message.spans,
     attachments: message.attachments,
+    // Files still to upload for this message (utils/attachmentSend.ts).
+    pendingAttachments,
     reactions: message.reactions,
     sentAt,
     ...(message.replyToId ? { replyToId: message.replyToId } : {}),
@@ -200,7 +137,7 @@ function buildRetryPayload(message: Message, sentAt: string): NewMessagePayload 
 export interface UseOptimisticMessageRetryResult {
   /** Re-emits the message with the SAME clientId — never creates a duplicate row. */
   retry: () => Promise<void>;
-  /** Removes the optimistic row from the cache. No API call — it was never persisted. */
+  /** Removes the optimistic row (and any files it was going to upload). No API call — it was never persisted. */
   remove: () => void;
 }
 
@@ -216,7 +153,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
   const contextType = message.channelId ? VoiceSessionType.Channel : VoiceSessionType.Dm;
   const contextId = message.channelId || message.directMessageGroupId || "";
   const { sendMessage: rawSendMessage } = useSendMessage(contextType);
-  const queryKey = queryKeyFor(contextType, contextId);
+  const queryKey = messagesQueryKeyFor(contextType, contextId);
 
   const retry = useCallback(async () => {
     const clientId = message.clientId;
@@ -226,7 +163,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
     if (inFlightClientIds.has(clientId)) return;
 
     const sentAt = new Date().toISOString();
-    const retryPayload = buildRetryPayload(message, sentAt);
+    const retryPayload = buildRetryPayload(message, sentAt, pendingAttachmentCount(clientId));
     const optimisticMessage: Message = { ...message, sentAt, sendStatus: "pending" };
 
     queryClient.setQueryData(queryKey, (old: unknown) => markOptimisticPending(old as never, clientId));
@@ -235,6 +172,10 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
     try {
       const result = await rawSendMessage(retryPayload);
       reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
+      // A message with files: now that it exists, upload them.
+      if (result.success && result.messageId && hasAttachmentSend(clientId)) {
+        startAttachmentUploads(clientId, result.messageId);
+      }
     } finally {
       inFlightClientIds.delete(clientId);
     }
@@ -243,6 +184,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
   const remove = useCallback(() => {
     const clientId = message.clientId;
     if (!clientId) return;
+    discardAttachmentSend(clientId);
     queryClient.setQueryData(queryKey, (old: unknown) => removeOptimisticMessage(old as never, clientId));
   }, [message, queryClient, queryKey]);
 

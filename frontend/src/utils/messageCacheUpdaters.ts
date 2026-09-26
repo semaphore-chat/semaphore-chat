@@ -42,6 +42,12 @@ export function prependMessageToInfinite(
   };
 }
 
+/**
+ * Replace the cached message with the same id. A row that was sent
+ * optimistically keeps its `clientId` (server payloads never carry one), so
+ * its React key stays stable and an update — e.g. an attachment landing on
+ * a message whose files are still uploading — never remounts it.
+ */
 export function updateMessageInInfinite(
   old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
   message: Message,
@@ -51,7 +57,11 @@ export function updateMessageInInfinite(
     ...old,
     pages: old.pages.map(page => ({
       ...page,
-      messages: page.messages.map(m => m.id === message.id ? message as never : m),
+      messages: page.messages.map(m => {
+        if (m.id !== message.id) return m;
+        const clientId = (m as unknown as Message).clientId;
+        return (clientId && !message.clientId ? { ...message, clientId } : message) as never;
+      }),
     })),
   };
 }
@@ -137,11 +147,17 @@ function flattenSpansText(spans: Message['spans'] | undefined): string {
 
 /**
  * Content-equality check used to disambiguate among multiple same-author
- * optimistic rows. Compares flattened span text — sufficient to tell two
+ * optimistic rows. Compares flattened span text and the number of files the
+ * message announced (`pendingAttachments`) — sufficient to tell two
  * different in-flight sends apart without needing a real nonce.
  */
 function isSameOptimisticContent(a: Message, b: Message): boolean {
-  return flattenSpansText(a.spans) === flattenSpansText(b.spans);
+  return (
+    flattenSpansText(a.spans) === flattenSpansText(b.spans) &&
+    // Messages with files are often captionless: the file count keeps an
+    // echo of one from reconciling a different captionless send.
+    (a.pendingAttachments ?? 0) === (b.pendingAttachments ?? 0)
+  );
 }
 
 /**
