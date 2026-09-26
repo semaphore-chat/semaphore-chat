@@ -130,6 +130,18 @@ describe('updateMessageInInfinite', () => {
     expect(result!.pages[0].messages[0]).toMatchObject({ id: 'p1-msg' });
   });
 
+  it('keeps the clientId of a row that was sent optimistically (stable React key)', () => {
+    const promoted = createMessage({ id: 'msg-1', clientId: 'pending-1', attachments: [] });
+    const data = createInfiniteData([promoted]);
+
+    // A server payload (e.g. an attachment landing) never carries a clientId.
+    const withFile = createMessage({ id: 'msg-1', attachments: [{ id: 'file-1', filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1 }] });
+    const result = updateMessageInInfinite(data, withFile);
+
+    expect(result!.pages[0].messages[0]).toMatchObject({ id: 'msg-1', clientId: 'pending-1' });
+    expect(result!.pages[0].messages[0].attachments).toHaveLength(1);
+  });
+
   it('leaves data unchanged when message ID not found', () => {
     const msg = createMessage({ id: 'msg-1' });
     const data = createInfiniteData([msg]);
@@ -324,6 +336,25 @@ describe('prependOrReconcileOptimistic', () => {
   });
 
   describe('multi-pending disambiguation (fix round 1, Critical 1)', () => {
+    it('two captionless sends with files: the echo reconciles the row with the same number of files', () => {
+      const twoFiles = createMessage({
+        id: 'pending-a', authorId: 'user-1', clientId: 'pending-a', sendStatus: 'failed',
+        spans: plaintextSpans(''), pendingAttachments: 2,
+      });
+      const oneFile = createMessage({
+        id: 'pending-b', authorId: 'user-1', clientId: 'pending-b', sendStatus: 'pending',
+        spans: plaintextSpans(''), pendingAttachments: 1,
+      });
+      const data = createInfiniteData([oneFile, twoFiles]);
+
+      const echo = createMessage({ id: 'real-b', authorId: 'user-1', spans: plaintextSpans(''), pendingAttachments: 1 });
+      const messages = prependOrReconcileOptimistic(data, echo)!.pages[0].messages;
+
+      expect(messages).toHaveLength(2);
+      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b' });
+      expect(messages.find(m => m.id === 'pending-a')).toMatchObject({ sendStatus: 'failed' });
+    });
+
     it('failed-A + pending-B: an echo matching B\'s content reconciles B, leaves A (failed) UNTOUCHED', () => {
       const failedA = createMessage({
         id: 'pending-a',

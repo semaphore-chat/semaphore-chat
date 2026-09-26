@@ -1,15 +1,12 @@
-import React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { VoiceSessionType } from "../contexts/VoiceContext";
-import { messagesControllerAddAttachmentMutation } from "../api-client/@tanstack/react-query.gen";
-import { useFileUpload } from "./useFileUpload";
 import { useSendMessage } from "./useSendMessage";
 import { useOptimisticSendMessage } from "./useOptimisticSendMessage";
 import { useNotification } from "../contexts/NotificationContext";
-import { channelMessagesQueryKey, dmMessagesQueryKey } from "../utils/messageQueryKeys";
-import { updateMessageInInfinite } from "../utils/messageCacheUpdaters";
-import { logger } from "../utils/logger";
-import type { Message, Span } from "../types/message.type";
+import { useOptionalFileCache } from "../contexts/AvatarCacheContext";
+import { sendMessageWithAttachments } from "../utils/attachmentSend";
+import type { Span } from "../types/message.type";
 
 interface UseMessageFileUploadOptions {
   contextType: VoiceSessionType;
@@ -17,72 +14,31 @@ interface UseMessageFileUploadOptions {
   authorId: string;
 }
 
+/**
+ * The composer's send for a channel or DM. Every send shows up at once as an
+ * optimistic 'pending' row: text-only through useOptimisticSendMessage, and
+ * with files through utils/attachmentSend.ts, which then uploads them in the
+ * background with per-file progress, retry and remove (see there).
+ *
+ * Resolves once the server acked (or refused) the message — the composer
+ * serializes sends on that — not when the uploads finish. Failures surface
+ * inline: a failed send as the row's 'failed' state (Retry/Delete in
+ * MessageComponent), a failed upload on that file's tile (plus a toast).
+ */
 export const useMessageFileUpload = ({ contextType, contextId, authorId }: UseMessageFileUploadOptions) => {
   const queryClient = useQueryClient();
-  const { uploadFile } = useFileUpload();
   const { showNotification } = useNotification();
-  const pendingFilesRef = React.useRef<File[] | null>(null);
-
-  const { mutateAsync: addAttachment } = useMutation({
-    ...messagesControllerAddAttachmentMutation(),
-    onSuccess: (updatedMessage) => {
-      const id = contextType === VoiceSessionType.Channel
-        ? updatedMessage.channelId
-        : updatedMessage.directMessageGroupId;
-      if (id) {
-        const queryKey = contextType === VoiceSessionType.Channel
-          ? channelMessagesQueryKey(id)
-          : dmMessagesQueryKey(id);
-        queryClient.setQueryData(queryKey, (old: unknown) =>
-          updateMessageInInfinite(old as never, updatedMessage as Message)
-        );
-      }
-    },
-  });
-
-  // Attachment-bearing sends bypass the optimistic path entirely (v1 scope —
-  // see useOptimisticSendMessage's doc comment). This raw sender still owns
-  // the post-ack upload-then-attach continuation via its callback.
-  const { sendMessage } = useSendMessage(contextType, async (messageId: string) => {
-    const files = pendingFilesRef.current;
-    if (!files || files.length === 0) return;
-
-    try {
-      const uploadPromises = files.map(file =>
-        uploadFile(file, {
-          resourceType: "MESSAGE_ATTACHMENT",
-          resourceId: messageId,
-        })
-      );
-
-      const uploadedFiles = await Promise.all(uploadPromises);
-
-      for (const uploadedFile of uploadedFiles) {
-        await addAttachment({
-          path: { id: messageId },
-          body: { fileId: uploadedFile.id },
-        });
-      }
-    } catch (error) {
-      logger.error("Failed to upload files:", error);
-
-      const errorMessage = error instanceof Error
-        ? error.message
-        : "Failed to upload file(s)";
-      showNotification(errorMessage, "error");
-
-      for (let i = 0; i < files.length; i++) {
-        await addAttachment({
-          path: { id: messageId },
-          body: {},
-        });
-      }
-    } finally {
-      pendingFilesRef.current = null;
-    }
-  });
-
+  const fileCache = useOptionalFileCache();
+  const { sendMessage: rawSendMessage } = useSendMessage(contextType);
   const { sendMessage: sendOptimisticMessage } = useOptimisticSendMessage(contextType, contextId);
+
+  const seedFileBlob = useCallback(
+    (fileId: string, file: File) => {
+      if (!fileCache || fileCache.hasBlob(fileId)) return;
+      fileCache.setBlob(fileId, URL.createObjectURL(file));
+    },
+    [fileCache],
+  );
 
   const handleSendMessage = async (_messageContent: string, spans: Span[], files?: File[], replyToId?: string) => {
     const msg = {
@@ -98,22 +54,22 @@ export const useMessageFileUpload = ({ contextType, contextId, authorId }: UseMe
       ...(replyToId ? { replyToId } : {}),
     };
 
-    // Messages with pending attachments are excluded from the optimistic
-    // path (v1 scope): they have their own upload-then-attach flow driven
-    // off the raw sender's ack callback above.
-    const hasAttachments = !!(files && files.length > 0);
-
-    if (hasAttachments) {
-      pendingFilesRef.current = files || null;
-      const result = await sendMessage(msg);
-      if (!result.success) {
-        const errorMessage = result.error instanceof Error ? result.error.message : "Failed to send message";
-        showNotification(errorMessage, "error");
-      }
+    if (files && files.length > 0) {
+      await sendMessageWithAttachments({
+        runtime: {
+          queryClient,
+          contextType,
+          contextId,
+          notifyError: (message) => showNotification(message, "error"),
+          seedFileBlob,
+        },
+        payload: msg,
+        files,
+        send: rawSendMessage,
+      });
       return;
     }
 
-    pendingFilesRef.current = null;
     // Failures surface inline via the message's 'failed' sendStatus
     // (retry/delete UI in MessageComponent) instead of a toast — the
     // optimistic bubble IS the error affordance here.

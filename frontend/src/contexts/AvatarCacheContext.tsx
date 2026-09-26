@@ -30,6 +30,9 @@ export const useFileCache = () => {
   return context;
 };
 
+/** The file cache, or null outside a FileCacheProvider (e.g. in a hook test). */
+export const useOptionalFileCache = (): FileCacheContextType | null => useContext(FileCacheContext);
+
 // Keep old name for backward compatibility
 export const useAvatarCache = useFileCache;
 
