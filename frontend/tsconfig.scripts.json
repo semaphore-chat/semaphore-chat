@@ -21,5 +21,6 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["scripts/ui-review/**/*.ts", "scripts/electron-smoke/**/*.ts"]
+  /* *.node.test.ts: Vitest files that run in Node and need its types, which tsconfig.app.json leaves out */
+  "include": ["scripts/ui-review/**/*.ts", "scripts/electron-smoke/**/*.ts", "src/**/*.node.test.ts"]
 }

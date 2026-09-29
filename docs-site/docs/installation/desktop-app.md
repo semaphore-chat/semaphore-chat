@@ -56,6 +56,12 @@ The desktop app checks for updates automatically on startup and periodically whi
 
 Updates are served from GitHub Releases — no additional infrastructure required.
 
+On Linux, the AppImage replaces itself. The .deb and .rpm installs run the package manager as root, through `pkexec` (you'll see your desktop's password prompt) or, without pkexec, `sudo`.
+
+!!! warning "Linux .deb/.rpm: when the update doesn't install"
+    - **Version 0.4.2 or 0.4.3:** auto-update can't install the next version on these two releases (the update fails with `Command pkexec exited with code 1`). Download the new package from [Releases](https://github.com/semaphore-chat/semaphore-chat/releases) and install it by hand once, as above. Versions from 0.5.0 on update normally.
+    - **`Command pkexec exited with code 127`:** pkexec couldn't ask for your password, usually because no polkit authentication agent is running (common with minimal window managers). Start one (for example `polkit-gnome` or `lxpolkit`) and retry, or install the new package by hand.
+
 ## Deep links
 
 The desktop app registers the `semaphore://` URL scheme, so links can open the app directly to a specific community, channel, direct message, or invite instead of your browser:

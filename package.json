@@ -11,10 +11,6 @@
     "class-transformer": "^0.5.1"
   },
   "pnpm": {
-    "allowUnusedPatches": true,
-    "patchedDependencies": {
-      "electron-updater@6.8.3": "patches/electron-updater@6.8.3.patch"
-    },
     "overrides": {
       "form-data": "^4.0.6",
       "ws": "^8.21.0",
