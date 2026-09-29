@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [0.5.0] - 2026-09-28
 
+### ⚠️ Breaking changes
+
+Check these before upgrading. Each one is covered in full under **Upgrade notes** below. Nobody is signed out by the upgrade itself, and there are no new database migrations and no new, renamed or removed environment variables or Helm values.
+
+- **Redis 6 or newer is required.** Affected: instances with an external Redis 5 or older, where the backend won't start. Upgrade Redis first. The bundled Redis in Docker Compose and the Helm chart is fine.
+- **Docker Compose publishes the backend on `127.0.0.1:3000` only.** Affected: a reverse proxy on another host that points at port 3000. Point it at the frontend instead, or run the proxy on the same host.
+- **Database SSL now verifies the certificate.** `sslmode=require`, `prefer` and `verify-ca` in `DATABASE_URL` act like `verify-full`. Affected: databases with a self-signed or private-CA certificate, where the backend fails to start. Add `sslrootcert=...`, or use `sslmode=no-verify` to keep the old behaviour.
+- **`TRUST_PROXY` must equal the real number of proxy hops.** It now also ties refresh tokens to the client's IP address. Affected: anyone behind a reverse proxy. Check the value (usually `1`), and never use `true`.
+- **Custom `backend/Dockerfile.prod` builds.** Copy `backend/prisma.config.ts` into the runtime stage, and drop the Alpine bcrypt rebuild step, which now fails.
+- **Database connection pool is now 10 per backend process.** The `connection_limit`, `pool_timeout`, `sslaccept` and `schema` URL parameters are ignored. Affected: instances that tuned the pool through `DATABASE_URL`.
+
 ### Added
 
 - **Upload Progress for Attachments** — A message with files now appears in the conversation as soon as you send it, like a text message, with a tile per file showing real upload progress. An upload in progress can be cancelled; a failed one offers Retry and Remove, and removing the last file of a message with no text deletes the message. Uploads keep going if you switch to another conversation. Before, the composer cleared and nothing showed until the upload finished, so a big upload on a slow link looked like a send that had failed. (#541)
