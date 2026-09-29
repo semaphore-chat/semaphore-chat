@@ -15,6 +15,7 @@ on:
     paths:
       - 'frontend/**'
       - 'shared/**'
+      - 'patches/**'
       - '.github/workflows/frontend-tests.yml'
 
 # A newer push to a PR cancels that PR's in-flight run. Each push to main gets
@@ -48,6 +49,7 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'shared/**'
+              - 'patches/**'
               - '.github/workflows/frontend-tests.yml'
 
   # The jobs below skip only when `changes` positively reported no frontend

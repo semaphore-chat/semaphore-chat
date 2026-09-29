@@ -33,6 +33,16 @@ docker compose run --rm -v "$PWD:/workspace" backend \
 
 Then rebuild images (`docker compose build`), re-run the test suites, and re-scan before proceeding. This keeps the release atomic — otherwise a failed image publish requires a `docker-v*` hotfix tag from a later commit, and the `latest` tag must be repointed manually (component tags don't apply it).
 
+Also confirm that every pnpm patch (root `package.json`, `pnpm.patchedDependencies`) still applies, and that the desktop updater's Linux install path works:
+
+```bash
+# fails with ERR_PNPM_UNUSED_PATCH / ERR_PNPM_PATCH_FAILED if a patch no longer matches
+docker compose run --rm -v "$PWD:/workspace" backend \
+  sh -c 'cd /workspace && pnpm install --lockfile-only'
+# electron-updater's .deb/.rpm install through pkexec/sudo (a bad patch broke it in 0.4.2 and 0.4.3)
+docker compose run --rm frontend pnpm exec vitest run src/__tests__/electron/linuxUpdaterInstall.node.test.ts
+```
+
 ### Full Release
 
 ```bash

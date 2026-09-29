@@ -30,5 +30,7 @@
       "@semaphore-chat/shared/*": ["../shared/src/*"]
     }
   },
-  "include": ["src", "../shared/src"]
+  "include": ["src", "../shared/src"],
+  /* Vitest files that run in Node and use its APIs; type-checked by tsconfig.scripts.json */
+  "exclude": ["src/**/*.node.test.ts"]
 }
