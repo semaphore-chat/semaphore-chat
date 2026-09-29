@@ -31,7 +31,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/s
 ```bash
 helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --reuse-values \
-  --set backend.image.tag=v1.2.3
+  --set backend.image.tag=1.2.3
 ```
 
 ### Uninstall
@@ -47,10 +47,10 @@ helm uninstall semaphore-chat
 | Parameter | Description | Default |
 |-----------|-------------|---------|
 | `backend.image.repository` | Backend Docker image repository | `ghcr.io/semaphore-chat/semaphore-chat-backend` |
-| `backend.image.tag` | Backend image tag | `latest` |
+| `backend.image.tag` | Backend image tag | chart `appVersion` |
 | `backend.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 | `frontend.image.repository` | Frontend Docker image repository | `ghcr.io/semaphore-chat/semaphore-chat-frontend` |
-| `frontend.image.tag` | Frontend image tag | `latest` |
+| `frontend.image.tag` | Frontend image tag | chart `appVersion` |
 | `global.imagePullSecrets` | Image pull secrets for private registries | `[]` |
 
 ### Deployment Configuration
@@ -283,8 +283,8 @@ Update images with zero downtime:
 ```bash
 helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --reuse-values \
-  --set backend.image.tag=v1.2.3 \
-  --set frontend.image.tag=v1.2.3
+  --set backend.image.tag=1.2.3 \
+  --set frontend.image.tag=1.2.3
 ```
 
 ## Monitoring

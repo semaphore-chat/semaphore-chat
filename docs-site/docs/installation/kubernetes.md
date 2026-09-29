@@ -88,12 +88,12 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/s
 backend:
   image:
     repository: ghcr.io/semaphore-chat/semaphore-chat-backend
-    tag: "latest"
+    tag: ""   # empty = the chart's version; pin e.g. "0.5.0" to override
 
 frontend:
   image:
     repository: ghcr.io/semaphore-chat/semaphore-chat-frontend
-    tag: "latest"
+    tag: ""   # empty = the chart's version; pin e.g. "0.5.0" to override
 
 # --- Secrets ---
 secrets:
