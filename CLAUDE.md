@@ -513,6 +513,12 @@ When implementing a feature, fixing a bug, or modifying behavior in either the b
 
 **UI changes**: before opening or updating a PR that changes frontend UI, follow the ui-pr-review skill (`.claude/skills/ui-pr-review`) — render affected stories on base vs head at phone/tablet/desktop, review every screenshot, and include the generated before/after section in the PR description.
 
+### Patched Dependencies
+
+- We carry no pnpm patches right now (see `patches/README.md`). The electron-updater patch added in 0.4.2 misread the .deb `pkexec exited with code 127` error and itself broke .deb/.rpm auto-update in 0.4.2 and 0.4.3, so it was removed. `frontend/src/__tests__/electron/linuxUpdaterInstall.node.test.ts` runs electron-updater's real Linux install path and must keep passing.
+- Before adding a patch, reproduce the bug against the unpatched package and add a test that fails without the patch.
+- `allowUnusedPatches` is off on purpose: a version bump that no longer matches a patch fails `pnpm install` with `ERR_PNPM_UNUSED_PATCH` (e.g. on a Dependabot PR). Port the patch (`pnpm patch <pkg>@<new>`, re-apply, `pnpm patch-commit`, delete the old file and entry) and rerun its test, or drop it only if upstream fixed the bug and the test passes without it. Never turn `allowUnusedPatches` back on.
+
 ### Code Quality
 
 - ESLint configured for both backend and frontend
