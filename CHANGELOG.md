@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### ⚠️ Breaking changes
 
-Check these before upgrading. Each one is covered in full under **Upgrade notes** below. Nobody is signed out by the upgrade itself, and there are no new database migrations and no new, renamed or removed environment variables or Helm values.
+Check these before upgrading. Each one is covered in full under **Upgrade notes** below. **Desktop users on Linux .deb/.rpm 0.4.2–0.4.3 must install 0.5.0 by hand once** (see Desktop app). Nobody is signed out by the upgrade itself, and there are no new database migrations and no new, renamed or removed environment variables or Helm values.
 
 - **Redis 6 or newer is required.** Affected: instances with an external Redis 5 or older, where the backend won't start. Upgrade Redis first. The bundled Redis in Docker Compose and the Helm chart is fine.
 - **Docker Compose publishes the backend on `127.0.0.1:3000` only.** Affected: a reverse proxy on another host that points at port 3000. Point it at the frontend instead, or run the proxy on the same host.
@@ -62,7 +62,7 @@ Check these before upgrading. Each one is covered in full under **Upgrade notes*
 - **Screen share refusals no longer error** — When a picked screen or window had gone away, or no sources were available, the refusal threw an unhandled error in the app's main process and a page error in the window. Refusals and a cancelled picker now leave sharing off cleanly. (#542)
 - **Desktop layout at every width** — A desktop window narrower than 1200 px switched to the touch tablet layout. The desktop app now always uses the desktop layout; below 1024 px the member list opens from a button in the chat header. (#485)
 - **Update notice version** — The "ready to install" notice could read "Version  is ready" if the app reloaded while the update downloaded. It now always shows the version. (#509)
-- **Auto-update** — Updating from 0.4.3 works as usual. Windows users still on 0.4.0–0.4.2 and .deb users on 0.4.0–0.4.1 must install once by hand, as described under 0.4.3 and 0.4.2.
+- **Linux .deb/.rpm auto-update fixed** — The updater change shipped in 0.4.2 (to fix `pkexec exited with code 127`) actually stopped .deb and .rpm installs from installing updates: the package manager ran with no arguments and the update ended with `Command pkexec exited with code 1`. It is reverted, and a test now runs the real Linux install path. The original exit code 127 means pkexec couldn't ask for your password (no polkit authentication agent running). **Linux .deb/.rpm users on 0.4.2 or 0.4.3 must install 0.5.0 by hand once** (`sudo dpkg -i semaphore-chat_0.5.0_amd64.deb` or `sudo rpm -U semaphore-chat-0.5.0.x86_64.rpm`); auto-update works again from then on. AppImage and Windows users on 0.4.3 update automatically as usual; Windows users still on 0.4.0–0.4.2 must install once by hand, as described under 0.4.3. (#547)
 
 ### Fixed
 
