@@ -65,7 +65,7 @@ Copy the Compose file for your chosen setup:
           - livekit
 
       backend:
-        image: ghcr.io/semaphore-chat/semaphore-backend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
         restart: unless-stopped
         environment:
           DATABASE_URL: postgresql://semaphore:semaphore@postgres:5432/semaphore
@@ -94,7 +94,7 @@ Copy the Compose file for your chosen setup:
             condition: service_started
 
       frontend:
-        image: ghcr.io/semaphore-chat/semaphore-frontend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
         restart: unless-stopped
         environment:
           BACKEND_URL: http://backend:3000
@@ -236,7 +236,7 @@ Copy the Compose file for your chosen setup:
     ```yaml title="docker-compose.yml"
     services:
       backend:
-        image: ghcr.io/semaphore-chat/semaphore-backend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
         restart: unless-stopped
         ports:
           # Localhost only: clients must reach the backend through your reverse proxy,
@@ -269,7 +269,7 @@ Copy the Compose file for your chosen setup:
             condition: service_started
 
       frontend:
-        image: ghcr.io/semaphore-chat/semaphore-frontend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
         restart: unless-stopped
         ports:
           - "5173:5173"
@@ -394,7 +394,7 @@ Copy the Compose file for your chosen setup:
     ```yaml title="docker-compose.yml"
     services:
       backend:
-        image: ghcr.io/semaphore-chat/semaphore-backend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-backend:latest
         restart: unless-stopped
         ports:
           # Localhost only: clients must reach the backend through your reverse proxy,
@@ -429,7 +429,7 @@ Copy the Compose file for your chosen setup:
         restart: "no"
 
       frontend:
-        image: ghcr.io/semaphore-chat/semaphore-frontend:latest
+        image: ghcr.io/semaphore-chat/semaphore-chat-frontend:latest
         restart: unless-stopped
         ports:
           - "5173:5173"

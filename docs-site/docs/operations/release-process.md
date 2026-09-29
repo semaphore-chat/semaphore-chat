@@ -99,16 +99,16 @@ Go to GitHub Actions, select the workflow, click "Run workflow", optionally spec
 ### Docker Images (GHCR)
 
 ```
-ghcr.io/OWNER/semaphore-backend:1.0.0
-ghcr.io/OWNER/semaphore-frontend:1.0.0
+ghcr.io/semaphore-chat/semaphore-chat-backend:1.0.0
+ghcr.io/semaphore-chat/semaphore-chat-frontend:1.0.0
 ```
 
-Tags: `1.0.0`, `1.0`, `1`, `latest`
+Tags: `1.0.0`, `1.0`, `1`, `latest`, `sha-<short>`
 
 ### Helm Chart (GHCR OCI)
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/OWNER/semaphore-chat/charts/semaphore-chat --version 1.0.0
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat --version 1.0.0
 ```
 
 ## Electron Auto-Update

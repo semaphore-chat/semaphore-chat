@@ -49,7 +49,7 @@ export REDIS_PASSWORD=$(openssl rand -base64 32)
 The simplest install uses bundled PostgreSQL and Redis:
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set secrets.jwtSecret="$JWT_SECRET" \
   --set secrets.jwtRefreshSecret="$JWT_REFRESH_SECRET" \
   --set postgresql.auth.postgresPassword="$POSTGRES_PASSWORD" \
@@ -75,7 +75,7 @@ Wait for all pods to show `Running`, then visit your domain.
 For anything beyond the quick start, create a values file:
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --values custom-values.yaml \
   --namespace semaphore-chat \
   --create-namespace
@@ -87,13 +87,13 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
 # --- Images ---
 backend:
   image:
-    repository: ghcr.io/semaphore-chat/semaphore-backend
-    tag: "latest"
+    repository: ghcr.io/semaphore-chat/semaphore-chat-backend
+    tag: ""   # empty = the chart's version; pin e.g. "0.5.0" to override
 
 frontend:
   image:
-    repository: ghcr.io/semaphore-chat/semaphore-frontend
-    tag: "latest"
+    repository: ghcr.io/semaphore-chat/semaphore-chat-frontend
+    tag: ""   # empty = the chart's version; pin e.g. "0.5.0" to override
 
 # --- Secrets ---
 secrets:
@@ -388,7 +388,7 @@ frontend:
 ### Upgrading
 
 ```bash
-helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --reuse-values \
   --set backend.image.tag=v1.1.0 \
   --set frontend.image.tag=v1.1.0 \

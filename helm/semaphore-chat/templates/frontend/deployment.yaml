@@ -36,7 +36,7 @@ spec:
               protocol: TCP
           env:
             - name: BACKEND_URL
-              value: {{ .Values.frontend.env.backendUrl | quote }}
+              value: {{ .Values.frontend.env.backendUrl | default (printf "http://%s-backend:%v" (include "semaphore-chat.fullname" .) .Values.backend.service.port) | quote }}
             {{- with .Values.frontend.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

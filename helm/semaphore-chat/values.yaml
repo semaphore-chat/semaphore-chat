@@ -22,9 +22,10 @@ backend:
   replicaCount: 1
 
   image:
-    repository: ghcr.io/user/semaphore-backend
+    repository: ghcr.io/semaphore-chat/semaphore-chat-backend
     pullPolicy: Always
-    tag: "latest"
+    # Defaults to the chart's appVersion (the release it was published with).
+    tag: ""
 
   # Trust proxy setting for Express (required behind ingress/load balancer).
   # Number of proxy hops in front of the backend, a subnet, or a specific IP.
@@ -131,9 +132,10 @@ frontend:
   replicaCount: 2
 
   image:
-    repository: ghcr.io/user/semaphore-frontend
+    repository: ghcr.io/semaphore-chat/semaphore-chat-frontend
     pullPolicy: IfNotPresent
-    tag: "latest"
+    # Defaults to the chart's appVersion (the release it was published with).
+    tag: ""
 
   # Service configuration
   service:
@@ -176,8 +178,8 @@ frontend:
 
   # Environment variables for nginx
   env:
-    # Backend URL (internal service URL)
-    backendUrl: "http://semaphore-backend:3000"
+    # Backend URL (internal service URL). Empty = this release's backend Service.
+    backendUrl: ""
 
   # Extra environment variables for the frontend container
   # These are injected at runtime (useful for feature flags, etc.)

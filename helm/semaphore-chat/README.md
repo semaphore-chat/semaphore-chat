@@ -17,7 +17,7 @@ A production-ready Helm chart for deploying Semaphore Chat - a self-hosted voice
 This will deploy Semaphore Chat with bundled PostgreSQL and Redis:
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.local \
   --set livekit.url=wss://your-livekit-server.com \
   --set livekit.apiKey=YOUR_LIVEKIT_API_KEY \
@@ -29,9 +29,9 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
 ### Upgrade an Existing Release
 
 ```bash
-helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --reuse-values \
-  --set backend.image.tag=v1.2.3
+  --set backend.image.tag=1.2.3
 ```
 
 ### Uninstall
@@ -46,11 +46,11 @@ helm uninstall semaphore-chat
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `backend.image.repository` | Backend Docker image repository | `ghcr.io/user/semaphore-backend` |
-| `backend.image.tag` | Backend image tag | `latest` |
+| `backend.image.repository` | Backend Docker image repository | `ghcr.io/semaphore-chat/semaphore-chat-backend` |
+| `backend.image.tag` | Backend image tag | chart `appVersion` |
 | `backend.image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `frontend.image.repository` | Frontend Docker image repository | `ghcr.io/user/semaphore-frontend` |
-| `frontend.image.tag` | Frontend image tag | `latest` |
+| `frontend.image.repository` | Frontend Docker image repository | `ghcr.io/semaphore-chat/semaphore-chat-frontend` |
+| `frontend.image.tag` | Frontend image tag | chart `appVersion` |
 | `global.imagePullSecrets` | Image pull secrets for private registries | `[]` |
 
 ### Deployment Configuration
@@ -138,7 +138,7 @@ helm uninstall semaphore-chat
 Everything bundled, minimal configuration:
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.local \
   --set livekit.url=wss://livekit.example.com \
   --set livekit.apiKey=key \
@@ -182,7 +182,7 @@ spec:
 EOF
 
 # Install Semaphore Chat with TLS
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.yourdomain.com \
   --set ingress.tls.mode=cert-manager \
   --set ingress.tls.certManager.enabled=true \
@@ -201,7 +201,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
 Use your own managed PostgreSQL and Redis:
 
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set postgresql.bundled=false \
   --set postgresql.external.uri="postgresql://user:pass@postgres.example.com:5432/semaphore" \
   --set redis.bundled=false \
@@ -229,7 +229,7 @@ kubectl create secret tls semaphore-tls \
   --key=path/to/tls.key
 
 # Install with manual TLS
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.tls.mode=manual \
   --set ingress.tls.secretName=semaphore-tls \
   --set ingress.hosts[0].host=semaphore.yourdomain.com \
@@ -250,7 +250,7 @@ kubectl create secret generic semaphore-secrets \
   --from-literal=JWT_REFRESH_SECRET="$(openssl rand -base64 32)" \
   --from-literal=LIVEKIT_API_SECRET="your-livekit-secret"
 
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set secrets.existingSecret=semaphore-secrets \
   --set livekit.apiKey=$LIVEKIT_API_KEY
 ```
@@ -281,10 +281,10 @@ helm dependency update
 Update images with zero downtime:
 
 ```bash
-helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm upgrade semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --reuse-values \
-  --set backend.image.tag=v1.2.3 \
-  --set frontend.image.tag=v1.2.3
+  --set backend.image.tag=1.2.3 \
+  --set frontend.image.tag=1.2.3
 ```
 
 ## Monitoring
@@ -386,7 +386,7 @@ kubectl run postgresql-restore --rm -i --tty --restart=Never \
 
 - **Issues**: https://github.com/semaphore-chat/semaphore-chat/issues
 - **Documentation**: https://github.com/semaphore-chat/semaphore-chat
-- **Chart Version**: Check with `helm show chart oci://ghcr.io/semaphore-chat/charts/semaphore-chat`
+- **Chart Version**: Check with `helm show chart oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat`
 
 ## License
 

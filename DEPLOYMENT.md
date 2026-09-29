@@ -69,10 +69,10 @@ semaphore-chat/
 
 ```bash
 # Build backend
-docker build -f backend/Dockerfile.prod -t semaphore-backend:local ./backend
+docker build -f backend/Dockerfile.prod -t semaphore-backend:local .
 
 # Build frontend
-docker build -f frontend/Dockerfile.prod -t semaphore-frontend:local ./frontend
+docker build -f frontend/Dockerfile.prod -t semaphore-frontend:local .
 
 # Test locally
 docker run -p 3000:3000 semaphore-backend:local
@@ -117,7 +117,7 @@ docker run -p 5173:5173 -e BACKEND_URL=http://localhost:3000 semaphore-frontend:
 
 **Chart Location:**
 ```
-oci://ghcr.io/semaphore-chat/charts/semaphore-chat
+oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat
 ```
 
 ## ⎈ Helm Chart
@@ -156,7 +156,7 @@ oci://ghcr.io/semaphore-chat/charts/semaphore-chat
 
 **Quick Start:**
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set ingress.hosts[0].host=semaphore.local \
   --set livekit.url=wss://livekit.example.com \
   --set livekit.apiKey=key \
@@ -165,7 +165,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
 
 **Production:**
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --values production-values.yaml \
   --set secrets.jwtSecret="$(openssl rand -base64 32)" \
   --set secrets.jwtRefreshSecret="$(openssl rand -base64 32)"
@@ -173,7 +173,7 @@ helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
 
 **With External Database:**
 ```bash
-helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat \
+helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat \
   --set postgresql.bundled=false \
   --set postgresql.external.uri="postgresql://user:pass@host:5432/semaphore" \
   --set redis.bundled=false \
@@ -220,9 +220,9 @@ kubectl create secret generic semaphore-chat-secrets \
 **When open-sourcing:**
 1. Make repository public on GitHub
 2. Manually make packages public:
-   - Go to `github.com/semaphore-chat/semaphore-chat/pkgs/container/semaphore-backend`
+   - Go to `github.com/semaphore-chat/semaphore-chat/pkgs/container/semaphore-chat-backend`
    - Settings → Change visibility → Public
-   - Repeat for `semaphore-frontend`
+   - Repeat for `semaphore-chat-frontend`
 
 ## 📋 Pre-Deployment Checklist
 
