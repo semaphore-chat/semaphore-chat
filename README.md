@@ -539,7 +539,7 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) and the [developer docs](https://docs.s
 
 - **Kubernetes** — Deploy with the official Helm chart:
   ```bash
-  helm install semaphore-chat oci://ghcr.io/semaphore-chat/charts/semaphore-chat
+  helm install semaphore-chat oci://ghcr.io/semaphore-chat/semaphore-chat/charts/semaphore-chat
   ```
   See the [Helm chart README](./helm/semaphore-chat/README.md) and [Kubernetes guide](https://docs.semaphorechat.app/installation/kubernetes/).
 
