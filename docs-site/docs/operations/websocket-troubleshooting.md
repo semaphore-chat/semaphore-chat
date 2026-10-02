@@ -152,6 +152,12 @@ kubectl rollout restart deployment/semaphore-chat-backend -n semaphore-chat
 3. Close other apps using the device
 4. Try a different browser
 
+### Voice Works for Some Users but Not Others
+
+**Symptoms**: A user joins a voice channel and hears nothing, and nobody hears them; calls connect and then drop, and reconnecting fails; it works from home but not from the office or campus network.
+
+**Likely cause**: The user's network blocks direct WebRTC (UDP 7882, TCP 7881) and allows only 80/443. Enable LiveKit's built-in TURN server so media falls back to TLS on 443 — and, if a reverse proxy already owns 443, route TURN by SNI. See [TURN behind a reverse proxy](../installation/livekit-turn.md).
+
 ---
 
 ## Verification
@@ -173,3 +179,4 @@ kubectl rollout restart deployment/semaphore-chat-backend -n semaphore-chat
 - [ ] Tested with 2+ backend replicas
 - [ ] Tested message delivery between users on different pods
 - [ ] Tested voice/video calls with LiveKit
+- [ ] TURN configured and its relay UDP range reachable, if users may be behind firewalls that only allow 80/443
