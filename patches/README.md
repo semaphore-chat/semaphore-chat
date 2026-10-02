@@ -31,7 +31,7 @@ Electron renderer load) and the shipped TS source are patched, not the
 one-line minified UMD/CJS build, which nothing here loads.
 `frontend/src/__tests__/features/livekitClientPatch.test.ts` drives the real
 RTCEngine and fails without the patch. Upstream `main` still has the
-unpatched code (checked 2026-10-02). On a livekit-client bump: check whether
+unpatched code (checked 2026-10-02). livekit-client is pinned exactly in `frontend/package.json` and Dependabot ignores it (`.github/dependabot.yml`), so it is only ever bumped by hand. On a livekit-client bump: check whether
 upstream fixed `waitForRestarted`; if so, drop the patch once that test and
 `scripts/run-voice-e2e.sh` pass without it, otherwise port it.
 

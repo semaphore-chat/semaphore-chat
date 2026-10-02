@@ -326,7 +326,7 @@ importers:
         specifier: ^1.7.3
         version: 1.7.3
       livekit-client:
-        specifier: ^2.22.3
+        specifier: 2.22.3
         version: 2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22)
       react:
         specifier: ^19.3.0
