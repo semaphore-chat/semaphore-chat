@@ -89,7 +89,12 @@ export class LivekitAccessService {
       return null;
     }
 
-    if (!user) return 'USER_DELETED';
+    // Deletion is a hard delete and records a cutoff, so a missing user with
+    // a cutoff is a deleted account. Without one the identity was never a
+    // user (e.g. scripts/livekit-test-participant.sh's `test-bot`, minted with
+    // the API secret): we only issue tokens to existing users, and any token
+    // of an account deleted before the cutoff expired is long dead.
+    if (!user) return cutoff !== null ? 'USER_DELETED' : null;
     if (user.banned) return 'USER_BANNED';
 
     if (cutoff !== null) {

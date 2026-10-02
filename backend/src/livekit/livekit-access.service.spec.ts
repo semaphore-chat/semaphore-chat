@@ -67,10 +67,17 @@ describe('LivekitAccessService', () => {
 
     it('denies a deleted user', async () => {
       mockDatabase.user.findUnique.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(String(Date.now()));
 
       await expect(service.checkJoin('user-1', {})).resolves.toBe(
         'USER_DELETED',
       );
+    });
+
+    it('allows an identity that was never a user (no cutoff)', async () => {
+      mockDatabase.user.findUnique.mockResolvedValue(null);
+
+      await expect(service.checkJoin('test-bot', {})).resolves.toBeNull();
     });
 
     it('denies a banned user', async () => {
