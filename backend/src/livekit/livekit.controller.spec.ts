@@ -5,15 +5,18 @@ import { LivekitService } from './livekit.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { UserFactory } from '@/test-utils';
 import { CreateTokenDto } from './dto/create-token.dto';
+import { JwtService } from '@nestjs/jwt';
 
 describe('LivekitController', () => {
   let controller: LivekitController;
   let service: Mocked<LivekitService>;
   let voicePresenceService: Mocked<VoicePresenceService>;
+  let jwtService: Mocked<JwtService>;
 
   const mockUser = UserFactory.build();
   const mockRequest = {
     user: mockUser,
+    headers: {},
   } as any;
 
   beforeEach(async () => {
@@ -23,6 +26,7 @@ describe('LivekitController', () => {
     controller = unit;
     service = unitRef.get(LivekitService);
     voicePresenceService = unitRef.get(VoicePresenceService);
+    jwtService = unitRef.get(JwtService);
   });
 
   afterEach(() => {
@@ -31,6 +35,62 @@ describe('LivekitController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  describe('session binding', () => {
+    it.each([
+      ['channel', 'generateToken'],
+      ['DM', 'generateDmToken'],
+    ] as const)(
+      "binds the %s token to the caller's session (JWT sid)",
+      async (_kind, method) => {
+        jwtService.decode.mockReturnValue({ sub: mockUser.id, sid: 'sess-1' });
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer access-jwt' },
+        } as any;
+
+        await controller[method]({ roomId: 'room-1', identity: '' }, req);
+
+        expect(jwtService.decode).toHaveBeenCalledWith('access-jwt');
+        expect(service.generateToken).toHaveBeenCalledWith(
+          { roomId: 'room-1', identity: mockUser.id },
+          'sess-1',
+        );
+      },
+    );
+
+    it('reads the access token from the cookie too', async () => {
+      jwtService.decode.mockReturnValue({ sub: mockUser.id, sid: 'sess-2' });
+      const req = {
+        user: mockUser,
+        headers: {},
+        cookies: { access_token: 'cookie-jwt' },
+      } as any;
+
+      await controller.generateToken({ roomId: 'room-1', identity: '' }, req);
+
+      expect(jwtService.decode).toHaveBeenCalledWith('cookie-jwt');
+      expect(service.generateToken).toHaveBeenCalledWith(
+        { roomId: 'room-1', identity: mockUser.id },
+        'sess-2',
+      );
+    });
+
+    it('issues a token without a session when the access token has none', async () => {
+      jwtService.decode.mockReturnValue({ sub: mockUser.id });
+      const req = {
+        user: mockUser,
+        headers: { authorization: 'Bearer legacy-jwt' },
+      } as any;
+
+      await controller.generateToken({ roomId: 'room-1', identity: '' }, req);
+
+      expect(service.generateToken).toHaveBeenCalledWith(
+        { roomId: 'room-1', identity: mockUser.id },
+        undefined,
+      );
+    });
   });
 
   describe('generateToken', () => {
@@ -56,10 +116,13 @@ describe('LivekitController', () => {
       );
 
       // Identity should always be forced to req.user.id
-      expect(service.generateToken).toHaveBeenCalledWith({
-        ...createTokenDto,
-        identity: mockUser.id,
-      });
+      expect(service.generateToken).toHaveBeenCalledWith(
+        {
+          ...createTokenDto,
+          identity: mockUser.id,
+        },
+        undefined, // no session: the request carries no access token
+      );
       expect(result).toEqual(mockTokenResponse);
     });
 
@@ -127,10 +190,13 @@ describe('LivekitController', () => {
       );
 
       // Identity should always be forced to req.user.id for DM tokens too
-      expect(service.generateToken).toHaveBeenCalledWith({
-        ...createTokenDto,
-        identity: mockUser.id,
-      });
+      expect(service.generateToken).toHaveBeenCalledWith(
+        {
+          ...createTokenDto,
+          identity: mockUser.id,
+        },
+        undefined, // no session: the request carries no access token
+      );
       expect(result).toEqual(mockTokenResponse);
     });
 

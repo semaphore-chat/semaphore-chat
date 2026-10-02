@@ -9,6 +9,18 @@ import { CreateTokenDto } from './dto/create-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { LivekitException } from './exceptions/livekit.exception';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import {
+  LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  LIVEKIT_SESSION_ATTRIBUTE,
+  signIssuedAt,
+  signSessionId,
+} from './livekit-token-attributes.util';
+
+/** A LiveKit room a participant is in, with its attributes there. */
+export interface LivekitParticipantRoom {
+  roomName: string;
+  attributes: Record<string, string>;
+}
 
 @Injectable()
 export class LivekitService {
@@ -20,8 +32,15 @@ export class LivekitService {
     private readonly roomServiceClient: RoomServiceClient | null,
   ) {}
 
+  /**
+   * @param sessionId - The caller's auth session (JWT `sid`), recorded in a
+   *   signed attribute so revoking that session (logout, "revoke session")
+   *   removes this participant and nobody else. Absent for tokens issued
+   *   outside a session.
+   */
   async generateToken(
     createTokenDto: CreateTokenDto,
+    sessionId?: string,
   ): Promise<TokenResponseDto> {
     const { identity, roomId, name, ttl } = createTokenDto;
 
@@ -43,6 +62,26 @@ export class LivekitService {
         identity,
         name: name || identity,
         ttl: tokenTtl,
+        // Signed issue time and session, checked by the participant_joined
+        // webhook (LivekitAccessService) against the user's revocation
+        // cutoff and the revoked sessions, and used by session revocation
+        // to find this session's participants
+        attributes: {
+          [LIVEKIT_ISSUED_AT_ATTRIBUTE]: signIssuedAt(
+            apiSecret,
+            identity,
+            Date.now(),
+          ),
+          ...(sessionId
+            ? {
+                [LIVEKIT_SESSION_ATTRIBUTE]: signSessionId(
+                  apiSecret,
+                  identity,
+                  sessionId,
+                ),
+              }
+            : {}),
+        },
       });
 
       // Grant permissions for the room
@@ -52,7 +91,9 @@ export class LivekitService {
         canPublish: true,
         canSubscribe: true,
         canPublishData: true,
-        // Allow participants to update their own metadata (for isDeafened state)
+        // Allow participants to update their own metadata (for isDeafened
+        // state). This also lets them rewrite their attributes, which is why
+        // the issue-time attribute above is signed.
         canUpdateOwnMetadata: true,
       });
 
@@ -132,6 +173,53 @@ export class LivekitService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+  }
+
+  /**
+   * The LiveKit rooms a participant identity is currently in, asked of
+   * LiveKit itself (every room, then its participants), so it also finds
+   * rooms no presence index knows about (e.g. DM calls whose presence
+   * expired). Best effort: rooms that can't be listed are skipped, and an
+   * unreachable or unconfigured LiveKit yields [].
+   */
+  async listParticipantRooms(
+    participantIdentity: string,
+  ): Promise<LivekitParticipantRoom[]> {
+    const client = this.roomServiceClient;
+    if (!client) return [];
+
+    try {
+      const rooms = await client.listRooms();
+      const results = await Promise.allSettled(
+        rooms.map(async (room) => {
+          const participants = await client.listParticipants(room.name);
+          const participant = participants.find(
+            (p) => p.identity === participantIdentity,
+          );
+          return participant
+            ? { roomName: room.name, attributes: participant.attributes ?? {} }
+            : null;
+        }),
+      );
+      const found: LivekitParticipantRoom[] = [];
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          if (result.value) found.push(result.value);
+        } else {
+          this.logger.warn(
+            `Failed to list participants of a LiveKit room: ${String(result.reason)}`,
+          );
+        }
+      }
+      return found;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to list LiveKit rooms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return [];
     }
   }
 

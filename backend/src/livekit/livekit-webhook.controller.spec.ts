@@ -2,6 +2,9 @@ import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { LivekitWebhookController } from './livekit-webhook.controller';
 import { LivekitReplayService } from './livekit-replay.service';
+import { LivekitService } from './livekit.service';
+import { LivekitAccessService } from './livekit-access.service';
+import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
@@ -22,6 +25,9 @@ jest.mock('livekit-server-sdk', () => ({
 describe('LivekitWebhookController', () => {
   let controller: LivekitWebhookController;
   let replayService: Mocked<LivekitReplayService>;
+  let livekitService: Mocked<LivekitService>;
+  let livekitAccessService: Mocked<LivekitAccessService>;
+  let voicePresenceService: Mocked<VoicePresenceService>;
   let webhookReceiverMock: { receive: jest.Mock };
 
   const createMockRequest = (rawBody?: string) => ({
@@ -67,6 +73,10 @@ describe('LivekitWebhookController', () => {
 
     controller = unit;
     replayService = unitRef.get(LivekitReplayService);
+    livekitService = unitRef.get(LivekitService);
+    livekitAccessService = unitRef.get(LivekitAccessService);
+    voicePresenceService = unitRef.get(VoicePresenceService);
+    livekitAccessService.checkJoin.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -338,6 +348,97 @@ describe('LivekitWebhookController', () => {
 
         expect(result).toEqual({ success: true });
       });
+    });
+  });
+
+  describe('participant_joined access check', () => {
+    const attributes = { 'semaphore.issuedAt': '123.sig' };
+
+    const joined = (identity = 'user-1', kind = 0) => {
+      const body = {
+        event: LiveKitWebhookEvent.PARTICIPANT_JOINED,
+        room: { name: 'room-1' },
+        participant: { identity, name: 'User' },
+      } as LiveKitWebhookDto;
+      // The verified event (what WebhookReceiver.receive returns) carries
+      // the participant's kind and attributes
+      webhookReceiverMock.receive.mockResolvedValue({
+        event: 'participant_joined',
+        room: { name: 'room-1' },
+        participant: { identity, kind, attributes },
+      });
+      return controller.handleWebhook(
+        createMockRequest(JSON.stringify(body)) as any,
+        'Bearer token',
+        body,
+      );
+    };
+
+    it('registers presence for a normal user', async () => {
+      await expect(joined()).resolves.toEqual({ success: true });
+
+      expect(livekitAccessService.checkJoin).toHaveBeenCalledWith(
+        'user-1',
+        attributes,
+      );
+      expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+      expect(
+        voicePresenceService.handleWebhookParticipantJoined,
+      ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined);
+    });
+
+    it.each([
+      'USER_BANNED',
+      'USER_DELETED',
+      'TOKEN_REVOKED',
+      'SESSION_REVOKED',
+    ] as const)(
+      'removes the participant and skips presence (%s)',
+      async (denial) => {
+        livekitAccessService.checkJoin.mockResolvedValue(denial);
+
+        await expect(joined()).resolves.toEqual({ success: true });
+
+        expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+          'room-1',
+          'user-1',
+        );
+        expect(
+          voicePresenceService.handleWebhookParticipantJoined,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      ['ingress', 1],
+      ['egress', 2],
+    ])("leaves LiveKit's own %s participants alone", async (_kind, kind) => {
+      await joined('EG_abc', kind);
+
+      expect(livekitAccessService.checkJoin).not.toHaveBeenCalled();
+      expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    it('does not check other events', async () => {
+      const body = {
+        event: LiveKitWebhookEvent.PARTICIPANT_LEFT,
+        room: { name: 'room-1' },
+        participant: { identity: 'user-1' },
+      } as LiveKitWebhookDto;
+      webhookReceiverMock.receive.mockResolvedValue({
+        event: 'participant_left',
+      });
+
+      await controller.handleWebhook(
+        createMockRequest('{}') as any,
+        'Bearer token',
+        body,
+      );
+
+      expect(livekitAccessService.checkJoin).not.toHaveBeenCalled();
+      expect(
+        voicePresenceService.handleWebhookParticipantLeft,
+      ).toHaveBeenCalledWith('room-1', 'user-1');
     });
   });
 });

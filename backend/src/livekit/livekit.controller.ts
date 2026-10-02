@@ -53,6 +53,9 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
+import { JwtService } from '@nestjs/jwt';
+import { extractAccessToken } from '@/auth/access-token-extractor';
+import type { AccessTokenClaims } from '@/auth/token-blacklist.service';
 
 @Controller('livekit')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -65,7 +68,20 @@ export class LivekitController {
     private readonly clipLibraryService: ClipLibraryService,
     private readonly storageService: StorageService,
     private readonly voicePresenceService: VoicePresenceService,
+    private readonly jwtService: JwtService,
   ) {}
+
+  /**
+   * The auth session (`sid`) of the access token JwtAuthGuard authenticated
+   * this request with: the same token (same extractor), already verified, so
+   * decoding it is enough. Undefined for tokens without a session.
+   */
+  private sessionIdOf(req: AuthenticatedRequest): string | undefined {
+    const token = extractAccessToken(req);
+    if (!token) return undefined;
+    const claims = this.jwtService.decode<AccessTokenClaims | null>(token);
+    return typeof claims?.sid === 'string' ? claims.sid : undefined;
+  }
 
   @Post('token')
   @RequiredActions(RbacActions.JOIN_CHANNEL)
@@ -84,7 +100,7 @@ export class LivekitController {
       ...createTokenDto,
       identity: req.user.id,
     };
-    return this.livekitService.generateToken(tokenDto);
+    return this.livekitService.generateToken(tokenDto, this.sessionIdOf(req));
   }
 
   @Post('dm-token')
@@ -104,7 +120,7 @@ export class LivekitController {
       ...createTokenDto,
       identity: req.user.id,
     };
-    return this.livekitService.generateToken(tokenDto);
+    return this.livekitService.generateToken(tokenDto, this.sessionIdOf(req));
   }
 
   @Post('channels/:channelId/mute-participant')

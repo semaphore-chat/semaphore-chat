@@ -76,6 +76,8 @@ The `s3-init` sidecar creates the `semaphore-dev` bucket automatically on first 
 
 These are optional — voice and video features are disabled if not configured.
 
+The LiveKit server must be version **1.7 or later** (see [Connecting your LiveKit server](docker-compose.md#connecting-your-livekit-server)).
+
 | Variable | Description | Example |
 |----------|------------|---------|
 | `LIVEKIT_URL` | LiveKit server URL returned to the browser for WebRTC connections | `wss://your-livekit-server.com` |

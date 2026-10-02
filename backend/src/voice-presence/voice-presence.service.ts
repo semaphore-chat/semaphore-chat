@@ -697,6 +697,23 @@ export class VoicePresenceService {
   }
 
   /**
+   * Get all DM groups whose voice call the user is currently in
+   */
+  async getUserDmVoiceCalls(userId: string): Promise<string[]> {
+    try {
+      return await this.redis.smembers(
+        `${this.DM_VOICE_PRESENCE_USER_DMS_PREFIX}:${userId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to get DM voice calls for user ${userId}`,
+        error,
+      );
+      return [];
+    }
+  }
+
+  /**
    * Leave a DM voice call - called by LiveKit webhook handler
    */
   async leaveDmVoice(dmGroupId: string, userId: string): Promise<void> {

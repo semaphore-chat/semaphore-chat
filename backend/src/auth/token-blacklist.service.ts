@@ -9,6 +9,16 @@ const BLACKLIST_PREFIX = 'token:blacklist:';
 const REVOKED_SESSION_PREFIX = 'token:revoked-session:';
 const REVOKED_USER_PREFIX = 'token:revoked-user:';
 
+/**
+ * The Redis key that marks a session revoked (`revokeSession`), present for
+ * ACCESS_TOKEN_TTL_SECONDS after the revocation. Exported so other checks of
+ * a session (the LiveKit join check) can read it in the same round trip as
+ * their own keys.
+ */
+export function revokedSessionKey(sessionId: string): string {
+  return `${REVOKED_SESSION_PREFIX}${sessionId}`;
+}
+
 /** The access token claims revocation is decided on. */
 export interface AccessTokenClaims {
   /** User id. */
@@ -73,7 +83,7 @@ export class TokenBlacklistService {
    */
   async revokeSession(sessionId: string): Promise<void> {
     await this.redis.set(
-      `${REVOKED_SESSION_PREFIX}${sessionId}`,
+      revokedSessionKey(sessionId),
       '1',
       'EX',
       ACCESS_TOKEN_TTL_SECONDS,
