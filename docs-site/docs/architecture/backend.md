@@ -188,9 +188,22 @@ out of that community's rooms (`RoomSubscriptionHandler`).
 
 ### Voice Access Revocation
 
+Requires LiveKit server 1.7 or later (participant attributes).
+
 LiveKit tokens (1 hour) can't be revoked, and LiveKit only checks them at
-join. So on `PASSWORD_CHANGED` (a change or a reset), `ACCOUNT_BANNED` and
-`ACCOUNT_DELETED`, `SessionRevocationHandler`:
+join. Every token the backend issues therefore carries two attributes, each
+HMAC-signed with the LiveKit API secret and bound to the identity, because
+clients may rewrite their own attributes (they need `canUpdateOwnMetadata` to
+publish their deafen state):
+
+- `semaphore.issuedAt`: when the token was issued;
+- `semaphore.sessionId`: the auth session (the access token's `sid`) it was
+  issued to, absent if the request had none.
+
+A value that doesn't verify counts as absent.
+
+**Whole account** (`PASSWORD_CHANGED`, from a change or a reset,
+`ACCOUNT_BANNED`, `ACCOUNT_DELETED`): `SessionRevocationHandler`
 
 1. records a cutoff in Redis (`LivekitAccessService`, kept for a day): LiveKit
    tokens issued up to now are stale;
@@ -199,17 +212,18 @@ join. So on `PASSWORD_CHANGED` (a change or a reset), `ACCOUNT_BANNED` and
    `listParticipants`) merged with the voice presence index, and drops their
    voice presence.
 
-The `participant_joined` webhook is the safety net: it removes a participant
-whose user is deleted or banned, or whose token was issued before the cutoff.
-Every token carries its issue time in the `semaphore.issuedAt` attribute,
-HMAC-signed with the LiveKit API secret and bound to the identity, because
-clients may rewrite their own attributes (they need `canUpdateOwnMetadata` to
-publish their deafen state). A token without a valid issue time counts as
-stale while a cutoff is in force.
+**One session** (`LOGGED_OUT`, `SESSION_REVOKED`): only the participants whose
+session attribute names a revoked session are removed (and their presence in
+those rooms dropped). The user's other devices stay in their calls, and so do
+participants whose token records no session (issued before sessions were
+recorded).
 
-Logout and single-session revocation (`LOGGED_OUT`, `SESSION_REVOKED`) don't
-end voice on purpose: the LiveKit identity is the user, so it would kick the
-user's other devices too.
+The `participant_joined` webhook is the safety net. It removes a participant
+whose user is deleted or banned, whose token was issued before the cutoff (a
+token without a valid issue time counts as stale while a cutoff is in force),
+or whose token's session is revoked (the same Redis marker access tokens are
+checked against, `TokenBlacklistService`). That is one primary key read and
+one Redis round trip per join, and lookup errors let the join through.
 
 ### WebsocketService
 

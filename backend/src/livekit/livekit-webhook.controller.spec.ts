@@ -387,7 +387,12 @@ describe('LivekitWebhookController', () => {
       ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined);
     });
 
-    it.each(['USER_BANNED', 'USER_DELETED', 'TOKEN_REVOKED'] as const)(
+    it.each([
+      'USER_BANNED',
+      'USER_DELETED',
+      'TOKEN_REVOKED',
+      'SESSION_REVOKED',
+    ] as const)(
       'removes the participant and skips presence (%s)',
       async (denial) => {
         livekitAccessService.checkJoin.mockResolvedValue(denial);

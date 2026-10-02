@@ -26,8 +26,9 @@ const VOICE_REVOKING_REASONS: ReadonlySet<SessionTerminatedReason> = new Set([
  * Disconnects the sockets of revoked sessions (SessionRevocationService's
  * domain events). Every socket joins `user:<id>`, `session:<sid>` and
  * `token:<jti>` when it connects (SocketSessionService), and the Socket.IO
- * Redis adapter carries `disconnectSockets()` to every instance. Credential
- * changes, bans and deletions also end voice access (revokeVoiceAccess).
+ * Redis adapter carries `disconnectSockets()` to every instance. Revoked
+ * sessions also leave voice (revokeSessionsVoice); credential
+ * changes, bans and deletions end all of the user's voice (revokeVoiceAccess).
  */
 @Injectable()
 export class SessionRevocationHandler {
@@ -41,19 +42,19 @@ export class SessionRevocationHandler {
   ) {}
 
   /**
-   * Logout and single-session revocation (LOGGED_OUT, SESSION_REVOKED)
-   * deliberately leave voice alone: a LiveKit identity is the user, not the
-   * session, so removing it would kick the user's other devices out of their
-   * calls too. Credential changes go through onUserSessionsEnded, which does
-   * end voice.
+   * Logout and single-session revocation (LOGGED_OUT, SESSION_REVOKED, or
+   * any other reason this event carries) end the revoked sessions' sockets
+   * and their voice: only the LiveKit participants whose token was issued to
+   * one of those sessions are removed (revokeSessionsVoice), so the user's
+   * other devices stay in their calls.
    */
   @OnEvent(RoomEvents.AUTH_SESSIONS_REVOKED)
-  onSessionsRevoked({
+  async onSessionsRevoked({
     userId,
     sessionIds,
     tokenIds,
     reason,
-  }: AuthSessionsRevokedEvent): void {
+  }: AuthSessionsRevokedEvent): Promise<void> {
     for (const sessionId of sessionIds) {
       this.websocketService.terminateSessionsInRoom(
         RoomName.session(sessionId),
@@ -69,6 +70,63 @@ export class SessionRevocationHandler {
     this.logger.debug(
       `Disconnected sockets of ${sessionIds.length} session(s) and ${tokenIds.length} token(s) of user ${userId} (${reason})`,
     );
+
+    // LiveKit tokens are bound to sessions, not access tokens: tokenIds
+    // (access tokens without a session) have no participant to find
+    if (sessionIds.length > 0) {
+      await this.revokeSessionsVoice(userId, sessionIds, reason);
+    }
+  }
+
+  /**
+   * Remove the user's LiveKit participants that joined with a token issued
+   * to one of the revoked sessions (its signed session attribute, see
+   * LivekitAccessService.sessionOf), and drop their voice presence in those
+   * rooms. Participants of the user's other sessions, and those whose token
+   * records no session (issued before sessions were recorded), stay. The
+   * participant_joined webhook removes a later rejoin with such a token.
+   * Best effort: logged, never thrown.
+   */
+  private async revokeSessionsVoice(
+    userId: string,
+    sessionIds: string[],
+    reason: SessionTerminatedReason,
+  ): Promise<void> {
+    try {
+      const revoked = new Set(sessionIds);
+      const rooms = await this.livekitService.listParticipantRooms(userId);
+      const roomNames = rooms
+        .filter(({ attributes }) => {
+          const sessionId = this.livekitAccessService.sessionOf(
+            userId,
+            attributes,
+          );
+          return sessionId !== null && revoked.has(sessionId);
+        })
+        .map(({ roomName }) => roomName);
+
+      await Promise.allSettled(
+        roomNames.map(async (roomName) => {
+          await this.livekitService.removeParticipant(roomName, userId);
+          // Channel or DM call, whichever the room is
+          await this.voicePresenceService.handleWebhookParticipantLeft(
+            roomName,
+            userId,
+          );
+        }),
+      );
+
+      if (roomNames.length > 0) {
+        this.logger.log(
+          `Removed user ${userId} from ${roomNames.length} voice room(s) of revoked session(s) (${reason})`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to end the voice of revoked sessions of user ${userId}`,
+        error,
+      );
+    }
   }
 
   @OnEvent(RoomEvents.AUTH_USER_SESSIONS_ENDED)
@@ -122,7 +180,11 @@ export class SessionRevocationHandler {
         this.voicePresenceService.getUserVoiceChannels(userId),
         this.voicePresenceService.getUserDmVoiceCalls(userId),
       ]);
-      const rooms = new Set([...livekitRooms, ...channelIds, ...dmGroupIds]);
+      const rooms = new Set([
+        ...livekitRooms.map(({ roomName }) => roomName),
+        ...channelIds,
+        ...dmGroupIds,
+      ]);
 
       await Promise.allSettled([
         ...[...rooms].map((room) =>

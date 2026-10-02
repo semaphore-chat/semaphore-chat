@@ -3,14 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DatabaseService } from '@/database/database.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
+import { revokedSessionKey } from '@/auth/token-blacklist.service';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  LIVEKIT_SESSION_ATTRIBUTE,
   verifyIssuedAt,
-} from './livekit-token-issued-at.util';
+  verifySessionId,
+} from './livekit-token-attributes.util';
 
 /** Why a participant may not stay in a LiveKit room. */
 export type LivekitJoinDenial =
-  'USER_DELETED' | 'USER_BANNED' | 'TOKEN_REVOKED';
+  'USER_DELETED' | 'USER_BANNED' | 'TOKEN_REVOKED' | 'SESSION_REVOKED';
 
 const TOKEN_CUTOFF_PREFIX = 'livekit:token_cutoff:';
 
@@ -57,10 +60,33 @@ export class LivekitAccessService {
   }
 
   /**
+   * The auth session a participant's token was issued to, from its signed
+   * session attribute; null when the attribute is missing (tokens issued
+   * before sessions were recorded, or outside a session) or isn't validly
+   * signed for this identity.
+   */
+  sessionOf(
+    identity: string,
+    attributes: Record<string, string> | undefined,
+  ): string | null {
+    const secret = this.configService.get<string>('LIVEKIT_API_SECRET');
+    if (!secret) return null;
+    return verifySessionId(
+      secret,
+      identity,
+      attributes?.[LIVEKIT_SESSION_ATTRIBUTE],
+    );
+  }
+
+  /**
    * Whether a participant that just joined must be removed: the user is
-   * deleted or banned, or their token was issued before a revocation cutoff
-   * (or carries no valid issue time while a cutoff is in force). One primary
-   * key lookup and one Redis GET, in parallel.
+   * deleted or banned, their token was issued before a revocation cutoff (or
+   * carries no valid issue time while a cutoff is in force), or the session
+   * the token was issued to has been revoked (logout, "revoke session"). One
+   * primary key lookup and one Redis round trip, in parallel.
+   *
+   * A token without a valid session attribute isn't denied for that alone:
+   * tokens issued before sessions were recorded have none.
    *
    * Fails open (null) when the lookups fail: this runs on every join, and a
    * database or Redis blip must not kick everyone out of voice. Revocation
@@ -70,15 +96,21 @@ export class LivekitAccessService {
     identity: string,
     attributes: Record<string, string> | undefined,
   ): Promise<LivekitJoinDenial | null> {
+    const sessionId = this.sessionOf(identity, attributes);
+    const cutoffKey = `${TOKEN_CUTOFF_PREFIX}${identity}`;
+
     let user: { banned: boolean } | null;
     let cutoff: string | null;
+    let sessionRevoked: string | null;
     try {
-      [user, cutoff] = await Promise.all([
+      [user, [cutoff, sessionRevoked]] = await Promise.all([
         this.databaseService.user.findUnique({
           where: { id: identity },
           select: { banned: true },
         }),
-        this.redis.get(`${TOKEN_CUTOFF_PREFIX}${identity}`),
+        sessionId
+          ? this.redis.mget(cutoffKey, revokedSessionKey(sessionId))
+          : this.redis.get(cutoffKey).then((value) => [value, null]),
       ]);
     } catch (error) {
       this.logger.error(
@@ -111,6 +143,11 @@ export class LivekitAccessService {
         return 'TOKEN_REVOKED';
       }
     }
+
+    // The revoked-session marker lives as long as an access token (1h), as
+    // long as the LiveKit tokens issued to that session before it was
+    // revoked (CreateTokenDto caps their ttl at 3600s)
+    if (sessionRevoked !== null) return 'SESSION_REVOKED';
 
     return null;
   }

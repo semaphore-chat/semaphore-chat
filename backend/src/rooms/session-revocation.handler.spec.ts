@@ -26,6 +26,10 @@ describe('SessionRevocationHandler', () => {
     voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
     voicePresenceService.getUserDmVoiceCalls.mockResolvedValue([]);
     livekitService.listParticipantRooms.mockResolvedValue([]);
+    // The fake "verified" session is the `sid` attribute, if any
+    livekitAccessService.sessionOf.mockImplementation(
+      (_identity, attributes) => attributes?.sid ?? null,
+    );
   });
 
   afterEach(() => {
@@ -33,8 +37,8 @@ describe('SessionRevocationHandler', () => {
   });
 
   describe('onSessionsRevoked', () => {
-    it("ends the sockets of each session and token, not the user's others", () => {
-      handler.onSessionsRevoked({
+    it("ends the sockets of each session and token, not the user's others", async () => {
+      await handler.onSessionsRevoked({
         userId: 'user-1',
         sessionIds: ['s-1', 's-2'],
         tokenIds: ['jti-1'],
@@ -49,24 +53,112 @@ describe('SessionRevocationHandler', () => {
     });
 
     it.each(['LOGGED_OUT', 'SESSION_REVOKED'] as const)(
-      "leaves voice alone on %s (the LiveKit identity is the user's, not the session's)",
-      (reason) => {
-        handler.onSessionsRevoked({
+      "removes only the revoked session's voice participants (%s)",
+      async (reason) => {
+        livekitService.listParticipantRooms.mockResolvedValue([
+          // Session A (revoked) in a channel and a DM call
+          { roomName: 'voice-1', attributes: { sid: 's-A' } },
+          { roomName: 'dm-1', attributes: { sid: 's-A' } },
+          // Session B (another device) stays
+          { roomName: 'voice-2', attributes: { sid: 's-B' } },
+          // No (or a forged) session attribute: can't tell, stays
+          { roomName: 'voice-3', attributes: {} },
+        ]);
+
+        await handler.onSessionsRevoked({
           userId: 'user-1',
-          sessionIds: ['s-1'],
+          sessionIds: ['s-A'],
           tokenIds: [],
           reason,
         });
 
+        expect(livekitService.listParticipantRooms).toHaveBeenCalledWith(
+          'user-1',
+        );
+        expect(livekitService.removeParticipant.mock.calls).toEqual([
+          ['voice-1', 'user-1'],
+          ['dm-1', 'user-1'],
+        ]);
+        // Presence only where a participant was removed
+        expect(
+          voicePresenceService.handleWebhookParticipantLeft.mock.calls,
+        ).toEqual([
+          ['voice-1', 'user-1'],
+          ['dm-1', 'user-1'],
+        ]);
+        // Not the user-wide path
         expect(
           livekitAccessService.revokeTokensIssuedBefore,
         ).not.toHaveBeenCalled();
-        expect(livekitService.listParticipantRooms).not.toHaveBeenCalled();
-        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
         expect(voicePresenceService.leaveVoiceChannel).not.toHaveBeenCalled();
-        expect(voicePresenceService.leaveDmVoice).not.toHaveBeenCalled();
       },
     );
+
+    it('checks the session attribute against the user identity', async () => {
+      const attributes = { sid: 's-A' };
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes },
+      ]);
+
+      await handler.onSessionsRevoked({
+        userId: 'user-1',
+        sessionIds: ['s-A'],
+        tokenIds: [],
+        reason: 'LOGGED_OUT',
+      });
+
+      expect(livekitAccessService.sessionOf).toHaveBeenCalledWith(
+        'user-1',
+        attributes,
+      );
+    });
+
+    it('does not look up LiveKit when only access tokens (no session) are revoked', async () => {
+      await handler.onSessionsRevoked({
+        userId: 'user-1',
+        sessionIds: [],
+        tokenIds: ['jti-1'],
+        reason: 'LOGGED_OUT',
+      });
+
+      expect(livekitService.listParticipantRooms).not.toHaveBeenCalled();
+    });
+
+    it('never throws when voice cleanup fails', async () => {
+      livekitService.listParticipantRooms.mockRejectedValue(
+        new Error('LiveKit down'),
+      );
+
+      await expect(
+        handler.onSessionsRevoked({
+          userId: 'user-1',
+          sessionIds: ['s-A'],
+          tokenIds: [],
+          reason: 'SESSION_REVOKED',
+        }),
+      ).resolves.toBeUndefined();
+      expect(websocketService.terminateSessionsInRoom).toHaveBeenCalled();
+    });
+
+    it('keeps going when one removal or presence cleanup fails', async () => {
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: { sid: 's-A' } },
+        { roomName: 'dm-1', attributes: { sid: 's-A' } },
+      ]);
+      voicePresenceService.handleWebhookParticipantLeft.mockRejectedValueOnce(
+        new Error('Redis down'),
+      );
+
+      await expect(
+        handler.onSessionsRevoked({
+          userId: 'user-1',
+          sessionIds: ['s-A'],
+          tokenIds: [],
+          reason: 'LOGGED_OUT',
+        }),
+      ).resolves.toBeUndefined();
+      expect(livekitService.removeParticipant).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('onUserSessionsEnded', () => {
@@ -88,8 +180,8 @@ describe('SessionRevocationHandler', () => {
         // LiveKit knows a DM call presence lost; presence knows a channel
         // LiveKit can't list right now
         livekitService.listParticipantRooms.mockResolvedValue([
-          'voice-1',
-          'dm-expired',
+          { roomName: 'voice-1', attributes: {} },
+          { roomName: 'dm-expired', attributes: {} },
         ]);
         voicePresenceService.getUserVoiceChannels.mockResolvedValue([
           'voice-1',
@@ -123,7 +215,9 @@ describe('SessionRevocationHandler', () => {
     );
 
     it('sets the token cutoff before removing the user', async () => {
-      livekitService.listParticipantRooms.mockResolvedValue(['voice-1']);
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'voice-1', attributes: {} },
+      ]);
 
       await handler.onUserSessionsEnded({
         userId: 'user-1',
@@ -142,7 +236,9 @@ describe('SessionRevocationHandler', () => {
       livekitAccessService.revokeTokensIssuedBefore.mockRejectedValue(
         new Error('Redis down'),
       );
-      livekitService.listParticipantRooms.mockResolvedValue(['dm-1']);
+      livekitService.listParticipantRooms.mockResolvedValue([
+        { roomName: 'dm-1', attributes: {} },
+      ]);
 
       await handler.onUserSessionsEnded({
         userId: 'user-1',

@@ -7,8 +7,10 @@ import { AccessToken } from 'livekit-server-sdk';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  LIVEKIT_SESSION_ATTRIBUTE,
   verifyIssuedAt,
-} from './livekit-token-issued-at.util';
+  verifySessionId,
+} from './livekit-token-attributes.util';
 
 // Mock the livekit-server-sdk
 jest.mock('livekit-server-sdk', () => {
@@ -105,6 +107,33 @@ describe('LivekitService', () => {
       expect(issuedAt).not.toBeNull();
       expect(issuedAt).toBeGreaterThanOrEqual(before);
       expect(issuedAt).toBeLessThanOrEqual(after);
+    });
+
+    it("signs the caller's session into the token attributes", async () => {
+      await service.generateToken(
+        { identity: 'user-123', roomId: 'room-456' },
+        'session-1',
+      );
+
+      const options = (AccessToken as jest.Mock).mock.calls[0][2] as {
+        attributes: Record<string, string>;
+      };
+      expect(
+        verifySessionId(
+          mockConfig.LIVEKIT_API_SECRET,
+          'user-123',
+          options.attributes[LIVEKIT_SESSION_ATTRIBUTE],
+        ),
+      ).toBe('session-1');
+    });
+
+    it('omits the session attribute without a session', async () => {
+      await service.generateToken({ identity: 'user-123', roomId: 'room-456' });
+
+      const options = (AccessToken as jest.Mock).mock.calls[0][2] as {
+        attributes: Record<string, string>;
+      };
+      expect(options.attributes).not.toHaveProperty(LIVEKIT_SESSION_ATTRIBUTE);
     });
 
     it('should generate token with custom TTL', async () => {
@@ -451,13 +480,16 @@ describe('LivekitService', () => {
           Promise.resolve(
             room === 'other'
               ? [{ identity: 'user-2' }]
-              : [{ identity: 'user-2' }, { identity: 'user-1' }],
+              : [
+                  { identity: 'user-2', attributes: { a: 'other' } },
+                  { identity: 'user-1', attributes: { a: room } },
+                ],
           ),
       );
 
       await expect(service.listParticipantRooms('user-1')).resolves.toEqual([
-        'voice-1',
-        'dm-1',
+        { roomName: 'voice-1', attributes: { a: 'voice-1' } },
+        { roomName: 'dm-1', attributes: { a: 'dm-1' } },
       ]);
     });
 
@@ -474,7 +506,7 @@ describe('LivekitService', () => {
       );
 
       await expect(service.listParticipantRooms('user-1')).resolves.toEqual([
-        'voice-1',
+        { roomName: 'voice-1', attributes: {} },
       ]);
     });
 

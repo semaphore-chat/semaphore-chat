@@ -219,6 +219,9 @@ Same pattern — bundled or external:
 
 Semaphore Chat requires a LiveKit server for voice and video. The chart doesn't bundle LiveKit — use [LiveKit Cloud](https://cloud.livekit.io/) or a [self-hosted deployment](https://docs.livekit.io/home/self-hosting/deployment/).
 
+!!! warning "LiveKit server 1.7 or later required"
+    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the bundled `livekit/livekit-server:latest` image qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
+
 ```yaml
 livekit:
   url: "wss://your-livekit-server.com"

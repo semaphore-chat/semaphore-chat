@@ -6,15 +6,17 @@ import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { createMockConfigService } from '@/test-utils';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  LIVEKIT_SESSION_ATTRIBUTE,
   signIssuedAt,
-} from './livekit-token-issued-at.util';
+  signSessionId,
+} from './livekit-token-attributes.util';
 
 describe('LivekitAccessService', () => {
   let service: LivekitAccessService;
   const secret = 'test-api-secret';
   const cutoff = 1_760_000_000_000;
 
-  const mockRedis = { get: jest.fn(), set: jest.fn() };
+  const mockRedis = { get: jest.fn(), set: jest.fn(), mget: jest.fn() };
   const mockDatabase = { user: { findUnique: jest.fn() } };
 
   const attrs = (identity: string, issuedAtMs: number) => ({
@@ -24,6 +26,7 @@ describe('LivekitAccessService', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     mockRedis.get.mockResolvedValue(null);
+    mockRedis.mget.mockResolvedValue([null, null]);
     mockDatabase.user.findUnique.mockResolvedValue({ banned: false });
 
     const { unit } = await TestBed.solitary(LivekitAccessService)
@@ -133,6 +136,84 @@ describe('LivekitAccessService', () => {
       mockDatabase.user.findUnique.mockRejectedValue(new Error('db down'));
 
       await expect(service.checkJoin('user-1', {})).resolves.toBeNull();
+    });
+  });
+
+  describe('sessions', () => {
+    const sessionAttrs = (identity: string, sessionId: string) => ({
+      [LIVEKIT_SESSION_ATTRIBUTE]: signSessionId(secret, identity, sessionId),
+    });
+
+    it('reads the session of a validly signed attribute', () => {
+      expect(service.sessionOf('user-1', sessionAttrs('user-1', 's-A'))).toBe(
+        's-A',
+      );
+    });
+
+    it('treats a forged or copied session attribute as absent', () => {
+      expect(
+        service.sessionOf('user-1', {
+          [LIVEKIT_SESSION_ATTRIBUTE]: 's-A.forged',
+        }),
+      ).toBeNull();
+      expect(
+        service.sessionOf('user-1', sessionAttrs('user-2', 's-A')),
+      ).toBeNull();
+      expect(service.sessionOf('user-1', undefined)).toBeNull();
+    });
+
+    it("denies a revoked session's token (one Redis round trip)", async () => {
+      mockRedis.mget.mockResolvedValue([null, '1']);
+
+      await expect(
+        service.checkJoin('user-1', sessionAttrs('user-1', 's-A')),
+      ).resolves.toBe('SESSION_REVOKED');
+      expect(mockRedis.mget).toHaveBeenCalledWith(
+        'livekit:token_cutoff:user-1',
+        'token:revoked-session:s-A',
+      );
+      expect(mockRedis.get).not.toHaveBeenCalled();
+    });
+
+    it("allows an active session's token", async () => {
+      await expect(
+        service.checkJoin('user-1', sessionAttrs('user-1', 's-B')),
+      ).resolves.toBeNull();
+    });
+
+    it('allows a token without a session attribute', async () => {
+      await expect(
+        service.checkJoin('user-1', attrs('user-1', cutoff)),
+      ).resolves.toBeNull();
+      expect(mockRedis.mget).not.toHaveBeenCalled();
+    });
+
+    it('treats a forged session attribute as absent (allowed, nothing looked up)', async () => {
+      await expect(
+        service.checkJoin('user-1', {
+          [LIVEKIT_SESSION_ATTRIBUTE]: 's-A.forged',
+        }),
+      ).resolves.toBeNull();
+      expect(mockRedis.mget).not.toHaveBeenCalled();
+    });
+
+    it('still applies the user-wide cutoff to a token with an active session', async () => {
+      mockRedis.mget.mockResolvedValue([String(cutoff), null]);
+
+      await expect(
+        service.checkJoin('user-1', {
+          ...sessionAttrs('user-1', 's-A'),
+          ...attrs('user-1', cutoff - 1),
+        }),
+      ).resolves.toBe('TOKEN_REVOKED');
+    });
+
+    it('fails open when Redis fails', async () => {
+      mockRedis.mget.mockRejectedValue(new Error('Redis down'));
+
+      await expect(
+        service.checkJoin('user-1', sessionAttrs('user-1', 's-A')),
+      ).resolves.toBeNull();
     });
   });
 });

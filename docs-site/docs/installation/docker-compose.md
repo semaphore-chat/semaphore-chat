@@ -608,6 +608,9 @@ docker compose down -v
 
 If you chose the "Bring your own LiveKit" setup, follow these steps to enable voice and video.
 
+!!! warning "LiveKit server 1.7 or later required"
+    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the bundled `livekit/livekit-server:latest` image qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
+
 ### LiveKit Cloud
 
 1. **Sign up** at [LiveKit Cloud](https://cloud.livekit.io/) and create a project
