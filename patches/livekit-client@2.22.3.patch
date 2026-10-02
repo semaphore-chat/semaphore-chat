@@ -1,0 +1,33 @@
+diff --git a/dist/livekit-client.esm.mjs b/dist/livekit-client.esm.mjs
+index 0bdf98540d93d7deb581737dca7afb299308d307..ccbbb8f192bc58d1f0a5b3ec293eef637cdbdade 100644
+--- a/dist/livekit-client.esm.mjs
++++ b/dist/livekit-client.esm.mjs
+@@ -24526,7 +24526,12 @@ class RTCEngine extends eventsExports.EventEmitter {
+     };
+     this.waitForRestarted = () => {
+       return new Promise((resolve, reject) => {
+-        if (this.pcState === PCState.Connected) {
++        // semaphore-chat patch (patches/README.md): during a full reconnect the new PC can be
++        // connected while restartConnection() is still running (its minReconnectWait sleep).
++        // Resolving then made Room declare itself Reconnected and flush its event buffer while
++        // engine.pendingReconnect was still true, so RoomEvents emitted in that window
++        // (TrackSubscribed among them) were buffered and never emitted. Wait for Restarted.
++        if (this.pcState === PCState.Connected && !this.attemptingReconnect) {
+           resolve();
+         }
+         const onRestarted = () => {
+diff --git a/src/room/RTCEngine.ts b/src/room/RTCEngine.ts
+index b640f4316a53b4c4f4211849b78457f425f8849c..6ec1e2faa8f19df80f843ab3182b213cb2609222 100644
+--- a/src/room/RTCEngine.ts
++++ b/src/room/RTCEngine.ts
+@@ -1554,7 +1554,9 @@ export default class RTCEngine extends (EventEmitter as new () => TypedEventEmit
+ 
+   waitForRestarted = () => {
+     return new Promise<void>((resolve, reject) => {
+-      if (this.pcState === PCState.Connected) {
++      // semaphore-chat patch: don't resolve while a reconnect attempt is still running
++      // (see dist/livekit-client.esm.mjs and patches/README.md).
++      if (this.pcState === PCState.Connected && !this.attemptingReconnect) {
+         resolve();
+       }
+       const onRestarted = () => {

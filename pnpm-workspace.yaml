@@ -11,9 +11,10 @@ packages:
 # and closed as "no longer updatable". Needs pnpm >= 10.16.
 #
 # CI's `--frozen-lockfile` installs don't resolve, so they never check this.
-# backend/Dockerfile and frontend/Dockerfile run a plain `pnpm install` on a
-# partial workspace, which re-resolves: every version the lockfile pins must
-# be >= 3 days old or listed below, or those image builds fail.
+# frontend/Dockerfile runs a plain `pnpm install` on a partial workspace,
+# which re-resolves: every version the lockfile pins must be >= 3 days old
+# or listed below, or that image build fails. (backend/Dockerfile installs
+# --frozen-lockfile since the livekit-client patch; see patches/README.md.)
 #
 # Dependabot doesn't read this setting (dependabot-core#13405), so its npm
 # entry in .github/dependabot.yml has a 4-day `cooldown` to stay behind this

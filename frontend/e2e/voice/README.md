@@ -32,6 +32,16 @@ Host prereqs (the runner handles these if missing): the dev/e2e stack keeps
 mismatched global playwright that can't see the `voice` project) and
 `pnpm exec playwright install chromium`.
 
+**No Node on the host?** `VOICE_E2E_PLAYWRIGHT=docker scripts/run-voice-e2e.sh`
+(same arguments, except `--headed`) runs that Playwright step in the
+`mcr.microsoft.com/playwright` image matching the lockfile's `@playwright/test`,
+with `--network host`: the container's `localhost` is the host's, so the app
+and LiveKit are reached exactly as from a host browser, and no Docker network
+is created. It runs as your uid, installs the frontend's `node_modules` into
+the checkout and builds `shared/dist` (both in the container), and caches
+corepack and the pnpm store in `~/.cache/semaphore-voice-e2e`. Failure
+artifacts land in `frontend/test-results/voice/`.
+
 ## How it works (and the gotchas it took to get here)
 
 - **LiveKit / backend / frontend run in Docker** (the e2e stack + a real
@@ -209,8 +219,10 @@ both the UI export and the tests get it.
   it once at connect, which can race the page becoming a stable secure context in
   a fresh headless tab. Mirrors a user unmuting; the product's join-time enable
   is unchanged.
-- Playwright in the container vs host: `run-voice-e2e.sh` and CI run it on the
-  host, and that is the path they keep tested. A fully-in-Docker run works
+- Playwright in the container vs host: CI and `run-voice-e2e.sh` run the
+  browser against the host's `localhost` (on the runner, or in a
+  `--network host` container with `VOICE_E2E_PLAYWRIGHT=docker`), and that is
+  the path they keep tested. A fully-in-Docker run on `semaphore-test` works
   too (checked by hand with `mute.spec.ts`: 3 passed, with the stack on
   `semaphore-test`): the compose `playwright` service shares the frontend
   container's network namespace, so the app is `http://localhost:5173` (a
