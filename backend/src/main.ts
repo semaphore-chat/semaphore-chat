@@ -8,6 +8,7 @@ import helmet from 'helmet';
 import { TimingInterceptor } from './timing/timing.interceptor';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
+import { configureBodyParsers } from './common/http/body-parsers';
 
 const KNOWN_WEAK_SECRETS = [
   'some long elaborate secret that you really need to change',
@@ -69,7 +70,10 @@ async function bootstrap() {
       json: true,
     }),
     bufferLogs: true,
+    // req.rawBody: LiveKit webhook signatures cover the exact bytes received
+    rawBody: true,
   });
+  configureBodyParsers(app);
 
   // Trust proxy so req.ip resolves the real client IP behind a reverse proxy.
   // https://expressjs.com/en/guide/behind-proxies.html

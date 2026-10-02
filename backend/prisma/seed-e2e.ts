@@ -5,7 +5,7 @@
  * for E2E testing. Run with: npx ts-node prisma/seed-e2e.ts
  */
 
-import { PrismaClient, InstanceRole } from '@prisma/client';
+import { PrismaClient, InstanceRole, RbacActions } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
 
@@ -57,6 +57,59 @@ const TEST_USERS = [
     displayName: 'Test User 3',
     role: InstanceRole.OWNER,
   },
+  // Voice access revocation (frontend/e2e/voice/revocation.spec.ts). Each
+  // scenario bans, re-passwords or revokes the sessions of its OWN user, so
+  // the users every other spec shares are never touched. Ban targets must be
+  // USERs (an instance OWNER can't be banned); they join voice through the
+  // community Member role below.
+  {
+    username: 'voiceban',
+    email: 'voiceban@test.local',
+    password: 'Test123!@#',
+    displayName: 'Voice Ban',
+    role: InstanceRole.USER,
+  },
+  {
+    username: 'voicedmban',
+    email: 'voicedmban@test.local',
+    password: 'Test123!@#',
+    displayName: 'Voice DM Ban',
+    role: InstanceRole.USER,
+  },
+  {
+    username: 'voicesession',
+    email: 'voicesession@test.local',
+    password: 'Test123!@#',
+    displayName: 'Voice Session',
+    role: InstanceRole.OWNER,
+  },
+  {
+    username: 'voicepassword',
+    email: 'voicepassword@test.local',
+    password: 'Test123!@#',
+    displayName: 'Voice Password',
+    role: InstanceRole.OWNER,
+  },
+];
+
+/**
+ * USERs that get the community Member role (the defaults in
+ * src/roles/default-roles.config.ts) in Test Community, so they can read it
+ * and join its voice channels. Other USERs (e.g. `member`) get no role.
+ */
+const COMMUNITY_MEMBER_ROLE_USERS = ['voiceban', 'voicedmban'];
+const MEMBER_ROLE_ACTIONS: RbacActions[] = [
+  RbacActions.READ_COMMUNITY,
+  RbacActions.READ_CHANNEL,
+  RbacActions.READ_MEMBER,
+  RbacActions.READ_MESSAGE,
+  RbacActions.CREATE_MESSAGE,
+  RbacActions.JOIN_CHANNEL,
+  RbacActions.CREATE_REACTION,
+  RbacActions.DELETE_REACTION,
+  RbacActions.READ_ALIAS_GROUP,
+  RbacActions.READ_ALIAS_GROUP_MEMBER,
+  RbacActions.READ_SOUNDBOARD_SOUND,
 ];
 
 // Test communities
@@ -78,6 +131,10 @@ const TEST_COMMUNITIES = [
       { name: 'voice-matrix', type: 'VOICE' },
       { name: 'voice-perms', type: 'VOICE' },
       { name: 'voice-soundboard', type: 'VOICE' },
+      { name: 'voice-revoke-ban', type: 'VOICE' },
+      { name: 'voice-revoke-session', type: 'VOICE' },
+      { name: 'voice-revoke-session-2', type: 'VOICE' },
+      { name: 'voice-revoke-password', type: 'VOICE' },
     ],
   },
   {
@@ -163,6 +220,28 @@ async function main() {
     }
     console.log(`     → Added ${Object.keys(users).length} members`);
 
+    if (communityData.name === 'Test Community') {
+      const memberRole = await prisma.role.create({
+        data: {
+          name: 'Member',
+          communityId: community.id,
+          isDefault: true,
+          position: 100,
+          actions: MEMBER_ROLE_ACTIONS,
+        },
+      });
+      await prisma.userRoles.createMany({
+        data: COMMUNITY_MEMBER_ROLE_USERS.map((username) => ({
+          userId: users[username],
+          communityId: community.id,
+          roleId: memberRole.id,
+        })),
+      });
+      console.log(
+        `     → Gave the Member role to ${COMMUNITY_MEMBER_ROLE_USERS.join(', ')}`,
+      );
+    }
+
     // Create channels
     for (const channelData of communityData.channels) {
       const channel = await prisma.channel.create({
@@ -221,6 +300,18 @@ async function main() {
     ],
   });
   console.log('   ✓ Created DM group between testuser and testuser2');
+
+  // DM call ban scenario (frontend/e2e/voice/revocation.spec.ts)
+  const banDmGroup = await prisma.directMessageGroup.create({
+    data: { isGroup: false },
+  });
+  await prisma.directMessageGroupMember.createMany({
+    data: [
+      { groupId: banDmGroup.id, userId: users['testuser'] },
+      { groupId: banDmGroup.id, userId: users['voicedmban'] },
+    ],
+  });
+  console.log('   ✓ Created DM group between testuser and voicedmban');
 
   console.log('\n✅ E2E database seeding complete!\n');
   console.log('Test credentials:');

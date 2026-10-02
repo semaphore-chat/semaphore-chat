@@ -32,6 +32,12 @@ services:
           address: ${E2E_STACK:-semaphore-e2e}-redis:6379
         keys:
           devkey: secret-that-is-at-least-32-characters-long
+        # participant_joined/left drive voice presence and remove revoked
+        # participants (LivekitAccessService; revocation.spec.ts)
+        webhook:
+          api_key: devkey
+          urls:
+            - http://${E2E_STACK:-semaphore-e2e}-backend:3000/api/livekit/webhook
     ports:
       - "7882:7880"          # client ws (signaling)
       - "7883:7881"          # rtc tcp

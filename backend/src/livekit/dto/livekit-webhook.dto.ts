@@ -8,6 +8,19 @@ import {
 import { Type } from 'class-transformer';
 
 /**
+ * An int64 field of a LiveKit webhook. LiveKit serializes its events with
+ * protojson, which writes 64-bit integers as JSON strings
+ * (`"createdAt": "1790979362"`): convert them to numbers before validating
+ * them as such, or every real webhook fails validation (400).
+ */
+function Int64(): PropertyDecorator {
+  return (target, propertyKey) => {
+    Type(() => Number)(target, propertyKey);
+    IsNumber()(target, propertyKey);
+  };
+}
+
+/**
  * LiveKit Webhook Event Types
  *
  * See: https://docs.livekit.io/home/server/webhooks/#events
@@ -55,7 +68,7 @@ export class LiveKitRoomInfo {
   numParticipants?: number;
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   creationTime?: number; // Unix timestamp in nanoseconds
 }
 
@@ -79,7 +92,7 @@ export class LiveKitParticipantInfo {
   metadata?: string; // JSON metadata (for isDeafened, etc.)
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   joinedAt?: number; // Unix timestamp in nanoseconds
 }
 
@@ -98,15 +111,15 @@ export class LiveKitEgressInfo {
   error?: string;
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   startedAt?: number; // Unix timestamp in nanoseconds
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   endedAt?: number; // Unix timestamp in nanoseconds
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   updatedAt?: number; // Unix timestamp in nanoseconds
 }
 
@@ -125,7 +138,7 @@ export class LiveKitWebhookDto {
   id?: string; // Webhook event ID
 
   @IsOptional()
-  @IsNumber()
+  @Int64()
   createdAt?: number; // Unix timestamp when webhook was created
 
   // Room info (present in room_* and participant_* events)
