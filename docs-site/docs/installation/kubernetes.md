@@ -232,6 +232,9 @@ livekit:
 
 Configure your LiveKit server to send webhooks to `https://your-domain.com/api/livekit/webhook` for voice presence tracking.
 
+!!! tip "Users on restricted networks can't join voice"
+    Direct WebRTC uses UDP 7882 (and TCP 7881). If some users are behind firewalls that only allow 80/443, enable LiveKit's built-in TURN server and expose its relay UDP range on the LoadBalancer. See [TURN behind a reverse proxy](livekit-turn.md).
+
 !!! note "Replay capture with LiveKit Cloud"
     LiveKit Cloud writes egress output to cloud storage (S3/GCS/Azure Blob), which Semaphore Chat can't read from yet. Replay capture is not available with LiveKit Cloud until cloud storage support is added — voice and video calls work normally. See [#227](https://github.com/semaphore-chat/semaphore-chat/issues/227) for progress.
 

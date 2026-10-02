@@ -642,6 +642,9 @@ If you chose the "Bring your own LiveKit" setup, follow these steps to enable vo
 !!! tip "When browser and backend URLs differ"
     If the backend can't reach LiveKit at the same URL the browser uses (e.g., different networks), set `LIVEKIT_INTERNAL_URL` to the backend-reachable address. The backend uses this for server-to-server API calls while `LIVEKIT_URL` is returned to browsers. See the [Configuration](configuration.md) page for details.
 
+!!! tip "Users on restricted networks can't join voice"
+    Direct WebRTC uses UDP 7882 (and TCP 7881). If some users are on networks that only allow 80/443, enable LiveKit's built-in TURN server so media falls back to TLS on 443. See [TURN behind a reverse proxy](livekit-turn.md) — especially if a reverse proxy already owns port 443.
+
 ## Going to production
 
 ### Architecture overview

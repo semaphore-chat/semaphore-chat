@@ -44,6 +44,7 @@ nav:
       - Kubernetes: installation/kubernetes.md
       - Desktop App: installation/desktop-app.md
       - Configuration: installation/configuration.md
+      - TURN behind a reverse proxy: installation/livekit-turn.md
       - First Run: installation/first-run.md
   - Architecture:
       - Overview: architecture/overview.md
