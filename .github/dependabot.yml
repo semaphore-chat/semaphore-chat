@@ -42,6 +42,13 @@ updates:
       # Material UI 9 is a migration, not a bump (#526)
       - dependency-name: "@mui/*"
         update-types: ["version-update:semver-major"]
+      # livekit-client carries a pnpm patch keyed to its exact version
+      # (patches/livekit-client@2.22.3.patch: full reconnects lose
+      # TrackSubscribed). Any bump fails install with ERR_PNPM_UNUSED_PATCH and
+      # would block the whole grouped PR, so bump it by hand: check upstream
+      # RTCEngine.waitForRestarted, port or drop the patch per
+      # patches/README.md, then remove this rule if the patch is gone.
+      - dependency-name: "livekit-client"
       # Node types follow the Node 24 runtime (Dockerfiles, CI); raise this
       # with the runtime's major
       - dependency-name: "@types/node"
