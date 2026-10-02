@@ -9,6 +9,10 @@ import { CreateTokenDto } from './dto/create-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { LivekitException } from './exceptions/livekit.exception';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import {
+  LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  signIssuedAt,
+} from './livekit-token-issued-at.util';
 
 @Injectable()
 export class LivekitService {
@@ -43,6 +47,15 @@ export class LivekitService {
         identity,
         name: name || identity,
         ttl: tokenTtl,
+        // Signed issue time, checked by the participant_joined webhook
+        // (LivekitAccessService) against the user's revocation cutoff
+        attributes: {
+          [LIVEKIT_ISSUED_AT_ATTRIBUTE]: signIssuedAt(
+            apiSecret,
+            identity,
+            Date.now(),
+          ),
+        },
       });
 
       // Grant permissions for the room
@@ -52,7 +65,9 @@ export class LivekitService {
         canPublish: true,
         canSubscribe: true,
         canPublishData: true,
-        // Allow participants to update their own metadata (for isDeafened state)
+        // Allow participants to update their own metadata (for isDeafened
+        // state). This also lets them rewrite their attributes, which is why
+        // the issue-time attribute above is signed.
         canUpdateOwnMetadata: true,
       });
 
@@ -132,6 +147,48 @@ export class LivekitService {
           error instanceof Error ? error.message : String(error)
         }`,
       );
+    }
+  }
+
+  /**
+   * The LiveKit rooms a participant identity is currently in, asked of
+   * LiveKit itself (every room, then its participants), so it also finds
+   * rooms no presence index knows about (e.g. DM calls whose presence
+   * expired). Best effort: rooms that can't be listed are skipped, and an
+   * unreachable or unconfigured LiveKit yields [].
+   */
+  async listParticipantRooms(participantIdentity: string): Promise<string[]> {
+    const client = this.roomServiceClient;
+    if (!client) return [];
+
+    try {
+      const rooms = await client.listRooms();
+      const results = await Promise.allSettled(
+        rooms.map(async (room) => {
+          const participants = await client.listParticipants(room.name);
+          return participants.some((p) => p.identity === participantIdentity)
+            ? room.name
+            : null;
+        }),
+      );
+      const roomNames: string[] = [];
+      for (const result of results) {
+        if (result.status === 'fulfilled') {
+          if (result.value) roomNames.push(result.value);
+        } else {
+          this.logger.warn(
+            `Failed to list participants of a LiveKit room: ${String(result.reason)}`,
+          );
+        }
+      }
+      return roomNames;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to list LiveKit rooms: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return [];
     }
   }
 

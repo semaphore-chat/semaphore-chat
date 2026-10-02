@@ -7,6 +7,8 @@ import { StorageModule } from '@/storage/storage.module';
 import { WebsocketModule } from '@/websocket/websocket.module';
 import { VoicePresenceModule } from '@/voice-presence/voice-presence.module';
 import { LivekitService } from './livekit.service';
+import { LivekitAccessService } from './livekit-access.service';
+import { RedisModule } from '@/redis/redis.module';
 import { LivekitReplayService } from './livekit-replay.service';
 import { ReplaySegmentsService } from './replay-segments.service';
 import { ClipLibraryService } from './clip-library.service';
@@ -26,6 +28,7 @@ import { ThumbnailService } from '@/file/thumbnail.service';
     ScheduleModule.forRoot(),
     AuthModule,
     DatabaseModule,
+    RedisModule,
     StorageModule,
     WebsocketModule,
     UserModule,
@@ -39,6 +42,7 @@ import { ThumbnailService } from '@/file/thumbnail.service';
   controllers: [LivekitController, LivekitWebhookController],
   providers: [
     LivekitService,
+    LivekitAccessService,
     LivekitReplayService,
     ReplaySegmentsService,
     ClipLibraryService,
@@ -50,6 +54,7 @@ import { ThumbnailService } from '@/file/thumbnail.service';
   ],
   exports: [
     LivekitService,
+    LivekitAccessService,
     LivekitReplayService,
     ClipLibraryService,
     FfmpegProvider,

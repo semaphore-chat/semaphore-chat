@@ -186,6 +186,31 @@ stays bound to that access token (`SocketSessionService`):
 A community ban or kick doesn't end the session: it takes the user's sockets
 out of that community's rooms (`RoomSubscriptionHandler`).
 
+### Voice Access Revocation
+
+LiveKit tokens (1 hour) can't be revoked, and LiveKit only checks them at
+join. So on `PASSWORD_CHANGED` (a change or a reset), `ACCOUNT_BANNED` and
+`ACCOUNT_DELETED`, `SessionRevocationHandler`:
+
+1. records a cutoff in Redis (`LivekitAccessService`, kept for a day): LiveKit
+   tokens issued up to now are stale;
+2. removes the user from every LiveKit room they are in, community voice
+   channels and DM calls alike, found by asking LiveKit (`listRooms` +
+   `listParticipants`) merged with the voice presence index, and drops their
+   voice presence.
+
+The `participant_joined` webhook is the safety net: it removes a participant
+whose user is deleted or banned, or whose token was issued before the cutoff.
+Every token carries its issue time in the `semaphore.issuedAt` attribute,
+HMAC-signed with the LiveKit API secret and bound to the identity, because
+clients may rewrite their own attributes (they need `canUpdateOwnMetadata` to
+publish their deafen state). A token without a valid issue time counts as
+stale while a cutoff is in force.
+
+Logout and single-session revocation (`LOGGED_OUT`, `SESSION_REVOKED`) don't
+end voice on purpose: the LiveKit identity is the user, so it would kick the
+user's other devices too.
+
 ### WebsocketService
 
 Central service for broadcasting events to rooms:

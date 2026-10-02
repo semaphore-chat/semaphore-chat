@@ -523,6 +523,27 @@ describe('VoicePresenceService', () => {
     });
   });
 
+  describe('getUserDmVoiceCalls', () => {
+    it('returns the DM groups whose call the user is in', async () => {
+      mockRedis.smembers.mockResolvedValue(['dm-1', 'dm-2']);
+
+      const result = await service.getUserDmVoiceCalls('user-123');
+
+      expect(mockRedis.smembers).toHaveBeenCalledWith(
+        'dm_voice_presence:user_dms:user-123',
+      );
+      expect(result).toEqual(['dm-1', 'dm-2']);
+    });
+
+    it('returns an empty array on error', async () => {
+      mockRedis.smembers.mockRejectedValue(new Error('Redis error'));
+
+      await expect(service.getUserDmVoiceCalls('user-123')).resolves.toEqual(
+        [],
+      );
+    });
+  });
+
   describe('getUserVoiceChannels', () => {
     it('should return all channels user is in', async () => {
       const userId = 'user-123';

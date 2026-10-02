@@ -13,7 +13,9 @@ import { ApiCreatedResponse } from '@nestjs/swagger';
 import { Public } from '@/auth/public.decorator';
 import { SuccessResponseDto } from '@/common/dto/common-response.dto';
 import { ConfigService } from '@nestjs/config';
-import { WebhookReceiver } from 'livekit-server-sdk';
+import { WebhookReceiver, type WebhookEvent } from 'livekit-server-sdk';
+import { LivekitService } from './livekit.service';
+import { LivekitAccessService } from './livekit-access.service';
 import { LivekitReplayService } from './livekit-replay.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import {
@@ -21,6 +23,14 @@ import {
   LiveKitWebhookEvent,
   LiveKitEgressStatus,
 } from './dto/livekit-webhook.dto';
+
+/**
+ * `ParticipantInfo.Kind` values (livekit protocol) of LiveKit's own
+ * participants. The enum lives in @livekit/protocol, which
+ * livekit-server-sdk doesn't re-export.
+ */
+const PARTICIPANT_KIND_INGRESS = 1;
+const PARTICIPANT_KIND_EGRESS = 2;
 
 /**
  * LiveKit Webhook Controller
@@ -43,6 +53,8 @@ export class LivekitWebhookController {
     private readonly configService: ConfigService,
     private readonly livekitReplayService: LivekitReplayService,
     private readonly voicePresenceService: VoicePresenceService,
+    private readonly livekitService: LivekitService,
+    private readonly livekitAccessService: LivekitAccessService,
   ) {
     const apiKey = this.configService.get<string>('LIVEKIT_API_KEY');
     const apiSecret = this.configService.get<string>('LIVEKIT_API_SECRET');
@@ -90,15 +102,13 @@ export class LivekitWebhookController {
     }
 
     // Verify webhook signature using API credentials
+    let verified: WebhookEvent;
     try {
       // Extract raw body for signature verification
       const rawBody = req.rawBody?.toString('utf-8') || JSON.stringify(body);
 
       // Verify signature using LiveKit SDK
-      const verified = await this.webhookReceiver.receive(
-        rawBody,
-        authorization,
-      );
+      verified = await this.webhookReceiver.receive(rawBody, authorization);
 
       if (!verified) {
         this.logger.warn('Invalid webhook signature');
@@ -120,7 +130,7 @@ export class LivekitWebhookController {
     // Handle events by type
     switch (body.event) {
       case LiveKitWebhookEvent.PARTICIPANT_JOINED:
-        await this.handleParticipantJoined(body);
+        await this.handleParticipantJoined(body, verified);
         break;
 
       case LiveKitWebhookEvent.PARTICIPANT_LEFT:
@@ -149,14 +159,31 @@ export class LivekitWebhookController {
    *
    * This is the authoritative source for voice presence.
    * When a participant joins a LiveKit room, we update Redis and notify clients.
+   *
+   * It is also the safety net for revoked voice access: LiveKit tokens can't
+   * be revoked, so a banned or deleted user, or a token issued before the
+   * user's credentials changed, is removed from the room right away (and
+   * never shows up in voice presence).
+   *
+   * @param event - The verified event, which carries the participant's kind
+   *   and attributes (the DTO doesn't)
    */
-  private async handleParticipantJoined(webhook: LiveKitWebhookDto) {
+  private async handleParticipantJoined(
+    webhook: LiveKitWebhookDto,
+    event: WebhookEvent,
+  ) {
     const { room, participant } = webhook;
 
     if (!room?.name || !participant?.identity) {
       this.logger.warn(
         'participant_joined webhook missing room.name or participant.identity',
       );
+      return;
+    }
+
+    if (
+      await this.denyRevokedParticipant(room.name, participant.identity, event)
+    ) {
       return;
     }
 
@@ -173,6 +200,35 @@ export class LivekitWebhookController {
       );
       // Don't throw - acknowledge webhook receipt even if processing fails
     }
+  }
+
+  /**
+   * Remove a participant whose voice access was revoked (see
+   * LivekitAccessService.checkJoin). Egress and ingress participants are
+   * LiveKit's own (their identities aren't user IDs) and are left alone; the
+   * backend only issues standard tokens. Returns whether it was removed.
+   */
+  private async denyRevokedParticipant(
+    roomName: string,
+    identity: string,
+    event: WebhookEvent,
+  ): Promise<boolean> {
+    const kind: number | undefined = event.participant?.kind;
+    if (kind === PARTICIPANT_KIND_INGRESS || kind === PARTICIPANT_KIND_EGRESS) {
+      return false;
+    }
+
+    const denial = await this.livekitAccessService.checkJoin(
+      identity,
+      event.participant?.attributes,
+    );
+    if (!denial) return false;
+
+    this.logger.warn(
+      `Removing ${identity} from LiveKit room ${roomName}: ${denial}`,
+    );
+    await this.livekitService.removeParticipant(roomName, identity);
+    return true;
   }
 
   /**

@@ -5,6 +5,10 @@ import { createMockConfigService } from '@/test-utils';
 import { LivekitException } from './exceptions/livekit.exception';
 import { AccessToken } from 'livekit-server-sdk';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import {
+  LIVEKIT_ISSUED_AT_ATTRIBUTE,
+  verifyIssuedAt,
+} from './livekit-token-issued-at.util';
 
 // Mock the livekit-server-sdk
 jest.mock('livekit-server-sdk', () => {
@@ -33,6 +37,8 @@ describe('LivekitService', () => {
     getParticipant: jest.fn(),
     mutePublishedTrack: jest.fn(),
     removeParticipant: jest.fn(),
+    listRooms: jest.fn(),
+    listParticipants: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -76,8 +82,29 @@ describe('LivekitService', () => {
           identity: createTokenDto.identity,
           name: createTokenDto.name,
           ttl: 3600, // Default 1 hour
+          attributes: {
+            [LIVEKIT_ISSUED_AT_ATTRIBUTE]: expect.any(String),
+          },
         },
       );
+    });
+
+    it('signs the issue time into the token attributes', async () => {
+      const before = Date.now();
+      await service.generateToken({ identity: 'user-123', roomId: 'room-456' });
+      const after = Date.now();
+
+      const options = (AccessToken as jest.Mock).mock.calls[0][2] as {
+        attributes: Record<string, string>;
+      };
+      const issuedAt = verifyIssuedAt(
+        mockConfig.LIVEKIT_API_SECRET,
+        'user-123',
+        options.attributes[LIVEKIT_ISSUED_AT_ATTRIBUTE],
+      );
+      expect(issuedAt).not.toBeNull();
+      expect(issuedAt).toBeGreaterThanOrEqual(before);
+      expect(issuedAt).toBeLessThanOrEqual(after);
     });
 
     it('should generate token with custom TTL', async () => {
@@ -409,6 +436,63 @@ describe('LivekitService', () => {
       await service.muteParticipant('room-1', 'user-1', true);
 
       expect(mockRoomServiceClient.mutePublishedTrack).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listParticipantRooms', () => {
+    it('returns the rooms the identity is in', async () => {
+      mockRoomServiceClient.listRooms.mockResolvedValue([
+        { name: 'voice-1' },
+        { name: 'dm-1' },
+        { name: 'other' },
+      ]);
+      mockRoomServiceClient.listParticipants.mockImplementation(
+        (room: string) =>
+          Promise.resolve(
+            room === 'other'
+              ? [{ identity: 'user-2' }]
+              : [{ identity: 'user-2' }, { identity: 'user-1' }],
+          ),
+      );
+
+      await expect(service.listParticipantRooms('user-1')).resolves.toEqual([
+        'voice-1',
+        'dm-1',
+      ]);
+    });
+
+    it('skips rooms whose participants cannot be listed', async () => {
+      mockRoomServiceClient.listRooms.mockResolvedValue([
+        { name: 'gone' },
+        { name: 'voice-1' },
+      ]);
+      mockRoomServiceClient.listParticipants.mockImplementation(
+        (room: string) =>
+          room === 'gone'
+            ? Promise.reject(new Error('room not found'))
+            : Promise.resolve([{ identity: 'user-1' }]),
+      );
+
+      await expect(service.listParticipantRooms('user-1')).resolves.toEqual([
+        'voice-1',
+      ]);
+    });
+
+    it('returns [] when LiveKit is unreachable', async () => {
+      mockRoomServiceClient.listRooms.mockRejectedValue(new Error('down'));
+
+      await expect(service.listParticipantRooms('user-1')).resolves.toEqual([]);
+    });
+
+    it('returns [] when LiveKit is not configured', async () => {
+      const { unit } = await TestBed.solitary(LivekitService)
+        .mock(ConfigService)
+        .final(configService)
+        .mock(ROOM_SERVICE_CLIENT)
+        .final(null as any)
+        .compile();
+
+      await expect(unit.listParticipantRooms('user-1')).resolves.toEqual([]);
     });
   });
 
