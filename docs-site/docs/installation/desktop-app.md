@@ -62,6 +62,24 @@ On Linux, the AppImage replaces itself. The .deb and .rpm installs run the packa
     - **Version 0.4.2 or 0.4.3:** auto-update can't install the next version on these two releases (the update fails with `Command pkexec exited with code 1`). Download the new package from [Releases](https://github.com/semaphore-chat/semaphore-chat/releases) and install it by hand once, as above. Versions from 0.5.0 on update normally.
     - **`Command pkexec exited with code 127`:** pkexec couldn't ask for your password, usually because no polkit authentication agent is running (common with minimal window managers). Start one (for example `polkit-gnome` or `lxpolkit`) and retry, or install the new package by hand.
 
+## Saved sign-in and your keyring
+
+The desktop app keeps your session (a refresh token) encrypted with the operating system's credential storage: DPAPI on Windows, and on Linux a keyring: a Secret Service such as GNOME Keyring or KeePassXC, or KWallet.
+
+On Linux, Electron's underlying Chromium picks the keyring from your desktop environment (`XDG_CURRENT_DESKTOP`): GNOME, Unity, XFCE, Cinnamon, Pantheon, Deepin, UKUI and COSMIC use the Secret Service, KDE uses KWallet. On a desktop it doesn't recognise, such as Hyprland, Sway, i3 or other window managers, it would store the token unencrypted. Semaphore Chat handles that case itself: if a Secret Service (`org.freedesktop.secrets`) is running or can be started on your session D-Bus, the app uses it. If no keyring is available, the token is stored unencrypted and the app shows a one-time warning: *"Secure credential storage is unavailable on this system"*.
+
+If you were signed in while the token was stored unencrypted, you stay signed in once a keyring becomes available: the app reads the old token and moves the session into the keyring the next time it refreshes.
+
+!!! tip "Choosing the keyring by hand"
+    To override the automatic choice (for example if the warning still appears while a keyring is running, or to use KWallet), launch the app with Chromium's `--password-store` switch:
+
+    ```bash
+    ./SemaphoreChat-*.AppImage --password-store=gnome-libsecret   # Secret Service (GNOME Keyring, KeePassXC, ...)
+    semaphore-chat --password-store=kwallet6                       # KWallet on Plasma 6 (kwallet5 on Plasma 5)
+    ```
+
+    Add it to the `Exec=` line of the app's `.desktop` file to make it permanent. When you pass `--password-store` yourself, the app doesn't change it.
+
 ## Deep links
 
 The desktop app registers the `semaphore://` URL scheme, so links can open the app directly to a specific community, channel, direct message, or invite instead of your browser:

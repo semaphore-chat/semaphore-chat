@@ -79,6 +79,30 @@ describe('tokenService refresh outcome', () => {
     expect(mockPost).not.toHaveBeenCalled();
   });
 
+  // #549: an install that ran on Chromium's plain-text `basic` store kept its
+  // refresh token in localStorage. Once safeStorage becomes available (e.g. the
+  // app now picks gnome-libsecret), the next refresh must still find that token
+  // (no sign-out) and move the rotated one into encrypted storage.
+  it('migrates a plain-text localStorage refresh token to secure storage on refresh', async () => {
+    localStorage.setItem('refreshToken', 'plain-rt');
+    const api = createFakeElectronAPI({
+      getRefreshToken: vi.fn().mockResolvedValue(null), // nothing in secure-tokens/ yet
+      storeRefreshToken: vi.fn().mockResolvedValue({ stored: true, availability: 'available' }),
+    });
+    setElectronAPIOverride(api);
+    mockPost.mockResolvedValue({ data: { accessToken: 'fresh', refreshToken: 'rotated-rt' } });
+
+    await expect(refreshSession()).resolves.toEqual({ status: 'refreshed', token: 'fresh' });
+
+    expect(mockPost).toHaveBeenCalledWith(
+      expect.stringContaining('/auth/refresh'),
+      { refreshToken: 'plain-rt' },
+      expect.anything(),
+    );
+    expect(api.storeRefreshToken).toHaveBeenCalledWith('rotated-rt');
+    expect(localStorage.getItem('refreshToken')).toBeNull();
+  });
+
   it('shares one request between concurrent callers', async () => {
     mockPost.mockResolvedValue({ data: { accessToken: 'fresh' } });
 

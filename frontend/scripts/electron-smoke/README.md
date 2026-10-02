@@ -20,6 +20,9 @@ scripts/run-electron-smoke.sh my-ticket --keep
 # store), so the app must fall back to localStorage and show the warning
 scripts/run-electron-smoke.sh my-ticket --keep --no-keyring
 
+# a keyring on a desktop Chromium doesn't recognise: the app must still use it
+scripts/run-electron-smoke.sh my-ticket --keep --desktop Hyprland
+
 # compare with another build (e.g. main's, packaged in another worktree)
 scripts/run-electron-smoke.sh my-ticket --keep \
   --app ../other-worktree/frontend/release/linux-unpacked --out /tmp/smoke-main
@@ -41,7 +44,7 @@ if any check failed.
 | Preload bridge, context isolation | `window.electronAPI.isElectron`; no `require`/`process`/`module` in the page; `contextIsolation`/`sandbox` on, `nodeIntegration` off in the window's web preferences |
 | Connection wizard, login | through the UI, as the seeded e2e user |
 | Community + text channel, send a message | UI, then confirmed through the REST API |
-| safeStorage | refresh token in `userData/secure-tokens` (encrypted) and not in localStorage; with `--no-keyring`, the localStorage fallback and the one-time `SecureStorageWarning` |
+| safeStorage | with a keyring, encryption is available (also with `--desktop Hyprland`); refresh token in `userData/secure-tokens` (encrypted) and not in localStorage; with `--no-keyring`, the localStorage fallback and the one-time `SecureStorageWarning` |
 | Restart | relaunch with the same profile: still signed in, channel history loads |
 | Clipboard | `electronAPI.writeClipboard` -> main's `clipboard.writeText`, read back in main |
 | desktopCapturer | `electronAPI.getDesktopSources` returns a screen with a thumbnail |
@@ -57,9 +60,12 @@ if any check failed.
 - `--no-sandbox`: the container has neither the SUID `chrome-sandbox` helper
   nor unprivileged user namespaces (CI's smoke steps pass it for the same
   reason), so this does not exercise the Chromium sandbox of a real install.
-- The keyring run sets `XDG_CURRENT_DESKTOP=GNOME` and starts an unlocked
-  gnome-keyring on a session D-Bus: Chromium chooses its Linux password store
-  from the desktop environment.
+- The keyring run sets `XDG_CURRENT_DESKTOP=GNOME` (or the `--desktop`
+  value) and starts an unlocked gnome-keyring on a session D-Bus: Chromium
+  chooses its Linux password store from the desktop environment. With a
+  desktop Chromium doesn't know (`--desktop Hyprland`), the app itself asks
+  for `gnome-libsecret` because a Secret Service is on the bus (#549), and the
+  `safeStorage: keyring used` check expects encryption to be available.
 - The backend runs with `CORS_ORIGIN=null`: the packaged app is a `file://`
   page, so its requests carry `Origin: null`.
 - `--use-fake-device-for-media-stream` provides a microphone and camera. The
