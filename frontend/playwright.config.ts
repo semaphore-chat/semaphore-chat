@@ -47,7 +47,10 @@ export default defineConfig({
         storageState: 'e2e/.auth/user.json',
       },
       dependencies: ['setup'],
-      testIgnore: [/auth\.spec\.ts/, /voice\//],
+      // Anchored at e2e/: Playwright matches these against the absolute path,
+      // so a bare /voice\// also matched every spec in a checkout whose
+      // directory name ends in "voice" (e.g. a semaphore-chat-wt-voice worktree).
+      testIgnore: [/auth\.spec\.ts/, /\/e2e\/voice\//],
     },
 
     // Auth tests — run without saved state so they can test login/register flows
@@ -63,7 +66,7 @@ export default defineConfig({
     // Run via scripts/run-voice-e2e.sh (real LiveKit server required).
     {
       name: 'voice',
-      testMatch: /voice\/.*\.spec\.ts/,
+      testMatch: /\/e2e\/voice\/[^/]+\.spec\.ts$/,
       // Real-WebRTC E2E against a single LiveKit SFU: when all specs run serially
       // back-to-back, accumulated room/transport load makes the last, heaviest
       // specs (screen share, 4-party matrix) intermittently flake (~1 in 3 full
