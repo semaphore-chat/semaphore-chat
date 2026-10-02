@@ -19,7 +19,7 @@
       "brace-expansion@1": "^1.1.18",
       "deepmerge-ts": "^8.0.0",
       "builder-util-runtime": "^9.7.0",
-      "engine.io": "^6.6.7",
+      "engine.io": "^6.6.10",
       "js-yaml@4": "^4.3.2",
       "react-router": "^7.18.2",
       "socket.io-parser": "^4.2.7",
