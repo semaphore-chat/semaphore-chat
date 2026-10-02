@@ -252,16 +252,17 @@ jobs:
       # upstream `minio/minio` Docker Hub repo (incl. the `edge-cicd` tag
       # used previously) is gone, and `quay.io/minio/minio` release tags
       # default to `minio` with no subcommand (prints --help and exits).
-      # `bitnamilegacy/minio`'s entrypoint runs `minio server` with env-only
-      # config and ships curl for the healthcheck (verified by a local boot
-      # + storage-s3 e2e run). It is a frozen archive repo, so pin tag+digest.
-      minio:
-        image: bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+      # RustFS's entrypoint runs `rustfs server /data` (RUSTFS_VOLUMES) with
+      # env-only config and ships curl for the healthcheck; the same
+      # tag+digest is used in docker-compose.yml and scripts/test-stack.sh.
+      # The spec creates its own bucket via the SDK in beforeAll.
+      s3:
+        image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
         env:
-          MINIO_ROOT_USER: minioadmin
-          MINIO_ROOT_PASSWORD: minioadmin
+          RUSTFS_ACCESS_KEY: minioadmin
+          RUSTFS_SECRET_KEY: minioadmin
         options: >-
-          --health-cmd "curl -f http://localhost:9000/minio/health/live"
+          --health-cmd "curl -f http://localhost:9000/health"
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
@@ -384,9 +385,9 @@ jobs:
           JWT_SECRET: test-secret-key
           JWT_REFRESH_SECRET: test-refresh-secret-key
           NODE_ENV: test
-          # storage-s3.e2e-spec.ts only: points the suite at the `minio`
+          # storage-s3.e2e-spec.ts only: points the suite at the `s3`
           # service above instead of its compose-network default
-          # (http://minio:9000, unreachable by hostname from a
+          # (http://s3:9000, unreachable by hostname from a
           # non-containerized GHA job — services are only reachable via
           # localhost:<port>).
           S3_TEST_ENDPOINT: http://localhost:9000

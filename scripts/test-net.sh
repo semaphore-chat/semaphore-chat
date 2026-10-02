@@ -9,7 +9,7 @@
 # browsing. Instead, all test containers join ONE long-lived network,
 # `semaphore-test`, created once by this script and never removed:
 #
-#   - scripts/test-stack.sh (per-ticket postgres/redis/minio + one-off
+#   - scripts/test-stack.sh (per-ticket postgres/redis/s3 + one-off
 #     backend/frontend commands)
 #   - docker-compose.e2e.yml / docker-compose.voice-e2e.yml (external network)
 #     via scripts/run-e2e.sh and scripts/run-voice-e2e.sh

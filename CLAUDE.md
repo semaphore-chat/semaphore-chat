@@ -270,7 +270,7 @@ Every network create/remove adds/removes a `br-*` bridge with an IPv4 address on
 - Per-ticket services and commands (`<ticket>`: `[a-z0-9-]`, unique to your worktree, e.g. the branch or issue name):
 
 ```bash
-scripts/test-stack.sh <ticket> up                                  # <ticket>-pg, <ticket>-redis, <ticket>-minio on semaphore-test
+scripts/test-stack.sh <ticket> up                                  # <ticket>-pg, <ticket>-redis, <ticket>-s3 on semaphore-test
 scripts/test-stack.sh <ticket> run pnpm run prisma:migrate         # backend container, DATABASE_URL/REDIS_*/S3_* -> the ticket's containers
 scripts/test-stack.sh <ticket> run pnpm run test <pattern>
 scripts/test-stack.sh <ticket> run pnpm run test:e2e               # backend e2e (migrate first)

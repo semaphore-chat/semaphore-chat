@@ -16,7 +16,7 @@
 #        scripts/test-stack.sh ls
 #
 #   up                  Start <ticket>-pg (postgres:17), <ticket>-redis
-#                       (redis:latest) and <ticket>-minio (S3) on
+#                       (redis:latest) and <ticket>-s3 (RustFS, S3) on
 #                       semaphore-test and wait until they accept connections.
 #                       Idempotent. No host ports are published.
 #   run [-e K=V]... <cmd...>
@@ -76,12 +76,14 @@ set -euo pipefail
 
 NET=semaphore-test
 LABEL=org.semaphore-chat.test-stack
-# Same images as docker-compose.e2e.yml (postgres, redis) and the backend CI
-# e2e job (MinIO: the upstream minio/minio Docker Hub repo is gone; see
-# .github/workflows/backend-tests.yml).
+# Same postgres/redis images as docker-compose.e2e.yml and the backend CI e2e
+# job. S3 storage is RustFS, replacing MinIO (whose images are no longer
+# published); the same tag+digest is used in docker-compose.yml and
+# .github/workflows/backend-tests.yml. Its default entrypoint starts the S3
+# server with env-only config, and it ships curl for the health probe.
 PG_IMAGE=postgres:17
 REDIS_IMAGE=redis:latest
-MINIO_IMAGE=bitnamilegacy/minio:2025.7.23-debian-12-r5@sha256:6dabb4a2088c9a79908de3bc05f4586c23ad2182c8908e7e3acbf61c1467fb20
+S3_IMAGE=rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
 PG_DB=semaphore_test # "test" in the name: backend e2e resetDatabase() requires it
 S3_BUCKET=semaphore-dev
 # The media pipeline's images, as in docker-compose.yml's media-capture and
@@ -125,7 +127,7 @@ esac
 
 PG="$TICKET-pg"
 REDIS="$TICKET-redis"
-MINIO="$TICKET-minio"
+S3="$TICKET-s3"
 
 # The environment `run` / `run-backend` give the backend: this ticket's
 # services by container name, test secrets, and LiveKit placeholders (the same
@@ -142,13 +144,13 @@ SKIP_INVITE_CODE=true
 LIVEKIT_URL=wss://e2e-test.livekit.cloud
 LIVEKIT_API_KEY=e2e-test-api-key
 LIVEKIT_API_SECRET=e2e-test-api-secret
-S3_ENDPOINT=http://$MINIO:9000
+S3_ENDPOINT=http://$S3:9000
 S3_BUCKET=$S3_BUCKET
 S3_REGION=us-east-1
 S3_ACCESS_KEY_ID=minioadmin
 S3_SECRET_ACCESS_KEY=minioadmin
 S3_FORCE_PATH_STYLE=true
-S3_TEST_ENDPOINT=http://$MINIO:9000
+S3_TEST_ENDPOINT=http://$S3:9000
 S3_TEST_BUCKET=$S3_BUCKET
 EOF
 }
@@ -231,7 +233,7 @@ up() {
   # Check every name before creating anything, so a clash (another ticket's
   # or a foreign container) doesn't leave half a stack behind.
   local role
-  for role in pg redis minio; do check_ours "$TICKET-$role"; done
+  for role in pg redis s3; do check_ours "$TICKET-$role"; done
   # Throwaway data on tmpfs, no fsync: fast and nothing left on disk.
   ensure_service pg "$PG_IMAGE" \
     -e POSTGRES_USER=semaphore -e POSTGRES_PASSWORD=semaphore -e "POSTGRES_DB=$PG_DB" \
@@ -241,9 +243,9 @@ up() {
   ensure_service redis "$REDIS_IMAGE" \
     --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 10s --health-retries 10 \
     -- redis-server --save '' --appendonly no
-  ensure_service minio "$MINIO_IMAGE" \
-    -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin -e "MINIO_DEFAULT_BUCKETS=$S3_BUCKET" \
-    --health-cmd "curl -f http://localhost:9000/minio/health/live" --health-interval 5s --health-timeout 5s --health-retries 10
+  ensure_service s3 "$S3_IMAGE" \
+    -e RUSTFS_ACCESS_KEY=minioadmin -e RUSTFS_SECRET_KEY=minioadmin \
+    --health-cmd "curl -f http://localhost:9000/health" --health-interval 5s --health-timeout 5s --health-retries 10
 
   # TCP, not the Unix socket: the image's first-boot init server listens only
   # on the socket and is restarted right after, so a socket probe can pass
@@ -251,11 +253,12 @@ up() {
   wait_ready "$PG" 60 pg_isready -h 127.0.0.1 -U semaphore -d "$PG_DB"
   # shellcheck disable=SC2016 # expanded by the container's shell
   wait_ready "$REDIS" 60 sh -c '[ "$(redis-cli ping)" = PONG ]'
-  # The image's setup runs a temporary MinIO in the background to create the
-  # bucket, stops it, then execs the real server as PID 1: wait for that one.
-  # shellcheck disable=SC2016 # expanded by the container's shell
-  wait_ready "$MINIO" 60 sh -c '[ "$(cat /proc/1/comm)" = minio ] && curl -sf http://localhost:9000/minio/health/live'
-  log "ready on $NET: $PG:5432 (db $PG_DB), $REDIS:6379, $MINIO:9000 (bucket $S3_BUCKET)"
+  # RustFS's default entrypoint execs the server as PID 1 and serves /health
+  # only once it accepts S3 requests. It has no "default buckets" env, and
+  # the storage-s3 e2e spec creates the $S3_BUCKET bucket itself via the SDK,
+  # so nothing has to be seeded here.
+  wait_ready "$S3" 60 sh -c 'curl -sf http://localhost:9000/health'
+  log "ready on $NET: $PG:5432 (db $PG_DB), $REDIS:6379, $S3:9000 (RustFS S3)"
 }
 
 down() {

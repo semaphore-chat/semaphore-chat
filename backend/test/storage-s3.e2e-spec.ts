@@ -1,32 +1,32 @@
 /**
- * Integration test for the S3 storage provider against a REAL MinIO
- * instance.
+ * Integration test for the S3 storage provider against a REAL S3-compatible
+ * server (RustFS).
  *
- * Requires MinIO running and reachable. Two ways to get that:
+ * Requires an S3 server running and reachable. Two ways to get that:
  *
- *   1. Local dev: the dev Docker Compose stack ships a `minio` service
+ *   1. Local dev: the dev Docker Compose stack ships an `s3` service
  *      behind an opt-in profile. E2e runs must target a dedicated
  *      test-named database (resetDatabase() refuses anything else, with
  *      no override — see test/helpers/e2e-app.ts):
- *        docker compose --profile s3 up -d minio minio-init
+ *        docker compose --profile s3 up -d s3 s3-init
  *        docker compose exec postgres createdb -U semaphore semaphore_e2e_local_test
  *        docker compose run --rm \
  *          -e DATABASE_URL=postgresql://semaphore:semaphore@postgres:5432/semaphore_e2e_local_test \
  *          backend sh -c 'pnpm run prisma:migrate && pnpm run test:e2e -- storage-s3'
- *      S3_ENDPOINT defaults to the compose-network hostname (http://minio:9000).
- *      From a worktree, a per-ticket stack brings its own MinIO and sets
- *      S3_TEST_ENDPOINT=http://<ticket>-minio:9000:
+ *      S3_ENDPOINT defaults to the compose-network hostname (http://s3:9000).
+ *      From a worktree, a per-ticket stack brings its own RustFS and sets
+ *      S3_TEST_ENDPOINT=http://<ticket>-s3:9000:
  *        scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e -- storage-s3'
  *
- *   2. CI: .github/workflows/backend-tests.yml's e2e job runs a `minio`
+ *   2. CI: .github/workflows/backend-tests.yml's e2e job runs an `s3`
  *      service container reachable at http://localhost:9000 (GitHub Actions
  *      service containers are only reachable via localhost:<port> from a
  *      non-containerized job, never by hostname) — set via S3_TEST_ENDPOINT.
  *
- * If MinIO isn't reachable at the resolved endpoint (checked synchronously,
- * before any test is registered — see `isMinioReachable` below), the whole
- * suite is `describe.skip`-ped so Jest reports it as SKIPPED rather than
- * silently passing or hard-failing every backend PR's CI.
+ * If the server isn't reachable at the resolved endpoint (checked
+ * synchronously, before any test is registered — see `isS3Reachable` below),
+ * the whole suite is `describe.skip`-ped so Jest reports it as SKIPPED rather
+ * than silently passing or hard-failing every backend PR's CI.
  *
  * This spec overrides STORAGE_TYPE and the S3_* vars in `process.env` for
  * its own AppModule instance only, restoring the previous values in
@@ -36,7 +36,7 @@
  * the default LOCAL behavior.
  *
  * S3_ENDPOINT/S3_BUCKET can be overridden via S3_TEST_ENDPOINT /
- * S3_TEST_BUCKET if your MinIO isn't reachable at the Compose defaults.
+ * S3_TEST_BUCKET if your S3 server isn't reachable at the Compose defaults.
  */
 import * as request from 'supertest';
 import { execFileSync } from 'child_process';
@@ -55,7 +55,7 @@ import {
   E2eApp,
 } from './helpers/e2e-app';
 
-const S3_ENDPOINT = process.env.S3_TEST_ENDPOINT ?? 'http://minio:9000';
+const S3_ENDPOINT = process.env.S3_TEST_ENDPOINT ?? 'http://s3:9000';
 const S3_BUCKET = process.env.S3_TEST_BUCKET ?? 'semaphore-dev';
 
 const PREVIOUS_ENV: Record<string, string | undefined> = {};
@@ -70,7 +70,8 @@ const S3_ENV: Record<string, string> = {
 };
 
 /**
- * Synchronous TCP reachability probe for MinIO, run at module-load time —
+ * Synchronous TCP reachability probe for the S3 server, run at module-load
+ * time —
  * i.e. before any `describe`/`it` is registered, so the whole suite can be
  * conditionally routed to `describe.skip` (Jest then reports it as
  * genuinely SKIPPED, not a silently-green no-op).
@@ -83,7 +84,7 @@ const S3_ENV: Record<string, string> = {
  * `execFileSync` blocks the parent (this file's module evaluation) until
  * the child process exits, giving us a synchronous yes/no.
  */
-function isMinioReachable(endpoint: string, timeoutMs = 2000): boolean {
+function isS3Reachable(endpoint: string, timeoutMs = 2000): boolean {
   let host: string;
   let port: number;
   try {
@@ -115,14 +116,14 @@ function isMinioReachable(endpoint: string, timeoutMs = 2000): boolean {
   }
 }
 
-const minioAvailable = isMinioReachable(S3_ENDPOINT);
-const describeS3 = minioAvailable ? describe : describe.skip;
+const s3Available = isS3Reachable(S3_ENDPOINT);
+const describeS3 = s3Available ? describe : describe.skip;
 
-if (!minioAvailable) {
+if (!s3Available) {
   console.warn(
-    `[storage-s3.e2e-spec] MinIO not reachable at ${S3_ENDPOINT} — SKIPPING ` +
-      'the S3/MinIO e2e suite. Start it locally via ' +
-      '`docker compose --profile s3 up -d minio minio-init`, or point at a ' +
+    `[storage-s3.e2e-spec] S3 server not reachable at ${S3_ENDPOINT} — SKIPPING ` +
+      'the S3 e2e suite. Start it locally via ' +
+      '`docker compose --profile s3 up -d s3 s3-init`, or point at a ' +
       'running instance via the S3_TEST_ENDPOINT env var.',
   );
 }
@@ -146,7 +147,7 @@ const MP4_FIXTURE = Buffer.from(
   'base64',
 );
 
-describeS3('Storage (S3/MinIO) e2e', () => {
+describeS3('Storage (S3) e2e', () => {
   let app: E2eApp;
   let s3Client: S3Client;
   // Nest's built-in Logger is silenced app-wide by createE2eApp()'s default
@@ -175,9 +176,9 @@ describeS3('Storage (S3/MinIO) e2e', () => {
     });
 
     // Create the bucket ourselves via the SDK rather than depending on the
-    // compose-only `minio-init` sidecar — CI's bare `minio` service has no
-    // equivalent, and this is harmless to also run locally (MinIO returns
-    // BucketAlreadyOwnedByYou, ignored below).
+    // compose-only `s3-init` sidecar — CI's bare `s3` service has no
+    // equivalent, and this is harmless to also run locally (the server
+    // returns BucketAlreadyOwnedByYou, ignored below).
     try {
       await s3Client.send(new CreateBucketCommand({ Bucket: S3_BUCKET }));
     } catch (error) {
@@ -317,7 +318,7 @@ describeS3('Storage (S3/MinIO) e2e', () => {
     );
     expect(thumbnailHead.ContentLength).toEqual(expect.any(Number));
 
-    // Serve path: thumbnail bytes stream back from MinIO through the backend.
+    // Serve path: thumbnail bytes stream back from S3 through the backend.
     const thumbRes = await request(app.getHttpServer())
       .get(`/api/file/${fileId}/thumbnail`)
       .set('Authorization', `Bearer ${accessToken}`)
@@ -365,7 +366,7 @@ describeS3('Storage (S3/MinIO) e2e', () => {
     // storageType is asserted here; the real key is verified indirectly
     // by the serve requests below succeeding against the real bucket.
 
-    // Serve path: full object, streamed back from MinIO through the backend.
+    // Serve path: full object, streamed back from S3 through the backend.
     const getRes = await request(app.getHttpServer())
       .get(`/api/file/${fileId}`)
       .set('Authorization', `Bearer ${accessToken}`)
