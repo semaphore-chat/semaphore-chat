@@ -73,7 +73,7 @@
     "@mui/icons-material": "^7.3.11",
     "@mui/material": "^7.3.11",
     "@semaphore-chat/shared": "workspace:*",
-    "@tanstack/react-query": "^5.103.2",
+    "@tanstack/react-query": "^5.104.0",
     "axios": "^1.20.0",
     "date-fns": "^4.4.0",
     "electron-audio-loopback": "^1.0.6",
@@ -83,8 +83,8 @@
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
-    "socket.io-client": "^4.8.3",
-    "virtua": "^0.52.7"
+    "socket.io-client": "^4.8.4",
+    "virtua": "^0.52.8"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
