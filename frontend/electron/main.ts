@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import { parseDeepLink, extractDeepLinkUrls, DEEP_LINK_PROTOCOL, type DeepLinkRoute } from './deep-link-parser';
+import { choosePasswordStore, probeSecretService } from './passwordStore';
 
 // ─── App Settings (single JSON file in userData) ────────────────────────────
 
@@ -46,6 +47,25 @@ function setSetting<K extends keyof AppSettings>(key: K, value: AppSettings[K]):
   const settings = loadSettings();
   settings[key] = value;
   fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
+}
+
+// Linux: Chromium only uses a keyring for safeStorage on desktops it knows
+// (GNOME, KDE, XFCE, ...). On Hyprland/Sway/i3 it falls back to its plain-text
+// store even when a Secret Service is running, so ask for libsecret when one
+// is on the session bus (#549). Must run before `app` is ready.
+{
+  const decision = choosePasswordStore({
+    platform: process.platform,
+    env: process.env,
+    hasUserPasswordStore: app.commandLine.hasSwitch('password-store'),
+    probeSecretService: () => probeSecretService(process.env),
+  });
+  if (decision.passwordStore) {
+    app.commandLine.appendSwitch('password-store', decision.passwordStore);
+    console.log(`Password store: ${decision.passwordStore} (${decision.reason})`);
+  } else if (process.platform === 'linux') {
+    console.log(`Password store: Chromium default (${decision.reason})`);
+  }
 }
 
 // Enable PipeWire-based screen capture for Wayland and hardware-accelerated

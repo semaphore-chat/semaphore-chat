@@ -15,6 +15,7 @@ const APP = process.env.SMOKE_APP ?? '/app/semaphore-chat';
 const OUT = process.env.SMOKE_OUT ?? '/out';
 const SERVER_URL = process.env.SERVER_URL ?? 'http://localhost:3000';
 const KEYRING = process.env.SMOKE_KEYRING !== 'false';
+const DESKTOP = KEYRING ? (process.env.SMOKE_DESKTOP ?? 'GNOME') : undefined;
 // The seeded e2e user (backend/prisma/seed-e2e.ts).
 const USER = { username: 'testuser', password: 'Test123!@#' };
 
@@ -32,7 +33,7 @@ interface Check {
   detail?: string;
 }
 const checks: Check[] = [];
-const results: Record<string, unknown> = { keyring: KEYRING, checks };
+const results: Record<string, unknown> = { keyring: KEYRING, desktop: DESKTOP, checks };
 
 mkdirSync(OUT, { recursive: true });
 
@@ -236,6 +237,14 @@ async function main() {
     backend: process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : 'n/a',
   }));
   results.safeStorage = storage;
+  if (KEYRING) {
+    // A Secret Service is on the bus: safeStorage must use it, on a desktop
+    // Chromium knows (GNOME) and on one it doesn't (Hyprland, #549).
+    await check(`safeStorage: keyring used (XDG_CURRENT_DESKTOP=${DESKTOP})`, async () => {
+      assert(storage.available, `encryption unavailable (backend ${storage.backend})`);
+      return `backend ${storage.backend}`;
+    });
+  }
   await check(`safeStorage: refresh token persisted (available=${storage.available}, backend ${storage.backend})`, async () => {
     // Let the post-login persist finish.
     await sleep(1000);

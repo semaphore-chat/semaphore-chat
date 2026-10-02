@@ -20,6 +20,9 @@
 #                     any other non-empty directory is refused)
 #   --no-keyring      no Secret Service in the container: safeStorage falls
 #                     back to whatever Chromium does without a keyring
+#   --desktop NAME    XDG_CURRENT_DESKTOP for the app (default GNOME). With a
+#                     desktop Chromium doesn't know (e.g. Hyprland) the app
+#                     itself must pick gnome-libsecret (#549)
 #   --keep            leave the backend, LiveKit and databases running
 #                     (scripts/test-stack.sh <ticket> down removes them)
 #
@@ -49,7 +52,7 @@ log() { echo "electron-smoke: $*" >&2; }
 [[ $# -ge 1 && "$1" != -* ]] || { sed -n '2,/^set -euo/p' "$0" | sed -e 's/^# \{0,1\}//' -e '/^set -euo/d'; exit 2; }
 TICKET="$1"
 shift
-BUILD=false KEEP=false KEYRING=true
+BUILD=false KEEP=false KEYRING=true DESKTOP=GNOME
 APP="$ROOT/frontend/release/linux-unpacked"
 OUT="$ROOT/frontend/.electron-smoke-out"
 while [[ $# -gt 0 ]]; do
@@ -58,6 +61,7 @@ while [[ $# -gt 0 ]]; do
     --app) APP="$(cd "$2" && pwd)"; shift 2 ;;
     --out) mkdir -p "$2"; OUT="$(cd "$2" && pwd)"; shift 2 ;;
     --no-keyring) KEYRING=false; shift ;;
+    --desktop) DESKTOP="$2"; shift 2 ;;
     --keep) KEEP=true; shift ;;
     *) die "unknown option $1" ;;
   esac
@@ -170,7 +174,7 @@ RC=0
 docker run --rm --init --name "$TICKET-electron-smoke-$$" --network "$NET" \
   --label "$LABEL.ticket=$TICKET" --label "$LABEL.role=electron-smoke" \
   --shm-size 1g -u "$(id -u):$(id -g)" -e HOME=/tmp/home \
-  -e "SERVER_URL=http://$BACKEND:3000" -e "SMOKE_KEYRING=$KEYRING" \
+  -e "SERVER_URL=http://$BACKEND:3000" -e "SMOKE_KEYRING=$KEYRING" -e "SMOKE_DESKTOP=$DESKTOP" \
   -v "$APP:/app:ro" -v "$HERE:/opt/smoke/src:ro" -v "$OUT:/out" \
   "$IMAGE" bash /opt/smoke/src/entrypoint.sh || RC=$?
 

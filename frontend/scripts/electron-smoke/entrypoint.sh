@@ -8,8 +8,10 @@ mkdir -p "$HOME"
 export DEBUG=pw:browser DEBUG_FILE=/out/main-process.log
 if [[ "${SMOKE_KEYRING:-true}" == true ]]; then
   # Chromium picks its Linux password store from the desktop environment:
-  # GNOME -> libsecret (the gnome-keyring started below).
-  export XDG_CURRENT_DESKTOP=GNOME
+  # GNOME -> libsecret (the gnome-keyring started below). On a desktop it
+  # doesn't know (SMOKE_DESKTOP=Hyprland) the app has to ask for libsecret
+  # itself because the keyring is on the bus (#549).
+  export XDG_CURRENT_DESKTOP="${SMOKE_DESKTOP:-GNOME}"
   exec dbus-run-session -- bash -c '
     printf smoke | gnome-keyring-daemon --unlock --components=secrets >/dev/null
     exec xvfb-run -a -s "-screen 0 1920x1080x24" node /opt/smoke/src/smoke.ts'
