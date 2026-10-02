@@ -18,6 +18,11 @@ overrides:
   socket.io-parser: ^4.2.7
   tar: ^7.5.19
 
+patchedDependencies:
+  livekit-client@2.22.3:
+    hash: 5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0
+    path: patches/livekit-client@2.22.3.patch
+
 importers:
 
   .:
@@ -292,7 +297,7 @@ importers:
         version: 0.13.1(@hey-api/openapi-ts@0.99.0(magicast@0.5.5)(typescript@5.9.3))
       '@livekit/components-react':
         specifier: ^2.9.24
-        version: 2.9.24(livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tslib@2.8.1)
+        version: 2.9.24(livekit-client@2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tslib@2.8.1)
       '@mui/icons-material':
         specifier: ^7.3.11
         version: 7.3.11(@mui/material@7.3.11(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.0))(@emotion/styled@11.14.1(@emotion/react@11.14.0(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0))(@types/react@19.3.0)(react@19.3.0)
@@ -322,7 +327,7 @@ importers:
         version: 1.7.3
       livekit-client:
         specifier: ^2.22.3
-        version: 2.22.3(@types/dom-mediacapture-record@1.0.22)
+        version: 2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22)
       react:
         specifier: ^19.3.0
         version: 19.3.0
@@ -12090,21 +12095,21 @@ snapshots:
       - typescript
       - yaml
 
-  '@livekit/components-core@0.12.15(livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
+  '@livekit/components-core@0.12.15(livekit-client@2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)':
     dependencies:
       '@floating-ui/dom': 1.7.6
-      livekit-client: 2.22.3(@types/dom-mediacapture-record@1.0.22)
+      livekit-client: 2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22)
       loglevel: 1.9.1
       rxjs: 7.8.2
       tslib: 2.8.1
 
-  '@livekit/components-react@2.9.24(livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tslib@2.8.1)':
+  '@livekit/components-react@2.9.24(livekit-client@2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22))(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(tslib@2.8.1)':
     dependencies:
-      '@livekit/components-core': 0.12.15(livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
+      '@livekit/components-core': 0.12.15(livekit-client@2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22))(tslib@2.8.1)
       clsx: 2.1.1
       events: 3.3.0
       jose: 6.2.12
-      livekit-client: 2.22.3(@types/dom-mediacapture-record@1.0.22)
+      livekit-client: 2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22)
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
       tslib: 2.8.1
@@ -17443,7 +17448,7 @@ snapshots:
 
   lines-and-columns@1.2.4: {}
 
-  livekit-client@2.22.3(@types/dom-mediacapture-record@1.0.22):
+  livekit-client@2.22.3(patch_hash=5f9ac21cebe4937f2988a5f4da15bae6d0b036bb2cd9e683014b77f5298433b0)(@types/dom-mediacapture-record@1.0.22):
     dependencies:
       '@livekit/mutex': 1.1.1
       '@livekit/protocol': 1.50.4

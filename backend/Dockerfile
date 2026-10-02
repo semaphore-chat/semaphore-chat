@@ -18,7 +18,10 @@ COPY backend/prisma ./backend/prisma
 # Copy shared source before install so the prepare script can build it
 COPY shared/ ./shared/
 
-RUN pnpm install
+# --frozen-lockfile, as in Dockerfile.prod: a plain install re-resolves this
+# partial workspace (no frontend/), and then fails with ERR_PNPM_UNUSED_PATCH
+# on frontend-only patches such as livekit-client's (see patches/README.md).
+RUN pnpm install --frozen-lockfile
 
 # Copy backend source
 COPY backend/ ./backend/
