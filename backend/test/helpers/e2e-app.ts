@@ -163,7 +163,7 @@ export class CapturingLogger implements LoggerService {
  *
  * From a worktree (or to keep the dev database out of it entirely), use a
  * per-ticket stack instead: its own Postgres (database `semaphore_test`),
- * Redis and MinIO on the shared semaphore-test network, no REDIS_DB needed:
+ * Redis and RustFS (S3) on the shared semaphore-test network, no REDIS_DB needed:
  *   scripts/test-stack.sh <ticket> run sh -c 'pnpm run prisma:migrate && pnpm run test:e2e'
  */
 export async function resetDatabase(app: E2eApp): Promise<void> {

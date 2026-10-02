@@ -230,49 +230,55 @@ services:
 
   # S3-compatible object storage for local dev/testing of STORAGE_TYPE=S3.
   # Opt-in via profile — doesn't start with a plain `docker compose up`:
-  #   docker compose --profile s3 up -d minio minio-init
-  # (minio-init creates the dev bucket automatically — see that service below.)
+  #   docker compose --profile s3 up -d s3 s3-init
+  # (s3-init creates the dev bucket automatically — see that service below.)
   # Then set in backend/.env: STORAGE_TYPE=S3, S3_BUCKET=semaphore-dev,
   # S3_REGION=us-east-1, S3_ACCESS_KEY_ID=minioadmin,
-  # S3_SECRET_ACCESS_KEY=minioadmin, S3_ENDPOINT=http://minio:9000,
+  # S3_SECRET_ACCESS_KEY=minioadmin, S3_ENDPOINT=http://s3:9000,
   # S3_FORCE_PATH_STYLE=true. See docs-site/docs/installation/configuration.md.
   #
-  # Image pinned to a specific release (not `:latest`) for reproducible dev
-  # behavior. CI intentionally uses `minio/minio:edge-cicd` instead — a
-  # separate constraint from a bare GitHub Actions service container boot
-  # (no compose profile, no healthcheck-gated init sidecar) — so the two are
-  # deliberately not kept identical.
-  minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+  # RustFS (https://rustfs.com) replaces MinIO, whose images are no longer
+  # published or maintained. Its default entrypoint starts the S3 server on
+  # /data with env-only config — no command line — which is what also lets CI
+  # use the same image as a bare GitHub Actions service container. Pinned by
+  # tag + digest; the same pin is used in .github/workflows/backend-tests.yml
+  # and scripts/test-stack.sh. Path-style addressing only unless
+  # RUSTFS_SERVER_DOMAINS is set, matching S3_FORCE_PATH_STYLE=true.
+  s3:
+    image: rustfs/rustfs:1.0.0@sha256:8cc9801755448b71a786705ce76692c77e14936cccd87cf2fc31842e58f4d1ff
     profiles: ["s3"]
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      RUSTFS_ACCESS_KEY: minioadmin
+      RUSTFS_SECRET_KEY: minioadmin
     ports:
       - "9000:9000"
       # - "9001:9001" # Web console — uncomment to browse buckets at http://localhost:9001
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
       interval: 5s
       timeout: 5s
       retries: 10
     volumes:
-      - miniodata:/data
+      - s3data:/data
 
   # One-shot sidecar: creates the dev bucket so the backend doesn't have to.
+  # RustFS has no "default buckets" env and ships no mc-style client, so this
+  # uses the AWS CLI. `|| true` tolerates a bucket that already exists.
   # Equivalent manual command if you ever need to re-run it by hand:
-  #   docker compose --profile s3 run --rm minio-init
-  minio-init:
-    image: minio/mc:RELEASE.2025-08-13T08-35-41Z
+  #   docker compose --profile s3 run --rm s3-init
+  s3-init:
+    image: amazon/aws-cli:2.31.33
     profiles: ["s3"]
-    entrypoint: >
-      /bin/sh -c "
-        mc alias set local http://minio:9000 minioadmin minioadmin &&
-        mc mb --ignore-existing local/semaphore-dev
-      "
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_DEFAULT_REGION: us-east-1
+    entrypoint:
+      - /bin/sh
+      - -c
+      - aws s3api create-bucket --bucket semaphore-dev --endpoint-url http://s3:9000 --region us-east-1 || true
     depends_on:
-      minio:
+      s3:
         condition: service_healthy
     restart: "no"
 
@@ -308,4 +314,4 @@ volumes:
   pgdata:
   redisdata:
   egress-data:
-  miniodata:
+  s3data:

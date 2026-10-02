@@ -27,7 +27,7 @@
 # process and renderer console logs. Exits non-zero if a check failed.
 #
 # The backend (seeded with the e2e users, see backend/prisma/seed-e2e.ts),
-# postgres, redis, MinIO and LiveKit are the ticket's own containers
+# postgres, redis, RustFS and LiveKit are the ticket's own containers
 # (<ticket>-pg, <ticket>-livekit, ...), labelled like scripts/test-stack.sh's,
 # so `scripts/test-stack.sh <ticket> down` removes them all. No network is
 # created or removed.

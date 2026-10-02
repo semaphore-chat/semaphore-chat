@@ -227,7 +227,7 @@ network is never unused and a prune can't delete it.
 | README/docs media | `docker compose --profile tools run --rm media` | `scripts/test-stack.sh <ticket> media` |
 
 ```bash
-scripts/test-stack.sh <ticket> up                                # <ticket>-pg, <ticket>-redis, <ticket>-minio
+scripts/test-stack.sh <ticket> up                                # <ticket>-pg, <ticket>-redis, <ticket>-s3
 scripts/test-stack.sh <ticket> run pnpm run prisma:migrate       # backend container on semaphore-test
 scripts/test-stack.sh <ticket> run pnpm run test <test-pattern>
 scripts/test-stack.sh <ticket> run pnpm run test:e2e             # backend e2e suite (migrate first)
@@ -245,7 +245,7 @@ scripts/test-stack.sh ls                                         # all tickets' 
   reserved.
 - The services publish no host ports and are addressed by their
   ticket-prefixed container names (`DATABASE_URL=...@<ticket>-pg:5432/semaphore_test`,
-  `REDIS_HOST=<ticket>-redis`, `S3_ENDPOINT=http://<ticket>-minio:9000`),
+  `REDIS_HOST=<ticket>-redis`, `S3_ENDPOINT=http://<ticket>-s3:9000`),
   never by generic names such as `postgres` or `redis`: other tickets share the
   network. Every container is labelled with its ticket, so tickets can run at
   the same time and `down` only removes its own.
