@@ -526,7 +526,7 @@ test.describe('Voice revocation — password reset removes the user; a fresh log
     // Written when the reset's access token cutoff had one-second
     // granularity, so a login in the same second as the reset got a token
     // that was already revoked. Since #562 tokens carry `iatMs` and the
-    // cutoff is in milliseconds, so this wait is no longer needed (harmless).
+    // cutoff is in milliseconds, this wait is no longer needed (harmless).
     const nextSecond = (Math.floor(passwordResetAt / 1000) + 1) * 1000;
     await expect.poll(() => Date.now(), { timeout: 5_000 }).toBeGreaterThan(nextSecond);
     b = await launchParticipant(VOICE_PASSWORD_USER, 'sample-b.wav');
