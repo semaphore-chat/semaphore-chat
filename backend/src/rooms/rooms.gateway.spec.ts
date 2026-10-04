@@ -8,6 +8,8 @@ import { SocketSessionService } from './socket-session.service';
 import { UserFactory } from '@/test-utils';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { Socket, Server } from 'socket.io';
+import { HttpAdapterHost } from '@nestjs/core';
+import * as express from 'express';
 
 describe('RoomsGateway', () => {
   let gateway: RoomsGateway;
@@ -29,8 +31,23 @@ describe('RoomsGateway', () => {
     } as Socket & { handshake: { user: typeof mockUser } };
   };
 
+  // The Express app the HTTP adapter wraps: its `trust proxy` setting
+  // (TRUST_PROXY in main.ts) decides a handshake's client address
+  let expressApp: express.Express;
+
+  const compileGateway = async () => {
+    const { unit, unitRef } = await TestBed.solitary(RoomsGateway)
+      .mock(HttpAdapterHost)
+      .final({
+        httpAdapter: { getInstance: () => expressApp },
+      })
+      .compile();
+    return { unit, unitRef };
+  };
+
   beforeEach(async () => {
-    const { unit, unitRef } = await TestBed.solitary(RoomsGateway).compile();
+    expressApp = express();
+    const { unit, unitRef } = await compileGateway();
 
     gateway = unit;
     roomsService = unitRef.get(RoomsService);
@@ -190,17 +207,42 @@ describe('RoomsGateway', () => {
   describe('rate limiter middleware', () => {
     let rateLimitMiddleware: (socket: any, next: jest.Mock) => void;
 
-    beforeEach(() => {
+    /** A handshake from `address`, with the request's headers. */
+    const connectingSocket = (
+      address: string,
+      headers: Record<string, string> = {},
+    ) => ({
+      handshake: { address, headers },
+      request: { headers, socket: { remoteAddress: address } },
+    });
+
+    const rateLimiterOf = (g: RoomsGateway) => {
       const mockServer = { use: jest.fn() } as unknown as Server;
-      gateway.afterInit(mockServer);
+      g.afterInit(mockServer);
       // First middleware registered is the rate limiter
-      rateLimitMiddleware = (mockServer.use as jest.Mock).mock.calls[0][0];
+      return (mockServer.use as jest.Mock).mock.calls[0][0] as (
+        socket: any,
+        next: jest.Mock,
+      ) => void;
+    };
+
+    /** Connect `count` times; the errors the limiter answered with. */
+    const connect = (socket: unknown, count: number) => {
+      const errors: unknown[] = [];
+      for (let i = 0; i < count; i++) {
+        const next = jest.fn();
+        rateLimitMiddleware(socket, next);
+        errors.push(next.mock.calls[0][0]);
+      }
+      return errors;
+    };
+
+    beforeEach(() => {
+      rateLimitMiddleware = rateLimiterOf(gateway);
     });
 
     it('should allow connections under the limit', () => {
-      const socket = {
-        handshake: { address: '10.0.0.1' },
-      };
+      const socket = connectingSocket('10.0.0.1');
 
       for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
         const next = jest.fn();
@@ -210,9 +252,7 @@ describe('RoomsGateway', () => {
     });
 
     it('should reject connections over the limit', () => {
-      const socket = {
-        handshake: { address: '10.0.0.2' },
-      };
+      const socket = connectingSocket('10.0.0.2');
 
       // Fill up to the limit
       for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
@@ -229,9 +269,7 @@ describe('RoomsGateway', () => {
     });
 
     it('should reset after the time window expires', () => {
-      const socket = {
-        handshake: { address: '10.0.0.3' },
-      };
+      const socket = connectingSocket('10.0.0.3');
 
       // Fill up to the limit
       for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
@@ -252,8 +290,8 @@ describe('RoomsGateway', () => {
     });
 
     it('should track different IPs independently', () => {
-      const socket1 = { handshake: { address: '10.0.0.4' } };
-      const socket2 = { handshake: { address: '10.0.0.5' } };
+      const socket1 = connectingSocket('10.0.0.4');
+      const socket2 = connectingSocket('10.0.0.5');
 
       // Fill up IP 1
       for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
@@ -270,6 +308,63 @@ describe('RoomsGateway', () => {
       const next2 = jest.fn();
       rateLimitMiddleware(socket2, next2);
       expect(next2).toHaveBeenCalledWith();
+    });
+
+    it('behind a trusted proxy, limits each forwarded client, not the proxy (#567)', () => {
+      // TRUST_PROXY=1: every client connects through the frontend's nginx
+      expressApp.set('trust proxy', 1);
+      const proxy = '172.20.0.7';
+      const alice = connectingSocket(proxy, {
+        'x-forwarded-for': '203.0.113.1',
+      });
+      const bob = connectingSocket(proxy, { 'x-forwarded-for': '203.0.113.2' });
+
+      expect(connect(alice, RoomsGateway.RATE_LIMIT_MAX)).toEqual(
+        Array(RoomsGateway.RATE_LIMIT_MAX).fill(undefined),
+      );
+      expect(connect(bob, 1)).toEqual([undefined]);
+      expect(connect(alice, 1)).toEqual([new Error('RATE_LIMITED')]);
+    });
+
+    it("without a trusted proxy, ignores X-Forwarded-For (a client can't pick its address)", () => {
+      const forged = (n: number) =>
+        connectingSocket('198.51.100.9', {
+          'x-forwarded-for': `203.0.113.${n}`,
+        });
+
+      for (let i = 0; i < RoomsGateway.RATE_LIMIT_MAX; i++) {
+        expect(connect(forged(i), 1)).toEqual([undefined]);
+      }
+      expect(connect(forged(99), 1)).toEqual([new Error('RATE_LIMITED')]);
+    });
+
+    describe('WS_CONNECTION_RATE_LIMIT', () => {
+      const original = process.env.WS_CONNECTION_RATE_LIMIT;
+      afterEach(() => {
+        if (original === undefined) delete process.env.WS_CONNECTION_RATE_LIMIT;
+        else process.env.WS_CONNECTION_RATE_LIMIT = original;
+      });
+
+      it('sets the connections a client address may open per window', async () => {
+        process.env.WS_CONNECTION_RATE_LIMIT = '25';
+        rateLimitMiddleware = rateLimiterOf((await compileGateway()).unit);
+        const socket = connectingSocket('10.0.0.6');
+
+        expect(connect(socket, 25)).toEqual(Array(25).fill(undefined));
+        expect(connect(socket, 1)).toEqual([new Error('RATE_LIMITED')]);
+      });
+
+      it.each(['', '0', '-5', '2.5', 'many'])(
+        'falls back to the default for %p',
+        async (value) => {
+          process.env.WS_CONNECTION_RATE_LIMIT = value;
+          rateLimitMiddleware = rateLimiterOf((await compileGateway()).unit);
+          const socket = connectingSocket('10.0.0.7');
+
+          connect(socket, RoomsGateway.RATE_LIMIT_MAX);
+          expect(connect(socket, 1)).toEqual([new Error('RATE_LIMITED')]);
+        },
+      );
     });
   });
 

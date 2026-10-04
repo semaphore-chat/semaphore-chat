@@ -10,6 +10,9 @@ import {
 import { RoomsService } from './rooms.service';
 import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards, UseFilters } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
+import type { Application } from 'express';
+import * as proxyaddr from 'proxy-addr';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { WsAuthService } from '@/auth/ws-auth.service';
 import { WebsocketService } from '@/websocket/websocket.service';
@@ -45,28 +48,61 @@ export class RoomsGateway
     { count: number; resetAt: number }
   >();
 
+  /** Connections one client address may open per window, by default. */
   static readonly RATE_LIMIT_MAX = 10;
   static readonly RATE_LIMIT_WINDOW_MS = 60_000;
+
+  /**
+   * Connections one client address may open per window: WS_CONNECTION_RATE_LIMIT,
+   * or RATE_LIMIT_MAX. Raised where many clients share an address (the E2E
+   * stack, where every test browser comes from one host).
+   */
+  private readonly rateLimitMax = RoomsGateway.parseRateLimit(
+    process.env.WS_CONNECTION_RATE_LIMIT,
+  );
 
   constructor(
     private readonly roomsService: RoomsService,
     private readonly websocketService: WebsocketService,
     private readonly wsAuthService: WsAuthService,
     private readonly socketSessionService: SocketSessionService,
+    private readonly httpAdapterHost: HttpAdapterHost,
   ) {}
+
+  private static parseRateLimit(value: string | undefined): number {
+    const limit = Number(value);
+    return value && Number.isInteger(limit) && limit > 0
+      ? limit
+      : RoomsGateway.RATE_LIMIT_MAX;
+  }
+
+  /**
+   * The client address of a socket's handshake, as Express resolves `req.ip`
+   * for an HTTP request (TRUST_PROXY): behind a reverse proxy, the address it
+   * forwarded (X-Forwarded-For), not the proxy's own, which every client
+   * would share.
+   */
+  private clientAddress(socket: Socket): string {
+    const trust = this.httpAdapterHost.httpAdapter
+      ?.getInstance<Application>()
+      ?.get('trust proxy fn') as
+      ((address: string, hop: number) => boolean) | undefined;
+    if (typeof trust !== 'function') return socket.handshake.address;
+    return proxyaddr(socket.request, trust);
+  }
 
   afterInit(server: Server) {
     this.websocketService.setServer(server);
 
     // Rate-limiting middleware — runs before auth
     server.use((socket, next) => {
-      const ip = socket.handshake.address;
+      const ip = this.clientAddress(socket);
       const now = Date.now();
       const entry = this.connectionAttempts.get(ip);
 
       if (entry && now < entry.resetAt) {
         entry.count++;
-        if (entry.count > RoomsGateway.RATE_LIMIT_MAX) {
+        if (entry.count > this.rateLimitMax) {
           this.logger.warn(
             `Rate limited connection from ${ip} (${entry.count} attempts)`,
           );

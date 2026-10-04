@@ -129,6 +129,7 @@ jobs:
           JWT_SECRET: e2e-test-jwt-secret-change-in-production
           JWT_REFRESH_SECRET: e2e-test-refresh-secret-change-in-production
           SKIP_INVITE_CODE: 'true'
+          WS_CONNECTION_RATE_LIMIT: '1000'
           # LiveKit placeholders (voice/video is not tested here)
           LIVEKIT_URL: wss://e2e-test.livekit.cloud
           LIVEKIT_API_KEY: e2e-test-api-key
