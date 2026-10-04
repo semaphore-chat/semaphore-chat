@@ -6,6 +6,7 @@ import {
   refreshSessionWithRetry,
   notifyAuthFailure,
 } from './utils/tokenService';
+import { DEVICE_ID_HEADER, getDeviceId } from './utils/deviceId';
 
 const PUBLIC_ROUTE_PREFIXES = ['/login', '/register', '/join', '/onboarding'];
 
@@ -87,6 +88,10 @@ export function configureApiClient() {
     const token = getAccessToken();
     if (token) {
       request.headers.set('Authorization', `Bearer ${token}`);
+    }
+    // Auth endpoints (sign-in starts a session) learn which install this is
+    if (new URL(request.url, window.location.origin).pathname.startsWith('/api/auth/')) {
+      request.headers.set(DEVICE_ID_HEADER, getDeviceId());
     }
     return request;
   });

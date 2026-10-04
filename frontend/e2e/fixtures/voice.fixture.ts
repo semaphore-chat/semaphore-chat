@@ -137,9 +137,10 @@ export async function launchParticipant(
   creds: { username: string; password: string },
   wavFile: string,
   /**
-   * A user agent of its own, e.g. to sign one user in twice: a login replaces
-   * the user's session from the same device (the device name the backend
-   * derives from the user agent), so a second session needs another one.
+   * A user agent of its own, e.g. to sign one user in twice. Written when a
+   * login replaced the user's session with the same user agent; since #563
+   * only one with the same X-Device-Id is replaced, so this is no longer
+   * needed, but harmless.
    */
   opts: { userAgent?: string } = {},
 ): Promise<Participant> {

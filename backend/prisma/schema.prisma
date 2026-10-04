@@ -380,6 +380,9 @@ model RefreshToken {
   userAgent  String? // Full user agent string
   ipAddress  String? // Client IP address
   lastUsedAt DateTime @default(now()) // Last activity with this token
+  // The client install's random id (X-Device-Id): a new sign-in replaces
+  // the sessions with the same one. Null for clients that don't send one.
+  deviceId   String?
 
   // Token family for reuse detection (RFC 9700 best practice)
   // All tokens from a single login share a familyId. On rotation the old
@@ -391,6 +394,7 @@ model RefreshToken {
 
   @@index([userId, lastUsedAt]) // For fetching user's sessions sorted by activity
   @@index([familyId]) // For invalidating entire token family on reuse
+  @@index([userId, deviceId]) // For replacing an install's sessions on sign-in
 }
 
 model InstanceInvite {

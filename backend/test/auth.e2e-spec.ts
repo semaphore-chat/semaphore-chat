@@ -270,6 +270,72 @@ describe('Auth flow (e2e)', () => {
   });
 
   /**
+   * A sign-in replaces the sessions of the same install (X-Device-Id), and
+   * revokes them fully: their access tokens stop working at once (#563).
+   * Installs sharing a user agent keep their own sessions.
+   */
+  describe('sessions per install (X-Device-Id)', () => {
+    const userAgent =
+      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120.0.0.0';
+
+    async function signIn(deviceId?: string) {
+      const req = request(app.getHttpServer())
+        .post('/api/auth/login')
+        .set('User-Agent', userAgent);
+      if (deviceId) req.set('X-Device-Id', deviceId);
+      const res = await req
+        .send({ username: creds.username, password: creds.password })
+        .expect(200);
+      return {
+        accessToken: (res.body as { accessToken: string }).accessToken,
+        refreshCookie: extractCookie(getSetCookies(res), 'refresh_token')!,
+      };
+    }
+
+    const profile = (token: string) =>
+      request(app.getHttpServer())
+        .get('/api/users/profile')
+        .set('Authorization', `Bearer ${token}`);
+    const refresh = (cookie: string) =>
+      request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('User-Agent', userAgent)
+        .set('Cookie', cookie);
+
+    it('a sign-in on the same install revokes the earlier session', async () => {
+      const install = randomUUID();
+      const first = await signIn(install);
+      await profile(first.accessToken).expect(200);
+
+      const second = await signIn(install);
+
+      // Revoked, not just unlisted: the old access token stops working now
+      await profile(first.accessToken).expect(401);
+      await refresh(first.refreshCookie).expect(401);
+      await profile(second.accessToken).expect(200);
+    });
+
+    it('installs with the same user agent keep their own sessions', async () => {
+      const a = await signIn(randomUUID());
+      const b = await signIn(randomUUID());
+
+      await profile(a.accessToken).expect(200);
+      await profile(b.accessToken).expect(200);
+      await refresh(a.refreshCookie).expect(200);
+      await refresh(b.refreshCookie).expect(200);
+    });
+
+    it('sign-ins without a device id replace nothing', async () => {
+      const a = await signIn();
+      const b = await signIn();
+
+      await profile(a.accessToken).expect(200);
+      await refresh(a.refreshCookie).expect(200);
+      await refresh(b.refreshCookie).expect(200);
+    });
+  });
+
+  /**
    * RefreshThrottlerGuard (skipped under NODE_ENV=test elsewhere, enabled
    * here) limits refreshes per presented token. Keyed by the token's user,
    * anyone holding one of a victim's validly signed tokens (even one that

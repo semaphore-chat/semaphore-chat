@@ -91,6 +91,39 @@ describe('AuthController', () => {
       expect(result).not.toHaveProperty('refreshToken');
     });
 
+    it('passes a valid X-Device-Id on, lower-cased (#563)', async () => {
+      const req = {
+        ...mockReq,
+        headers: {
+          'user-agent': 'Mozilla/5.0',
+          'x-device-id': '3F2504E0-4F89-41D3-9A0C-0305E82C3301',
+        },
+      };
+
+      await controller.login(req, mockRes);
+
+      expect(authService.issueLoginTokens).toHaveBeenCalledWith(
+        mockUser,
+        expect.objectContaining({
+          deviceId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+        }),
+      );
+    });
+
+    it('ignores an invalid X-Device-Id (#563)', async () => {
+      const req = {
+        ...mockReq,
+        headers: { 'user-agent': 'Mozilla/5.0', 'x-device-id': 'not-a-uuid' },
+      };
+
+      await controller.login(req, mockRes);
+
+      expect(authService.issueLoginTokens).toHaveBeenCalledWith(
+        mockUser,
+        expect.objectContaining({ deviceId: undefined }),
+      );
+    });
+
     it('should login Electron client and return both tokens', async () => {
       const req = {
         ...mockReq,
@@ -161,6 +194,7 @@ describe('AuthController', () => {
       deviceName: 'Chrome',
       userAgent: null,
       ipAddress: null,
+      deviceId: null as string | null,
     };
 
     const refreshIssuedAt = 1_700_000_000;
@@ -207,6 +241,7 @@ describe('AuthController', () => {
       jest.spyOn(authService, 'generateRefreshToken').mockResolvedValue({
         refreshToken: newRefreshToken,
         sessionId: 'family-123',
+        replacedSessionIds: [],
       });
     });
 
@@ -243,6 +278,40 @@ describe('AuthController', () => {
       // Same session: the new access token keeps the family's session id
       expect(authService.login).toHaveBeenCalledWith(mockUser, 'family-123');
       expect(result).toEqual({ accessToken: mockAccessToken });
+    });
+
+    it.each([
+      [
+        "keeps the session's device id",
+        'aaaaaaaa-0000-4000-8000-000000000001',
+        'aaaaaaaa-0000-4000-8000-000000000001',
+      ],
+      [
+        "adopts the client's for a session without one",
+        null,
+        'bbbbbbbb-0000-4000-8000-000000000002',
+      ],
+    ])('a rotation %s (#563)', async (_label, stored, expected) => {
+      jest
+        .spyOn(authService, 'consumeRefreshToken')
+        .mockResolvedValue({ ...mockTokenRecord, deviceId: stored });
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {
+          'user-agent': 'Mozilla/5.0',
+          'x-device-id': 'bbbbbbbb-0000-4000-8000-000000000002',
+        },
+      };
+
+      await controller.refresh(req, mockRes);
+
+      expect(authService.generateRefreshToken).toHaveBeenCalledWith(
+        mockUser.id,
+        expect.objectContaining({ deviceId: expected }),
+        mockDatabase,
+        'family-123',
+      );
     });
 
     it('should refuse to refresh for a banned user', async () => {
@@ -702,6 +771,7 @@ describe('AuthController', () => {
       deviceName: 'Chrome',
       userAgent: null,
       ipAddress: null,
+      deviceId: null as string | null,
     };
 
     beforeEach(() => {

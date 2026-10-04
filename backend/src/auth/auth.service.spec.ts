@@ -208,6 +208,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         refreshToken: mockRefreshToken,
         sessionId: expect.any(String),
+        replacedSessionIds: [],
       });
       expect(mockDatabase.refreshToken.create).toHaveBeenCalledWith({
         data: expect.objectContaining({ familyId: result.sessionId }),
@@ -261,6 +262,7 @@ describe('AuthService', () => {
       expect(result).toEqual({
         refreshToken: 'prepared-token',
         sessionId: 'family-1',
+        replacedSessionIds: [],
       });
       expect(jwtService.sign).not.toHaveBeenCalled();
       expect(bcrypt.hash).not.toHaveBeenCalled();
@@ -273,26 +275,98 @@ describe('AuthService', () => {
       });
     });
 
-    it('should delete existing sessions for same device on fresh login (no familyId)', async () => {
+    describe('replacing the sessions of the same install (#563)', () => {
       const userId = 'user-123';
-      const deviceInfo = {
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
-        ipAddress: '1.2.3.4',
-      };
+      const chrome =
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0';
+      const deviceId = '3f2504e0-4f89-41d3-9a0c-0305e82c3301';
 
-      jest.spyOn(jwtService, 'sign').mockReturnValue('mock-refresh-token');
-      mockBcrypt.hash.mockResolvedValue('hashed-token' as never);
-      mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 1 });
-      mockDatabase.refreshToken.create.mockResolvedValue({
-        id: 'token-id',
-        userId,
-        tokenHash: 'hashed-token',
+      beforeEach(() => {
+        jest.spyOn(jwtService, 'sign').mockReturnValue('mock-refresh-token');
+        mockBcrypt.hash.mockResolvedValue('hashed-token' as never);
+        mockDatabase.refreshToken.create.mockResolvedValue({});
+        mockDatabase.refreshToken.deleteMany.mockResolvedValue({ count: 0 });
       });
 
-      await service.generateRefreshToken(userId, deviceInfo);
+      it('replaces the live sessions with the same device id, whole', async () => {
+        mockDatabase.refreshToken.findMany.mockResolvedValue([
+          { familyId: 'old-family' },
+          { familyId: 'old-family' },
+          { familyId: null },
+        ]);
 
-      expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
-        where: { userId, deviceName: 'Chrome on Windows', consumed: false },
+        const result = await service.generateRefreshToken(userId, {
+          userAgent: chrome,
+          deviceId,
+        });
+
+        expect(mockDatabase.refreshToken.findMany).toHaveBeenCalledWith({
+          where: { userId, deviceId, consumed: false },
+          select: { familyId: true },
+        });
+        // The whole session goes, with its consumed tokens
+        expect(mockDatabase.refreshToken.deleteMany).toHaveBeenCalledWith({
+          where: { userId, familyId: { in: ['old-family'] } },
+        });
+        // For the caller to revoke once the transaction commits
+        expect(result.replacedSessionIds).toEqual(['old-family']);
+        expect(mockDatabase.refreshToken.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ deviceId }),
+        });
+      });
+
+      it('keeps sessions of other installs with the same user agent', async () => {
+        // Only rows with this device id match; another install's session
+        // (same user agent, other id) isn't among them
+        mockDatabase.refreshToken.findMany.mockResolvedValue([]);
+
+        const result = await service.generateRefreshToken(userId, {
+          userAgent: chrome,
+          deviceId,
+        });
+
+        expect(mockDatabase.refreshToken.findMany).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.not.objectContaining({
+              deviceName: expect.anything(),
+            }),
+          }),
+        );
+        expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+        expect(result.replacedSessionIds).toEqual([]);
+      });
+
+      it('replaces nothing without a device id (older clients, API users)', async () => {
+        const result = await service.generateRefreshToken(userId, {
+          userAgent: chrome,
+          ipAddress: '1.2.3.4',
+        });
+
+        expect(mockDatabase.refreshToken.findMany).not.toHaveBeenCalled();
+        expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+        expect(result.replacedSessionIds).toEqual([]);
+        expect(mockDatabase.refreshToken.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({ deviceId: undefined }),
+        });
+      });
+
+      it('replaces nothing on a rotation, which keeps the device id', async () => {
+        const result = await service.generateRefreshToken(
+          userId,
+          { userAgent: chrome, deviceId },
+          undefined,
+          'existing-family-id',
+        );
+
+        expect(mockDatabase.refreshToken.findMany).not.toHaveBeenCalled();
+        expect(mockDatabase.refreshToken.deleteMany).not.toHaveBeenCalled();
+        expect(result.replacedSessionIds).toEqual([]);
+        expect(mockDatabase.refreshToken.create).toHaveBeenCalledWith({
+          data: expect.objectContaining({
+            deviceId,
+            familyId: 'existing-family-id',
+          }),
+        });
       });
     });
 
@@ -977,8 +1051,66 @@ describe('AuthService', () => {
       jest.spyOn(service, 'generateRefreshToken').mockResolvedValue({
         refreshToken: 'new-refresh-token',
         sessionId: 'family-1',
+        replacedSessionIds: [],
       });
       jest.spyOn(service, 'login').mockReturnValue('new-access-token');
+    });
+
+    describe('sessions the sign-in replaces (same device id, #563)', () => {
+      beforeEach(() => {
+        mockDatabase.$queryRaw.mockResolvedValue([
+          { hashedPassword: '$2b$10$checked-hash' },
+        ]);
+        (service.generateRefreshToken as jest.Mock).mockResolvedValue({
+          refreshToken: 'new-refresh-token',
+          sessionId: 'family-1',
+          replacedSessionIds: ['old-family'],
+        });
+      });
+
+      it('revokes them through the revocation service after the commit', async () => {
+        const result = await service.issueLoginTokens(user, {
+          deviceId: '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+        });
+
+        expect(result).toEqual({
+          refreshToken: 'new-refresh-token',
+          accessToken: 'new-access-token',
+        });
+        expect(sessionRevocationService.revokeSessions).toHaveBeenCalledWith(
+          user.id,
+          ['old-family'],
+          'SESSION_REVOKED',
+        );
+        expect(
+          sessionRevocationService.revokeSessions.mock.invocationCallOrder[0],
+        ).toBeGreaterThan(
+          mockDatabase.$transaction.mock.invocationCallOrder[0],
+        );
+      });
+
+      it('still signs in when the revocation fails', async () => {
+        sessionRevocationService.revokeSessions.mockRejectedValue(
+          new Error('redis down'),
+        );
+
+        await expect(service.issueLoginTokens(user, {})).resolves.toEqual({
+          refreshToken: 'new-refresh-token',
+          accessToken: 'new-access-token',
+        });
+      });
+
+      it('revokes nothing when nothing was replaced', async () => {
+        (service.generateRefreshToken as jest.Mock).mockResolvedValue({
+          refreshToken: 'new-refresh-token',
+          sessionId: 'family-1',
+          replacedSessionIds: [],
+        });
+
+        await service.issueLoginTokens(user, {});
+
+        expect(sessionRevocationService.revokeSessions).not.toHaveBeenCalled();
+      });
     });
 
     it('issues both tokens when the password is still the one checked', async () => {
