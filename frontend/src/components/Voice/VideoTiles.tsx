@@ -494,6 +494,7 @@ export const VideoTiles: React.FC = () => {
             isReplayBufferActive={isReplayBufferActive}
             onToggleFullscreen={() => handleTileSpotlight(pinnedTile.tileId)}
             isSpotlighted={spotlightTileId === pinnedTile.tileId}
+            isFocused
             onStopWatching={
               pinnedTile.tileType === 'avatar' ? undefined :
               pinnedTile.isLocal ? () => handleHideLocalTile(pinnedTile) :
@@ -572,6 +573,7 @@ export const VideoTiles: React.FC = () => {
           isReplayBufferActive={isReplayBufferActive}
           onToggleFullscreen={() => handleTileSpotlight(spotlightedTile.tileId)}
           isSpotlighted={true}
+          isFocused
           onStopWatching={
             spotlightedTile.tileType === 'avatar' ? undefined :
             spotlightedTile.isLocal ? () => handleHideLocalTile(spotlightedTile) :

@@ -57,8 +57,11 @@ export function clearScreenShareConfig(): void {
 /**
  * Default screen share settings
  */
+// Matches the Electron picker's default (ScreenSourcePicker). The web has no
+// picker of its own (the browser's chooses the source), so this is what every
+// browser screen share gets.
 export const DEFAULT_SCREEN_SHARE_SETTINGS: ScreenShareSettings = {
   resolution: '1080p',
-  fps: 30,
+  fps: 60,
   enableAudio: true,
 };

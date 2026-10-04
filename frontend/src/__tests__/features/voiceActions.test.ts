@@ -24,10 +24,14 @@ const mockRoomInstance = {
 };
 
 // Captures handlers registered via room.on() so tests can fire room events
+const roomCtorArgs: unknown[] = [];
 const roomEventHandlers: Record<string, (...args: unknown[]) => unknown> = {};
 
 vi.mock('livekit-client', () => {
   class MockRoom {
+    constructor(options?: unknown) {
+      roomCtorArgs.push(options);
+    }
     connect = mockRoomInstance.connect;
     disconnect = mockRoomInstance.disconnect;
     state = mockRoomInstance.state;
@@ -90,6 +94,10 @@ vi.mock('../../utils/screenShareResolution', () => ({
   getScreenShareAudioConfig: vi.fn().mockReturnValue(true),
 }));
 
+vi.mock('../../features/voice/screenSharePublish', () => ({
+  publishScreenShare: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('../../utils/platform', () => ({
   isElectron: vi.fn().mockReturnValue(false),
 }));
@@ -118,12 +126,18 @@ import {
   toggleDeafenUnified,
   switchAudioInputDevice,
   switchAudioOutputDevice,
+  toggleScreenShareUnified,
+  getRoomOptions,
 } from '../../features/voice/voiceActions';
 import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
 import { getCachedItem } from '../../utils/storage';
+import { publishScreenShare } from '../../features/voice/screenSharePublish';
+import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
+import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
+import { getMicPublishDefaults } from '../../utils/voiceQuality';
 
 function createMockDeps(overrides: Partial<{
   channelId: string | null;
@@ -179,6 +193,11 @@ describe('voiceActions', () => {
     mockRoomInstance.localParticipant.metadata = JSON.stringify({ isDeafened: false });
     mockRoomInstance.getActiveDevice.mockReturnValue(undefined);
     Object.keys(roomEventHandlers).forEach((key) => delete roomEventHandlers[key]);
+    roomCtorArgs.length = 0;
+    vi.mocked(getCachedItem).mockReturnValue(null);
+    vi.mocked(getScreenShareSettings).mockReturnValue(undefined);
+    vi.mocked(publishScreenShare).mockResolvedValue(undefined);
+    mockLocalParticipant.isScreenShareEnabled = false;
   });
 
   describe('joinVoiceChannel', () => {
@@ -663,6 +682,94 @@ describe('voiceActions', () => {
           voiceIsolation: true,
         }),
       );
+    });
+  });
+  describe('room options', () => {
+    const joinParams = {
+      channelId: 'ch-1',
+      channelName: 'General',
+      communityId: 'c1',
+      isPrivate: false,
+      createdAt: '2025-01-01',
+      user: { id: 'user-1', username: 'testuser', displayName: 'Test User' },
+      connectionInfo: { url: 'ws://localhost:7880' },
+    };
+
+    it('getRoomOptions enables adaptiveStream and dynacast with default mic quality', () => {
+      expect(getRoomOptions()).toEqual({
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: getMicPublishDefaults('high'),
+      });
+    });
+
+    it('joining constructs the Room with default mic publish defaults', async () => {
+      await joinVoiceChannel(joinParams, createMockDeps());
+      expect(roomCtorArgs).toHaveLength(1);
+      expect(roomCtorArgs[0]).toMatchObject({
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: { audioPreset: { maxBitrate: 96000 }, dtx: true },
+      });
+    });
+
+    it('joining uses the stored music mic quality', async () => {
+      vi.mocked(getCachedItem).mockImplementation((key: string) =>
+        key === 'semaphore_voice_settings' ? { micQuality: 'music' } : null,
+      );
+      await joinVoiceChannel(joinParams, createMockDeps());
+      expect(roomCtorArgs[0]).toMatchObject({
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: { audioPreset: { maxBitrate: 128000 }, dtx: false },
+      });
+      expect(getRoomOptions().publishDefaults).toEqual(getMicPublishDefaults('music'));
+    });
+  });
+
+  describe('toggleScreenShareUnified', () => {
+    it('publishes via publishScreenShare with default settings and audio config', async () => {
+      vi.mocked(getScreenShareAudioConfig).mockReturnValue(true as unknown as ReturnType<typeof getScreenShareAudioConfig>);
+      const deps = createMockDeps();
+      await toggleScreenShareUnified(deps);
+
+      expect(publishScreenShare).toHaveBeenCalledWith(mockRoomInstance, DEFAULT_SCREEN_SHARE_SETTINGS, true);
+      expect(mockLocalParticipant.setScreenShareEnabled).not.toHaveBeenCalled();
+    });
+
+    it('uses stored settings when present', async () => {
+      const stored = { resolution: '4k', fps: 60, enableAudio: false };
+      vi.mocked(getScreenShareSettings).mockReturnValue(stored as never);
+      vi.mocked(getScreenShareAudioConfig).mockReturnValue(false);
+      await toggleScreenShareUnified(createMockDeps());
+
+      expect(getScreenShareAudioConfig).toHaveBeenCalledWith(false);
+      expect(publishScreenShare).toHaveBeenCalledWith(mockRoomInstance, stored, false);
+    });
+
+    it('retries without audio on NotReadableError and flags the failure', async () => {
+      const err = Object.assign(new Error('Could not start audio source'), { name: 'NotReadableError' });
+      vi.mocked(publishScreenShare).mockRejectedValueOnce(err);
+      const deps = createMockDeps();
+      await toggleScreenShareUnified(deps);
+
+      expect(publishScreenShare).toHaveBeenCalledTimes(2);
+      expect(publishScreenShare).toHaveBeenLastCalledWith(mockRoomInstance, DEFAULT_SCREEN_SHARE_SETTINGS, false);
+      expect(deps.dispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetScreenShareAudioFailed, payload: true });
+    });
+
+    it('rethrows other publish errors', async () => {
+      vi.mocked(publishScreenShare).mockRejectedValueOnce(new Error('boom'));
+      await expect(toggleScreenShareUnified(createMockDeps())).rejects.toThrow('boom');
+      expect(publishScreenShare).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops sharing with setScreenShareEnabled(false) when already sharing', async () => {
+      mockLocalParticipant.isScreenShareEnabled = true;
+      await toggleScreenShareUnified(createMockDeps());
+
+      expect(mockLocalParticipant.setScreenShareEnabled).toHaveBeenCalledWith(false);
+      expect(publishScreenShare).not.toHaveBeenCalled();
     });
   });
 });
