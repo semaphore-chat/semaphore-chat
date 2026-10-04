@@ -192,12 +192,9 @@ describe('WebSocket gateways (e2e)', () => {
       });
     }
 
-    /**
-     * Sign in as a device of its own: sessions are deduplicated per device
-     * (user agent), so two logins with the same agent share nothing.
-     */
-    // Distinct device names: a login replaces the user's other sessions on
-    // the same device (see AuthService.generateRefreshToken)
+    // Distinct devices by user agent. Sign-ins only replace each other's
+    // sessions when they send the same X-Device-Id (#563), which these
+    // don't, so the agents only label the sessions.
     const userAgents = {
       Laptop: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0',
       Phone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari',

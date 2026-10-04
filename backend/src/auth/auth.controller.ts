@@ -24,6 +24,7 @@ import { SessionRevocationService } from './session-revocation.service';
 import { PasswordResetService } from './password-reset.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
 import { RefreshThrottlerGuard } from './refresh-throttler.guard';
+import { DEVICE_ID_HEADER, parseDeviceId } from './device-id.util';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DatabaseService } from '@/database/database.service';
@@ -94,7 +95,8 @@ export class AuthController {
     const userAgent = req.headers['user-agent'] || '';
     // req.ip respects the TRUST_PROXY setting configured in main.ts
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
-    return { userAgent, ipAddress };
+    const deviceId = parseDeviceId(req.headers[DEVICE_ID_HEADER]);
+    return { userAgent, ipAddress, deviceId };
   }
 
   @Public()
@@ -296,7 +298,9 @@ export class AuthController {
         // waiting behind it take the grace path, which hashes nothing.
         const next = await this.authService.generateRefreshToken(
           user.id,
-          deviceInfo,
+          // A session keeps the install it was signed in on; one from before
+          // clients sent device ids adopts the presenting client's
+          { ...deviceInfo, deviceId: consumed.deviceId ?? deviceInfo.deviceId },
           tx,
           consumed.familyId ?? undefined,
         );

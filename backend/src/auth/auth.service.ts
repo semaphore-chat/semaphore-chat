@@ -27,6 +27,11 @@ const MAX_GRACE_HOPS = 5;
 export interface DeviceInfo {
   userAgent?: string;
   ipAddress?: string;
+  /**
+   * The client install's id (parseDeviceId): a new sign-in replaces the
+   * sessions of the same install, and only those
+   */
+  deviceId?: string;
 }
 
 /**
@@ -152,7 +157,7 @@ export class AuthService {
   ): Promise<{ refreshToken: string; accessToken: string }> {
     // bcrypt before the transaction: nothing waits on its locks meanwhile
     const prepared = await this.prepareRefreshToken(user.id);
-    return this.databaseService.$transaction(async (tx) => {
+    const tokens = await this.databaseService.$transaction(async (tx) => {
       const current = await lockUserForLogin(tx, user.id);
       if (!current || current.hashedPassword !== user.hashedPassword) {
         this.logger.warn(
@@ -160,16 +165,43 @@ export class AuthService {
         );
         throw new UnauthorizedException();
       }
-      const { refreshToken, sessionId } = await this.generateRefreshToken(
-        user.id,
-        deviceInfo,
-        tx,
-        undefined,
-        prepared,
-      );
+      const { refreshToken, sessionId, replacedSessionIds } =
+        await this.generateRefreshToken(
+          user.id,
+          deviceInfo,
+          tx,
+          undefined,
+          prepared,
+        );
       // Signed before the commit (see above)
-      return { refreshToken, accessToken: this.login(user, sessionId) };
+      return {
+        refreshToken,
+        accessToken: this.login(user, sessionId),
+        replacedSessionIds,
+      };
     });
+
+    // After the commit, like every revocation: the replaced sessions' refresh
+    // tokens are gone; now their access tokens, sockets and voice go too
+    if (tokens.replacedSessionIds.length > 0) {
+      try {
+        await this.sessionRevocationService.revokeSessions(
+          user.id,
+          tokens.replacedSessionIds,
+          'SESSION_REVOKED',
+        );
+      } catch (error) {
+        // The sign-in has committed: don't fail it. The replaced sessions
+        // can't refresh any more; their access tokens expire on their own.
+        this.logger.warn(
+          `Could not revoke the sessions replaced by a sign-in of user ${user.id}: ${String(error)}`,
+        );
+      }
+    }
+    return {
+      refreshToken: tokens.refreshToken,
+      accessToken: tokens.accessToken,
+    };
   }
 
   /**
@@ -336,8 +368,20 @@ export class AuthService {
   /**
    * Issue a refresh token: store it, as the first token of a new session or
    * the next one of `familyId`.
+   *
+   * A new session (no `familyId`) replaces the sessions of the same install
+   * (`deviceInfo.deviceId`), so signing in again on one device doesn't pile
+   * up sessions. Their refresh tokens are deleted here; the caller revokes
+   * the rest of them (SessionRevocationService.revokeSessions with
+   * `replacedSessionIds`) once the transaction has committed. Without a
+   * device id (older clients, API users) nothing is replaced: a user agent
+   * isn't a device, and two installs sharing one would sign each other out.
+   * @param deviceInfo - For a rotation (`familyId`), `deviceId` is the
+   *   session's own, as stored on the token it rotates
    * @param prepared - The token, if signed and hashed already
    *   (prepareRefreshToken); otherwise that is done here
+   * @returns The new token, its session id and the ids of the sessions it
+   *   replaced
    */
   async generateRefreshToken(
     userId: string,
@@ -345,7 +389,11 @@ export class AuthService {
     tx?: Prisma.TransactionClient,
     familyId?: string,
     prepared?: PreparedRefreshToken,
-  ): Promise<{ refreshToken: string; sessionId: string }> {
+  ): Promise<{
+    refreshToken: string;
+    sessionId: string;
+    replacedSessionIds: string[];
+  }> {
     const {
       id: jti,
       refreshToken,
@@ -357,11 +405,24 @@ export class AuthService {
       ? this.parseDeviceName(deviceInfo.userAgent)
       : 'Unknown Device';
 
-    // Fresh login (no familyId) — deduplicate sessions for same device
-    if (!familyId) {
-      await client.refreshToken.deleteMany({
-        where: { userId, deviceName, consumed: false },
+    const deviceId = deviceInfo?.deviceId;
+
+    // A new session replaces the live sessions of the same install
+    let replacedSessionIds: string[] = [];
+    if (!familyId && deviceId) {
+      const live = await client.refreshToken.findMany({
+        where: { userId, deviceId, consumed: false },
+        select: { familyId: true },
       });
+      replacedSessionIds = [
+        ...new Set(live.map((t) => t.familyId).filter((f): f is string => !!f)),
+      ];
+      if (replacedSessionIds.length > 0) {
+        // The whole sessions, with their consumed tokens
+        await client.refreshToken.deleteMany({
+          where: { userId, familyId: { in: replacedSessionIds } },
+        });
+      }
     }
 
     await client.refreshToken.create({
@@ -373,13 +434,14 @@ export class AuthService {
         deviceName,
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
+        deviceId,
         lastUsedAt: new Date(),
         familyId: sessionId,
       },
     });
 
     // The family id is the session id access tokens carry (`sid`)
-    return { refreshToken, sessionId };
+    return { refreshToken, sessionId, replacedSessionIds };
   }
 
   /**

@@ -28,6 +28,8 @@ vi.mock('../../utils/tokenService', async (importOriginal) => {
 });
 
 import { configureApiClient } from '../../api-client-config';
+import { authControllerLogin } from '../../api-client/sdk.gen';
+import { getDeviceId } from '../../utils/deviceId';
 import { client } from '../../api-client/client.gen';
 import * as tokenService from '../../utils/tokenService';
 
@@ -299,5 +301,59 @@ describe('REST 401 interceptor (configureApiClient)', () => {
 
     expect(result.response?.status).toBe(403);
     expect(mockRefreshSessionWithRetry).not.toHaveBeenCalled();
+  });
+});
+
+describe('device id on auth requests (#563)', () => {
+  beforeAll(() => {
+    configureApiClient();
+  });
+
+  it('sends the install\'s device id with a sign-in, the same every time', async () => {
+    const seen: (string | null)[] = [];
+    server.use(
+      http.post(`${API}/api/auth/login`, ({ request }) => {
+        seen.push(request.headers.get('X-Device-Id'));
+        return HttpResponse.json({ accessToken: 'token' });
+      }),
+    );
+
+    await authControllerLogin({ body: { username: 'a', password: 'b' } });
+    await authControllerLogin({ body: { username: 'a', password: 'b' } });
+
+    expect(seen).toEqual([getDeviceId(), getDeviceId()]);
+    expect(seen[0]).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it('sends the device id with a session refresh', async () => {
+    let seen: string | null = null;
+    server.use(
+      http.post(`${API}/api/auth/refresh`, ({ request }) => {
+        seen = request.headers.get('X-Device-Id');
+        return HttpResponse.json({ accessToken: 'fresh' });
+      }),
+    );
+
+    const actual = await vi.importActual<typeof import('../../utils/tokenService')>(
+      '../../utils/tokenService',
+    );
+    await actual.refreshToken();
+
+    expect(seen).toBe(getDeviceId());
+  });
+
+  it('keeps it off other endpoints', async () => {
+    let seen: string | null = 'unset';
+    server.use(
+      http.get(`${API}${PROTECTED}`, ({ request }) => {
+        seen = request.headers.get('X-Device-Id');
+        return HttpResponse.json({ ok: true });
+      }),
+    );
+    tokenService.setAccessToken('t');
+
+    await client.get({ url: PROTECTED });
+
+    expect(seen).toBeNull();
   });
 });
