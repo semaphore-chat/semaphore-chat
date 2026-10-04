@@ -72,6 +72,10 @@ services:
       - JWT_SECRET=e2e-test-jwt-secret-change-in-production
       - JWT_REFRESH_SECRET=e2e-test-refresh-secret-change-in-production
       - SKIP_INVITE_CODE=true  # Allow registration without invite code in tests
+      # Every test browser reaches the backend from one address (this host,
+      # through the frontend's dev proxy), so the per-address WebSocket
+      # connection limit (10 a minute) would refuse a busy run's page loads
+      - WS_CONNECTION_RATE_LIMIT=1000
       # LiveKit - placeholder values for E2E (not testing voice/video)
       - LIVEKIT_URL=wss://e2e-test.livekit.cloud
       - LIVEKIT_API_KEY=e2e-test-api-key

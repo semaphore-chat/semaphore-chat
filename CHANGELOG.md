@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- **WebSocket connection limit behind a reverse proxy** — The limit of 10 WebSocket connections per minute applied to the proxy's address, so behind a reverse proxy all users together could open only 10 a minute per backend instance (e.g. reconnecting after a restart). It now applies per client address, taken from `X-Forwarded-For` as `TRUST_PROXY` allows, like the HTTP rate limits. The new `WS_CONNECTION_RATE_LIMIT` setting changes the limit. (#567)
+- **Signed out after a token refresh the client abandoned** — A token refresh whose client went away mid-request (a page reload, a dropped connection) could store the rotated token without the client's IP address. When the client presented its token again, the refresh then read as a stolen token and ended the session. The client address is now taken when the request arrives. Seen in the voice E2E runs (`NODE_ENV=test`); production instances were mostly protected by the HTTP rate limiter, which reads the address first. (#567)
+
 ## [0.5.0] - 2026-09-28
 
 ### ⚠️ Breaking changes

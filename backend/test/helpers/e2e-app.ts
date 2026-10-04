@@ -19,6 +19,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
+import { pinClientAddress } from '@/common/http/pin-client-address';
 import * as cookieParser from 'cookie-parser';
 import type { Application } from 'express';
 import * as request from 'supertest';
@@ -66,6 +67,7 @@ export async function createE2eApp(options?: {
       options.trustProxy,
     );
   }
+  app.use(pinClientAddress);
   app.setGlobalPrefix('api');
   app.use(cookieParser());
   app.useGlobalPipes(new AppValidationPipe());

@@ -99,13 +99,14 @@ Configuration for the replay buffer / screen recording feature. Requires LiveKit
 
 ### Reverse proxy
 
-If Semaphore Chat runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting, session IPs and refresh token checks use the real client address instead of the proxy's. (A refresh token presented again moments after it was rotated is only honoured for the client that rotated it, by IP address and user agent. Without `TRUST_PROXY`, every client has the proxy's address and only the user agent tells them apart.)
+If Semaphore Chat runs behind a reverse proxy (Nginx, Traefik, Caddy, a cloud load balancer, etc.), set `TRUST_PROXY` so that rate-limiting (WebSocket connections included), session IPs and refresh token checks use the real client address instead of the proxy's. (A refresh token presented again moments after it was rotated is only honoured for the client that rotated it, by IP address and user agent. Without `TRUST_PROXY`, every client has the proxy's address and only the user agent tells them apart.)
 
 Set it to the exact number of reverse proxy hops in front of the backend, usually `1`. Never set it higher than the real count, and never to `true`. The backend then takes the client address from the `X-Forwarded-For` header, so its port must only be reachable through the proxy. A client that reaches the backend directly can put any IP in that header. With Docker Compose, publish the backend port on `127.0.0.1` only (`"127.0.0.1:3000:3000"`), or not at all.
 
 | Variable | Description | Default |
 |----------|------------|---------|
 | `TRUST_PROXY` | Number of trusted proxy hops, a subnet name, or a specific IP | unset (no proxy trusted) |
+| `WS_CONNECTION_RATE_LIMIT` | WebSocket connections one client address may open per minute, per backend instance. Raise it if many users share one address (an office NAT) | `10` |
 
 Common values:
 

@@ -9,6 +9,7 @@ import { TimingInterceptor } from './timing/timing.interceptor';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
 import { configureBodyParsers } from './common/http/body-parsers';
+import { pinClientAddress } from './common/http/pin-client-address';
 
 const KNOWN_WEAK_SECRETS = [
   'some long elaborate secret that you really need to change',
@@ -73,13 +74,14 @@ async function bootstrap() {
     // req.rawBody: LiveKit webhook signatures cover the exact bytes received
     rawBody: true,
   });
-  configureBodyParsers(app);
-
   // Trust proxy so req.ip resolves the real client IP behind a reverse proxy.
   // https://expressjs.com/en/guide/behind-proxies.html
   if (process.env.TRUST_PROXY) {
     app.set('trust proxy', parseTrustProxy(process.env.TRUST_PROXY));
   }
+  // First: req.ip as the request arrived, even if its client goes away
+  app.use(pinClientAddress);
+  configureBodyParsers(app);
 
   const redisIoAdapter = new RedisIoAdapter(app);
   await redisIoAdapter.connectToRedis();
