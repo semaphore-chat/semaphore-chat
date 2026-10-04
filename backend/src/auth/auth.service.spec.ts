@@ -176,6 +176,24 @@ describe('AuthService', () => {
       expect(jwtService.sign.mock.calls[0][0]).not.toHaveProperty('sid');
     });
 
+    it('carries the issue time in milliseconds (iatMs, #562)', () => {
+      jest.useFakeTimers({ now: Date.parse('2026-01-01T00:00:10.400Z') });
+      try {
+        const user = new UserEntity(UserFactory.build());
+        jest.spyOn(jwtService, 'sign').mockReturnValue('mock-jwt-token');
+
+        service.login(user, 'session-1');
+
+        expect(jwtService.sign).toHaveBeenCalledWith(
+          expect.objectContaining({
+            iatMs: Date.parse('2026-01-01T00:00:10.400Z'),
+          }),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should carry the session id as the sid claim', () => {
       const user = new UserEntity(UserFactory.build());
       jest.spyOn(jwtService, 'sign').mockReturnValue('mock-jwt-token');
@@ -185,6 +203,22 @@ describe('AuthService', () => {
       expect(jwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({ sub: user.id, sid: 'session-1' }),
       );
+    });
+  });
+
+  describe('prepareRefreshToken', () => {
+    it('signs the issue time in milliseconds (iatMs, #562)', async () => {
+      jest.spyOn(jwtService, 'sign').mockReturnValue('mock-refresh-token');
+      mockBcrypt.hash.mockResolvedValue('hash' as never);
+      const before = Date.now();
+
+      await service.prepareRefreshToken('user-1');
+
+      const [payload] = jwtService.sign.mock.calls[0] as unknown as [
+        { iatMs: number },
+      ];
+      expect(payload.iatMs).toBeGreaterThanOrEqual(before);
+      expect(payload.iatMs).toBeLessThanOrEqual(Date.now());
     });
   });
 

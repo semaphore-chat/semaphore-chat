@@ -88,6 +88,7 @@ export class SocketSessionService implements OnModuleDestroy {
         jti: bound.jti,
         sid: bound.sid,
         iat: bound.iat,
+        iatMs: bound.iatMs,
       });
     } catch (error) {
       // Can't tell whether the session still stands: fail closed
@@ -160,6 +161,7 @@ export class SocketSessionService implements OnModuleDestroy {
       jti: claims.jti,
       sid: claims.sid,
       iat: claims.iat,
+      iatMs: claims.iatMs,
       exp: claims.exp,
     };
 

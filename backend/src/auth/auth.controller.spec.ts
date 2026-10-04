@@ -726,6 +726,24 @@ describe('AuthController', () => {
         expect(authService.login).not.toHaveBeenCalled();
       });
 
+      it('checks the refresh token to the millisecond when it has iatMs (#562)', async () => {
+        authService.verifyRefreshToken.mockResolvedValue([
+          mockUser,
+          jti,
+          refreshIssuedAt,
+          refreshIssuedAt * 1000 + 250,
+        ]);
+
+        await controller.refresh(req, mockRes);
+
+        expect(tokenBlacklistService.isRevoked).toHaveBeenCalledWith({
+          sub: mockUser.id,
+          sid: 'family-123',
+          iat: refreshIssuedAt,
+          iatMs: refreshIssuedAt * 1000 + 250,
+        });
+      });
+
       it('deletes just the token of a revoked session without a family', async () => {
         jest
           .spyOn(authService, 'reloadRefreshToken')

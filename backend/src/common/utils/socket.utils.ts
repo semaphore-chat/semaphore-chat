@@ -32,6 +32,8 @@ export interface SocketAuthData {
   sid?: string;
   /** Access token issue time (seconds since epoch). */
   iat?: number;
+  /** Access token issue time (milliseconds since epoch), if it has one. */
+  iatMs?: number;
   /** Access token expiry (seconds since epoch). */
   exp: number;
 }

@@ -58,6 +58,7 @@ export type GraceSuccessor =
       refreshToken: string;
       sessionId: string | null;
       iat?: number;
+      iatMs?: number;
     }
   | { kind: 'other-client' }
   | { kind: 'none' };
@@ -135,6 +136,10 @@ export class AuthService {
       role: user.role,
       jti,
       ...(sessionId ? { sid: sessionId } : {}),
+      // Issue time to the millisecond: `iat` has whole seconds, which can't
+      // tell a token from just after a user's cutoff (password reset) from
+      // one just before it (#562)
+      iatMs: Date.now(),
     };
     return this.jwtService.sign(payload);
   }
@@ -239,7 +244,7 @@ export class AuthService {
       );
       if (!successor) return none;
 
-      let claims: { sub: string; jti: string; iat?: number };
+      let claims: { sub: string; jti: string; iat?: number; iatMs?: number };
       try {
         claims = await this.jwtService.verifyAsync(successor, {
           secret: this.jwtRefreshSecret,
@@ -271,6 +276,7 @@ export class AuthService {
           refreshToken: successor,
           sessionId: record.familyId,
           iat: claims.iat,
+          iatMs: claims.iatMs,
         };
       }
       if (
@@ -314,12 +320,15 @@ export class AuthService {
    * by signing in again. Other errors (the database) pass on as they are:
    * a 5xx tells clients to try again later.
    * @returns The user, the token id (jti) and when the token was issued
-   *   (iat, seconds since epoch)
+   *   (iat, seconds since epoch, and iatMs, milliseconds, on tokens issued
+   *   since #562)
    */
   async verifyRefreshToken(
     refreshToken: string,
-  ): Promise<[UserEntity, string, number?]> {
-    let payload: { sub?: unknown; jti?: unknown; iat?: number } | undefined;
+  ): Promise<[UserEntity, string, number?, number?]> {
+    let payload:
+      | { sub?: unknown; jti?: unknown; iat?: number; iatMs?: number }
+      | undefined;
     try {
       payload = await this.jwtService.verifyAsync(refreshToken, {
         secret: this.jwtRefreshSecret,
@@ -347,7 +356,7 @@ export class AuthService {
       throw new UnauthorizedException('Could not find user');
     }
 
-    return [new UserEntity(user), payload.jti, payload.iat];
+    return [new UserEntity(user), payload.jti, payload.iat, payload.iatMs];
   }
 
   /**
@@ -356,7 +365,8 @@ export class AuthService {
   async prepareRefreshToken(userId: string): Promise<PreparedRefreshToken> {
     const id = randomUUID();
     const refreshToken = this.jwtService.sign(
-      { sub: userId, jti: id },
+      // iatMs: see login()
+      { sub: userId, jti: id, iatMs: Date.now() },
       {
         secret: this.jwtRefreshSecret,
         expiresIn: '30d',
