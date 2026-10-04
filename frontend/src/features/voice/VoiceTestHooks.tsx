@@ -8,6 +8,7 @@ import {
   getRemoteInboundVideo,
   getSubscriptionState,
   getLocalScreenShareSender,
+  getRemoteScreenShareRequest,
   setRemoteScreenShareQuality,
 } from './voiceDiagnostics';
 import { publishScreenShare } from './screenSharePublish';
@@ -77,6 +78,7 @@ export const VoiceTestHooks: FC = () => {
       );
     };
     w.__lkGetScreenShareSender = () => getLocalScreenShareSender(room);
+    w.__lkGetScreenShareRequest = (identity) => getRemoteScreenShareRequest(room, identity);
     w.__lkSetScreenShareQuality = (identity, quality) =>
       setRemoteScreenShareQuality(room, identity, quality);
     // Switch the active mic capture device LIVE (the PR #351 behaviour): same

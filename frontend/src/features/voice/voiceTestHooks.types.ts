@@ -3,6 +3,7 @@ import type {
   DiagnosticsSnapshot,
   InboundAudioStats,
   InboundVideoStats,
+  ScreenShareRequest,
   ScreenShareSenderStats,
   SubscriptionState,
 } from './voiceDiagnostics';
@@ -50,6 +51,8 @@ export interface VoiceTestHookWindow {
   ) => Promise<void>;
   /** The local screen share's negotiated encodings and outbound-rtp layers. */
   __lkGetScreenShareSender: () => Promise<ScreenShareSenderStats>;
+  /** What this viewer requests from the SFU for a remote's screen share. */
+  __lkGetScreenShareRequest: (identity: string) => ScreenShareRequest | undefined;
   /** Cap the layer a remote's screen share is received at (setVideoQuality). */
   __lkSetScreenShareQuality: (identity: string, quality: 'low' | 'medium' | 'high') => Promise<boolean>;
   /** Switch the active mic capture device live (PR #351 — no rejoin). */

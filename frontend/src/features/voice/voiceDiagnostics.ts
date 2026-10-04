@@ -393,6 +393,52 @@ export async function getLocalScreenShareSender(room: Room | null): Promise<Scre
   return out;
 }
 
+/** What this viewer asks the SFU for, for one remote screen share. */
+export interface ScreenShareRequest {
+  subscribed: boolean;
+  /** adaptiveStream pixel density override (4 while focused, unset otherwise). */
+  pixelDensity?: number | 'screen';
+  /** Size adaptiveStream reports to the SFU (element size x density). */
+  requestedWidth?: number;
+  requestedHeight?: number;
+  /** Explicit setVideoQuality cap, if any (0 low, 1 medium, 2 high). */
+  requestedQuality?: number;
+}
+
+/**
+ * The subscription request this viewer sends for `identity`'s screen share.
+ * Reads livekit-client 2.22.3 internals (RemoteTrackPublication's
+ * videoDimensionsAdaptiveStream / requestedMaxQuality, RemoteVideoTrack's
+ * adaptiveStreamSettings), the same ones screenShareViewQuality.ts drives.
+ * Deterministic, unlike which layer the SFU actually forwards (that also
+ * depends on the subscriber's bandwidth estimate).
+ */
+export function getRemoteScreenShareRequest(
+  room: Room | null,
+  identity: string,
+): ScreenShareRequest | undefined {
+  if (!room) return undefined;
+  const remote = findRemote(room, identity);
+  if (!remote) return undefined;
+  for (const [, pub] of remote.trackPublications) {
+    if (pub.source !== TRACK_SOURCE.ScreenShare) continue;
+    const internals = pub as unknown as {
+      isSubscribed: boolean;
+      videoDimensionsAdaptiveStream?: { width: number; height: number };
+      requestedMaxQuality?: number;
+      track?: { adaptiveStreamSettings?: { pixelDensity?: number | 'screen' } };
+    };
+    return {
+      subscribed: internals.isSubscribed,
+      pixelDensity: internals.track?.adaptiveStreamSettings?.pixelDensity,
+      requestedWidth: internals.videoDimensionsAdaptiveStream?.width,
+      requestedHeight: internals.videoDimensionsAdaptiveStream?.height,
+      requestedQuality: internals.requestedMaxQuality,
+    };
+  }
+  return undefined;
+}
+
 /**
  * Cap the simulcast layer `identity`'s screen share is received at, as a viewer
  * on a weak connection (or a tile) would: 'low' | 'medium' | 'high'.

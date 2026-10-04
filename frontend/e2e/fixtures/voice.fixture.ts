@@ -111,6 +111,15 @@ export interface ScreenShareSenderStats {
   codec?: string;
 }
 
+/** Mirrors ScreenShareRequest in src/features/voice/voiceDiagnostics.ts. */
+export interface ScreenShareRequestSample {
+  subscribed: boolean;
+  pixelDensity?: number | 'screen';
+  requestedWidth?: number;
+  requestedHeight?: number;
+  requestedQuality?: number;
+}
+
 export interface SubscriptionStateSample {
   identity: string;
   mic: { published: boolean; subscribed: boolean; muted: boolean };
@@ -149,6 +158,7 @@ declare global {
       opts?: { audio?: boolean; resolution?: string; fps?: number },
     ) => Promise<void>;
     __lkGetScreenShareSender: () => Promise<ScreenShareSenderStats>;
+    __lkGetScreenShareRequest: (identity: string) => ScreenShareRequestSample | undefined;
     __lkSetScreenShareQuality: (
       identity: string,
       quality: 'low' | 'medium' | 'high',
@@ -488,6 +498,14 @@ export async function watchScreenShareOf(viewer: Participant, remoteIdentity: st
 /** The local screen share's negotiated encodings and per-layer outbound-rtp stats. */
 export async function getScreenShareSender(p: Participant): Promise<ScreenShareSenderStats> {
   return p.page.evaluate(() => window.__lkGetScreenShareSender());
+}
+
+/** What `viewer` requests from the SFU for `remoteIdentity`'s screen share. */
+export async function getScreenShareRequest(
+  viewer: Participant,
+  remoteIdentity: string,
+): Promise<ScreenShareRequestSample | undefined> {
+  return viewer.page.evaluate((id) => window.__lkGetScreenShareRequest(id), remoteIdentity);
 }
 
 /** Cap the simulcast layer `viewer` receives `remoteIdentity`'s screen share at. */
