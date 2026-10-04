@@ -19,7 +19,11 @@ import { server } from './msw/server';
 // bump alone.
 configure({ asyncUtilTimeout: 5000 });
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'bypass' }));
+// msw 3 renamed `onUnhandledRequest` to `onUnhandledFrame` (the option now
+// covers any unhandled network frame, not just HTTP requests). `'bypass'`
+// keeps the old behaviour: a request with no matching handler goes to the
+// real network instead of being reported.
+beforeAll(() => server.listen({ onUnhandledFrame: 'bypass' }));
 afterEach(async () => {
   server.resetHandlers();
   // A test that faked the Electron bridge (setElectronAPIOverride) must not
