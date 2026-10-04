@@ -8,7 +8,9 @@
  *   - the top simulcast layer is negotiated at the chosen frame rate (60) and
  *     a bitrate above the old 2.5 Mbps cap, with lower layers under it;
  *   - the encoder actually sends the top layer above the old 15 fps cap;
- *   - a full-quality viewer receives the full capture size;
+ *   - a grid tile gets a lower layer (adaptiveStream), while a focused
+ *     (spotlight) share gets the full-size top layer above the old fps cap,
+ *     even in a view smaller than the share;
  *   - a constrained viewer (setVideoQuality LOW, what adaptiveStream / a weak
  *     downlink do) gets a LOWER layer instead of stalling, and dynacast turns
  *     the lower layer on for it; going back to HIGH restores the full size.
@@ -105,12 +107,26 @@ test.describe('Screen share quality over real LiveKit', () => {
       )
       .toBeGreaterThan(OLD_CAP_FPS);
 
-    // --- A full-quality viewer receives the full capture size.
+    // --- In a grid tile, adaptiveStream sizes the subscription to the element:
+    // the viewer gets a lower layer, not the uncapped top one.
     const captureWidth = sender.captureSettings!.width!;
     await expect
       .poll(async () => (await getInboundVideoStats(viewer, sharer.identity))?.frameWidth ?? 0, {
         timeout: 20_000,
-        message: 'viewer never received the top (full-size) layer',
+        message: 'a grid tile should receive a lower layer than the full capture',
+      })
+      .toBeLessThan(captureWidth);
+
+    // --- Focused (spotlight), the viewer gets the top layer at full size and
+    // above the old fps cap. The 1280x720 browser window is smaller than the
+    // 1920x1080 share: without the focus boost (screenShareViewQuality.ts),
+    // adaptiveStream would pick the half-size layer that covers the
+    // spotlight's video element.
+    await viewer.page.locator('video').first().click();
+    await expect
+      .poll(async () => (await getInboundVideoStats(viewer, sharer.identity))?.frameWidth ?? 0, {
+        timeout: 20_000,
+        message: 'focused viewer never received the top (full-size) layer',
       })
       .toBe(captureWidth);
     await expect
@@ -119,6 +135,8 @@ test.describe('Screen share quality over real LiveKit', () => {
         message: `viewer never received the share above ${OLD_CAP_FPS} fps`,
       })
       .toBeGreaterThan(OLD_CAP_FPS);
+    const focused = await getInboundVideoStats(viewer, sharer.identity);
+    process.stdout.write(`[screenshare-quality] focused inbound: ${JSON.stringify(focused)}\n`);
   });
 
   test('a constrained viewer gets a lower layer instead of stalling, then the top one again', async () => {
@@ -133,11 +151,11 @@ test.describe('Screen share quality over real LiveKit', () => {
       .poll(
         async () => {
           const s = await getScreenShareSender(sharer);
-          return s.encodings.filter((e) => e.active).length;
+          return s.encodings[0]?.active ?? false;
         },
-        { timeout: 20_000, message: 'no lower layer became active for the LOW subscriber' },
+        { timeout: 20_000, message: 'the lowest layer was not active for the LOW subscriber' },
       )
-      .toBeGreaterThanOrEqual(1);
+      .toBe(true);
 
     // ...and the viewer switches to it: smaller frames, still flowing.
     await expect
