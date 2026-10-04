@@ -80,6 +80,8 @@ export interface ScreenShareSenderStats {
   degradationPreference?: string;
   encodings: ScreenShareSenderEncoding[];
   outbound: ScreenShareOutboundLayer[];
+  /** Frames per second the capture source delivers (media-source stats). */
+  sourceFramesPerSecond?: number;
   codec?: string;
 }
 
@@ -369,6 +371,9 @@ export async function getLocalScreenShareSender(room: Room | null): Promise<Scre
     const codecs = new Map<string, string>();
     report?.forEach((stat) => {
       if (stat.type === 'codec') codecs.set(stat.id, stat.mimeType);
+      if (stat.type === 'media-source' && stat.kind === 'video') {
+        out.sourceFramesPerSecond = stat.framesPerSecond;
+      }
     });
     report?.forEach((stat) => {
       if (stat.type === 'outbound-rtp' && stat.kind === 'video') {

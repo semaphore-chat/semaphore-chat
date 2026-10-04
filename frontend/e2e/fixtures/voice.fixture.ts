@@ -107,6 +107,7 @@ export interface ScreenShareSenderStats {
     targetBitrate?: number;
     bytesSent?: number;
   }>;
+  sourceFramesPerSecond?: number;
   codec?: string;
 }
 
