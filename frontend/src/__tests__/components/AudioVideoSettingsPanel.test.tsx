@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent } from '@testing-library/react';
+import { screen, fireEvent, within } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 
 // --- Mock hooks ---
@@ -49,6 +49,8 @@ let mockEchoCancellation = true;
 let mockNoiseSuppression = true;
 let mockAutoGainControl = true;
 let mockVoiceIsolation = false;
+let mockMicQuality = 'high';
+const mockSetMicQuality = vi.fn();
 const mockSetAudioProcessing = vi.fn();
 const mockSetVoiceActivityThreshold = vi.fn();
 
@@ -61,6 +63,8 @@ vi.mock('../../hooks/useVoiceSettings', () => ({
     noiseSuppression: mockNoiseSuppression,
     autoGainControl: mockAutoGainControl,
     voiceIsolation: mockVoiceIsolation,
+    micQuality: mockMicQuality,
+    setMicQuality: mockSetMicQuality,
     setInputMode: vi.fn(),
     setPushToTalkKey: vi.fn(),
     setVoiceActivityThreshold: mockSetVoiceActivityThreshold,
@@ -83,6 +87,7 @@ describe('AudioVideoSettingsPanel — threshold preview', () => {
     mockNoiseSuppression = true;
     mockAutoGainControl = true;
     mockVoiceIsolation = false;
+    mockMicQuality = 'high';
   });
 
   it('shows threshold marker when testing audio in voice activity mode', () => {
@@ -391,7 +396,10 @@ describe('AudioVideoSettingsPanel — device lists and selection', () => {
   // so the comboboxes have no accessible name. Query by DOM order instead:
   // [0] Microphone, [1] Speakers, [2] Camera.
   const getSelects = () => {
-    const selects = screen.getAllByRole('combobox');
+    // Skip the labelled "Microphone quality" select; the device selects are unnamed.
+    const selects = screen
+      .getAllByRole('combobox')
+      .filter((el) => el.getAttribute('aria-labelledby')?.includes('mic-quality-label') !== true);
     return { micSelect: selects[0], speakerSelect: selects[1], cameraSelect: selects[2] };
   };
 
@@ -484,5 +492,39 @@ describe('AudioVideoSettingsPanel — device lists and selection', () => {
     renderWithProviders(<AudioVideoSettingsPanel />);
 
     expect(getSelects().speakerSelect).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+describe('AudioVideoSettingsPanel — microphone quality', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockMicQuality = 'high';
+  });
+
+  it('shows High (96 kbps) by default with its description and the apply note', () => {
+    renderWithProviders(<AudioVideoSettingsPanel />);
+
+    expect(screen.getByRole('combobox', { name: 'Microphone quality' })).toHaveTextContent('High (96 kbps)');
+    expect(screen.getByText(/Transparent voice\. Recommended\./)).toBeInTheDocument();
+    expect(screen.getByText(/Applies the next time you join voice\./)).toBeInTheDocument();
+  });
+
+  it('calls setMicQuality when Music (128 kbps) is chosen', async () => {
+    const { user } = renderWithProviders(<AudioVideoSettingsPanel />);
+
+    await user.click(screen.getByRole('combobox', { name: 'Microphone quality' }));
+    const listbox = await screen.findByRole('listbox');
+    expect(within(listbox).getAllByRole('option')).toHaveLength(3);
+    await user.click(within(listbox).getByRole('option', { name: 'Music (128 kbps)' }));
+
+    expect(mockSetMicQuality).toHaveBeenCalledWith('music');
+  });
+
+  it('shows the stored option and its description', () => {
+    mockMicQuality = 'music';
+    renderWithProviders(<AudioVideoSettingsPanel />);
+
+    expect(screen.getByRole('combobox', { name: 'Microphone quality' })).toHaveTextContent('Music (128 kbps)');
+    expect(screen.getByText(/never gates silence/)).toBeInTheDocument();
   });
 });

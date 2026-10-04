@@ -34,6 +34,7 @@ import {
 import { useDeviceSettings, type MediaDeviceInfo as DeviceInfo } from '../../hooks/useDeviceSettings';
 import { useDeviceTest, getDeviceLabel } from '../../hooks/useDeviceTest';
 import { useVoiceSettings, VoiceInputMode } from '../../hooks/useVoiceSettings';
+import { MIC_QUALITY_OPTIONS, MIC_QUALITY_ORDER, type MicQuality } from '../../utils/voiceQuality';
 
 interface AudioVideoSettingsPanelProps {
   /** Callback when user changes device selection (for live-switching during calls) */
@@ -89,10 +90,12 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
     noiseSuppression,
     autoGainControl,
     voiceIsolation,
+    micQuality,
     setInputMode,
     setPushToTalkKey,
     setVoiceActivityThreshold,
     setAudioProcessing,
+    setMicQuality,
   } = useVoiceSettings();
 
   const handleInputModeChange = (
@@ -348,6 +351,31 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
             Changes take effect the next time you join a voice channel.
           </Typography>
         </Box>
+      </Box>
+
+      {/* Microphone Quality Section */}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="subtitle2" gutterBottom>
+          Microphone Quality
+        </Typography>
+        <FormControl fullWidth size="small">
+          <InputLabel id="mic-quality-label">Microphone quality</InputLabel>
+          <Select
+            labelId="mic-quality-label"
+            value={micQuality}
+            label="Microphone quality"
+            onChange={(e) => setMicQuality(e.target.value as MicQuality)}
+          >
+            {MIC_QUALITY_ORDER.map((quality) => (
+              <MenuItem key={quality} value={quality}>
+                {MIC_QUALITY_OPTIONS[quality].label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          {MIC_QUALITY_OPTIONS[micQuality].description} Applies the next time you join voice.
+        </Typography>
       </Box>
 
       <Divider sx={{ my: 3 }} />

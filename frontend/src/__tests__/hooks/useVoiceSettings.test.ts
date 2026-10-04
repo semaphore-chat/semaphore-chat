@@ -200,4 +200,39 @@ describe('useVoiceSettings', () => {
       expect(result.current.voiceIsolation).toBe(true);
     });
   });
+
+  describe('micQuality', () => {
+    it("defaults to 'high' with no saved settings", () => {
+      const { result } = renderHook(() => useVoiceSettings());
+      expect(result.current.micQuality).toBe('high');
+    });
+
+    it("falls back to 'high' for old stored settings without micQuality", () => {
+      mockStorage['semaphore_voice_settings'] = {
+        inputMode: 'push_to_talk',
+        echoCancellation: false,
+      };
+      const { result } = renderHook(() => useVoiceSettings());
+      expect(result.current.micQuality).toBe('high');
+      expect(result.current.inputMode).toBe('push_to_talk');
+    });
+
+    it("falls back to 'high' for an unknown stored value", () => {
+      mockStorage['semaphore_voice_settings'] = { micQuality: 'ultra' };
+      const { result } = renderHook(() => useVoiceSettings());
+      expect(result.current.micQuality).toBe('high');
+    });
+
+    it('persists setMicQuality', () => {
+      const { result } = renderHook(() => useVoiceSettings());
+      act(() => {
+        result.current.setMicQuality('music');
+      });
+      expect(result.current.micQuality).toBe('music');
+      expect(setCachedItem).toHaveBeenCalledWith(
+        'semaphore_voice_settings',
+        expect.objectContaining({ micQuality: 'music' }),
+      );
+    });
+  });
 });
