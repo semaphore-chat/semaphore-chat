@@ -479,6 +479,36 @@ describe('WebSocket gateways (e2e)', () => {
         .expect(401);
     });
 
+    it('a sign-in right after a password reset stands (#562)', async () => {
+      const target = await register('ws-password-again');
+      const newPassword = 'BrandNewPassword1!';
+
+      await request(app.getHttpServer())
+        .patch(`/api/users/admin/${target.id}/password`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ password: newPassword })
+        .expect(200);
+      // At once: usually the same second as the reset's cutoff, which
+      // revoked these tokens before the cutoff had millisecond precision
+      const res = await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .send({ username: 'ws-password-again', password: newPassword })
+        .expect(200);
+      const accessToken = (res.body as { accessToken: string }).accessToken;
+      const refreshCookie = extractCookie(getSetCookies(res), 'refresh_token')!;
+
+      await request(app.getHttpServer())
+        .get('/api/users/profile')
+        .set('Authorization', `Bearer ${accessToken}`)
+        .expect(200);
+      const socket = await open(accessToken);
+      expect(socket.connected).toBe(true);
+      await request(app.getHttpServer())
+        .post('/api/auth/refresh')
+        .set('Cookie', refreshCookie)
+        .expect(200);
+    });
+
     it('revoking a session disconnects its sockets, not the current ones', async () => {
       await register('ws-sessions');
       const current = await login('ws-sessions', 'Laptop');

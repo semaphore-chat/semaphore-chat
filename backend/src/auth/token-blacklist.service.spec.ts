@@ -78,33 +78,116 @@ describe('TokenBlacklistService', () => {
       ).resolves.toBe(false);
     });
 
-    it('is true for tokens issued up to a user cutoff, false after it', async () => {
-      jest.useFakeTimers({ now: new Date('2026-01-01T00:00:10Z') });
-      const cutoff = now();
-      await service.revokeAllUserTokens('user-1');
+    describe('user cutoff (#562)', () => {
+      // 10.400 s into the minute: the cutoff falls inside a second
+      const cutoffMs = Date.parse('2026-01-01T00:00:10.400Z');
+      const cutoffS = Math.floor(cutoffMs / 1000);
 
-      expect(redis.set).toHaveBeenCalledWith(
-        'token:revoked-user:user-1',
-        String(cutoff),
-        'EX',
-        ACCESS_TOKEN_TTL_SECONDS,
-      );
-      await expect(
-        service.isRevoked({ sub: 'user-1', iat: cutoff - 100 }),
-      ).resolves.toBe(true);
-      // Same second: can't tell before from after, so revoked
-      await expect(
-        service.isRevoked({ sub: 'user-1', iat: cutoff }),
-      ).resolves.toBe(true);
-      await expect(
-        service.isRevoked({ sub: 'user-1', iat: cutoff + 1 }),
-      ).resolves.toBe(false);
-      // Without iat a token can't prove it is newer
-      await expect(service.isRevoked({ sub: 'user-1' })).resolves.toBe(true);
-      // Other users are unaffected
-      await expect(
-        service.isRevoked({ sub: 'user-2', iat: cutoff - 100 }),
-      ).resolves.toBe(false);
+      beforeEach(async () => {
+        jest.useFakeTimers({ now: cutoffMs });
+        await service.revokeAllUserTokens('user-1');
+      });
+
+      it('stores the cutoff in ms, and in seconds for older instances', () => {
+        expect(redis.set).toHaveBeenCalledWith(
+          'token:revoked-user-ms:user-1',
+          String(cutoffMs),
+          'EX',
+          ACCESS_TOKEN_TTL_SECONDS,
+        );
+        expect(redis.set).toHaveBeenCalledWith(
+          'token:revoked-user:user-1',
+          String(cutoffS),
+          'EX',
+          ACCESS_TOKEN_TTL_SECONDS,
+        );
+      });
+
+      it('does not revoke a token issued later in the same second', async () => {
+        await expect(
+          service.isRevoked({
+            sub: 'user-1',
+            iat: cutoffS,
+            iatMs: cutoffMs + 1,
+          }),
+        ).resolves.toBe(false);
+      });
+
+      it('revokes tokens issued before or at the cutoff', async () => {
+        await expect(
+          service.isRevoked({
+            sub: 'user-1',
+            iat: cutoffS,
+            iatMs: cutoffMs - 1,
+          }),
+        ).resolves.toBe(true);
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS, iatMs: cutoffMs }),
+        ).resolves.toBe(true);
+        await expect(
+          service.isRevoked({
+            sub: 'user-1',
+            iat: cutoffS - 100,
+            iatMs: cutoffMs - 100_000,
+          }),
+        ).resolves.toBe(true);
+      });
+
+      it('judges a token without iatMs by seconds, as before', async () => {
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS - 100 }),
+        ).resolves.toBe(true);
+        // Same second: can't tell before from after, so revoked
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS }),
+        ).resolves.toBe(true);
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS + 1 }),
+        ).resolves.toBe(false);
+        // Without iat a token can't prove it is newer
+        await expect(service.isRevoked({ sub: 'user-1' })).resolves.toBe(true);
+      });
+
+      it('leaves other users alone', async () => {
+        await expect(
+          service.isRevoked({ sub: 'user-2', iat: cutoffS - 100, iatMs: 1 }),
+        ).resolves.toBe(false);
+      });
+    });
+
+    describe('a cutoff in seconds from before #562', () => {
+      const cutoffS = 1_767_225_610;
+
+      beforeEach(async () => {
+        // As an older instance (or this one before the deploy) wrote it
+        await redis.set('token:revoked-user:user-1', String(cutoffS));
+      });
+
+      it('revokes tokens up to the end of that second', async () => {
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS }),
+        ).resolves.toBe(true);
+        await expect(
+          service.isRevoked({
+            sub: 'user-1',
+            iat: cutoffS,
+            iatMs: cutoffS * 1000 + 999,
+          }),
+        ).resolves.toBe(true);
+      });
+
+      it('lets later tokens through', async () => {
+        await expect(
+          service.isRevoked({ sub: 'user-1', iat: cutoffS + 1 }),
+        ).resolves.toBe(false);
+        await expect(
+          service.isRevoked({
+            sub: 'user-1',
+            iat: cutoffS + 1,
+            iatMs: (cutoffS + 1) * 1000,
+          }),
+        ).resolves.toBe(false);
+      });
     });
 
     it('says what revoked the token', async () => {
@@ -136,6 +219,7 @@ describe('TokenBlacklistService', () => {
       expect(redis.mget).toHaveBeenCalledWith(
         'token:blacklist:j',
         'token:revoked-session:s',
+        'token:revoked-user-ms:user-1',
         'token:revoked-user:user-1',
       );
     });

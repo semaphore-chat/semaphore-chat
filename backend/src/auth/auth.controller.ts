@@ -161,7 +161,7 @@ export class AuthController {
       throw new UnauthorizedException('No refresh token provided');
     }
 
-    const [user, jti, refreshIssuedAt] =
+    const [user, jti, refreshIssuedAt, refreshIssuedAtMs] =
       await this.authService.verifyRefreshToken(refreshToken);
     // A banned user keeps their refresh tokens (unbanning restores the
     // session) but can't renew access while banned.
@@ -253,6 +253,7 @@ export class AuthController {
             sub: user.id,
             sid: successor.sessionId ?? undefined,
             iat: successor.iat,
+            iatMs: successor.iatMs,
           });
           if (successorRevoked) {
             return {
@@ -279,6 +280,7 @@ export class AuthController {
           sub: user.id,
           sid: tokenRecord.familyId ?? undefined,
           iat: refreshIssuedAt,
+          iatMs: refreshIssuedAtMs,
         });
         if (revoked) {
           return {

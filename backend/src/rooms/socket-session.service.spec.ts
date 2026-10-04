@@ -177,17 +177,23 @@ describe('SocketSessionService', () => {
   describe('confirmBinding', () => {
     it('keeps a socket whose session still stands', async () => {
       const socket = createSocket();
-      service.attach(asSocket(socket), authResult({ iat: 1000 }));
+      service.attach(
+        asSocket(socket),
+        authResult({ iat: 1000, iatMs: 1_000_250 }),
+      );
 
       await expect(service.confirmBinding(asSocket(socket))).resolves.toBe(
         true,
       );
 
+      // iatMs too: a token from just after a password reset's cutoff, in
+      // the same second, stands (#562)
       expect(wsAuthService.sessionEndReason).toHaveBeenCalledWith({
         sub: user.id,
         jti: 'jti-1',
         sid: 'sid-1',
         iat: 1000,
+        iatMs: 1_000_250,
       });
       expect(socket.disconnect).not.toHaveBeenCalled();
     });

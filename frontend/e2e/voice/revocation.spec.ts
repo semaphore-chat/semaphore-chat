@@ -523,11 +523,10 @@ test.describe('Voice revocation — password reset removes the user; a fresh log
     // session (refresh, sign-out), which a login sharing its cookies would
     // race with
     await closeParticipant(b);
-    // Known backend issue (reported with #554): the reset's access token
-    // cutoff has one-second granularity (TokenBlacklistService
-    // .revokeAllUserTokens, `iat <= cutoff`), so a login in the same second
-    // as the reset gets a token that is already revoked. No person signs in
-    // that fast; wait for the next second instead of tripping over it.
+    // Written when the reset's access token cutoff had one-second
+    // granularity, so a login in the same second as the reset got a token
+    // that was already revoked. Since #562 tokens carry `iatMs` and the
+    // cutoff is in milliseconds, this wait is no longer needed (harmless).
     const nextSecond = (Math.floor(passwordResetAt / 1000) + 1) * 1000;
     await expect.poll(() => Date.now(), { timeout: 5_000 }).toBeGreaterThan(nextSecond);
     b = await launchParticipant(VOICE_PASSWORD_USER, 'sample-b.wav');

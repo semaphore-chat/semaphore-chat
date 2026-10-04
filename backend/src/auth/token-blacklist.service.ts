@@ -7,7 +7,19 @@ export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60;
 
 const BLACKLIST_PREFIX = 'token:blacklist:';
 const REVOKED_SESSION_PREFIX = 'token:revoked-session:';
+/**
+ * A user's cutoff in whole seconds: what instances before #562 write and
+ * read. Still written (for instances of the previous release during a rolling
+ * deploy) and read (for cutoffs set before the deploy); drop both one release
+ * after #562.
+ */
 const REVOKED_USER_PREFIX = 'token:revoked-user:';
+/**
+ * A user's cutoff in milliseconds (#562). A key of its own rather than the
+ * old one with a value of another magnitude: an older instance reading a
+ * millisecond value as seconds would revoke every token of the user.
+ */
+const REVOKED_USER_MS_PREFIX = 'token:revoked-user-ms:';
 
 /**
  * The Redis key that marks a session revoked (`revokeSession`), present for
@@ -32,6 +44,12 @@ export interface AccessTokenClaims {
   sid?: string;
   /** Issued at (seconds since epoch). */
   iat?: number;
+  /**
+   * Issued at (milliseconds since epoch), so a token issued later in the
+   * same second as a user's cutoff isn't revoked by it (#562). Absent on
+   * tokens issued before it was added.
+   */
+  iatMs?: number;
   /** Expiry (seconds since epoch). */
   exp?: number;
 }
@@ -91,17 +109,30 @@ export class TokenBlacklistService {
   }
 
   /**
-   * Revoke every access token issued to a user up to now. Tokens issued in
-   * the same second are revoked too (JWT `iat` has second precision), so a
-   * sign-in racing the revocation may have to be repeated.
+   * Revoke every access token issued to a user up to now (to the
+   * millisecond: a token issued after this returns isn't revoked, even in the
+   * same second, if it carries `iatMs`).
+   *
+   * The cutoff and `iatMs` come from different instances' clocks. Tokens
+   * this must revoke were signed before the revoking change committed (see
+   * session-lock.util), so a skew smaller than that gap doesn't matter.
    */
   async revokeAllUserTokens(userId: string): Promise<void> {
-    await this.redis.set(
-      `${REVOKED_USER_PREFIX}${userId}`,
-      String(Math.floor(Date.now() / 1000)),
-      'EX',
-      ACCESS_TOKEN_TTL_SECONDS,
-    );
+    const cutoffMs = Date.now();
+    await Promise.all([
+      this.redis.set(
+        `${REVOKED_USER_MS_PREFIX}${userId}`,
+        String(cutoffMs),
+        'EX',
+        ACCESS_TOKEN_TTL_SECONDS,
+      ),
+      this.redis.set(
+        `${REVOKED_USER_PREFIX}${userId}`,
+        String(Math.floor(cutoffMs / 1000)),
+        'EX',
+        ACCESS_TOKEN_TTL_SECONDS,
+      ),
+    ]);
   }
 
   /**
@@ -118,19 +149,40 @@ export class TokenBlacklistService {
    * trip.
    */
   async revocationOf(claims: AccessTokenClaims): Promise<TokenRevocation> {
-    const [blacklisted, sessionRevoked, userCutoff] = await this.redis.mget(
-      `${BLACKLIST_PREFIX}${claims.jti ?? ''}`,
-      `${REVOKED_SESSION_PREFIX}${claims.sid ?? ''}`,
-      `${REVOKED_USER_PREFIX}${claims.sub}`,
-    );
+    const [blacklisted, sessionRevoked, userCutoffMs, userCutoffSeconds] =
+      await this.redis.mget(
+        `${BLACKLIST_PREFIX}${claims.jti ?? ''}`,
+        `${REVOKED_SESSION_PREFIX}${claims.sid ?? ''}`,
+        `${REVOKED_USER_MS_PREFIX}${claims.sub}`,
+        `${REVOKED_USER_PREFIX}${claims.sub}`,
+      );
 
     if (claims.jti && blacklisted !== null) return 'token';
     if (claims.sid && sessionRevoked !== null) return 'session';
-    if (userCutoff !== null) {
-      // A token without iat can't prove it was issued after the cutoff.
-      if (typeof claims.iat !== 'number') return 'user';
-      if (claims.iat <= Number(userCutoff)) return 'user';
+    if (userCutoffMs !== null) {
+      if (isIssuedAtOrBefore(claims, Number(userCutoffMs))) return 'user';
+    } else if (userCutoffSeconds !== null) {
+      // Set before #562: the cutoff is the end of that second, as it was
+      const cutoffMs = Number(userCutoffSeconds) * 1000 + 999;
+      if (isIssuedAtOrBefore(claims, cutoffMs)) return 'user';
     }
     return null;
   }
+}
+
+/**
+ * Whether a token was issued at or before `cutoffMs`: to the millisecond
+ * with `iatMs`; otherwise (tokens from before #562) by whole seconds, so a
+ * token from the cutoff's second counts as revoked, as it always did. A token
+ * without either can't prove it was issued after the cutoff.
+ */
+function isIssuedAtOrBefore(
+  claims: Pick<AccessTokenClaims, 'iat' | 'iatMs'>,
+  cutoffMs: number,
+): boolean {
+  if (typeof claims.iatMs === 'number' && Number.isFinite(claims.iatMs)) {
+    return claims.iatMs <= cutoffMs;
+  }
+  if (typeof claims.iat !== 'number') return true;
+  return claims.iat <= Math.floor(cutoffMs / 1000);
 }
