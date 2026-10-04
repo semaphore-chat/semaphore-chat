@@ -57,7 +57,8 @@ export const MIC_QUALITY_ORDER: MicQuality[] = ['standard', 'high', 'music'];
 export const DEFAULT_MIC_QUALITY: MicQuality = 'high';
 
 export function isMicQuality(value: unknown): value is MicQuality {
-  return typeof value === 'string' && value in MIC_QUALITY_OPTIONS;
+  // Own keys only: `in` would also accept inherited names like 'toString'
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(MIC_QUALITY_OPTIONS, value);
 }
 
 /** The audio part of the Room's `publishDefaults` for a mic quality setting. */

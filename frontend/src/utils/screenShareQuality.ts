@@ -17,7 +17,7 @@
  * unless rid "SVC simulcast" is possible, which Safari can't do, and its
  * screen-share backup codec is single-layer too. That would leave weak
  * viewers without a lower layer, so VP8 is the robust default; see the docs
- * (features/voice-video) for the trade-off.
+ * (docs-site/docs/architecture/voice-video-quality.md) for the trade-off.
  *
  * Pure functions, no livekit-client runtime import: the livekit chunk stays
  * lazy (bundle budget). Presets are plain `{ width, height, encoding }`

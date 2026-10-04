@@ -27,4 +27,10 @@ describe('isMicQuality', () => {
     expect(isMicQuality(undefined)).toBe(false);
     expect(isMicQuality(96000)).toBe(false);
   });
+  it('rejects names inherited from Object.prototype', () => {
+    for (const name of ['toString', 'constructor', 'hasOwnProperty', '__proto__']) {
+      expect(isMicQuality(name)).toBe(false);
+    }
+    expect(getMicPublishDefaults('toString')).toEqual(getMicPublishDefaults('high'));
+  });
 });
