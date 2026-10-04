@@ -238,6 +238,22 @@ const moderationHandlers = [
   }),
 ];
 
+/**
+ * Background queries most screens fire (unread badges, presence dots). Without
+ * handlers they fell through to the real network, which fails in CI; under
+ * msw 3 those failed passthrough requests broke unrelated queries in the same
+ * test (DirectMessageList). Empty results: no unread counts, nobody online.
+ */
+const backgroundHandlers = [
+  http.get(`${BASE_URL}/api/read-receipts/unread-counts`, () => {
+    return HttpResponse.json([]);
+  }),
+
+  http.get(`${BASE_URL}/api/presence/users/:userIds`, () => {
+    return HttpResponse.json({ presence: {} });
+  }),
+];
+
 export const handlers = [
   http.get(`${BASE_URL}/api/messages/channel/:channelId`, () => {
     return HttpResponse.json(channelMessagesResponse);
@@ -262,4 +278,5 @@ export const handlers = [
   ...dmHandlers,
   ...instanceHandlers,
   ...moderationHandlers,
+  ...backgroundHandlers,
 ];
