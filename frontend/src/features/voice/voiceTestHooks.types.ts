@@ -3,6 +3,8 @@ import type {
   DiagnosticsSnapshot,
   InboundAudioStats,
   InboundVideoStats,
+  ScreenShareRequest,
+  ScreenShareSenderStats,
   SubscriptionState,
 } from './voiceDiagnostics';
 
@@ -40,8 +42,19 @@ export interface VoiceTestHookWindow {
    * `opts.audio` requests tab/system audio with the app's real constraints
    * (a ScreenShareAudio publication) — best-effort: fake-media environments
    * often provide no capturable audio, in which case only video is published.
+   * Starting goes through the app's own publish path (publishScreenShare);
+   * `resolution`/`fps` default to the app's defaults (1080p, 60 fps).
    */
-  __lkSetScreenShare: (enabled: boolean, opts?: { audio?: boolean }) => Promise<void>;
+  __lkSetScreenShare: (
+    enabled: boolean,
+    opts?: { audio?: boolean; resolution?: string; fps?: number },
+  ) => Promise<void>;
+  /** The local screen share's negotiated encodings and outbound-rtp layers. */
+  __lkGetScreenShareSender: () => Promise<ScreenShareSenderStats>;
+  /** What this viewer requests from the SFU for a remote's screen share. */
+  __lkGetScreenShareRequest: (identity: string) => ScreenShareRequest | undefined;
+  /** Cap the layer a remote's screen share is received at (setVideoQuality). */
+  __lkSetScreenShareQuality: (identity: string, quality: 'low' | 'medium' | 'high') => Promise<boolean>;
   /** Switch the active mic capture device live (PR #351 — no rejoin). */
   __lkSwitchMic: (deviceId: string) => Promise<void>;
   // --- On-demand subscription (autoSubscribe:false opt-in sources) ---

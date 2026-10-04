@@ -10,7 +10,9 @@ import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voice
 import { queryClient } from "../../queryClient";
 
 import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from "../../utils/screenShareState";
-import { getResolutionConfig, getScreenShareAudioConfig } from "../../utils/screenShareResolution";
+import { getScreenShareAudioConfig } from "../../utils/screenShareResolution";
+import { getMicPublishDefaults, type MicQuality } from "../../utils/voiceQuality";
+import { publishScreenShare } from "./screenSharePublish";
 import { logger } from "../../utils/logger";
 import { isElectron } from "../../utils/platform";
 import { getCachedItem, setCachedItem, removeCachedItem } from "../../utils/storage";
@@ -42,6 +44,7 @@ interface VoiceSettings {
   noiseSuppression?: boolean;
   autoGainControl?: boolean;
   voiceIsolation?: boolean;
+  micQuality?: MicQuality;
 }
 
 // Exported for use by useVoiceRecovery hook
@@ -94,6 +97,27 @@ function getAudioCaptureOptions(): AudioCaptureOptions {
     noiseSuppression: settings?.noiseSuppression ?? true,
     autoGainControl: settings?.autoGainControl ?? true,
     voiceIsolation: settings?.voiceIsolation ?? false,
+  };
+}
+
+/**
+ * Room options. Exported for tests.
+ *
+ * - adaptiveStream: subscribers ask the SFU for the simulcast layer that fits
+ *   the element a video is rendered in, and pause video nobody can see, so
+ *   tiles get low layers and a focused share the top one
+ *   (screenShareViewQuality.ts covers a share larger than the viewer's screen).
+ * - dynacast: publishers stop encoding layers nobody subscribes to, so the
+ *   uncapped top layer of a screen share costs nothing until someone watches it.
+ * - publishDefaults: the mic bitrate/DTX/RED from Settings → Voice & Video.
+ *   Screen shares pass their own encoding (screenSharePublish.ts).
+ */
+export function getRoomOptions() {
+  const settings = getCachedItem<VoiceSettings>(VOICE_SETTINGS_KEY);
+  return {
+    adaptiveStream: true,
+    dynacast: true,
+    publishDefaults: getMicPublishDefaults(settings?.micQuality),
   };
 }
 
@@ -196,7 +220,7 @@ async function connectToLiveKitRoom(
   // Route livekit's connection-critical timers through a Web Worker so
   // background-tab timer throttling can't starve ping/pong on mobile (#350).
   installLivekitWorkerTimers();
-  const room = new Room();
+  const room = new Room(getRoomOptions());
 
   // Register connection state monitoring before connecting so we catch
   // any events that fire during the connection handshake.
@@ -688,11 +712,9 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
       const settings = getScreenShareSettings() || DEFAULT_SCREEN_SHARE_SETTINGS;
       logger.info('[Voice] Screen share settings:', settings);
 
-      const resolutionConfig = getResolutionConfig(settings.resolution, settings.fps);
       const audioConfig = getScreenShareAudioConfig(settings.enableAudio !== false);
 
       logger.info('[Voice] Screen share audio config passed to LiveKit:', JSON.stringify(audioConfig));
-      logger.info('[Voice] Screen share resolution config:', JSON.stringify(resolutionConfig));
       logger.info('[Voice] Platform:', isElectron() ? 'electron' : 'web');
 
       try {
@@ -726,11 +748,7 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
       }
 
       try {
-        await room.localParticipant.setScreenShareEnabled(true, {
-          audio: audioConfig,
-          resolution: resolutionConfig as { width: number; height: number; frameRate: number },
-          preferCurrentTab: false,
-        });
+        await publishScreenShare(room, settings, audioConfig);
         playSound(Sounds.screenShareStarted);
         logger.info('[Voice] Screen share enabled with audio');
       } catch (audioError) {
@@ -765,11 +783,7 @@ export async function toggleScreenShareUnified(deps: VoiceActionDeps) {
         if (isAudioError && settings.enableAudio !== false) {
           logger.warn('[Voice] Audio capture failed, retrying without audio');
 
-          await room.localParticipant.setScreenShareEnabled(true, {
-            audio: false,
-            resolution: resolutionConfig as { width: number; height: number; frameRate: number },
-            preferCurrentTab: false,
-          });
+          await publishScreenShare(room, settings, false);
 
           dispatch({ type: VoiceActionType.SetScreenShareAudioFailed, payload: true });
           playSound(Sounds.screenShareStarted);

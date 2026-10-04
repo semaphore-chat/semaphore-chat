@@ -49,6 +49,40 @@ export interface InboundVideoStats {
   framesDecoded?: number;
   frameWidth?: number;
   frameHeight?: number;
+  framesPerSecond?: number;
+}
+
+/** One encoding of the local screen-share sender (RTCRtpSender.getParameters()). */
+export interface ScreenShareSenderEncoding {
+  rid?: string;
+  active: boolean;
+  maxBitrate?: number;
+  maxFramerate?: number;
+  scaleResolutionDownBy?: number;
+  scalabilityMode?: string;
+}
+
+/** One outbound-rtp report (a simulcast layer) of the local screen share. */
+export interface ScreenShareOutboundLayer {
+  rid?: string;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
+  targetBitrate?: number;
+  bytesSent?: number;
+}
+
+/** What the local screen share is negotiated to send, and what it sends. */
+export interface ScreenShareSenderStats {
+  published: boolean;
+  contentHint?: string;
+  captureSettings?: { width?: number; height?: number; frameRate?: number };
+  degradationPreference?: string;
+  encodings: ScreenShareSenderEncoding[];
+  outbound: ScreenShareOutboundLayer[];
+  /** Frames per second the capture source delivers (media-source stats). */
+  sourceFramesPerSecond?: number;
+  codec?: string;
 }
 
 /** Per-source subscription snapshot for one remote participant. */
@@ -292,9 +326,140 @@ export function parseInboundVideo(
       out.framesDecoded = stat.framesDecoded;
       out.frameWidth = stat.frameWidth;
       out.frameHeight = stat.frameHeight;
+      out.framesPerSecond = stat.framesPerSecond;
     }
   });
   return out;
+}
+
+/**
+ * The local screen share's sender: negotiated encodings (simulcast layers with
+ * their maxBitrate/maxFramerate) and per-layer outbound-rtp stats. E2E uses it
+ * to prove the top layer carries the user's fps/bitrate and lower layers exist.
+ */
+export async function getLocalScreenShareSender(room: Room | null): Promise<ScreenShareSenderStats> {
+  const out: ScreenShareSenderStats = { published: false, encodings: [], outbound: [] };
+  if (!room) return out;
+  for (const [, pub] of room.localParticipant.trackPublications) {
+    if (pub.source !== TRACK_SOURCE.ScreenShare || !pub.track) continue;
+    const track = pub.track as Track & {
+      sender?: RTCRtpSender;
+      getRTCStatsReport?: () => Promise<RTCStatsReport | undefined>;
+    };
+    out.published = true;
+    out.contentHint = track.mediaStreamTrack.contentHint;
+    const settings = track.mediaStreamTrack.getSettings();
+    out.captureSettings = { width: settings.width, height: settings.height, frameRate: settings.frameRate };
+    if (track.sender) {
+      const params = track.sender.getParameters() as RTCRtpSendParameters & {
+        degradationPreference?: string;
+      };
+      out.degradationPreference = params.degradationPreference;
+      out.encodings = params.encodings.map((e) => {
+        const enc = e as RTCRtpEncodingParameters & { scalabilityMode?: string };
+        return {
+          rid: enc.rid,
+          active: enc.active !== false,
+          maxBitrate: enc.maxBitrate,
+          maxFramerate: enc.maxFramerate,
+          scaleResolutionDownBy: enc.scaleResolutionDownBy,
+          scalabilityMode: enc.scalabilityMode,
+        };
+      });
+    }
+    const report = typeof track.getRTCStatsReport === 'function' ? await track.getRTCStatsReport() : undefined;
+    const codecs = new Map<string, string>();
+    report?.forEach((stat) => {
+      if (stat.type === 'codec') codecs.set(stat.id, stat.mimeType);
+      if (stat.type === 'media-source' && stat.kind === 'video') {
+        out.sourceFramesPerSecond = stat.framesPerSecond;
+      }
+    });
+    report?.forEach((stat) => {
+      if (stat.type === 'outbound-rtp' && stat.kind === 'video') {
+        out.outbound.push({
+          rid: stat.rid,
+          frameWidth: stat.frameWidth,
+          frameHeight: stat.frameHeight,
+          framesPerSecond: stat.framesPerSecond,
+          targetBitrate: stat.targetBitrate,
+          bytesSent: stat.bytesSent,
+        });
+        if (stat.codecId && codecs.has(stat.codecId)) out.codec = codecs.get(stat.codecId);
+      }
+    });
+    break;
+  }
+  return out;
+}
+
+/** What this viewer asks the SFU for, for one remote screen share. */
+export interface ScreenShareRequest {
+  subscribed: boolean;
+  /** adaptiveStream pixel density override (4 while focused, unset otherwise). */
+  pixelDensity?: number | 'screen';
+  /** Size adaptiveStream reports to the SFU (element size x density). */
+  requestedWidth?: number;
+  requestedHeight?: number;
+  /** Explicit setVideoQuality cap, if any (0 low, 1 medium, 2 high). */
+  requestedQuality?: number;
+}
+
+/**
+ * The subscription request this viewer sends for `identity`'s screen share.
+ * Reads livekit-client 2.22.3 internals (RemoteTrackPublication's
+ * videoDimensionsAdaptiveStream / requestedMaxQuality, RemoteVideoTrack's
+ * adaptiveStreamSettings), the same ones screenShareViewQuality.ts drives.
+ * Deterministic, unlike which layer the SFU actually forwards (that also
+ * depends on the subscriber's bandwidth estimate).
+ */
+export function getRemoteScreenShareRequest(
+  room: Room | null,
+  identity: string,
+): ScreenShareRequest | undefined {
+  if (!room) return undefined;
+  const remote = findRemote(room, identity);
+  if (!remote) return undefined;
+  for (const [, pub] of remote.trackPublications) {
+    if (pub.source !== TRACK_SOURCE.ScreenShare) continue;
+    const internals = pub as unknown as {
+      isSubscribed: boolean;
+      videoDimensionsAdaptiveStream?: { width: number; height: number };
+      requestedMaxQuality?: number;
+      track?: { adaptiveStreamSettings?: { pixelDensity?: number | 'screen' } };
+    };
+    return {
+      subscribed: internals.isSubscribed,
+      pixelDensity: internals.track?.adaptiveStreamSettings?.pixelDensity,
+      requestedWidth: internals.videoDimensionsAdaptiveStream?.width,
+      requestedHeight: internals.videoDimensionsAdaptiveStream?.height,
+      requestedQuality: internals.requestedMaxQuality,
+    };
+  }
+  return undefined;
+}
+
+/**
+ * Cap the simulcast layer `identity`'s screen share is received at, as a viewer
+ * on a weak connection (or a tile) would: 'low' | 'medium' | 'high'.
+ */
+export async function setRemoteScreenShareQuality(
+  room: Room | null,
+  identity: string,
+  quality: 'low' | 'medium' | 'high',
+): Promise<boolean> {
+  if (!room) return false;
+  const remote = findRemote(room, identity);
+  if (!remote) return false;
+  const { VideoQuality } = await import('livekit-client');
+  const q = quality === 'low' ? VideoQuality.LOW : quality === 'medium' ? VideoQuality.MEDIUM : VideoQuality.HIGH;
+  for (const [, pub] of remote.trackPublications) {
+    if (pub.source === TRACK_SOURCE.ScreenShare) {
+      (pub as RemoteTrackPublication).setVideoQuality(q);
+      return true;
+    }
+  }
+  return false;
 }
 
 function videoSourceEnum(source: 'camera' | 'screenshare'): `${Track.Source}` {

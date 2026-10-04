@@ -7,7 +7,12 @@ import {
   getRemoteInboundAudio,
   getRemoteInboundVideo,
   getSubscriptionState,
+  getLocalScreenShareSender,
+  getRemoteScreenShareRequest,
+  setRemoteScreenShareQuality,
 } from './voiceDiagnostics';
+import { publishScreenShare } from './screenSharePublish';
+import { DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
 import { isVoiceTestHookEnabled, type VoiceTestHookWindow } from './voiceTestHooks.types';
 import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
 import type { VoiceEventEntry } from '../../hooks/useVoiceEventLogDef';
@@ -53,16 +58,29 @@ export const VoiceTestHooks: FC = () => {
     w.__lkSetCamera = async (enabled: boolean) => {
       await room?.localParticipant.setCameraEnabled(enabled);
     };
-    w.__lkSetScreenShare = async (enabled: boolean, opts?: { audio?: boolean }) => {
+    w.__lkSetScreenShare = async (enabled, opts) => {
+      if (!room) return;
+      if (!enabled) {
+        await room.localParticipant.setScreenShareEnabled(false);
+        return;
+      }
+      // The app's real publish path (capture constraints + encoding + layers).
       // When asked, request tab/system audio with the SAME constraints the app's
-      // toggleScreenShare path uses (getScreenShareAudioConfig), so E2E exercises
-      // the real ScreenShareAudio publication shape. Default (no opts) matches
-      // the historical behavior: video-only capture.
-      await room?.localParticipant.setScreenShareEnabled(
-        enabled,
-        opts?.audio ? { audio: getScreenShareAudioConfig(true) } : undefined,
+      // toggleScreenShare path uses (getScreenShareAudioConfig). Default (no
+      // opts) is video-only capture.
+      await publishScreenShare(
+        room,
+        {
+          resolution: opts?.resolution ?? DEFAULT_SCREEN_SHARE_SETTINGS.resolution,
+          fps: opts?.fps ?? DEFAULT_SCREEN_SHARE_SETTINGS.fps,
+        },
+        opts?.audio ? getScreenShareAudioConfig(true) : false,
       );
     };
+    w.__lkGetScreenShareSender = () => getLocalScreenShareSender(room);
+    w.__lkGetScreenShareRequest = (identity) => getRemoteScreenShareRequest(room, identity);
+    w.__lkSetScreenShareQuality = (identity, quality) =>
+      setRemoteScreenShareQuality(room, identity, quality);
     // Switch the active mic capture device LIVE (the PR #351 behaviour): same
     // Room API the Settings panel's onDeviceChange ultimately calls
     // (switchAudioInputDevice → room.switchActiveDevice). Lets E2E prove the

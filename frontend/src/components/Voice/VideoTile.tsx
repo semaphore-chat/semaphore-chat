@@ -27,6 +27,7 @@ import UserAvatar from '../Common/UserAvatar';
 import ScreenShareVolumeControl from './ScreenShareVolumeControl';
 import { useSpeaking } from '../../hooks/useSpeaking';
 import { useResponsive } from '../../hooks/useResponsive';
+import { setScreenShareFocused } from '../../utils/screenShareViewQuality';
 
 export interface VideoTileProps {
   participant: RemoteParticipant | LocalParticipant;
@@ -37,6 +38,11 @@ export interface VideoTileProps {
   isReplayBufferActive?: boolean;
   onToggleFullscreen?: () => void;
   isSpotlighted?: boolean;
+  /**
+   * The tile is the main view (spotlight, or the pinned tile of the sidebar
+   * layout): a remote screen share in it asks for its top simulcast layer.
+   */
+  isFocused?: boolean;
   isPlaceholder?: boolean;
   placeholderType?: 'camera' | 'screen';
   onWatch?: () => void;
@@ -52,6 +58,7 @@ const VideoTile: React.FC<VideoTileProps> = ({
   isReplayBufferActive = false,
   onToggleFullscreen,
   isSpotlighted = false,
+  isFocused = false,
   isPlaceholder = false,
   placeholderType,
   onWatch,
@@ -107,6 +114,15 @@ const VideoTile: React.FC<VideoTileProps> = ({
       };
     }
   }, [screenTrack, screenTrack?.track]);
+
+  // A focused screen share gets its top layer even when it's bigger than this
+  // screen (adaptiveStream would otherwise pick the layer that fits the element).
+  useEffect(() => {
+    if (!isFocused || !screenTrack?.track) return;
+    const track = screenTrack.track;
+    setScreenShareFocused(track, true);
+    return () => setScreenShareFocused(track, false);
+  }, [isFocused, screenTrack, screenTrack?.track]);
 
   const hasVideo = videoTrack && !videoTrack.isMuted;
   const hasScreen = screenTrack && !screenTrack.isMuted;

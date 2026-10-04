@@ -55,6 +55,7 @@ Semaphore Chat is a self-hosted, free, open-source communication platform that p
 
 - **Messaging** — Real-time text channels with mentions, reactions, threads, file attachments, and read receipts
 - **Voice & Video** — LiveKit-powered calls with screen sharing, including system audio capture on the desktop app
+- **Uncapped Screen Share & Voice** — Screen share at the resolution and frame rate you pick, up to 4K at 60 fps (about 9 Mbps at 1080p60, 25 Mbps at 4K60), with lower layers for viewers on weaker connections; high-bitrate Opus voice (96 kbps by default, up to 128 kbps). No paid tier. See [Voice & Screen Share Quality](https://docs.semaphorechat.app/architecture/voice-video-quality/)
 - **Replay Capture** — Continuously buffers screen share sessions so you can retroactively clip the last 1-10 minutes. Trim to the exact clip, then share to a channel or save to your personal clip library
 - **Desktop App** — Electron client for Windows and Linux with a custom screen source picker, system tray integration, and auto-updates
 - **Communities** — Servers with text and voice channels, private channels, direct messages, and group DMs with file attachments

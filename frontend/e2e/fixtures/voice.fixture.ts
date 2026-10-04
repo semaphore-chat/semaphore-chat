@@ -80,6 +80,44 @@ export interface InboundVideoSample {
   bytesReceived?: number;
   packetsReceived?: number;
   framesDecoded?: number;
+  frameWidth?: number;
+  frameHeight?: number;
+  framesPerSecond?: number;
+}
+
+/** Mirrors ScreenShareSenderStats in src/features/voice/voiceDiagnostics.ts. */
+export interface ScreenShareSenderStats {
+  published: boolean;
+  contentHint?: string;
+  captureSettings?: { width?: number; height?: number; frameRate?: number };
+  degradationPreference?: string;
+  encodings: Array<{
+    rid?: string;
+    active: boolean;
+    maxBitrate?: number;
+    maxFramerate?: number;
+    scaleResolutionDownBy?: number;
+    scalabilityMode?: string;
+  }>;
+  outbound: Array<{
+    rid?: string;
+    frameWidth?: number;
+    frameHeight?: number;
+    framesPerSecond?: number;
+    targetBitrate?: number;
+    bytesSent?: number;
+  }>;
+  sourceFramesPerSecond?: number;
+  codec?: string;
+}
+
+/** Mirrors ScreenShareRequest in src/features/voice/voiceDiagnostics.ts. */
+export interface ScreenShareRequestSample {
+  subscribed: boolean;
+  pixelDensity?: number | 'screen';
+  requestedWidth?: number;
+  requestedHeight?: number;
+  requestedQuality?: number;
 }
 
 export interface SubscriptionStateSample {
@@ -115,7 +153,16 @@ declare global {
     __lkEnableMic: () => Promise<string>;
     __lkSetMic: (enabled: boolean) => Promise<void>;
     __lkSetCamera: (enabled: boolean) => Promise<void>;
-    __lkSetScreenShare: (enabled: boolean, opts?: { audio?: boolean }) => Promise<void>;
+    __lkSetScreenShare: (
+      enabled: boolean,
+      opts?: { audio?: boolean; resolution?: string; fps?: number },
+    ) => Promise<void>;
+    __lkGetScreenShareSender: () => Promise<ScreenShareSenderStats>;
+    __lkGetScreenShareRequest: (identity: string) => ScreenShareRequestSample | undefined;
+    __lkSetScreenShareQuality: (
+      identity: string,
+      quality: 'low' | 'medium' | 'high',
+    ) => Promise<boolean>;
     __lkSwitchMic: (deviceId: string) => Promise<void>;
     __lkWatchCamera: (identity: string) => void;
     __lkUnwatchCamera: (identity: string) => void;
@@ -401,12 +448,12 @@ export async function switchMic(p: Participant, deviceId: string): Promise<void>
  */
 export async function startScreenShare(
   p: Participant,
-  opts: { audio?: boolean } = {},
+  opts: { audio?: boolean; resolution?: string; fps?: number } = {},
 ): Promise<boolean> {
   try {
     await p.page.evaluate(
       (o) => window.__lkSetScreenShare(true, o),
-      { audio: opts.audio ?? false },
+      { audio: opts.audio ?? false, resolution: opts.resolution, fps: opts.fps },
     );
   } catch {
     return false;
@@ -446,6 +493,31 @@ export async function stopScreenShare(p: Participant): Promise<void> {
 /** Subscribe `viewer` to a remote's screen share (the "open the tile" path). */
 export async function watchScreenShareOf(viewer: Participant, remoteIdentity: string): Promise<void> {
   await viewer.page.evaluate((id) => window.__lkWatchScreenShare(id), remoteIdentity);
+}
+
+/** The local screen share's negotiated encodings and per-layer outbound-rtp stats. */
+export async function getScreenShareSender(p: Participant): Promise<ScreenShareSenderStats> {
+  return p.page.evaluate(() => window.__lkGetScreenShareSender());
+}
+
+/** What `viewer` requests from the SFU for `remoteIdentity`'s screen share. */
+export async function getScreenShareRequest(
+  viewer: Participant,
+  remoteIdentity: string,
+): Promise<ScreenShareRequestSample | undefined> {
+  return viewer.page.evaluate((id) => window.__lkGetScreenShareRequest(id), remoteIdentity);
+}
+
+/** Cap the simulcast layer `viewer` receives `remoteIdentity`'s screen share at. */
+export async function setScreenShareQuality(
+  viewer: Participant,
+  remoteIdentity: string,
+  quality: 'low' | 'medium' | 'high',
+): Promise<boolean> {
+  return viewer.page.evaluate(
+    ({ id, q }) => window.__lkSetScreenShareQuality(id, q),
+    { id: remoteIdentity, q: quality },
+  );
 }
 
 /** Subscribe `viewer` to a remote's camera (the "open the tile" path). */

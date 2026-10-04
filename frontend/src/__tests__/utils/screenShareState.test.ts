@@ -51,7 +51,7 @@ describe('screenShareState', () => {
     it('has expected default values', () => {
       expect(DEFAULT_SCREEN_SHARE_SETTINGS).toEqual({
         resolution: '1080p',
-        fps: 30,
+        fps: 60,
         enableAudio: true,
       });
     });

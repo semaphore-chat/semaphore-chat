@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getCachedItem, setCachedItem } from '../utils/storage';
+import { DEFAULT_MIC_QUALITY, isMicQuality, type MicQuality } from '../utils/voiceQuality';
 
 export type VoiceInputMode = 'voice_activity' | 'push_to_talk';
 
@@ -12,6 +13,7 @@ export interface VoiceSettings {
   noiseSuppression: boolean;     // default: true
   autoGainControl: boolean;      // default: true
   voiceIsolation: boolean;       // default: false (experimental)
+  micQuality: MicQuality;        // default: 'high'
 }
 
 const VOICE_SETTINGS_KEY = 'semaphore_voice_settings';
@@ -31,6 +33,7 @@ const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   noiseSuppression: true,
   autoGainControl: true,
   voiceIsolation: false,
+  micQuality: DEFAULT_MIC_QUALITY,
 };
 
 /**
@@ -91,7 +94,11 @@ export const useVoiceSettings = () => {
   // Load saved voice settings
   const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>(() => {
     const saved = getCachedItem<VoiceSettings>(VOICE_SETTINGS_KEY);
-    return saved ? { ...DEFAULT_VOICE_SETTINGS, ...saved } : DEFAULT_VOICE_SETTINGS;
+    if (!saved) return DEFAULT_VOICE_SETTINGS;
+    const merged = { ...DEFAULT_VOICE_SETTINGS, ...saved };
+    // A hand-edited or future value must not reach LiveKit.
+    if (!isMicQuality(merged.micQuality)) merged.micQuality = DEFAULT_MIC_QUALITY;
+    return merged;
   });
 
   // Keep all hook instances in sync when any of them saves settings
@@ -150,6 +157,11 @@ export const useVoiceSettings = () => {
     saveVoiceSettings({ [key]: value });
   }, [saveVoiceSettings]);
 
+  // Set microphone publish quality (applies the next time voice is joined)
+  const setMicQuality = useCallback((quality: MicQuality) => {
+    saveVoiceSettings({ micQuality: quality });
+  }, [saveVoiceSettings]);
+
   return {
     // Current settings
     settings: voiceSettings,
@@ -164,6 +176,7 @@ export const useVoiceSettings = () => {
     noiseSuppression: voiceSettings.noiseSuppression,
     autoGainControl: voiceSettings.autoGainControl,
     voiceIsolation: voiceSettings.voiceIsolation,
+    micQuality: voiceSettings.micQuality,
 
     // Setters
     setInputMode,
@@ -171,6 +184,7 @@ export const useVoiceSettings = () => {
     setPushToTalkKeyDirect,
     setVoiceActivityThreshold,
     setAudioProcessing,
+    setMicQuality,
     saveVoiceSettings,
   };
 };

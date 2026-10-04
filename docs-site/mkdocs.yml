@@ -53,6 +53,7 @@ nav:
       - Database Schema: architecture/database.md
       - WebSocket Patterns: architecture/websocket-patterns.md
       - Replay Buffer: architecture/replay-buffer.md
+      - Voice & Screen Share Quality: architecture/voice-video-quality.md
   - Operations:
       - Release Process: operations/release-process.md
       - WebSocket Troubleshooting: operations/websocket-troubleshooting.md
