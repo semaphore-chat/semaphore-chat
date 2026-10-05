@@ -50,7 +50,7 @@ test.describe('Attachments', () => {
     });
 
     await page.goto(`/#/community/${community.id}/channel/${channel.id}`);
-    const composer = page.getByPlaceholder(/Type a message/);
+    const composer = page.getByPlaceholder(/^Message /);
     await expect(composer).toBeVisible({ timeout: 15000 });
 
     const caption = `upload check ${Date.now()}`;
