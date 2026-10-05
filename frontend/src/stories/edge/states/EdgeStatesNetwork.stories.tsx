@@ -63,6 +63,18 @@ export const UpdateToastChannelChat = edgeScreen(s, chatPath, { updateAvailable:
 
 export const UpdateToastDmList = edgeScreen(s, '/direct-messages', { updateAvailable: true, theme: minimalDark });
 
+const minimalLight = { ...defaultSettings, mode: 'light' as const };
+
+/**
+ * The same toast in the light theme: a surface-coloured card with a border,
+ * bottom-left over the sidebar on desktop (never over the composer or the last
+ * message); centred above the stack on phone and tablet.
+ */
+export const UpdateToastChannelChatLight = edgeScreen(s, chatPath, { updateAvailable: true, theme: minimalLight });
+
+/** Install prompt in the light theme. */
+export const InstallPromptChannelChatLight = edgeScreen(s, chatPath, { installPrompt: true, theme: minimalLight });
+
 /**
  * Regression guard (story id kept for history): the same toast with dark +
  * "balanced" appearance. It used to throw while rendering and, mounted
