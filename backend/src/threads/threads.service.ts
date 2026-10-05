@@ -8,6 +8,8 @@ import { DatabaseService } from '@/database/database.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
+import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { groupReactions } from '@/common/utils/reactions.utils';
 import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
 import { Message, $Enums, FileType } from '@prisma/client';
@@ -43,6 +45,7 @@ export class ThreadsService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly permissionsService: PermissionsService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   /**
@@ -56,6 +59,7 @@ export class ThreadsService {
       userId?: string | null;
       specialKind?: string | null;
       communityId?: string | null;
+      channelId?: string | null;
       aliasId?: string | null;
       emojiId?: string | null;
       bold?: boolean | null;
@@ -70,6 +74,7 @@ export class ThreadsService {
       userId: span.userId ?? null,
       specialKind: span.specialKind ?? null,
       communityId: span.communityId ?? null,
+      channelId: span.channelId ?? null,
       aliasId: span.aliasId ?? null,
       emojiId: span.emojiId ?? null,
       bold: span.bold ?? null,
@@ -128,10 +133,19 @@ export class ThreadsService {
     // hand-crafted payload can't trip the FK (P2003 -> 500) or reference
     // another community's emoji. DM threads (no channelId) downgrade all
     // EMOJI spans since there is no community to validate against.
-    const sanitizedSpans = await sanitizeEmojiSpans(
+    const emojiSafeSpans = await sanitizeEmojiSpans(
       this.databaseService,
       fieldSanitizedSpans,
       parent.channelId,
+    );
+    // #channel mentions: same community, visible to the author, no name stored
+    const sanitizedSpans = await sanitizeChannelMentionSpans(
+      this.databaseService,
+      emojiSafeSpans,
+      parent.channelId,
+      authorId,
+      (userId, channelId) =>
+        this.channelAccessService.canViewChannel(userId, channelId),
     );
     const searchText = flattenSpansToText(sanitizedSpans);
 

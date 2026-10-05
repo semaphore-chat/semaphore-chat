@@ -510,6 +510,75 @@ describe('ChannelPermissionsService', () => {
         ).rejects.toThrow('roles below your highest role: Community Admin');
       });
 
+      it('can relax a preset: drop the @everyone deny together with the automatic allow', async () => {
+        // Moderator applied a read-only preset earlier (deny + Admin allow);
+        // going back to Normal takes nothing away from Community Admin.
+        db.channelPermissionOverwrite.findMany.mockResolvedValue([
+          { ...denyPosting, roleId: null },
+          {
+            targetType: OverwriteTarget.ROLE,
+            roleId: ADMIN_ROLE,
+            allow: [A.CREATE_MESSAGE],
+            deny: [],
+          },
+        ]);
+        await service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.NORMAL, overwrites: [] },
+          moderator,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+      });
+
+      it('can narrow a preset (read-only to announcement) with its automatic allows', async () => {
+        const readOnly = [A.CREATE_MESSAGE, A.ATTACH_FILES, A.CREATE_REACTION];
+        const announcement = [A.CREATE_MESSAGE, A.ATTACH_FILES];
+        db.role.findMany.mockResolvedValue([
+          {
+            id: ADMIN_ROLE,
+            name: 'Community Admin',
+            position: 10,
+            actions: readOnly,
+          },
+          { id: MOD_ROLE, name: 'Moderator', position: 20, actions: readOnly },
+        ]);
+        db.channelPermissionOverwrite.findMany.mockResolvedValue([
+          {
+            targetType: OverwriteTarget.EVERYONE,
+            roleId: null,
+            allow: [],
+            deny: readOnly,
+          },
+          {
+            targetType: OverwriteTarget.ROLE,
+            roleId: ADMIN_ROLE,
+            allow: readOnly,
+            deny: [],
+          },
+        ]);
+        await service.replaceOverwrites(
+          CHANNEL,
+          {
+            preset: ChannelPreset.ANNOUNCEMENT,
+            overwrites: [
+              {
+                targetType: OverwriteTarget.EVERYONE,
+                allow: [],
+                deny: announcement,
+              },
+              {
+                targetType: OverwriteTarget.ROLE,
+                roleId: ADMIN_ROLE,
+                allow: announcement,
+                deny: [],
+              },
+            ],
+          },
+          moderator,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+      });
+
       it('an already-stored EVERYONE deny is not re-checked', async () => {
         db.channelPermissionOverwrite.findMany.mockResolvedValue([
           { ...denyPosting, roleId: null },

@@ -11,3 +11,4 @@ export { SandboxShell } from './SandboxShell';
 export { AuthenticatedShell } from './AuthenticatedShell';
 export { configureMockAuth } from './auth';
 export { createFakeSocket } from './fakeSocket';
+export * from './channelPermissions';

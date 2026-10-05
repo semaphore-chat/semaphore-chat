@@ -227,6 +227,67 @@ export function computeChannelActions(
   return effective;
 }
 
+export interface PostingRole {
+  id: string;
+  name: string;
+  position: number;
+  actions: RbacActions[];
+}
+
+/**
+ * Names of the roles whose holders can post in a channel: CREATE_MESSAGE
+ * after the channel's EVERYONE overwrite and the role's own ROLE overwrite
+ * are applied to the role's actions. Ordered by rank (lowest position
+ * first). For the read-only notice ("only Moderators can post").
+ */
+export function postingRoleNames(
+  roles: readonly PostingRole[],
+  overwrites: OverwriteInput[],
+): string[] {
+  // Per-member overwrites say nothing about a role
+  const roleLevel = overwrites.filter(
+    (o) => o.targetType !== OverwriteTarget.MEMBER,
+  );
+  return [...roles]
+    .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
+    .filter((role) =>
+      computeOverwrites(new Set(role.actions), {
+        userId: '',
+        baseActions: role.actions,
+        roleIds: [role.id],
+        isCommunityMember: true,
+        isPrivate: false,
+        hasChannelMembership: false,
+        overwrites: roleLevel,
+        timedOut: false,
+      }).has(RbacActions.CREATE_MESSAGE),
+    )
+    .map((role) => role.name);
+}
+
+/**
+ * What a holder of only `role` gets in a channel with these (EVERYONE and
+ * ROLE) overwrites. Used to judge whether an overwrite change takes
+ * anything away from a role.
+ */
+export function effectiveForRole(
+  role: { id: string; actions: RbacActions[] },
+  overwrites: OverwriteInput[],
+): Set<RbacActions> {
+  return computeOverwrites(new Set(role.actions), {
+    userId: '',
+    baseActions: role.actions,
+    roleIds: [role.id],
+    isCommunityMember: true,
+    isPrivate: false,
+    hasChannelMembership: false,
+    overwrites: overwrites.filter(
+      (o) => o.targetType !== OverwriteTarget.MEMBER,
+    ),
+    timedOut: false,
+  });
+}
+
 /** Applies EVERYONE, then ROLE, then MEMBER overwrites to `effective`. */
 function computeOverwrites(
   effective: Set<RbacActions>,

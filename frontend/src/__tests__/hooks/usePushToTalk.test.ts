@@ -219,4 +219,30 @@ describe('usePushToTalk', () => {
       expect(result.current.isKeyHeld).toBe(false);
     });
   });
+
+  it('ignores PTT presses without SPEAK in the channel (timed out / denied)', async () => {
+    const { result } = renderHook(() => usePushToTalk({ canSpeak: false }));
+
+    await act(async () => {
+      pressPttKey();
+    });
+
+    expect(mockSetMicrophoneEnabled).not.toHaveBeenCalled();
+    expect(result.current.isKeyHeld).toBe(false);
+  });
+
+  it('picks up a regained SPEAK permission without remounting', async () => {
+    const { result, rerender } = renderHook(
+      ({ canSpeak }: { canSpeak: boolean }) => usePushToTalk({ canSpeak }),
+      { initialProps: { canSpeak: false } },
+    );
+    rerender({ canSpeak: true });
+
+    await act(async () => {
+      pressPttKey();
+    });
+
+    expect(mockSetMicrophoneEnabled).toHaveBeenCalledWith(true);
+    expect(result.current.isKeyHeld).toBe(true);
+  });
 });

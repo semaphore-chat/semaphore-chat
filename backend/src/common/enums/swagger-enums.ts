@@ -13,6 +13,7 @@ export const SpanTypeValues = [
   'SPECIAL_MENTION',
   'COMMUNITY_MENTION',
   'ALIAS_MENTION',
+  'CHANNEL_MENTION',
   'CODE_BLOCK',
   'EMOJI',
 ] as const;

@@ -223,10 +223,11 @@ function parseMentionRun(
       );
 
       if (resolvedChannel) {
+        // Only the id: the server stores no channel name (text stays empty)
+        // and readers resolve it from the channels they can see
         spans.push({
-          type: SpanType.COMMUNITY_MENTION,
-          text: `#${resolvedChannel.name}`,
-          communityId: resolvedChannel.id,
+          type: SpanType.CHANNEL_MENTION,
+          channelId: resolvedChannel.id,
         });
       } else {
         // Unresolved channel mention becomes plaintext
@@ -474,9 +475,17 @@ export function parseMessageWithMentions(
  * Convert message spans back to display text for editing
  * Used when loading existing message for editing
  */
-export function spansToText(spans: MessageSpan[]): string {
+export function spansToText(
+  spans: MessageSpan[],
+  /** Resolves a #channel mention's name from the reader's visible channels. */
+  channelName?: (channelId: string) => string | undefined,
+): string {
   return spans.map(span => {
     switch (span.type) {
+      case SpanType.CHANNEL_MENTION:
+        // Spans store no channel name; a channel the reader can't see (or a
+        // deleted one) comes back as the generic placeholder
+        return `#${(span.channelId && channelName?.(span.channelId)) || 'private-channel'}`;
       case SpanType.USER_MENTION:
         return span.text || `@user`;
       case SpanType.SPECIAL_MENTION:

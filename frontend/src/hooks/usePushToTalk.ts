@@ -11,9 +11,12 @@ import { logger } from '../utils/logger';
  * this hook listens for the configured PTT key and controls
  * the microphone accordingly.
  *
+ * @param options.canSpeak - false (no SPEAK in this channel, or timed out)
+ *   ignores presses: the server would refuse the microphone anyway.
  * @returns Object with PTT state information
  */
-export function usePushToTalk() {
+export function usePushToTalk(options: { canSpeak?: boolean } = {}) {
+  const canSpeak = options.canSpeak ?? true;
   const { getRoom } = useRoom();
   const voiceState = useVoice();
   const { stateRef } = useVoiceDispatch();
@@ -21,6 +24,11 @@ export function usePushToTalk() {
 
   const [isKeyHeld, setIsKeyHeld] = useState(false);
   const isKeyHeldRef = useRef(false);
+  // Ref so the shared press handler always sees the current permission
+  const canSpeakRef = useRef(canSpeak);
+  useEffect(() => {
+    canSpeakRef.current = canSpeak;
+  }, [canSpeak]);
 
   // Track if PTT is active (connected to voice AND in PTT mode)
   const isActive = voiceState.isConnected && isPushToTalk;
@@ -36,6 +44,11 @@ export function usePushToTalk() {
     // event.repeat; programmatic callers get the same protection here).
     if (!isActive) return;
     if (isKeyHeldRef.current) return;
+
+    if (!canSpeakRef.current) {
+      logger.dev('[PTT] Press without SPEAK permission, ignoring');
+      return;
+    }
 
     const room = getRoom();
     if (!room) return;

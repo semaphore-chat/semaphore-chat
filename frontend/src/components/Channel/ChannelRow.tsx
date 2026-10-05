@@ -20,6 +20,7 @@ import ListItemButton from "@mui/material/ListItemButton";
 import ListItemIcon from "@mui/material/ListItemIcon";
 import ListItemText from "@mui/material/ListItemText";
 import TagIcon from "@mui/icons-material/Tag";
+import CampaignIcon from "@mui/icons-material/Campaign";
 import VolumeUpIcon from "@mui/icons-material/VolumeUp";
 import LockIcon from "@mui/icons-material/Lock";
 import { styled } from "@mui/material/styles";
@@ -188,7 +189,16 @@ export function ChannelRow({
             color: isUnread ? "text.primary" : "inherit",
           }}
         >
-          {isText ? (
+          {/* Leading icon = channel type (text / announcement / voice);
+              access markers (lock, later the encrypted-voice shield) stay
+              in the trailing slot, so the two never compete. */}
+          {isText && channel.preset === "ANNOUNCEMENT" ? (
+            <CampaignIcon
+              aria-label="Announcement channel"
+              titleAccess="Announcement channel"
+              sx={{ fontSize: iconSize }}
+            />
+          ) : isText ? (
             <TagIcon sx={{ fontSize: iconSize }} />
           ) : (
             <VolumeUpIcon sx={{ fontSize: iconSize }} />

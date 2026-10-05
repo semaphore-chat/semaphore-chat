@@ -20,6 +20,13 @@ class CreateMessageSpanDto {
   userId: string | null;
   specialKind: string | null;
   communityId: string | null;
+
+  /** For CHANNEL_MENTION (text is ignored and stored as null). */
+  @ApiProperty({ type: String, required: false, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  channelId?: string | null;
+
   aliasId: string | null;
   emojiId: string | null;
 

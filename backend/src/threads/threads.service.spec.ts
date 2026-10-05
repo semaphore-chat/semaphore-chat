@@ -2,21 +2,25 @@ import { TestBed } from '@suites/unit';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ThreadsService } from './threads.service';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import type { Mocked } from '@suites/doubles.jest';
 import { createMockDatabase, MessageFactory } from '@/test-utils';
 
 describe('ThreadsService', () => {
   let service: ThreadsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
 
-    const { unit } = await TestBed.solitary(ThreadsService)
+    const { unit, unitRef } = await TestBed.solitary(ThreadsService)
       .mock(DatabaseService)
       .final(mockDatabase)
       .compile();
 
     service = unit;
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   afterEach(() => {
@@ -60,6 +64,71 @@ describe('ThreadsService', () => {
 
   describe('createThreadReply', () => {
     const authorId = 'author-123';
+
+    describe('#channel mentions', () => {
+      const parent = () =>
+        MessageFactory.build({
+          id: 'parent-msg-123',
+          channelId: 'channel-456',
+          directMessageGroupId: null,
+          parentMessageId: null,
+        });
+      const mentionDto = (channelId: string) => ({
+        parentMessageId: 'parent-msg-123',
+        spans: [
+          {
+            type: 'CHANNEL_MENTION' as any,
+            text: '#secret-name',
+            channelId,
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      });
+
+      beforeEach(() => {
+        mockDatabase.message.findUnique.mockResolvedValue(parent());
+        mockDatabase.message.create.mockResolvedValue(
+          MessageFactory.build({ parentMessageId: 'parent-msg-123' }),
+        );
+        mockDatabase.message.update.mockResolvedValue(parent());
+        mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
+        mockDatabase.channel.findUnique.mockResolvedValue({
+          communityId: 'c1',
+        });
+        mockDatabase.channel.findMany.mockImplementation(
+          ({ where }: { where: { id: { in: string[] } } }) =>
+            Promise.resolve(where.id.in.map((id) => ({ id }))),
+        );
+      });
+
+      it('keeps a visible channel mention with no name stored', async () => {
+        channelAccessService.canViewChannel.mockResolvedValue(true);
+        await service.createThreadReply(mentionDto('visible'), authorId);
+        const data = mockDatabase.message.create.mock.calls[0][0].data;
+        expect(data.spans.create[0]).toMatchObject({
+          type: 'CHANNEL_MENTION',
+          channelId: 'visible',
+          text: null,
+        });
+        expect(data.searchText ?? '').not.toContain('secret-name');
+      });
+
+      it('downgrades a mention of a channel the author cannot see', async () => {
+        channelAccessService.canViewChannel.mockResolvedValue(false);
+        await service.createThreadReply(mentionDto('hidden'), authorId);
+        const data = mockDatabase.message.create.mock.calls[0][0].data;
+        expect(data.spans.create[0]).toMatchObject({
+          type: 'PLAINTEXT',
+          channelId: null,
+          text: '#unknown-channel',
+        });
+        expect(data.searchText ?? '').not.toContain('secret-name');
+      });
+    });
+
     const parentMessageId = 'parent-msg-123';
     const channelId = 'channel-456';
 
@@ -204,6 +273,7 @@ describe('ThreadsService', () => {
         userId: null,
         specialKind: null,
         communityId: null,
+        channelId: null,
         aliasId: null,
         emojiId: null,
         bold: null,

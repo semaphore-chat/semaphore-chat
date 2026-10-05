@@ -115,6 +115,18 @@ vi.mock('../../hooks/useDebugPanelShortcut', () => ({
   })),
 }));
 
+const allowedPublish = {
+  canSpeak: true,
+  canVideo: true,
+  canShare: true,
+  speakBlockedReason: "You can't speak in this channel",
+  videoBlockedReason: "You can't use video in this channel",
+  shareBlockedReason: "You can't share your screen in this channel",
+};
+vi.mock('../../hooks/useVoicePublishPermissions', () => ({
+  useVoicePublishPermissions: vi.fn(() => allowedPublish),
+}));
+
 vi.mock('../../hooks/usePushToTalk', () => ({
   usePushToTalk: vi.fn(() => ({
     isActive: false,
@@ -201,6 +213,7 @@ const { useResponsive } = await import('../../hooks/useResponsive');
 const { useReplayBufferState } = await import('../../contexts/ReplayBufferContext');
 const { useScreenShare } = await import('../../hooks/useScreenShare');
 const { usePushToTalk } = await import('../../hooks/usePushToTalk');
+const { useVoicePublishPermissions } = await import('../../hooks/useVoicePublishPermissions');
 
 describe('VoiceBottomBarContent', () => {
   beforeEach(() => {
@@ -246,6 +259,7 @@ describe('VoiceBottomBarContent', () => {
     vi.mocked(useReplayBufferState).mockReturnValue({
       isReplayBufferActive: false,
     });
+    vi.mocked(useVoicePublishPermissions).mockReturnValue(allowedPublish);
   });
 
   it('returns null when not connected', () => {
@@ -975,6 +989,77 @@ describe('VoiceBottomBarContent', () => {
         expect(screen.getByTestId('ScreenShareIcon')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /voice settings/i })).toBeInTheDocument();
       });
+    });
+  });
+
+  describe('channel voice permissions', () => {
+    const reason = 'Timed out — you can listen until 3:42 PM';
+    const listenOnly = {
+      canSpeak: false,
+      canVideo: false,
+      canShare: false,
+      speakBlockedReason: reason,
+      videoBlockedReason: reason,
+      shareBlockedReason: reason,
+    };
+
+    it('timed out: mic, camera and share are disabled with the reason', () => {
+      vi.mocked(useVoicePublishPermissions).mockReturnValue(listenOnly);
+      vi.mocked(useLocalMediaState).mockReturnValue({
+        isCameraEnabled: false,
+        isMicrophoneEnabled: false,
+        isScreenShareEnabled: false,
+        audioTrack: undefined,
+        videoTrack: undefined,
+      });
+      renderWithProviders(<VoiceBottomBar />);
+
+      const blocked = screen.getAllByRole('button', { name: reason });
+      expect(blocked).toHaveLength(3);
+      blocked.forEach((button) => expect(button).toBeDisabled());
+      // Deafen (listening) is untouched
+      expect(screen.getByRole('button', { name: /deafen/i })).toBeEnabled();
+    });
+
+    it('mic only: camera and share disabled with their own tooltips, mic works', () => {
+      vi.mocked(useVoicePublishPermissions).mockReturnValue({
+        ...allowedPublish,
+        canVideo: false,
+        canShare: false,
+      });
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(
+        screen.getByRole('button', { name: "You can't use video in this channel" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole('button', { name: "You can't share your screen in this channel" }),
+      ).toBeDisabled();
+      fireEvent.click(screen.getByRole('button', { name: /^mute$/i }));
+      expect(mockActions.toggleMute).toHaveBeenCalled();
+    });
+
+    it('a live camera can still be turned off after losing VIDEO', () => {
+      vi.mocked(useVoicePublishPermissions).mockReturnValue({ ...allowedPublish, canVideo: false });
+      vi.mocked(useLocalMediaState).mockReturnValue({
+        isCameraEnabled: true,
+        isMicrophoneEnabled: true,
+        isScreenShareEnabled: false,
+        audioTrack: undefined,
+        videoTrack: undefined,
+      });
+      renderWithProviders(<VoiceBottomBar />);
+
+      const camera = screen.getByRole('button', { name: /turn off camera/i });
+      expect(camera).toBeEnabled();
+      fireEvent.click(camera);
+      expect(mockActions.toggleVideo).toHaveBeenCalled();
+    });
+
+    it('passes canSpeak to push-to-talk so PTT presses are ignored', () => {
+      vi.mocked(useVoicePublishPermissions).mockReturnValue(listenOnly);
+      renderWithProviders(<VoiceBottomBar />);
+      expect(usePushToTalk).toHaveBeenCalledWith({ canSpeak: false });
     });
   });
 });

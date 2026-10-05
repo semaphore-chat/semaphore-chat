@@ -26,18 +26,30 @@ import { parseMessageWithMentions } from "../../utils/mentionParser";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
+import { useComposerAvailability } from "../../hooks/useComposerAvailability";
+import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { ComposerUnavailableNotice } from "../Message/MessageInput";
 
 interface ThreadMessageInputProps {
   parentMessageId: string;
   /** Community for custom emojis (undefined in DM threads). */
   communityId?: string;
+  /** The parent's channel (undefined in DM threads): gates replying. */
+  channelId?: string;
 }
 
 export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
   parentMessageId,
   communityId,
+  channelId,
 }) => {
   const theme = useTheme();
+  const availability = useComposerAvailability({
+    contextType: channelId ? VoiceSessionType.Channel : VoiceSessionType.Dm,
+    contextId: channelId ?? parentMessageId,
+    communityId,
+    thread: true,
+  });
   const { socket } = useContext(SocketContext);
   const { isTouchDevice, shouldUseTouchUI } = useResponsive();
   // 44px touch targets on touch layouts (TOUCH_TARGETS.MINIMUM), 40px on desktop.
@@ -223,6 +235,14 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
       )}
     </IconButton>
   );
+
+  if (availability.state !== "ok") {
+    return (
+      <Box sx={{ p: 2, flexShrink: 0, borderTop: 1, borderColor: "divider" }}>
+        <ComposerUnavailableNotice availability={availability} />
+      </Box>
+    );
+  }
 
   return (
     <Box

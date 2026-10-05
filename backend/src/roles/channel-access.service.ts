@@ -9,6 +9,8 @@ import {
   ChannelPermissionInput,
   isVisibleToWholeCommunity,
   toCapabilities,
+  postingRoleNames,
+  PostingRole,
 } from './channel-permissions.util';
 import {
   CHANNEL_PERMISSION_SELECT,
@@ -20,6 +22,8 @@ export interface ChannelCapabilitiesResult extends ChannelCapabilities {
   channelId: string;
   /** End of the user's community timeout, if one is active. */
   timedOutUntil: Date | null;
+  /** Roles whose holders can post here (names only; [] if not viewable). */
+  postingRoleNames: string[];
 }
 
 /** What one user's bulk evaluation across communities needs, loaded once. */
@@ -273,12 +277,13 @@ export class ChannelAccessService {
     userId: string,
     communityId: string,
   ): Promise<ChannelCapabilitiesResult[]> {
-    const [channels, ctx] = await Promise.all([
+    const [channels, ctx, roles] = await Promise.all([
       this.loadChannels([communityId]),
       this.loadUserContext(userId, [communityId]),
+      this.loadRoles(communityId),
     ]);
     return channels
-      .map((c) => this.capabilitiesFor(ctx, c))
+      .map((c) => this.capabilitiesFor(ctx, c, roles))
       .filter((c) => c.view);
   }
 
@@ -292,8 +297,11 @@ export class ChannelAccessService {
       select: CHANNEL_PERMISSION_SELECT,
     });
     if (!channel) return null;
-    const ctx = await this.loadUserContext(userId, [channel.communityId]);
-    return this.capabilitiesFor(ctx, channel);
+    const [ctx, roles] = await Promise.all([
+      this.loadUserContext(userId, [channel.communityId]),
+      this.loadRoles(channel.communityId),
+    ]);
+    return this.capabilitiesFor(ctx, channel, roles);
   }
 
   // ---------------------------------------------------------------------
@@ -301,19 +309,34 @@ export class ChannelAccessService {
   private capabilitiesFor(
     ctx: UserContext,
     channel: ChannelPermissionRow,
+    roles: PostingRole[],
   ): ChannelCapabilitiesResult {
+    const posting = () => postingRoleNames(roles, channel.overwrites);
     if (ctx.isOwner) {
       return {
         channelId: channel.id,
         ...ALL_CAPABILITIES,
         timedOutUntil: null,
+        postingRoleNames: posting(),
       };
     }
+    const caps = toCapabilities(this.inputFor(ctx, channel));
     return {
       channelId: channel.id,
-      ...toCapabilities(this.inputFor(ctx, channel)),
+      ...caps,
       timedOutUntil: ctx.timeoutsByCommunity.get(channel.communityId) ?? null,
+      // Nothing about a channel the user can't see
+      postingRoleNames: caps.view ? posting() : [],
     };
+  }
+
+  /** The community's roles, for postingRoleNames. */
+  private async loadRoles(communityId: string): Promise<PostingRole[]> {
+    const roles = await this.databaseService.role.findMany({
+      where: { communityId },
+      select: { id: true, name: true, position: true, actions: true },
+    });
+    return roles ?? [];
   }
 
   private inputFor(

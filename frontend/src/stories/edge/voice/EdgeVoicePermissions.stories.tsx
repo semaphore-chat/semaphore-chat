@@ -34,6 +34,11 @@ import {
   withChannelPresence,
   withPrivateChannel,
 } from '../../fixtures/edge/voice';
+import {
+  capsFromActions,
+  channelPermissionsHandler,
+  timedOutCaps,
+} from '../../fixtures/channelPermissions';
 
 const cid = edgeCommunity.id;
 const author = edgeVoiceScenario.users[2];
@@ -126,13 +131,16 @@ export const PrivateChannelList = defineEdgeScreen(priv.scenario, {
 
 /**
  * Timed-out member (timeout active server-side, 12 minutes left). The
- * composer reads `GET /moderation/timeout-status/:communityId/:userId` and
+ * composer reads `timedOutUntil` from the channel capabilities and
  * shows "Timed out, 12 min left" with a live countdown instead of an input.
  */
 const timeoutExpiresAt = new Date(Date.now() + 12 * 60_000).toISOString();
 export const TimedOutMember = defineEdgeScreen(asMember.scenario, {
   path: generalPath,
   extraHandlers: [
+    // The composer reads the timeout from the channel capabilities
+    channelPermissionsHandler(asMember.scenario, cid, () =>
+      timedOutCaps(timeoutExpiresAt, capsFromActions(MEMBER_ACTIONS))),
     ...asMember.handlers,
     http.get(`/api/moderation/timeout-status/${cid}/:userId`, () =>
       HttpResponse.json({ isTimedOut: true, expiresAt: timeoutExpiresAt })),
@@ -159,6 +167,8 @@ export const BannedStaleLink = defineEdgeScreen(asMember.scenario, {
       HttpResponse.json({ resourceType: 'COMMUNITY', userId: base.me.id, resourceId: cid, roles: [] })),
     http.get('/api/roles/my/channel/:channelId', ({ params }) =>
       HttpResponse.json({ resourceType: 'CHANNEL', userId: base.me.id, resourceId: String(params.channelId), roles: [] })),
+    // No longer a member: no channel is visible
+    channelPermissionsHandler(asMember.scenario, cid, () => null),
     forbidden('get', `/api/community/${cid}`),
     forbidden('get', `/api/channels/community/${cid}`),
     forbidden('get', `/api/channels/community/${cid}/mentionable`),

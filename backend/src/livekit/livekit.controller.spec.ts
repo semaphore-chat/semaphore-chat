@@ -30,6 +30,7 @@ describe('LivekitController', () => {
     share: true,
     managePermissions: false,
     timedOutUntil: null,
+    postingRoleNames: [],
   };
 
   const mockUser = UserFactory.build();

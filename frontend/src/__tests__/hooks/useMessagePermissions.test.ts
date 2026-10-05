@@ -7,12 +7,59 @@ vi.mock('../../features/roles/useUserPermissions', () => ({
   useCanPerformAction: (...args: unknown[]) => mockCanPerformAction(...args),
 }));
 
+// Reacting is a channel capability (useChannelPermissions), keyed by the
+// route's community
+const mockCan = vi.fn((_cap: string) => true);
+const mockUseChannelPermissions = vi.fn((_communityId?: string, _channelId?: string) => ({
+  can: mockCan,
+}));
+vi.mock('../../hooks/useChannelPermissions', () => ({
+  useChannelPermissions: (communityId?: string, channelId?: string) =>
+    mockUseChannelPermissions(communityId, channelId),
+}));
+vi.mock('react-router-dom', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useParams: () => ({ communityId: 'community-1' }),
+}));
+
 import { useMessagePermissions } from '../../hooks/useMessagePermissions';
 
 describe('useMessagePermissions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockCanPerformAction.mockReturnValue(false);
+    mockCan.mockImplementation(() => true);
+  });
+
+  describe('canReact (channel capabilities)', () => {
+    it('is true when the channel allows reacting', () => {
+      const message = createMessage({ authorId: 'other-user', channelId: 'channel-1' });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+      expect(result.current.canReact).toBe(true);
+      expect(mockUseChannelPermissions).toHaveBeenCalledWith('community-1', 'channel-1');
+      expect(mockCan).toHaveBeenCalledWith('react');
+    });
+
+    it('is false in a read-only channel or while timed out (react capability off)', () => {
+      mockCan.mockImplementation((cap: string) => cap !== 'react');
+      const message = createMessage({ authorId: 'other-user', channelId: 'channel-1' });
+      const { result } = renderHook(() =>
+        useMessagePermissions({ message, currentUserId: 'user-1' }),
+      );
+      expect(result.current.canReact).toBe(false);
+    });
+
+    it('DMs never consult channel capabilities', () => {
+      const message = createMessage({
+        authorId: 'other-user',
+        channelId: undefined,
+        directMessageGroupId: 'dm-group-1',
+      });
+      renderHook(() => useMessagePermissions({ message, currentUserId: 'user-1' }));
+      expect(mockUseChannelPermissions).toHaveBeenCalledWith(undefined, undefined);
+    });
   });
 
   it('returns canEdit=true, canDelete=true, isOwnMessage=true for own message', () => {

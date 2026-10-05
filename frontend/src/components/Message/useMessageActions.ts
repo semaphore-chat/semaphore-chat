@@ -7,6 +7,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { findCachedChannel } from "../../hooks/useChannelMentionTarget";
 import {
   messagesControllerUpdateMutation,
   messagesControllerRemoveMutation,
@@ -195,12 +196,15 @@ export function useMessageActions(
 
   const handleEditClick = useCallback(() => {
     // Convert all spans (including mentions) to editable text
-    const fullText = spansToText(message.spans);
+    const fullText = spansToText(
+      message.spans,
+      (id) => findCachedChannel(queryClient, id)?.name,
+    );
     setEditText(fullText);
     // Initialize edit attachments with current attachments
     setEditAttachments([...message.attachments]);
     setIsEditing(true);
-  }, [message.spans, message.attachments]);
+  }, [message.spans, message.attachments, queryClient]);
 
   const handleEditSave = useCallback(async () => {
     if (!message.channelId && !message.directMessageGroupId) return;

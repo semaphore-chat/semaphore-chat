@@ -52,6 +52,8 @@ export interface MessageActionConfig {
   canThread: boolean;
   isPinned: boolean;
   handlers: MessageActionHandlers;
+  /** Names #channel mentions when copying (spans store no channel name). */
+  channelName?: (channelId: string) => string | undefined;
 }
 
 /**
@@ -142,7 +144,7 @@ export function getMessageActions(config: MessageActionConfig): MessageAction[] 
     icon: React.createElement(ContentCopyIcon, { fontSize: 'small' }),
     group: 'copy',
     run: async () => {
-      const text = spansToText(message.spans);
+      const text = spansToText(message.spans, config.channelName);
       try {
         await copyToClipboard(text);
       } catch {

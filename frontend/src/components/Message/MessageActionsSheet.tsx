@@ -22,6 +22,8 @@ import { TOUCH_TARGETS } from '../../utils/breakpoints';
 import { getMessageActions, type MessageAction } from './messageActions';
 import { QUICK_REACTIONS } from './emojiData';
 import type { MessageContextMenuProps } from './MessageContextMenu';
+import { useQueryClient } from "@tanstack/react-query";
+import { findCachedChannel } from "../../hooks/useChannelMentionTarget";
 
 export interface MessageActionsSheetProps extends MessageContextMenuProps {
   /** Add a specific reaction from the quick-reaction row. */
@@ -47,8 +49,10 @@ const MessageActionsSheet: React.FC<MessageActionsSheetProps> = ({
   onAddReaction,
   onEmojiSelect,
 }) => {
+  const queryClient = useQueryClient();
   const actions = getMessageActions({
     message,
+    channelName: (id) => findCachedChannel(queryClient, id)?.name,
     canEdit,
     canDelete,
     canPin,

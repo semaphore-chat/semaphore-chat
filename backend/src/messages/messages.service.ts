@@ -12,6 +12,7 @@ import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
+import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { FileType, Prisma, SpanType } from '@prisma/client';
 import { groupReactions } from '@/common/utils/reactions.utils';
 
@@ -121,10 +122,19 @@ export class MessagesService {
     // Convert EMOJI spans with unknown/foreign emojiIds to plaintext so a
     // hand-crafted payload can't trip the FK (P2003 -> 500) or reference
     // another community's emoji.
-    const spans = await sanitizeEmojiSpans(
+    const emojiSafe = await sanitizeEmojiSpans(
       this.databaseService,
       rawSpans,
       createMessageDto.channelId,
+    );
+    // #channel mentions: same community, visible to the author, no name stored
+    const spans = await sanitizeChannelMentionSpans(
+      this.databaseService,
+      emojiSafe,
+      createMessageDto.channelId,
+      createMessageDto.authorId,
+      (userId, channelId) =>
+        this.channelAccessService.canViewChannel(userId, channelId),
     );
 
     const searchText = flattenSpansToText(spans);
@@ -263,15 +273,29 @@ export class MessagesService {
     // Validate EMOJI spans against the message's community (see create()).
     // Only fetch the message when the edit actually contains EMOJI spans.
     let sanitizedSpans = updateMessageDto.spans;
-    if (sanitizedSpans?.some((s) => s.type === 'EMOJI')) {
+    if (
+      sanitizedSpans?.some(
+        (s) =>
+          s.type === 'EMOJI' || s.type === 'CHANNEL_MENTION' || !!s.channelId,
+      )
+    ) {
       const existing = await this.databaseService.message.findUnique({
         where: { id },
-        select: { channelId: true },
+        select: { channelId: true, authorId: true },
       });
       sanitizedSpans = await sanitizeEmojiSpans(
         this.databaseService,
         sanitizedSpans,
         existing?.channelId ?? null,
+      );
+      // Edits are by the author (MessageOwnershipGuard): same rule as create
+      sanitizedSpans = await sanitizeChannelMentionSpans(
+        this.databaseService,
+        sanitizedSpans,
+        existing?.channelId ?? null,
+        existing?.authorId ?? null,
+        (userId, channelId) =>
+          this.channelAccessService.canViewChannel(userId, channelId),
       );
     }
 

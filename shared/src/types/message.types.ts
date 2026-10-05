@@ -4,6 +4,9 @@ export enum SpanType {
   SPECIAL_MENTION = 'SPECIAL_MENTION',
   COMMUNITY_MENTION = 'COMMUNITY_MENTION',
   ALIAS_MENTION = 'ALIAS_MENTION',
+  // #channel mention: `channelId` only, `text` is always null (no name is
+  // stored); readers resolve the name from the channels they can see.
+  CHANNEL_MENTION = 'CHANNEL_MENTION',
   // Multi-line fenced (```) code block. Its `text` is rendered verbatim —
   // no mentions, inline formatting, or auto-linking are parsed inside it.
   CODE_BLOCK = 'CODE_BLOCK',
@@ -18,6 +21,8 @@ export interface Span {
   userId?: string;
   specialKind?: string;
   communityId?: string;
+  // For CHANNEL_MENTION spans
+  channelId?: string;
   aliasId?: string;
   // For EMOJI spans: id of the community CustomEmoji this shortcode resolved to.
   emojiId?: string;

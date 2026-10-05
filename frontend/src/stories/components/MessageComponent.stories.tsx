@@ -3,7 +3,9 @@ import { defineComponent } from '../fixtures/componentStory';
 import { createMessage, createSpan, createReaction } from '../../__tests__/test-utils/factories';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { SpanType } from '../../types/message.type';
-import { bigCommunityScenario, primaryCommunity, generalChannel } from '../fixtures/scenarios';
+import { bigCommunityScenario, primaryCommunity, generalChannel, secondChannel } from '../fixtures/scenarios';
+import { HIDDEN_CHANNEL_ID, channelMentionSpan } from '../fixtures/channelMentions';
+import { WithChannelList } from '../fixtures/WithChannelList';
 
 const author = bigCommunityScenario.users[0];
 const common = { channelId: generalChannel.id, authorId: author.id };
@@ -69,4 +71,25 @@ export const LongTextAndCode = defineComponent(bigCommunityScenario, () => (
     })}
     {...contextProps}
   />
+));
+
+/** #channel mentions: a visible channel links; a hidden one is "#private-channel". */
+export const WithChannelMentions = defineComponent(bigCommunityScenario, () => (
+  <WithChannelList communityId={primaryCommunity.id}>
+    <MessageComponent
+      message={createMessage({
+        ...common,
+        spans: [
+          createSpan({ text: 'Notes are in ' }),
+          channelMentionSpan(secondChannel.id),
+          createSpan({ text: ', the rollout plan is in ' }),
+          channelMentionSpan(HIDDEN_CHANNEL_ID),
+          createSpan({ text: ' (ask a mod), and questions go to ' }),
+          channelMentionSpan(generalChannel.id),
+          createSpan({ text: '.' }),
+        ],
+      })}
+      {...contextProps}
+    />
+  </WithChannelList>
 ));
