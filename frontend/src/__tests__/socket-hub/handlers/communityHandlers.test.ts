@@ -24,6 +24,10 @@ describe('communityHandlers', () => {
 
     handleChannelPermissionsUpdated({ communityId: 'c1', channelId: 'ch1' }, queryClient);
 
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: [{ _id: 'channelsControllerFindOne', path: { id: 'ch1' } }],
+    });
+
     const keys = spy.mock.calls.map(
       (call) => (call[0] as { queryKey: [{ _id: string }] }).queryKey[0]._id,
     );

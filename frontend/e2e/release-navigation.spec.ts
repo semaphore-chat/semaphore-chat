@@ -2,6 +2,7 @@
  * Release smoke: community landing, full-page error state, private channels.
  */
 
+import { randomUUID } from 'node:crypto';
 import { test, expect, TEST_USER } from './fixtures';
 import {
   MEMBER_USER,
@@ -51,7 +52,7 @@ test.describe('Release smoke: navigation', () => {
   }, testInfo) => {
     const { context, page } = await openSession(browser, TEST_USER);
     try {
-      await page.goto(`/#/community/${crypto.randomUUID()}`);
+      await page.goto(`/#/community/${randomUUID()}`);
       await expect(page.getByText('This community no longer exists')).toBeVisible();
       await expect(
         page.getByText('It may have been deleted, or the link is out of date.'),

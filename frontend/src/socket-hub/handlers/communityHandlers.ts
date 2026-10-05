@@ -63,12 +63,13 @@ export const handleChannelDeleted: SocketEventHandler<typeof ServerEvents.CHANNE
  */
 export const handleChannelPermissionsUpdated: SocketEventHandler<
   typeof ServerEvents.CHANNEL_PERMISSIONS_UPDATED
-> = (_payload, queryClient: QueryClient) => {
+> = (payload, queryClient: QueryClient) => {
   queryClient.invalidateQueries({
     queryKey: [{ _id: 'channelsControllerFindAllForCommunity' }],
   });
+  // Only the changed channel's detail query (keys match on a subset)
   queryClient.invalidateQueries({
-    queryKey: [{ _id: 'channelsControllerFindOne' }],
+    queryKey: [{ _id: 'channelsControllerFindOne', path: { id: payload.channelId } }],
   });
   invalidateChannelPermissionQueries(queryClient);
 };
