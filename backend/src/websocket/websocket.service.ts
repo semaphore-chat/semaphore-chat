@@ -48,11 +48,24 @@ export class WebsocketService {
 
     const run = (pending ?? Promise.resolve())
       .then(async () => {
-        const safeArgs = needsRedaction
-          ? ((await Promise.all(
+        let safeArgs = args;
+        if (needsRedaction) {
+          try {
+            safeArgs = (await Promise.all(
               args.map((arg) => this.mentionRedaction!.forRoom(room, arg)),
-            )) as typeof args)
-          : args;
+            )) as typeof args;
+          } catch (error) {
+            // Never drop a live message: deliver it with every mention id
+            // removed instead
+            safeArgs = args.map((arg) =>
+              ChannelMentionRedactionService.redactAll(toWirePayload(arg)),
+            ) as typeof args;
+            this.logger.error(
+              `Mention redaction failed for "${event}" to room "${room}"; sent with all channel mention ids removed`,
+              error,
+            );
+          }
+        }
         this.emitNow(room, event, ...safeArgs);
       })
       .catch((error) =>

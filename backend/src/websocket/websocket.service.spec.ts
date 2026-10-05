@@ -684,5 +684,24 @@ describe('WebsocketService', () => {
       looseService.sendToRoom('channel-1', 'later', {});
       expect(emitted.map((e) => e.event)).toContain('later');
     });
+
+    it('a redaction failure still delivers the message, with every mention id removed', async () => {
+      redaction.forRoom.mockRejectedValue(new Error('db down'));
+      const original = withMention('hidden');
+      looseService.sendToRoom('channel-1', 'newMessage', original);
+      looseService.sendToRoom('channel-1', 'updateMessage', { b: 2 });
+      await flush();
+
+      expect(emitted).toEqual([
+        {
+          room: 'channel-1',
+          event: 'newMessage',
+          payload: withMention(null as never),
+        },
+        { room: 'channel-1', event: 'updateMessage', payload: { b: 2 } },
+      ]);
+      // The caller's object isn't changed
+      expect(original.message.spans[0].channelId).toBe('hidden');
+    });
   });
 });

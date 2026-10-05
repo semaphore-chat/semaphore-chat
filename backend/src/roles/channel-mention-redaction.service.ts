@@ -64,6 +64,15 @@ export class ChannelMentionRedactionService {
     return collect(value).length > 0;
   }
 
+  /**
+   * Fallback when redaction itself fails: null every mention id (deliver,
+   * but reveal nothing). Mutates `value` in place and returns it.
+   */
+  static redactAll<T>(value: T): T {
+    for (const span of collect(value)) span.channelId = null;
+    return value;
+  }
+
   /** Redact what `userId` can't see. `null` user (unauthenticated): all. */
   async forUser<T>(userId: string | null, value: T): Promise<T> {
     return this.redact(value, async (channelId) =>

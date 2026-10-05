@@ -44,6 +44,33 @@ describe('ChannelMentionRedactionInterceptor', () => {
     expect(redaction.forUser).toHaveBeenCalledWith(null, withMention);
   });
 
+  it('a redaction failure answers with every mention id removed instead of failing', async () => {
+    redaction.forUser.mockRejectedValue(new Error('db down'));
+    const body = {
+      spans: [
+        { type: 'CHANNEL_MENTION', channelId: 'visible-or-not', text: null },
+        { type: 'PLAINTEXT', text: 'x' },
+      ],
+      replyTo: {
+        spans: [{ type: 'CHANNEL_MENTION', channelId: 'other', text: null }],
+      },
+    };
+    const result = await lastValueFrom(
+      interceptor.intercept(httpContext({ id: 'u1' }), {
+        handle: () => of(body),
+      }),
+    );
+    expect(result).toEqual({
+      spans: [
+        { type: 'CHANNEL_MENTION', channelId: null, text: null },
+        { type: 'PLAINTEXT', text: 'x' },
+      ],
+      replyTo: {
+        spans: [{ type: 'CHANNEL_MENTION', channelId: null, text: null }],
+      },
+    });
+  });
+
   it('passes responses without mentions through untouched', async () => {
     const body = { spans: [{ type: 'PLAINTEXT', text: 'x' }] };
     const result = await lastValueFrom(
