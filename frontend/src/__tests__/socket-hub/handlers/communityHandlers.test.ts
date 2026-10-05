@@ -24,12 +24,18 @@ describe('communityHandlers', () => {
 
     handleChannelPermissionsUpdated({ communityId: 'c1', channelId: 'ch1' }, queryClient);
 
+    expect(spy).toHaveBeenCalledWith({
+      queryKey: [{ _id: 'channelsControllerFindOne', path: { id: 'ch1' } }],
+    });
+
     const keys = spy.mock.calls.map(
       (call) => (call[0] as { queryKey: [{ _id: string }] }).queryKey[0]._id,
     );
     expect(keys).toEqual(
       expect.arrayContaining([
         'channelsControllerFindAllForCommunity',
+        // carries the channel's `preset`, which the composer notice reads
+        'channelsControllerFindOne',
         'channelPermissionsControllerGetMyCommunityChannelPermissions',
         'channelPermissionsControllerGetMyChannelPermissions',
         'channelPermissionsControllerListChannelPermissions',
