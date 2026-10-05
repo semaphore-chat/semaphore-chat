@@ -49,6 +49,8 @@ interface ThreadPanelProps {
   communityId?: string;
   /** Phone: full-screen layer with a back button instead of a side drawer. */
   fullScreen?: boolean;
+  /** Docked in the desktop side panel, which draws its own left border. */
+  docked?: boolean;
 }
 
 const touchTarget = {
@@ -62,6 +64,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   directMessageGroupId,
   communityId,
   fullScreen = false,
+  docked = false,
 }) => {
   const theme = useTheme();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -254,7 +257,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
   return (
     <Box
       data-testid="thread-panel"
-      data-variant={fullScreen ? "fullscreen" : "drawer"}
+      data-variant={fullScreen ? "fullscreen" : docked ? "docked" : "drawer"}
       sx={{
         width: "100%",
         height: "100%",
@@ -264,7 +267,7 @@ export const ThreadPanel: React.FC<ThreadPanelProps> = ({
         backgroundColor: theme.palette.background.canvas,
         ...(fullScreen
           ? { paddingTop: "env(safe-area-inset-top)" }
-          : { borderLeft: `1px solid ${theme.palette.divider}` }),
+          : !docked && { borderLeft: `1px solid ${theme.palette.divider}` }),
       }}
     >
       {/* Header */}

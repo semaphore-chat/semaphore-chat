@@ -15,18 +15,32 @@ import { useDebounce } from "../../hooks/useDebounce";
 import { SearchScope, useMessageSearch, type SearchResult } from "../../hooks/useMessageSearch";
 import { MessageSearchResultList } from "./MessageSearchResults";
 
-interface MessageSearchProps {
+interface MessageSearchBodyProps {
   channelId: string;
   communityId: string;
-  anchorEl: HTMLElement | null;
+  /** Focus the input when this turns true (popover open, panel shown). */
+  active: boolean;
   onClose: () => void;
+  /**
+   * Called after a result was opened. The popover closes; the docked side
+   * panel stays open so you can step through several results.
+   */
+  onResultOpened?: () => void;
+  /** Fill the parent's height (docked panel) instead of a 350px result box. */
+  fillHeight?: boolean;
 }
 
-const MessageSearch: React.FC<MessageSearchProps> = ({
+/**
+ * The search input, scope toggle and results: shared by the desktop popover
+ * (narrow windows) and the docked side panel (wide desktop).
+ */
+export const MessageSearchBody: React.FC<MessageSearchBodyProps> = ({
   channelId,
   communityId,
-  anchorEl,
+  active,
   onClose,
+  onResultOpened,
+  fillHeight = false,
 }) => {
   const [query, setQuery] = useState("");
   const [scope, setScope] = useState<SearchScope>(SearchScope.Channel);
@@ -48,14 +62,12 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
   const setSelectedIndex = (update: (prev: number) => number) =>
     setSelection({ key: searchKey, index: update(selectedIndex) });
 
-  const isOpen = Boolean(anchorEl);
-
-  // Focus input when popover opens
+  // Focus the input when the popover / panel opens
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      setTimeout(() => inputRef.current?.focus(), 100);
-    }
-  }, [isOpen]);
+    if (!active) return;
+    const timer = setTimeout(() => inputRef.current?.focus(), 100);
+    return () => clearTimeout(timer);
+  }, [active]);
 
   const handleScopeChange = useCallback(
     (_: React.MouseEvent<HTMLElement>, newScope: SearchScope | null) => {
@@ -75,9 +87,9 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
           `/community/${communityId}/channel/${targetChannelId}?highlight=${result.id}`
         );
       }
-      onClose();
+      onResultOpened?.();
     },
-    [communityId, navigate, onClose]
+    [communityId, navigate, onResultOpened]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -106,6 +118,85 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
   };
 
   return (
+    <Box
+      sx={{
+        p: 2,
+        ...(fillHeight && { flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }),
+      }}
+    >
+      {/* Search Input */}
+      <TextField
+        fullWidth
+        size="small"
+        placeholder="Search messages..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
+        inputRef={inputRef}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <SearchIcon fontSize="small" />
+            </InputAdornment>
+          ),
+          endAdornment: query && (
+            <InputAdornment position="end">
+              <IconButton size="small" onClick={() => setQuery("")}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+        sx={{ mb: 1 }}
+      />
+
+      {/* Scope Toggle */}
+      <ToggleButtonGroup
+        value={scope}
+        exclusive
+        onChange={handleScopeChange}
+        size="small"
+        fullWidth
+        sx={{ mb: 2 }}
+      >
+        <ToggleButton value={SearchScope.Channel}>This Channel</ToggleButton>
+        <ToggleButton value={SearchScope.Community}>All Channels</ToggleButton>
+      </ToggleButtonGroup>
+
+      {/* Results */}
+      <Box sx={fillHeight ? { flex: 1, minHeight: 0, overflow: "auto", mx: -2, px: 2 } : { maxHeight: 350, overflow: "auto" }}>
+        <MessageSearchResultList
+          results={results}
+          scope={scope}
+          query={query}
+          // Spinner (not "No messages found") while the debounce is pending.
+          isLoading={isLoading || query.trim() !== debouncedQuery.trim()}
+          isError={isError}
+          onRetry={() => void refetch()}
+          onSelect={handleResultClick}
+          selectedIndex={selectedIndex}
+        />
+      </Box>
+    </Box>
+  );
+};
+
+interface MessageSearchProps {
+  channelId: string;
+  communityId: string;
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+}
+
+/** Search in a popover under the header's search button. */
+const MessageSearch: React.FC<MessageSearchProps> = ({
+  channelId,
+  communityId,
+  anchorEl,
+  onClose,
+}) => {
+  const isOpen = Boolean(anchorEl);
+  return (
     <Popover
       open={isOpen}
       anchorEl={anchorEl}
@@ -128,61 +219,13 @@ const MessageSearch: React.FC<MessageSearchProps> = ({
         },
       }}
     >
-      <Box sx={{ p: 2 }}>
-        {/* Search Input */}
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search messages..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          inputRef={inputRef}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <SearchIcon fontSize="small" />
-              </InputAdornment>
-            ),
-            endAdornment: query && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setQuery("")}>
-                  <CloseIcon fontSize="small" />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-          sx={{ mb: 1 }}
-        />
-
-        {/* Scope Toggle */}
-        <ToggleButtonGroup
-          value={scope}
-          exclusive
-          onChange={handleScopeChange}
-          size="small"
-          fullWidth
-          sx={{ mb: 2 }}
-        >
-          <ToggleButton value={SearchScope.Channel}>This Channel</ToggleButton>
-          <ToggleButton value={SearchScope.Community}>All Channels</ToggleButton>
-        </ToggleButtonGroup>
-
-        {/* Results */}
-        <Box sx={{ maxHeight: 350, overflow: "auto" }}>
-          <MessageSearchResultList
-            results={results}
-            scope={scope}
-            query={query}
-            // Spinner (not "No messages found") while the debounce is pending.
-            isLoading={isLoading || query.trim() !== debouncedQuery.trim()}
-            isError={isError}
-            onRetry={() => void refetch()}
-            onSelect={handleResultClick}
-            selectedIndex={selectedIndex}
-          />
-        </Box>
-      </Box>
+      <MessageSearchBody
+        channelId={channelId}
+        communityId={communityId}
+        active={isOpen}
+        onClose={onClose}
+        onResultOpened={onClose}
+      />
     </Popover>
   );
 };
