@@ -57,13 +57,18 @@ export const handleChannelDeleted: SocketEventHandler<typeof ServerEvents.CHANNE
 
 /**
  * A channel's overwrites (or privacy) changed: refetch the channel list (it
- * may appear or disappear) and the effective channel permissions.
+ * may appear or disappear), the single-channel query (it carries `preset`,
+ * which the composer needs for the "read-only" notice copy) and the
+ * effective channel permissions.
  */
 export const handleChannelPermissionsUpdated: SocketEventHandler<
   typeof ServerEvents.CHANNEL_PERMISSIONS_UPDATED
 > = (_payload, queryClient: QueryClient) => {
   queryClient.invalidateQueries({
     queryKey: [{ _id: 'channelsControllerFindAllForCommunity' }],
+  });
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelsControllerFindOne' }],
   });
   invalidateChannelPermissionQueries(queryClient);
 };

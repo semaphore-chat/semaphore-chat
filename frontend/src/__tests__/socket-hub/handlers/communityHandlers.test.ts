@@ -30,6 +30,8 @@ describe('communityHandlers', () => {
     expect(keys).toEqual(
       expect.arrayContaining([
         'channelsControllerFindAllForCommunity',
+        // carries the channel's `preset`, which the composer notice reads
+        'channelsControllerFindOne',
         'channelPermissionsControllerGetMyCommunityChannelPermissions',
         'channelPermissionsControllerGetMyChannelPermissions',
         'channelPermissionsControllerListChannelPermissions',

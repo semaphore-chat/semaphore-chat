@@ -119,14 +119,6 @@ test.describe('Release smoke: live permission changes', () => {
     request,
   }, testInfo) => {
     test.setTimeout(60_000);
-    // KNOWN APP BUG (found by this spec): when the preset changes while the
-    // member has the channel open, the composer's capabilities refresh (the
-    // input is replaced) but the cached channel (`channelsControllerFindOne`,
-    // which carries `preset`) is not invalidated, so the notice says "You can't
-    // send messages in #x" instead of "#x is read-only. Only ... can post". A
-    // reload shows the right copy. This test is expected to fail until that is
-    // fixed; when it starts passing, Playwright flags it: delete test.fail().
-    test.fail(true, 'stale channel preset in the open member session');
     const world = await createWorld(request);
     const channel = await createTestChannel(
       request,
