@@ -184,6 +184,27 @@ export class LivekitService {
   }
 
   /**
+   * Identities of the participants connected to one LiveKit room. Best
+   * effort: a room that doesn't exist (nobody connected), an unreachable or
+   * an unconfigured LiveKit yields [].
+   */
+  async listParticipantIdentities(roomId: string): Promise<string[]> {
+    if (!this.roomServiceClient) return [];
+    try {
+      const participants =
+        await this.roomServiceClient.listParticipants(roomId);
+      return participants.map((p) => p.identity);
+    } catch (error) {
+      this.logger.debug(
+        `Could not list participants of room ${roomId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return [];
+    }
+  }
+
+  /**
    * The LiveKit rooms a participant identity is currently in, asked of
    * LiveKit itself (every room, then its participants), so it also finds
    * rooms no presence index knows about (e.g. DM calls whose presence

@@ -342,14 +342,25 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
 
 ### Phase 4 (voice) carry-overs
 
-1. **Live publish-permission updates when overwrites or roles change.** On a PUT to a voice channel's overwrites, or a role assignment or definition change, recompute the grants of connected participants and call `updatePublishPermissions`, as the timeout path does.
-2. **Restoring voice when a timeout expires while still connected.** Recommendation: a delayed BullMQ job, scheduled when the timeout is applied and set to fire at `expiresAt`, that emits `MODERATION_TIMEOUT_CHANGED`. A rejoin restores it today, but a user who stays connected would stay muted until they reconnect, which looks like a bug. The job is small and idempotent (it recomputes from current state).
-3. **Removing people from the LiveKit room when they lose view** (an existing gap). This covers removal from a private channel, a privacy flip, and later READ_CHANNEL overwrites. Reuse `removeParticipant`, as kick and ban do, and call it from `syncChannelRoom` for non-viewers who are connected.
-4. **Soundboard and spoofed source labels.**
+Status (2026-10-05): the owner approved items 2 and 3, now done. Items 1, 4 and 5 are deferred by the owner.
+
+1. **Live publish-permission updates when overwrites or roles change.** (Deferred by the owner.) On a PUT to a voice channel's overwrites, or a role assignment or definition change, recompute the grants of connected participants and call `updatePublishPermissions`, as the timeout path does.
+2. **Restoring voice when a timeout expires while still connected.** ✅ Done. `ModerationService.timeoutUser` queues a delayed job on the `timeout-expiry` queue (JobsModule) that fires at `expiresAt`.
+   - The job id is `timeout-expiry-<community>-<user>-<expiresAt ms>` (`timeoutExpiryJobId`). Replacing a timeout removes the old job, and `removeTimeout` removes the pending one. Scheduling and cancelling are best effort.
+   - `TimeoutExpiryProcessor` (moderation module) re-reads the timeout. If it's still active (extended or re-applied), it does nothing, and the newer job handles it. Otherwise it emits `MODERATION_TIMEOUT_CHANGED`, and the existing handler recomputes the grants and calls `updatePublishPermissions` in the community's calls the user is in.
+   - A missing row isn't skipped: `isUserTimedOut` deletes expired rows lazily, so "gone" may mean "expired". For a timeout lifted early, the recompute yields the grant already in place.
+   - Frontend: `useChannelPermissions` already refetched at `timedOutUntil`. But timeouts run up to 28 days, which is past `setTimeout`'s 2^31-1 ms limit (about 24.8 days), so a longer timer fired at once and never again. It now chains capped timers.
+3. **Removing people from the LiveKit room when they lose view** (an existing gap). ✅ Done in `RoomSubscriptionHandler.removeFromVoiceChannel`.
+   - `syncChannelRoom` (privacy flip; overwrite PUTs, so future READ_CHANNEL overwrites too) passes it the plan's non-viewers.
+   - `onChannelMembershipRemoved` passes it the removed user, when `canViewChannel` says they really lost view (a role allow may still show them the channel).
+   - For VOICE channels only, "connected" is the union of the voice-presence index and LiveKit's participant list (new `LivekitService.listParticipantIdentities`), since presence can lapse while a client stays connected. Each connected non-viewer gets `removeParticipant` plus `leaveVoiceChannel`, so UIs see them leave.
+   - Only community members are candidates, so egress and ingress participants are never touched. DM rooms never reach this path. Errors are logged, never thrown.
+   - E2E: `test/voice-access.e2e-spec.ts`.
+4. **Soundboard and spoofed source labels.** (Deferred by the owner.)
    - The soundboard publishes `Source.Unknown`, which grants can't name, so a partial grant blocks it.
    - Clients choose the source label, so a user with SCREEN_SHARE but no SPEAK could publish a microphone stream labelled as screen-share audio.
    - Recommendation: grant `SCREEN_SHARE_AUDIO` only when the user has both SCREEN_SHARE and SPEAK, and treat the soundboard as needing SPEAK. That means sending soundboard audio as a named track on the microphone source, or accepting the gap and documenting it.
-5. **CAPTURE_REPLAY enforcement.** No endpoint requires it today, and none did on main. Gate `replay/start` and `replay/capture` with it on the CHANNEL resource.
+5. **CAPTURE_REPLAY enforcement.** (Deferred by the owner.) No endpoint requires it today, and none did on main. Gate `replay/start` and `replay/capture` with it on the CHANNEL resource.
 
 ### Phase 2 notes (as built)
 

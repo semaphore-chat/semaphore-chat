@@ -284,9 +284,63 @@ export class RoomSubscriptionHandler {
     for (const userId of plan.viewers) {
       this.websocketService.joinSocketsToRoom(RoomName.user(userId), room);
     }
+    // ...and leave the call, if it's a voice channel they're connected to
+    await this.removeFromVoiceChannel(channelId, plan.nonViewers);
     this.logger.debug(
       `Synced room for channel ${channelId}: ${plan.viewers.length} viewers, ${plan.nonViewers.length} removed`,
     );
+  }
+
+  /**
+   * Disconnect the given users (who can no longer view the channel) from its
+   * LiveKit room and clear their voice presence there, so they stop hearing
+   * the call and other clients see them leave. "Connected" is the union of
+   * the presence index and LiveKit's own participant list (presence can
+   * lapse while a client stays connected). Only community members are ever
+   * passed in, so LiveKit's egress/ingress participants are never touched.
+   * Only VOICE channels have rooms; DM calls never come through here.
+   * Best effort: errors are logged, never thrown.
+   */
+  private async removeFromVoiceChannel(
+    channelId: string,
+    lostViewUserIds: string[],
+  ): Promise<void> {
+    if (lostViewUserIds.length === 0) return;
+    try {
+      const channel = await this.databaseService.channel.findUnique({
+        where: { id: channelId },
+        select: { type: true },
+      });
+      if (channel?.type !== ChannelType.VOICE) return;
+
+      const [presence, participants] = await Promise.all([
+        this.voicePresenceService.getChannelPresence(channelId),
+        this.livekitService.listParticipantIdentities(channelId),
+      ]);
+      const connected = new Set([
+        ...presence.map((p) => p.id),
+        ...participants,
+      ]);
+      const toRemove = lostViewUserIds.filter((id) => connected.has(id));
+      if (toRemove.length === 0) return;
+
+      await Promise.allSettled(
+        toRemove.map((userId) =>
+          Promise.allSettled([
+            this.livekitService.removeParticipant(channelId, userId),
+            this.voicePresenceService.leaveVoiceChannel(channelId, userId),
+          ]),
+        ),
+      );
+      this.logger.log(
+        `Removed ${toRemove.length} user(s) who lost access from voice channel ${channelId}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to remove users who lost access from voice channel ${channelId}`,
+        error,
+      );
+    }
   }
 
   @OnEvent(RoomEvents.CHANNEL_DELETED)
@@ -318,15 +372,29 @@ export class RoomSubscriptionHandler {
   }
 
   @OnEvent(RoomEvents.CHANNEL_MEMBERSHIP_REMOVED)
-  onChannelMembershipRemoved({
+  async onChannelMembershipRemoved({
     userId,
     channelId,
-  }: ChannelMembershipRemovedEvent): void {
+  }: ChannelMembershipRemovedEvent): Promise<void> {
     this.websocketService.removeSocketsFromRoom(
       RoomName.user(userId),
       RoomName.channel(channelId),
     );
     this.logger.debug(`User ${userId} left private channel room ${channelId}`);
+    // Off the list doesn't always mean out of sight (e.g. a role allow of
+    // READ_CHANNEL): only someone who really lost view leaves the call.
+    try {
+      if (await this.channelAccessService.canViewChannel(userId, channelId)) {
+        return;
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to check access of ${userId} to channel ${channelId}`,
+        error,
+      );
+      return;
+    }
+    await this.removeFromVoiceChannel(channelId, [userId]);
   }
 
   // =========================================================================

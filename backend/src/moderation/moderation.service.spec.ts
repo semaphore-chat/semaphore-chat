@@ -1,6 +1,9 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { getQueueToken } from '@nestjs/bullmq';
+import type { Queue } from 'bullmq';
+import { TIMEOUT_EXPIRY_QUEUE } from '@/jobs/jobs.constants';
 import { ModerationService } from './moderation.service';
 import { DatabaseService } from '@/database/database.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
@@ -30,6 +33,7 @@ describe('ModerationService', () => {
   let websocketService: Mocked<WebsocketService>;
   let eventEmitter: Mocked<EventEmitter2>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
+  let timeoutExpiryQueue: Mocked<Queue>;
 
   const moderatorId = 'moderator-123';
   const userId = 'user-456';
@@ -51,6 +55,7 @@ describe('ModerationService', () => {
     websocketService = unitRef.get(WebsocketService);
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    timeoutExpiryQueue = unitRef.get(getQueueToken(TIMEOUT_EXPIRY_QUEUE));
 
     // Default: user lookups return empty (enrichment queries)
     mockDatabase.user.findMany.mockResolvedValue([]);
@@ -564,13 +569,71 @@ describe('ModerationService', () => {
       await expect(
         service.timeoutUser(communityId, userId, moderatorId, 600),
       ).rejects.toThrow(ForbiddenException);
+      expect(timeoutExpiryQueue.add).not.toHaveBeenCalled();
+    });
+
+    describe('expiry job', () => {
+      const NOW = Date.UTC(2026, 9, 5, 12, 0, 0);
+
+      let nowSpy: jest.SpyInstance<number, []>;
+
+      beforeEach(() => {
+        nowSpy = jest.spyOn(Date, 'now').mockReturnValue(NOW);
+      });
+
+      afterEach(() => {
+        nowSpy.mockRestore();
+      });
+
+      it('schedules a delayed job at expiresAt with a deterministic id', async () => {
+        mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+
+        await service.timeoutUser(communityId, userId, moderatorId, 600);
+
+        const expiresAt = new Date(NOW + 600_000);
+        expect(timeoutExpiryQueue.add).toHaveBeenCalledWith(
+          'expire',
+          { userId, communityId, expiresAt: expiresAt.toISOString() },
+          {
+            jobId: `timeout-expiry-${communityId}-${userId}-${expiresAt.getTime()}`,
+            delay: 600_000,
+          },
+        );
+        expect(timeoutExpiryQueue.remove).not.toHaveBeenCalled();
+      });
+
+      it('cancels the job of the timeout it replaces', async () => {
+        const previous = new Date(NOW + 60_000);
+        mockDatabase.communityTimeout.findUnique.mockResolvedValue({
+          expiresAt: previous,
+        } as any);
+
+        await service.timeoutUser(communityId, userId, moderatorId, 600);
+
+        expect(timeoutExpiryQueue.remove).toHaveBeenCalledWith(
+          `timeout-expiry-${communityId}-${userId}-${previous.getTime()}`,
+        );
+        expect(timeoutExpiryQueue.add).toHaveBeenCalledTimes(1);
+      });
+
+      it('still applies the timeout when the queue is unavailable', async () => {
+        mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+        timeoutExpiryQueue.add.mockRejectedValue(new Error('redis down'));
+
+        await expect(
+          service.timeoutUser(communityId, userId, moderatorId, 600),
+        ).resolves.toBeUndefined();
+        expect(mockDatabase.communityTimeout.upsert).toHaveBeenCalled();
+      });
     });
   });
 
   describe('removeTimeout', () => {
     it('should remove timeout successfully', async () => {
+      const expiresAt = new Date('2026-10-05T13:00:00.000Z');
       mockDatabase.communityTimeout.findUnique.mockResolvedValue({
         id: 'timeout-1',
+        expiresAt,
       } as any);
       mockDatabase.communityTimeout.delete.mockResolvedValue({} as any);
       mockDatabase.moderationLog.create.mockResolvedValue({} as any);
@@ -578,6 +641,10 @@ describe('ModerationService', () => {
       await service.removeTimeout(communityId, userId, moderatorId);
 
       expect(mockDatabase.communityTimeout.delete).toHaveBeenCalled();
+      // The pending expiry job is no longer needed
+      expect(timeoutExpiryQueue.remove).toHaveBeenCalledWith(
+        `timeout-expiry-${communityId}-${userId}-${expiresAt.getTime()}`,
+      );
       // Voice: publish permissions are restored for connected calls
       expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
         RoomEvents.MODERATION_TIMEOUT_CHANGED,
