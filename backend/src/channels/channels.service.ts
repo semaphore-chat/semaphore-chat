@@ -128,6 +128,33 @@ export class ChannelsService {
     }
   }
 
+  private async assertPrivatizingKeepsHigherRanks(
+    channelId: string,
+    communityId: string,
+    actorId: string,
+  ): Promise<void> {
+    const { best, isTop } = await this.permissionsService.getRank(
+      actorId,
+      communityId,
+    );
+    if (isTop) return;
+    const higher = await this.permissionsService.usersRankedAtOrAbove(
+      communityId,
+      best,
+      actorId,
+    );
+    const userIds = [...higher.keys()];
+    if (userIds.length === 0) return;
+    const inChannel = new Set(
+      await this.channelAccessService.channelMemberIds(channelId, userIds),
+    );
+    if (userIds.some((u) => !inChannel.has(u))) {
+      throw new ForbiddenException(
+        'Making this channel private would hide it from members ranked at or above you; add them to it first or ask an admin',
+      );
+    }
+  }
+
   /** The community's channels that `userId` can see. */
   async findAll(communityId: string, userId: string) {
     const visibleIds = await this.channelAccessService.visibleChannelIds(
@@ -197,6 +224,18 @@ export class ChannelsService {
         if (!held.includes(RbacActions.MANAGE_CHANNEL_PERMISSIONS)) {
           throw new ForbiddenException(
             'Changing channel privacy requires the manage channel permissions permission',
+          );
+        }
+        // Public -> private is an @everyone view deny: it must not lock out
+        // anyone ranked at or above the actor (peers included) unless they
+        // are on the channel's member list already. Holders of the top
+        // role are exempt.
+        // channel-visibility: public -> private, checked by rank below
+        if (updateChannelDto.isPrivate) {
+          await this.assertPrivatizingKeepsHigherRanks(
+            id,
+            before.communityId,
+            actor.id,
           );
         }
       }

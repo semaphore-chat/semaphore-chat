@@ -5,6 +5,8 @@ import { AttachFileOnMount, TypeIntoTextareaOnMount } from '../fixtures/interact
 import { createMessage, createSpan } from '../../__tests__/test-utils/factories';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { bigCommunityScenario, primaryCommunity, generalChannel } from '../fixtures/scenarios';
+import { ThreadMessageInput } from '../../components/Thread/ThreadMessageInput';
+import { announcementComposerHandlers, noAttachmentsComposerHandlers } from '../fixtures/composerPermissions';
 
 const commonProps = {
   contextType: VoiceSessionType.Channel,
@@ -64,3 +66,39 @@ export const TimedOutWithReason = defineComponent(bigCommunityScenario, () => (
 export const Banned = defineComponent(bigCommunityScenario, () => (
   <ComposerUnavailableNotice availability={{ state: 'banned' }} />
 ));
+
+// ── Channel capabilities (useChannelPermissions) ─────────────────────────
+
+/** A read-only / announcement channel, naming who can post. */
+export const ReadOnly = defineComponent(bigCommunityScenario, () => (
+  <ComposerUnavailableNotice
+    availability={{ state: 'read-only', channelName: 'announcements', postingRoleNames: ['Moderator', 'Community Admin'] }}
+  />
+));
+
+/** The real composer in an announcement channel (capabilities from the server). */
+export const AnnouncementChannel = defineComponent(
+  bigCommunityScenario,
+  () => <MessageInput {...commonProps} onSendMessage={() => {}} />,
+  { extraHandlers: announcementComposerHandlers },
+);
+
+/** Attachments turned off: the attach button is disabled (hover shows why). */
+export const NoAttachments = defineComponent(
+  bigCommunityScenario,
+  () => <MessageInput {...commonProps} onSendMessage={() => {}} />,
+  { extraHandlers: noAttachmentsComposerHandlers },
+);
+
+/** The thread reply box in an announcement channel. */
+export const ThreadComposerReadOnly = defineComponent(
+  bigCommunityScenario,
+  () => (
+    <ThreadMessageInput
+      parentMessageId="thread-parent-1"
+      communityId={primaryCommunity.id}
+      channelId={generalChannel.id}
+    />
+  ),
+  { extraHandlers: announcementComposerHandlers },
+);

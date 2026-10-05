@@ -29,6 +29,12 @@ export class ChannelCapabilitiesDto {
   /** End of the user's community timeout, if one is active. */
   @ApiProperty({ type: Date, nullable: true })
   timedOutUntil: Date | null;
+  /**
+   * Roles whose holders can post here, by rank (names only), for the
+   * read-only notice. Empty for a channel the user can't view.
+   */
+  @ApiProperty({ type: [String] })
+  postingRoleNames: string[];
 }
 
 export class CommunityChannelCapabilitiesDto {

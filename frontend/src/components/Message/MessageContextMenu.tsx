@@ -15,6 +15,8 @@ import {
 } from '@mui/material';
 import type { Message } from '../../types/message.type';
 import { getMessageActions, type MessageAction } from './messageActions';
+import { useQueryClient } from "@tanstack/react-query";
+import { findCachedChannel } from "../../hooks/useChannelMentionTarget";
 
 export interface MessageContextMenuProps {
   anchorPosition: { top: number; left: number } | null;
@@ -57,8 +59,10 @@ const MessageContextMenu: React.FC<MessageContextMenuProps> = ({
   onQuoteReply,
   onAddReaction,
 }) => {
+  const queryClient = useQueryClient();
   const actions = getMessageActions({
     message,
+    channelName: (id) => findCachedChannel(queryClient, id)?.name,
     canEdit,
     canDelete,
     canPin,

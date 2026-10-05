@@ -92,7 +92,8 @@ describe('moderationHandlers', () => {
 
     it('does NOT invalidate communities (timeout is not removal)', () => {
       handleUserTimedOut({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      // members + timeout status + the 4 channel-permission queries
+      expect(invalidateSpy).toHaveBeenCalledTimes(6);
       expect(invalidateSpy).not.toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
       );
@@ -121,10 +122,25 @@ describe('moderationHandlers', () => {
 
     it('does NOT invalidate communities', () => {
       handleTimeoutRemoved({} as never, queryClient);
-      expect(invalidateSpy).toHaveBeenCalledTimes(2);
+      expect(invalidateSpy).toHaveBeenCalledTimes(6);
       expect(invalidateSpy).not.toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: [{ _id: 'communityControllerFindAllMine' }] }),
       );
+    });
+  });
+
+  describe('timeouts refresh the effective channel permissions', () => {
+    it.each([
+      ['handleUserTimedOut', handleUserTimedOut],
+      ['handleTimeoutRemoved', handleTimeoutRemoved],
+    ])('%s invalidates the channel-permission queries (composer, voice controls)', (_name, handler) => {
+      handler({} as never, queryClient);
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'channelPermissionsControllerGetMyCommunityChannelPermissions' }],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: [{ _id: 'channelPermissionsControllerGetMyChannelPermissions' }],
+      });
     });
   });
 });

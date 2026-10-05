@@ -445,6 +445,7 @@ describe('LivekitWebhookController', () => {
           share: false,
           managePermissions: false,
           timedOutUntil: null,
+          postingRoleNames: [],
         });
         await joined();
         expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
@@ -472,6 +473,7 @@ describe('LivekitWebhookController', () => {
           share: false,
           managePermissions: false,
           timedOutUntil: null,
+          postingRoleNames: [],
         });
         await joined();
         expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
@@ -498,6 +500,7 @@ describe('LivekitWebhookController', () => {
           share: true,
           managePermissions: false,
           timedOutUntil: null,
+          postingRoleNames: [],
         });
         await joined();
         expect(livekitService.updatePublishPermissions).not.toHaveBeenCalled();

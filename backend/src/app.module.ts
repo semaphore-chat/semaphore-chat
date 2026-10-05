@@ -11,7 +11,8 @@ import { InviteModule } from './invite/invite.module';
 import { CommunityModule } from './community/community.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ChannelMentionRedactionInterceptor } from './roles/channel-mention-redaction.interceptor';
 import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
@@ -139,6 +140,11 @@ import { JobsModule } from './jobs/jobs.module';
   controllers: [AppController],
   providers: [
     AppService,
+    {
+      // Per-reader #channel mention redaction on every REST response
+      provide: APP_INTERCEPTOR,
+      useClass: ChannelMentionRedactionInterceptor,
+    },
     // Global JwtAuthGuard — all routes require authentication by default.
     // Use @Public() decorator to opt-out specific endpoints.
     {

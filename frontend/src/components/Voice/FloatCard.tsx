@@ -23,6 +23,7 @@ import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useLocalMediaState } from '../../hooks/useLocalMediaState';
 import { useFloatTileSelection } from '../../hooks/useFloatTileSelection';
 import { usePushToTalk } from '../../hooks/usePushToTalk';
+import { useVoicePublishPermissions } from '../../hooks/useVoicePublishPermissions';
 import { useReplayBufferState } from '../../contexts/ReplayBufferContext';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { getFloatNavigationTarget } from '../../utils/voiceNavigation';
@@ -104,8 +105,13 @@ export const FloatCard: React.FC = () => {
   // (or the server has muted this user) a tap shouldn't toggle the mic —
   // PTT owns the mic state via hold-to-talk, and a stray unmute here would
   // persist outside the PTT gesture.
-  const { isActive: isPTTActive } = usePushToTalk();
+  const publish = useVoicePublishPermissions();
+  const { isActive: isPTTActive } = usePushToTalk({ canSpeak: publish.canSpeak });
   const micGuarded = isPTTActive || state.isServerMuted;
+  // Channel voice permissions (SPEAK / VIDEO, a timeout removes both): a
+  // control is disabled only when it would turn something ON
+  const micBlocked = !publish.canSpeak && !isMicrophoneEnabled;
+  const cameraBlocked = !publish.canVideo && !isCameraEnabled;
   const selection = useFloatTileSelection();
   // Phone/tablet layouts (never in Electron, which is always desktop): the
   // composer spans the content column right above the voice bar, so the card
@@ -538,9 +544,18 @@ export const FloatCard: React.FC = () => {
               },
             }}
           >
-            <Tooltip title={isPTTActive ? 'Push-to-talk active' : isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
+            <Tooltip
+              title={
+                micBlocked
+                  ? publish.speakBlockedReason
+                  : isPTTActive ? 'Push-to-talk active' : isMicrophoneEnabled ? 'Mute' : 'Unmute'
+              }
+            >
+              <span>
               <IconButton
                 size="small"
+                aria-label={micBlocked ? publish.speakBlockedReason : isMicrophoneEnabled ? 'Mute' : 'Unmute'}
+                disabled={micBlocked}
                 onClick={micGuarded ? undefined : actions.toggleMute}
                 sx={{
                   backgroundColor: alpha(theme.palette.background.paper, 0.7),
@@ -550,10 +565,24 @@ export const FloatCard: React.FC = () => {
               >
                 {isMicrophoneEnabled ? <Mic fontSize="small" /> : <MicOff fontSize="small" />}
               </IconButton>
+              </span>
             </Tooltip>
-            <Tooltip title={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
+            <Tooltip
+              title={
+                cameraBlocked
+                  ? publish.videoBlockedReason
+                  : isCameraEnabled ? 'Turn off camera' : 'Turn on camera'
+              }
+            >
+              <span>
               <IconButton
                 size="small"
+                aria-label={
+                  cameraBlocked
+                    ? publish.videoBlockedReason
+                    : isCameraEnabled ? 'Turn off camera' : 'Turn on camera'
+                }
+                disabled={cameraBlocked}
                 onClick={actions.toggleVideo}
                 sx={{
                   backgroundColor: alpha(theme.palette.background.paper, 0.7),
@@ -562,6 +591,7 @@ export const FloatCard: React.FC = () => {
               >
                 {isCameraEnabled ? <Videocam fontSize="small" /> : <VideocamOff fontSize="small" />}
               </IconButton>
+              </span>
             </Tooltip>
             <Tooltip title="Minimize">
               <IconButton

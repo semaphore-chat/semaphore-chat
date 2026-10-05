@@ -429,6 +429,82 @@ describe('MessagesService', () => {
     });
   });
 
+  describe('#channel mentions', () => {
+    const mention = (channelId: string) => ({
+      type: SpanType.CHANNEL_MENTION,
+      text: '#secret-name',
+      channelId,
+      userId: null,
+      specialKind: null,
+      communityId: null,
+      aliasId: null,
+    });
+
+    beforeEach(() => {
+      mockDatabase.channel.findUnique.mockResolvedValue({ communityId: 'c1' });
+      mockDatabase.channel.findMany.mockImplementation(
+        ({ where }: { where: { id: { in: string[] } } }) =>
+          Promise.resolve(where.id.in.map((id) => ({ id }))),
+      );
+      channelAccessService.canViewChannel.mockImplementation(
+        (_userId: string, channelId: string) =>
+          Promise.resolve(channelId === 'visible'),
+      );
+    });
+
+    it('create: keeps visible mentions without a name, downgrades hidden ones', async () => {
+      mockDatabase.message.create.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'm1' }),
+      );
+      await service.create({
+        channelId: 'home',
+        authorId: 'author',
+        spans: [mention('visible'), mention('hidden')],
+        attachments: [],
+      } as any);
+
+      const data = mockDatabase.message.create.mock.calls[0][0].data;
+      expect(data.spans.create[0]).toMatchObject({
+        type: SpanType.CHANNEL_MENTION,
+        channelId: 'visible',
+        text: null,
+      });
+      expect(data.spans.create[1]).toMatchObject({
+        type: SpanType.PLAINTEXT,
+        channelId: null,
+        text: '#unknown-channel',
+      });
+      expect(data.searchText ?? '').not.toContain('secret-name');
+    });
+
+    it('edit: applies the same rule, as the message author', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        channelId: 'home',
+        authorId: 'author',
+      });
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'm1' }),
+      );
+      await service.update('m1', {
+        spans: [mention('visible'), mention('hidden')],
+      } as any);
+
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
+        'author',
+        'visible',
+      );
+      const [visible, hidden] =
+        mockDatabase.messageSpan.createMany.mock.calls[0][0].data;
+      expect(visible).toMatchObject({ channelId: 'visible', text: null });
+      expect(hidden).toMatchObject({
+        type: SpanType.PLAINTEXT,
+        channelId: null,
+      });
+      const update = mockDatabase.message.update.mock.calls[0][0];
+      expect(update.data.searchText ?? '').not.toContain('secret-name');
+    });
+  });
+
   describe('update', () => {
     it('should update a message and set editedAt', async () => {
       const messageId = 'msg-123';

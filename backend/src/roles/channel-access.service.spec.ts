@@ -220,6 +220,14 @@ describe('ChannelAccessService', () => {
         channel('public'),
         channel('private', true),
       ]);
+      db.role.findMany.mockResolvedValue([
+        {
+          id: 'member-role',
+          name: 'Member',
+          position: 100,
+          actions: DEFAULT_MEMBER_ROLE.actions,
+        },
+      ]);
 
       const caps = await service.communityCapabilities(USER, COMMUNITY);
 
@@ -237,6 +245,7 @@ describe('ChannelAccessService', () => {
           share: true,
           managePermissions: false,
           timedOutUntil: null,
+          postingRoleNames: ['Member'],
         },
       ]);
     });

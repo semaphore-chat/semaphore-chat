@@ -11,6 +11,7 @@ import {
   Box,
   IconButton,
   CircularProgress,
+  Tooltip,
   Typography,
   List,
   ListItemButton,
@@ -20,6 +21,8 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CampaignOutlinedIcon from "@mui/icons-material/CampaignOutlined";
+import { formatRoleList } from "../../utils/formatRoleList";
 import EmojiEmotionsOutlinedIcon from "@mui/icons-material/EmojiEmotionsOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import TimerOutlinedIcon from "@mui/icons-material/TimerOutlined";
@@ -92,6 +95,13 @@ function formatTimeLeft(ms: number): string {
 
 function noticeCopy(availability: ComposerAvailability): string {
   switch (availability.state) {
+    case "read-only": {
+      const where = availability.channelName ? `#${availability.channelName}` : "This channel";
+      const who = availability.postingRoleNames ?? [];
+      return who.length > 0
+        ? `${where} is read-only. Only ${formatRoleList(who)} can post.`
+        : `${where} is read-only.`;
+    }
     case "no-permission":
       return availability.channelName
         ? `You can't send messages in #${availability.channelName}`
@@ -114,7 +124,9 @@ export function ComposerUnavailableNotice({ availability }: { availability: Comp
       ? TimerOutlinedIcon
       : availability.state === "banned"
         ? BlockIcon
-        : LockOutlinedIcon;
+        : availability.state === "read-only"
+          ? CampaignOutlinedIcon
+          : LockOutlinedIcon;
   return (
     <StyledNoticePaper elevation={2} role="status" data-testid="composer-unavailable">
       <Icon fontSize="small" aria-hidden />
@@ -236,7 +248,23 @@ export default function MessageInput({
     clearValidationError,
   } = useFileAttachments();
 
-  const { isDragOver, dropZoneProps } = useDropZone({ onDrop: handleFileDrop });
+  // Attaching files can be turned off per channel (ATTACH_FILES)
+  const canAttach = availability.canAttach ?? true;
+  const attachDisabledHint = availability.channelName
+    ? `Attaching files is turned off in #${availability.channelName}`
+    : "Attaching files is turned off in this channel";
+  const handleFilesAdded = useCallback(
+    (files: File[]) => {
+      if (!canAttach) {
+        showNotification(attachDisabledHint, "warning");
+        return;
+      }
+      handleFileDrop(files);
+    },
+    [canAttach, attachDisabledHint, handleFileDrop, showNotification],
+  );
+
+  const { isDragOver, dropZoneProps } = useDropZone({ onDrop: handleFilesAdded });
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -251,10 +279,10 @@ export default function MessageInput({
         }
       }
       if (files.length > 0) {
-        handleFileDrop(files);
+        handleFilesAdded(files);
       }
     },
-    [handleFileDrop]
+    [handleFilesAdded]
   );
 
   useEffect(() => {
@@ -800,13 +828,17 @@ export default function MessageInput({
                   <GifBoxOutlinedIcon />
                 </IconButton>
               )}
-              <IconButton
-                onClick={handleFileButtonClick}
-                disabled={sending}
-                aria-label="attach file"
-              >
-                <AttachFileIcon />
-              </IconButton>
+              <Tooltip title={canAttach ? "" : attachDisabledHint}>
+                <span>
+                  <IconButton
+                    onClick={handleFileButtonClick}
+                    disabled={sending || !canAttach}
+                    aria-label="attach file"
+                  >
+                    <AttachFileIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
             </>
           )}
           {showSendButton && (
@@ -835,11 +867,18 @@ export default function MessageInput({
           maxHeight="50vh"
         >
           <List data-testid="composer-actions-sheet" disablePadding sx={{ mx: -2, my: -2 }}>
-            <ListItemButton onClick={handleSheetAttach} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>
+            <ListItemButton
+              onClick={handleSheetAttach}
+              disabled={!canAttach}
+              sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}
+            >
               <ListItemIcon>
                 <AttachFileIcon />
               </ListItemIcon>
-              <ListItemText primary="Attach file" />
+              <ListItemText
+                primary="Attach file"
+                secondary={canAttach ? undefined : attachDisabledHint}
+              />
             </ListItemButton>
             {gifSearchEnabled && (
               <ListItemButton onClick={handleSheetGif} sx={{ minHeight: TOUCH_TARGETS.RECOMMENDED }}>

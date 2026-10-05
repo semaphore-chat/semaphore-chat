@@ -278,6 +278,88 @@ describe('ChannelsService', () => {
         RbacActions.UPDATE_CHANNEL,
         RbacActions.MANAGE_CHANNEL_PERMISSIONS,
       ]);
+      // A Moderator-ranked manager; nobody else ranked at or above them
+      permissionsService.getRank.mockResolvedValue({ best: 20, isTop: false });
+      permissionsService.usersRankedAtOrAbove.mockResolvedValue(new Map());
+      channelAccessService.channelMemberIds.mockResolvedValue([]);
+    });
+
+    describe('public -> private (an @everyone view deny)', () => {
+      const channelId = 'channel-123';
+      const higher = new Map([
+        ['admin-user', [{ id: 'admin-role', actions: [] }]],
+        ['peer-mod', [{ id: 'mod-role', actions: [] }]],
+      ]);
+
+      beforeEach(() => {
+        mockDatabase.channel.findUnique.mockResolvedValue({
+          isPrivate: false,
+          communityId: 'community-1',
+        });
+        mockDatabase.channel.update.mockResolvedValue(
+          ChannelFactory.build({ id: channelId, isPrivate: true }),
+        );
+        permissionsService.usersRankedAtOrAbove.mockResolvedValue(higher);
+      });
+
+      it('is refused when someone ranked at or above the actor is not on the member list (review probe)', async () => {
+        channelAccessService.channelMemberIds.mockResolvedValue(['peer-mod']);
+
+        await expect(
+          service.update(channelId, { isPrivate: true }, manager),
+        ).rejects.toThrow(
+          'Making this channel private would hide it from members ranked at or above you; add them to it first or ask an admin',
+        );
+        expect(mockDatabase.channel.update).not.toHaveBeenCalled();
+        expect(permissionsService.usersRankedAtOrAbove).toHaveBeenCalledWith(
+          'community-1',
+          20,
+          manager.id,
+        );
+        expect(channelAccessService.channelMemberIds).toHaveBeenCalledWith(
+          channelId,
+          ['admin-user', 'peer-mod'],
+        );
+      });
+
+      it('is allowed when every higher-ranked and peer user is a channel member', async () => {
+        channelAccessService.channelMemberIds.mockResolvedValue([
+          'admin-user',
+          'peer-mod',
+        ]);
+
+        await service.update(channelId, { isPrivate: true }, manager);
+
+        expect(mockDatabase.channel.update).toHaveBeenCalled();
+      });
+
+      it('is allowed for a top-role holder without checking the member list', async () => {
+        permissionsService.getRank.mockResolvedValue({ best: 10, isTop: true });
+
+        await service.update(channelId, { isPrivate: true }, manager);
+
+        expect(mockDatabase.channel.update).toHaveBeenCalled();
+        expect(permissionsService.usersRankedAtOrAbove).not.toHaveBeenCalled();
+      });
+
+      it('is allowed for the instance owner without any rank check', async () => {
+        await service.update(channelId, { isPrivate: true }, owner);
+
+        expect(mockDatabase.channel.update).toHaveBeenCalled();
+        expect(permissionsService.getRank).not.toHaveBeenCalled();
+      });
+
+      it('private -> public does not check ranks', async () => {
+        mockDatabase.channel.findUnique.mockResolvedValue({
+          isPrivate: true,
+          communityId: 'community-1',
+        });
+
+        await service.update(channelId, { isPrivate: false }, manager);
+
+        expect(mockDatabase.channel.update).toHaveBeenCalled();
+        expect(permissionsService.getRank).not.toHaveBeenCalled();
+      });
     });
 
     it('should update channel successfully', async () => {

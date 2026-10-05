@@ -9,6 +9,9 @@ export class SpanDto {
   userId: string | null;
   specialKind: string | null;
   communityId: string | null;
+  /** For CHANNEL_MENTION; resolve the name from the channels you can see. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  channelId?: string | null;
   aliasId: string | null;
   @ApiPropertyOptional()
   emojiId?: string | null;

@@ -350,3 +350,18 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
    - Clients choose the source label, so a user with SCREEN_SHARE but no SPEAK could publish a microphone stream labelled as screen-share audio.
    - Recommendation: grant `SCREEN_SHARE_AUDIO` only when the user has both SCREEN_SHARE and SPEAK, and treat the soundboard as needing SPEAK. That means sending soundboard audio as a named track on the microphone source, or accepting the gap and documenting it.
 5. **CAPTURE_REPLAY enforcement.** No endpoint requires it today, and none did on main. Gate `replay/start` and `replay/capture` with it on the CHANNEL resource.
+
+### Phase 2 notes (as built)
+
+- **Preset builder is shared.** `buildPresetOverwrites` / `detectPreset` live in `shared/src/permissions/channel-presets.ts`. The settings UI uses them, and the backend e2e applies the exact payloads, as the Moderator and as the owner.
+- **The "members can attach files" switch exists only in Normal.** In Read-only and Announcement, attaching follows posting (the post roles get it back).
+- **The Private switch moved to Channel settings → Permissions.** Changing privacy needs `MANAGE_CHANNEL_PERMISSIONS` since phase 1, so the tab, and the switch with it, is shown only to holders.
+- **Mods-only** is a disabled card ("Coming soon — use Private for now") until phase 3.
+- **Custom** shows a read-only summary. The matrix editor is phase 5.
+- **Frontend boundary.** `__tests__/features/channelCapabilities.boundary.test.ts` fails if a component, page, hook or feature names a channel-scoped action. Only `useChannelPermissions` decides channel capabilities.
+
+### Phase 2 security re-check fixes
+
+- **Public → private is treated as an @everyone view deny.** It is refused unless the actor is the instance owner, holds the top-ranked role, or everyone ranked at or above them (peers included) is already on the channel's member list. Private → public is unchanged: view plus `MANAGE_CHANNEL_PERMISSIONS`.
+- **Overwrite changes are judged on real users.** The check uses the full role sets of members ranked at or above the actor, peers included, loaded from `userRoles`. A change is refused if any of them, other than the actor, loses an action in the channel; the top-ranked role is exempt. A deny on a role ranked at or above the actor is still refused outright.
+- **Hidden channel ids no longer reach readers.** `ChannelMentionRedactionService` is the one step that removes the id from mentions of channels a reader can't see. It runs on every REST response (global interceptor) and on every socket payload (`WebsocketService.sendToRoom`). For socket rooms it redacts per audience: user room, community room, or channel room, where an id is kept only if every viewer of the room can view the mentioned channel. A per-room queue keeps emits in order.

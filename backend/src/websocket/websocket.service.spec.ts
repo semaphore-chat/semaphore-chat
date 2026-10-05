@@ -1,5 +1,6 @@
 import { TestBed } from '@suites/unit';
 import { WebsocketService } from './websocket.service';
+import { ChannelMentionRedactionService } from '@/roles/channel-mention-redaction.service';
 import { toWirePayload } from './websocket-wire.util';
 import { Server } from 'socket.io';
 import { ServerEvents } from '@semaphore-chat/shared';
@@ -601,6 +602,106 @@ describe('WebsocketService', () => {
       expect(() =>
         service.terminateSessionsInRoom('user:1', 'ACCOUNT_BANNED'),
       ).not.toThrow();
+    });
+  });
+
+  describe('#channel mention redaction', () => {
+    const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+    let redaction: jest.Mocked<ChannelMentionRedactionService>;
+    let emitted: { room: string; event: string; payload: unknown }[];
+
+    const withMention = (channelId: string) => ({
+      message: {
+        id: 'm1',
+        spans: [{ type: 'CHANNEL_MENTION', channelId, text: null }],
+      },
+    });
+
+    beforeEach(async () => {
+      const { unit, unitRef } =
+        await TestBed.solitary(WebsocketService).compile();
+      service = unit;
+      looseService = service;
+      redaction = unitRef.get(ChannelMentionRedactionService) as never;
+      emitted = [];
+      service.setServer({
+        to: (room: string) => ({
+          emit: (event: string, payload: unknown) =>
+            emitted.push({ room, event, payload }),
+        }),
+      } as never);
+      redaction.forRoom.mockImplementation((_room, value) => {
+        const copy = JSON.parse(JSON.stringify(value)) as ReturnType<
+          typeof withMention
+        >;
+        copy.message.spans[0].channelId = null as never;
+        return Promise.resolve(copy);
+      });
+    });
+
+    it('emits payloads without mentions synchronously, untouched', () => {
+      looseService.sendToRoom('channel-1', 'plain', { a: 1 });
+      expect(emitted).toEqual([
+        { room: 'channel-1', event: 'plain', payload: { a: 1 } },
+      ]);
+      expect(redaction.forRoom).not.toHaveBeenCalled();
+    });
+
+    it('redacts a payload with a channel mention for the room before emitting', async () => {
+      looseService.sendToRoom('channel-1', 'newMessage', withMention('hidden'));
+      expect(emitted).toEqual([]); // not before redaction
+      await flush();
+
+      expect(redaction.forRoom).toHaveBeenCalledWith(
+        'channel-1',
+        withMention('hidden'),
+      );
+      expect(emitted).toEqual([
+        {
+          room: 'channel-1',
+          event: 'newMessage',
+          payload: withMention(null as never),
+        },
+      ]);
+    });
+
+    it('keeps the order: a later plain emit to the same room waits for the redacted one', async () => {
+      looseService.sendToRoom('channel-1', 'newMessage', withMention('hidden'));
+      looseService.sendToRoom('channel-1', 'updateMessage', { b: 2 });
+      looseService.sendToRoom('channel-2', 'other', { c: 3 });
+
+      // Another room isn't held up
+      expect(emitted.map((e) => e.event)).toEqual(['other']);
+      await flush();
+
+      expect(emitted.map((e) => e.event)).toEqual([
+        'other',
+        'newMessage',
+        'updateMessage',
+      ]);
+
+      // Once the chain drained, plain emits are synchronous again
+      looseService.sendToRoom('channel-1', 'later', {});
+      expect(emitted.map((e) => e.event)).toContain('later');
+    });
+
+    it('a redaction failure still delivers the message, with every mention id removed', async () => {
+      redaction.forRoom.mockRejectedValue(new Error('db down'));
+      const original = withMention('hidden');
+      looseService.sendToRoom('channel-1', 'newMessage', original);
+      looseService.sendToRoom('channel-1', 'updateMessage', { b: 2 });
+      await flush();
+
+      expect(emitted).toEqual([
+        {
+          room: 'channel-1',
+          event: 'newMessage',
+          payload: withMention(null as never),
+        },
+        { room: 'channel-1', event: 'updateMessage', payload: { b: 2 } },
+      ]);
+      // The caller's object isn't changed
+      expect(original.message.spans[0].channelId).toBe('hidden');
     });
   });
 });

@@ -67,6 +67,7 @@ import { SpeakingProvider } from '../../../contexts/SpeakingContext';
 import { SandboxShell } from '../SandboxShell';
 import { StoryRoutes } from '../StoryRoutes';
 import { makeHandlers } from '../handlers';
+import { capsFromActions, channelPermissionsHandler } from '../channelPermissions';
 import { timeAgo } from '../rng';
 import { buildScenario } from '../builder';
 import { colorFor } from '../avatars';
@@ -586,7 +587,8 @@ type Action = RoleDto['actions'][number];
 
 /** `DEFAULT_MEMBER_ROLE` (backend/src/roles/default-roles.config.ts). */
 export const MEMBER_ACTIONS: Action[] = [
-  'READ_COMMUNITY', 'READ_CHANNEL', 'READ_MEMBER', 'READ_MESSAGE', 'CREATE_MESSAGE', 'JOIN_CHANNEL',
+  'READ_COMMUNITY', 'READ_CHANNEL', 'READ_MEMBER', 'READ_MESSAGE', 'CREATE_MESSAGE', 'ATTACH_FILES',
+  'JOIN_CHANNEL', 'SPEAK', 'VIDEO', 'SCREEN_SHARE',
   'CREATE_REACTION', 'DELETE_REACTION', 'READ_ALIAS_GROUP', 'READ_ALIAS_GROUP_MEMBER', 'CAPTURE_REPLAY',
   'READ_SOUNDBOARD_SOUND',
 ];
@@ -594,8 +596,9 @@ export const MEMBER_ACTIONS: Action[] = [
 /** `DEFAULT_ADMIN_ROLE` ("Community Admin"). */
 export const ADMIN_ACTIONS: Action[] = [
   'UPDATE_COMMUNITY', 'DELETE_COMMUNITY', 'READ_COMMUNITY', 'CREATE_CHANNEL', 'UPDATE_CHANNEL', 'DELETE_CHANNEL',
-  'READ_CHANNEL', 'JOIN_CHANNEL', 'CREATE_MEMBER', 'UPDATE_MEMBER', 'DELETE_MEMBER', 'READ_MEMBER',
-  'CREATE_MESSAGE', 'DELETE_MESSAGE', 'READ_MESSAGE', 'CREATE_ROLE', 'UPDATE_ROLE', 'DELETE_ROLE', 'READ_ROLE',
+  'READ_CHANNEL', 'JOIN_CHANNEL', 'SPEAK', 'VIDEO', 'SCREEN_SHARE', 'MANAGE_CHANNEL_PERMISSIONS',
+  'MANAGE_WEBHOOKS', 'CREATE_MEMBER', 'UPDATE_MEMBER', 'DELETE_MEMBER', 'READ_MEMBER',
+  'CREATE_MESSAGE', 'ATTACH_FILES', 'DELETE_MESSAGE', 'READ_MESSAGE', 'CREATE_ROLE', 'UPDATE_ROLE', 'DELETE_ROLE', 'READ_ROLE',
   'CREATE_INVITE', 'DELETE_INVITE', 'CREATE_ALIAS_GROUP', 'UPDATE_ALIAS_GROUP', 'DELETE_ALIAS_GROUP',
   'READ_ALIAS_GROUP', 'CREATE_ALIAS_GROUP_MEMBER', 'DELETE_ALIAS_GROUP_MEMBER', 'READ_ALIAS_GROUP_MEMBER',
   'UPDATE_ALIAS_GROUP_MEMBER', 'MANAGE_EMOJIS', 'CREATE_REACTION', 'DELETE_REACTION', 'CAPTURE_REPLAY',
@@ -605,7 +608,9 @@ export const ADMIN_ACTIONS: Action[] = [
 ];
 
 /** A custom "Read-only" role an admin could create: Member minus CREATE_MESSAGE. */
-export const READ_ONLY_ACTIONS: Action[] = MEMBER_ACTIONS.filter((a) => a !== 'CREATE_MESSAGE');
+export const READ_ONLY_ACTIONS: Action[] = MEMBER_ACTIONS.filter(
+  (a) => a !== 'CREATE_MESSAGE' && a !== 'ATTACH_FILES',
+);
 
 export function makeRole(communityId: string, name: string, actions: Action[], position: number): RoleDto {
   return {
@@ -657,6 +662,8 @@ export function asCommunityRole(
         roles: channelIds.has(channelId) ? [role] : [],
       } satisfies UserRolesResponseDto);
     }),
+    // What the composer, sidebar and voice controls read (useChannelPermissions)
+    channelPermissionsHandler(next, communityId, () => capsFromActions(role.actions)),
   ];
   return { scenario: next, handlers };
 }

@@ -145,11 +145,34 @@ describe('parseMessageWithMentions', () => {
     ]);
   });
 
-  it('creates COMMUNITY_MENTION span when channel name matches', () => {
+  it('creates a CHANNEL_MENTION span with only the channel id (no name) when a channel matches', () => {
     const channels = [{ id: 'c1', name: 'general' }];
     const spans = parseMessageWithMentions('#general', [], channels);
-    expect(spans).toEqual([
-      { type: SpanType.COMMUNITY_MENTION, text: '#general', communityId: 'c1' },
+    expect(spans).toEqual([{ type: SpanType.CHANNEL_MENTION, channelId: 'c1' }]);
+    expect(JSON.stringify(spans)).not.toContain('general');
+  });
+
+  it('spansToText names #channel mentions from the visible channels, else #private-channel', () => {
+    const spans = [
+      { type: SpanType.CHANNEL_MENTION, channelId: 'c1' },
+      { type: SpanType.PLAINTEXT, text: ' and ' },
+      { type: SpanType.CHANNEL_MENTION, channelId: 'hidden' },
+    ];
+    const names = new Map([['c1', 'general']]);
+    expect(spansToText(spans, (id) => names.get(id))).toBe(
+      '#general and #private-channel',
+    );
+    expect(spansToText(spans)).toBe('#private-channel and #private-channel');
+  });
+
+  it('an edited message round-trips its visible #channel mention', () => {
+    const channels = [{ id: 'c1', name: 'general' }];
+    const text = spansToText(
+      [{ type: SpanType.CHANNEL_MENTION, channelId: 'c1' }],
+      () => 'general',
+    );
+    expect(parseMessageWithMentions(text, [], channels)).toEqual([
+      { type: SpanType.CHANNEL_MENTION, channelId: 'c1' },
     ]);
   });
 

@@ -409,6 +409,7 @@ describe('RoomSubscriptionHandler', () => {
       share: false,
       managePermissions: false,
       timedOutUntil: new Date(Date.now() + 60_000),
+      postingRoleNames: [],
     };
 
     it("makes a timed-out user listen-only in the community's calls they're in", async () => {

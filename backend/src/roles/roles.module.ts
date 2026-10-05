@@ -4,6 +4,7 @@ import { InstanceRolesService } from './instance-roles.service';
 import { PermissionsService } from './permissions.service';
 import { PermissionsCacheService } from './permissions-cache.service';
 import { ChannelAccessService } from './channel-access.service';
+import { ChannelMentionRedactionService } from './channel-mention-redaction.service';
 import { DatabaseModule } from '@/database/database.module';
 import { RedisModule } from '@/redis/redis.module';
 import { RolesController } from './roles.controller';
@@ -16,6 +17,7 @@ import { RolesController } from './roles.controller';
     PermissionsService,
     PermissionsCacheService,
     ChannelAccessService,
+    ChannelMentionRedactionService,
   ],
   exports: [
     CommunityRolesService,
@@ -23,6 +25,7 @@ import { RolesController } from './roles.controller';
     PermissionsService,
     PermissionsCacheService,
     ChannelAccessService,
+    ChannelMentionRedactionService,
   ],
   controllers: [RolesController],
 })

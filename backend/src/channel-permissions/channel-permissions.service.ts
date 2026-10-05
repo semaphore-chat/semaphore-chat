@@ -12,7 +12,10 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsService } from '@/roles/permissions.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
-import { OVERWRITABLE_ACTIONS } from '@/roles/channel-permissions.util';
+import {
+  effectiveForRoleSet,
+  OVERWRITABLE_ACTIONS,
+} from '@/roles/channel-permissions.util';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import {
   ChannelOverwritesDto,
@@ -305,43 +308,25 @@ export class ChannelPermissionsService {
     const changedRoleIds = new Set(
       changed.map((c) => c.roleId).filter((r): r is string => !!r),
     );
-    const newEveryoneDenies = (after.get('EVERYONE')?.deny ?? []).filter(
-      (a) => !(before.get('EVERYONE')?.deny ?? []).includes(a),
-    );
-    if (changedRoleIds.size === 0 && newEveryoneDenies.length === 0) return;
+    const everyoneChanged = changed.some((c) => c.roleId === null);
+    if (changedRoleIds.size === 0 && !everyoneChanged) return;
 
-    const [actorRoles, communityRoles] = await Promise.all([
-      this.databaseService.userRoles.findMany({
-        where: { userId: actor.id, communityId, isInstanceRole: false },
-        select: { role: { select: { position: true } } },
-      }),
+    const [{ best: actorBest, isTop }, communityRoles] = await Promise.all([
+      this.permissionsService.getRank(actor.id, communityId),
       this.databaseService.role.findMany({
         where: { communityId },
-        select: { id: true, name: true, position: true, actions: true },
+        select: { id: true, name: true, position: true },
       }),
     ]);
-    const actorBest = actorRoles.length
-      ? Math.min(...actorRoles.map((r) => r.role.position))
-      : Number.MAX_SAFE_INTEGER;
 
-    // 2a. ROLE overwrites may only target roles strictly below the actor,
-    // except a pure, growing allow for a higher role (which can only keep
-    // or give them something, e.g. alongside a new EVERYONE deny, see 2b).
-    const onlyAdds = (roleId: string) => {
-      const old = before.get(`ROLE:${roleId}`);
-      const next = after.get(`ROLE:${roleId}`);
-      return (
-        !!next &&
-        next.deny.length === 0 &&
-        (!old ||
-          (old.deny.length === 0 &&
-            old.allow.every((a) => next.allow.includes(a))))
-      );
-    };
-    const outranked = communityRoles.filter(
-      (r) =>
-        changedRoleIds.has(r.id) && r.position <= actorBest && !onlyAdds(r.id),
-    );
+    // 2a. No deny may be written on (or removed from) a role ranked at or
+    // above the actor.
+    const outranked = communityRoles.filter((r) => {
+      if (!changedRoleIds.has(r.id) || r.position > actorBest) return false;
+      const old = before.get(`ROLE:${r.id}`);
+      const next = after.get(`ROLE:${r.id}`);
+      return !!old?.deny.length || !!next?.deny.length;
+    });
     if (outranked.length > 0) {
       throw new ForbiddenException(
         `You can only change overwrites for roles below your highest role: ${outranked
@@ -350,28 +335,31 @@ export class ChannelPermissionsService {
       );
     }
 
-    // 2b. A new EVERYONE deny of X must not take X from roles ranked above
-    // the actor: each such role holding X needs an explicit ROLE allow of X
-    // in the same set (the phase 2 preset UI adds these automatically).
-    // Holders of the community's top-ranked role are exempt.
-    const topPosition = Math.min(
-      ...communityRoles.map((r) => r.position),
-      Number.MAX_SAFE_INTEGER,
+    // 2b. Judged by effect on real people: no other member ranked at or
+    // above the actor (peers included) may lose anything they can do in
+    // this channel, computed from the role set each of them actually holds
+    // (a deny on a lower role they also hold counts). Holders of the
+    // community's top-ranked role are exempt.
+    if (isTop) return;
+    const asInput = (m: Map<string, (typeof existing)[number]>) =>
+      [...m.values()].map((o) => ({ ...o, userId: null }));
+    const beforeSet = asInput(before);
+    const afterSet = asInput(after);
+    const users = await this.permissionsService.usersRankedAtOrAbove(
+      communityId,
+      actorBest,
+      actor.id,
     );
-    if (newEveryoneDenies.length > 0 && actorBest > topPosition) {
-      const above = communityRoles.filter((r) => r.position < actorBest);
-      const stripped = newEveryoneDenies.filter((action) =>
-        above.some(
-          (role) =>
-            role.actions.includes(action) &&
-            !(after.get(`ROLE:${role.id}`)?.allow ?? []).includes(action),
-        ),
+    const stripped = new Set<string>();
+    for (const roles of users.values()) {
+      const was = effectiveForRoleSet(roles, beforeSet);
+      const now = effectiveForRoleSet(roles, afterSet);
+      for (const action of was) if (!now.has(action)) stripped.add(action);
+    }
+    if (stripped.size > 0) {
+      throw new ForbiddenException(
+        `This would remove ${[...stripped].join(', ')} from roles above yours; add allows for them or ask an admin`,
       );
-      if (stripped.length > 0) {
-        throw new ForbiddenException(
-          `This would remove ${stripped.join(', ')} from roles above yours; add allows for them or ask an admin`,
-        );
-      }
     }
   }
 }

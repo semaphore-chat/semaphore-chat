@@ -9187,10 +9187,17 @@
               "SPECIAL_MENTION",
               "COMMUNITY_MENTION",
               "ALIAS_MENTION",
+              "CHANNEL_MENTION",
               "CODE_BLOCK",
               "EMOJI"
             ],
             "type": "string"
+          },
+          "channelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "For CHANNEL_MENTION (text is ignored and stored as null).",
+            "format": "uuid"
           },
           "text": {
             "type": "string",
@@ -9396,10 +9403,16 @@
               "SPECIAL_MENTION",
               "COMMUNITY_MENTION",
               "ALIAS_MENTION",
+              "CHANNEL_MENTION",
               "CODE_BLOCK",
               "EMOJI"
             ],
             "type": "string"
+          },
+          "channelId": {
+            "type": "string",
+            "nullable": true,
+            "description": "For CHANNEL_MENTION; resolve the name from the channels you can see."
           },
           "emojiId": {
             "type": "string",
@@ -12036,6 +12049,13 @@
             "nullable": true,
             "description": "End of the user's community timeout, if one is active."
           },
+          "postingRoleNames": {
+            "description": "Roles whose holders can post here, by rank (names only), for the\nread-only notice. Empty for a channel the user can't view.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "channelId": {
             "type": "string"
           },
@@ -12082,6 +12102,7 @@
         },
         "required": [
           "timedOutUntil",
+          "postingRoleNames",
           "channelId",
           "view",
           "post",

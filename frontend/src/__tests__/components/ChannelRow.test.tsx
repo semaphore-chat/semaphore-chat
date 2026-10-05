@@ -208,4 +208,42 @@ describe('ChannelRow', () => {
       }
     }
   });
+
+  describe('type icon and access marker', () => {
+    it('announcement channels use the megaphone instead of #', () => {
+      const channel = createChannel({ id: 'ch-a', name: 'news', type: 'TEXT', preset: 'ANNOUNCEMENT' });
+      renderWithProviders(
+        <ChannelRow channel={channel} communityId="c1" selected={false} variant="touch" />,
+      );
+      expect(screen.getByLabelText('Announcement channel')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Private channel')).not.toBeInTheDocument();
+    });
+
+    it('read-only channels keep the plain # icon (no read-only icon)', () => {
+      const channel = createChannel({ id: 'ch-r', name: 'rules', type: 'TEXT', preset: 'READ_ONLY' });
+      renderWithProviders(
+        <ChannelRow channel={channel} communityId="c1" selected={false} variant="touch" />,
+      );
+      expect(screen.queryByLabelText('Announcement channel')).not.toBeInTheDocument();
+    });
+
+    it('a private announcement channel shows both: megaphone leading, lock trailing', () => {
+      const channel = createChannel({
+        id: 'ch-pa',
+        name: 'staff-news',
+        type: 'TEXT',
+        preset: 'ANNOUNCEMENT',
+        isPrivate: true,
+      });
+      renderWithProviders(
+        <ChannelRow channel={channel} communityId="c1" selected={false} variant="touch" />,
+      );
+      const megaphone = screen.getByLabelText('Announcement channel');
+      const lock = screen.getByLabelText('Private channel');
+      // The megaphone comes before the name, the lock after it
+      expect(
+        megaphone.compareDocumentPosition(lock) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+  });
 });

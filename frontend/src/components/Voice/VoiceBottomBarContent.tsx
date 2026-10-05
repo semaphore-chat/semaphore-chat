@@ -47,6 +47,7 @@ import { useDeafenEffect } from "../../hooks/useDeafenEffect";
 import { useReplayBufferState } from "../../contexts/ReplayBufferContext";
 import { useDebugPanelShortcut } from "../../hooks/useDebugPanelShortcut";
 import { usePushToTalk } from "../../hooks/usePushToTalk";
+import { useVoicePublishPermissions } from "../../hooks/useVoicePublishPermissions";
 import { DeviceSettingsDialog } from "./DeviceSettingsDialog";
 import { SoundboardButton } from "./SoundboardButton";
 import { ScreenSourcePicker } from "./ScreenSourcePicker";
@@ -102,6 +103,10 @@ const VoiceBottomBarContent: React.FC = () => {
   const haptic = useHapticFeedback();
   const { user: currentUser } = useCurrentUser();
   const { isSpeaking } = useSpeaking();
+  // Channel voice permissions (SPEAK / VIDEO / SCREEN_SHARE; a timeout
+  // removes all three but keeps listening). A control is disabled only when
+  // it would turn something ON, so a stray live track can still be stopped.
+  const publish = useVoicePublishPermissions();
   const [settingsAnchor, setSettingsAnchor] = useState<null | HTMLElement>(
     null
   );
@@ -119,12 +124,34 @@ const VoiceBottomBarContent: React.FC = () => {
     currentKeyDisplay: pttKeyDisplay,
     pttPress,
     pttRelease,
-  } = usePushToTalk();
+  } = usePushToTalk({ canSpeak: publish.canSpeak });
+
+  const micBlocked = !publish.canSpeak && !isMicrophoneEnabled;
+  const cameraBlocked = !publish.canVideo && !isCameraEnabled;
+  const shareBlocked = !publish.canShare && !screenShare.isScreenSharing;
 
   // On touch devices the PTT key can't be pressed, so the mic button becomes a
   // hold-to-talk control. Desktop PTT (keyboard) and non-PTT tap-to-mute are
   // unaffected.
   const isHoldToTalk = isPTTActive && shouldUseTouchUI;
+
+  // Tooltip text, also the buttons' accessible names (the disabled-button
+  // <span> wrapper takes the Tooltip's own aria-label)
+  const micTitle = micBlocked
+    ? publish.speakBlockedReason
+    : state.isServerMuted
+      ? "Server Muted — contact a moderator"
+      : isHoldToTalk
+        ? (isPTTKeyHeld ? "Transmitting..." : "Hold to talk")
+        : isPTTActive
+          ? (isPTTKeyHeld ? "Transmitting..." : `Hold ${pttKeyDisplay} to talk`)
+          : (!isMicrophoneEnabled ? "Unmute" : "Mute");
+  const cameraTitle = cameraBlocked
+    ? publish.videoBlockedReason
+    : isCameraEnabled ? "Turn off camera" : "Turn on camera";
+  const shareTitle = shareBlocked
+    ? publish.shareBlockedReason
+    : screenShare.isScreenSharing ? "Stop screen share" : "Share screen";
 
   // Prevent tab freeze / OS suspension while in voice
   useBackgroundVoiceKeepAlive({ isConnected: state.isConnected });
@@ -339,19 +366,14 @@ const VoiceBottomBarContent: React.FC = () => {
           >
             {/* Microphone */}
             <Tooltip
-              title={
-                state.isServerMuted
-                  ? "Server Muted — contact a moderator"
-                  : isHoldToTalk
-                    ? (isPTTKeyHeld ? "Transmitting..." : "Hold to talk")
-                    : isPTTActive
-                      ? (isPTTKeyHeld ? "Transmitting..." : `Hold ${pttKeyDisplay} to talk`)
-                      : (!isMicrophoneEnabled ? "Unmute" : "Mute")
-              }
+              title={micTitle}
               arrow={!isMobile}
-              disableTouchListener={isHoldToTalk}
+              disableTouchListener={isHoldToTalk && !micBlocked}
             >
+              <span>
               <IconButton
+                disabled={micBlocked}
+                aria-label={micTitle}
                 onClick={isPTTActive || state.isServerMuted ? undefined : actions.toggleMute}
                 onPointerDown={isHoldToTalk ? handlePttPointerDown : undefined}
                 onPointerUp={isHoldToTalk ? handlePttPointerUp : undefined}
@@ -397,6 +419,7 @@ const VoiceBottomBarContent: React.FC = () => {
               >
                 {!isMicrophoneEnabled && !isPTTKeyHeld ? <MicOff /> : <Mic />}
               </IconButton>
+              </span>
             </Tooltip>
 
             {/* Headphones/Deafen - a primary control on every layout */}
@@ -428,12 +451,13 @@ const VoiceBottomBarContent: React.FC = () => {
 
             {/* Video */}
             <Tooltip
-              title={
-                isCameraEnabled ? "Turn off camera" : "Turn on camera"
-              }
+              title={cameraTitle}
               arrow={!isMobile}
             >
+              <span>
               <IconButton
+                disabled={cameraBlocked}
+                aria-label={cameraTitle}
                 onClick={handleToggleVideo}
                 color={isCameraEnabled ? "primary" : "default"}
                 size={isMobile ? "medium" : "medium"}
@@ -455,6 +479,7 @@ const VoiceBottomBarContent: React.FC = () => {
               >
                 {isCameraEnabled ? <Videocam /> : <VideocamOff />}
               </IconButton>
+              </span>
             </Tooltip>
 
             {/* Secondary actions: inline on desktop/tablet; in the "more"
@@ -463,11 +488,10 @@ const VoiceBottomBarContent: React.FC = () => {
               <>
             {/* Screen Share */}
             <Tooltip
-              title={
-                screenShare.isScreenSharing ? "Stop screen share" : "Share screen"
-              }
+              title={shareTitle}
               arrow={!isMobile}
             >
+              <span>
               <Badge
                 overlap="circular"
                 anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
@@ -489,6 +513,8 @@ const VoiceBottomBarContent: React.FC = () => {
                 }
               >
                 <IconButton
+                  disabled={shareBlocked}
+                  aria-label={shareTitle}
                   onClick={handleToggleScreenShare}
                   color={screenShare.isScreenSharing ? "primary" : "default"}
                   size={isMobile ? "medium" : "medium"}
@@ -511,6 +537,7 @@ const VoiceBottomBarContent: React.FC = () => {
                   {screenShare.isScreenSharing ? <StopScreenShare /> : <ScreenShare />}
                 </IconButton>
               </Badge>
+              </span>
             </Tooltip>
 
             {/* Capture Replay - only show when replay buffer is active */}
@@ -700,6 +727,7 @@ const VoiceBottomBarContent: React.FC = () => {
             <List data-testid="voice-more-sheet" disablePadding sx={{ mx: -2, my: -1 }}>
               <ListItemButton
                 component="button"
+                disabled={shareBlocked}
                 onClick={() => {
                   closeMoreSheet();
                   handleToggleScreenShare();
@@ -709,7 +737,10 @@ const VoiceBottomBarContent: React.FC = () => {
                 <ListItemIcon>
                   {screenShare.isScreenSharing ? <StopScreenShare color="primary" /> : <ScreenShare />}
                 </ListItemIcon>
-                <ListItemText primary={screenShare.isScreenSharing ? "Stop sharing screen" : "Share screen"} />
+                <ListItemText
+                  primary={screenShare.isScreenSharing ? "Stop sharing screen" : "Share screen"}
+                  secondary={shareBlocked ? publish.shareBlockedReason : undefined}
+                />
               </ListItemButton>
 
               {isReplayBufferActive && (

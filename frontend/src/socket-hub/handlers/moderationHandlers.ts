@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { ServerEvents } from '@semaphore-chat/shared';
 import type { SocketEventHandler } from './types';
+import { invalidateChannelPermissionQueries } from './communityHandlers';
 
 export const handleUserBanned: SocketEventHandler<typeof ServerEvents.USER_BANNED> = (
   _payload,
@@ -25,6 +26,9 @@ export const handleUserTimedOut: SocketEventHandler<typeof ServerEvents.USER_TIM
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
   // The composer reads this to show / clear its timeout notice.
   queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
+  // A timeout takes posting, reacting and voice publishing away (and its
+  // removal gives them back): refetch the effective channel permissions.
+  invalidateChannelPermissionQueries(queryClient);
 };
 
 export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOUT_REMOVED> = (
@@ -34,4 +38,7 @@ export const handleTimeoutRemoved: SocketEventHandler<typeof ServerEvents.TIMEOU
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
   // The composer reads this to show / clear its timeout notice.
   queryClient.invalidateQueries({ queryKey: [{ _id: 'moderationControllerGetTimeoutStatus' }] });
+  // A timeout takes posting, reacting and voice publishing away (and its
+  // removal gives them back): refetch the effective channel permissions.
+  invalidateChannelPermissionQueries(queryClient);
 };

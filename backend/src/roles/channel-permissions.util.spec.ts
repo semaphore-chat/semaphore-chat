@@ -1,6 +1,9 @@
 import { OverwriteTarget, RbacActions as A } from '@prisma/client';
 import {
   canViewChannel,
+  effectiveForRole,
+  effectiveForRoleSet,
+  postingRoleNames,
   OVERWRITABLE_ACTIONS,
   channelActionsGranted,
   ChannelPermissionInput,
@@ -417,6 +420,117 @@ describe('channel permission resolution', () => {
       expect(OVERWRITABLE_ACTIONS.has(A.READ_CHANNEL)).toBe(false);
       expect(OVERWRITABLE_ACTIONS.has(A.READ_MESSAGE)).toBe(false);
       expect(OVERWRITABLE_ACTIONS.has(A.CREATE_MESSAGE)).toBe(true);
+    });
+  });
+
+  describe('postingRoleNames', () => {
+    const roles = [
+      { id: 'member', name: 'Member', position: 100, actions: MEMBER },
+      { id: MOD_ROLE, name: 'Moderator', position: 20, actions: MODERATOR },
+      {
+        id: ADMIN_ROLE,
+        name: 'Community Admin',
+        position: 10,
+        actions: [A.CREATE_MESSAGE],
+      },
+      {
+        id: 'lurker',
+        name: 'Lurker',
+        position: 200,
+        actions: [A.READ_MESSAGE],
+      },
+    ];
+
+    it('no overwrites: every role holding CREATE_MESSAGE, by rank', () => {
+      expect(postingRoleNames(roles, [])).toEqual([
+        'Community Admin',
+        'Moderator',
+        'Member',
+      ]);
+    });
+
+    it('announcement: only roles with an allow', () => {
+      expect(postingRoleNames(roles, ANNOUNCEMENT)).toEqual(['Moderator']);
+    });
+
+    it('a role allow can grant posting to a role that lacked it', () => {
+      expect(
+        postingRoleNames(roles, [role('lurker', [A.CREATE_MESSAGE])]),
+      ).toContain('Lurker');
+    });
+
+    it('member overwrites never count', () => {
+      expect(
+        postingRoleNames(roles, [
+          everyone([A.CREATE_MESSAGE]),
+          member('', [A.CREATE_MESSAGE]),
+        ]),
+      ).toEqual([]);
+    });
+  });
+
+  describe('effectiveForRole', () => {
+    it('applies EVERYONE then the role entry; ignores member overwrites', () => {
+      const r = {
+        id: MOD_ROLE,
+        actions: [A.CREATE_MESSAGE, A.CREATE_REACTION],
+      };
+      const eff = effectiveForRole(r, [
+        everyone([A.CREATE_MESSAGE, A.CREATE_REACTION]),
+        role(MOD_ROLE, [A.CREATE_MESSAGE]),
+        member('', [A.CREATE_REACTION]),
+      ]);
+      expect(eff.has(A.CREATE_MESSAGE)).toBe(true);
+      expect(eff.has(A.CREATE_REACTION)).toBe(false);
+    });
+  });
+
+  describe('effectiveForRoleSet', () => {
+    const MEMBER_ROLE = 'role-member';
+    const ADMIN_ROLE = 'role-admin';
+    const admin = { id: ADMIN_ROLE, actions: [A.CREATE_MESSAGE] };
+    const memberRole = { id: MEMBER_ROLE, actions: [A.CREATE_MESSAGE] };
+
+    it('a deny on a lower role reaches a user who also holds a higher role without an allow (the review probe)', () => {
+      const overwrites = [
+        role(MEMBER_ROLE, [], [A.CREATE_MESSAGE]),
+        role(MOD_ROLE, [A.CREATE_MESSAGE]),
+      ];
+      // Judged per role, Community Admin alone keeps posting...
+      expect(effectiveForRole(admin, overwrites).has(A.CREATE_MESSAGE)).toBe(
+        true,
+      );
+      // ...but the real admin also holds Member, and loses it
+      expect(
+        effectiveForRoleSet([admin, memberRole], overwrites).has(
+          A.CREATE_MESSAGE,
+        ),
+      ).toBe(false);
+    });
+
+    it("any of the user's roles' allows beats the deny", () => {
+      const overwrites = [
+        role(MEMBER_ROLE, [], [A.CREATE_MESSAGE]),
+        role(ADMIN_ROLE, [A.CREATE_MESSAGE]),
+      ];
+      expect(
+        effectiveForRoleSet([admin, memberRole], overwrites).has(
+          A.CREATE_MESSAGE,
+        ),
+      ).toBe(true);
+    });
+
+    it('unions the base actions of every role', () => {
+      const eff = effectiveForRoleSet(
+        [
+          { id: 'a', actions: [A.CREATE_MESSAGE] },
+          { id: 'b', actions: [A.CREATE_REACTION] },
+        ],
+        [],
+      );
+      expect([...eff].sort()).toEqual(
+        [A.CREATE_MESSAGE, A.CREATE_REACTION].sort(),
+      );
     });
   });
 });

@@ -9,6 +9,7 @@
  * 'warn'` setting (see `.ladle/config.mjs`) and show up as console warnings —
  * that's intentional, it's how gaps get noticed (see design doc).
  */
+import { ALL_CAPS } from './channelPermissions';
 import { http, HttpResponse, type HttpHandler } from 'msw';
 import type {
   FriendListItemDto,
@@ -323,6 +324,15 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
         resourceId: String(params.communityId),
         roles: (scenario.rolesByCommunity[String(params.communityId)] ?? []).slice(0, 1),
       })),
+    // Channel capabilities (useChannelPermissions): everything, everywhere
+    http.get('/api/channels/community/:communityId/permissions/me', ({ params }) => {
+      const communityId = String(params.communityId);
+      const channels = scenario.communities.find((c) => c.id === communityId)?.channels ?? [];
+      return HttpResponse.json({
+        communityId,
+        channels: channels.map((c) => ({ channelId: c.id, ...ALL_CAPS })),
+      });
+    }),
     http.get('/api/roles/my/channel/:channelId', () =>
       HttpResponse.json({ resourceType: 'CHANNEL', userId: scenario.me.id, resourceId: null, roles: [] })),
     http.get('/api/roles/my/instance', () =>

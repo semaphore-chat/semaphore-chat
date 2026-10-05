@@ -1,4 +1,6 @@
 import { useMemo } from "react";
+import { useParams } from "react-router-dom";
+import { useChannelPermissions } from "./useChannelPermissions";
 import { useCanPerformAction } from "../features/roles/useUserPermissions";
 import { RBAC_ACTIONS, RBAC_RESOURCES } from "../constants/rbacActions";
 import type { Message } from "../types/message.type";
@@ -84,9 +86,14 @@ export function useMessagePermissions({
   // Backend forbids pinning in DMs — only allow for channel messages with permission
   const canPin = !isDm && canPinMessage;
 
-  // Any logged-in user can react to messages they can see.
-  // This ensures the toolbar renders even when other permissions are false.
-  const canReact = !!currentUserId;
+  // Reacting is a channel capability (a read-only channel or a timeout can
+  // take it away): useChannelPermissions, never roles. DMs: anyone in it.
+  const { communityId } = useParams<{ communityId?: string }>();
+  const { can } = useChannelPermissions(
+    isDm ? undefined : communityId,
+    isDm ? undefined : (message.channelId ?? undefined),
+  );
+  const canReact = !!currentUserId && can("react");
 
   return {
     canEdit,

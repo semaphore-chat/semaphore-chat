@@ -141,8 +141,20 @@ const membershipHandlers = [
   }),
 ];
 
+/**
+ * Effective channel permissions (useChannelPermissions). The default answers
+ * 503 so the hook fails open (every capability allowed) whatever channel ids
+ * a test uses; tests about permissions install their own handler with
+ * `server.use(...)` returning the channels' capabilities.
+ */
+export const channelPermissionsUnavailableHandler = http.get(
+  `${BASE_URL}/api/channels/community/:communityId/permissions/me`,
+  () => new HttpResponse(null, { status: 503 }),
+);
+
 /** Channel handlers */
 const channelHandlers = [
+  channelPermissionsUnavailableHandler,
   http.get(`${BASE_URL}/api/channels/community/:communityId`, () => {
     return HttpResponse.json([
       {

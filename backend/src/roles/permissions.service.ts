@@ -343,6 +343,64 @@ export class PermissionsService {
     };
   }
 
+  /**
+   * The actor's rank in a community (lower position = higher rank, as in
+   * moderation): their best role position, and whether it is the
+   * community's top-ranked position.
+   */
+  async getRank(
+    userId: string,
+    communityId: string,
+  ): Promise<{ best: number; isTop: boolean }> {
+    const [mine, top] = await Promise.all([
+      this.databaseService.userRoles.findMany({
+        where: { userId, communityId, isInstanceRole: false },
+        select: { role: { select: { position: true } } },
+      }),
+      this.databaseService.role.findFirst({
+        where: { communityId },
+        orderBy: { position: 'asc' },
+        select: { position: true },
+      }),
+    ]);
+    const best = mine.length
+      ? Math.min(...mine.map((r) => r.role.position))
+      : Number.MAX_SAFE_INTEGER;
+    return { best, isTop: !!top && best <= top.position };
+  }
+
+  /**
+   * Every other community member holding a role ranked at or above
+   * `position`, with ALL their community roles (their real role set).
+   */
+  async usersRankedAtOrAbove(
+    communityId: string,
+    position: number,
+    excludeUserId: string,
+  ): Promise<Map<string, { id: string; actions: RbacActions[] }[]>> {
+    const rows = await this.databaseService.userRoles.findMany({
+      where: {
+        communityId,
+        isInstanceRole: false,
+        userId: { not: excludeUserId },
+        user: {
+          UserRoles: {
+            some: { communityId, role: { position: { lte: position } } },
+          },
+        },
+      },
+      select: {
+        userId: true,
+        role: { select: { id: true, actions: true } },
+      },
+    });
+    const byUser = new Map<string, { id: string; actions: RbacActions[] }[]>();
+    for (const row of rows) {
+      byUser.set(row.userId, [...(byUser.get(row.userId) ?? []), row.role]);
+    }
+    return byUser;
+  }
+
   /** The user's unexpired community timeout, if any. */
   async getActiveTimeout(
     userId: string,

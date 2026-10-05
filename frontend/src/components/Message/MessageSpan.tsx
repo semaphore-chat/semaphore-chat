@@ -10,6 +10,61 @@ import { useTheme } from "@mui/material/styles";
 import { Span, SpanType } from "../../types/message.type";
 import type { CustomEmojiDto } from "../../api-client/types.gen";
 import { getFileUrl } from "../../utils/fileHelpers";
+import { useNavigate } from "react-router-dom";
+import { useChannelMentionTarget } from "../../hooks/useChannelMentionTarget";
+
+/** What a #channel mention shows when the reader can't see the channel. */
+export const HIDDEN_CHANNEL_MENTION_LABEL = "#private-channel";
+
+/**
+ * A #channel mention. The span stores only the channel id (no name, so
+ * hidden channel names never leak): the name comes from the reader's own
+ * visible channels. Visible channel: a link to it. Otherwise a muted,
+ * non-interactive "#private-channel".
+ */
+const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) => {
+  const theme = useTheme();
+  const navigate = useNavigate();
+  const channel = useChannelMentionTarget(channelId);
+
+  const chipStyle: React.CSSProperties = {
+    fontWeight: 600,
+    borderRadius: 4,
+    padding: "0 2px",
+  };
+
+  if (!channel) {
+    return (
+      <span
+        data-testid="channel-mention-hidden"
+        title="You don't have access to this channel"
+        style={{ ...chipStyle, color: theme.palette.text.secondary, fontStyle: "italic" }}
+      >
+        {HIDDEN_CHANNEL_MENTION_LABEL}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={`/community/${channel.communityId}/channel/${channel.id}`}
+      data-testid="channel-mention"
+      onClick={(e) => {
+        e.preventDefault();
+        navigate(`/community/${channel.communityId}/channel/${channel.id}`);
+      }}
+      style={{
+        ...chipStyle,
+        color: theme.palette.primary.light,
+        backgroundColor: theme.palette.action.hover,
+        textDecoration: "none",
+        cursor: "pointer",
+      }}
+    >
+      #{channel.name}
+    </a>
+  );
+};
 
 export interface MessageSpanProps {
   span: Span;
@@ -83,6 +138,8 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
           {span.text || span.communityId}
         </span>
       );
+    case SpanType.CHANNEL_MENTION:
+      return <ChannelMention key={index} channelId={span.channelId} />;
     case SpanType.ALIAS_MENTION:
       return (
         <span key={index} style={{ color: theme.palette.warning.main, fontWeight: 600 }}>
