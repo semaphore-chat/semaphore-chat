@@ -78,13 +78,17 @@ export const PWAInstallPrompt: React.FC = () => {
         open={!showIOSInstructions}
         anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
-        sx={snackbarBottomSx(offset, snackbarGap)}
+        sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       >
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 2,
+            // In the narrow sidebar-column slot the buttons wrap below the text.
+            flexWrap: placement.constrained ? 'wrap' : 'nowrap',
+            width: '100%',
+            boxSizing: 'border-box',
             bgcolor: 'background.paper',
             borderRadius: 2,
             p: 2,
@@ -94,7 +98,7 @@ export const PWAInstallPrompt: React.FC = () => {
           }}
         >
           <InstallIcon color="primary" />
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ flex: placement.constrained ? '1 1 180px' : 1, minWidth: 0 }}>
             <Typography variant="body2" fontWeight={600}>
               Install Semaphore Chat
             </Typography>
@@ -102,6 +106,7 @@ export const PWAInstallPrompt: React.FC = () => {
               Add to your home screen for the best experience
             </Typography>
           </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: placement.constrained ? 'auto' : 0 }}>
           <Button
             variant="contained"
             size="small"
@@ -114,6 +119,7 @@ export const PWAInstallPrompt: React.FC = () => {
           <IconButton size="small" onClick={dismiss} aria-label="dismiss">
             <CloseIcon fontSize="small" />
           </IconButton>
+          </Box>
         </Box>
       </Snackbar>
 
@@ -123,7 +129,7 @@ export const PWAInstallPrompt: React.FC = () => {
         open={showIOSInstructions}
         anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
-        sx={snackbarBottomSx(offset, snackbarGap)}
+        sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       >
         <Box
           sx={{

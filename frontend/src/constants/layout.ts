@@ -26,6 +26,12 @@ export const VOICE_BAR_HEIGHT = 64;
 export const VOICE_BAR_HEIGHT_MOBILE = 56;
 
 /**
+ * Default width of the channel sidebar next to the community rail (the
+ * `TwoColumnLayout` sidebar in the community and DM views).
+ */
+export const CHANNEL_SIDEBAR_WIDTH = 280;
+
+/**
  * Channel list width (in community view)
  */
 export const CHANNEL_LIST_WIDTH = 240;

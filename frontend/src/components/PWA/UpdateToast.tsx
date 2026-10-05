@@ -61,7 +61,7 @@ export const UpdateToast: React.FC = () => {
       open={open}
       anchorOrigin={placement.anchorOrigin}
       data-chrome-offset={offset.px}
-      sx={snackbarBottomSx(offset, snackbarGap)}
+      sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       message="Update available"
       action={
         <Button
