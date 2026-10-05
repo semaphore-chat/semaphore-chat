@@ -85,6 +85,10 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
   // Swapping content from inside the panel (a pinned thread reply opening its
   // thread) keeps the original trigger.
   const panelTriggerRef = useRef<HTMLElement | null>(null);
+  // The thread's parent message, the fallback focus target when the trigger
+  // is gone (e.g. "Reply in thread" in the message menu, which unmounts).
+  const threadParentIdRef = useRef<string | null>(null);
+  const chatColumnRef = useRef<HTMLDivElement>(null);
   const rememberPanelTrigger = useCallback(() => {
     const active = document.activeElement;
     if (active instanceof HTMLElement && active !== document.body && !active.closest(`[${DOCKED_PANEL_ATTR}]`)) {
@@ -116,6 +120,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     setPinnedPanelOpen(false);
     setSearchPanelOpen(false);
     setThreadParentMessage(message);
+    threadParentIdRef.current = message.id;
     openThread(message.id);
   }, [openThread, rememberPanelTrigger]);
 
@@ -183,8 +188,10 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
           ? "search"
           : null;
 
-  // Return focus to the trigger when the docked panel closes, if focus went
-  // with it (to <body>). A channel switch that closed it leaves focus alone.
+  // Return focus when the docked panel closes, if focus went with it (to
+  // <body>); a channel switch that closed it leaves focus alone. Focus goes to
+  // the trigger; if that's gone, to the thread's parent message row; if that
+  // isn't rendered either, to the composer.
   const prevDockedPanelRef = useRef(dockedPanel);
   useEffect(() => {
     const wasOpen = prevDockedPanelRef.current;
@@ -193,9 +200,23 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
     const trigger = panelTriggerRef.current;
     panelTriggerRef.current = null;
     const active = document.activeElement;
-    if (trigger?.isConnected && (!active || active === document.body)) {
+    if (active && active !== document.body) return;
+    if (trigger?.isConnected) {
       trigger.focus();
+      return;
     }
+    const column = chatColumnRef.current;
+    if (!column) return;
+    const parentId = wasOpen === "thread" ? threadParentIdRef.current : null;
+    const row = parentId
+      ? Array.from(column.querySelectorAll<HTMLElement>("[data-message-id]"))
+          .find((el) => el.dataset.messageId === parentId)
+          ?.querySelector<HTMLElement>("[data-row-focus-target]")
+      : null;
+    const composer = column.querySelector<HTMLElement>(
+      '[data-composer-layout] textarea:not([aria-hidden="true"])',
+    );
+    (row ?? composer)?.focus();
   }, [dockedPanel]);
 
   // Fetch channel data for header
@@ -359,7 +380,7 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
 
       {/* Messages, and the docked side panel on wide desktop */}
       <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', minHeight: 0 }}>
-        <Box sx={{ flex: 1, minWidth: docked ? CHAT_COLUMN_MIN_WIDTH : 0, overflow: 'hidden' }}>
+        <Box ref={chatColumnRef} sx={{ flex: 1, minWidth: docked ? CHAT_COLUMN_MIN_WIDTH : 0, overflow: 'hidden' }}>
           <MessageContainerWrapper
             contextType={VoiceSessionType.Channel}
             contextId={channelId}

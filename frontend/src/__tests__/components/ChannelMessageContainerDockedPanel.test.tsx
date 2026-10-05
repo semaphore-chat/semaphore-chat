@@ -58,22 +58,59 @@ vi.mock('../../contexts/VoiceContext', () => ({
   VoiceSessionType: { Channel: 'channel', Dm: 'dm' },
 }));
 
-vi.mock('../../components/Message/MessageContainerWrapper', () => ({
-  default: ({
+vi.mock('../../components/Message/MessageContainerWrapper', async () => {
+  const { useState } = await import('react');
+  const FakeMessageContainerWrapper = ({
     onOpenThread,
     memberListComponent,
   }: {
     onOpenThread: (m: Message) => void;
     memberListComponent?: React.ReactNode;
-  }) => (
-    <div>
-      <button onClick={() => onOpenThread(parent)}>open thread</button>
-      <button onClick={() => onOpenThread(otherParent)}>open other thread</button>
-      <input aria-label="Channel composer" />
-      {memberListComponent}
-    </div>
-  ),
-}));
+  }) => {
+    // A message action menu: its "Reply in thread" item unmounts once used.
+    const [menuOpen, setMenuOpen] = useState(false);
+    return (
+      <div>
+        <button onClick={() => onOpenThread(parent)}>open thread</button>
+        <button onClick={() => onOpenThread(otherParent)}>open other thread</button>
+        <button onClick={() => setMenuOpen(true)}>message actions</button>
+        {menuOpen && (
+          <div role="menu">
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenThread(parent);
+              }}
+            >
+              Reply in thread
+            </button>
+            <button
+              role="menuitem"
+              onClick={() => {
+                setMenuOpen(false);
+                onOpenThread(otherParent);
+              }}
+            >
+              Reply in other thread
+            </button>
+          </div>
+        )}
+        {/* Only parent-1's row is rendered (parent-2 is scrolled away). */}
+        <div role="listitem" data-message-id="parent-1">
+          <div tabIndex={-1} data-row-focus-target="true" data-testid="parent-row">
+            parent message
+          </div>
+        </div>
+        <div data-composer-layout="full">
+          <textarea aria-label="Channel composer" />
+        </div>
+        {memberListComponent}
+      </div>
+    );
+  };
+  return { default: FakeMessageContainerWrapper };
+});
 vi.mock('../../components/Message/MemberListContainer', () => ({
   default: () => <div data-testid="member-list" />,
 }));
@@ -232,6 +269,30 @@ describe('ChannelMessageContainer docked side panel (wide desktop)', () => {
     await user.keyboard('{Escape}');
 
     expect(panel('Search messages')).toBeInTheDocument();
+  });
+
+  it('a thread opened from the message menu returns focus to its message row on close', async () => {
+    const { user } = renderContainer();
+    await user.click(screen.getByRole('button', { name: 'message actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Reply in thread' }));
+    expect(panel('Thread')).toHaveFocus();
+
+    await user.click(screen.getByRole('textbox', { name: 'Thread reply' }));
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(screen.getByTestId('parent-row')).toHaveFocus();
+  });
+
+  it('falls back to the composer when neither the trigger nor the message row is rendered', async () => {
+    const { user } = renderContainer();
+    await user.click(screen.getByRole('button', { name: 'message actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Reply in other thread' }));
+
+    await user.click(screen.getByRole('button', { name: 'Close thread' }));
+
+    expect(screen.queryByRole('complementary')).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Channel composer' })).toHaveFocus();
   });
 
   it("the thread's own close button closes the docked panel", async () => {
