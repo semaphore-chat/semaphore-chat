@@ -1,4 +1,5 @@
 import type { DirectMessageGroup } from "../types/direct-message.type";
+import { getCompactDmName } from "./dmListName";
 
 /**
  * Get a display name for a DM group:
@@ -60,6 +61,9 @@ export function formatLastMessageTime(date: Date | string): string {
  * group is still loading, or it has no name of its own and the current user
  * (whom the derived name leaves out) hasn't loaded. Callers show a loading
  * placeholder for undefined, never a made-up name.
+ *
+ * It uses the same compact formatter as the DM list ("A, B + 12"), so the
+ * header and the list never disagree and a big group doesn't overflow.
  */
 export function getDmHeaderName(
   dmGroup: DirectMessageGroup | undefined,
@@ -68,5 +72,5 @@ export function getDmHeaderName(
   if (!dmGroup) return undefined;
   if (dmGroup.name) return dmGroup.name;
   if (!currentUserId) return undefined;
-  return getDmDisplayName(dmGroup, currentUserId);
+  return getCompactDmName(dmGroup, currentUserId).label;
 }

@@ -20,6 +20,7 @@ import {
   useBottomChromeOffset,
   useMeasuredChromeItem,
   useSnackbarGap,
+  useToastPlacement,
   useToastQueue,
 } from '../../contexts/BottomChromeContext';
 
@@ -39,7 +40,8 @@ export const PWAInstallPrompt: React.FC = () => {
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const isMyTurn = useToastQueue('install', TOAST_PRIORITY.INSTALL, isInstallable);
-  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST);
+  const placement = useToastPlacement();
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST, { skipOrders: placement.skipOrders });
   const snackbarGap = useSnackbarGap();
   const measureRef = useMeasuredChromeItem({
     extraHeight: snackbarGap,
@@ -74,15 +76,19 @@ export const PWAInstallPrompt: React.FC = () => {
       <Snackbar
         ref={showIOSInstructions ? undefined : measureRef}
         open={!showIOSInstructions}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
-        sx={snackbarBottomSx(offset, snackbarGap)}
+        sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       >
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 2,
+            // In the narrow sidebar-column slot the buttons wrap below the text.
+            flexWrap: placement.constrained ? 'wrap' : 'nowrap',
+            width: '100%',
+            boxSizing: 'border-box',
             bgcolor: 'background.paper',
             borderRadius: 2,
             p: 2,
@@ -92,7 +98,7 @@ export const PWAInstallPrompt: React.FC = () => {
           }}
         >
           <InstallIcon color="primary" />
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ flex: placement.constrained ? '1 1 180px' : 1, minWidth: 0 }}>
             <Typography variant="body2" fontWeight={600}>
               Install Semaphore Chat
             </Typography>
@@ -100,6 +106,7 @@ export const PWAInstallPrompt: React.FC = () => {
               Add to your home screen for the best experience
             </Typography>
           </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, ml: placement.constrained ? 'auto' : 0 }}>
           <Button
             variant="contained"
             size="small"
@@ -112,6 +119,7 @@ export const PWAInstallPrompt: React.FC = () => {
           <IconButton size="small" onClick={dismiss} aria-label="dismiss">
             <CloseIcon fontSize="small" />
           </IconButton>
+          </Box>
         </Box>
       </Snackbar>
 
@@ -119,9 +127,9 @@ export const PWAInstallPrompt: React.FC = () => {
       <Snackbar
         ref={showIOSInstructions ? measureRef : undefined}
         open={showIOSInstructions}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
-        sx={snackbarBottomSx(offset, snackbarGap)}
+        sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       >
         <Box
           sx={{

@@ -48,6 +48,8 @@ import React, {
 } from 'react';
 import { useMediaQuery } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { useResponsive } from '../hooks/useResponsive';
+import { CHANNEL_SIDEBAR_WIDTH, SIDEBAR_WIDTH } from '../constants/layout';
 
 // ── Types & constants ────────────────────────────────────────────────────
 
@@ -445,4 +447,38 @@ export function snackbarBottomSx(offset: BottomOffset, gap: number) {
   // Both keys on purpose: MUI's Snackbar sets its own `bottom` inside an
   // `sm` media query, which would beat a plain (non-media) value.
   return { bottom: { xs: bottom, sm: bottom } } as const;
+}
+
+/** Toast left offset on the desktop layout (MUI's sm+ snackbar inset). */
+const DESKTOP_TOAST_INSET = 24;
+const DESKTOP_TOAST_GAP = 16;
+/**
+ * Widest a bottom-left toast may be on desktop: the rail plus the channel
+ * sidebar, less the left inset and a gap, so it never reaches the chat column.
+ */
+export const DESKTOP_TOAST_MAX_WIDTH =
+  SIDEBAR_WIDTH + CHANNEL_SIDEBAR_WIDTH - DESKTOP_TOAST_INSET - DESKTOP_TOAST_GAP;
+
+/**
+ * Where a bottom toast sits. Phones and tablets keep it centred above the
+ * stack. On the desktop layout it goes bottom-left, over the sidebar, so it
+ * never covers the composer or the latest message in the message column; the
+ * composer is then not under it, so it is left out of the offset.
+ */
+export function useToastPlacement(): {
+  anchorOrigin: { vertical: 'bottom'; horizontal: 'left' | 'center' };
+  skipOrders: readonly number[];
+  /** CSS max-width for the toast (undefined = no extra limit). */
+  maxWidth: number | undefined;
+  /** True when it sits in the sidebar column and must stay narrow. */
+  constrained: boolean;
+} {
+  const { isDesktop } = useResponsive();
+  return useMemo(
+    () =>
+      isDesktop
+        ? { anchorOrigin: { vertical: 'bottom', horizontal: 'left' }, skipOrders: [BOTTOM_CHROME_ORDER.COMPOSER], maxWidth: DESKTOP_TOAST_MAX_WIDTH, constrained: true }
+        : { anchorOrigin: { vertical: 'bottom', horizontal: 'center' }, skipOrders: [], maxWidth: undefined, constrained: false },
+    [isDesktop],
+  );
 }

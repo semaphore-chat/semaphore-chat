@@ -82,14 +82,33 @@ export const ListSkeleton: React.FC<ListSkeletonProps> = ({ rows = 6, avatarSize
   </List>
 );
 
-interface ListErrorProps {
+export interface ErrorStateProps {
   title: string;
   description: string;
   onRetry?: () => void;
-  size: ListStateSize;
+  size?: ListStateSize;
+  /** Replaces the default error glyph (e.g. a lock for "no access"). */
+  icon?: React.ReactNode;
+  /** A second, quieter action next to "Try again" (e.g. "Go home"). */
+  secondaryAction?: { label: string; onClick: () => void };
+  /** Fill the available height and centre in it (full-page failures). */
+  fullHeight?: boolean;
 }
 
-const ListError: React.FC<ListErrorProps> = ({ title, description, onRetry, size }) => {
+/**
+ * The shared error block: a tinted circle with an icon, a title, a line of
+ * copy and optional actions. `ListState` renders it for a failed list; pages
+ * use it directly (through `PageError`) for a failure above the list level.
+ */
+export const ErrorState: React.FC<ErrorStateProps> = ({
+  title,
+  description,
+  onRetry,
+  size = 'regular',
+  icon,
+  secondaryAction,
+  fullHeight = false,
+}) => {
   const theme = useTheme();
   const { shouldUseTouchUI } = useResponsive();
   const compact = size === 'compact';
@@ -106,6 +125,7 @@ const ListError: React.FC<ListErrorProps> = ({ title, description, onRetry, size
         textAlign: 'center',
         py: compact ? 3 : 6,
         px: compact ? 2 : 3,
+        ...(fullHeight && { flex: 1, height: '100%', minHeight: 0 }),
       }}
     >
       <Box
@@ -121,7 +141,7 @@ const ListError: React.FC<ListErrorProps> = ({ title, description, onRetry, size
           color: theme.palette.error.main,
         }}
       >
-        <ErrorIcon sx={{ fontSize: compact ? 28 : 48 }} />
+        {icon ?? <ErrorIcon sx={{ fontSize: compact ? 28 : 48 }} />}
       </Box>
       <Typography
         variant={compact ? 'subtitle2' : 'h6'}
@@ -131,25 +151,41 @@ const ListError: React.FC<ListErrorProps> = ({ title, description, onRetry, size
       </Typography>
       <Typography
         variant={compact ? 'caption' : 'body2'}
-        sx={{ color: 'text.secondary', maxWidth: 300, mb: onRetry ? (compact ? 1.5 : 2.5) : 0 }}
+        sx={{ color: 'text.secondary', maxWidth: 300, mb: onRetry || secondaryAction ? (compact ? 1.5 : 2.5) : 0 }}
       >
         {description}
       </Typography>
-      {onRetry && (
-        <Button
-          variant={compact ? 'outlined' : 'contained'}
-          size={compact ? 'small' : 'medium'}
-          startIcon={<RefreshIcon />}
-          onClick={onRetry}
-          sx={{
-            borderRadius: 2,
-            px: compact ? 2 : 3,
-            ...(shouldUseTouchUI && { minHeight: TOUCH_TARGETS.MINIMUM }),
-          }}
-        >
-          Try again
-        </Button>
-      )}
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'center' }}>
+        {onRetry && (
+          <Button
+            variant={compact ? 'outlined' : 'contained'}
+            size={compact ? 'small' : 'medium'}
+            startIcon={<RefreshIcon />}
+            onClick={onRetry}
+            sx={{
+              borderRadius: 2,
+              px: compact ? 2 : 3,
+              ...(shouldUseTouchUI && { minHeight: TOUCH_TARGETS.MINIMUM }),
+            }}
+          >
+            Try again
+          </Button>
+        )}
+        {secondaryAction && (
+          <Button
+            variant={onRetry || compact ? 'outlined' : 'contained'}
+            size={compact ? 'small' : 'medium'}
+            onClick={secondaryAction.onClick}
+            sx={{
+              borderRadius: 2,
+              px: compact ? 2 : 3,
+              ...(shouldUseTouchUI && { minHeight: TOUCH_TARGETS.MINIMUM }),
+            }}
+          >
+            {secondaryAction.label}
+          </Button>
+        )}
+      </Box>
     </Box>
   );
 };
@@ -170,7 +206,7 @@ const ListState: React.FC<ListStateProps> = ({
     return <>{skeleton ?? <ListSkeleton />}</>;
   }
   if (error && isEmpty) {
-    return <ListError title={errorTitle} description={errorDescription} onRetry={onRetry} size={size} />;
+    return <ErrorState title={errorTitle} description={errorDescription} onRetry={onRetry} size={size} />;
   }
   if (isEmpty) {
     return <>{empty}</>;

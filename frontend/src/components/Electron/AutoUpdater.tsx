@@ -6,6 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
+import { DESKTOP_TOAST_MAX_WIDTH } from '../../contexts/BottomChromeContext';
 import { Alert, Button, LinearProgress, Snackbar, Box, Typography } from '@mui/material';
 import { Download, Refresh } from '@mui/icons-material';
 import { logger } from '../../utils/logger';
@@ -109,7 +110,8 @@ export const AutoUpdater = () => {
       {/* Downloading update notification */}
       <Snackbar
         open={downloading}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        sx={{ maxWidth: DESKTOP_TOAST_MAX_WIDTH }}
       >
         <Alert severity="info" icon={<Download />}>
           <Typography variant="body2">
@@ -124,7 +126,8 @@ export const AutoUpdater = () => {
       {/* Update downloaded notification */}
       <Snackbar
         open={updateDownloaded}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        sx={{ maxWidth: DESKTOP_TOAST_MAX_WIDTH }}
       >
         <Alert
           severity="success"

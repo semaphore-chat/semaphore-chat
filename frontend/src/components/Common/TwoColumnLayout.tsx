@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Paper } from "@mui/material";
 import { styled } from "@mui/material/styles";
+import { CHANNEL_SIDEBAR_WIDTH } from "../../constants/layout";
 
 interface TwoColumnLayoutProps {
   sidebar: React.ReactNode;
@@ -14,7 +15,7 @@ interface TwoColumnLayoutProps {
 
 const TwoColumnLayout: React.FC<TwoColumnLayoutProps> = ({
   sidebar,
-  sidebarWidth = 280,
+  sidebarWidth = CHANNEL_SIDEBAR_WIDTH,
   children,
   contentRef,
   contentSx,

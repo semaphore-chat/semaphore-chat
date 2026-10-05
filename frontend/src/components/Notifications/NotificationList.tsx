@@ -39,6 +39,7 @@ import { notificationsControllerDismissNotificationMutation } from '../../api-cl
 
 import { AuthenticatedImage } from '../Common/AuthenticatedImage';
 import ListState, { ListSkeleton } from '../Common/ListState';
+import EmptyState from '../Common/EmptyState';
 import { MobileSheet } from '../Mobile/common/MobileSheet';
 import { useAuthenticatedImage } from '../../hooks/useAuthenticatedImage';
 import { useResponsive } from '../../hooks/useResponsive';
@@ -464,28 +465,12 @@ export const NotificationList: React.FC = () => {
         skeleton={<ListSkeleton rows={8} avatarSize={NOTIFICATION_AVATAR_SIZE} label="Loading notifications" />}
         errorTitle="Couldn't load notifications"
         empty={
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flex: 1,
-              gap: 2,
-              p: 3,
-            }}
-          >
-            <Box sx={{ fontSize: 'icon.6xl', opacity: 0.5 }}>🔔</Box>
-            <Typography variant="h6" color="text.secondary">
-              No notifications
-            </Typography>
-            <Typography variant="body2" color="text.secondary" textAlign="center">
-              You'll see mentions, replies, and direct messages here.
-            </Typography>
-            <Button variant="outlined" onClick={() => refetch()}>
-              Refresh
-            </Button>
-          </Box>
+          <EmptyState
+            variant="notifications"
+            title="No notifications"
+            description="You'll see mentions, replies, and direct messages here."
+            action={{ label: 'Refresh', onClick: () => void refetch() }}
+          />
         }
       >
         <Box sx={{ flex: 1, overflowY: 'auto' }}>

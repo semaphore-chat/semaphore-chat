@@ -2,8 +2,6 @@ import React from "react";
 import {
   Box,
   Button,
-  CircularProgress,
-  Alert,
   Container,
   Paper,
 } from "@mui/material";
@@ -13,6 +11,9 @@ import { useQuery } from "@tanstack/react-query";
 import { userControllerGetUserByIdOptions } from "../api-client/@tanstack/react-query.gen";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { ProfileHeader } from "../components/Profile";
+import ProfileSkeleton from "../components/Profile/ProfileSkeleton";
+import PageError from "../components/Common/PageError";
+import { PROFILE_ERROR_COPY } from "../utils/pageError";
 import { ClipLibrary } from "../components/Profile/ClipLibrary";
 
 const ProfilePage: React.FC = () => {
@@ -20,7 +21,7 @@ const ProfilePage: React.FC = () => {
   const navigate = useNavigate();
 
   const { user: currentUser } = useCurrentUser();
-  const { data: profileUser, isLoading, error } = useQuery({
+  const { data: profileUser, isLoading, error, refetch } = useQuery({
     ...userControllerGetUserByIdOptions({ path: { id: userId! } }),
     enabled: !!userId,
   });
@@ -35,22 +36,17 @@ const ProfilePage: React.FC = () => {
 
   const isOwnProfile = currentUser?.id === userId;
 
-  if (isLoading) {
-    return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
-        <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
-          <CircularProgress />
-        </Box>
-      </Container>
-    );
-  }
+  if (isLoading) return <ProfileSkeleton />;
 
   if (error || !profileUser) {
     return (
       <Container maxWidth="md" sx={{ py: 3 }}>
-        <Alert severity="error">
-          Failed to load user profile. Please try again.
-        </Alert>
+        <PageError
+          error={error}
+          copy={PROFILE_ERROR_COPY}
+          onRetry={() => void refetch()}
+          fullHeight={false}
+        />
       </Container>
     );
   }

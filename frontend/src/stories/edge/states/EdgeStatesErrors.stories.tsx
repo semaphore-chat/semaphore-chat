@@ -37,6 +37,11 @@ export const ChannelChat500 = edgeScreen(s, chatPath, {
   extraHandlers: [e500(`/api/messages/channel/${generalChannel.id}`)],
 });
 
+/** The community itself fails to load (500): full-page error with "Try again". */
+export const Community500 = edgeScreen(s, `/community/${primaryCommunity.id}/channel/${generalChannel.id}`, {
+  extraHandlers: [e500(`/api/community/${primaryCommunity.id}`)],
+});
+
 export const DmList500 = edgeScreen(s, '/direct-messages', { extraHandlers: [e500('/api/direct-messages')] });
 
 export const DmChat500 = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
@@ -105,6 +110,11 @@ export const NotFound404Dm = edgeScreen(s, '/direct-messages/dm-deleted-0000', {
 
 export const NotFound404Profile = edgeScreen(s, '/profile/user-deleted-0000', {
   extraHandlers: [withStatusForId('user-deleted-0000', 404, NOT_FOUND_BODY)],
+});
+
+/** A plain member opens /admin: a permission message, not "Failed to load". */
+export const AdminForbidden403 = edgeScreen(memberScenario, '/admin', {
+  extraHandlers: [withErrors('get', '/api/instance/stats', 403, FORBIDDEN_BODY)],
 });
 
 /** An unknown in-app route — the catch-all `NotFoundPage`. */

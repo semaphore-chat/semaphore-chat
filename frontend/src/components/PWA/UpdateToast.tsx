@@ -13,6 +13,7 @@ import {
   useBottomChromeOffset,
   useMeasuredChromeItem,
   useSnackbarGap,
+  useToastPlacement,
   useToastQueue,
 } from '../../contexts/BottomChromeContext';
 
@@ -36,7 +37,8 @@ export const UpdateToast: React.FC = () => {
   const [isReloading, setIsReloading] = useState(false);
   const isMyTurn = useToastQueue('update', TOAST_PRIORITY.UPDATE, show);
   const open = show && isMyTurn;
-  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST);
+  const placement = useToastPlacement();
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST, { skipOrders: placement.skipOrders });
   const snackbarGap = useSnackbarGap();
   const measureRef = useMeasuredChromeItem({
     extraHeight: snackbarGap,
@@ -57,9 +59,9 @@ export const UpdateToast: React.FC = () => {
     <Snackbar
       ref={measureRef}
       open={open}
-      anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      anchorOrigin={placement.anchorOrigin}
       data-chrome-offset={offset.px}
-      sx={snackbarBottomSx(offset, snackbarGap)}
+      sx={{ ...snackbarBottomSx(offset, snackbarGap), maxWidth: placement.maxWidth }}
       message="Update available"
       action={
         <Button

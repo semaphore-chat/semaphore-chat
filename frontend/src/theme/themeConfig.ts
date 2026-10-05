@@ -1,4 +1,4 @@
-import { createTheme, Theme, alpha, emphasize, getContrastRatio } from '@mui/material/styles';
+import { createTheme, Theme, alpha, getContrastRatio } from '@mui/material/styles';
 import { chipClasses } from '@mui/material/Chip';
 import type { ThemeMode, AccentColor, ThemeIntensity } from './constants';
 import { FONT_FAMILY, HTML_FONT_SIZE, TYPE_SCALE, ICON_SCALE, RADIUS_UNIT } from './tokens';
@@ -281,8 +281,10 @@ export function generateTheme(
     isDark ? '#ffffff' : '#000000',
   );
 
-  // Same formula MUI's SnackbarContent uses, computed from the solid ground.
-  const snackbarBackground = emphasize(base.background.default, isDark ? 0.98 : 0.8);
+  // Toasts use the app's surface colour (not MUI's inverted "emphasize"
+  // ground, which is near-white on the dark UI), with a border and shadow to
+  // lift them off the page.
+  const snackbarBackground = paperBackground;
   // Same rule as palette.getContrastText (contrastThreshold 3).
   const snackbarText = getContrastRatio(snackbarBackground, '#fff') >= 3 ? '#fff' : 'rgba(0, 0, 0, 0.87)';
 
@@ -667,6 +669,7 @@ export function generateTheme(
             backgroundColor: snackbarBackground,
             backgroundImage: 'none',
             color: snackbarText,
+            border: `1px solid ${isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.12)'}`,
           },
         },
       },

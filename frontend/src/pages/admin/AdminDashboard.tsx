@@ -6,7 +6,6 @@ import {
   Card,
   CardContent,
   CircularProgress,
-  Alert,
   LinearProgress,
   Divider,
 } from "@mui/material";
@@ -29,6 +28,8 @@ import {
   storageQuotaControllerGetInstanceStorageStatsOptions,
 } from "../../api-client/@tanstack/react-query.gen";
 import { formatFileSize } from "../../utils/format";
+import PageError from "../../components/Common/PageError";
+import { ADMIN_ERROR_COPY } from "../../utils/pageError";
 
 // Helper to format uptime
 const formatUptime = (seconds: number): string => {
@@ -101,7 +102,7 @@ const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color }) => (
 
 const AdminDashboard: React.FC = () => {
   const theme = useTheme();
-  const { data: stats, isLoading, error } = useQuery(instanceControllerGetStatsOptions());
+  const { data: stats, isLoading, error, refetch } = useQuery(instanceControllerGetStatsOptions());
   const { data: storageStats, isLoading: storageLoading } = useQuery(storageQuotaControllerGetInstanceStorageStatsOptions());
 
   if (isLoading) {
@@ -120,11 +121,7 @@ const AdminDashboard: React.FC = () => {
   }
 
   if (error) {
-    return (
-      <Alert severity="error">
-        Failed to load instance statistics. Please try again.
-      </Alert>
-    );
+    return <PageError error={error} copy={ADMIN_ERROR_COPY} onRetry={() => void refetch()} />;
   }
 
   return (
