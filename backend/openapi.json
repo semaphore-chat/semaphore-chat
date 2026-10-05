@@ -4264,217 +4264,6 @@
         ]
       }
     },
-    "/api/channel-membership": {
-      "post": {
-        "operationId": "ChannelMembershipController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateChannelMembershipDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChannelMembershipResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
-    "/api/channel-membership/channel/{channelId}": {
-      "get": {
-        "operationId": "ChannelMembershipController_findAllForChannel",
-        "parameters": [
-          {
-            "name": "channelId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
-    "/api/channel-membership/user/{userId}": {
-      "get": {
-        "operationId": "ChannelMembershipController_findAllForUser",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
-    "/api/channel-membership/my": {
-      "get": {
-        "operationId": "ChannelMembershipController_findMyChannelMemberships",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
-    "/api/channel-membership/channel/{channelId}/user/{userId}": {
-      "get": {
-        "operationId": "ChannelMembershipController_findOne",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChannelMembershipResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      },
-      "delete": {
-        "operationId": "ChannelMembershipController_remove",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "channelId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
-    "/api/channel-membership/leave/{channelId}": {
-      "delete": {
-        "operationId": "ChannelMembershipController_leaveChannel",
-        "parameters": [
-          {
-            "name": "channelId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "tags": [
-          "ChannelMembership"
-        ]
-      }
-    },
     "/api/moderation/ban/{communityId}/{userId}": {
       "post": {
         "operationId": "ModerationController_banUser",
@@ -5902,6 +5691,381 @@
         },
         "tags": [
           "Presence"
+        ]
+      }
+    },
+    "/api/channels/community/{communityId}/permissions/me": {
+      "get": {
+        "operationId": "ChannelPermissionsController_getMyCommunityChannelPermissions",
+        "parameters": [
+          {
+            "name": "communityId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityChannelCapabilitiesDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "What the current user can do in every channel they can see.",
+        "tags": [
+          "ChannelPermissions"
+        ]
+      }
+    },
+    "/api/channels/community/{communityId}/permissions": {
+      "get": {
+        "operationId": "ChannelPermissionsController_listChannelPermissions",
+        "parameters": [
+          {
+            "name": "communityId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ManagedChannelDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "summary": "Every channel with its overwrites, for managers (even hidden ones).",
+        "tags": [
+          "ChannelPermissions"
+        ]
+      }
+    },
+    "/api/channels/{id}/permissions/me": {
+      "get": {
+        "operationId": "ChannelPermissionsController_getMyChannelPermissions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelCapabilitiesDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "What the current user can do in this channel.",
+        "tags": [
+          "ChannelPermissions"
+        ]
+      }
+    },
+    "/api/channels/{id}/overwrites": {
+      "get": {
+        "operationId": "ChannelPermissionsController_getOverwrites",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOverwritesDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelPermissions"
+        ]
+      },
+      "put": {
+        "operationId": "ChannelPermissionsController_replaceOverwrites",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReplaceChannelOverwritesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelOverwritesDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelPermissions"
+        ]
+      }
+    },
+    "/api/channel-membership": {
+      "post": {
+        "operationId": "ChannelMembershipController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateChannelMembershipDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelMembershipResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      }
+    },
+    "/api/channel-membership/channel/{channelId}": {
+      "get": {
+        "operationId": "ChannelMembershipController_findAllForChannel",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      }
+    },
+    "/api/channel-membership/user/{userId}": {
+      "get": {
+        "operationId": "ChannelMembershipController_findAllForUser",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      }
+    },
+    "/api/channel-membership/my": {
+      "get": {
+        "operationId": "ChannelMembershipController_findMyChannelMemberships",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChannelMembershipResponseDto"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      }
+    },
+    "/api/channel-membership/channel/{channelId}/user/{userId}": {
+      "get": {
+        "operationId": "ChannelMembershipController_findOne",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChannelMembershipResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      },
+      "delete": {
+        "operationId": "ChannelMembershipController_remove",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannelMembership"
+        ]
+      }
+    },
+    "/api/channel-membership/leave/{channelId}": {
+      "delete": {
+        "operationId": "ChannelMembershipController_leaveChannel",
+        "parameters": [
+          {
+            "name": "channelId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "ChannelMembership"
         ]
       }
     },
@@ -8369,7 +8533,13 @@
                 "MANAGE_EMOJIS",
                 "CREATE_SOUNDBOARD_SOUND",
                 "DELETE_SOUNDBOARD_SOUND",
-                "READ_SOUNDBOARD_SOUND"
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
               ]
             }
           },
@@ -8532,7 +8702,13 @@
                 "MANAGE_EMOJIS",
                 "CREATE_SOUNDBOARD_SOUND",
                 "DELETE_SOUNDBOARD_SOUND",
-                "READ_SOUNDBOARD_SOUND"
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
               ]
             }
           },
@@ -8617,7 +8793,13 @@
                 "MANAGE_EMOJIS",
                 "CREATE_SOUNDBOARD_SOUND",
                 "DELETE_SOUNDBOARD_SOUND",
-                "READ_SOUNDBOARD_SOUND"
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
               ]
             }
           },
@@ -8725,6 +8907,17 @@
             ],
             "type": "string"
           },
+          "preset": {
+            "description": "Display label for the permission preset (enforcement uses overwrites).",
+            "enum": [
+              "NORMAL",
+              "READ_ONLY",
+              "ANNOUNCEMENT",
+              "MODS_ONLY",
+              "CUSTOM"
+            ],
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -8750,6 +8943,7 @@
         },
         "required": [
           "type",
+          "preset",
           "id",
           "name",
           "communityId",
@@ -10560,53 +10754,6 @@
           "members"
         ]
       },
-      "CreateChannelMembershipDto": {
-        "type": "object",
-        "properties": {
-          "userId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "channelId": {
-            "type": "string",
-            "format": "uuid"
-          }
-        },
-        "required": [
-          "userId",
-          "channelId"
-        ]
-      },
-      "ChannelMembershipResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "user": {
-            "$ref": "#/components/schemas/UserEntity"
-          },
-          "channelId": {
-            "type": "string"
-          },
-          "joinedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "addedBy": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "userId",
-          "channelId",
-          "joinedAt"
-        ]
-      },
       "ModerationBanUserDto": {
         "type": "object",
         "properties": {
@@ -11878,6 +12025,585 @@
         },
         "required": [
           "presence"
+        ]
+      },
+      "ChannelCapabilitiesDto": {
+        "type": "object",
+        "properties": {
+          "timedOutUntil": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true,
+            "description": "End of the user's community timeout, if one is active."
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "view": {
+            "type": "boolean",
+            "description": "Can see the channel at all (name, messages)."
+          },
+          "post": {
+            "type": "boolean",
+            "description": "Send messages."
+          },
+          "attach": {
+            "type": "boolean",
+            "description": "Attach files to messages."
+          },
+          "react": {
+            "type": "boolean",
+            "description": "Add reactions."
+          },
+          "threadReply": {
+            "type": "boolean",
+            "description": "Reply in threads."
+          },
+          "connect": {
+            "type": "boolean",
+            "description": "Connect to voice and listen (kept during a timeout)."
+          },
+          "speak": {
+            "type": "boolean",
+            "description": "Publish the microphone."
+          },
+          "video": {
+            "type": "boolean",
+            "description": "Publish the camera."
+          },
+          "share": {
+            "type": "boolean",
+            "description": "Share the screen."
+          },
+          "managePermissions": {
+            "type": "boolean",
+            "description": "Edit this channel's permission overwrites."
+          }
+        },
+        "required": [
+          "timedOutUntil",
+          "channelId",
+          "view",
+          "post",
+          "attach",
+          "react",
+          "threadReply",
+          "connect",
+          "speak",
+          "video",
+          "share",
+          "managePermissions"
+        ]
+      },
+      "CommunityChannelCapabilitiesDto": {
+        "type": "object",
+        "properties": {
+          "channels": {
+            "description": "Only the channels the user can see.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelCapabilitiesDto"
+            }
+          },
+          "communityId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "channels",
+          "communityId"
+        ]
+      },
+      "ChannelOverwriteDto": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "enum": [
+              "EVERYONE",
+              "ROLE",
+              "MEMBER"
+            ],
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string",
+            "nullable": true
+          },
+          "allow": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "DELETE_MESSAGE",
+                "DELETE_CHANNEL",
+                "DELETE_COMMUNITY",
+                "DELETE_INVITE",
+                "DELETE_USER",
+                "DELETE_ROLE",
+                "DELETE_ALIAS_GROUP",
+                "DELETE_ALIAS_GROUP_MEMBER",
+                "DELETE_INSTANCE_INVITE",
+                "DELETE_MEMBER",
+                "DELETE_REACTION",
+                "CREATE_MESSAGE",
+                "CREATE_CHANNEL",
+                "CREATE_COMMUNITY",
+                "CREATE_INVITE",
+                "CREATE_ROLE",
+                "CREATE_ALIAS_GROUP",
+                "CREATE_ALIAS_GROUP_MEMBER",
+                "CREATE_INSTANCE_INVITE",
+                "CREATE_MEMBER",
+                "CREATE_REACTION",
+                "JOIN_CHANNEL",
+                "READ_MESSAGE",
+                "READ_CHANNEL",
+                "READ_COMMUNITY",
+                "READ_ALL_COMMUNITIES",
+                "READ_USER",
+                "READ_ROLE",
+                "READ_ALIAS_GROUP",
+                "READ_ALIAS_GROUP_MEMBER",
+                "READ_INSTANCE_INVITE",
+                "READ_MEMBER",
+                "UPDATE_COMMUNITY",
+                "UPDATE_CHANNEL",
+                "UPDATE_USER",
+                "UPDATE_ROLE",
+                "UPDATE_ALIAS_GROUP",
+                "UPDATE_ALIAS_GROUP_MEMBER",
+                "UPDATE_INSTANCE_INVITE",
+                "UPDATE_MEMBER",
+                "CAPTURE_REPLAY",
+                "READ_INSTANCE_SETTINGS",
+                "UPDATE_INSTANCE_SETTINGS",
+                "READ_INSTANCE_STATS",
+                "MANAGE_USER_STORAGE",
+                "BAN_USER",
+                "KICK_USER",
+                "TIMEOUT_USER",
+                "UNBAN_USER",
+                "PIN_MESSAGE",
+                "UNPIN_MESSAGE",
+                "DELETE_ANY_MESSAGE",
+                "VIEW_BAN_LIST",
+                "VIEW_MODERATION_LOGS",
+                "MUTE_PARTICIPANT",
+                "MANAGE_EMOJIS",
+                "CREATE_SOUNDBOARD_SOUND",
+                "DELETE_SOUNDBOARD_SOUND",
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
+              ]
+            }
+          },
+          "deny": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "DELETE_MESSAGE",
+                "DELETE_CHANNEL",
+                "DELETE_COMMUNITY",
+                "DELETE_INVITE",
+                "DELETE_USER",
+                "DELETE_ROLE",
+                "DELETE_ALIAS_GROUP",
+                "DELETE_ALIAS_GROUP_MEMBER",
+                "DELETE_INSTANCE_INVITE",
+                "DELETE_MEMBER",
+                "DELETE_REACTION",
+                "CREATE_MESSAGE",
+                "CREATE_CHANNEL",
+                "CREATE_COMMUNITY",
+                "CREATE_INVITE",
+                "CREATE_ROLE",
+                "CREATE_ALIAS_GROUP",
+                "CREATE_ALIAS_GROUP_MEMBER",
+                "CREATE_INSTANCE_INVITE",
+                "CREATE_MEMBER",
+                "CREATE_REACTION",
+                "JOIN_CHANNEL",
+                "READ_MESSAGE",
+                "READ_CHANNEL",
+                "READ_COMMUNITY",
+                "READ_ALL_COMMUNITIES",
+                "READ_USER",
+                "READ_ROLE",
+                "READ_ALIAS_GROUP",
+                "READ_ALIAS_GROUP_MEMBER",
+                "READ_INSTANCE_INVITE",
+                "READ_MEMBER",
+                "UPDATE_COMMUNITY",
+                "UPDATE_CHANNEL",
+                "UPDATE_USER",
+                "UPDATE_ROLE",
+                "UPDATE_ALIAS_GROUP",
+                "UPDATE_ALIAS_GROUP_MEMBER",
+                "UPDATE_INSTANCE_INVITE",
+                "UPDATE_MEMBER",
+                "CAPTURE_REPLAY",
+                "READ_INSTANCE_SETTINGS",
+                "UPDATE_INSTANCE_SETTINGS",
+                "READ_INSTANCE_STATS",
+                "MANAGE_USER_STORAGE",
+                "BAN_USER",
+                "KICK_USER",
+                "TIMEOUT_USER",
+                "UNBAN_USER",
+                "PIN_MESSAGE",
+                "UNPIN_MESSAGE",
+                "DELETE_ANY_MESSAGE",
+                "VIEW_BAN_LIST",
+                "VIEW_MODERATION_LOGS",
+                "MUTE_PARTICIPANT",
+                "MANAGE_EMOJIS",
+                "CREATE_SOUNDBOARD_SOUND",
+                "DELETE_SOUNDBOARD_SOUND",
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
+              ]
+            }
+          }
+        },
+        "required": [
+          "targetType",
+          "roleId",
+          "allow",
+          "deny"
+        ]
+      },
+      "ManagedChannelDto": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "enum": [
+              "NORMAL",
+              "READ_ONLY",
+              "ANNOUNCEMENT",
+              "MODS_ONLY",
+              "CUSTOM"
+            ],
+            "type": "string"
+          },
+          "overwrites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelOverwriteDto"
+            }
+          },
+          "type": {
+            "enum": [
+              "TEXT",
+              "VOICE"
+            ],
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "isPrivate": {
+            "type": "boolean"
+          },
+          "position": {
+            "type": "number"
+          },
+          "channelId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "preset",
+          "overwrites",
+          "type",
+          "name",
+          "isPrivate",
+          "position",
+          "channelId"
+        ]
+      },
+      "ChannelOverwritesDto": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "enum": [
+              "NORMAL",
+              "READ_ONLY",
+              "ANNOUNCEMENT",
+              "MODS_ONLY",
+              "CUSTOM"
+            ],
+            "type": "string"
+          },
+          "overwrites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChannelOverwriteDto"
+            }
+          },
+          "channelId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "preset",
+          "overwrites",
+          "channelId"
+        ]
+      },
+      "ReplaceOverwriteInputDto": {
+        "type": "object",
+        "properties": {
+          "targetType": {
+            "description": "EVERYONE or ROLE. MEMBER overwrites exist in the data model only.",
+            "enum": [
+              "EVERYONE",
+              "ROLE",
+              "MEMBER"
+            ],
+            "type": "string"
+          },
+          "roleId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid"
+          },
+          "allow": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "DELETE_MESSAGE",
+                "DELETE_CHANNEL",
+                "DELETE_COMMUNITY",
+                "DELETE_INVITE",
+                "DELETE_USER",
+                "DELETE_ROLE",
+                "DELETE_ALIAS_GROUP",
+                "DELETE_ALIAS_GROUP_MEMBER",
+                "DELETE_INSTANCE_INVITE",
+                "DELETE_MEMBER",
+                "DELETE_REACTION",
+                "CREATE_MESSAGE",
+                "CREATE_CHANNEL",
+                "CREATE_COMMUNITY",
+                "CREATE_INVITE",
+                "CREATE_ROLE",
+                "CREATE_ALIAS_GROUP",
+                "CREATE_ALIAS_GROUP_MEMBER",
+                "CREATE_INSTANCE_INVITE",
+                "CREATE_MEMBER",
+                "CREATE_REACTION",
+                "JOIN_CHANNEL",
+                "READ_MESSAGE",
+                "READ_CHANNEL",
+                "READ_COMMUNITY",
+                "READ_ALL_COMMUNITIES",
+                "READ_USER",
+                "READ_ROLE",
+                "READ_ALIAS_GROUP",
+                "READ_ALIAS_GROUP_MEMBER",
+                "READ_INSTANCE_INVITE",
+                "READ_MEMBER",
+                "UPDATE_COMMUNITY",
+                "UPDATE_CHANNEL",
+                "UPDATE_USER",
+                "UPDATE_ROLE",
+                "UPDATE_ALIAS_GROUP",
+                "UPDATE_ALIAS_GROUP_MEMBER",
+                "UPDATE_INSTANCE_INVITE",
+                "UPDATE_MEMBER",
+                "CAPTURE_REPLAY",
+                "READ_INSTANCE_SETTINGS",
+                "UPDATE_INSTANCE_SETTINGS",
+                "READ_INSTANCE_STATS",
+                "MANAGE_USER_STORAGE",
+                "BAN_USER",
+                "KICK_USER",
+                "TIMEOUT_USER",
+                "UNBAN_USER",
+                "PIN_MESSAGE",
+                "UNPIN_MESSAGE",
+                "DELETE_ANY_MESSAGE",
+                "VIEW_BAN_LIST",
+                "VIEW_MODERATION_LOGS",
+                "MUTE_PARTICIPANT",
+                "MANAGE_EMOJIS",
+                "CREATE_SOUNDBOARD_SOUND",
+                "DELETE_SOUNDBOARD_SOUND",
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
+              ]
+            }
+          },
+          "deny": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "DELETE_MESSAGE",
+                "DELETE_CHANNEL",
+                "DELETE_COMMUNITY",
+                "DELETE_INVITE",
+                "DELETE_USER",
+                "DELETE_ROLE",
+                "DELETE_ALIAS_GROUP",
+                "DELETE_ALIAS_GROUP_MEMBER",
+                "DELETE_INSTANCE_INVITE",
+                "DELETE_MEMBER",
+                "DELETE_REACTION",
+                "CREATE_MESSAGE",
+                "CREATE_CHANNEL",
+                "CREATE_COMMUNITY",
+                "CREATE_INVITE",
+                "CREATE_ROLE",
+                "CREATE_ALIAS_GROUP",
+                "CREATE_ALIAS_GROUP_MEMBER",
+                "CREATE_INSTANCE_INVITE",
+                "CREATE_MEMBER",
+                "CREATE_REACTION",
+                "JOIN_CHANNEL",
+                "READ_MESSAGE",
+                "READ_CHANNEL",
+                "READ_COMMUNITY",
+                "READ_ALL_COMMUNITIES",
+                "READ_USER",
+                "READ_ROLE",
+                "READ_ALIAS_GROUP",
+                "READ_ALIAS_GROUP_MEMBER",
+                "READ_INSTANCE_INVITE",
+                "READ_MEMBER",
+                "UPDATE_COMMUNITY",
+                "UPDATE_CHANNEL",
+                "UPDATE_USER",
+                "UPDATE_ROLE",
+                "UPDATE_ALIAS_GROUP",
+                "UPDATE_ALIAS_GROUP_MEMBER",
+                "UPDATE_INSTANCE_INVITE",
+                "UPDATE_MEMBER",
+                "CAPTURE_REPLAY",
+                "READ_INSTANCE_SETTINGS",
+                "UPDATE_INSTANCE_SETTINGS",
+                "READ_INSTANCE_STATS",
+                "MANAGE_USER_STORAGE",
+                "BAN_USER",
+                "KICK_USER",
+                "TIMEOUT_USER",
+                "UNBAN_USER",
+                "PIN_MESSAGE",
+                "UNPIN_MESSAGE",
+                "DELETE_ANY_MESSAGE",
+                "VIEW_BAN_LIST",
+                "VIEW_MODERATION_LOGS",
+                "MUTE_PARTICIPANT",
+                "MANAGE_EMOJIS",
+                "CREATE_SOUNDBOARD_SOUND",
+                "DELETE_SOUNDBOARD_SOUND",
+                "READ_SOUNDBOARD_SOUND",
+                "ATTACH_FILES",
+                "SPEAK",
+                "VIDEO",
+                "SCREEN_SHARE",
+                "MANAGE_CHANNEL_PERMISSIONS",
+                "MANAGE_WEBHOOKS"
+              ]
+            }
+          }
+        },
+        "required": [
+          "targetType",
+          "allow",
+          "deny"
+        ]
+      },
+      "ReplaceChannelOverwritesDto": {
+        "type": "object",
+        "properties": {
+          "preset": {
+            "enum": [
+              "NORMAL",
+              "READ_ONLY",
+              "ANNOUNCEMENT",
+              "MODS_ONLY",
+              "CUSTOM"
+            ],
+            "type": "string"
+          },
+          "overwrites": {
+            "maxItems": 250,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReplaceOverwriteInputDto"
+            }
+          }
+        },
+        "required": [
+          "preset",
+          "overwrites"
+        ]
+      },
+      "CreateChannelMembershipDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "channelId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "userId",
+          "channelId"
+        ]
+      },
+      "ChannelMembershipResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserEntity"
+          },
+          "channelId": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "channelId",
+          "joinedAt"
         ]
       },
       "OnboardingStatusDto": {

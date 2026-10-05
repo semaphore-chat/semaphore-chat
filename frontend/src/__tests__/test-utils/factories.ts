@@ -133,6 +133,7 @@ export function createChannel(overrides: Partial<{
   createdAt: string;
   position: number;
   slowmodeSeconds: number;
+  preset: Channel['preset'];
 }> = {}): Channel {
   return {
     id: overrides.id ?? `channel-${++counter}`,
@@ -143,6 +144,7 @@ export function createChannel(overrides: Partial<{
     createdAt: overrides.createdAt ?? new Date().toISOString(),
     position: overrides.position ?? 0,
     slowmodeSeconds: overrides.slowmodeSeconds ?? 0,
+    preset: overrides.preset ?? 'NORMAL',
   };
 }
 

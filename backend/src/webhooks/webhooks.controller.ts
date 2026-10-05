@@ -33,8 +33,8 @@ import {
 } from './dto/webhook-response.dto';
 
 /**
- * Channel-scoped webhook management. Requires channel-update permissions —
- * mirrors ChannelsController's RBAC decorator usage exactly.
+ * Channel-scoped webhook management, gated by MANAGE_WEBHOOKS (community-
+ * scoped: per-channel overwrites never apply to it).
  */
 @Controller('channels/:channelId/webhooks')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -43,7 +43,7 @@ export class WebhooksController {
 
   @Post()
   @HttpCode(201)
-  @RequiredActions(RbacActions.UPDATE_CHANNEL)
+  @RequiredActions(RbacActions.MANAGE_WEBHOOKS)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
@@ -59,7 +59,7 @@ export class WebhooksController {
   }
 
   @Get()
-  @RequiredActions(RbacActions.UPDATE_CHANNEL)
+  @RequiredActions(RbacActions.MANAGE_WEBHOOKS)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
@@ -74,7 +74,7 @@ export class WebhooksController {
 
   @Delete(':webhookId')
   @HttpCode(204)
-  @RequiredActions(RbacActions.UPDATE_CHANNEL)
+  @RequiredActions(RbacActions.MANAGE_WEBHOOKS)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',

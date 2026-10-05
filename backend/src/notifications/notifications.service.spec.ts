@@ -7,6 +7,7 @@ import { DatabaseService } from '@/database/database.service';
 import { PushNotificationsService } from '@/push-notifications/push-notifications.service';
 import { PresenceService } from '@/presence/presence.service';
 import { NotificationsGateway } from './notifications.gateway';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { NotificationType, SpanType } from '@prisma/client';
 import {
   createMockDatabase,
@@ -24,6 +25,7 @@ describe('NotificationsService', () => {
   let presenceService: Mocked<PresenceService>;
   let configService: Mocked<ConfigService>;
   let notificationsGateway: Mocked<NotificationsGateway>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -39,6 +41,7 @@ describe('NotificationsService', () => {
     presenceService = unitRef.get(PresenceService);
     configService = unitRef.get(ConfigService);
     notificationsGateway = unitRef.get(NotificationsGateway);
+    channelAccessService = unitRef.get(ChannelAccessService);
 
     // Default mock behaviors
     pushNotificationsService.isEnabled.mockReturnValue(false);
@@ -157,7 +160,7 @@ describe('NotificationsService', () => {
       expect(mockDatabase.notification.create).not.toHaveBeenCalled();
     });
 
-    it('should handle @channel special mention in private channel', async () => {
+    it('notifies every viewer of the channel for @channel (ChannelAccessService)', async () => {
       const channelId = 'channel-1';
       const message = MessageFactory.build({
         channelId,
@@ -174,18 +177,11 @@ describe('NotificationsService', () => {
         ],
       } as any);
 
-      mockDatabase.channel.findUnique.mockResolvedValue({
-        isPrivate: true,
-        communityId: 'community-1',
-      });
-
-      const members = [
-        { userId: 'user-1' },
-        { userId: 'user-2' },
-        { userId: 'user-3' },
-      ];
-
-      mockDatabase.channelMembership.findMany.mockResolvedValue(members);
+      channelAccessService.viewerUserIds.mockResolvedValue([
+        'user-1',
+        'user-2',
+        'user-3',
+      ]);
       const settings = UserNotificationSettingsFactory.build();
       mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
       mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(
@@ -197,17 +193,16 @@ describe('NotificationsService', () => {
 
       await service.processMessageForNotifications(message as any);
 
-      // Should create 3 notifications via channelMembership
+      expect(channelAccessService.viewerUserIds).toHaveBeenCalledWith(
+        channelId,
+      );
       expect(mockDatabase.notification.create).toHaveBeenCalledTimes(3);
-      expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
-        where: { channelId },
-        select: { userId: true },
-      });
+      // No hand-rolled visibility queries
+      expect(mockDatabase.channelMembership.findMany).not.toHaveBeenCalled();
     });
 
-    it('should handle @channel special mention in public channel using community membership', async () => {
+    it('excludes the author from @channel', async () => {
       const channelId = 'channel-1';
-      const communityId = 'community-1';
       const message = MessageFactory.build({
         channelId,
         authorId: 'author-1',
@@ -223,19 +218,12 @@ describe('NotificationsService', () => {
         ],
       } as any);
 
-      mockDatabase.channel.findUnique.mockResolvedValue({
-        isPrivate: false,
-        communityId,
-      });
-
-      const members = [
-        { userId: 'user-1' },
-        { userId: 'user-2' },
-        { userId: 'user-3' },
-        { userId: 'user-4' },
-      ];
-
-      mockDatabase.membership.findMany.mockResolvedValue(members);
+      channelAccessService.viewerUserIds.mockResolvedValue([
+        'author-1',
+        'user-1',
+        'user-2',
+        'user-3',
+      ]);
       const settings = UserNotificationSettingsFactory.build();
       mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
       mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(
@@ -247,15 +235,10 @@ describe('NotificationsService', () => {
 
       await service.processMessageForNotifications(message as any);
 
-      // Should create 4 notifications via community membership
-      expect(mockDatabase.notification.create).toHaveBeenCalledTimes(4);
-      expect(mockDatabase.membership.findMany).toHaveBeenCalledWith({
-        where: { communityId },
-        select: { userId: true },
-      });
+      expect(mockDatabase.notification.create).toHaveBeenCalledTimes(3);
     });
 
-    it('should handle @here special mention in private channel with DB-level filter', async () => {
+    it('notifies only recently seen viewers for @here', async () => {
       const channelId = 'channel-1';
       const message = MessageFactory.build({
         channelId,
@@ -272,62 +255,55 @@ describe('NotificationsService', () => {
         ],
       } as any);
 
-      mockDatabase.channel.findUnique.mockResolvedValue({
-        isPrivate: true,
-        communityId: 'community-1',
-      });
-
-      // DB-level filter returns only online users
-      const members = [{ userId: 'user-1' }];
-
-      mockDatabase.channelMembership.findMany.mockResolvedValue(members);
+      channelAccessService.viewerUserIds.mockResolvedValue([
+        'user-1',
+        'user-2',
+      ]);
+      // DB-level lastSeen filter returns only the online viewer
+      mockDatabase.user.findMany.mockResolvedValue([{ id: 'user-1' }]);
+      // CHANNEL_MESSAGE fan-out for the other viewer: nobody opted in
+      mockDatabase.notification.findMany.mockResolvedValue([]);
+      mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+      mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
       const settings = UserNotificationSettingsFactory.build();
       mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
       mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(
         null,
       );
       mockDatabase.notification.create.mockImplementation((args) =>
-        Promise.resolve({
-          ...NotificationFactory.build(args.data),
-          author: {
-            id: 'author-1',
-            username: 'test',
-            displayName: null,
-            avatarUrl: null,
-          },
-          message: {
-            id: message.id,
-            spans: [],
-            channelId,
-            directMessageGroupId: null,
-          },
-        }),
+        Promise.resolve(NotificationFactory.build(args.data)),
       );
 
       await service.processMessageForNotifications(message as any);
 
-      // Should create 1 notification (only online user returned by DB)
       expect(mockDatabase.notification.create).toHaveBeenCalledTimes(1);
-      expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
         where: {
-          channelId,
-          user: { lastSeen: { gt: expect.any(Date) } },
+          id: { in: ['user-1', 'user-2'] },
+          lastSeen: { gt: expect.any(Date) },
         },
-        select: { userId: true },
+        select: { id: true },
       });
     });
 
-    it('should handle @here in public channel using DB-level lastSeen filter', async () => {
+    it('does not notify a mentioned user who cannot see the channel', async () => {
       const channelId = 'channel-1';
-      const communityId = 'community-1';
       const message = MessageFactory.build({
         channelId,
         authorId: 'author-1',
         spans: [
           {
-            type: SpanType.SPECIAL_MENTION,
-            specialKind: 'here',
-            userId: null,
+            type: SpanType.USER_MENTION,
+            specialKind: null,
+            userId: 'outsider',
+            text: null,
+            communityId: null,
+            aliasId: null,
+          },
+          {
+            type: SpanType.USER_MENTION,
+            specialKind: null,
+            userId: 'viewer',
             text: null,
             communityId: null,
             aliasId: null,
@@ -335,49 +311,24 @@ describe('NotificationsService', () => {
         ],
       } as any);
 
-      mockDatabase.channel.findUnique.mockResolvedValue({
-        isPrivate: false,
-        communityId,
-      });
-
-      // DB-level filter returns only online users
-      const members = [{ userId: 'user-1' }];
-
-      mockDatabase.membership.findMany.mockResolvedValue(members);
+      channelAccessService.viewerUserIds.mockResolvedValue(['viewer']);
       const settings = UserNotificationSettingsFactory.build();
       mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
       mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(
         null,
       );
       mockDatabase.notification.create.mockImplementation((args) =>
-        Promise.resolve({
-          ...NotificationFactory.build(args.data),
-          author: {
-            id: 'author-1',
-            username: 'test',
-            displayName: null,
-            avatarUrl: null,
-          },
-          message: {
-            id: message.id,
-            spans: [],
-            channelId,
-            directMessageGroupId: null,
-          },
-        }),
+        Promise.resolve(NotificationFactory.build(args.data)),
       );
 
       await service.processMessageForNotifications(message as any);
 
-      // Should create 1 notification (only online user returned by DB)
       expect(mockDatabase.notification.create).toHaveBeenCalledTimes(1);
-      expect(mockDatabase.membership.findMany).toHaveBeenCalledWith({
-        where: {
-          communityId,
-          user: { lastSeen: { gt: expect.any(Date) } },
-        },
-        select: { userId: true },
-      });
+      expect(mockDatabase.notification.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'viewer' }),
+        }),
+      );
     });
 
     it('should notify all DM members when message has @mention (mention + regular DM)', async () => {
@@ -498,17 +449,25 @@ describe('NotificationsService', () => {
         } as any);
       }
 
-      function mockPublicChannel(memberCount = 10) {
-        mockDatabase.channel.findUnique.mockResolvedValue({
-          isPrivate: false,
-          communityId,
-        });
-        mockDatabase.membership.count.mockResolvedValue(memberCount);
+      /** A channel with `viewerCount` viewers (for the threshold guard). */
+      function mockPublicChannel(viewerCount?: number) {
+        if (viewerCount !== undefined) {
+          channelAccessService.viewerUserIds.mockResolvedValue(
+            Array.from({ length: viewerCount }, (_, i) => `viewer-${i}`),
+          );
+        }
       }
 
       beforeEach(() => {
         mockDatabase.notification.createMany.mockResolvedValue({ count: 0 });
         mockDatabase.notification.findMany.mockResolvedValue([]);
+        // The channel's viewers (ChannelAccessService) are the members each
+        // test lists via membership.findMany.
+        channelAccessService.viewerUserIds.mockImplementation(async () => {
+          const members = (await mockDatabase.membership.findMany()) as
+            { userId: string }[] | undefined;
+          return (members ?? []).map((m) => m.userId);
+        });
       });
 
       it('creates CHANNEL_MESSAGE notifications for members whose resolved level is "all" (rule: all-level pass)', async () => {
@@ -695,7 +654,7 @@ describe('NotificationsService', () => {
 
       it('queries settings and overrides EXACTLY ONCE regardless of recipient count (the N+1 fix)', async () => {
         const N = 200;
-        mockPublicChannel(N);
+        mockPublicChannel();
         const members = Array.from({ length: N }, (_, i) => ({
           userId: `user-${i}`,
         }));
@@ -738,10 +697,12 @@ describe('NotificationsService', () => {
 
         await service.processMessageForNotifications(buildMessage() as any);
 
-        expect(mockDatabase.membership.findMany).not.toHaveBeenCalled();
+        expect(
+          mockDatabase.userNotificationSettings.findMany,
+        ).not.toHaveBeenCalled();
         expect(mockDatabase.notification.createMany).not.toHaveBeenCalled();
         expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringContaining('community has 6 members'),
+          expect.stringContaining('6 viewers'),
         );
       });
 
@@ -750,15 +711,18 @@ describe('NotificationsService', () => {
           key === 'CHANNEL_MESSAGE_MEMBER_THRESHOLD' ? '0' : undefined,
         );
         mockPublicChannel(4999);
-        mockDatabase.membership.findMany.mockResolvedValue([]);
+        mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+        mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
         const warnSpy = jest
           .spyOn(service['logger'], 'warn')
           .mockImplementation(() => undefined);
 
         await service.processMessageForNotifications(buildMessage() as any);
 
-        // Falls back to 5000, so 4999 members is still under threshold.
-        expect(mockDatabase.membership.findMany).toHaveBeenCalled();
+        // Falls back to 5000, so 4999 viewers is still under threshold.
+        expect(
+          mockDatabase.userNotificationSettings.findMany,
+        ).toHaveBeenCalled();
         expect(warnSpy).toHaveBeenCalledWith(
           expect.stringContaining('Invalid CHANNEL_MESSAGE_MEMBER_THRESHOLD'),
         );
@@ -770,30 +734,39 @@ describe('NotificationsService', () => {
 
         await service.processMessageForNotifications(buildMessage() as any);
 
-        expect(mockDatabase.membership.findMany).not.toHaveBeenCalled();
+        expect(
+          mockDatabase.userNotificationSettings.findMany,
+        ).not.toHaveBeenCalled();
         expect(mockDatabase.notification.createMany).not.toHaveBeenCalled();
       });
 
-      it('proceeds when membership count is at/under the default 5000 threshold', async () => {
+      it('proceeds when the viewer count is at/under the default 5000 threshold', async () => {
         configService.get.mockReturnValue(undefined);
         mockPublicChannel(4999);
-        mockDatabase.membership.findMany.mockResolvedValue([]);
+        mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+        mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
 
         await service.processMessageForNotifications(buildMessage() as any);
 
-        expect(mockDatabase.membership.findMany).toHaveBeenCalled();
+        expect(
+          mockDatabase.userNotificationSettings.findMany,
+        ).toHaveBeenCalled();
       });
 
-      it('never applies the member-count threshold guard to private channels', async () => {
-        mockDatabase.channel.findUnique.mockResolvedValue({
-          isPrivate: true,
-          communityId,
-        });
-        mockDatabase.channelMembership.findMany.mockResolvedValue([]);
+      it('applies the threshold to the channel viewers, not the community size', async () => {
+        configService.get.mockImplementation((key: string) =>
+          key === 'CHANNEL_MESSAGE_MEMBER_THRESHOLD' ? '5' : undefined,
+        );
+        mockPublicChannel(3);
+        mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+        mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
 
         await service.processMessageForNotifications(buildMessage() as any);
 
         expect(mockDatabase.membership.count).not.toHaveBeenCalled();
+        expect(
+          mockDatabase.userNotificationSettings.findMany,
+        ).toHaveBeenCalled();
       });
 
       it('propagates a batch-query failure so the caller (BullMQ processor) can retry, instead of swallowing it', async () => {
@@ -893,14 +866,11 @@ describe('NotificationsService', () => {
         } as any);
 
         jest.spyOn(service, 'shouldNotify').mockResolvedValue(true);
-        mockDatabase.channel.findUnique.mockResolvedValue({
-          isPrivate: false,
-          communityId,
-        });
-        mockDatabase.membership.findMany.mockResolvedValue([
-          { userId: 'user-channel' },
+        // Both users can see the channel
+        channelAccessService.viewerUserIds.mockResolvedValue([
+          'user-mention',
+          'user-channel',
         ]);
-        mockDatabase.membership.count.mockResolvedValue(1);
         mockDatabase.notification.create.mockResolvedValue(
           NotificationFactory.build({
             userId: 'user-mention',

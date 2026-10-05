@@ -7,6 +7,7 @@ import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { LivekitService } from '@/livekit/livekit.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
   RoomEvents,
   MembershipCreatedEvent,
@@ -15,6 +16,7 @@ import {
   ModerationUserKickedEvent,
   ChannelCreatedEvent,
   ChannelDeletedEvent,
+  ChannelVisibilityChangedEvent,
   ChannelMembershipCreatedEvent,
   ChannelMembershipRemovedEvent,
   DmGroupCreatedEvent,
@@ -51,6 +53,7 @@ export class RoomSubscriptionHandler {
     private readonly databaseService: DatabaseService,
     private readonly voicePresenceService: VoicePresenceService,
     private readonly livekitService: LivekitService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   // =========================================================================
@@ -62,14 +65,14 @@ export class RoomSubscriptionHandler {
     userId,
     communityId,
   }: MembershipCreatedEvent): Promise<void> {
-    const publicChannels = await this.databaseService.channel.findMany({
-      where: { communityId, isPrivate: false },
-      select: { id: true },
-    });
+    const visibleChannelIds = await this.channelAccessService.visibleChannelIds(
+      userId,
+      communityId,
+    );
 
     const roomsToJoin = [
       RoomName.community(communityId),
-      ...publicChannels.map((ch) => RoomName.channel(ch.id)),
+      ...visibleChannelIds.map((id) => RoomName.channel(id)),
     ];
 
     this.websocketService.joinSocketsToRoom(RoomName.user(userId), roomsToJoin);
@@ -199,21 +202,43 @@ export class RoomSubscriptionHandler {
   // =========================================================================
 
   @OnEvent(RoomEvents.CHANNEL_CREATED)
-  onChannelCreated({
+  async onChannelCreated({ channelId }: ChannelCreatedEvent): Promise<void> {
+    await this.syncChannelRoom(channelId);
+  }
+
+  @OnEvent(RoomEvents.CHANNEL_VISIBILITY_CHANGED)
+  async onChannelVisibilityChanged({
     channelId,
-    communityId,
-    isPrivate,
-  }: ChannelCreatedEvent): void {
-    if (!isPrivate) {
-      // All community members should join the new public channel room
+  }: ChannelVisibilityChangedEvent): Promise<void> {
+    await this.syncChannelRoom(channelId);
+  }
+
+  /**
+   * Make the channel's socket room hold exactly its viewers
+   * (ChannelAccessService): when everyone can see it, join the whole
+   * community room; otherwise join the viewers and remove everyone else, so
+   * a user who lost access stops receiving the channel's messages.
+   */
+  private async syncChannelRoom(channelId: string): Promise<void> {
+    const plan = await this.channelAccessService.roomPlan(channelId);
+    if (!plan) return;
+    const room = RoomName.channel(channelId);
+    if (plan.everyone) {
       this.websocketService.joinSocketsToRoom(
-        RoomName.community(communityId),
-        RoomName.channel(channelId),
+        RoomName.community(plan.communityId),
+        room,
       );
-      this.logger.debug(
-        `All members of community ${communityId} joined public channel ${channelId}`,
-      );
+      return;
     }
+    for (const userId of plan.nonViewers) {
+      this.websocketService.removeSocketsFromRoom(RoomName.user(userId), room);
+    }
+    for (const userId of plan.viewers) {
+      this.websocketService.joinSocketsToRoom(RoomName.user(userId), room);
+    }
+    this.logger.debug(
+      `Synced room for channel ${channelId}: ${plan.viewers.length} viewers, ${plan.nonViewers.length} removed`,
+    );
   }
 
   @OnEvent(RoomEvents.CHANNEL_DELETED)

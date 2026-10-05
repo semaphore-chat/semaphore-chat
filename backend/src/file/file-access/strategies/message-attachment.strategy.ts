@@ -5,8 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
-import { MembershipService } from '@/membership/membership.service';
-import { ChannelMembershipService } from '@/channel-membership/channel-membership.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { IFileAccessStrategy } from './file-access-strategy.interface';
 
 /**
@@ -19,8 +18,7 @@ export class MessageAttachmentStrategy implements IFileAccessStrategy {
 
   constructor(
     private readonly databaseService: DatabaseService,
-    private readonly membershipService: MembershipService,
-    private readonly channelMembershipService: ChannelMembershipService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   async checkAccess(
@@ -69,14 +67,9 @@ export class MessageAttachmentStrategy implements IFileAccessStrategy {
     channelId: string,
     fileId: string,
   ): Promise<boolean> {
-    // Get channel details
     const channel = await this.databaseService.channel.findUnique({
       where: { id: channelId },
-      select: {
-        id: true,
-        communityId: true,
-        isPrivate: true,
-      },
+      select: { id: true },
     });
 
     if (!channel) {
@@ -84,46 +77,16 @@ export class MessageAttachmentStrategy implements IFileAccessStrategy {
       throw new NotFoundException('Channel not found');
     }
 
-    // For private channels, check channel membership
-    if (channel.isPrivate) {
-      const isChannelMember = await this.channelMembershipService.isMember(
-        userId,
-        channelId,
-      );
-
-      if (!isChannelMember) {
-        this.logger.debug(
-          `User ${userId} is not a member of private channel ${channelId}, denying access to file ${fileId}`,
-        );
-        throw new ForbiddenException(
-          'You must be a member of this private channel to access this file',
-        );
-      }
-
+    // Only users who can see the channel get its files (ChannelAccessService)
+    if (!(await this.channelAccessService.canViewChannel(userId, channelId))) {
       this.logger.debug(
-        `User ${userId} is a member of private channel ${channelId}, allowing access to file ${fileId}`,
-      );
-      return true;
-    }
-
-    // For public channels, check community membership
-    const isCommunityMember = await this.membershipService.isMember(
-      userId,
-      channel.communityId,
-    );
-
-    if (!isCommunityMember) {
-      this.logger.debug(
-        `User ${userId} is not a member of community ${channel.communityId}, denying access to file ${fileId}`,
+        `User ${userId} can't view channel ${channelId}, denying access to file ${fileId}`,
       );
       throw new ForbiddenException(
-        'You must be a member of this community to access this file',
+        'You must be able to view this channel to access this file',
       );
     }
 
-    this.logger.debug(
-      `User ${userId} is a member of community ${channel.communityId}, allowing access to file ${fileId}`,
-    );
     return true;
   }
 

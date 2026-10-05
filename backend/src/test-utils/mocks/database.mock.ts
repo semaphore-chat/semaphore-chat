@@ -46,6 +46,7 @@ export type MockDatabaseService = {
   channel: MockPrismaModel;
   membership: MockPrismaModel;
   channelMembership: MockPrismaModel;
+  channelPermissionOverwrite: MockPrismaModel;
   role: MockPrismaModel;
   userRoles: MockPrismaModel;
   directMessageGroup: MockPrismaModel;
@@ -122,6 +123,7 @@ export function createMockDatabase(): MockDatabaseService {
     channel: createMockPrismaModel(),
     membership: createMockPrismaModel(),
     channelMembership: createMockPrismaModel(),
+    channelPermissionOverwrite: createMockPrismaModel(),
     role: createMockPrismaModel(),
     userRoles: createMockPrismaModel(),
     directMessageGroup: createMockPrismaModel(),

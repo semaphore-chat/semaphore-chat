@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
 import { groupReactions } from '@/common/utils/reactions.utils';
@@ -39,7 +40,10 @@ const MESSAGE_INCLUDE = {
 export class ThreadsService {
   private readonly logger = new Logger(ThreadsService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly permissionsService: PermissionsService,
+  ) {}
 
   /**
    * Sanitize spans to only include valid Prisma Span fields.
@@ -105,6 +109,17 @@ export class ThreadsService {
 
     // Validate parent message exists and isn't a thread reply itself
     const parent = await this.getParentMessage(parentMessageId);
+
+    // Attaching files in a channel thread needs ATTACH_FILES
+    if (
+      parent.channelId &&
+      ((attachments?.length ?? 0) > 0 || (pendingAttachments ?? 0) > 0)
+    ) {
+      await this.permissionsService.assertCanAttachFiles(
+        authorId,
+        parent.channelId,
+      );
+    }
 
     // Sanitize spans to only include valid Prisma fields
     const fieldSanitizedSpans = this.sanitizeSpans(spans);

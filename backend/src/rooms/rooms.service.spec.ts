@@ -1,12 +1,15 @@
 import { TestBed } from '@suites/unit';
+import type { Mocked } from '@suites/doubles.jest';
 import { RoomsService } from './rooms.service';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { createMockDatabase } from '@/test-utils';
 import type { AuthenticatedSocket } from '@/common/utils/socket.utils';
 
 describe('RoomsService', () => {
   let service: RoomsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   const createMockClient = (userId: string): AuthenticatedSocket => {
     return {
@@ -22,12 +25,17 @@ describe('RoomsService', () => {
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
 
-    const { unit } = await TestBed.solitary(RoomsService)
+    const { unit, unitRef } = await TestBed.solitary(RoomsService)
       .mock(DatabaseService)
       .final(mockDatabase)
       .compile();
 
     service = unit;
+    channelAccessService = unitRef.get(ChannelAccessService);
+    channelAccessService.visibleChannelIds.mockResolvedValue([]);
+    mockDatabase.membership.findMany.mockResolvedValue([]);
+    mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
+    mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -43,17 +51,12 @@ describe('RoomsService', () => {
       const userId = 'user-123';
       const client = createMockClient(userId);
 
-      mockDatabase.membership.findMany.mockResolvedValue([]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
-
       await service.joinAllUserRooms(client);
 
       expect(client.join).toHaveBeenCalledWith(`user:${userId}`);
     });
 
-    it('should join community rooms and all public channels across all communities', async () => {
+    it('should join community rooms and every channel the user can see', async () => {
       const userId = 'user-123';
       const client = createMockClient(userId);
 
@@ -61,68 +64,45 @@ describe('RoomsService', () => {
         { communityId: 'community-1' },
         { communityId: 'community-2' },
       ]);
-      mockDatabase.channel.findMany.mockResolvedValue([
-        { id: 'ch-1' },
-        { id: 'ch-2' },
-        { id: 'ch-3' },
+      channelAccessService.visibleChannelIds.mockResolvedValue([
+        'ch-1',
+        'ch-2',
+        'private-1',
       ]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
 
       await service.joinAllUserRooms(client);
 
-      // Community rooms
       expect(client.join).toHaveBeenCalledWith('community:community-1');
       expect(client.join).toHaveBeenCalledWith('community:community-2');
-      // Public channels
-      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
-        where: {
-          communityId: { in: ['community-1', 'community-2'] },
-          isPrivate: false,
-        },
-        select: { id: true },
-      });
+      // One visibility query across all the user's communities: a channel
+      // membership left in a community the user was removed from must not
+      // rejoin its room (ChannelAccessService checks community membership)
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledTimes(1);
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledWith(
+        userId,
+        ['community-1', 'community-2'],
+      );
       expect(client.join).toHaveBeenCalledWith('ch-1');
       expect(client.join).toHaveBeenCalledWith('ch-2');
-      expect(client.join).toHaveBeenCalledWith('ch-3');
+      expect(client.join).toHaveBeenCalledWith('private-1');
     });
 
-    it('should join all private channels with membership', async () => {
-      const userId = 'user-123';
-      const client = createMockClient(userId);
-
+    it('does not read channels or channel memberships itself', async () => {
+      const client = createMockClient('user-123');
       mockDatabase.membership.findMany.mockResolvedValue([
         { communityId: 'community-1' },
       ]);
-      mockDatabase.channel.findMany.mockResolvedValue([]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([
-        { channelId: 'private-1' },
-        { channelId: 'private-2' },
-      ]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
 
       await service.joinAllUserRooms(client);
 
-      expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
-        where: {
-          userId,
-          // Only in communities the user is still a member of
-          channel: { isPrivate: true, communityId: { in: ['community-1'] } },
-        },
-        select: { channelId: true },
-      });
-      expect(client.join).toHaveBeenCalledWith('private-1');
-      expect(client.join).toHaveBeenCalledWith('private-2');
+      expect(mockDatabase.channel.findMany).not.toHaveBeenCalled();
+      expect(mockDatabase.channelMembership.findMany).not.toHaveBeenCalled();
     });
 
     it('should join all DM groups and alias groups with correct query args', async () => {
       const userId = 'user-123';
       const client = createMockClient(userId);
 
-      mockDatabase.membership.findMany.mockResolvedValue([]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([]);
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
         { groupId: 'dm-1' },
         { groupId: 'dm-2' },
@@ -148,92 +128,12 @@ describe('RoomsService', () => {
       expect(client.join).toHaveBeenCalledWith('alias-1');
     });
 
-    it('should query channels across multiple communities in a single batch', async () => {
-      const userId = 'user-multi';
-      const client = createMockClient(userId);
-
-      mockDatabase.membership.findMany.mockResolvedValue([
-        { communityId: 'c-1' },
-        { communityId: 'c-2' },
-        { communityId: 'c-3' },
-      ]);
-      mockDatabase.channel.findMany.mockResolvedValue([
-        { id: 'c1-ch1' },
-        { id: 'c2-ch1' },
-        { id: 'c3-ch1' },
-        { id: 'c3-ch2' },
-      ]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
-
-      await service.joinAllUserRooms(client);
-
-      // Verify single batch query with all community IDs
-      expect(mockDatabase.channel.findMany).toHaveBeenCalledTimes(1);
-      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
-        where: {
-          communityId: { in: ['c-1', 'c-2', 'c-3'] },
-          isPrivate: false,
-        },
-        select: { id: true },
-      });
-      // personal + 3 community rooms + 4 public channels = 8
-      expect(client.join).toHaveBeenCalledTimes(8);
-      expect(client.join).toHaveBeenCalledWith('community:c-1');
-      expect(client.join).toHaveBeenCalledWith('community:c-2');
-      expect(client.join).toHaveBeenCalledWith('community:c-3');
-      expect(client.join).toHaveBeenCalledWith('c1-ch1');
-      expect(client.join).toHaveBeenCalledWith('c2-ch1');
-      expect(client.join).toHaveBeenCalledWith('c3-ch1');
-      expect(client.join).toHaveBeenCalledWith('c3-ch2');
-    });
-
-    it("should query private channels of all the user's communities in one query", async () => {
-      const userId = 'user-priv';
-      const client = createMockClient(userId);
-
-      mockDatabase.membership.findMany.mockResolvedValue([
-        { communityId: 'c-1' },
-        { communityId: 'c-2' },
-      ]);
-      mockDatabase.channel.findMany.mockResolvedValue([]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([
-        { channelId: 'priv-from-c1' },
-        { channelId: 'priv-from-c2' },
-      ]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
-
-      await service.joinAllUserRooms(client);
-
-      // One query across communities, limited to those the user is still a
-      // member of: a channel membership left behind in a community the user
-      // was removed or banned from must not rejoin its room
-      expect(mockDatabase.channelMembership.findMany).toHaveBeenCalledWith({
-        where: {
-          userId,
-          channel: { isPrivate: true, communityId: { in: ['c-1', 'c-2'] } },
-        },
-        select: { channelId: true },
-      });
-      expect(client.join).toHaveBeenCalledWith('priv-from-c1');
-      expect(client.join).toHaveBeenCalledWith('priv-from-c2');
-    });
-
-    it('should skip channel query when user has no community memberships', async () => {
+    it('joins only the personal room when the user has no communities', async () => {
       const userId = 'user-no-communities';
       const client = createMockClient(userId);
 
-      mockDatabase.membership.findMany.mockResolvedValue([]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([]);
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
-      mockDatabase.aliasGroupMember.findMany.mockResolvedValue([]);
-
       await service.joinAllUserRooms(client);
 
-      expect(mockDatabase.channel.findMany).not.toHaveBeenCalled();
-      // Only personal room
       expect(client.join).toHaveBeenCalledTimes(1);
       expect(client.join).toHaveBeenCalledWith(`user:${userId}`);
     });
@@ -245,9 +145,9 @@ describe('RoomsService', () => {
       mockDatabase.membership.findMany.mockResolvedValue([
         { communityId: 'c-1' },
       ]);
-      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'pub-1' }]);
-      mockDatabase.channelMembership.findMany.mockResolvedValue([
-        { channelId: 'priv-1' },
+      channelAccessService.visibleChannelIds.mockResolvedValue([
+        'pub-1',
+        'priv-1',
       ]);
       mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([
         { groupId: 'dm-1' },

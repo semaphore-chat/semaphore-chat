@@ -14,6 +14,8 @@ import { RemoveReactionDto } from './dto/remove-reaction.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { LINK_PREVIEWS_QUEUE } from '@/jobs/jobs.constants';
+import { PermissionsService } from '@/roles/permissions.service';
+import { ForbiddenException } from '@nestjs/common';
 
 describe('MessagesController', () => {
   let controller: MessagesController;
@@ -21,6 +23,8 @@ describe('MessagesController', () => {
   let reactionsService: Mocked<ReactionsService>;
   let websocketService: Mocked<WebsocketService>;
   let linkPreviewsQueue: Mocked<Queue>;
+  let permissionsService: Mocked<PermissionsService>;
+  const authorReq = { user: { id: 'author-1' } } as any;
 
   const mockUser = UserFactory.build();
   const mockRequest = {
@@ -36,6 +40,7 @@ describe('MessagesController', () => {
     reactionsService = unitRef.get(ReactionsService);
     websocketService = unitRef.get(WebsocketService);
     linkPreviewsQueue = unitRef.get(getQueueToken(LINK_PREVIEWS_QUEUE));
+    permissionsService = unitRef.get(PermissionsService);
     (linkPreviewsQueue.add as jest.Mock).mockResolvedValue(undefined);
   });
 
@@ -432,6 +437,32 @@ describe('MessagesController', () => {
   });
 
   describe('addAttachment', () => {
+    it('refuses to attach a file without ATTACH_FILES in the channel', async () => {
+      service.findOne.mockResolvedValue(
+        MessageFactory.build({ id: 'msg-1', channelId: 'channel-1' }) as any,
+      );
+      permissionsService.assertCanAttachFiles.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.addAttachment('msg-1', { fileId: 'file-1' }, authorReq),
+      ).rejects.toThrow(ForbiddenException);
+      expect(service.addAttachment).not.toHaveBeenCalled();
+    });
+
+    it('releases a pending slot (no fileId) without an attach check', async () => {
+      service.findOne.mockResolvedValue(
+        MessageFactory.build({ id: 'msg-1', channelId: 'channel-1' }) as any,
+      );
+      service.addAttachment.mockResolvedValue({} as any);
+      service.enrichMessageWithFileMetadata.mockReturnValue({});
+
+      await controller.addAttachment('msg-1', {}, authorReq);
+
+      expect(permissionsService.assertCanAttachFiles).not.toHaveBeenCalled();
+    });
+
     it('should add attachment and emit update event with enriched message', async () => {
       const messageId = 'msg-123';
       const addAttachmentDto: AddAttachmentDto = {
@@ -460,9 +491,14 @@ describe('MessagesController', () => {
       const result = await controller.addAttachment(
         messageId,
         addAttachmentDto,
+        authorReq,
       );
 
       expect(service.findOne).toHaveBeenCalledWith(messageId);
+      expect(permissionsService.assertCanAttachFiles).toHaveBeenCalledWith(
+        'author-1',
+        'channel-123',
+      );
       expect(service.addAttachment).toHaveBeenCalledWith(messageId, 'file-abc');
       expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
         updatedMessage,
@@ -492,7 +528,7 @@ describe('MessagesController', () => {
         updatedMessage as any,
       );
 
-      await controller.addAttachment(messageId, addAttachmentDto);
+      await controller.addAttachment(messageId, addAttachmentDto, authorReq);
 
       expect(service.addAttachment).toHaveBeenCalledWith(messageId, undefined);
     });
@@ -518,6 +554,32 @@ describe('MessagesController', () => {
   });
 
   describe('update', () => {
+    it('needs ATTACH_FILES to add a new file in an edit', async () => {
+      service.findOne.mockResolvedValue(
+        MessageFactory.build({
+          id: 'msg-9',
+          channelId: 'channel-9',
+          attachments: [{ id: 'old-file' }],
+        } as any) as any,
+      );
+      permissionsService.assertCanAttachFiles.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.update(
+          'msg-9',
+          { attachments: ['old-file', 'new-file'] } as any,
+          authorReq,
+        ),
+      ).rejects.toThrow(ForbiddenException);
+      expect(permissionsService.assertCanAttachFiles).toHaveBeenCalledWith(
+        'author-1',
+        'channel-9',
+      );
+      expect(service.update).not.toHaveBeenCalled();
+    });
+
     it('should update message and emit WebSocket event with enriched message', async () => {
       const messageId = 'msg-123';
       const updateDto: UpdateMessageDto = {
@@ -550,12 +612,13 @@ describe('MessagesController', () => {
       service.update.mockResolvedValue(updatedMessage as any);
       service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
-      const result = await controller.update(messageId, updateDto);
+      const result = await controller.update(messageId, updateDto, authorReq);
 
       expect(service.findOne).toHaveBeenCalledWith(messageId);
       expect(service.update).toHaveBeenCalledWith(messageId, updateDto, [
         'old-file',
       ]);
+      expect(permissionsService.assertCanAttachFiles).not.toHaveBeenCalled();
       expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
         updatedMessage,
       );
@@ -606,7 +669,7 @@ describe('MessagesController', () => {
       service.update.mockResolvedValue(updatedMessage as any);
       service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
-      await controller.update(messageId, updateDto);
+      await controller.update(messageId, updateDto, authorReq);
 
       expect(linkPreviewsQueue.add).not.toHaveBeenCalled();
     });
@@ -629,8 +692,8 @@ describe('MessagesController', () => {
         attachments: [],
       });
 
-      await controller.update(messageId, updateDto);
-      await controller.update(messageId, updateDto);
+      await controller.update(messageId, updateDto, authorReq);
+      await controller.update(messageId, updateDto, authorReq);
 
       const jobIds = (linkPreviewsQueue.add as jest.Mock).mock.calls.map(
         (call) => call[2].jobId,
@@ -661,7 +724,7 @@ describe('MessagesController', () => {
         .spyOn(controller['logger'], 'warn')
         .mockImplementation(() => undefined);
 
-      const result = await controller.update(messageId, updateDto);
+      const result = await controller.update(messageId, updateDto, authorReq);
 
       expect(result).toEqual(enrichedMessage);
       expect(warnSpy).toHaveBeenCalledWith(
@@ -689,7 +752,7 @@ describe('MessagesController', () => {
       service.update.mockResolvedValue(updatedMessage as any);
       service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
-      await controller.update(messageId, updateDto);
+      await controller.update(messageId, updateDto, authorReq);
 
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'dm:dm-group-123',

@@ -39,13 +39,13 @@ describe('WebhooksController', () => {
   });
 
   describe('RBAC metadata on management routes', () => {
-    it('requires UPDATE_CHANNEL and a CHANNEL resource (from params) on create', () => {
+    it('requires MANAGE_WEBHOOKS and a CHANNEL resource (from params) on create', () => {
       expect(
         Reflect.getMetadata(
           RBAC_ACTION_KEY,
           WebhooksController.prototype.create,
         ),
-      ).toEqual([RbacActions.UPDATE_CHANNEL]);
+      ).toEqual([RbacActions.MANAGE_WEBHOOKS]);
       expect(
         Reflect.getMetadata(
           RBAC_RESOURCE_KEY,
@@ -58,13 +58,13 @@ describe('WebhooksController', () => {
       });
     });
 
-    it('requires UPDATE_CHANNEL and a CHANNEL resource (from params) on list', () => {
+    it('requires MANAGE_WEBHOOKS and a CHANNEL resource (from params) on list', () => {
       expect(
         Reflect.getMetadata(
           RBAC_ACTION_KEY,
           WebhooksController.prototype.findAllForChannel,
         ),
-      ).toEqual([RbacActions.UPDATE_CHANNEL]);
+      ).toEqual([RbacActions.MANAGE_WEBHOOKS]);
       expect(
         Reflect.getMetadata(
           RBAC_RESOURCE_KEY,
@@ -77,13 +77,13 @@ describe('WebhooksController', () => {
       });
     });
 
-    it('requires UPDATE_CHANNEL and a CHANNEL resource (from params) on remove', () => {
+    it('requires MANAGE_WEBHOOKS and a CHANNEL resource (from params) on remove', () => {
       expect(
         Reflect.getMetadata(
           RBAC_ACTION_KEY,
           WebhooksController.prototype.remove,
         ),
-      ).toEqual([RbacActions.UPDATE_CHANNEL]);
+      ).toEqual([RbacActions.MANAGE_WEBHOOKS]);
       expect(
         Reflect.getMetadata(
           RBAC_RESOURCE_KEY,

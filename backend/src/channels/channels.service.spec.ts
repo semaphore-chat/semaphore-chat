@@ -7,11 +7,16 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { ChannelType } from '@prisma/client';
 import { createMockDatabase, UserFactory, ChannelFactory } from '@/test-utils';
 import { RoomEvents } from '@/rooms/room-subscription.events';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { ServerEvents } from '@semaphore-chat/shared';
 
 describe('ChannelsService', () => {
   let service: ChannelsService;
   let mockDatabase: any;
   let eventEmitter: Mocked<EventEmitter2>;
+  let channelAccessService: Mocked<ChannelAccessService>;
+  let websocketService: Mocked<WebsocketService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -23,6 +28,11 @@ describe('ChannelsService', () => {
 
     service = unit;
     eventEmitter = unitRef.get(EventEmitter2);
+    channelAccessService = unitRef.get(ChannelAccessService);
+    websocketService = unitRef.get(WebsocketService);
+    channelAccessService.audienceRoomFor.mockImplementation((id) =>
+      Promise.resolve(`community:of-${id}`),
+    );
   });
 
   afterEach(() => {
@@ -66,8 +76,34 @@ describe('ChannelsService', () => {
         {
           channelId: channel.id,
           communityId: channel.communityId,
-          isPrivate: channel.isPrivate,
         },
+      );
+    });
+
+    it('announces a channel only the creator can see to the creator alone', async () => {
+      const user = UserFactory.build();
+      const channel = ChannelFactory.build({ isPrivate: true, position: 0 });
+      mockDatabase.channel.aggregate.mockResolvedValue({
+        _max: { position: null },
+      });
+      mockDatabase.channel.create.mockResolvedValue(channel);
+      mockDatabase.channelMembership.create.mockResolvedValue({});
+      channelAccessService.audienceRoomFor.mockResolvedValue(channel.id);
+
+      await service.create(
+        {
+          name: 'secret',
+          communityId: channel.communityId,
+          type: ChannelType.TEXT,
+          isPrivate: true,
+        },
+        user,
+      );
+
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        `user:${user.id}`,
+        ServerEvents.CHANNEL_CREATED,
+        expect.anything(),
       );
     });
 
@@ -168,18 +204,21 @@ describe('ChannelsService', () => {
   });
 
   describe('findAll', () => {
-    it('should return all channels in a community', async () => {
+    it('returns only the channels the user can see', async () => {
       const communityId = 'community-123';
-      const channels = [
-        ChannelFactory.build({ communityId }),
-        ChannelFactory.build({ communityId }),
-      ];
+      const visible = ChannelFactory.build({ communityId });
+      const hidden = ChannelFactory.build({ communityId, isPrivate: true });
 
-      mockDatabase.channel.findMany.mockResolvedValue(channels);
+      mockDatabase.channel.findMany.mockResolvedValue([visible, hidden]);
+      channelAccessService.visibleChannelIds.mockResolvedValue([visible.id]);
 
-      const result = await service.findAll(communityId);
+      const result = await service.findAll(communityId, 'user-1');
 
-      expect(result).toEqual(channels);
+      expect(result).toEqual([visible]);
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledWith(
+        'user-1',
+        communityId,
+      );
       expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
         where: { communityId },
         orderBy: [{ type: 'asc' }, { position: 'asc' }, { createdAt: 'asc' }],
@@ -190,8 +229,9 @@ describe('ChannelsService', () => {
     it('should return empty array when no channels exist', async () => {
       const communityId = 'community-123';
       mockDatabase.channel.findMany.mockResolvedValue([]);
+      channelAccessService.visibleChannelIds.mockResolvedValue([]);
 
-      const result = await service.findAll(communityId);
+      const result = await service.findAll(communityId, 'user-1');
 
       expect(result).toEqual([]);
     });
@@ -240,6 +280,25 @@ describe('ChannelsService', () => {
         where: { id: channelId },
         data: updateDto,
       });
+    });
+
+    it('resyncs the channel room and tells the community when privacy is toggled', async () => {
+      const channelId = 'channel-123';
+      const updated = ChannelFactory.build({ id: channelId, isPrivate: true });
+      mockDatabase.channel.findUnique.mockResolvedValue({ isPrivate: false });
+      mockDatabase.channel.update.mockResolvedValue(updated);
+
+      await service.update(channelId, { isPrivate: true });
+
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+        RoomEvents.CHANNEL_VISIBILITY_CHANGED,
+        { channelId, communityId: updated.communityId },
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        `community:${updated.communityId}`,
+        ServerEvents.CHANNEL_PERMISSIONS_UPDATED,
+        { communityId: updated.communityId, channelId },
+      );
     });
 
     it('should throw ConflictException for duplicate channel name', async () => {
@@ -495,7 +554,7 @@ describe('ChannelsService', () => {
   });
 
   describe('findMentionableChannels', () => {
-    it('should return public channels and private channels user is member of', async () => {
+    it('returns the channels the user can see', async () => {
       const communityId = 'community-123';
       const userId = 'user-456';
       const publicChannel = ChannelFactory.build({
@@ -514,22 +573,24 @@ describe('ChannelsService', () => {
 
       const result = await service.findMentionableChannels(communityId, userId);
 
+      channelAccessService.visibleChannelIds.mockResolvedValue([
+        publicChannel.id,
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([publicChannel]);
+
+      const visibleResult = await service.findMentionableChannels(
+        communityId,
+        userId,
+      );
+
       expect(result).toEqual(channels);
-      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
-        where: {
-          communityId,
-          OR: [
-            { isPrivate: false },
-            {
-              isPrivate: true,
-              ChannelMembership: {
-                some: {
-                  userId,
-                },
-              },
-            },
-          ],
-        },
+      expect(visibleResult).toEqual([publicChannel]);
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledWith(
+        userId,
+        communityId,
+      );
+      expect(mockDatabase.channel.findMany).toHaveBeenLastCalledWith({
+        where: { communityId, id: { in: [publicChannel.id] } },
         orderBy: {
           name: 'asc',
         },

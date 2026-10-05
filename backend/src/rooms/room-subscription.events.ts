@@ -18,6 +18,8 @@ export enum RoomEvents {
   MODERATION_USER_KICKED = 'moderation.user-kicked',
   CHANNEL_CREATED = 'channel.created',
   CHANNEL_DELETED = 'channel.deleted',
+  /** Who can see a channel may have changed (privacy toggle, overwrites). */
+  CHANNEL_VISIBILITY_CHANGED = 'channel.visibility-changed',
   CHANNEL_MEMBERSHIP_CREATED = 'channel-membership.created',
   CHANNEL_MEMBERSHIP_REMOVED = 'channel-membership.removed',
   DM_GROUP_CREATED = 'dm-group.created',
@@ -89,7 +91,11 @@ export interface ModerationUserKickedEvent {
 export interface ChannelCreatedEvent {
   channelId: string;
   communityId: string;
-  isPrivate: boolean;
+}
+
+export interface ChannelVisibilityChangedEvent {
+  channelId: string;
+  communityId: string;
 }
 
 export interface ChannelDeletedEvent {

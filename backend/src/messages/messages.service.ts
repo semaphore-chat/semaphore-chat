@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
@@ -58,6 +60,8 @@ export class MessagesService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly fileService: FileService,
+    private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -93,6 +97,22 @@ export class MessagesService {
           'Cannot quote a message from a different channel',
         );
       }
+    }
+
+    // Attaching files (now or via pendingAttachments) needs ATTACH_FILES in
+    // the channel. Webhook messages are exempt (they post in read-only
+    // channels by design and carry no user).
+    if (
+      createMessageDto.channelId &&
+      createMessageDto.authorId &&
+      !createMessageDto.webhookId &&
+      ((createMessageDto.attachments?.length ?? 0) > 0 ||
+        (createMessageDto.pendingAttachments ?? 0) > 0)
+    ) {
+      await this.permissionsService.assertCanAttachFiles(
+        createMessageDto.authorId,
+        createMessageDto.channelId,
+      );
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -735,18 +755,13 @@ export class MessagesService {
       return [];
     }
 
-    // Get all channels the user has access to in this community
+    // Only the channels the user can see (ChannelAccessService)
+    const visibleIds = await this.channelAccessService.visibleChannelIds(
+      userId,
+      communityId,
+    );
     const accessibleChannels = await this.databaseService.channel.findMany({
-      where: {
-        communityId,
-        OR: [
-          { isPrivate: false },
-          {
-            isPrivate: true,
-            ChannelMembership: { some: { userId } },
-          },
-        ],
-      },
+      where: { communityId, id: { in: visibleIds } },
       select: { id: true, name: true },
     });
 

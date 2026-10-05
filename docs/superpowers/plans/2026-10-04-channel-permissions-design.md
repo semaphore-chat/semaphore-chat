@@ -249,3 +249,53 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
 | 6 | Timeouts block everything? | **Yes** | Step 7 is in from phase 1: CREATE_MESSAGE (so thread replies too), CREATE_REACTION, ATTACH_FILES, SPEAK, VIDEO, SCREEN_SHARE. |
 | 7 | Webhooks in read-only channels? | **Yes**, plus a new `MANAGE_WEBHOOKS` | Webhook posting is not gated by overwrites. Webhook CRUD moves from `UPDATE_CHANNEL` to `MANAGE_WEBHOOKS` (community-scoped), backfilled to every role with `UPDATE_CHANNEL`. |
 | 8 | Category inheritance? | **Skip** | Out of scope. |
+
+### Additions from the lead's review (2026-10-04)
+
+**A. Lockout safeguard.** No overwrite can stop the people who manage permissions from fixing a channel:
+- `MANAGE_CHANNEL_PERMISSIONS` (and `UPDATE_CHANNEL`, when the caller also holds `MANAGE_CHANNEL_PERMISSIONS`) are community-scoped. Overwrites never apply to them, and they pass the private-channel membership gate.
+- Holders can always read and replace a channel's overwrites and edit its settings.
+- `GET /channels/community/:communityId/permissions` is a management listing: every channel with its preset and overwrites, even channels the caller can't view.
+- The PUT endpoint rejects overwrites on community-scoped actions, so the manage permission itself can never be denied per channel.
+- The instance OWNER keeps the guard bypass. There is no separate community owner: the creator holds Community Admin, which has the manage permission.
+
+**B. Timeout scope.** A timeout is community-scoped; DMs are unaffected. It masks CREATE_MESSAGE (so thread replies too), CREATE_REACTION, ATTACH_FILES, SPEAK, VIDEO and SCREEN_SHARE. JOIN_CHANNEL (connect and listen) stays. The effective-permissions response carries a `voice` block (`canConnect`, `canSpeak`, `canVideo`, `canScreenShare`) and `timedOutUntil`, so phase 4 can turn it straight into LiveKit `canPublishSources`.
+
+**C. No scattered rules (owner requirement).**
+- **One place.** All channel permission logic lives in `backend/src/roles/`:
+  - `channel-permissions.util.ts` is the pure resolver (`computeChannelActions`, `canViewChannel`, `toCapabilities`);
+  - `PermissionsService` runs the per-request checks (RbacGuard, gateways, services);
+  - `ChannelAccessService` answers the bulk questions: `visibleChannelIds`, `viewerUserIds`, `canViewChannel`, `roomPlan`, `audienceRoomFor`, and the capabilities.
+- **No other code checks visibility.** The channel list, mentionable channels, community search, unread counts, notification recipients, file access (attachments, clips), clip sharing, socket room joins and channel event audiences all call these services.
+- **Regression guard.** `roles/channel-visibility.boundary.spec.ts` fails if any other module reads `isPrivate` or filters on ChannelMembership. Writes and display-only uses carry a `channel-visibility:` marker.
+- **Frontend.** The UI decides visibility and capabilities only from `GET /channels/community/:id/permissions/me` (and the per-channel variant). Its compact per-channel shape is `view`, `post`, `attach`, `react`, `threadReply`, `connect`, `speak`, `video`, `share`, `managePermissions` and `timedOutUntil`.
+
+**D. The name leak is fixed in phase 1.**
+- A user who can't view a channel never receives it. It is missing from the channel list, mention list, search, unread counts and effective-permissions listing.
+- Its create, update, delete and reorder events go only to its viewers: the channel room, or the creator's room on create. The community room gets a `CHANNEL_PERMISSIONS_UPDATED` with the id only when a channel's privacy flips.
+- Its messages notify only viewers.
+- Managers see every channel in the management listing.
+
+**Phase 3 scope that moved into phase 1:** the single visibility service and the migration of every hand-rolled check, socket-room resync (`CHANNEL_VISIBILITY_CHANGED`) and hiding channels.
+
+**Still in phase 3:**
+- accepting `READ_CHANNEL` in overwrites (the Mods-only preset);
+- resyncing rooms when a role assignment or role definition changes visibility (only needed once role overwrites can hide channels);
+- converging `ChannelMembership` with MEMBER overwrites, if wanted.
+
+**Phase 1 visibility inventory.** Each hand-rolled `isPrivate` / ChannelMembership check, and what it calls now:
+
+| Was | Now |
+|---|---|
+| `channels.service` `findAll` (returned every channel) | `ChannelAccessService.visibleChannelIds` |
+| `channels.service` `findMentionableChannels` | `visibleChannelIds` |
+| `channels.service` CHANNEL_CREATED/UPDATED/DELETED to the community room | `audienceRoomFor` (channel room, or the creator on create) |
+| `channels.service` CHANNELS_REORDERED with every channel | `publicChannelIds` filter; the HTTP response goes through `findAll` |
+| `messages.service` `searchCommunityMessages` | `visibleChannelIds` |
+| `read-receipts.service` `getUnreadCounts` | `visibleChannelIds` |
+| `rooms.service` `joinAllUserRooms` (public + private memberships) | `visibleChannelIds` |
+| `room-subscription.handler` membership created / channel created | `visibleChannelIds` / `roomPlan` (and new `CHANNEL_VISIBILITY_CHANGED`) |
+| `notifications.service` @channel, @here, channel-message recipients (user and alias mentions weren't filtered at all) | `viewerUserIds` |
+| `message-attachment` and `replay-clip` file-access strategies (`ChannelMembershipService.isMember`, now removed) | `canViewChannel` |
+| `clip-library.service` / `livekit-replay.service` clip sharing | `PermissionsService.userHasChannelActions([CREATE_MESSAGE, ATTACH_FILES])` |
+| `PermissionsService` CHANNEL/MESSAGE branches | `channelActionsGranted` (pure util) |

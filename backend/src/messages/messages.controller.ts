@@ -24,6 +24,7 @@ import { AddReactionDto } from './dto/add-reaction.dto';
 import { RemoveReactionDto } from './dto/remove-reaction.dto';
 import { AddAttachmentDto } from './dto/add-attachment.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
+import { PermissionsService } from '@/roles/permissions.service';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { MessageOwnershipGuard } from '@/auth/message-ownership.guard';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -61,6 +62,7 @@ export class MessagesController {
     private readonly messagesService: MessagesService,
     private readonly reactionsService: ReactionsService,
     private readonly websocketService: WebsocketService,
+    private readonly permissionsService: PermissionsService,
     @InjectQueue(LINK_PREVIEWS_QUEUE)
     private readonly linkPreviewsQueue: Queue<LinkPreviewJobData>,
   ) {}
@@ -326,9 +328,19 @@ export class MessagesController {
   async addAttachment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() addAttachmentDto: AddAttachmentDto,
+    @Req() req: AuthenticatedRequest,
   ) {
     // First get the original message to know which room to notify
     const originalMessage = await this.messagesService.findOne(id);
+
+    // Attaching a file needs ATTACH_FILES in the channel (releasing a
+    // pending slot without a file doesn't)
+    if (addAttachmentDto.fileId && originalMessage.channelId) {
+      await this.permissionsService.assertCanAttachFiles(
+        req.user.id,
+        originalMessage.channelId,
+      );
+    }
 
     // Add the attachment and decrement pendingAttachments
     // If fileId is omitted (upload failed), just decrements counter
@@ -376,6 +388,7 @@ export class MessagesController {
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateMessageDto: UpdateMessageDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<EnrichedMessageDto> {
     // First get the original message to know which channel to notify
     const originalMessage = await this.messagesService.findOne(id);
@@ -384,6 +397,17 @@ export class MessagesController {
     const originalFileIds = originalMessage.attachments.map(
       (a: { id: string }) => a.id,
     );
+
+    // Adding files in an edit needs ATTACH_FILES like sending them
+    const addsFiles = (updateMessageDto.attachments ?? []).some(
+      (fileId) => !originalFileIds.includes(fileId),
+    );
+    if (addsFiles && originalMessage.channelId) {
+      await this.permissionsService.assertCanAttachFiles(
+        req.user.id,
+        originalMessage.channelId,
+      );
+    }
     const updatedMessage = await this.messagesService.update(
       id,
       updateMessageDto,

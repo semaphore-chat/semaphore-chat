@@ -220,6 +220,7 @@ export function withChannels(
     createdAt: created,
     position: i,
     slowmodeSeconds: 0,
+    preset: 'NORMAL',
   }));
   const voice: Channel[] = voiceNames.map((name, i) => ({
     id: `nav-ch-${communityId}-v${i + 1}`,
@@ -230,6 +231,7 @@ export function withChannels(
     createdAt: created,
     position: text.length + i,
     slowmodeSeconds: 0,
+    preset: 'NORMAL',
   }));
   const messagesByChannel = { ...scenario.messagesByChannel };
   for (const c of [...text, ...voice]) messagesByChannel[c.id] = [];
@@ -302,6 +304,7 @@ export function withCommunityCount(scenario: Scenario, total: number, seed = 'ed
       createdAt,
       position: 0,
       slowmodeSeconds: 0,
+      preset: 'NORMAL',
     };
     messagesByChannel[channel.id] = [];
     const ownerRole: RoleDto = {

@@ -1,6 +1,8 @@
 import { TestBed } from '@suites/unit';
 import { ReadReceiptsService } from './read-receipts.service';
 import { DatabaseService } from '@/database/database.service';
+import type { Mocked } from '@suites/doubles.jest';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import {
   createMockDatabase,
@@ -17,16 +19,28 @@ const EXCLUDE_THREAD_REPLIES = { parentMessageId: null };
 describe('ReadReceiptsService', () => {
   let service: ReadReceiptsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
 
-    const { unit } = await TestBed.solitary(ReadReceiptsService)
+    const { unit, unitRef } = await TestBed.solitary(ReadReceiptsService)
       .mock(DatabaseService)
       .final(mockDatabase)
       .compile();
 
     service = unit;
+    channelAccessService = unitRef.get(ChannelAccessService);
+    // The fixtures below list each membership's visible channels under
+    // `community.channels`; ChannelAccessService returns those ids.
+    channelAccessService.visibleChannelIds.mockImplementation(async () => {
+      const results = mockDatabase.membership.findMany.mock.results;
+      const memberships = ((await results[results.length - 1]?.value) ??
+        []) as { community?: { channels?: { id: string }[] } }[];
+      return memberships.flatMap(
+        (m) => m.community?.channels?.map((c) => c.id) ?? [],
+      );
+    });
   });
 
   afterEach(() => {
@@ -595,6 +609,10 @@ describe('ReadReceiptsService', () => {
 
       const result = await service.getUnreadCounts(userId);
 
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledWith(
+        userId,
+        [communityId],
+      );
       expect(result).toHaveLength(3);
       expect(result).toContainEqual({
         channelId: channelId2,

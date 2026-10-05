@@ -4,6 +4,7 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { DatabaseService } from '@/database/database.service';
 import { MarkAsReadDto } from './dto/mark-as-read.dto';
 
@@ -23,7 +24,10 @@ const EXCLUDE_THREAD_REPLIES = { parentMessageId: null };
 export class ReadReceiptsService {
   private readonly logger = new Logger(ReadReceiptsService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly channelAccessService: ChannelAccessService,
+  ) {}
 
   /**
    * Mark messages as read up to a specific message ID
@@ -224,28 +228,16 @@ export class ReadReceiptsService {
       where: { userId },
     });
 
-    // Get all channels the user is a member of (through community membership)
+    // Every channel the user can see, across their communities
+    // (ChannelAccessService is the one visibility rule)
     const memberships = await this.databaseService.membership.findMany({
       where: { userId },
-      include: {
-        community: {
-          include: {
-            channels: {
-              where: {
-                OR: [
-                  { isPrivate: false }, // Public channels
-                  {
-                    ChannelMembership: {
-                      some: { userId },
-                    },
-                  }, // Private channels where user is a member
-                ],
-              },
-            },
-          },
-        },
-      },
+      select: { communityId: true },
     });
+    const channelIds = await this.channelAccessService.visibleChannelIds(
+      userId,
+      memberships.map((m) => m.communityId),
+    );
 
     // Get all DM groups the user is a member of
     const dmGroupMemberships =
@@ -257,9 +249,6 @@ export class ReadReceiptsService {
       });
 
     // Build a list of all channel IDs and DM group IDs
-    const channelIds = memberships.flatMap((m) =>
-      m.community.channels.map((c) => c.id),
-    );
     const dmGroupIds = dmGroupMemberships.map((dm) => dm.groupId);
 
     const unreadCounts: UnreadCount[] = [];

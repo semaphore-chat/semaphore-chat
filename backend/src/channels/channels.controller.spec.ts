@@ -57,10 +57,15 @@ describe('ChannelsController', () => {
 
       channelsService.findAll.mockResolvedValue(channels as any);
 
-      const result = await controller.findAllForCommunity(communityId);
+      const result = await controller.findAllForCommunity(communityId, {
+        user: { id: 'user-1' },
+      } as any);
 
       expect(result).toEqual(channels);
-      expect(channelsService.findAll).toHaveBeenCalledWith(communityId);
+      expect(channelsService.findAll).toHaveBeenCalledWith(
+        communityId,
+        'user-1',
+      );
     });
   });
 

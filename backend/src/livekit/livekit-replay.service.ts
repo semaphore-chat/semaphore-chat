@@ -24,7 +24,8 @@ import {
   TrackType,
 } from 'livekit-server-sdk';
 import { randomUUID } from 'crypto';
-import { EgressSession } from '@prisma/client';
+import { EgressSession, RbacActions } from '@prisma/client';
+import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
 import { WebsocketService } from '@/websocket/websocket.service';
@@ -97,6 +98,7 @@ export class LivekitReplayService implements OnApplicationBootstrap {
     private readonly replaySegmentsService: ReplaySegmentsService,
     private readonly eventEmitter: EventEmitter2,
     private readonly thumbnailService: ThumbnailService,
+    private readonly permissionsService: PermissionsService,
   ) {
     // Load configuration
     // segmentsPath is now loaded from StorageService which handles prefix resolution
@@ -1179,25 +1181,17 @@ export class LivekitReplayService implements OnApplicationBootstrap {
       if (!channel) {
         throw new NotFoundException('That channel could not be found.');
       }
-      const membership = await this.databaseService.membership.findFirst({
-        where: { userId, communityId: channel.communityId },
-      });
-      if (!membership) {
+      // Posting a clip is sending a message with a file: the same channel
+      // permissions as any message (overwrites, timeouts, private channels).
+      const allowed = await this.permissionsService.userHasChannelActions(
+        userId,
+        dto.targetChannelId,
+        [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
+      );
+      if (!allowed) {
         throw new ForbiddenException(
           "You don't have permission to post in that channel.",
         );
-      }
-      // Private channels require explicit channel membership
-      if (channel.isPrivate) {
-        const channelMembership =
-          await this.databaseService.channelMembership.findFirst({
-            where: { userId, channelId: dto.targetChannelId },
-          });
-        if (!channelMembership) {
-          throw new ForbiddenException(
-            "You don't have permission to post in that channel.",
-          );
-        }
       }
     }
 

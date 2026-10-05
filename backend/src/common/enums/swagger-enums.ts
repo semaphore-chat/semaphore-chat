@@ -108,6 +108,22 @@ export const RbacActionsValues = [
   'CREATE_SOUNDBOARD_SOUND',
   'DELETE_SOUNDBOARD_SOUND',
   'READ_SOUNDBOARD_SOUND',
+  'ATTACH_FILES',
+  'SPEAK',
+  'VIDEO',
+  'SCREEN_SHARE',
+  'MANAGE_CHANNEL_PERMISSIONS',
+  'MANAGE_WEBHOOKS',
+] as const;
+
+export const OverwriteTargetValues = ['EVERYONE', 'ROLE', 'MEMBER'] as const;
+
+export const ChannelPresetValues = [
+  'NORMAL',
+  'READ_ONLY',
+  'ANNOUNCEMENT',
+  'MODS_ONLY',
+  'CUSTOM',
 ] as const;
 
 export const InstanceRoleValues = ['OWNER', 'USER'] as const;

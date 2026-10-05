@@ -56,11 +56,16 @@ export const DEFAULT_COMMUNITY_CREATOR_ROLE: DefaultRoleConfig = {
     // Channel management within own communities
     RbacActions.CREATE_CHANNEL,
     RbacActions.UPDATE_CHANNEL,
+    RbacActions.MANAGE_CHANNEL_PERMISSIONS,
+    RbacActions.MANAGE_WEBHOOKS,
     RbacActions.DELETE_CHANNEL,
     RbacActions.READ_CHANNEL,
 
     // Voice channel permissions
     RbacActions.JOIN_CHANNEL,
+    RbacActions.SPEAK,
+    RbacActions.VIDEO,
+    RbacActions.SCREEN_SHARE,
 
     // Member management within own communities
     RbacActions.CREATE_MEMBER,
@@ -70,6 +75,7 @@ export const DEFAULT_COMMUNITY_CREATOR_ROLE: DefaultRoleConfig = {
 
     // Message management
     RbacActions.CREATE_MESSAGE,
+    RbacActions.ATTACH_FILES,
     RbacActions.DELETE_MESSAGE,
     RbacActions.READ_MESSAGE,
 
@@ -191,11 +197,16 @@ export const DEFAULT_ADMIN_ROLE: DefaultRoleConfig = {
     // Channel management
     RbacActions.CREATE_CHANNEL,
     RbacActions.UPDATE_CHANNEL,
+    RbacActions.MANAGE_CHANNEL_PERMISSIONS,
+    RbacActions.MANAGE_WEBHOOKS,
     RbacActions.DELETE_CHANNEL,
     RbacActions.READ_CHANNEL,
 
     // Voice channel permissions
     RbacActions.JOIN_CHANNEL,
+    RbacActions.SPEAK,
+    RbacActions.VIDEO,
+    RbacActions.SCREEN_SHARE,
 
     // Member management
     RbacActions.CREATE_MEMBER,
@@ -205,6 +216,7 @@ export const DEFAULT_ADMIN_ROLE: DefaultRoleConfig = {
 
     // Message management
     RbacActions.CREATE_MESSAGE,
+    RbacActions.ATTACH_FILES,
     RbacActions.DELETE_MESSAGE,
     RbacActions.READ_MESSAGE,
 
@@ -272,14 +284,20 @@ export const DEFAULT_MODERATOR_ROLE: DefaultRoleConfig = {
 
     // Message moderation
     RbacActions.CREATE_MESSAGE,
+    RbacActions.ATTACH_FILES,
     RbacActions.DELETE_MESSAGE,
 
     // Basic channel management
     RbacActions.CREATE_CHANNEL,
     RbacActions.UPDATE_CHANNEL,
+    RbacActions.MANAGE_CHANNEL_PERMISSIONS,
+    RbacActions.MANAGE_WEBHOOKS,
 
     // Voice channel permissions
     RbacActions.JOIN_CHANNEL,
+    RbacActions.SPEAK,
+    RbacActions.VIDEO,
+    RbacActions.SCREEN_SHARE,
 
     // Member management (limited)
     RbacActions.CREATE_MEMBER,
@@ -327,9 +345,13 @@ export const DEFAULT_MEMBER_ROLE: DefaultRoleConfig = {
 
     // Basic message permissions
     RbacActions.CREATE_MESSAGE,
+    RbacActions.ATTACH_FILES,
 
     // Voice channel permissions
     RbacActions.JOIN_CHANNEL,
+    RbacActions.SPEAK,
+    RbacActions.VIDEO,
+    RbacActions.SCREEN_SHARE,
 
     // Basic reaction permissions
     RbacActions.CREATE_REACTION,

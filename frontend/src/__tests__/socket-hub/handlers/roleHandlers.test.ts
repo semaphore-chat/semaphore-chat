@@ -55,8 +55,9 @@ describe('roleHandlers', () => {
 
       const keys = queryKeysInvalidated();
       expect(keys).not.toContain('membershipControllerGetMembers');
-      // Invalidates community roles + my roles + membership
-      expect(invalidateSpy).toHaveBeenCalledTimes(3);
+      // Invalidates community roles + my roles + membership + the 5
+      // channel-permission queries (effective permissions depend on roles)
+      expect(invalidateSpy).toHaveBeenCalledTimes(8);
     });
   });
 
@@ -68,7 +69,7 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetCommunityRoles');
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(invalidateSpy).toHaveBeenCalledTimes(3);
+      expect(invalidateSpy).toHaveBeenCalledTimes(8);
     });
   });
 
@@ -81,7 +82,7 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
       expect(keys).toContain('membershipControllerGetMembers');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(invalidateSpy).toHaveBeenCalledTimes(4);
+      expect(invalidateSpy).toHaveBeenCalledTimes(9);
     });
   });
 
@@ -94,7 +95,23 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
       expect(keys).toContain('membershipControllerGetMembers');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(invalidateSpy).toHaveBeenCalledTimes(4);
+      expect(invalidateSpy).toHaveBeenCalledTimes(9);
+    });
+  });
+
+  describe('channel permissions follow role changes', () => {
+    it.each([
+      ['handleRoleUpdated', handleRoleUpdated],
+      ['handleRoleDeleted', handleRoleDeleted],
+      ['handleRoleAssigned', handleRoleAssigned],
+      ['handleRoleUnassigned', handleRoleUnassigned],
+    ])('%s invalidates channel roles and effective channel permissions', (_name, handler) => {
+      handler({} as never, queryClient);
+
+      const keys = queryKeysInvalidated();
+      expect(keys).toContain('rolesControllerGetMyRolesForChannel');
+      expect(keys).toContain('channelPermissionsControllerGetMyCommunityChannelPermissions');
+      expect(keys).toContain('channelPermissionsControllerGetMyChannelPermissions');
     });
   });
 });
