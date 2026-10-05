@@ -118,4 +118,12 @@ describe('getDmHeaderName', () => {
     const group = createDmGroup({ isGroup: false, members: [me, other] });
     expect(getDmHeaderName(group, 'me')).toBe('Other Person');
   });
+
+  it('uses the compact list title for a big unnamed group, so header and list agree', () => {
+    const many = Array.from({ length: 6 }, (_, i) =>
+      createDmGroupMember({ userId: `u${i}`, user: { id: `u${i}`, username: `u${i}`, displayName: `Person ${i}`, avatarUrl: null } }),
+    );
+    const group = createDmGroup({ isGroup: true, members: [me, ...many] });
+    expect(getDmHeaderName(group, 'me')).toBe('Person 0, Person 1 + 4');
+  });
 });

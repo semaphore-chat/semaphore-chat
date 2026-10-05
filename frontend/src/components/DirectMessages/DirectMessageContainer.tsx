@@ -9,6 +9,7 @@ import { directMessagesControllerFindDmGroupOptions } from "../../api-client/@ta
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { useAutoMarkNotificationsRead } from "../../hooks/useAutoMarkNotificationsRead";
 import type { UserMention } from "../../utils/mentionParser";
+import { getDmHeaderName } from "../../utils/dmHelpers";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 
 interface DirectMessageContainerProps {
@@ -29,6 +30,12 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
 
   // Get DM group info to get members for mentions
   const { data: dmGroup } = useQuery(directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId } }));
+
+  // "Message @Alice" for a 1:1 DM, "Message <group title>" for a group.
+  const dmTitle = getDmHeaderName(dmGroup, user?.id);
+  const dmPlaceholder = dmTitle
+    ? `Message ${dmGroup?.isGroup || dmGroup?.name ? '' : '@'}${dmTitle}`
+    : "Type a message...";
 
   // Auto-mark notifications as read when viewing this DM
   useAutoMarkNotificationsRead({
@@ -85,7 +92,7 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
       userMentions={userMentions}
       onSendMessage={handleSendMessage}
       memberListComponent={memberListComponent}
-      placeholder="Type a direct message..."
+      placeholder={dmPlaceholder}
       emptyStateMessage="No messages yet. Start the conversation!"
       highlightMessageId={messagesHookResult.highlightMessageId}
     />

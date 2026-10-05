@@ -67,7 +67,7 @@ describe('DirectMessageContainer', () => {
     renderWithProviders(<DirectMessageContainer dmGroupId="dm-123" />);
 
     await waitFor(() => {
-      expect(screen.getByTestId('placeholder')).toHaveTextContent('Type a direct message...');
+      expect(screen.getByTestId('placeholder')).toHaveTextContent('Message @Other User');
     });
   });
 
