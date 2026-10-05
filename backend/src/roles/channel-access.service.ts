@@ -92,6 +92,22 @@ export class ChannelAccessService {
     });
     if (!channel) return [];
 
+    // Fast path for a plain private channel: its ChannelMembership rows (still
+    // community members) plus the instance owners, without loading everyone.
+    if (channel.isPrivate && channel.overwrites.length === 0) {
+      const viewers = await this.databaseService.membership.findMany({
+        where: {
+          communityId: channel.communityId,
+          OR: [
+            { user: { ChannelMembership: { some: { channelId } } } },
+            { user: { role: InstanceRole.OWNER } },
+          ],
+        },
+        select: { userId: true },
+      });
+      return viewers.map((m) => m.userId);
+    }
+
     const [members, channelMembers, userRoles] = await Promise.all([
       this.databaseService.membership.findMany({
         where: { communityId: channel.communityId },
@@ -203,6 +219,15 @@ export class ChannelAccessService {
     });
     if (!channel) return RoomName.channel(channelId);
     return this.audienceRoom(channel);
+  }
+
+  /** Whether every community member sees the channel (false if missing). */
+  async isVisibleToWholeCommunity(channelId: string): Promise<boolean> {
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: CHANNEL_PERMISSION_SELECT,
+    });
+    return !!channel && isVisibleToWholeCommunity(channel);
   }
 
   /** Channels whose events may go to the whole community room. */

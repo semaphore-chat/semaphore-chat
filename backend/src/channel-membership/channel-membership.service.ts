@@ -225,14 +225,20 @@ export class ChannelMembershipService {
       throw new NotFoundException('Channel membership not found');
     }
 
-    // Remove the membership
-    await this.databaseService.channelMembership.delete({
-      where: {
-        userId_channelId: {
-          userId,
-          channelId,
+    // Remove the membership, and the thread subscriptions in the channel
+    // (no reply notifications once access is gone)
+    await this.databaseService.$transaction(async (tx) => {
+      await tx.channelMembership.delete({
+        where: {
+          userId_channelId: {
+            userId,
+            channelId,
+          },
         },
-      },
+      });
+      await tx.threadSubscriber.deleteMany({
+        where: { userId, parentMessage: { channelId } },
+      });
     });
 
     // Emit domain event — the RoomSubscriptionHandler will remove sockets

@@ -16,6 +16,8 @@ export enum RoomEvents {
   MEMBERSHIP_REMOVED = 'membership.removed',
   MODERATION_USER_BANNED = 'moderation.user-banned',
   MODERATION_USER_KICKED = 'moderation.user-kicked',
+  /** A timeout was applied or removed: resync voice publish permissions. */
+  MODERATION_TIMEOUT_CHANGED = 'moderation.timeout-changed',
   CHANNEL_CREATED = 'channel.created',
   CHANNEL_DELETED = 'channel.deleted',
   /** Who can see a channel may have changed (privacy toggle, overwrites). */
@@ -90,6 +92,11 @@ export interface ModerationUserKickedEvent {
 
 export interface ChannelCreatedEvent {
   channelId: string;
+  communityId: string;
+}
+
+export interface ModerationTimeoutChangedEvent {
+  userId: string;
   communityId: string;
 }
 

@@ -3,11 +3,16 @@ import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ChannelsService } from './channels.service';
 import { DatabaseService } from '@/database/database.service';
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { ChannelType } from '@prisma/client';
+import {
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { ChannelType, InstanceRole, RbacActions } from '@prisma/client';
 import { createMockDatabase, UserFactory, ChannelFactory } from '@/test-utils';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 
@@ -17,6 +22,7 @@ describe('ChannelsService', () => {
   let eventEmitter: Mocked<EventEmitter2>;
   let channelAccessService: Mocked<ChannelAccessService>;
   let websocketService: Mocked<WebsocketService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -30,6 +36,7 @@ describe('ChannelsService', () => {
     eventEmitter = unitRef.get(EventEmitter2);
     channelAccessService = unitRef.get(ChannelAccessService);
     websocketService = unitRef.get(WebsocketService);
+    permissionsService = unitRef.get(PermissionsService);
     channelAccessService.audienceRoomFor.mockImplementation((id) =>
       Promise.resolve(`community:of-${id}`),
     );
@@ -263,6 +270,16 @@ describe('ChannelsService', () => {
   });
 
   describe('update', () => {
+    const manager = { id: 'manager-1', role: InstanceRole.USER };
+    const owner = { id: 'owner-1', role: InstanceRole.OWNER };
+
+    beforeEach(() => {
+      permissionsService.getCommunityActions.mockResolvedValue([
+        RbacActions.UPDATE_CHANNEL,
+        RbacActions.MANAGE_CHANNEL_PERMISSIONS,
+      ]);
+    });
+
     it('should update channel successfully', async () => {
       const channelId = 'channel-123';
       const updateDto = { name: 'updated-channel', isPrivate: true };
@@ -273,7 +290,7 @@ describe('ChannelsService', () => {
 
       mockDatabase.channel.update.mockResolvedValue(updatedChannel);
 
-      const result = await service.update(channelId, updateDto);
+      const result = await service.update(channelId, updateDto, manager);
 
       expect(result).toEqual(updatedChannel);
       expect(mockDatabase.channel.update).toHaveBeenCalledWith({
@@ -285,10 +302,13 @@ describe('ChannelsService', () => {
     it('resyncs the channel room and tells the community when privacy is toggled', async () => {
       const channelId = 'channel-123';
       const updated = ChannelFactory.build({ id: channelId, isPrivate: true });
-      mockDatabase.channel.findUnique.mockResolvedValue({ isPrivate: false });
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        isPrivate: false,
+        communityId: updated.communityId,
+      });
       mockDatabase.channel.update.mockResolvedValue(updated);
 
-      await service.update(channelId, { isPrivate: true });
+      await service.update(channelId, { isPrivate: true }, manager);
 
       expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_VISIBILITY_CHANGED,
@@ -301,6 +321,61 @@ describe('ChannelsService', () => {
       );
     });
 
+    it('a privacy toggle requires MANAGE_CHANNEL_PERMISSIONS', async () => {
+      const channelId = 'channel-123';
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        isPrivate: true,
+        communityId: 'community-1',
+      });
+      permissionsService.getCommunityActions.mockResolvedValue([
+        RbacActions.UPDATE_CHANNEL,
+      ]);
+
+      await expect(
+        service.update(channelId, { isPrivate: false }, manager),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(mockDatabase.channel.update).not.toHaveBeenCalled();
+      expect(permissionsService.getCommunityActions).toHaveBeenCalledWith(
+        manager.id,
+        'community-1',
+      );
+    });
+
+    it('the instance owner may toggle privacy without the permission', async () => {
+      const channelId = 'channel-123';
+      const updated = ChannelFactory.build({ id: channelId, isPrivate: false });
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        isPrivate: true,
+        communityId: updated.communityId,
+      });
+      mockDatabase.channel.update.mockResolvedValue(updated);
+
+      await expect(
+        service.update(channelId, { isPrivate: false }, owner),
+      ).resolves.toEqual(updated);
+      expect(permissionsService.getCommunityActions).not.toHaveBeenCalled();
+    });
+
+    it("edits that don't toggle privacy don't check the permission", async () => {
+      const channelId = 'channel-123';
+      const updated = ChannelFactory.build({ id: channelId, isPrivate: true });
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        isPrivate: true,
+        communityId: updated.communityId,
+      });
+      mockDatabase.channel.update.mockResolvedValue(updated);
+      permissionsService.getCommunityActions.mockResolvedValue([]);
+
+      await service.update(
+        channelId,
+        { name: 'renamed', isPrivate: true },
+        manager,
+      );
+
+      expect(permissionsService.getCommunityActions).not.toHaveBeenCalled();
+      expect(mockDatabase.channel.update).toHaveBeenCalled();
+    });
+
     it('should throw ConflictException for duplicate channel name', async () => {
       const channelId = 'channel-123';
       const updateDto = { name: 'general' };
@@ -308,10 +383,12 @@ describe('ChannelsService', () => {
       const duplicateError = { code: 'P2002' };
       mockDatabase.channel.update.mockRejectedValue(duplicateError);
 
-      await expect(service.update(channelId, updateDto)).rejects.toThrow(
-        ConflictException,
-      );
-      await expect(service.update(channelId, updateDto)).rejects.toThrow(
+      await expect(
+        service.update(channelId, updateDto, manager),
+      ).rejects.toThrow(ConflictException);
+      await expect(
+        service.update(channelId, updateDto, manager),
+      ).rejects.toThrow(
         'Channel with this name already exists in the community',
       );
     });
@@ -322,9 +399,9 @@ describe('ChannelsService', () => {
 
       mockDatabase.channel.update.mockRejectedValue(new Error('DB error'));
 
-      await expect(service.update(channelId, updateDto)).rejects.toThrow(
-        'DB error',
-      );
+      await expect(
+        service.update(channelId, updateDto, manager),
+      ).rejects.toThrow('DB error');
     });
   });
 

@@ -3,6 +3,7 @@ import {
   Logger,
   BadRequestException,
   ForbiddenException,
+  NotFoundException,
 } from '@nestjs/common';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { DatabaseService } from '@/database/database.service';
@@ -30,6 +31,37 @@ export class ReadReceiptsService {
   ) {}
 
   /**
+   * Every per-context endpoint (REST and the MARK_AS_READ socket event) goes
+   * through this: a channel needs view permission (ChannelAccessService;
+   * missing and hidden channels get the same 404, so existence doesn't
+   * leak), a DM group needs membership.
+   */
+  private async assertContextAccess(
+    userId: string,
+    channelId?: string,
+    directMessageGroupId?: string,
+  ): Promise<void> {
+    if (channelId) {
+      if (
+        !(await this.channelAccessService.canViewChannel(userId, channelId))
+      ) {
+        throw new NotFoundException('Channel not found');
+      }
+      return;
+    }
+    if (directMessageGroupId) {
+      const member =
+        await this.databaseService.directMessageGroupMember.findFirst({
+          where: { groupId: directMessageGroupId, userId },
+          select: { id: true },
+        });
+      if (!member) {
+        throw new ForbiddenException('You are not a member of this DM group');
+      }
+    }
+  }
+
+  /**
    * Mark messages as read up to a specific message ID
    * Creates or updates a read receipt for the user
    */
@@ -46,6 +78,8 @@ export class ReadReceiptsService {
         'Must provide exactly one of channelId or directMessageGroupId',
       );
     }
+
+    await this.assertContextAccess(userId, channelId, directMessageGroupId);
 
     // Verify the message exists and belongs to the specified channel/DM group
     const message = await this.databaseService.message.findUnique({
@@ -129,6 +163,8 @@ export class ReadReceiptsService {
         'Must provide exactly one of channelId or directMessageGroupId',
       );
     }
+
+    await this.assertContextAccess(userId, channelId, directMessageGroupId);
 
     // Find the read receipt
     const readReceipt = await this.databaseService.readReceipt.findFirst({
@@ -360,7 +396,11 @@ export class ReadReceiptsService {
     }
 
     // Process channels with read receipts
-    const channelReceipts = readReceipts.filter((r) => r.channelId);
+    // Only receipts of channels the user can still see
+    const visibleChannels = new Set(channelIds);
+    const channelReceipts = readReceipts.filter(
+      (r) => r.channelId && visibleChannels.has(r.channelId),
+    );
     const channelReceiptsWithTimestamp: Array<{
       channelId: string;
       lastReadMessageId: string;
@@ -520,6 +560,8 @@ export class ReadReceiptsService {
       );
     }
 
+    await this.assertContextAccess(userId, channelId, directMessageGroupId);
+
     const readReceipt = await this.databaseService.readReceipt.findFirst({
       where: channelId
         ? { userId, channelId }
@@ -557,9 +599,9 @@ export class ReadReceiptsService {
    */
   async getMessageReaders(
     messageId: string,
-    channelId?: string,
-    directMessageGroupId?: string,
-    excludeUserId?: string,
+    channelId: string | undefined,
+    directMessageGroupId: string | undefined,
+    requesterId: string,
   ) {
     if (
       (!channelId && !directMessageGroupId) ||
@@ -569,6 +611,13 @@ export class ReadReceiptsService {
         'Must provide exactly one of channelId or directMessageGroupId',
       );
     }
+
+    await this.assertContextAccess(
+      requesterId,
+      channelId,
+      directMessageGroupId,
+    );
+    const excludeUserId = requesterId;
 
     // Get the message to know its timestamp
     const message = await this.databaseService.message.findUnique({

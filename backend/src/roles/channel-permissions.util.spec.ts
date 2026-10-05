@@ -1,6 +1,7 @@
 import { OverwriteTarget, RbacActions as A } from '@prisma/client';
 import {
   canViewChannel,
+  OVERWRITABLE_ACTIONS,
   channelActionsGranted,
   ChannelPermissionInput,
   computeChannelActions,
@@ -203,8 +204,11 @@ describe('channel permission resolution', () => {
       expect(channelActionsGranted(i, [A.MANAGE_CHANNEL_PERMISSIONS])).toBe(
         true,
       );
-      expect(channelActionsGranted(i, [A.UPDATE_CHANNEL])).toBe(true);
-      // ...but can't read or post there
+      // Review fix: only managing overwrites is exempt. Editing the channel
+      // itself (name, privacy) needs view, as on main, so a Moderator can't
+      // un-private a channel they aren't in.
+      expect(channelActionsGranted(i, [A.UPDATE_CHANNEL])).toBe(false);
+      // ...and they can't read or post there
       expect(channelActionsGranted(i, [A.READ_MESSAGE])).toBe(false);
       expect(channelActionsGranted(i, [A.CREATE_MESSAGE])).toBe(false);
     });
@@ -329,6 +333,29 @@ describe('channel permission resolution', () => {
         { baseActions: [A.CREATE_MESSAGE] },
         true,
       ],
+      [
+        // Review: latent phase-3 bug, fixed. Roles lacking READ_CHANNEL used
+        // to skip the overwrite check entirely, so an EVERYONE deny hid the
+        // channel from everyone except them.
+        'roles never had READ_CHANNEL + everyone deny READ_CHANNEL: hidden',
+        {
+          baseActions: [A.CREATE_MESSAGE],
+          overwrites: [everyone([A.READ_CHANNEL])],
+        },
+        false,
+      ],
+      [
+        'roles never had READ_CHANNEL + everyone deny + their role allows: visible',
+        {
+          baseActions: [A.CREATE_MESSAGE],
+          roleIds: [MOD_ROLE],
+          overwrites: [
+            everyone([A.READ_CHANNEL]),
+            role(MOD_ROLE, [A.READ_CHANNEL]),
+          ],
+        },
+        true,
+      ],
     ])('%s', (_name, over, visible) => {
       expect(canViewChannel(input(over))).toBe(visible);
     });
@@ -380,6 +407,16 @@ describe('channel permission resolution', () => {
         share: false,
         managePermissions: true,
       });
+    });
+  });
+
+  describe('phase 1 limits', () => {
+    it('READ_CHANNEL and READ_MESSAGE are not overwritable until phase 3', () => {
+      // Search, attachments, notifications and live delivery only check view,
+      // so a read-history deny would not hide anything yet.
+      expect(OVERWRITABLE_ACTIONS.has(A.READ_CHANNEL)).toBe(false);
+      expect(OVERWRITABLE_ACTIONS.has(A.READ_MESSAGE)).toBe(false);
+      expect(OVERWRITABLE_ACTIONS.has(A.CREATE_MESSAGE)).toBe(true);
     });
   });
 });

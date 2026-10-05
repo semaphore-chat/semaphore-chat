@@ -24,6 +24,21 @@ import {
  * member  Member only
  * outsider no membership
  */
+// LiveKit tokens are plain JWT signing: no LiveKit server needed (as in
+// livekit-authz.e2e-spec.ts)
+process.env.LIVEKIT_API_KEY ??= 'devkey';
+process.env.LIVEKIT_API_SECRET ??=
+  'e2e-secret-that-is-at-least-32-characters-long';
+process.env.LIVEKIT_URL ??= 'ws://localhost:7880';
+
+/** The `video` grant of a LiveKit access token (JWT payload, unverified). */
+function videoGrant(token: string): Record<string, unknown> {
+  const payload = JSON.parse(
+    Buffer.from(token.split('.')[1], 'base64url').toString('utf8'),
+  ) as { video: Record<string, unknown> };
+  return payload.video;
+}
+
 describe('Channel permissions (e2e)', () => {
   let app: E2eApp;
   let db: DatabaseService;
@@ -42,6 +57,8 @@ describe('Channel permissions (e2e)', () => {
   let generalId: string;
   let announcementsId: string;
   let secretId: string;
+  let voiceId: string;
+  let secretMessageId: string;
   let moderatorRoleId: string;
 
   const http = () => request(app.getHttpServer());
@@ -79,9 +96,13 @@ describe('Channel permissions (e2e)', () => {
       ...extra,
     });
 
-  async function createChannel(name: string, isPrivate: boolean) {
+  async function createChannel(
+    name: string,
+    isPrivate: boolean,
+    type: 'TEXT' | 'VOICE' = 'TEXT',
+  ) {
     const res = await as('owner')
-      .post('/api/channels', { name, communityId, type: 'TEXT', isPrivate })
+      .post('/api/channels', { name, communityId, type, isPrivate })
       .expect(201);
     return (res.body as { id: string }).id;
   }
@@ -127,7 +148,18 @@ describe('Channel permissions (e2e)', () => {
     generalId = await createChannel('cp-general', false);
     announcementsId = await createChannel('cp-announcements', false);
     secretId = await createChannel('cp-secret', true); // only owner is in it
-    await post('owner', secretId, 'classified zebra plans').expect(201);
+    voiceId = await createChannel('cp-voice', false, 'VOICE');
+    secretMessageId = (
+      (await post('owner', secretId, 'classified zebra plans').expect(201))
+        .body as { id: string }
+    ).id;
+    // The owner has read it (so it has a readers list worth stealing)
+    await as('owner')
+      .post('/api/read-receipts/mark-read', {
+        channelId: secretId,
+        lastReadMessageId: secretMessageId,
+      })
+      .expect(200);
   });
 
   afterAll(async () => {
@@ -526,6 +558,61 @@ describe('Channel permissions (e2e)', () => {
         (res.body as { timedOutUntil: string | null }).timedOutUntil,
       ).not.toBeNull();
     });
+
+    it('their LiveKit token is subscribe-only (review: voice was not enforced)', async () => {
+      const res = await as('member')
+        .post('/api/livekit/token', { identity: 'x', roomId: voiceId })
+        .expect(201);
+      const grant = videoGrant((res.body as { token: string }).token);
+      expect(grant).toMatchObject({
+        roomJoin: true,
+        canSubscribe: true,
+        canPublish: false,
+      });
+      expect(grant.canPublishSources).toBeUndefined();
+    });
+
+    it('others in the community still publish everything', async () => {
+      const res = await as('mod')
+        .post('/api/livekit/token', { identity: 'x', roomId: voiceId })
+        .expect(201);
+      const grant = videoGrant((res.body as { token: string }).token);
+      expect(grant).toMatchObject({ canPublish: true });
+      expect(grant.canPublishSources).toBeUndefined();
+    });
+  });
+
+  describe('voice permissions in LiveKit tokens', () => {
+    afterAll(async () => {
+      await as('manager')
+        .put(`/api/channels/${voiceId}/overwrites`, {
+          preset: 'NORMAL',
+          overwrites: [],
+        })
+        .expect(200);
+    });
+
+    it('a VIDEO + SCREEN_SHARE deny leaves only the microphone', async () => {
+      await as('manager')
+        .put(`/api/channels/${voiceId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            {
+              targetType: 'EVERYONE',
+              allow: [],
+              deny: ['VIDEO', 'SCREEN_SHARE'],
+            },
+          ],
+        })
+        .expect(200);
+      const res = await as('member')
+        .post('/api/livekit/token', { identity: 'x', roomId: voiceId })
+        .expect(201);
+      expect(videoGrant((res.body as { token: string }).token)).toMatchObject({
+        canPublish: true,
+        canPublishSources: ['microphone'],
+      });
+    });
   });
 
   describe('lockout safeguard', () => {
@@ -541,16 +628,17 @@ describe('Channel permissions (e2e)', () => {
           ],
         })
         .expect(200);
+      // Review fix: only overwrites are exempt; editing the channel itself
+      // needs view, as on main
       await as('manager')
         .patch(`/api/channels/${secretId}`, { name: 'cp-secret-2' })
-        .expect(200);
-      // ...without gaining access to its content
+        .expect(403);
+      // ...and no access to its content
       await as('manager').get(`/api/messages/channel/${secretId}`).expect(403);
     });
 
     it('denying every overwritable action never locks the manager out', async () => {
       const everything = [
-        'READ_MESSAGE',
         'CREATE_MESSAGE',
         'ATTACH_FILES',
         'CREATE_REACTION',
@@ -611,6 +699,259 @@ describe('Channel permissions (e2e)', () => {
         .post(`/api/webhooks/${hookId}/${hookToken}`)
         .send({ content: 'release notes' })
         .expect((res) => expect(res.status).toBeLessThan(300));
+    });
+  });
+
+  describe('security review regressions', () => {
+    it('read receipts: a non-viewer gets nothing about a hidden channel (was 200)', async () => {
+      for (const who of ['member', 'outsider'] as const) {
+        await as(who)
+          .get(`/api/read-receipts/unread-count?channelId=${secretId}`)
+          .expect(404);
+        await as(who)
+          .get(`/api/read-receipts/last-read?channelId=${secretId}`)
+          .expect(404);
+        await as(who)
+          .get(
+            `/api/read-receipts/message/${secretMessageId}/readers?channelId=${secretId}`,
+          )
+          .expect(404);
+        await as(who)
+          .post('/api/read-receipts/mark-read', {
+            channelId: secretId,
+            lastReadMessageId: secretMessageId,
+          })
+          .expect(404);
+      }
+      // The owner, who can see it, still can
+      await as('owner')
+        .get(`/api/read-receipts/unread-count?channelId=${secretId}`)
+        .expect(200);
+    });
+
+    it('read receipts: hidden and missing channels answer identically', async () => {
+      const missing = '00000000-0000-4000-8000-000000000000';
+      const hidden = await as('member')
+        .get(`/api/read-receipts/unread-count?channelId=${secretId}`)
+        .expect(404);
+      const gone = await as('member')
+        .get(`/api/read-receipts/unread-count?channelId=${missing}`)
+        .expect(404);
+      expect(hidden.body).toEqual(gone.body);
+    });
+
+    it('read receipts: DM readers need DM membership', async () => {
+      const dm = await db.directMessageGroup.create({
+        data: {
+          isGroup: false,
+          members: { create: [{ userId: id.owner }, { userId: id.mod }] },
+        },
+      });
+      const msg = await db.message.create({
+        data: {
+          directMessageGroupId: dm.id,
+          authorId: id.owner,
+          sentAt: new Date(),
+        },
+      });
+      await as('member')
+        .get(
+          `/api/read-receipts/message/${msg.id}/readers?directMessageGroupId=${dm.id}`,
+        )
+        .expect(403);
+      await as('member')
+        .get(`/api/read-receipts/unread-count?directMessageGroupId=${dm.id}`)
+        .expect(403);
+    });
+
+    it('unread counts drop receipts of channels the user can no longer see', async () => {
+      await db.readReceipt.create({
+        data: {
+          userId: id.member,
+          channelId: secretId,
+          lastReadMessageId: secretMessageId,
+          lastReadAt: new Date(),
+        },
+      });
+      const res = await as('member')
+        .get('/api/read-receipts/unread-counts')
+        .expect(200);
+      expect(JSON.stringify(res.body)).not.toContain(secretId);
+    });
+
+    it('READ_MESSAGE overwrites are rejected until phase 3', async () => {
+      await as('manager')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            { targetType: 'EVERYONE', allow: [], deny: ['READ_MESSAGE'] },
+          ],
+        })
+        .expect(400);
+    });
+
+    it("a Moderator can't un-private a private channel they aren't in (was 200)", async () => {
+      await as('mod')
+        .patch(`/api/channels/${secretId}`, { isPrivate: false })
+        .expect(403);
+      const channel = await db.channel.findUniqueOrThrow({
+        where: { id: secretId },
+      });
+      expect(channel.isPrivate).toBe(true);
+    });
+
+    it('flipping privacy needs MANAGE_CHANNEL_PERMISSIONS even with UPDATE_CHANNEL and view', async () => {
+      const editor = await db.role.create({
+        data: {
+          name: 'Channel Editor',
+          communityId,
+          position: 50,
+          actions: [RbacActions.READ_CHANNEL, RbacActions.UPDATE_CHANNEL],
+        },
+      });
+      // Through the API, so the permission cache is invalidated
+      await as('owner')
+        .post(`/api/roles/community/${communityId}/assign`, {
+          userId: id.member,
+          roleId: editor.id,
+        })
+        .expect(204);
+      const denied = await as('member')
+        .patch(`/api/channels/${generalId}`, { isPrivate: true })
+        .expect(403);
+      expect((denied.body as { message: string }).message).toContain(
+        'manage channel permissions',
+      );
+      await as('member')
+        .patch(`/api/channels/${generalId}`, { name: 'cp-general' })
+        .expect(200);
+      await http()
+        .delete(
+          `/api/roles/community/${communityId}/users/${id.member}/roles/${editor.id}`,
+        )
+        .set('Authorization', `Bearer ${token.owner}`)
+        .expect(204);
+      await http()
+        .delete(`/api/roles/community/${communityId}/${editor.id}`)
+        .set('Authorization', `Bearer ${token.owner}`)
+        .expect(204);
+    });
+
+    it("hierarchy: a Moderator can't write an overwrite against Community Admin (was 200)", async () => {
+      const adminRole = await db.role.findFirstOrThrow({
+        where: { communityId, name: 'Community Admin' },
+      });
+      const res = await as('mod')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            {
+              targetType: 'ROLE',
+              roleId: adminRole.id,
+              allow: [],
+              deny: ['CREATE_MESSAGE'],
+            },
+          ],
+        })
+        .expect(403);
+      expect((res.body as { message: string }).message).toContain(
+        'roles below your highest role',
+      );
+      await post('manager', generalId, 'admins can still post').expect(201);
+    });
+
+    it("anti-escalation on the diff: can't delete a rule for actions you don't hold", async () => {
+      // Owner stores EVERYONE deny MUTE_PARTICIPANT; a role without that
+      // action submits an empty set to delete it.
+      await as('owner')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            { targetType: 'EVERYONE', allow: [], deny: ['MUTE_PARTICIPANT'] },
+          ],
+        })
+        .expect(200);
+      const limited = await db.role.create({
+        data: {
+          name: 'Limited Manager',
+          communityId,
+          position: 40,
+          actions: [
+            RbacActions.READ_CHANNEL,
+            RbacActions.MANAGE_CHANNEL_PERMISSIONS,
+          ],
+        },
+      });
+      // Through the API, so the permission cache is invalidated
+      await as('owner')
+        .post(`/api/roles/community/${communityId}/assign`, {
+          userId: id.member,
+          roleId: limited.id,
+        })
+        .expect(204);
+      const denied = await as('member')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'NORMAL',
+          overwrites: [],
+        })
+        .expect(403);
+      expect((denied.body as { message: string }).message).toBe(
+        "You can't change permissions you don't have: MUTE_PARTICIPANT",
+      );
+      await http()
+        .delete(
+          `/api/roles/community/${communityId}/users/${id.member}/roles/${limited.id}`,
+        )
+        .set('Authorization', `Bearer ${token.owner}`)
+        .expect(204);
+      await http()
+        .delete(`/api/roles/community/${communityId}/${limited.id}`)
+        .set('Authorization', `Bearer ${token.owner}`)
+        .expect(204);
+      await as('owner')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'NORMAL',
+          overwrites: [],
+        })
+        .expect(200);
+    });
+
+    it('GET /roles/my/channel/:id answers a hidden channel exactly like a missing one', async () => {
+      const missing = '00000000-0000-4000-8000-000000000000';
+      const hidden = await as('member')
+        .get(`/api/roles/my/channel/${secretId}`)
+        .expect(200);
+      const gone = await as('member')
+        .get(`/api/roles/my/channel/${missing}`)
+        .expect(200);
+      expect((hidden.body as { roles: unknown[] }).roles).toEqual([]);
+      expect({ ...hidden.body, resourceId: null }).toEqual({
+        ...gone.body,
+        resourceId: null,
+      });
+    });
+
+    it('thread subscriptions are dropped when a channel goes private', async () => {
+      const root = await post('owner', generalId, 'thread root').expect(201);
+      const rootId = (root.body as { id: string }).id;
+      await as('member').post(`/api/threads/${rootId}/subscribe`).expect(204);
+      expect(
+        await db.threadSubscriber.count({
+          where: { userId: id.member, parentMessageId: rootId },
+        }),
+      ).toBe(1);
+
+      await as('owner')
+        .patch(`/api/channels/${generalId}`, { isPrivate: true })
+        .expect(200);
+      expect(
+        await db.threadSubscriber.count({
+          where: { userId: id.member, parentMessageId: rootId },
+        }),
+      ).toBe(0);
+      await as('owner')
+        .patch(`/api/channels/${generalId}`, { isPrivate: false })
+        .expect(200);
     });
   });
 });

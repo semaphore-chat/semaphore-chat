@@ -53,6 +53,24 @@ describe('NotificationsService', () => {
     // Default: no CHANNEL_MESSAGE_MEMBER_THRESHOLD override configured —
     // individual tests override this via configService.get.mockImplementation.
     (configService.get as jest.Mock).mockReturnValue(undefined);
+    // Default: everyone these tests mention can see the channel; tests about
+    // visibility override it. Channels are public by default (cheap path).
+    channelAccessService.viewerUserIds.mockResolvedValue([
+      'author-1',
+      'user-1',
+      'user-2',
+      'user-3',
+      'target-user',
+      'user-mention',
+      'recipient-1',
+      'subscriber-1',
+      'subscriber-2',
+    ]);
+    channelAccessService.isVisibleToWholeCommunity.mockResolvedValue(false);
+    mockDatabase.notification.findMany.mockResolvedValue([]);
+    // No one opted into "all": the CHANNEL_MESSAGE pass creates nothing
+    mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+    mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
   });
 
   afterEach(() => {
@@ -704,6 +722,42 @@ describe('NotificationsService', () => {
         expect(warnSpy).toHaveBeenCalledWith(
           expect.stringContaining('6 viewers'),
         );
+      });
+
+      it('cheap path: a public channel over the threshold is skipped on the member count, without computing viewers', async () => {
+        configService.get.mockImplementation((key: string) =>
+          key === 'CHANNEL_MESSAGE_MEMBER_THRESHOLD' ? '5' : undefined,
+        );
+        channelAccessService.isVisibleToWholeCommunity.mockResolvedValue(true);
+        mockDatabase.channel.findUnique.mockResolvedValue({ communityId });
+        mockDatabase.membership.count.mockResolvedValue(6);
+        jest
+          .spyOn(service['logger'], 'warn')
+          .mockImplementation(() => undefined);
+
+        // A plain message: no mentions, so nothing else needs viewers either
+        await service.processMessageForNotifications(buildMessage() as any);
+
+        expect(mockDatabase.membership.count).toHaveBeenCalledWith({
+          where: { communityId },
+        });
+        expect(channelAccessService.viewerUserIds).not.toHaveBeenCalled();
+        expect(mockDatabase.notification.createMany).not.toHaveBeenCalled();
+      });
+
+      it('a public channel under the threshold computes viewers once', async () => {
+        channelAccessService.isVisibleToWholeCommunity.mockResolvedValue(true);
+        mockDatabase.channel.findUnique.mockResolvedValue({ communityId });
+        mockDatabase.membership.count.mockResolvedValue(2);
+        mockDatabase.membership.findMany.mockResolvedValue([
+          { userId: 'user-1' },
+        ]);
+        mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
+        mockDatabase.channelNotificationOverride.findMany.mockResolvedValue([]);
+
+        await service.processMessageForNotifications(buildMessage() as any);
+
+        expect(channelAccessService.viewerUserIds).toHaveBeenCalledTimes(1);
       });
 
       it('treats an explicit "0" threshold as invalid, warns, and falls back to the default 5000', async () => {
@@ -1978,6 +2032,87 @@ describe('NotificationsService', () => {
         'subscriber-1',
         expect.objectContaining({
           body: 'John Doe: I agree!',
+        }),
+      );
+    });
+
+    it('thread replies notify only subscribers who can still see the channel', async () => {
+      const spans = [
+        {
+          type: SpanType.PLAINTEXT,
+          text: 'I agree!',
+          userId: null,
+          specialKind: null,
+          communityId: null,
+          aliasId: null,
+        },
+      ];
+      const notification = NotificationFactory.build({
+        type: NotificationType.THREAD_REPLY,
+        authorId,
+        channelId,
+      });
+
+      mockDatabase.notification.create.mockResolvedValue({
+        ...notification,
+        author: authorInfo,
+        message: {
+          id: 'reply-1',
+          spans,
+          channelId,
+          directMessageGroupId: null,
+        },
+        channel: channelInfo,
+      });
+
+      const settings = UserNotificationSettingsFactory.build();
+      mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
+      mockDatabase.channelNotificationOverride.findUnique.mockResolvedValue(
+        null,
+      );
+
+      mockDatabase.threadSubscriber.findMany.mockResolvedValue([
+        { userId: 'subscriber-1' },
+        { userId: 'lost-access' },
+      ]);
+      channelAccessService.viewerUserIds.mockResolvedValue(['subscriber-1']);
+
+      const reply = MessageFactory.build({
+        id: 'reply-1',
+        channelId,
+        authorId,
+        spans: [
+          {
+            type: SpanType.PLAINTEXT,
+            text: 'I agree!',
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      } as any);
+
+      await service.processThreadReplyNotifications(
+        reply,
+        'parent-msg-1',
+        authorId,
+      );
+
+      expect(channelAccessService.viewerUserIds).toHaveBeenCalledWith(
+        channelId,
+      );
+      expect(pushNotificationsService.sendToUser).toHaveBeenCalledWith(
+        'subscriber-1',
+        expect.anything(),
+      );
+      expect(pushNotificationsService.sendToUser).not.toHaveBeenCalledWith(
+        'lost-access',
+        expect.anything(),
+      );
+      expect(mockDatabase.notification.create).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ userId: 'lost-access' }),
         }),
       );
     });

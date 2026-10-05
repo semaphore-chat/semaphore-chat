@@ -545,6 +545,11 @@ describe('ChannelMembershipService', () => {
           },
         },
       });
+      // Their thread subscriptions in the channel go too (same transaction)
+      expect(mockDatabase.$transaction).toHaveBeenCalled();
+      expect(mockDatabase.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: { userId: user.id, parentMessage: { channelId: channel.id } },
+      });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_MEMBERSHIP_REMOVED,
         { userId: user.id, channelId: channel.id },

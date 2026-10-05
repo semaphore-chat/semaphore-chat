@@ -3,7 +3,11 @@ import { ReadReceiptsService } from './read-receipts.service';
 import { DatabaseService } from '@/database/database.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { ChannelAccessService } from '@/roles/channel-access.service';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   createMockDatabase,
   ReadReceiptFactory,
@@ -40,6 +44,11 @@ describe('ReadReceiptsService', () => {
       return memberships.flatMap(
         (m) => m.community?.channels?.map((c) => c.id) ?? [],
       );
+    });
+    // Default: the caller can see the channel / is in the DM group
+    channelAccessService.canViewChannel.mockResolvedValue(true);
+    mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+      id: 'dm-member-1',
     });
   });
 
@@ -958,7 +967,12 @@ describe('ReadReceiptsService', () => {
       mockDatabase.message.findUnique.mockResolvedValue(message);
       mockDatabase.readReceipt.findMany.mockResolvedValue(readReceipts);
 
-      const result = await service.getMessageReaders(messageId, channelId);
+      const result = await service.getMessageReaders(
+        messageId,
+        channelId,
+        undefined,
+        'someone-else',
+      );
 
       expect(result).toHaveLength(2);
       expect(result).toEqual([
@@ -1027,10 +1041,132 @@ describe('ReadReceiptsService', () => {
       mockDatabase.message.findUnique.mockResolvedValue(message);
       mockDatabase.readReceipt.findMany.mockResolvedValue(readReceipts);
 
-      const result = await service.getMessageReaders(messageId, channelId);
+      const result = await service.getMessageReaders(
+        messageId,
+        channelId,
+        undefined,
+        'someone-else',
+      );
 
       expect(result).toHaveLength(2);
       expect(result.map((r) => r.userId)).toEqual(['user-123', 'user-456']);
+    });
+  });
+
+  describe('access control (hidden channels, DM membership)', () => {
+    const userId = 'user-1';
+
+    describe('a channel the user cannot see answers 404, like a missing one', () => {
+      beforeEach(() => {
+        channelAccessService.canViewChannel.mockResolvedValue(false);
+      });
+
+      it('markAsRead', async () => {
+        await expect(
+          service.markAsRead(userId, {
+            lastReadMessageId: 'msg-1',
+            channelId: 'hidden-1',
+          } as any),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(mockDatabase.readReceipt.upsert).not.toHaveBeenCalled();
+        expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
+          userId,
+          'hidden-1',
+        );
+      });
+
+      it('getUnreadCount', async () => {
+        await expect(
+          service.getUnreadCount(userId, 'hidden-1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+
+      it('getLastReadMessageId', async () => {
+        await expect(
+          service.getLastReadMessageId(userId, 'hidden-1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(mockDatabase.readReceipt.findFirst).not.toHaveBeenCalled();
+      });
+
+      it('getMessageReaders', async () => {
+        await expect(
+          service.getMessageReaders('msg-1', 'hidden-1', undefined, userId),
+        ).rejects.toBeInstanceOf(NotFoundException);
+        expect(mockDatabase.readReceipt.findMany).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('a DM group the user is not in is forbidden', () => {
+      beforeEach(() => {
+        mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue(null);
+      });
+
+      it.each([
+        [
+          'markAsRead',
+          () =>
+            service.markAsRead(userId, {
+              lastReadMessageId: 'msg-1',
+              directMessageGroupId: 'dm-1',
+            } as any),
+        ],
+        [
+          'getUnreadCount',
+          () => service.getUnreadCount(userId, undefined, 'dm-1'),
+        ],
+        [
+          'getLastReadMessageId',
+          () => service.getLastReadMessageId(userId, undefined, 'dm-1'),
+        ],
+        [
+          'getMessageReaders',
+          () => service.getMessageReaders('msg-1', undefined, 'dm-1', userId),
+        ],
+      ])('%s', async (_name, call) => {
+        await expect(call()).rejects.toBeInstanceOf(ForbiddenException);
+        expect(
+          mockDatabase.directMessageGroupMember.findFirst,
+        ).toHaveBeenCalledWith({
+          where: { groupId: 'dm-1', userId },
+          select: { id: true },
+        });
+      });
+    });
+
+    it('getUnreadCounts drops receipts of channels the user can no longer see', async () => {
+      mockDatabase.readReceipt.findMany.mockResolvedValue([
+        {
+          id: 'r1',
+          userId,
+          channelId: 'visible-1',
+          directMessageGroupId: null,
+          lastReadMessageId: null,
+          lastReadAt: new Date(),
+        },
+        {
+          id: 'r2',
+          userId,
+          channelId: 'hidden-1',
+          directMessageGroupId: null,
+          lastReadMessageId: null,
+          lastReadAt: new Date(),
+        },
+      ]);
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c1' },
+      ]);
+      channelAccessService.visibleChannelIds.mockResolvedValue(['visible-1']);
+      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue([]);
+      mockDatabase.notification.groupBy.mockResolvedValue([]);
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.count.mockResolvedValue(0);
+      mockDatabase.message.groupBy?.mockResolvedValue?.([]);
+
+      const counts = await service.getUnreadCounts(userId);
+
+      const channelIds = counts.map((c) => c.channelId).filter(Boolean);
+      expect(channelIds).toContain('visible-1');
+      expect(channelIds).not.toContain('hidden-1');
     });
   });
 });

@@ -106,8 +106,9 @@ export class ChannelsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateChannelDto: UpdateChannelDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelDto> {
-    return this.channelsService.update(id, updateChannelDto);
+    return this.channelsService.update(id, updateChannelDto, req.user);
   }
 
   @HttpCode(204)

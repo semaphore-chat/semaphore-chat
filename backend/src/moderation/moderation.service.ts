@@ -405,6 +405,11 @@ export class ModerationService {
       },
     });
 
+    // Thread subscriptions must not outlive access (no reply notifications)
+    await tx.threadSubscriber.deleteMany({
+      where: { userId, parentMessage: { channel: { communityId } } },
+    });
+
     // Remove user roles in the community
     await tx.userRoles.deleteMany({
       where: { userId, communityId },
@@ -487,6 +492,12 @@ export class ModerationService {
         expiresAt: expiresAt.toISOString(),
       },
     );
+
+    // Voice: make them listen-only right away in any call they're in
+    await this.eventEmitter.emitAsync(RoomEvents.MODERATION_TIMEOUT_CHANGED, {
+      userId,
+      communityId,
+    });
   }
 
   async removeTimeout(
@@ -531,6 +542,12 @@ export class ModerationService {
         reason,
       },
     );
+
+    // Voice: restore what they may publish in any call they're in
+    await this.eventEmitter.emitAsync(RoomEvents.MODERATION_TIMEOUT_CHANGED, {
+      userId,
+      communityId,
+    });
   }
 
   async isUserTimedOut(

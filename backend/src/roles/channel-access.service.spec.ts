@@ -112,14 +112,52 @@ describe('ChannelAccessService', () => {
   });
 
   describe('viewerUserIds', () => {
-    it('private channel: its members, plus instance owners in the community', async () => {
+    it('plain private channel (fast path): one query for its members and owners', async () => {
       db.channel.findUnique.mockResolvedValue(channel('private', true));
+      db.membership.findMany.mockResolvedValue([
+        { userId: 'in' },
+        { userId: 'owner' },
+      ]);
+
+      await expect(service.viewerUserIds('private')).resolves.toEqual([
+        'in',
+        'owner',
+      ]);
+      expect(db.membership.findMany).toHaveBeenCalledTimes(1);
+      expect(db.membership.findMany).toHaveBeenCalledWith({
+        where: {
+          communityId: COMMUNITY,
+          OR: [
+            { user: { ChannelMembership: { some: { channelId: 'private' } } } },
+            { user: { role: InstanceRole.OWNER } },
+          ],
+        },
+        select: { userId: true },
+      });
+      // No full member scan, no separate ChannelMembership/role loads
+      expect(db.channelMembership.findMany).not.toHaveBeenCalled();
+      expect(db.userRoles.findMany).not.toHaveBeenCalled();
+    });
+
+    it('private channel with overwrites: full evaluation (members, plus owners)', async () => {
+      db.channel.findUnique.mockResolvedValue(
+        channel('private', true, [
+          {
+            targetType: OverwriteTarget.EVERYONE,
+            roleId: null,
+            userId: null,
+            allow: [],
+            deny: [A.CREATE_MESSAGE],
+          },
+        ]),
+      );
       db.membership.findMany.mockResolvedValue([
         { userId: 'in', user: { role: InstanceRole.USER } },
         { userId: 'out', user: { role: InstanceRole.USER } },
         { userId: 'owner', user: { role: InstanceRole.OWNER } },
       ]);
       db.channelMembership.findMany.mockResolvedValue([{ userId: 'in' }]);
+      db.userRoles.findMany.mockResolvedValue([]);
 
       await expect(service.viewerUserIds('private')).resolves.toEqual([
         'in',
@@ -155,17 +193,15 @@ describe('ChannelAccessService', () => {
 
     it('private channel: viewers join, everyone else is removed', async () => {
       db.channel.findUnique.mockResolvedValue(channel('private', true));
-      db.membership.findMany.mockImplementation((args: { select: object }) =>
-        Promise.resolve(
-          'user' in args.select
-            ? [
-                { userId: 'in', user: { role: InstanceRole.USER } },
-                { userId: 'out', user: { role: InstanceRole.USER } },
-              ]
-            : [{ userId: 'in' }, { userId: 'out' }],
-        ),
+      // roomPlan's member list, then viewerUserIds' fast path
+      db.membership.findMany.mockImplementation(
+        (args: { where: { OR?: unknown } }) =>
+          Promise.resolve(
+            args.where.OR
+              ? [{ userId: 'in' }]
+              : [{ userId: 'in' }, { userId: 'out' }],
+          ),
       );
-      db.channelMembership.findMany.mockResolvedValue([{ userId: 'in' }]);
 
       await expect(service.roomPlan('private')).resolves.toEqual({
         everyone: false,

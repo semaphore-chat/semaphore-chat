@@ -14,8 +14,8 @@ CREATE TABLE "ChannelPermissionOverwrite" (
     "targetType" "OverwriteTarget" NOT NULL,
     "roleId" TEXT,
     "userId" TEXT,
-    "allow" "RbacActions"[] DEFAULT ARRAY[]::"RbacActions"[],
-    "deny" "RbacActions"[] DEFAULT ARRAY[]::"RbacActions"[],
+    "allow" "RbacActions"[] NOT NULL DEFAULT ARRAY[]::"RbacActions"[],
+    "deny" "RbacActions"[] NOT NULL DEFAULT ARRAY[]::"RbacActions"[],
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 

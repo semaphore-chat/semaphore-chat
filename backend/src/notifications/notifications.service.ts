@@ -93,10 +93,9 @@ export class NotificationsService {
 
     // Only users who can see the channel may be notified about it
     // (ChannelAccessService): no names or content of hidden channels leak
-    // through mentions.
-    const channelViewers = message.channelId
-      ? await this.channelAccessService.viewerUserIds(message.channelId)
-      : null;
+    // through mentions. Computed lazily, at most once: plain messages in
+    // large public channels never need it (see the threshold guard).
+    const viewers = this.lazyViewers(message.channelId);
 
     // Extract mentioned users from spans
     for (const span of message.spans) {
@@ -107,7 +106,7 @@ export class NotificationsService {
       // Handle @here and @channel special mentions
       if (span.type === SpanType.SPECIAL_MENTION) {
         const users = await this.getSpecialMentionUsers(
-          channelViewers,
+          message.channelId ? await viewers() : null,
           span.specialKind,
         );
         users.forEach((userId) => mentionedUserIds.add(userId));
@@ -125,8 +124,8 @@ export class NotificationsService {
       mentionedUserIds.delete(message.authorId);
     }
 
-    if (channelViewers) {
-      const viewerSet = new Set(channelViewers);
+    if (message.channelId && mentionedUserIds.size > 0) {
+      const viewerSet = new Set(await viewers());
       for (const userId of mentionedUserIds) {
         if (!viewerSet.has(userId)) mentionedUserIds.delete(userId);
       }
@@ -155,9 +154,19 @@ export class NotificationsService {
       await this.createChannelMessageNotifications(
         message,
         mentionedUserIds,
-        channelViewers ?? [],
+        viewers,
       );
     }
+  }
+
+  /** Memoized ChannelAccessService.viewerUserIds for one message. */
+  private lazyViewers(channelId: string | null): () => Promise<string[]> {
+    let pending: Promise<string[]> | null = null;
+    return () => {
+      if (!channelId) return Promise.resolve([]);
+      pending ??= this.channelAccessService.viewerUserIds(channelId);
+      return pending;
+    };
   }
 
   /**
@@ -299,7 +308,7 @@ export class NotificationsService {
   private async createChannelMessageNotifications(
     message: Message,
     alreadyNotifiedUserIds: Set<string>,
-    channelViewers: string[],
+    viewers: () => Promise<string[]>,
   ): Promise<void> {
     if (!message.channelId) return;
     // Notification.authorId is required — matches createNotificationIfAllowed's
@@ -309,17 +318,36 @@ export class NotificationsService {
     const channelId = message.channelId;
     const authorId = message.authorId;
 
-    // Performance guard: skip for channels with very many viewers
+    // Performance guard (cheap path first, as before): a channel the whole
+    // community sees is skipped on the member count alone, without
+    // computing viewers; restricted channels are judged by their viewers.
     const threshold = this.getChannelMessageMemberThreshold();
-    if (channelViewers.length > threshold) {
-      this.logger.warn(
-        `Skipping CHANNEL_MESSAGE notifications for channel ${channelId}: ${channelViewers.length} viewers (threshold: ${threshold})`,
-      );
-      return;
+    if (await this.channelAccessService.isVisibleToWholeCommunity(channelId)) {
+      const channel = await this.databaseService.channel.findUnique({
+        where: { id: channelId },
+        select: { communityId: true },
+      });
+      const memberCount = channel
+        ? await this.databaseService.membership.count({
+            where: { communityId: channel.communityId },
+          })
+        : 0;
+      if (memberCount > threshold) {
+        this.logger.warn(
+          `Skipping CHANNEL_MESSAGE notifications for channel ${channelId}: community has ${memberCount} members (threshold: ${threshold})`,
+        );
+        return;
+      }
     }
 
     // Eligible users: the channel's viewers (ChannelAccessService)
-    const userIds = channelViewers;
+    const userIds = await viewers();
+    if (userIds.length > threshold) {
+      this.logger.warn(
+        `Skipping CHANNEL_MESSAGE notifications for channel ${channelId}: ${userIds.length} viewers (threshold: ${threshold})`,
+      );
+      return;
+    }
 
     // Filter out author and already-notified users
     let eligibleUserIds = userIds.filter(
@@ -962,8 +990,18 @@ export class NotificationsService {
         return;
       }
 
+      // Channel threads: only subscribers who can still see the channel
+      // (ChannelAccessService); a subscription can outlive access.
+      let recipients = subscribers;
+      if (reply.channelId) {
+        const viewerSet = new Set(
+          await this.channelAccessService.viewerUserIds(reply.channelId),
+        );
+        recipients = subscribers.filter((s) => viewerSet.has(s.userId));
+      }
+
       // Create notifications for all subscribers
-      const notificationPromises = subscribers.map((subscriber) =>
+      const notificationPromises = recipients.map((subscriber) =>
         this.createNotificationIfAllowedForThread(
           subscriber.userId,
           reply,

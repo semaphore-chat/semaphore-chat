@@ -6,12 +6,31 @@ import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { UserFactory } from '@/test-utils';
 import { CreateTokenDto } from './dto/create-token.dto';
 import { JwtService } from '@nestjs/jwt';
+import { TrackSource } from 'livekit-server-sdk';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { FULL_PUBLISH_GRANT } from './publish-grant.util';
 
 describe('LivekitController', () => {
   let controller: LivekitController;
   let service: Mocked<LivekitService>;
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
+
+  const allCaps = {
+    channelId: 'room-1',
+    view: true,
+    post: true,
+    attach: true,
+    react: true,
+    threadReply: true,
+    connect: true,
+    speak: true,
+    video: true,
+    share: true,
+    managePermissions: false,
+    timedOutUntil: null,
+  };
 
   const mockUser = UserFactory.build();
   const mockRequest = {
@@ -27,6 +46,8 @@ describe('LivekitController', () => {
     service = unitRef.get(LivekitService);
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
+    channelAccessService = unitRef.get(ChannelAccessService);
+    channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
   });
 
   afterEach(() => {
@@ -56,6 +77,7 @@ describe('LivekitController', () => {
         expect(service.generateToken).toHaveBeenCalledWith(
           { roomId: 'room-1', identity: mockUser.id },
           'sess-1',
+          FULL_PUBLISH_GRANT,
         );
       },
     );
@@ -74,6 +96,7 @@ describe('LivekitController', () => {
       expect(service.generateToken).toHaveBeenCalledWith(
         { roomId: 'room-1', identity: mockUser.id },
         'sess-2',
+        FULL_PUBLISH_GRANT,
       );
     });
 
@@ -89,6 +112,7 @@ describe('LivekitController', () => {
       expect(service.generateToken).toHaveBeenCalledWith(
         { roomId: 'room-1', identity: mockUser.id },
         undefined,
+        FULL_PUBLISH_GRANT,
       );
     });
   });
@@ -122,6 +146,7 @@ describe('LivekitController', () => {
           identity: mockUser.id,
         },
         undefined, // no session: the request carries no access token
+        FULL_PUBLISH_GRANT,
       );
       expect(result).toEqual(mockTokenResponse);
     });
@@ -168,6 +193,82 @@ describe('LivekitController', () => {
     });
   });
 
+  describe('voice publish permissions', () => {
+    it('a timed-out member gets a subscribe-only channel token', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue({
+        ...allCaps,
+        post: false,
+        speak: false,
+        video: false,
+        share: false,
+        timedOutUntil: new Date(Date.now() + 60_000),
+      });
+
+      await controller.generateToken(
+        { roomId: 'room-1', identity: '' },
+        mockRequest,
+      );
+
+      expect(channelAccessService.channelCapabilities).toHaveBeenCalledWith(
+        mockUser.id,
+        'room-1',
+      );
+      expect(service.generateToken).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        { canPublish: false },
+      );
+    });
+
+    it('a partial voice grant lists only the allowed sources', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue({
+        ...allCaps,
+        video: false,
+        share: false,
+      });
+
+      await controller.generateToken(
+        { roomId: 'room-1', identity: '' },
+        mockRequest,
+      );
+
+      expect(service.generateToken).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        { canPublish: true, canPublishSources: [TrackSource.MICROPHONE] },
+      );
+    });
+
+    it('a missing channel gets nothing to publish', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue(null);
+
+      await controller.generateToken(
+        { roomId: 'room-1', identity: '' },
+        mockRequest,
+      );
+
+      expect(service.generateToken).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        { canPublish: false },
+      );
+    });
+
+    it('DM calls are never restricted (timeouts are community-scoped)', async () => {
+      await controller.generateDmToken(
+        { roomId: 'dm-1', identity: '' },
+        mockRequest,
+      );
+
+      expect(channelAccessService.channelCapabilities).not.toHaveBeenCalled();
+      expect(service.generateToken).toHaveBeenCalledWith(
+        expect.anything(),
+        undefined,
+        FULL_PUBLISH_GRANT,
+      );
+    });
+  });
+
   describe('generateDmToken', () => {
     it('should generate LiveKit token for DM call with forced identity', async () => {
       const createTokenDto: CreateTokenDto = {
@@ -196,6 +297,7 @@ describe('LivekitController', () => {
           identity: mockUser.id,
         },
         undefined, // no session: the request carries no access token
+        FULL_PUBLISH_GRANT,
       );
       expect(result).toEqual(mockTokenResponse);
     });

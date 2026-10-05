@@ -30,7 +30,13 @@ export const CHANNEL_SCOPED_ACTIONS: ReadonlySet<RbacActions> = new Set([
  * waits for phase 3, when every visibility query goes through one service.
  */
 export const OVERWRITABLE_ACTIONS: ReadonlySet<RbacActions> = new Set(
-  [...CHANNEL_SCOPED_ACTIONS].filter((a) => a !== RbacActions.READ_CHANNEL),
+  [...CHANNEL_SCOPED_ACTIONS].filter(
+    (a) =>
+      // Visibility and history reads wait for phase 3: search, attachment
+      // downloads, notifications and live message delivery check only view,
+      // so a READ_MESSAGE deny would not actually hide anything yet.
+      a !== RbacActions.READ_CHANNEL && a !== RbacActions.READ_MESSAGE,
+  ),
 );
 
 /**
@@ -53,7 +59,6 @@ export const TIMEOUT_BLOCKED_ACTIONS: ReadonlySet<RbacActions> = new Set([
  */
 export const CHANNEL_MANAGEMENT_ACTIONS: ReadonlySet<RbacActions> = new Set([
   RbacActions.MANAGE_CHANNEL_PERMISSIONS,
-  RbacActions.UPDATE_CHANNEL,
 ]);
 
 export interface OverwriteInput {
@@ -104,10 +109,22 @@ function passesViewGate(input: ChannelPermissionInput): boolean {
  * READ_CHANNEL hides the channel.
  */
 export function canViewChannel(input: ChannelPermissionInput): boolean {
-  if (!passesViewGate(input)) return false;
-  const couldView = new Set(input.baseActions).has(RbacActions.READ_CHANNEL);
-  if (!couldView) return true;
-  return computeChannelActions(input).has(RbacActions.READ_CHANNEL);
+  return passesViewGate(input) && overwritesAllowView(input);
+}
+
+/**
+ * READ_CHANNEL run through the overwrite layers, starting from "visible":
+ * a member always saw the channels passing the membership gate (whether or
+ * not their roles list READ_CHANNEL), so only an overwrite that ends up
+ * denying READ_CHANNEL hides it. Starting from the roles' READ_CHANNEL
+ * instead would let users whose roles lack it see channels an EVERYONE deny
+ * hides.
+ */
+function overwritesAllowView(input: ChannelPermissionInput): boolean {
+  return computeOverwrites(
+    new Set([...input.baseActions, RbacActions.READ_CHANNEL]),
+    input,
+  ).has(RbacActions.READ_CHANNEL);
 }
 
 /**
@@ -197,9 +214,24 @@ export function toCapabilities(
 export function computeChannelActions(
   input: ChannelPermissionInput,
 ): Set<RbacActions> {
-  const effective = new Set<RbacActions>(input.baseActions);
-  const couldView = effective.has(RbacActions.READ_CHANNEL);
+  const effective = computeOverwrites(new Set(input.baseActions), input);
 
+  if (!canViewChannel(input)) {
+    removeChannelScoped(effective);
+  }
+
+  if (input.timedOut) {
+    for (const action of TIMEOUT_BLOCKED_ACTIONS) effective.delete(action);
+  }
+
+  return effective;
+}
+
+/** Applies EVERYONE, then ROLE, then MEMBER overwrites to `effective`. */
+function computeOverwrites(
+  effective: Set<RbacActions>,
+  input: ChannelPermissionInput,
+): Set<RbacActions> {
   const apply = (deny: RbacActions[], allow: RbacActions[]) => {
     for (const action of channelScoped(deny)) effective.delete(action);
     for (const action of channelScoped(allow)) effective.add(action);
@@ -228,16 +260,6 @@ export function computeChannelActions(
     (o) => o.targetType === OverwriteTarget.MEMBER && o.userId === input.userId,
   );
   if (member) apply(member.deny, member.allow);
-
-  const overwriteHidChannel =
-    couldView && !effective.has(RbacActions.READ_CHANNEL);
-  if (!passesViewGate(input) || overwriteHidChannel) {
-    removeChannelScoped(effective);
-  }
-
-  if (input.timedOut) {
-    for (const action of TIMEOUT_BLOCKED_ACTIONS) effective.delete(action);
-  }
 
   return effective;
 }

@@ -17,6 +17,7 @@ import { ChannelPermissionsService } from './channel-permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { PermissionsService } from '@/roles/permissions.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { createMockDatabase, UserFactory } from '@/test-utils';
 import { DEFAULT_ADMIN_ROLE } from '@/roles/default-roles.config';
@@ -49,6 +50,7 @@ describe('ChannelPermissionsService', () => {
   let permissions: Mocked<PermissionsService>;
   let websocket: Mocked<WebsocketService>;
   let events: Mocked<EventEmitter2>;
+  let channelAccess: Mocked<ChannelAccessService>;
   const admin = UserFactory.build({ role: InstanceRole.USER });
 
   beforeEach(async () => {
@@ -61,6 +63,7 @@ describe('ChannelPermissionsService', () => {
     permissions = unitRef.get(PermissionsService);
     websocket = unitRef.get(WebsocketService);
     events = unitRef.get(EventEmitter2);
+    channelAccess = unitRef.get(ChannelAccessService);
 
     db.channel.findUnique.mockImplementation((args: { select: object }) =>
       Promise.resolve(
@@ -70,6 +73,14 @@ describe('ChannelPermissionsService', () => {
       ),
     );
     db.role.count.mockResolvedValue(1);
+    // Nothing stored yet; the actor is a Community Admin (position 10)
+    // writing for the Moderator role (position 20)
+    db.channelPermissionOverwrite.findMany.mockResolvedValue([]);
+    db.userRoles.findMany.mockResolvedValue([{ role: { position: 10 } }]);
+    db.role.findMany.mockResolvedValue([
+      { id: MOD_ROLE, name: 'Moderator', position: 20 },
+    ]);
+    channelAccess.audienceRoomFor.mockResolvedValue(`community:${COMMUNITY}`);
     permissions.getCommunityActions.mockResolvedValue(
       DEFAULT_ADMIN_ROLE.actions,
     );
@@ -110,10 +121,11 @@ describe('ChannelPermissionsService', () => {
       });
     });
 
-    it('resyncs the socket room, then tells the community', async () => {
+    it("resyncs the socket room, then tells the channel's audience", async () => {
       await service.replaceOverwrites(CHANNEL, announcement(), admin);
 
-      expect(events.emit).toHaveBeenCalledWith(
+      expect(channelAccess.audienceRoomFor).toHaveBeenCalledWith(CHANNEL);
+      expect(events.emitAsync).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_VISIBILITY_CHANGED,
         { channelId: CHANNEL, communityId: COMMUNITY },
       );
@@ -258,6 +270,122 @@ describe('ChannelPermissionsService', () => {
           "You can't change permissions you don't have: ATTACH_FILES",
         ),
       );
+    });
+
+    it('anti-escalation is checked on the DIFF: removing an entry needs its actions too', async () => {
+      // Stored: EVERYONE deny ATTACH_FILES. The actor (no ATTACH_FILES)
+      // submits an empty set, i.e. deletes it.
+      db.channelPermissionOverwrite.findMany.mockResolvedValue([
+        {
+          targetType: OverwriteTarget.EVERYONE,
+          roleId: null,
+          allow: [],
+          deny: [A.ATTACH_FILES],
+        },
+      ]);
+      permissions.getCommunityActions.mockResolvedValue([
+        A.MANAGE_CHANNEL_PERMISSIONS,
+        A.CREATE_MESSAGE,
+      ]);
+      await expect(
+        service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.NORMAL, overwrites: [] },
+          admin,
+        ),
+      ).rejects.toThrow(
+        "You can't change permissions you don't have: ATTACH_FILES",
+      );
+    });
+
+    it('unchanged entries are not re-checked (an admin can keep a higher-ranked rule while editing others)', async () => {
+      const ADMIN_ROLE = 'a0000000-0000-4000-8000-000000000002';
+      const keep = {
+        targetType: OverwriteTarget.ROLE,
+        roleId: ADMIN_ROLE,
+        allow: [A.ATTACH_FILES],
+        deny: [],
+      };
+      db.channelPermissionOverwrite.findMany.mockResolvedValue([keep]);
+      permissions.getCommunityActions.mockResolvedValue([
+        A.MANAGE_CHANNEL_PERMISSIONS,
+        A.CREATE_MESSAGE,
+      ]);
+      db.role.count.mockResolvedValue(1);
+      await service.replaceOverwrites(
+        CHANNEL,
+        {
+          preset: ChannelPreset.CUSTOM,
+          overwrites: [
+            keep,
+            {
+              targetType: OverwriteTarget.EVERYONE,
+              allow: [],
+              deny: [A.CREATE_MESSAGE],
+            },
+          ],
+        },
+        admin,
+      );
+      expect(db.role.findMany).not.toHaveBeenCalled();
+    });
+
+    it.each<[string, number]>([
+      ['a role above the actor', 5],
+      ['a role at the same position', 10],
+    ])(
+      "hierarchy: can't write an overwrite for %s",
+      async (_name, position) => {
+        db.role.findMany.mockResolvedValue([
+          { id: MOD_ROLE, name: 'Community Admin', position },
+        ]);
+        await expect(
+          service.replaceOverwrites(CHANNEL, announcement(), admin),
+        ).rejects.toThrow(
+          'You can only change overwrites for roles below your highest role: Community Admin',
+        );
+        expect(db.$transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it("hierarchy: can't remove an overwrite for a higher role", async () => {
+      db.channelPermissionOverwrite.findMany.mockResolvedValue([
+        {
+          targetType: OverwriteTarget.ROLE,
+          roleId: MOD_ROLE,
+          allow: [],
+          deny: [A.CREATE_MESSAGE],
+        },
+      ]);
+      db.role.findMany.mockResolvedValue([
+        { id: MOD_ROLE, name: 'Community Admin', position: 5 },
+      ]);
+      await expect(
+        service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.NORMAL, overwrites: [] },
+          admin,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('hierarchy: EVERYONE overwrites need no rank', async () => {
+      db.userRoles.findMany.mockResolvedValue([{ role: { position: 100 } }]);
+      await service.replaceOverwrites(
+        CHANNEL,
+        {
+          preset: ChannelPreset.READ_ONLY,
+          overwrites: [
+            {
+              targetType: OverwriteTarget.EVERYONE,
+              allow: [],
+              deny: [A.CREATE_MESSAGE],
+            },
+          ],
+        },
+        admin,
+      );
+      expect(db.$transaction).toHaveBeenCalled();
     });
 
     it('the instance owner may set any channel-scoped action', async () => {

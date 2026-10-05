@@ -9,7 +9,6 @@ import { InstanceRole, OverwriteTarget, RbacActions } from '@prisma/client';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { WebsocketService } from '@/websocket/websocket.service';
-import { RoomName } from '@/common/utils/room-name.util';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsService } from '@/roles/permissions.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
@@ -123,7 +122,7 @@ export class ChannelPermissionsService {
       // An overwrite that changes nothing is not stored.
       .filter((o) => o.allow.length > 0 || o.deny.length > 0);
 
-    await this.validate(channel.communityId, rows, actor);
+    await this.validate(channelId, channel.communityId, rows, actor);
 
     await this.databaseService.$transaction(async (tx) => {
       await tx.channelPermissionOverwrite.deleteMany({
@@ -142,12 +141,14 @@ export class ChannelPermissionsService {
 
     // Visibility may have changed (phase 3, when READ_CHANNEL is accepted):
     // resync the channel's socket room before telling clients.
-    this.eventEmitter.emit(RoomEvents.CHANNEL_VISIBILITY_CHANGED, {
+    await this.eventEmitter.emitAsync(RoomEvents.CHANNEL_VISIBILITY_CHANGED, {
       channelId,
       communityId: channel.communityId,
     });
+    // Only the channel's audience hears about it (the community room for a
+    // channel everyone sees, otherwise just its viewers)
     this.websocketService.sendToRoom(
-      RoomName.community(channel.communityId),
+      await this.channelAccessService.audienceRoomFor(channelId),
       ServerEvents.CHANNEL_PERMISSIONS_UPDATED,
       { communityId: channel.communityId, channelId },
     );
@@ -181,6 +182,7 @@ export class ChannelPermissionsService {
   }
 
   private async validate(
+    channelId: string,
     communityId: string,
     rows: {
       targetType: OverwriteTarget;
@@ -244,21 +246,87 @@ export class ChannelPermissionsService {
       }
     }
 
-    // Anti-escalation: an actor can only allow or deny what they hold
-    // themselves in the community. The instance OWNER holds everything.
-    if (actor.role !== InstanceRole.OWNER) {
-      const held = new Set(
-        await this.permissionsService.getCommunityActions(
-          actor.id,
-          communityId,
-        ),
+    if (actor.role === InstanceRole.OWNER) return;
+
+    // Anti-escalation, on the DIFF against what is stored: any entry the
+    // actor adds, changes or removes counts, so removing someone else's
+    // overwrite needs the same standing as writing it.
+    const existing =
+      await this.databaseService.channelPermissionOverwrite.findMany({
+        where: { channelId, targetType: { in: API_TARGETS } },
+        select: OVERWRITE_SELECT,
+      });
+    const key = (o: { targetType: OverwriteTarget; roleId: string | null }) =>
+      o.targetType === OverwriteTarget.EVERYONE
+        ? 'EVERYONE'
+        : `ROLE:${o.roleId}`;
+    const sameActions = (a: RbacActions[], b: RbacActions[]) =>
+      a.length === b.length && a.every((x) => b.includes(x));
+    const before = new Map(existing.map((o) => [key(o), o]));
+    const after = new Map(rows.map((o) => [key(o), o]));
+    const changed: { roleId: string | null; actions: RbacActions[] }[] = [];
+    for (const k of new Set([...before.keys(), ...after.keys()])) {
+      const old = before.get(k);
+      const next = after.get(k);
+      if (
+        old &&
+        next &&
+        sameActions(old.allow, next.allow) &&
+        sameActions(old.deny, next.deny)
+      ) {
+        continue;
+      }
+      changed.push({
+        roleId: (old ?? next)!.roleId,
+        actions: [
+          ...(old?.allow ?? []),
+          ...(old?.deny ?? []),
+          ...(next?.allow ?? []),
+          ...(next?.deny ?? []),
+        ],
+      });
+    }
+    if (changed.length === 0) return;
+
+    // 1. The actor must hold every action in every changed entry.
+    const held = new Set(
+      await this.permissionsService.getCommunityActions(actor.id, communityId),
+    );
+    const missing = [...new Set(changed.flatMap((c) => c.actions))].filter(
+      (a) => !held.has(a),
+    );
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `You can't change permissions you don't have: ${missing.join(', ')}`,
       );
-      const missing = [
-        ...new Set(rows.flatMap((r) => [...r.allow, ...r.deny])),
-      ].filter((a) => !held.has(a));
-      if (missing.length > 0) {
+    }
+
+    // 2. Role hierarchy (as moderation): role overwrites may only target
+    // roles strictly below the actor's highest role (lower position = higher
+    // rank). EVERYONE overwrites need only the manage permission + rule 1.
+    const changedRoleIds = [
+      ...new Set(changed.map((c) => c.roleId).filter((r): r is string => !!r)),
+    ];
+    if (changedRoleIds.length > 0) {
+      const [actorRoles, targets] = await Promise.all([
+        this.databaseService.userRoles.findMany({
+          where: { userId: actor.id, communityId, isInstanceRole: false },
+          select: { role: { select: { position: true } } },
+        }),
+        this.databaseService.role.findMany({
+          where: { id: { in: changedRoleIds } },
+          select: { id: true, name: true, position: true },
+        }),
+      ]);
+      const actorBest = actorRoles.length
+        ? Math.min(...actorRoles.map((r) => r.role.position))
+        : Number.MAX_SAFE_INTEGER;
+      const outranked = targets.filter((t) => t.position <= actorBest);
+      if (outranked.length > 0) {
         throw new ForbiddenException(
-          `You can't change permissions you don't have: ${missing.join(', ')}`,
+          `You can only change overwrites for roles below your highest role: ${outranked
+            .map((t) => t.name)
+            .join(', ')}`,
         );
       }
     }

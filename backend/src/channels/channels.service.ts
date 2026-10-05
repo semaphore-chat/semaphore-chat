@@ -1,5 +1,6 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,13 +10,14 @@ import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { ChannelType, Prisma } from '@prisma/client';
+import { ChannelType, InstanceRole, Prisma, RbacActions } from '@prisma/client';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { Channel as SharedChannel, ServerEvents } from '@semaphore-chat/shared';
 import { isPrismaError } from '@/common/utils/prisma.utils';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 
 @Injectable()
 export class ChannelsService {
@@ -57,6 +59,7 @@ export class ChannelsService {
     private readonly websocketService: WebsocketService,
     private readonly eventEmitter: EventEmitter2,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async create(createChannelDto: CreateChannelDto, user: UserEntity) {
@@ -165,13 +168,39 @@ export class ChannelsService {
     return channel;
   }
 
-  async update(id: string, updateChannelDto: UpdateChannelDto) {
+  async update(
+    id: string,
+    updateChannelDto: UpdateChannelDto,
+    actor: { id: string; role: InstanceRole },
+  ) {
     try {
       const before = await this.databaseService.channel.findUnique({
         where: { id },
         // channel-visibility: compared below to detect a privacy toggle
-        select: { isPrivate: true },
+        select: { isPrivate: true, communityId: true },
       });
+
+      // Changing who can see a channel is a permission change: it needs
+      // MANAGE_CHANNEL_PERMISSIONS (like an EVERYONE overwrite), on top of
+      // the UPDATE_CHANNEL + view the guard already checked.
+      if (
+        before &&
+        // channel-visibility: detects a privacy toggle (both lines)
+        updateChannelDto.isPrivate !== undefined &&
+        updateChannelDto.isPrivate !== before.isPrivate && // channel-visibility: same check
+        actor.role !== InstanceRole.OWNER
+      ) {
+        const held = await this.permissionsService.getCommunityActions(
+          actor.id,
+          before.communityId,
+        );
+        if (!held.includes(RbacActions.MANAGE_CHANNEL_PERMISSIONS)) {
+          throw new ForbiddenException(
+            'Changing channel privacy requires the manage channel permissions permission',
+          );
+        }
+      }
+
       const updated = await this.databaseService.channel.update({
         where: { id },
         data: updateChannelDto,

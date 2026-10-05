@@ -357,6 +357,29 @@ describe('RoomSubscriptionHandler', () => {
         'user:member',
         'channel-123',
       );
+      // ...and their thread subscriptions in that channel
+      expect(mockDatabase.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: {
+          userId: { in: ['outsider'] },
+          parentMessage: { channelId: 'channel-123' },
+        },
+      });
+    });
+
+    it('keeps thread subscriptions when nobody lost access', async () => {
+      channelAccessService.roomPlan.mockResolvedValue({
+        everyone: false,
+        communityId: 'community-456',
+        viewers: ['member'],
+        nonViewers: [],
+      });
+
+      await handler.onChannelVisibilityChanged({
+        channelId: 'channel-123',
+        communityId: 'community-456',
+      });
+
+      expect(mockDatabase.threadSubscriber.deleteMany).not.toHaveBeenCalled();
     });
 
     it('does nothing for a channel that no longer exists', async () => {
@@ -369,6 +392,86 @@ describe('RoomSubscriptionHandler', () => {
 
       expect(websocketService.joinSocketsToRoom).not.toHaveBeenCalled();
       expect(websocketService.removeSocketsFromRoom).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('onTimeoutChanged', () => {
+    const caps = {
+      channelId: 'voice-1',
+      view: true,
+      post: false,
+      attach: false,
+      react: false,
+      threadReply: false,
+      connect: true,
+      speak: false,
+      video: false,
+      share: false,
+      managePermissions: false,
+      timedOutUntil: new Date(Date.now() + 60_000),
+    };
+
+    it("makes a timed-out user listen-only in the community's calls they're in", async () => {
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([
+        'voice-1',
+        'other-community-voice',
+      ]);
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'voice-1' }]);
+      channelAccessService.channelCapabilities.mockResolvedValue(caps);
+
+      await handler.onTimeoutChanged({
+        userId: 'user-1',
+        communityId: 'community-456',
+      });
+
+      expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
+        where: {
+          communityId: 'community-456',
+          id: { in: ['voice-1', 'other-community-voice'] },
+        },
+        select: { id: true },
+      });
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledTimes(1);
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        { canPublish: false },
+      );
+    });
+
+    it('restores full publishing once the timeout is lifted', async () => {
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue(['voice-1']);
+      mockDatabase.channel.findMany.mockResolvedValue([{ id: 'voice-1' }]);
+      channelAccessService.channelCapabilities.mockResolvedValue({
+        ...caps,
+        post: true,
+        speak: true,
+        video: true,
+        share: true,
+        timedOutUntil: null,
+      });
+
+      await handler.onTimeoutChanged({
+        userId: 'user-1',
+        communityId: 'community-456',
+      });
+
+      expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+        'voice-1',
+        'user-1',
+        { canPublish: true },
+      );
+    });
+
+    it('does nothing when the user is in no call', async () => {
+      voicePresenceService.getUserVoiceChannels.mockResolvedValue([]);
+
+      await handler.onTimeoutChanged({
+        userId: 'user-1',
+        communityId: 'community-456',
+      });
+
+      expect(livekitService.updatePublishPermissions).not.toHaveBeenCalled();
     });
   });
 

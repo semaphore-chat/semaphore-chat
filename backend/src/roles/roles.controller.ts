@@ -13,6 +13,7 @@ import {
   ParseUUIDPipe,
 } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
+import { ChannelAccessService } from './channel-access.service';
 import { CommunityRolesService } from './community-roles.service';
 import { InstanceRolesService } from './instance-roles.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
@@ -41,6 +42,7 @@ export class RolesController {
   constructor(
     private readonly communityRolesService: CommunityRolesService,
     private readonly instanceRolesService: InstanceRolesService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   @Get('my/community/:communityId')
@@ -59,6 +61,18 @@ export class RolesController {
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Req() req: AuthenticatedRequest,
   ): Promise<UserRolesResponseDto> {
+    // A channel the caller can't see answers exactly like a missing one
+    // (empty roles), so this can't be used to probe for hidden channels.
+    if (
+      !(await this.channelAccessService.canViewChannel(req.user.id, channelId))
+    ) {
+      return {
+        userId: req.user.id,
+        resourceId: channelId,
+        resourceType: 'CHANNEL',
+        roles: [],
+      };
+    }
     return this.communityRolesService.getUserRolesForChannel(
       req.user.id,
       channelId,

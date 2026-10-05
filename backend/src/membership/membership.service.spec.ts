@@ -682,6 +682,9 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUniqueOrThrow.mockResolvedValue(membership);
 
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 5 }),
         },
@@ -712,6 +715,13 @@ describe('MembershipService', () => {
         where: {
           userId: user.id,
           communityId: community.id,
+        },
+      });
+      // Leaving drops the thread subscriptions in the community too
+      expect(mockTx.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: {
+          userId: user.id,
+          parentMessage: { channel: { communityId: community.id } },
         },
       });
       expect(mockTx.membership.delete).toHaveBeenCalledWith({
@@ -774,6 +784,9 @@ describe('MembershipService', () => {
       mockDatabase.membership.findUniqueOrThrow.mockResolvedValue(membership);
 
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },

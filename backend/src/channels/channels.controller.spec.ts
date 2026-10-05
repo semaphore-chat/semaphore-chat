@@ -115,10 +115,15 @@ describe('ChannelsController', () => {
 
       channelsService.update.mockResolvedValue(updatedChannel as any);
 
-      const result = await controller.update(channelId, updateDto);
+      const req = { user: { id: 'user-1', role: 'USER' } } as any;
+      const result = await controller.update(channelId, updateDto, req);
 
       expect(result).toEqual(updatedChannel);
-      expect(channelsService.update).toHaveBeenCalledWith(channelId, updateDto);
+      expect(channelsService.update).toHaveBeenCalledWith(
+        channelId,
+        updateDto,
+        req.user,
+      );
     });
   });
 

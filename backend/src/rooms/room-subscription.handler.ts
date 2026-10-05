@@ -5,6 +5,7 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { DatabaseService } from '@/database/database.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { LivekitService } from '@/livekit/livekit.service';
+import { publishGrantFor } from '@/livekit/publish-grant.util';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ChannelAccessService } from '@/roles/channel-access.service';
@@ -14,6 +15,7 @@ import {
   MembershipRemovedEvent,
   ModerationUserBannedEvent,
   ModerationUserKickedEvent,
+  ModerationTimeoutChangedEvent,
   ChannelCreatedEvent,
   ChannelDeletedEvent,
   ChannelVisibilityChangedEvent,
@@ -144,6 +146,43 @@ export class RoomSubscriptionHandler {
   }
 
   /**
+   * A timeout was applied or removed: recompute what the user may publish in
+   * every voice channel of the community they're connected to (listen-only
+   * while timed out). Errors are logged, never thrown.
+   */
+  @OnEvent(RoomEvents.MODERATION_TIMEOUT_CHANGED)
+  async onTimeoutChanged({
+    userId,
+    communityId,
+  }: ModerationTimeoutChangedEvent): Promise<void> {
+    try {
+      const connected =
+        await this.voicePresenceService.getUserVoiceChannels(userId);
+      if (connected.length === 0) return;
+      const channels = await this.databaseService.channel.findMany({
+        where: { communityId, id: { in: connected } },
+        select: { id: true },
+      });
+      for (const { id } of channels) {
+        const caps = await this.channelAccessService.channelCapabilities(
+          userId,
+          id,
+        );
+        await this.livekitService.updatePublishPermissions(
+          id,
+          userId,
+          caps ? publishGrantFor(caps) : { canPublish: false },
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to update voice permissions of ${userId} in community ${communityId}`,
+        error,
+      );
+    }
+  }
+
+  /**
    * Remove a user from all voice channels in a community.
    * Handles both LiveKit session ejection and Redis voice presence cleanup.
    * Errors are logged but never thrown — moderation actions must not fail
@@ -232,6 +271,15 @@ export class RoomSubscriptionHandler {
     }
     for (const userId of plan.nonViewers) {
       this.websocketService.removeSocketsFromRoom(RoomName.user(userId), room);
+    }
+    // Users who lost access also lose their thread subscriptions here
+    if (plan.nonViewers.length > 0) {
+      await this.databaseService.threadSubscriber.deleteMany({
+        where: {
+          userId: { in: plan.nonViewers },
+          parentMessage: { channelId },
+        },
+      });
     }
     for (const userId of plan.viewers) {
       this.websocketService.joinSocketsToRoom(RoomName.user(userId), room);

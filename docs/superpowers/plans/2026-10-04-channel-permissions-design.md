@@ -299,3 +299,35 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
 | `message-attachment` and `replay-clip` file-access strategies (`ChannelMembershipService.isMember`, now removed) | `canViewChannel` |
 | `clip-library.service` / `livekit-replay.service` clip sharing | `PermissionsService.userHasChannelActions([CREATE_MESSAGE, ATTACH_FILES])` |
 | `PermissionsService` CHANNEL/MESSAGE branches | `channelActionsGranted` (pure util) |
+
+### Security review fixes (phase 1, 2026-10-05)
+
+- **Read receipts** (`read-receipts.service` `assertContextAccess`):
+  - every per-context path (REST mark-read, unread-count, last-read and readers, plus the `MARK_AS_READ` socket event, which uses the same service) requires view on a channel or membership of a DM group;
+  - hidden and missing channels return the same 404;
+  - `getUnreadCounts` drops receipts of channels the user can't see.
+- **No read-history overwrites yet.** `READ_MESSAGE` (and `READ_CHANNEL`) are not overwritable until phase 3. Search, attachment downloads, notifications, push and live `NEW_MESSAGE` delivery only check *view*. **Phase 3 must** make those paths check `READ_MESSAGE` before the PUT accepts it.
+- **Lockout exception narrowed.** It covers only `MANAGE_CHANNEL_PERMISSIONS` (reading and replacing overwrites) and the management listing. `UPDATE_CHANNEL` needs view again, as on main. Changing `isPrivate` also needs `MANAGE_CHANNEL_PERMISSIONS`, since it is a visibility change for everyone, like an EVERYONE overwrite.
+- **Overwrite hierarchy:**
+  - the escalation check runs on the diff against the stored set: the actor must hold every action of any entry they add, change or remove;
+  - ROLE entries may only target roles strictly below the actor's highest role (lower position = higher rank, as in moderation);
+  - EVERYONE entries need only the manage permission;
+  - the instance OWNER bypasses both.
+- **Voice is now enforced in LiveKit tokens** (`livekit/publish-grant.util.ts`):
+  - grants: microphone needs SPEAK, camera VIDEO, screen share and its audio SCREEN_SHARE;
+  - nothing allowed means `canPublish: false`, never `canPublishSources: []`, which LiveKit reads as "all";
+  - DM calls are unrestricted;
+  - applying or removing a timeout updates the live participant (`updateParticipant`);
+  - a timeout that expires naturally is restored by the next token.
+  - Known gap: the soundboard publishes `Source.Unknown`, which grants can't name, so a *partial* voice grant also blocks the soundboard.
+  - Phase 4 still owes live updates when overwrites change.
+- **Thread replies:**
+  - notifications go only to subscribers who can view the channel;
+  - subscriptions are deleted on kick, ban, leave, removal from a private channel, and for users who lose view when a channel's visibility changes.
+- **Smaller fixes:**
+  - The channel-message notification guard checks the member count before computing viewers. A private channel without overwrites takes a fast path that reads only its member rows.
+  - `CHANNEL_PERMISSIONS_UPDATED` goes to the channel's audience room.
+  - The permissions cache key is versioned (`rbac:v2:`).
+  - `allow`/`deny` are NOT NULL.
+  - `GET /roles/my/channel/:id` answers a hidden channel exactly like a missing one.
+  - `canViewChannel` fixed: roles lacking `READ_CHANNEL` no longer skip an EVERYONE deny of `READ_CHANNEL`.
