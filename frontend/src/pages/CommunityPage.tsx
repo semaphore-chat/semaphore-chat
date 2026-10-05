@@ -1,9 +1,10 @@
-import React from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Navigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   communityControllerFindOneOptions,
   channelsControllerFindOneOptions,
+  channelsControllerFindAllForCommunityOptions,
 } from "../api-client/@tanstack/react-query.gen";
 import { Avatar, Box, Typography } from "@mui/material";
 import ChannelList from "../components/Channel/ChannelList";
@@ -17,6 +18,10 @@ import { useVoiceConnection } from "../hooks/useVoiceConnection";
 import { useAuthenticatedImage } from "../hooks/useAuthenticatedImage";
 import { useResponsive } from "../hooks/useResponsive";
 import { useStagePresence } from "../hooks/useStagePresence";
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import PageError from "../components/Common/PageError";
+import { COMMUNITY_ERROR_COPY } from "../utils/pageError";
+import { getLastChannelId, pickInitialChannel, setLastChannelId } from "../utils/lastChannel";
 
 const CommunityPage: React.FC = () => {
   const { isMobile } = useResponsive();
@@ -35,7 +40,8 @@ const DesktopCommunityPage: React.FC = () => {
     communityId: string;
     channelId: string;
   }>();
-  const { data, error, isLoading } = useQuery({
+  const { user } = useCurrentUser();
+  const { data, error, isLoading, refetch } = useQuery({
     ...communityControllerFindOneOptions({ path: { id: communityId! } }),
     enabled: !!communityId,
   });
@@ -43,7 +49,21 @@ const DesktopCommunityPage: React.FC = () => {
     ...channelsControllerFindOneOptions({ path: { id: channelId! } }),
     enabled: !!channelId,
   });
+  // Opening a community with no channel selected: go to the last-visited text
+  // channel (or the first visible one) rather than an empty placeholder. The
+  // list is the one ChannelList reads, so it is shared through the cache.
+  const { data: channelList, isSuccess: channelListLoaded } = useQuery({
+    ...channelsControllerFindAllForCommunityOptions({ path: { communityId: communityId! } }),
+    enabled: !!communityId && !channelId,
+  });
   const { state: voiceState } = useVoiceConnection();
+
+  // Remember the text channel being viewed, per user and community.
+  const viewedTextChannelId =
+    channelData?.type === ChannelType.TEXT && channelData.id === channelId ? channelData.id : undefined;
+  useEffect(() => {
+    if (communityId && viewedTextChannelId) setLastChannelId(user?.id, communityId, viewedTextChannelId);
+  }, [user?.id, communityId, viewedTextChannelId]);
   const { blobUrl: communityAvatarUrl } = useAuthenticatedImage(data?.avatar);
 
   const isConnectedToVoiceChannel = Boolean(
@@ -55,8 +75,17 @@ const DesktopCommunityPage: React.FC = () => {
 
   if (!communityId) return <div>Community ID is required</div>;
   if (isLoading) return <div>Loading...</div>;
-  if (error) return <div>Error loading community data</div>;
+  if (error) {
+    return <PageError error={error} copy={COMMUNITY_ERROR_COPY} onRetry={() => void refetch()} />;
+  }
   if (!data) return <div>No community data found</div>;
+
+  const initialChannel = !channelId && channelListLoaded && user
+    ? pickInitialChannel(channelList, getLastChannelId(user.id, communityId))
+    : null;
+  if (initialChannel) {
+    return <Navigate to={`/community/${communityId}/channel/${initialChannel.id}`} replace />;
+  }
 
   const renderChannelContent = () => {
     if (!channelId) {

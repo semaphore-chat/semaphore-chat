@@ -5,6 +5,7 @@ import { Channel as ChannelComponent } from "./Channel";
 import { List, Typography, Box, alpha, useTheme, Skeleton } from "@mui/material";
 import { Tag as TextIcon, VolumeUp as VoiceIcon } from "@mui/icons-material";
 import { ChannelType, Channel } from "../../types/channel.type";
+import { ErrorState } from "../Common/ListState";
 
 interface ChannelListProps {
   communityId: string;
@@ -70,6 +71,7 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
     data: channels,
     isLoading,
     error,
+    refetch,
   } = useQuery(channelsControllerFindAllForCommunityOptions({ path: { communityId } }));
 
   // Separate and sort channels by type
@@ -91,11 +93,12 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
 
   if (error) {
     return (
-      <Box sx={{ px: 2, py: 2 }}>
-        <Typography color="error" variant="body2">
-          Failed to load channels.
-        </Typography>
-      </Box>
+      <ErrorState
+        size="compact"
+        title="Couldn't load channels"
+        description="Check your connection and try again."
+        onRetry={() => void refetch()}
+      />
     );
   }
 

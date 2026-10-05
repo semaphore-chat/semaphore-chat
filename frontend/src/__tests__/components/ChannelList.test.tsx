@@ -50,7 +50,8 @@ describe('ChannelList', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText('Failed to load channels.')).toBeInTheDocument();
+      expect(screen.getByText("Couldn't load channels")).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
     });
   });
 
