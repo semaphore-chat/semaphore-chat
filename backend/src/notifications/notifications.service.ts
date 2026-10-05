@@ -125,9 +125,14 @@ export class NotificationsService {
     }
 
     if (message.channelId && mentionedUserIds.size > 0) {
-      const viewerSet = new Set(await viewers());
+      // Cheap for public channels: only the mentioned ids are looked up
+      const allowed = new Set(
+        await this.channelAccessService.filterViewers(message.channelId, [
+          ...mentionedUserIds,
+        ]),
+      );
       for (const userId of mentionedUserIds) {
-        if (!viewerSet.has(userId)) mentionedUserIds.delete(userId);
+        if (!allowed.has(userId)) mentionedUserIds.delete(userId);
       }
     }
 
@@ -994,10 +999,13 @@ export class NotificationsService {
       // (ChannelAccessService); a subscription can outlive access.
       let recipients = subscribers;
       if (reply.channelId) {
-        const viewerSet = new Set(
-          await this.channelAccessService.viewerUserIds(reply.channelId),
+        const allowed = new Set(
+          await this.channelAccessService.filterViewers(
+            reply.channelId,
+            subscribers.map((s) => s.userId),
+          ),
         );
-        recipients = subscribers.filter((s) => viewerSet.has(s.userId));
+        recipients = subscribers.filter((s) => allowed.has(s.userId));
       }
 
       // Create notifications for all subscribers

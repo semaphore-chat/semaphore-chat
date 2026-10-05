@@ -67,6 +67,13 @@ describe('NotificationsService', () => {
       'subscriber-2',
     ]);
     channelAccessService.isVisibleToWholeCommunity.mockResolvedValue(false);
+    // filterViewers: the candidates that are in the viewer list above
+    channelAccessService.filterViewers.mockImplementation(
+      async (channelId: string, ids: string[]) => {
+        const viewers = await channelAccessService.viewerUserIds(channelId);
+        return ids.filter((id) => viewers.includes(id));
+      },
+    );
     mockDatabase.notification.findMany.mockResolvedValue([]);
     // No one opted into "all": the CHANNEL_MESSAGE pass creates nothing
     mockDatabase.userNotificationSettings.findMany.mockResolvedValue([]);
@@ -2381,6 +2388,70 @@ describe('NotificationsService', () => {
         settingsDeleted: 0,
         overridesDeleted: 0,
       });
+    });
+  });
+
+  describe('cheap visibility checks for mentions and thread replies', () => {
+    it('checks @user mentions with filterViewers on just the mentioned ids, without loading all viewers', async () => {
+      channelAccessService.filterViewers.mockResolvedValue([]);
+      // A large public channel: the channel-message pass skips on the count
+      channelAccessService.isVisibleToWholeCommunity.mockResolvedValue(true);
+      mockDatabase.channel.findUnique.mockResolvedValue({ communityId: 'c1' });
+      mockDatabase.membership.count.mockResolvedValue(1_000_000);
+      const message = {
+        id: 'msg-cheap',
+        channelId: 'channel-1',
+        directMessageGroupId: null,
+        authorId: 'author-1',
+        deletedAt: null,
+        spans: [
+          {
+            type: 'USER_MENTION',
+            userId: 'user-1',
+            specialKind: null,
+            aliasId: null,
+          },
+          {
+            type: 'USER_MENTION',
+            userId: 'user-2',
+            specialKind: null,
+            aliasId: null,
+          },
+        ],
+      } as never;
+
+      await service.processMessageForNotifications(message);
+
+      expect(channelAccessService.filterViewers).toHaveBeenCalledWith(
+        'channel-1',
+        ['user-1', 'user-2'],
+      );
+      expect(channelAccessService.viewerUserIds).not.toHaveBeenCalled();
+    });
+
+    it('checks thread-reply subscribers with filterViewers', async () => {
+      mockDatabase.threadSubscriber.findMany.mockResolvedValue([
+        { userId: 'subscriber-1' },
+        { userId: 'subscriber-2' },
+      ]);
+      channelAccessService.filterViewers.mockResolvedValue([]);
+
+      await service.processThreadReplyNotifications(
+        {
+          id: 'reply-1',
+          channelId: 'channel-1',
+          directMessageGroupId: null,
+          authorId: 'author-1',
+        } as never,
+        'parent-1',
+        'author-1',
+      );
+
+      expect(channelAccessService.filterViewers).toHaveBeenCalledWith(
+        'channel-1',
+        ['subscriber-1', 'subscriber-2'],
+      );
+      expect(channelAccessService.viewerUserIds).not.toHaveBeenCalled();
     });
   });
 });

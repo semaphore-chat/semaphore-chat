@@ -331,3 +331,22 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
   - `allow`/`deny` are NOT NULL.
   - `GET /roles/my/channel/:id` answers a hidden channel exactly like a missing one.
   - `canViewChannel` fixed: roles lacking `READ_CHANNEL` no longer skip an EVERYONE deny of `READ_CHANNEL`.
+
+### Re-review fixes (2026-10-05)
+
+- **An EVERYONE deny can't lock out higher roles.** An actor who isn't the instance owner and doesn't hold the community's top-ranked role may add or extend an EVERYONE deny of X only if every role ranked above them that holds X gets an explicit ROLE allow of X in the same set. Otherwise the PUT returns 403: "This would remove X from roles above yours; add allows for them or ask an admin".
+  - ROLE entries for higher roles are accepted only as pure, growing allows: no deny, nothing removed.
+  - **Phase 2:** the preset UI must add these allows automatically, for the higher roles that hold the action.
+- **Stale LiveKit tokens.** The `participant_joined` webhook recomputes the participant's channel capabilities and narrows the grant with `updatePublishPermissions` when it isn't full. DM rooms and LiveKit's ingress/egress participants are skipped.
+- **Cheap recipient checks.** `@user` mentions and thread-reply subscribers go through `ChannelAccessService.filterViewers`. For a channel the whole community sees, it looks up only the candidate ids in the membership table.
+
+### Phase 4 (voice) carry-overs
+
+1. **Live publish-permission updates when overwrites or roles change.** On a PUT to a voice channel's overwrites, or a role assignment or definition change, recompute the grants of connected participants and call `updatePublishPermissions`, as the timeout path does.
+2. **Restoring voice when a timeout expires while still connected.** Recommendation: a delayed BullMQ job, scheduled when the timeout is applied and set to fire at `expiresAt`, that emits `MODERATION_TIMEOUT_CHANGED`. A rejoin restores it today, but a user who stays connected would stay muted until they reconnect, which looks like a bug. The job is small and idempotent (it recomputes from current state).
+3. **Removing people from the LiveKit room when they lose view** (an existing gap). This covers removal from a private channel, a privacy flip, and later READ_CHANNEL overwrites. Reuse `removeParticipant`, as kick and ban do, and call it from `syncChannelRoom` for non-viewers who are connected.
+4. **Soundboard and spoofed source labels.**
+   - The soundboard publishes `Source.Unknown`, which grants can't name, so a partial grant blocks it.
+   - Clients choose the source label, so a user with SCREEN_SHARE but no SPEAK could publish a microphone stream labelled as screen-share audio.
+   - Recommendation: grant `SCREEN_SHARE_AUDIO` only when the user has both SCREEN_SHARE and SPEAK, and treat the soundboard as needing SPEAK. That means sending soundboard audio as a named track on the microphone source, or accepting the gap and documenting it.
+5. **CAPTURE_REPLAY enforcement.** No endpoint requires it today, and none did on main. Gate `replay/start` and `replay/capture` with it on the CHANNEL resource.

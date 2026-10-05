@@ -301,32 +301,75 @@ export class ChannelPermissionsService {
       );
     }
 
-    // 2. Role hierarchy (as moderation): role overwrites may only target
-    // roles strictly below the actor's highest role (lower position = higher
-    // rank). EVERYONE overwrites need only the manage permission + rule 1.
-    const changedRoleIds = [
-      ...new Set(changed.map((c) => c.roleId).filter((r): r is string => !!r)),
-    ];
-    if (changedRoleIds.length > 0) {
-      const [actorRoles, targets] = await Promise.all([
-        this.databaseService.userRoles.findMany({
-          where: { userId: actor.id, communityId, isInstanceRole: false },
-          select: { role: { select: { position: true } } },
-        }),
-        this.databaseService.role.findMany({
-          where: { id: { in: changedRoleIds } },
-          select: { id: true, name: true, position: true },
-        }),
-      ]);
-      const actorBest = actorRoles.length
-        ? Math.min(...actorRoles.map((r) => r.role.position))
-        : Number.MAX_SAFE_INTEGER;
-      const outranked = targets.filter((t) => t.position <= actorBest);
-      if (outranked.length > 0) {
+    // 2. Role hierarchy (as moderation; lower position = higher rank).
+    const changedRoleIds = new Set(
+      changed.map((c) => c.roleId).filter((r): r is string => !!r),
+    );
+    const newEveryoneDenies = (after.get('EVERYONE')?.deny ?? []).filter(
+      (a) => !(before.get('EVERYONE')?.deny ?? []).includes(a),
+    );
+    if (changedRoleIds.size === 0 && newEveryoneDenies.length === 0) return;
+
+    const [actorRoles, communityRoles] = await Promise.all([
+      this.databaseService.userRoles.findMany({
+        where: { userId: actor.id, communityId, isInstanceRole: false },
+        select: { role: { select: { position: true } } },
+      }),
+      this.databaseService.role.findMany({
+        where: { communityId },
+        select: { id: true, name: true, position: true, actions: true },
+      }),
+    ]);
+    const actorBest = actorRoles.length
+      ? Math.min(...actorRoles.map((r) => r.role.position))
+      : Number.MAX_SAFE_INTEGER;
+
+    // 2a. ROLE overwrites may only target roles strictly below the actor,
+    // except a pure, growing allow for a higher role (which can only keep
+    // or give them something, e.g. alongside a new EVERYONE deny, see 2b).
+    const onlyAdds = (roleId: string) => {
+      const old = before.get(`ROLE:${roleId}`);
+      const next = after.get(`ROLE:${roleId}`);
+      return (
+        !!next &&
+        next.deny.length === 0 &&
+        (!old ||
+          (old.deny.length === 0 &&
+            old.allow.every((a) => next.allow.includes(a))))
+      );
+    };
+    const outranked = communityRoles.filter(
+      (r) =>
+        changedRoleIds.has(r.id) && r.position <= actorBest && !onlyAdds(r.id),
+    );
+    if (outranked.length > 0) {
+      throw new ForbiddenException(
+        `You can only change overwrites for roles below your highest role: ${outranked
+          .map((t) => t.name)
+          .join(', ')}`,
+      );
+    }
+
+    // 2b. A new EVERYONE deny of X must not take X from roles ranked above
+    // the actor: each such role holding X needs an explicit ROLE allow of X
+    // in the same set (the phase 2 preset UI adds these automatically).
+    // Holders of the community's top-ranked role are exempt.
+    const topPosition = Math.min(
+      ...communityRoles.map((r) => r.position),
+      Number.MAX_SAFE_INTEGER,
+    );
+    if (newEveryoneDenies.length > 0 && actorBest > topPosition) {
+      const above = communityRoles.filter((r) => r.position < actorBest);
+      const stripped = newEveryoneDenies.filter((action) =>
+        above.some(
+          (role) =>
+            role.actions.includes(action) &&
+            !(after.get(`ROLE:${role.id}`)?.allow ?? []).includes(action),
+        ),
+      );
+      if (stripped.length > 0) {
         throw new ForbiddenException(
-          `You can only change overwrites for roles below your highest role: ${outranked
-            .map((t) => t.name)
-            .join(', ')}`,
+          `This would remove ${stripped.join(', ')} from roles above yours; add allows for them or ask an admin`,
         );
       }
     }

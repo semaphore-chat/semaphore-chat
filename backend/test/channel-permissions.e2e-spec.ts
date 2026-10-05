@@ -954,4 +954,59 @@ describe('Channel permissions (e2e)', () => {
         .expect(200);
     });
   });
+
+  describe('an @everyone deny cannot lock out higher roles (review probe)', () => {
+    afterAll(async () => {
+      await as('owner')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'NORMAL',
+          overwrites: [],
+        })
+        .expect(200);
+    });
+
+    it('a Moderator denying posting for everyone is rejected (was 200, and the admin got 403)', async () => {
+      const res = await as('mod')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'READ_ONLY',
+          overwrites: [
+            { targetType: 'EVERYONE', allow: [], deny: ['CREATE_MESSAGE'] },
+          ],
+        })
+        .expect(403);
+      expect((res.body as { message: string }).message).toBe(
+        'This would remove CREATE_MESSAGE from roles above yours; add allows for them or ask an admin',
+      );
+      await post('manager', generalId, 'admin still posts').expect(201);
+    });
+
+    it('works when the Moderator keeps an allow for Community Admin', async () => {
+      const adminRole = await db.role.findFirstOrThrow({
+        where: { communityId, name: 'Community Admin' },
+      });
+      await as('mod')
+        .put(`/api/channels/${generalId}/overwrites`, {
+          preset: 'READ_ONLY',
+          overwrites: [
+            { targetType: 'EVERYONE', allow: [], deny: ['CREATE_MESSAGE'] },
+            {
+              targetType: 'ROLE',
+              roleId: adminRole.id,
+              allow: ['CREATE_MESSAGE'],
+              deny: [],
+            },
+            {
+              targetType: 'ROLE',
+              roleId: moderatorRoleId,
+              allow: ['CREATE_MESSAGE'],
+              deny: [],
+            },
+          ],
+        })
+        .expect(200);
+      await post('manager', generalId, 'admin still posts').expect(201);
+      await post('mod', generalId, 'mod still posts').expect(201);
+      await post('member', generalId, 'member cannot').expect(403);
+    });
+  });
 });

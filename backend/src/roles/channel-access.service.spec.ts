@@ -263,4 +263,34 @@ describe('ChannelAccessService', () => {
       });
     });
   });
+
+  describe('filterViewers', () => {
+    it('public channel: looks up only the candidates, never every member', async () => {
+      db.channel.findUnique.mockResolvedValue(channel('public'));
+      db.membership.findMany.mockResolvedValue([{ userId: 'a' }]);
+
+      await expect(
+        service.filterViewers('public', ['a', 'b']),
+      ).resolves.toEqual(['a']);
+      expect(db.membership.findMany).toHaveBeenCalledWith({
+        where: { communityId: COMMUNITY, userId: { in: ['a', 'b'] } },
+        select: { userId: true },
+      });
+      expect(db.membership.findMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('private channel: intersects with the viewers', async () => {
+      db.channel.findUnique.mockResolvedValue(channel('private', true));
+      db.membership.findMany.mockResolvedValue([{ userId: 'in' }]);
+
+      await expect(
+        service.filterViewers('private', ['in', 'out']),
+      ).resolves.toEqual(['in']);
+    });
+
+    it('no candidates: no queries', async () => {
+      await expect(service.filterViewers('public', [])).resolves.toEqual([]);
+      expect(db.channel.findUnique).not.toHaveBeenCalled();
+    });
+  });
 });

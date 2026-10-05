@@ -16,6 +16,8 @@ import { ConfigService } from '@nestjs/config';
 import { WebhookReceiver, type WebhookEvent } from 'livekit-server-sdk';
 import { LivekitService } from './livekit.service';
 import { LivekitAccessService } from './livekit-access.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { FULL_PUBLISH_GRANT, publishGrantFor } from './publish-grant.util';
 import { LivekitReplayService } from './livekit-replay.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import {
@@ -55,6 +57,7 @@ export class LivekitWebhookController {
     private readonly voicePresenceService: VoicePresenceService,
     private readonly livekitService: LivekitService,
     private readonly livekitAccessService: LivekitAccessService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {
     const apiKey = this.configService.get<string>('LIVEKIT_API_KEY');
     const apiSecret = this.configService.get<string>('LIVEKIT_API_SECRET');
@@ -187,6 +190,8 @@ export class LivekitWebhookController {
       return;
     }
 
+    await this.clampPublishPermissions(room.name, participant.identity, event);
+
     try {
       await this.voicePresenceService.handleWebhookParticipantJoined(
         room.name,
@@ -229,6 +234,42 @@ export class LivekitWebhookController {
     );
     await this.livekitService.removeParticipant(roomName, identity);
     return true;
+  }
+
+  /**
+   * A token can predate a timeout or an overwrite (tokens can't be revoked),
+   * so on join the publish grant is recomputed from the participant's
+   * current channel capabilities and narrowed if it isn't full. DM rooms
+   * (no channel) and LiveKit's own ingress/egress participants are skipped.
+   * Errors are logged, never thrown.
+   */
+  private async clampPublishPermissions(
+    roomName: string,
+    identity: string,
+    event: WebhookEvent,
+  ): Promise<void> {
+    const kind: number | undefined = event.participant?.kind;
+    if (kind === PARTICIPANT_KIND_INGRESS || kind === PARTICIPANT_KIND_EGRESS) {
+      return;
+    }
+    try {
+      const caps = await this.channelAccessService.channelCapabilities(
+        identity,
+        roomName,
+      );
+      if (!caps) return; // not a channel room (DM call)
+      const grant = publishGrantFor(caps);
+      if (grant === FULL_PUBLISH_GRANT) return;
+      await this.livekitService.updatePublishPermissions(
+        roomName,
+        identity,
+        grant,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to clamp publish permissions of ${identity} in room ${roomName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /**

@@ -78,7 +78,7 @@ describe('ChannelPermissionsService', () => {
     db.channelPermissionOverwrite.findMany.mockResolvedValue([]);
     db.userRoles.findMany.mockResolvedValue([{ role: { position: 10 } }]);
     db.role.findMany.mockResolvedValue([
-      { id: MOD_ROLE, name: 'Moderator', position: 20 },
+      { id: MOD_ROLE, name: 'Moderator', position: 20, actions: [] },
     ]);
     channelAccess.audienceRoomFor.mockResolvedValue(`community:${COMMUNITY}`);
     permissions.getCommunityActions.mockResolvedValue(
@@ -327,7 +327,8 @@ describe('ChannelPermissionsService', () => {
         },
         admin,
       );
-      expect(db.role.findMany).not.toHaveBeenCalled();
+      // The kept higher-ranked ADMIN_ROLE entry didn't trip the hierarchy
+      expect(db.$transaction).toHaveBeenCalled();
     });
 
     it.each<[string, number]>([
@@ -337,10 +338,25 @@ describe('ChannelPermissionsService', () => {
       "hierarchy: can't write an overwrite for %s",
       async (_name, position) => {
         db.role.findMany.mockResolvedValue([
-          { id: MOD_ROLE, name: 'Community Admin', position },
+          { id: MOD_ROLE, name: 'Community Admin', position, actions: [] },
         ]);
+        // A deny for a higher/equal role (an allow-only entry is exempt)
         await expect(
-          service.replaceOverwrites(CHANNEL, announcement(), admin),
+          service.replaceOverwrites(
+            CHANNEL,
+            {
+              preset: ChannelPreset.CUSTOM,
+              overwrites: [
+                {
+                  targetType: OverwriteTarget.ROLE,
+                  roleId: MOD_ROLE,
+                  allow: [],
+                  deny: [A.CREATE_MESSAGE],
+                },
+              ],
+            },
+            admin,
+          ),
         ).rejects.toThrow(
           'You can only change overwrites for roles below your highest role: Community Admin',
         );
@@ -358,7 +374,7 @@ describe('ChannelPermissionsService', () => {
         },
       ]);
       db.role.findMany.mockResolvedValue([
-        { id: MOD_ROLE, name: 'Community Admin', position: 5 },
+        { id: MOD_ROLE, name: 'Community Admin', position: 5, actions: [] },
       ]);
       await expect(
         service.replaceOverwrites(
@@ -386,6 +402,140 @@ describe('ChannelPermissionsService', () => {
         admin,
       );
       expect(db.$transaction).toHaveBeenCalled();
+    });
+
+    describe('an EVERYONE deny must not strip roles above the actor', () => {
+      const ADMIN_ROLE = 'a0000000-0000-4000-8000-000000000002';
+      const MEMBER_ROLE = 'a0000000-0000-4000-8000-000000000003';
+      const moderator = UserFactory.build({ role: InstanceRole.USER });
+      const denyPosting = {
+        targetType: OverwriteTarget.EVERYONE,
+        allow: [],
+        deny: [A.CREATE_MESSAGE],
+      };
+
+      beforeEach(() => {
+        db.userRoles.findMany.mockResolvedValue([{ role: { position: 20 } }]);
+        db.role.findMany.mockResolvedValue([
+          {
+            id: ADMIN_ROLE,
+            name: 'Community Admin',
+            position: 10,
+            actions: [A.CREATE_MESSAGE],
+          },
+          {
+            id: MOD_ROLE,
+            name: 'Moderator',
+            position: 20,
+            actions: [A.CREATE_MESSAGE],
+          },
+          {
+            id: MEMBER_ROLE,
+            name: 'Member',
+            position: 100,
+            actions: [A.CREATE_MESSAGE],
+          },
+        ]);
+      });
+
+      it('rejects a Moderator denying posting for everyone (the review probe)', async () => {
+        await expect(
+          service.replaceOverwrites(
+            CHANNEL,
+            { preset: ChannelPreset.READ_ONLY, overwrites: [denyPosting] },
+            moderator,
+          ),
+        ).rejects.toThrow(
+          'This would remove CREATE_MESSAGE from roles above yours; add allows for them or ask an admin',
+        );
+        expect(db.$transaction).not.toHaveBeenCalled();
+      });
+
+      it('accepts it with an explicit allow for every higher role holding the action', async () => {
+        await service.replaceOverwrites(
+          CHANNEL,
+          {
+            preset: ChannelPreset.READ_ONLY,
+            overwrites: [
+              denyPosting,
+              {
+                targetType: OverwriteTarget.ROLE,
+                roleId: ADMIN_ROLE,
+                allow: [A.CREATE_MESSAGE],
+                deny: [],
+              },
+            ],
+          },
+          moderator,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+      });
+
+      it('a deny on a higher role is still rejected (only growing allows are exempt)', async () => {
+        await expect(
+          service.replaceOverwrites(
+            CHANNEL,
+            {
+              preset: ChannelPreset.CUSTOM,
+              overwrites: [
+                {
+                  targetType: OverwriteTarget.ROLE,
+                  roleId: ADMIN_ROLE,
+                  allow: [],
+                  deny: [A.CREATE_MESSAGE],
+                },
+              ],
+            },
+            moderator,
+          ),
+        ).rejects.toThrow('roles below your highest role: Community Admin');
+      });
+
+      it("can't drop the higher role's allow afterwards", async () => {
+        db.channelPermissionOverwrite.findMany.mockResolvedValue([
+          { ...denyPosting, roleId: null },
+          {
+            targetType: OverwriteTarget.ROLE,
+            roleId: ADMIN_ROLE,
+            allow: [A.CREATE_MESSAGE],
+            deny: [],
+          },
+        ]);
+        await expect(
+          service.replaceOverwrites(
+            CHANNEL,
+            { preset: ChannelPreset.READ_ONLY, overwrites: [denyPosting] },
+            moderator,
+          ),
+        ).rejects.toThrow('roles below your highest role: Community Admin');
+      });
+
+      it('an already-stored EVERYONE deny is not re-checked', async () => {
+        db.channelPermissionOverwrite.findMany.mockResolvedValue([
+          { ...denyPosting, roleId: null },
+        ]);
+        await service.replaceOverwrites(
+          CHANNEL,
+          {
+            preset: ChannelPreset.READ_ONLY,
+            overwrites: [
+              { ...denyPosting, deny: [A.CREATE_MESSAGE, A.CREATE_REACTION] },
+            ],
+          },
+          moderator,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+      });
+
+      it('holders of the top-ranked role are exempt', async () => {
+        db.userRoles.findMany.mockResolvedValue([{ role: { position: 10 } }]);
+        await service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.READ_ONLY, overwrites: [denyPosting] },
+          admin,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+      });
     });
 
     it('the instance owner may set any channel-scoped action', async () => {

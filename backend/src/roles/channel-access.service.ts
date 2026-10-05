@@ -221,6 +221,36 @@ export class ChannelAccessService {
     return this.audienceRoom(channel);
   }
 
+  /**
+   * The subset of `candidateIds` who can see the channel. For a channel the
+   * whole community sees this is a membership lookup of just the candidates
+   * (cheap at any community size); otherwise it intersects with the viewers.
+   */
+  async filterViewers(
+    channelId: string,
+    candidateIds: string[],
+  ): Promise<string[]> {
+    if (candidateIds.length === 0) return [];
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: CHANNEL_PERMISSION_SELECT,
+    });
+    if (!channel) return [];
+    if (isVisibleToWholeCommunity(channel)) {
+      const members = await this.databaseService.membership.findMany({
+        where: {
+          communityId: channel.communityId,
+          userId: { in: candidateIds },
+        },
+        select: { userId: true },
+      });
+      const memberSet = new Set(members.map((m) => m.userId));
+      return candidateIds.filter((id) => memberSet.has(id));
+    }
+    const viewers = new Set(await this.viewerUserIds(channelId));
+    return candidateIds.filter((id) => viewers.has(id));
+  }
+
   /** Whether every community member sees the channel (false if missing). */
   async isVisibleToWholeCommunity(channelId: string): Promise<boolean> {
     const channel = await this.databaseService.channel.findUnique({
