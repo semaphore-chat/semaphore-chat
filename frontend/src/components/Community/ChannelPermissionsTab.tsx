@@ -31,6 +31,7 @@ import VisibilityIcon from "@mui/icons-material/Visibility";
 import ShieldOutlinedIcon from "@mui/icons-material/ShieldOutlined";
 import TuneIcon from "@mui/icons-material/Tune";
 import LockIcon from "@mui/icons-material/Lock";
+import CheckIcon from "@mui/icons-material/Check";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   buildPresetOverwrites,
@@ -52,6 +53,8 @@ import type {
 } from "../../api-client/types.gen";
 import type { Channel } from "../../types/channel.type";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { useResponsive } from "../../hooks/useResponsive";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { ACTION_LABELS, type RbacAction } from "../../constants/rbacActions";
 import { invalidateChannelQueries } from "../../utils/queryInvalidation";
 import { invalidateChannelPermissionQueries } from "../../socket-hub/handlers/communityHandlers";
@@ -119,6 +122,8 @@ export const ChannelPermissionsTab: React.FC<ChannelPermissionsTabProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const { user } = useCurrentUser();
+  const { shouldUseTouchUI } = useResponsive();
+  const chipHeight = shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 32;
   const isOwner = user?.role === "OWNER";
 
   const rolesQuery = useQuery(
@@ -390,23 +395,32 @@ export const ChannelPermissionsTab: React.FC<ChannelPermissionsTabProps> = ({
                 <Chip
                   key={role.id}
                   label={role.name}
-                  color={on ? "primary" : "default"}
-                  variant={on ? "filled" : "outlined"}
+                  // The theme tints every chip alike: selected ones get a
+                  // check, unselected ones an outline only
+                  icon={on ? <CheckIcon /> : undefined}
                   onClick={() =>
                     setPostRoleIds((ids) =>
                       on ? ids.filter((id) => id !== role.id) : [...ids, role.id],
                     )
                   }
                   aria-pressed={on}
-                  sx={{ maxWidth: "100%" }}
+                  sx={{
+                    maxWidth: "100%",
+                    height: chipHeight,
+                    ...(!on && {
+                      bgcolor: "transparent",
+                      color: "text.secondary",
+                      border: 1,
+                      borderColor: "divider",
+                    }),
+                  }}
                 />
               ) : (
                 <Tooltip key={role.id} title="Kept automatically: this role ranks at or above yours">
                   <Chip
                     icon={<LockIcon />}
                     label={role.name}
-                    variant="outlined"
-                    sx={{ maxWidth: "100%" }}
+                    sx={{ maxWidth: "100%", height: chipHeight }}
                     data-testid={`auto-role-${role.id}`}
                   />
                 </Tooltip>
@@ -434,6 +448,7 @@ export const ChannelPermissionsTab: React.FC<ChannelPermissionsTabProps> = ({
         <Button
           variant="contained"
           onClick={handleSave}
+          sx={{ minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : undefined }}
           disabled={!dirty || replace.isPending || update.isPending}
         >
           {replace.isPending || update.isPending ? <CircularProgress size={20} /> : "Save permissions"}
