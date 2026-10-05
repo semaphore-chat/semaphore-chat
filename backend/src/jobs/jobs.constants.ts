@@ -5,6 +5,21 @@
  */
 export const MESSAGE_FANOUT_QUEUE = 'message-fanout';
 export const LINK_PREVIEWS_QUEUE = 'link-previews';
+export const TIMEOUT_EXPIRY_QUEUE = 'timeout-expiry';
+
+/**
+ * Deterministic id of the delayed job that ends a community timeout, one per
+ * user, community and expiry: re-applying the same timeout doesn't add a
+ * second job, and the old one can be found and removed when the timeout is
+ * replaced or lifted. `-` separators only: BullMQ rejects `:` in custom ids.
+ */
+export function timeoutExpiryJobId(
+  communityId: string,
+  userId: string,
+  expiresAt: Date,
+): string {
+  return `timeout-expiry-${communityId}-${userId}-${expiresAt.getTime()}`;
+}
 
 /** Fallback used when JOB_WORKER_CONCURRENCY is absent or invalid. */
 export const DEFAULT_JOB_WORKER_CONCURRENCY = 4;

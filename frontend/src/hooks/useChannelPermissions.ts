@@ -43,6 +43,8 @@ export interface ChannelPermissions {
 }
 
 const STALE_TIME_MS = 30_000;
+/** Largest delay setTimeout honours (2^31 - 1 ms); longer ones fire at once. */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 export function useChannelPermissions(
   communityId: string | undefined,
@@ -68,20 +70,30 @@ export function useChannelPermissions(
     return Number.isNaN(date.getTime()) ? undefined : date;
   }, [caps]);
 
-  // Refetch when the timeout ends so the controls come back on their own
+  // Refetch when the timeout ends so the controls come back on their own.
+  // Timeouts run up to 28 days, past setTimeout's 32-bit limit (~24.8 days,
+  // where it fires at once), so long waits are chained in capped steps.
   useEffect(() => {
     if (!timedOutUntil || !communityId) return;
-    const ms = timedOutUntil.getTime() - Date.now();
-    const timer = setTimeout(
-      () => {
-        void queryClient.invalidateQueries({
-          queryKey: channelPermissionsControllerGetMyCommunityChannelPermissionsQueryKey({
-            path: { communityId },
-          }),
-        });
-      },
-      Math.max(ms, 0) + 500,
-    );
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      const ms = timedOutUntil.getTime() - Date.now() + 500;
+      if (ms > MAX_TIMER_DELAY_MS) {
+        timer = setTimeout(arm, MAX_TIMER_DELAY_MS);
+        return;
+      }
+      timer = setTimeout(
+        () => {
+          void queryClient.invalidateQueries({
+            queryKey: channelPermissionsControllerGetMyCommunityChannelPermissionsQueryKey({
+              path: { communityId },
+            }),
+          });
+        },
+        Math.max(ms, 0),
+      );
+    };
+    arm();
     return () => clearTimeout(timer);
   }, [timedOutUntil, communityId, queryClient]);
 

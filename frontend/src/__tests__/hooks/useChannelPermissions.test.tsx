@@ -123,4 +123,21 @@ describe('useChannelPermissions', () => {
     vi.advanceTimersByTime(2_000);
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
+
+  it('waits out a timeout longer than the 32-bit setTimeout limit', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const DAY = 24 * 60 * 60 * 1000;
+    const until = new Date(Date.now() + 28 * DAY).toISOString();
+    serve([caps('a', { post: false, timedOutUntil: until })]);
+    const { result, queryClient } = render('a');
+    await waitFor(() => expect(result.current.timedOutUntil?.toISOString()).toBe(until));
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    vi.advanceTimersByTime(25 * DAY);
+    expect(invalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(3 * DAY - 1_000);
+    expect(invalidate).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(2_000);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+  });
 });

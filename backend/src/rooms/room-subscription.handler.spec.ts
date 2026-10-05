@@ -382,6 +382,146 @@ describe('RoomSubscriptionHandler', () => {
       expect(mockDatabase.threadSubscriber.deleteMany).not.toHaveBeenCalled();
     });
 
+    describe('voice: users who lost view leave the call', () => {
+      const presenceUser = (id: string) => ({
+        id,
+        username: id,
+        joinedAt: new Date(),
+        isDeafened: false,
+      });
+
+      beforeEach(() => {
+        channelAccessService.roomPlan.mockResolvedValue({
+          everyone: false,
+          communityId: 'community-456',
+          viewers: ['member'],
+          nonViewers: ['outsider', 'idle-outsider'],
+        });
+        mockDatabase.channel.findUnique.mockResolvedValue({ type: 'VOICE' });
+        voicePresenceService.getChannelPresence.mockResolvedValue([
+          presenceUser('member'),
+          presenceUser('outsider'),
+        ] as never);
+        livekitService.listParticipantIdentities.mockResolvedValue([
+          'member',
+          'outsider',
+          'EG_replay-egress',
+        ]);
+      });
+
+      it('disconnects connected non-viewers and clears their presence (privacy flip)', async () => {
+        await handler.onChannelVisibilityChanged({
+          channelId: 'channel-123',
+          communityId: 'community-456',
+        });
+
+        expect(livekitService.removeParticipant).toHaveBeenCalledTimes(1);
+        expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+          'channel-123',
+          'outsider',
+        );
+        expect(voicePresenceService.leaveVoiceChannel).toHaveBeenCalledTimes(1);
+        expect(voicePresenceService.leaveVoiceChannel).toHaveBeenCalledWith(
+          'channel-123',
+          'outsider',
+        );
+        // Viewers stay, and so do LiveKit's own (egress) participants
+        expect(livekitService.removeParticipant).not.toHaveBeenCalledWith(
+          'channel-123',
+          'member',
+        );
+      });
+
+      it('also catches non-viewers whose presence lapsed but who are still in the LiveKit room', async () => {
+        voicePresenceService.getChannelPresence.mockResolvedValue([]);
+        livekitService.listParticipantIdentities.mockResolvedValue([
+          'idle-outsider',
+        ]);
+
+        await handler.onChannelVisibilityChanged({
+          channelId: 'channel-123',
+          communityId: 'community-456',
+        });
+
+        expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+          'channel-123',
+          'idle-outsider',
+        );
+      });
+
+      it('swallows LiveKit and presence errors', async () => {
+        livekitService.removeParticipant.mockRejectedValue(new Error('lk'));
+        voicePresenceService.leaveVoiceChannel.mockRejectedValue(
+          new Error('redis'),
+        );
+
+        await expect(
+          handler.onChannelVisibilityChanged({
+            channelId: 'channel-123',
+            communityId: 'community-456',
+          }),
+        ).resolves.toBeUndefined();
+      });
+
+      it('swallows a failure to list who is connected', async () => {
+        voicePresenceService.getChannelPresence.mockRejectedValue(
+          new Error('redis'),
+        );
+
+        await expect(
+          handler.onChannelVisibilityChanged({
+            channelId: 'channel-123',
+            communityId: 'community-456',
+          }),
+        ).resolves.toBeUndefined();
+        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+        // The socket room was still synced
+        expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
+          'user:outsider',
+          'channel-123',
+        );
+      });
+
+      it('leaves text channels alone', async () => {
+        mockDatabase.channel.findUnique.mockResolvedValue({ type: 'TEXT' });
+
+        await handler.onChannelVisibilityChanged({
+          channelId: 'channel-123',
+          communityId: 'community-456',
+        });
+
+        expect(livekitService.listParticipantIdentities).not.toHaveBeenCalled();
+        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+      });
+
+      it('touches no call when everyone can see the channel', async () => {
+        channelAccessService.roomPlan.mockResolvedValue({
+          everyone: true,
+          communityId: 'community-456',
+        });
+
+        await handler.onChannelVisibilityChanged({
+          channelId: 'channel-123',
+          communityId: 'community-456',
+        });
+
+        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+        expect(voicePresenceService.leaveVoiceChannel).not.toHaveBeenCalled();
+      });
+
+      it('skips DM rooms (not a channel: no room plan)', async () => {
+        channelAccessService.roomPlan.mockResolvedValue(null);
+
+        await handler.onChannelVisibilityChanged({
+          channelId: 'dm-group-1',
+          communityId: 'community-456',
+        });
+
+        expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+        expect(voicePresenceService.leaveVoiceChannel).not.toHaveBeenCalled();
+      });
+    });
+
     it('does nothing for a channel that no longer exists', async () => {
       channelAccessService.roomPlan.mockResolvedValue(null);
 
@@ -508,8 +648,11 @@ describe('RoomSubscriptionHandler', () => {
   });
 
   describe('onChannelMembershipRemoved', () => {
-    it('should remove user from private channel room', () => {
-      handler.onChannelMembershipRemoved({
+    it('should remove user from private channel room', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(false);
+      mockDatabase.channel.findUnique.mockResolvedValue({ type: 'TEXT' });
+
+      await handler.onChannelMembershipRemoved({
         userId: 'user-123',
         channelId: 'channel-456',
       });
@@ -518,6 +661,73 @@ describe('RoomSubscriptionHandler', () => {
         'user:user-123',
         'channel-456',
       );
+    });
+
+    it('disconnects the removed user from the voice call', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(false);
+      mockDatabase.channel.findUnique.mockResolvedValue({ type: 'VOICE' });
+      voicePresenceService.getChannelPresence.mockResolvedValue([
+        { id: 'user-123' },
+        { id: 'user-other' },
+      ] as never);
+      livekitService.listParticipantIdentities.mockResolvedValue([]);
+
+      await handler.onChannelMembershipRemoved({
+        userId: 'user-123',
+        channelId: 'channel-456',
+      });
+
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
+        'user-123',
+        'channel-456',
+      );
+      expect(livekitService.removeParticipant).toHaveBeenCalledTimes(1);
+      expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+        'channel-456',
+        'user-123',
+      );
+      expect(voicePresenceService.leaveVoiceChannel).toHaveBeenCalledWith(
+        'channel-456',
+        'user-123',
+      );
+    });
+
+    it('keeps a user in the call who can still view it (e.g. a role allow)', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(true);
+
+      await handler.onChannelMembershipRemoved({
+        userId: 'user-123',
+        channelId: 'channel-456',
+      });
+
+      expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+      expect(voicePresenceService.leaveVoiceChannel).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when they are not connected', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(false);
+      mockDatabase.channel.findUnique.mockResolvedValue({ type: 'VOICE' });
+      voicePresenceService.getChannelPresence.mockResolvedValue([]);
+      livekitService.listParticipantIdentities.mockResolvedValue([]);
+
+      await handler.onChannelMembershipRemoved({
+        userId: 'user-123',
+        channelId: 'channel-456',
+      });
+
+      expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    it('swallows errors from the access check', async () => {
+      channelAccessService.canViewChannel.mockRejectedValue(new Error('db'));
+
+      await expect(
+        handler.onChannelMembershipRemoved({
+          userId: 'user-123',
+          channelId: 'channel-456',
+        }),
+      ).resolves.toBeUndefined();
+      expect(livekitService.removeParticipant).not.toHaveBeenCalled();
     });
   });
 

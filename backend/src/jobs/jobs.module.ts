@@ -1,7 +1,11 @@
 import { Global, Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { MESSAGE_FANOUT_QUEUE, LINK_PREVIEWS_QUEUE } from './jobs.constants';
+import {
+  MESSAGE_FANOUT_QUEUE,
+  LINK_PREVIEWS_QUEUE,
+  TIMEOUT_EXPIRY_QUEUE,
+} from './jobs.constants';
 
 /**
  * Central BullMQ registration for Semaphore Chat's background job queues.
@@ -78,6 +82,16 @@ import { MESSAGE_FANOUT_QUEUE, LINK_PREVIEWS_QUEUE } from './jobs.constants';
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
           removeOnComplete: { age: 3600, count: 1000 },
+          removeOnFail: { age: 86400 },
+        },
+      },
+      {
+        // Delayed: one job per timeout, firing at its expiry (moderation)
+        name: TIMEOUT_EXPIRY_QUEUE,
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: true,
           removeOnFail: { age: 86400 },
         },
       },

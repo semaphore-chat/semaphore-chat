@@ -509,6 +509,32 @@ describe('LivekitService', () => {
     });
   });
 
+  describe('listParticipantIdentities', () => {
+    it('returns the identities connected to the room', async () => {
+      mockRoomServiceClient.listParticipants.mockResolvedValue([
+        { identity: 'user-1' },
+        { identity: 'user-2' },
+      ]);
+
+      await expect(
+        service.listParticipantIdentities('voice-1'),
+      ).resolves.toEqual(['user-1', 'user-2']);
+      expect(mockRoomServiceClient.listParticipants).toHaveBeenCalledWith(
+        'voice-1',
+      );
+    });
+
+    it('returns [] when the room does not exist or LiveKit fails', async () => {
+      mockRoomServiceClient.listParticipants.mockRejectedValue(
+        new Error('requested room does not exist'),
+      );
+
+      await expect(
+        service.listParticipantIdentities('voice-1'),
+      ).resolves.toEqual([]);
+    });
+  });
+
   describe('listParticipantRooms', () => {
     it('returns the rooms the identity is in', async () => {
       mockRoomServiceClient.listRooms.mockResolvedValue([

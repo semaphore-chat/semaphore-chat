@@ -6,6 +6,13 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import {
+  TIMEOUT_EXPIRY_QUEUE,
+  timeoutExpiryJobId,
+} from '@/jobs/jobs.constants';
+import { TimeoutExpiryJobData } from '@/jobs/jobs.types';
 import { DatabaseService } from '@/database/database.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { MembershipService } from '@/membership/membership.service';
@@ -34,6 +41,8 @@ export class ModerationService {
     private readonly websocketService: WebsocketService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
+    @InjectQueue(TIMEOUT_EXPIRY_QUEUE)
+    private readonly timeoutExpiryQueue: Queue<TimeoutExpiryJobData>,
   ) {}
 
   /**
@@ -447,6 +456,12 @@ export class ModerationService {
 
     const expiresAt = new Date(Date.now() + durationSeconds * 1000);
 
+    // A timeout being replaced has an expiry job to cancel
+    const previous = await this.databaseService.communityTimeout.findUnique({
+      where: { communityId_userId: { communityId, userId } },
+      select: { expiresAt: true },
+    });
+
     // Create or update timeout
     await this.databaseService.communityTimeout.upsert({
       where: { communityId_userId: { communityId, userId } },
@@ -498,6 +513,59 @@ export class ModerationService {
       userId,
       communityId,
     });
+
+    // ...and give their voice back when it ends, even if they stay connected
+    if (previous && previous.expiresAt.getTime() !== expiresAt.getTime()) {
+      await this.cancelTimeoutExpiry(communityId, userId, previous.expiresAt);
+    }
+    await this.scheduleTimeoutExpiry(communityId, userId, expiresAt);
+  }
+
+  /**
+   * Queue the delayed job that restores a connected user's voice grants when
+   * their timeout ends (TimeoutExpiryProcessor). The id is deterministic per
+   * user, community and expiry, so a duplicate add is a no-op. Best effort:
+   * the timeout itself is already applied, and a rejoin restores voice too.
+   */
+  private async scheduleTimeoutExpiry(
+    communityId: string,
+    userId: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    try {
+      await this.timeoutExpiryQueue.add(
+        'expire',
+        { userId, communityId, expiresAt: expiresAt.toISOString() },
+        {
+          jobId: timeoutExpiryJobId(communityId, userId, expiresAt),
+          delay: Math.max(0, expiresAt.getTime() - Date.now()),
+        },
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to schedule timeout expiry of ${userId} in community ${communityId}`,
+        error,
+      );
+    }
+  }
+
+  /** Drop the expiry job of a timeout that was lifted or replaced (best effort). */
+  private async cancelTimeoutExpiry(
+    communityId: string,
+    userId: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    try {
+      await this.timeoutExpiryQueue.remove(
+        timeoutExpiryJobId(communityId, userId, expiresAt),
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to cancel timeout expiry job of ${userId} in community ${communityId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
 
   async removeTimeout(
@@ -548,6 +616,7 @@ export class ModerationService {
       userId,
       communityId,
     });
+    await this.cancelTimeoutExpiry(communityId, userId, timeout.expiresAt);
   }
 
   async isUserTimedOut(

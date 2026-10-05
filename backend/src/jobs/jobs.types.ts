@@ -24,3 +24,15 @@ export interface LinkPreviewJobData {
   // type-checks against UpdateMessagePayload specifically.
   event: typeof ServerEvents.UPDATE_MESSAGE;
 }
+
+/**
+ * Payload for the `timeout-expiry` queue, a delayed job that fires when a
+ * community timeout ends. The processor re-reads the timeout and recomputes
+ * the user's voice grants from current state, so an extended, re-applied or
+ * lifted timeout needs no payload update. `expiresAt` (ISO) is informational.
+ */
+export interface TimeoutExpiryJobData {
+  userId: string;
+  communityId: string;
+  expiresAt: string;
+}
