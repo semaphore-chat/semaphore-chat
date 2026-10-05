@@ -321,6 +321,18 @@ export class LivekitService {
         `${mute ? 'Muted' : 'Unmuted'} participant ${participantIdentity} in room ${roomId}`,
       );
     } catch (error) {
+      // LiveKit answers 404 (ServerError status) when the identity isn't in
+      // the room, or the room doesn't exist (nobody is connected): a client
+      // error, not a server fault
+      if (
+        error instanceof Error &&
+        (error as Error & { status?: unknown }).status === 404
+      ) {
+        throw new LivekitException(
+          'Participant is not in this voice channel',
+          HttpStatus.NOT_FOUND,
+        );
+      }
       this.logger.error(
         `Failed to ${mute ? 'mute' : 'unmute'} participant ${participantIdentity} in room ${roomId}`,
         error,
