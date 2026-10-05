@@ -78,6 +78,7 @@ export const handlerRegistry: {
   [ServerEvents.CHANNEL_CREATED]: [communityHandlers.handleChannelCreated],
   [ServerEvents.CHANNEL_UPDATED]: [communityHandlers.handleChannelUpdated],
   [ServerEvents.CHANNEL_DELETED]: [communityHandlers.handleChannelDeleted],
+  [ServerEvents.CHANNEL_PERMISSIONS_UPDATED]: [communityHandlers.handleChannelPermissionsUpdated],
 
   // Community lifecycle
   [ServerEvents.COMMUNITY_UPDATED]: [communityHandlers.handleCommunityUpdated],

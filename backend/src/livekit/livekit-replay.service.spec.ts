@@ -19,6 +19,8 @@ import { FfmpegService } from './ffmpeg.service';
 import { ReplaySegmentsService } from './replay-segments.service';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import { PermissionsService } from '@/roles/permissions.service';
+import { RbacActions } from '@prisma/client';
 
 describe('LivekitReplayService', () => {
   let service: LivekitReplayService;
@@ -36,6 +38,7 @@ describe('LivekitReplayService', () => {
   let replaySegmentsService: any;
 
   let eventEmitter: any;
+  let permissionsService: any;
 
   const mockEgressClient = {
     startTrackCompositeEgress: jest.fn(),
@@ -81,6 +84,9 @@ describe('LivekitReplayService', () => {
     ffmpegService = unitRef.get(FfmpegService);
     replaySegmentsService = unitRef.get(ReplaySegmentsService);
     eventEmitter = unitRef.get(EventEmitter2);
+    permissionsService = unitRef.get(PermissionsService);
+    // Default: the user may post files in the target channel
+    permissionsService.userHasChannelActions.mockResolvedValue(true);
 
     // Set up default return values for StorageService
     storageService.getSegmentsPrefix.mockReturnValue(
@@ -1212,7 +1218,7 @@ describe('LivekitReplayService', () => {
     });
 
     describe('destination authorization', () => {
-      it('should throw ForbiddenException when posting to channel without community membership', async () => {
+      it('should throw ForbiddenException when the user may not post files in the channel (non-member, private, read-only, timed out)', async () => {
         const channelDto = {
           durationMinutes: 1 as const,
           destination: 'channel' as const,
@@ -1224,11 +1230,15 @@ describe('LivekitReplayService', () => {
           id: 'target-channel-1',
           communityId: 'community-1',
         });
-        // User is NOT a member of that community
-        databaseService.membership.findFirst.mockResolvedValue(null);
+        permissionsService.userHasChannelActions.mockResolvedValue(false);
 
         await expect(service.captureReplay(userId, channelDto)).rejects.toThrow(
           ForbiddenException,
+        );
+        expect(permissionsService.userHasChannelActions).toHaveBeenCalledWith(
+          userId,
+          'target-channel-1',
+          [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
         );
       });
 
@@ -1263,7 +1273,7 @@ describe('LivekitReplayService', () => {
         );
       });
 
-      it('should succeed when user has channel community membership', async () => {
+      it('should succeed when user may post files in the channel', async () => {
         const channelDto = {
           durationMinutes: 1 as const,
           destination: 'channel' as const,

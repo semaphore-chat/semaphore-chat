@@ -225,14 +225,20 @@ export class ChannelMembershipService {
       throw new NotFoundException('Channel membership not found');
     }
 
-    // Remove the membership
-    await this.databaseService.channelMembership.delete({
-      where: {
-        userId_channelId: {
-          userId,
-          channelId,
+    // Remove the membership, and the thread subscriptions in the channel
+    // (no reply notifications once access is gone)
+    await this.databaseService.$transaction(async (tx) => {
+      await tx.channelMembership.delete({
+        where: {
+          userId_channelId: {
+            userId,
+            channelId,
+          },
         },
-      },
+      });
+      await tx.threadSubscriber.deleteMany({
+        where: { userId, parentMessage: { channelId } },
+      });
     });
 
     // Emit domain event — the RoomSubscriptionHandler will remove sockets
@@ -242,56 +248,5 @@ export class ChannelMembershipService {
     });
 
     this.logger.log(`Removed user ${userId} from private channel ${channelId}`);
-  }
-
-  // Helper method to check if user is member of private channel
-  async isMember(userId: string, channelId: string): Promise<boolean> {
-    try {
-      const membership =
-        await this.databaseService.channelMembership.findUnique({
-          where: {
-            userId_channelId: {
-              userId,
-              channelId,
-            },
-          },
-          include: {
-            channel: {
-              select: {
-                isPrivate: true,
-              },
-            },
-          },
-        });
-
-      // For public channels, check community membership instead
-      if (membership?.channel && !membership.channel.isPrivate) {
-        const channel = await this.databaseService.channel.findUnique({
-          where: { id: channelId },
-          select: { communityId: true },
-        });
-
-        if (channel) {
-          const communityMembership =
-            await this.databaseService.membership.findUnique({
-              where: {
-                userId_communityId: {
-                  userId,
-                  communityId: channel.communityId,
-                },
-              },
-            });
-          return !!communityMembership;
-        }
-      }
-
-      return !!membership;
-    } catch (error) {
-      this.logger.error(
-        `Error checking channel membership for user ${userId} in channel ${channelId}`,
-        error,
-      );
-      return false;
-    }
   }
 }

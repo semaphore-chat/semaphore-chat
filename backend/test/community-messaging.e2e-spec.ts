@@ -233,6 +233,13 @@ describe('Community messaging flow (e2e)', () => {
     const messageDispatchService = app.get(MessageDispatchService);
     const db = app.get(DatabaseService);
 
+    // Mentions only notify users who can see the channel
+    // (ChannelAccessService), so the mentioned user joins the community
+    // first; the RBAC-denial tests above needed them outside it.
+    await db.membership.create({
+      data: { userId: outsiderId, communityId },
+    });
+
     // Only the fields the create flow actually consumes — the DTO's
     // remaining @Exclude()'d bookkeeping fields are irrelevant here.
     const createInput = {

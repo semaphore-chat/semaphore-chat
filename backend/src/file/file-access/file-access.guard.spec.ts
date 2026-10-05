@@ -3,7 +3,7 @@ import type { Mocked } from '@suites/doubles.jest';
 import { FileAccessGuard } from './file-access.guard';
 import { FileService } from '@/file/file.service';
 import { MembershipService } from '@/membership/membership.service';
-import { ChannelMembershipService } from '@/channel-membership/channel-membership.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { DatabaseService } from '@/database/database.service';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { ResourceType } from '@prisma/client';
@@ -18,7 +18,7 @@ describe('FileAccessGuard', () => {
   let guard: FileAccessGuard;
   let fileService: Mocked<FileService>;
   let membershipService: Mocked<MembershipService>;
-  let channelMembershipService: Mocked<ChannelMembershipService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
   let mockDatabase: any;
 
   beforeEach(async () => {
@@ -32,7 +32,7 @@ describe('FileAccessGuard', () => {
     guard = unit;
     fileService = unitRef.get(FileService);
     membershipService = unitRef.get(MembershipService);
-    channelMembershipService = unitRef.get(ChannelMembershipService);
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   afterEach(() => {
@@ -237,14 +237,14 @@ describe('FileAccessGuard', () => {
         communityId,
         isPrivate: false,
       });
-      membershipService.isMember.mockResolvedValue(true);
+      channelAccessService.canViewChannel.mockResolvedValue(true);
 
       const result = await guard.canActivate(context);
 
       expect(result).toBe(true);
-      expect(membershipService.isMember).toHaveBeenCalledWith(
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         user.id,
-        communityId,
+        channelId,
       );
     });
 
@@ -273,13 +273,13 @@ describe('FileAccessGuard', () => {
         communityId,
         isPrivate: false,
       });
-      membershipService.isMember.mockResolvedValue(false);
+      channelAccessService.canViewChannel.mockResolvedValue(false);
 
       await expect(guard.canActivate(context)).rejects.toThrow(
         ForbiddenException,
       );
       await expect(guard.canActivate(context)).rejects.toThrow(
-        'You must be a member of this community',
+        'You must be able to view this channel',
       );
     });
 
@@ -308,16 +308,15 @@ describe('FileAccessGuard', () => {
         communityId,
         isPrivate: true,
       });
-      channelMembershipService.isMember.mockResolvedValue(true);
+      channelAccessService.canViewChannel.mockResolvedValue(true);
 
       const result = await guard.canActivate(context);
 
       expect(result).toBe(true);
-      expect(channelMembershipService.isMember).toHaveBeenCalledWith(
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         user.id,
         channelId,
       );
-      expect(membershipService.isMember).not.toHaveBeenCalled();
     });
 
     it('should deny access to private channel messages for non-channel members', async () => {
@@ -345,13 +344,13 @@ describe('FileAccessGuard', () => {
         communityId,
         isPrivate: true,
       });
-      channelMembershipService.isMember.mockResolvedValue(false);
+      channelAccessService.canViewChannel.mockResolvedValue(false);
 
       await expect(guard.canActivate(context)).rejects.toThrow(
         ForbiddenException,
       );
       await expect(guard.canActivate(context)).rejects.toThrow(
-        'You must be a member of this private channel',
+        'You must be able to view this channel',
       );
     });
   });

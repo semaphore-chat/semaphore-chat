@@ -1,7 +1,6 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
-import { MembershipService } from '@/membership/membership.service';
-import { ChannelMembershipService } from '@/channel-membership/channel-membership.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { IFileAccessStrategy } from './file-access-strategy.interface';
 
 /**
@@ -17,8 +16,7 @@ export class ReplayClipAccessStrategy implements IFileAccessStrategy {
 
   constructor(
     private readonly databaseService: DatabaseService,
-    private readonly membershipService: MembershipService,
-    private readonly channelMembershipService: ChannelMembershipService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   async checkAccess(
@@ -107,26 +105,8 @@ export class ReplayClipAccessStrategy implements IFileAccessStrategy {
     userId: string,
     channelId: string,
   ): Promise<boolean> {
-    const channel = await this.databaseService.channel.findUnique({
-      where: { id: channelId },
-      select: {
-        id: true,
-        communityId: true,
-        isPrivate: true,
-      },
-    });
-
-    if (!channel) {
-      return false;
-    }
-
-    // For private channels, check channel membership
-    if (channel.isPrivate) {
-      return this.channelMembershipService.isMember(userId, channelId);
-    }
-
-    // For public channels, check community membership
-    return this.membershipService.isMember(userId, channel.communityId);
+    // Only users who can see the channel (ChannelAccessService)
+    return this.channelAccessService.canViewChannel(userId, channelId);
   }
 
   private async checkDmGroupAccess(

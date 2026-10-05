@@ -310,6 +310,11 @@ export class MembershipService {
           },
         });
 
+        // Thread subscriptions must not outlive access
+        await tx.threadSubscriber.deleteMany({
+          where: { userId, parentMessage: { channel: { communityId } } },
+        });
+
         // Remove user roles in the community
         await tx.userRoles.deleteMany({
           where: {

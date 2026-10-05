@@ -60,8 +60,9 @@ export class ChannelsController {
   @ApiOkResponse({ type: [ChannelDto] })
   findAllForCommunity(
     @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelDto[]> {
-    return this.channelsService.findAll(communityId);
+    return this.channelsService.findAll(communityId, req.user.id);
   }
 
   @Get('/community/:communityId/mentionable')
@@ -105,8 +106,9 @@ export class ChannelsController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateChannelDto: UpdateChannelDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelDto> {
-    return this.channelsService.update(id, updateChannelDto);
+    return this.channelsService.update(id, updateChannelDto, req.user);
   }
 
   @HttpCode(204)
@@ -133,8 +135,13 @@ export class ChannelsController {
   moveUp(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() moveChannelDto: MoveChannelDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelDto[]> {
-    return this.channelsService.moveChannelUp(id, moveChannelDto.communityId);
+    return this.channelsService.moveChannelUp(
+      id,
+      moveChannelDto.communityId,
+      req.user.id,
+    );
   }
 
   @Post(':id/move-down')
@@ -149,7 +156,12 @@ export class ChannelsController {
   moveDown(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() moveChannelDto: MoveChannelDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<ChannelDto[]> {
-    return this.channelsService.moveChannelDown(id, moveChannelDto.communityId);
+    return this.channelsService.moveChannelDown(
+      id,
+      moveChannelDto.communityId,
+      req.user.id,
+    );
   }
 }

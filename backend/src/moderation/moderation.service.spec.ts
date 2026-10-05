@@ -104,6 +104,9 @@ describe('ModerationService', () => {
       membershipService.isMember.mockResolvedValue(true);
       mockDatabase.communityBan.findUnique.mockResolvedValue(null);
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         communityBan: { upsert: jest.fn().mockResolvedValue({}) },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -237,6 +240,9 @@ describe('ModerationService', () => {
 
     it('should ban a user successfully', async () => {
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         communityBan: { upsert: jest.fn().mockResolvedValue({}) },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -253,6 +259,9 @@ describe('ModerationService', () => {
 
       expect(mockTx.communityBan.upsert).toHaveBeenCalled();
       expect(mockTx.membership.delete).toHaveBeenCalled();
+      expect(mockTx.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: { userId, parentMessage: { channel: { communityId } } },
+      });
       expect(mockTx.moderationLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -312,6 +321,9 @@ describe('ModerationService', () => {
     it('should allow temporary bans with expiry date', async () => {
       const expiresAt = new Date(Date.now() + 86400000); // 1 day from now
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         communityBan: { upsert: jest.fn().mockResolvedValue({}) },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -436,6 +448,9 @@ describe('ModerationService', () => {
 
     it('should kick a user successfully', async () => {
       const mockTx = {
+        threadSubscriber: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
@@ -455,6 +470,10 @@ describe('ModerationService', () => {
       );
 
       expect(mockTx.membership.delete).toHaveBeenCalled();
+      // Thread subscriptions in the community go with the membership
+      expect(mockTx.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: { userId, parentMessage: { channel: { communityId } } },
+      });
       expect(mockTx.moderationLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
@@ -529,6 +548,11 @@ describe('ModerationService', () => {
       // PermissionsService — no epoch bump is expected.
       expect(permissionsCacheService.bumpUserEpoch).not.toHaveBeenCalled();
       expect(permissionsCacheService.bumpCommunityEpoch).not.toHaveBeenCalled();
+      // Voice: connected calls become listen-only via the room handler
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+        RoomEvents.MODERATION_TIMEOUT_CHANGED,
+        { userId, communityId },
+      );
     });
 
     it('should throw ForbiddenException when moderator has lower rank (higher position number)', async () => {
@@ -554,6 +578,11 @@ describe('ModerationService', () => {
       await service.removeTimeout(communityId, userId, moderatorId);
 
       expect(mockDatabase.communityTimeout.delete).toHaveBeenCalled();
+      // Voice: publish permissions are restored for connected calls
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
+        RoomEvents.MODERATION_TIMEOUT_CHANGED,
+        { userId, communityId },
+      );
       expect(mockDatabase.moderationLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({

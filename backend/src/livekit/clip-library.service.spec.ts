@@ -4,7 +4,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ClipLibraryService } from './clip-library.service';
 import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { RbacActions } from '@prisma/client';
+import { PermissionsService } from '@/roles/permissions.service';
 import { CLIP_MESSAGE_CREATE } from '@/common/events/clip-message.events';
 
 describe('ClipLibraryService', () => {
@@ -36,6 +38,7 @@ describe('ClipLibraryService', () => {
 
   let storageService: Mocked<StorageService>;
   let eventEmitter: Mocked<EventEmitter2>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(ClipLibraryService)
@@ -46,6 +49,7 @@ describe('ClipLibraryService', () => {
     service = unit;
     storageService = unitRef.get(StorageService);
     eventEmitter = unitRef.get(EventEmitter2);
+    permissionsService = unitRef.get(PermissionsService);
 
     // Reset all mocks before each test
     jest.clearAllMocks();
@@ -256,11 +260,7 @@ describe('ClipLibraryService', () => {
         id: 'channel-1',
         communityId: 'community-1',
       });
-      mockDatabaseService.membership.findFirst.mockResolvedValue({
-        id: 'membership-1',
-        userId: 'user-123',
-        communityId: 'community-1',
-      });
+      permissionsService.userHasChannelActions.mockResolvedValue(true);
       eventEmitter.emitAsync.mockResolvedValue([{ messageId: 'message-1' }]);
 
       const result = await service.shareClip('user-123', 'clip-1', {
@@ -268,6 +268,11 @@ describe('ClipLibraryService', () => {
         targetChannelId: 'channel-1',
       });
 
+      expect(permissionsService.userHasChannelActions).toHaveBeenCalledWith(
+        'user-123',
+        'channel-1',
+        [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
+      );
       expect(result.messageId).toBe('message-1');
       expect(result.clipId).toBe('clip-1');
       expect(result.destination).toBe('channel');
@@ -280,6 +285,29 @@ describe('ClipLibraryService', () => {
         targetChannelId: 'channel-1',
         targetDirectMessageGroupId: undefined,
       });
+    });
+
+    it('refuses to share to a channel where the user may not post files', async () => {
+      mockDatabaseService.replayClip.findFirst.mockResolvedValue({
+        id: 'clip-1',
+        fileId: 'file-1',
+        userId: 'user-123',
+        durationSeconds: 60,
+        file: { id: 'file-1', size: 1024 },
+      });
+      mockDatabaseService.channel.findUnique.mockResolvedValue({
+        id: 'channel-1',
+        communityId: 'community-1',
+      });
+      permissionsService.userHasChannelActions.mockResolvedValue(false);
+
+      await expect(
+        service.shareClip('user-123', 'clip-1', {
+          destination: 'channel',
+          targetChannelId: 'channel-1',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(eventEmitter.emitAsync).not.toHaveBeenCalled();
     });
 
     it('should share clip to DM', async () => {

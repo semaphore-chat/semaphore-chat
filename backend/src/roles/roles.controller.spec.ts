@@ -1,6 +1,7 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { RolesController } from './roles.controller';
+import { ChannelAccessService } from './channel-access.service';
 import { CommunityRolesService } from './community-roles.service';
 import { InstanceRolesService } from './instance-roles.service';
 
@@ -8,6 +9,7 @@ describe('RolesController', () => {
   let controller: RolesController;
   let service: Mocked<CommunityRolesService>;
   let instanceService: Mocked<InstanceRolesService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(RolesController).compile();
@@ -15,6 +17,8 @@ describe('RolesController', () => {
     controller = unit;
     service = unitRef.get(CommunityRolesService);
     instanceService = unitRef.get(InstanceRolesService);
+    channelAccessService = unitRef.get(ChannelAccessService);
+    channelAccessService.canViewChannel.mockResolvedValue(true);
   });
 
   afterEach(() => {
@@ -63,6 +67,25 @@ describe('RolesController', () => {
         'user-456',
         channelId,
       );
+    });
+
+    it('answers a hidden channel exactly like a missing one (empty roles)', async () => {
+      channelAccessService.canViewChannel.mockResolvedValue(false);
+      const req = { user: { id: 'user-456' } } as any;
+
+      const result = await controller.getMyRolesForChannel('hidden-1', req);
+
+      expect(result).toEqual({
+        userId: 'user-456',
+        resourceId: 'hidden-1',
+        resourceType: 'CHANNEL',
+        roles: [],
+      });
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
+        'user-456',
+        'hidden-1',
+      );
+      expect(service.getUserRolesForChannel).not.toHaveBeenCalled();
     });
   });
 

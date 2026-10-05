@@ -9,6 +9,7 @@ import { CreateTokenDto } from './dto/create-token.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
 import { LivekitException } from './exceptions/livekit.exception';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import { FULL_PUBLISH_GRANT, PublishGrant } from './publish-grant.util';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
   LIVEKIT_SESSION_ATTRIBUTE,
@@ -41,6 +42,7 @@ export class LivekitService {
   async generateToken(
     createTokenDto: CreateTokenDto,
     sessionId?: string,
+    publish: PublishGrant = FULL_PUBLISH_GRANT,
   ): Promise<TokenResponseDto> {
     const { identity, roomId, name, ttl } = createTokenDto;
 
@@ -88,7 +90,12 @@ export class LivekitService {
       token.addGrant({
         room: roomId,
         roomJoin: true,
-        canPublish: true,
+        // From the channel's voice capabilities (SPEAK/VIDEO/SCREEN_SHARE,
+        // timeouts): see publishGrantFor
+        canPublish: publish.canPublish,
+        ...(publish.canPublishSources
+          ? { canPublishSources: publish.canPublishSources }
+          : {}),
         canSubscribe: true,
         canPublishData: true,
         // Allow participants to update their own metadata (for isDeafened
@@ -220,6 +227,40 @@ export class LivekitService {
         }`,
       );
       return [];
+    }
+  }
+
+  /**
+   * Changes what a connected participant may publish (e.g. a timeout makes
+   * them listen-only). LiveKit unpublishes tracks the new grant no longer
+   * allows. A participant who isn't in the room is ignored.
+   */
+  async updatePublishPermissions(
+    roomId: string,
+    identity: string,
+    publish: PublishGrant,
+  ): Promise<void> {
+    if (!this.roomServiceClient) return;
+    try {
+      await this.roomServiceClient.updateParticipant(
+        roomId,
+        identity,
+        undefined,
+        {
+          canSubscribe: true,
+          canPublishData: true,
+          canUpdateMetadata: true,
+          canPublish: publish.canPublish,
+          canPublishSources: publish.canPublishSources ?? [],
+        },
+      );
+      this.logger.log(
+        `Updated publish permissions of ${identity} in room ${roomId}: ${publish.canPublish ? (publish.canPublishSources ?? 'all').toString() : 'none'}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Could not update publish permissions of ${identity} in room ${roomId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

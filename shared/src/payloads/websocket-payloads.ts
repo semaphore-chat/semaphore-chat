@@ -328,6 +328,11 @@ export interface ChannelUpdatedPayload {
   channel: Channel;
 }
 
+export interface ChannelPermissionsUpdatedPayload {
+  communityId: string;
+  channelId: string;
+}
+
 export interface ChannelDeletedPayload {
   communityId: string;
   channelId: string;
@@ -474,6 +479,7 @@ export type ServerEventPayloads = {
   [ServerEvents.CHANNEL_CREATED]: ChannelCreatedPayload;
   [ServerEvents.CHANNEL_UPDATED]: ChannelUpdatedPayload;
   [ServerEvents.CHANNEL_DELETED]: ChannelDeletedPayload;
+  [ServerEvents.CHANNEL_PERMISSIONS_UPDATED]: ChannelPermissionsUpdatedPayload;
 
   // Community Lifecycle
   [ServerEvents.COMMUNITY_UPDATED]: CommunityUpdatedPayload;

@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { ServerEvents } from '@semaphore-chat/shared';
 import type { SocketEventHandler } from './types';
+import { invalidateChannelPermissionQueries } from './communityHandlers';
 
 /**
  * Invalidate membership queries so the member list re-fetches roles.
@@ -25,6 +26,8 @@ export const handleRoleUpdated: SocketEventHandler<typeof ServerEvents.ROLE_UPDA
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
+  invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
 };
 
@@ -34,6 +37,8 @@ export const handleRoleDeleted: SocketEventHandler<typeof ServerEvents.ROLE_DELE
 ) => {
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
+  invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
 };
 
@@ -44,6 +49,8 @@ export const handleRoleAssigned: SocketEventHandler<typeof ServerEvents.ROLE_ASS
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
+  invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
 };
 
@@ -54,5 +61,7 @@ export const handleRoleUnassigned: SocketEventHandler<typeof ServerEvents.ROLE_U
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetCommunityRoles' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForCommunity' }] });
   queryClient.invalidateQueries({ queryKey: [{ _id: 'membershipControllerGetMembers' }] });
+  queryClient.invalidateQueries({ queryKey: [{ _id: 'rolesControllerGetMyRolesForChannel' }] });
+  invalidateChannelPermissionQueries(queryClient);
   invalidateMembershipQueries(queryClient);
 };

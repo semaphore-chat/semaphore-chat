@@ -3,7 +3,9 @@ import type { Mocked } from '@suites/doubles.jest';
 import { MessagesService } from './messages.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
-import { NotFoundException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { SpanType, FileType } from '@prisma/client';
 import { createMockDatabase, MessageFactory } from '@/test-utils';
 
@@ -43,6 +45,8 @@ describe('MessagesService', () => {
   let service: MessagesService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
   let fileService: Mocked<FileService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -54,6 +58,8 @@ describe('MessagesService', () => {
 
     service = unit;
     fileService = unitRef.get(FileService);
+    channelAccessService = unitRef.get(ChannelAccessService);
+    permissionsService = unitRef.get(PermissionsService);
   });
 
   afterEach(() => {
@@ -61,6 +67,64 @@ describe('MessagesService', () => {
   });
 
   describe('create', () => {
+    describe('ATTACH_FILES', () => {
+      const base = {
+        channelId: 'channel-123',
+        authorId: 'user-123',
+        spans: [],
+      };
+
+      it('checks ATTACH_FILES when sending files or pending attachments', async () => {
+        mockDatabase.message.create.mockResolvedValue(
+          buildMessageWithIncludes(base),
+        );
+
+        await service.create({ ...base, attachments: ['file-1'] } as any);
+        await service.create({ ...base, pendingAttachments: 2 } as any);
+
+        expect(permissionsService.assertCanAttachFiles).toHaveBeenCalledTimes(
+          2,
+        );
+        expect(permissionsService.assertCanAttachFiles).toHaveBeenCalledWith(
+          'user-123',
+          'channel-123',
+        );
+      });
+
+      it('rejects the message when the check fails', async () => {
+        permissionsService.assertCanAttachFiles.mockRejectedValue(
+          new ForbiddenException(),
+        );
+
+        await expect(
+          service.create({ ...base, attachments: ['file-1'] } as any),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it('skips the check for text-only, webhook and DM messages', async () => {
+        mockDatabase.message.create.mockResolvedValue(
+          buildMessageWithIncludes(base),
+        );
+
+        await service.create({ ...base, attachments: [] } as any);
+        await service.create({
+          ...base,
+          authorId: null,
+          webhookId: 'hook-1',
+          attachments: ['file-1'],
+        } as any);
+        await service.create({
+          ...base,
+          channelId: null,
+          directMessageGroupId: 'dm-1',
+          attachments: ['file-1'],
+        } as any);
+
+        expect(permissionsService.assertCanAttachFiles).not.toHaveBeenCalled();
+      });
+    });
+
     it('should create a message', async () => {
       const createDto = {
         channelId: 'channel-123',
@@ -1293,6 +1357,7 @@ describe('MessagesService', () => {
       const channelId = 'channel-1';
 
       // Accessible channels
+      channelAccessService.visibleChannelIds.mockResolvedValue([channelId]);
       mockDatabase.channel.findMany.mockResolvedValue([
         { id: channelId, name: 'general' },
       ]);
@@ -1313,17 +1378,12 @@ describe('MessagesService', () => {
         'hello',
       );
 
+      expect(channelAccessService.visibleChannelIds).toHaveBeenCalledWith(
+        userId,
+        communityId,
+      );
       expect(mockDatabase.channel.findMany).toHaveBeenCalledWith({
-        where: {
-          communityId,
-          OR: [
-            { isPrivate: false },
-            {
-              isPrivate: true,
-              ChannelMembership: { some: { userId } },
-            },
-          ],
-        },
+        where: { communityId, id: { in: [channelId] } },
         select: { id: true, name: true },
       });
       expect(mockDatabase.$queryRaw).toHaveBeenCalled();

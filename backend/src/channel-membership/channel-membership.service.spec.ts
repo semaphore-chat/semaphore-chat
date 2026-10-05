@@ -545,6 +545,11 @@ describe('ChannelMembershipService', () => {
           },
         },
       });
+      // Their thread subscriptions in the channel go too (same transaction)
+      expect(mockDatabase.$transaction).toHaveBeenCalled();
+      expect(mockDatabase.threadSubscriber.deleteMany).toHaveBeenCalledWith({
+        where: { userId: user.id, parentMessage: { channelId: channel.id } },
+      });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
         RoomEvents.CHANNEL_MEMBERSHIP_REMOVED,
         { userId: user.id, channelId: channel.id },
@@ -603,120 +608,6 @@ describe('ChannelMembershipService', () => {
       );
 
       loggerLogSpy.mockRestore();
-    });
-  });
-
-  describe('isMember', () => {
-    it('should return true for private channel member', async () => {
-      const user = UserFactory.build();
-      const channel = ChannelFactory.build({ isPrivate: true });
-      const membership = {
-        ...ChannelMembershipFactory.build({
-          userId: user.id,
-          channelId: channel.id,
-        }),
-        channel,
-      };
-
-      mockDatabase.channelMembership.findUnique.mockResolvedValue(membership);
-
-      const result = await service.isMember(user.id, channel.id);
-
-      expect(result).toBe(true);
-    });
-
-    it('should return false when user not private channel member', async () => {
-      const user = UserFactory.build();
-      const channel = ChannelFactory.build({ isPrivate: true });
-
-      mockDatabase.channelMembership.findUnique.mockResolvedValue(null);
-
-      const result = await service.isMember(user.id, channel.id);
-
-      expect(result).toBe(false);
-    });
-
-    it('should check community membership for public channel', async () => {
-      const user = UserFactory.build();
-      const community = CommunityFactory.build();
-      const channel = ChannelFactory.build({
-        isPrivate: false,
-        communityId: community.id,
-      });
-      const membership = {
-        ...ChannelMembershipFactory.build({
-          userId: user.id,
-          channelId: channel.id,
-        }),
-        channel,
-      };
-      const communityMembership = MembershipFactory.build({
-        userId: user.id,
-        communityId: community.id,
-      });
-
-      mockDatabase.channelMembership.findUnique.mockResolvedValue(membership);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      mockDatabase.membership.findUnique.mockResolvedValue(communityMembership);
-
-      const result = await service.isMember(user.id, channel.id);
-
-      expect(result).toBe(true);
-      expect(mockDatabase.membership.findUnique).toHaveBeenCalledWith({
-        where: {
-          userId_communityId: {
-            userId: user.id,
-            communityId: community.id,
-          },
-        },
-      });
-    });
-
-    it('should return false for public channel when not community member', async () => {
-      const user = UserFactory.build();
-      const community = CommunityFactory.build();
-      const channel = ChannelFactory.build({
-        isPrivate: false,
-        communityId: community.id,
-      });
-      const membership = {
-        ...ChannelMembershipFactory.build({
-          userId: user.id,
-          channelId: channel.id,
-        }),
-        channel,
-      };
-
-      mockDatabase.channelMembership.findUnique.mockResolvedValue(membership);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      mockDatabase.membership.findUnique.mockResolvedValue(null);
-
-      const result = await service.isMember(user.id, channel.id);
-
-      expect(result).toBe(false);
-    });
-
-    it('should return false on error', async () => {
-      const user = UserFactory.build();
-      const channel = ChannelFactory.build();
-
-      mockDatabase.channelMembership.findUnique.mockRejectedValue(
-        new Error('Database error'),
-      );
-
-      const loggerErrorSpy = jest
-        .spyOn(service['logger'], 'error')
-        .mockImplementation();
-
-      const result = await service.isMember(user.id, channel.id);
-
-      expect(result).toBe(false);
-      expect(loggerErrorSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Error checking channel membership'),
-        expect.any(Error),
-      );
-
-      loggerErrorSpy.mockRestore();
     });
   });
 });

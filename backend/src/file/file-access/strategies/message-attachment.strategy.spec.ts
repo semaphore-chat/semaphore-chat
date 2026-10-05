@@ -3,15 +3,13 @@ import type { Mocked } from '@suites/doubles.jest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { MessageAttachmentStrategy } from './message-attachment.strategy';
 import { DatabaseService } from '@/database/database.service';
-import { MembershipService } from '@/membership/membership.service';
-import { ChannelMembershipService } from '@/channel-membership/channel-membership.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { createMockDatabase } from '@/test-utils';
 
 describe('MessageAttachmentStrategy', () => {
   let strategy: MessageAttachmentStrategy;
   let mockDatabase: any;
-  let membershipService: Mocked<MembershipService>;
-  let channelMembershipService: Mocked<ChannelMembershipService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -22,8 +20,7 @@ describe('MessageAttachmentStrategy', () => {
       .compile();
 
     strategy = unit;
-    membershipService = unitRef.get(MembershipService);
-    channelMembershipService = unitRef.get(ChannelMembershipService);
+    channelAccessService = unitRef.get(ChannelAccessService);
   });
 
   afterEach(() => {
@@ -47,22 +44,14 @@ describe('MessageAttachmentStrategy', () => {
       ).rejects.toThrow('Message not found');
     });
 
-    it('should grant access for public channel message when user is community member', async () => {
-      const message = {
+    it('grants access to a channel message when the user can view the channel', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
         id: 'message-1',
         channelId: 'channel-1',
         directMessageGroupId: null,
-      };
-
-      const channel = {
-        id: 'channel-1',
-        communityId: 'community-1',
-        isPrivate: false,
-      };
-
-      mockDatabase.message.findUnique.mockResolvedValue(message);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      membershipService.isMember.mockResolvedValue(true);
+      });
+      mockDatabase.channel.findUnique.mockResolvedValue({ id: 'channel-1' });
+      channelAccessService.canViewChannel.mockResolvedValue(true);
 
       const result = await strategy.checkAccess(
         'user-1',
@@ -71,89 +60,28 @@ describe('MessageAttachmentStrategy', () => {
       );
 
       expect(result).toBe(true);
-      expect(membershipService.isMember).toHaveBeenCalledWith(
-        'user-1',
-        'community-1',
-      );
-    });
-
-    it('should throw ForbiddenException for public channel when user is not community member', async () => {
-      const message = {
-        id: 'message-1',
-        channelId: 'channel-1',
-        directMessageGroupId: null,
-      };
-
-      const channel = {
-        id: 'channel-1',
-        communityId: 'community-1',
-        isPrivate: false,
-      };
-
-      mockDatabase.message.findUnique.mockResolvedValue(message);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      membershipService.isMember.mockResolvedValue(false);
-
-      await expect(
-        strategy.checkAccess('user-1', 'message-1', 'file-1'),
-      ).rejects.toThrow(ForbiddenException);
-    });
-
-    it('should grant access for private channel message when user is channel member', async () => {
-      const message = {
-        id: 'message-1',
-        channelId: 'channel-1',
-        directMessageGroupId: null,
-      };
-
-      const channel = {
-        id: 'channel-1',
-        communityId: 'community-1',
-        isPrivate: true,
-      };
-
-      mockDatabase.message.findUnique.mockResolvedValue(message);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      channelMembershipService.isMember.mockResolvedValue(true);
-
-      const result = await strategy.checkAccess(
-        'user-1',
-        'message-1',
-        'file-1',
-      );
-
-      expect(result).toBe(true);
-      expect(channelMembershipService.isMember).toHaveBeenCalledWith(
+      expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         'user-1',
         'channel-1',
       );
     });
 
-    it('should throw ForbiddenException for private channel when user is not channel member', async () => {
-      const message = {
+    it('denies access when the user cannot view the channel (private non-member, non-member of the community)', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
         id: 'message-1',
         channelId: 'channel-1',
         directMessageGroupId: null,
-      };
-
-      const channel = {
-        id: 'channel-1',
-        communityId: 'community-1',
-        isPrivate: true,
-      };
-
-      mockDatabase.message.findUnique.mockResolvedValue(message);
-      mockDatabase.channel.findUnique.mockResolvedValue(channel);
-      channelMembershipService.isMember.mockResolvedValue(false);
+      });
+      mockDatabase.channel.findUnique.mockResolvedValue({ id: 'channel-1' });
+      channelAccessService.canViewChannel.mockResolvedValue(false);
 
       await expect(
         strategy.checkAccess('user-1', 'message-1', 'file-1'),
       ).rejects.toThrow(ForbiddenException);
-
       await expect(
         strategy.checkAccess('user-1', 'message-1', 'file-1'),
       ).rejects.toThrow(
-        'You must be a member of this private channel to access this file',
+        'You must be able to view this channel to access this file',
       );
     });
 

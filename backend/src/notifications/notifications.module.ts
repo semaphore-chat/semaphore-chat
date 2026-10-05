@@ -1,3 +1,4 @@
+import { RolesModule } from '@/roles/roles.module';
 import { Module } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { NotificationsController } from './notifications.controller';
@@ -29,6 +30,7 @@ import { RedisModule } from '@/redis/redis.module';
     PushNotificationsModule,
     PresenceModule,
     RedisModule,
+    RolesModule,
   ],
   exports: [NotificationsService, NotificationsGateway],
 })

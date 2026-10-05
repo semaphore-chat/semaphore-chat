@@ -68,7 +68,7 @@ describe('PermissionsCacheService', () => {
         'rbac:epoch:instance',
       );
       expect(redis.get).toHaveBeenCalledWith(
-        'rbac:actions:user-1:instance:0:0',
+        'rbac:v2:actions:user-1:instance:0:0',
       );
     });
 
@@ -90,7 +90,7 @@ describe('PermissionsCacheService', () => {
         'rbac:epoch:community:community-9',
       );
       expect(redis.get).toHaveBeenCalledWith(
-        'rbac:actions:user-1:community-9:2:5',
+        'rbac:v2:actions:user-1:community-9:2:5',
       );
     });
 
@@ -135,7 +135,7 @@ describe('PermissionsCacheService', () => {
 
       await service.setCachedActions('user-1', scope, miss.epochs, actions);
       expect(redis.set).toHaveBeenCalledWith(
-        'rbac:actions:user-1:community-1:0:0',
+        'rbac:v2:actions:user-1:community-1:0:0',
         JSON.stringify(actions),
         'EX',
         300,

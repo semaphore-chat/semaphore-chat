@@ -5,16 +5,20 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { DatabaseService } from '@/database/database.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { LivekitService } from '@/livekit/livekit.service';
+import { publishGrantFor } from '@/livekit/publish-grant.util';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
   RoomEvents,
   MembershipCreatedEvent,
   MembershipRemovedEvent,
   ModerationUserBannedEvent,
   ModerationUserKickedEvent,
+  ModerationTimeoutChangedEvent,
   ChannelCreatedEvent,
   ChannelDeletedEvent,
+  ChannelVisibilityChangedEvent,
   ChannelMembershipCreatedEvent,
   ChannelMembershipRemovedEvent,
   DmGroupCreatedEvent,
@@ -51,6 +55,7 @@ export class RoomSubscriptionHandler {
     private readonly databaseService: DatabaseService,
     private readonly voicePresenceService: VoicePresenceService,
     private readonly livekitService: LivekitService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   // =========================================================================
@@ -62,14 +67,14 @@ export class RoomSubscriptionHandler {
     userId,
     communityId,
   }: MembershipCreatedEvent): Promise<void> {
-    const publicChannels = await this.databaseService.channel.findMany({
-      where: { communityId, isPrivate: false },
-      select: { id: true },
-    });
+    const visibleChannelIds = await this.channelAccessService.visibleChannelIds(
+      userId,
+      communityId,
+    );
 
     const roomsToJoin = [
       RoomName.community(communityId),
-      ...publicChannels.map((ch) => RoomName.channel(ch.id)),
+      ...visibleChannelIds.map((id) => RoomName.channel(id)),
     ];
 
     this.websocketService.joinSocketsToRoom(RoomName.user(userId), roomsToJoin);
@@ -141,6 +146,43 @@ export class RoomSubscriptionHandler {
   }
 
   /**
+   * A timeout was applied or removed: recompute what the user may publish in
+   * every voice channel of the community they're connected to (listen-only
+   * while timed out). Errors are logged, never thrown.
+   */
+  @OnEvent(RoomEvents.MODERATION_TIMEOUT_CHANGED)
+  async onTimeoutChanged({
+    userId,
+    communityId,
+  }: ModerationTimeoutChangedEvent): Promise<void> {
+    try {
+      const connected =
+        await this.voicePresenceService.getUserVoiceChannels(userId);
+      if (connected.length === 0) return;
+      const channels = await this.databaseService.channel.findMany({
+        where: { communityId, id: { in: connected } },
+        select: { id: true },
+      });
+      for (const { id } of channels) {
+        const caps = await this.channelAccessService.channelCapabilities(
+          userId,
+          id,
+        );
+        await this.livekitService.updatePublishPermissions(
+          id,
+          userId,
+          caps ? publishGrantFor(caps) : { canPublish: false },
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to update voice permissions of ${userId} in community ${communityId}`,
+        error,
+      );
+    }
+  }
+
+  /**
    * Remove a user from all voice channels in a community.
    * Handles both LiveKit session ejection and Redis voice presence cleanup.
    * Errors are logged but never thrown — moderation actions must not fail
@@ -199,21 +241,52 @@ export class RoomSubscriptionHandler {
   // =========================================================================
 
   @OnEvent(RoomEvents.CHANNEL_CREATED)
-  onChannelCreated({
+  async onChannelCreated({ channelId }: ChannelCreatedEvent): Promise<void> {
+    await this.syncChannelRoom(channelId);
+  }
+
+  @OnEvent(RoomEvents.CHANNEL_VISIBILITY_CHANGED)
+  async onChannelVisibilityChanged({
     channelId,
-    communityId,
-    isPrivate,
-  }: ChannelCreatedEvent): void {
-    if (!isPrivate) {
-      // All community members should join the new public channel room
+  }: ChannelVisibilityChangedEvent): Promise<void> {
+    await this.syncChannelRoom(channelId);
+  }
+
+  /**
+   * Make the channel's socket room hold exactly its viewers
+   * (ChannelAccessService): when everyone can see it, join the whole
+   * community room; otherwise join the viewers and remove everyone else, so
+   * a user who lost access stops receiving the channel's messages.
+   */
+  private async syncChannelRoom(channelId: string): Promise<void> {
+    const plan = await this.channelAccessService.roomPlan(channelId);
+    if (!plan) return;
+    const room = RoomName.channel(channelId);
+    if (plan.everyone) {
       this.websocketService.joinSocketsToRoom(
-        RoomName.community(communityId),
-        RoomName.channel(channelId),
+        RoomName.community(plan.communityId),
+        room,
       );
-      this.logger.debug(
-        `All members of community ${communityId} joined public channel ${channelId}`,
-      );
+      return;
     }
+    for (const userId of plan.nonViewers) {
+      this.websocketService.removeSocketsFromRoom(RoomName.user(userId), room);
+    }
+    // Users who lost access also lose their thread subscriptions here
+    if (plan.nonViewers.length > 0) {
+      await this.databaseService.threadSubscriber.deleteMany({
+        where: {
+          userId: { in: plan.nonViewers },
+          parentMessage: { channelId },
+        },
+      });
+    }
+    for (const userId of plan.viewers) {
+      this.websocketService.joinSocketsToRoom(RoomName.user(userId), room);
+    }
+    this.logger.debug(
+      `Synced room for channel ${channelId}: ${plan.viewers.length} viewers, ${plan.nonViewers.length} removed`,
+    );
   }
 
   @OnEvent(RoomEvents.CHANNEL_DELETED)

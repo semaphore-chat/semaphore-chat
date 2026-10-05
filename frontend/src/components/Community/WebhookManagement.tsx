@@ -60,7 +60,7 @@ const WebhookManagement: React.FC<WebhookManagementProps> = ({ channelId }) => {
   const { hasPermissions: canManage } = useUserPermissions({
     resourceType: "CHANNEL",
     resourceId: channelId,
-    actions: ["UPDATE_CHANNEL"],
+    actions: ["MANAGE_WEBHOOKS"],
   });
 
   const {

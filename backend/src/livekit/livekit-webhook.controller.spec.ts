@@ -3,6 +3,7 @@ import type { Mocked } from '@suites/doubles.jest';
 import { LivekitWebhookController } from './livekit-webhook.controller';
 import { LivekitReplayService } from './livekit-replay.service';
 import { LivekitService } from './livekit.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { LivekitAccessService } from './livekit-access.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 
@@ -20,6 +21,14 @@ jest.mock('livekit-server-sdk', () => ({
   WebhookReceiver: jest.fn().mockImplementation(() => ({
     receive: jest.fn(),
   })),
+  // Real protocol values (used by publishGrantFor)
+  TrackSource: {
+    UNKNOWN: 0,
+    CAMERA: 1,
+    MICROPHONE: 2,
+    SCREEN_SHARE: 3,
+    SCREEN_SHARE_AUDIO: 4,
+  },
 }));
 
 describe('LivekitWebhookController', () => {
@@ -28,6 +37,7 @@ describe('LivekitWebhookController', () => {
   let livekitService: Mocked<LivekitService>;
   let livekitAccessService: Mocked<LivekitAccessService>;
   let voicePresenceService: Mocked<VoicePresenceService>;
+  let channelAccessService: Mocked<ChannelAccessService>;
   let webhookReceiverMock: { receive: jest.Mock };
 
   const createMockRequest = (rawBody?: string) => ({
@@ -76,6 +86,7 @@ describe('LivekitWebhookController', () => {
     livekitService = unitRef.get(LivekitService);
     livekitAccessService = unitRef.get(LivekitAccessService);
     voicePresenceService = unitRef.get(VoicePresenceService);
+    channelAccessService = unitRef.get(ChannelAccessService);
     livekitAccessService.checkJoin.mockResolvedValue(null);
   });
 
@@ -417,6 +428,97 @@ describe('LivekitWebhookController', () => {
 
       expect(livekitAccessService.checkJoin).not.toHaveBeenCalled();
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
+    });
+
+    describe('clamps a stale token to current voice permissions', () => {
+      it('timed out since the token was issued: listen-only right away', async () => {
+        channelAccessService.channelCapabilities.mockResolvedValue({
+          channelId: 'room-1',
+          view: true,
+          post: true,
+          attach: true,
+          react: true,
+          threadReply: true,
+          connect: true,
+          speak: false,
+          video: false,
+          share: false,
+          managePermissions: false,
+          timedOutUntil: null,
+        });
+        await joined();
+        expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+          'room-1',
+          'user-1',
+          { canPublish: false },
+        );
+        // presence still registers (they can listen)
+        expect(
+          voicePresenceService.handleWebhookParticipantJoined,
+        ).toHaveBeenCalled();
+      });
+
+      it('a partial grant is narrowed to the allowed sources', async () => {
+        channelAccessService.channelCapabilities.mockResolvedValue({
+          channelId: 'room-1',
+          view: true,
+          post: true,
+          attach: true,
+          react: true,
+          threadReply: true,
+          connect: true,
+          speak: true,
+          video: false,
+          share: false,
+          managePermissions: false,
+          timedOutUntil: null,
+        });
+        await joined();
+        expect(livekitService.updatePublishPermissions).toHaveBeenCalledWith(
+          'room-1',
+          'user-1',
+          {
+            canPublish: true,
+            canPublishSources: [2], // TrackSource.MICROPHONE
+          },
+        );
+      });
+
+      it('a full grant changes nothing', async () => {
+        channelAccessService.channelCapabilities.mockResolvedValue({
+          channelId: 'room-1',
+          view: true,
+          post: true,
+          attach: true,
+          react: true,
+          threadReply: true,
+          connect: true,
+          speak: true,
+          video: true,
+          share: true,
+          managePermissions: false,
+          timedOutUntil: null,
+        });
+        await joined();
+        expect(livekitService.updatePublishPermissions).not.toHaveBeenCalled();
+      });
+
+      it('skips DM rooms (no channel)', async () => {
+        channelAccessService.channelCapabilities.mockResolvedValue(null);
+        await joined();
+        expect(livekitService.updatePublishPermissions).not.toHaveBeenCalled();
+      });
+
+      it("skips LiveKit's own egress participants", async () => {
+        await joined('EG_abc', 2);
+        expect(channelAccessService.channelCapabilities).not.toHaveBeenCalled();
+      });
+
+      it('skips removed (revoked) participants', async () => {
+        livekitAccessService.checkJoin.mockResolvedValue('USER_BANNED');
+        await joined();
+        expect(channelAccessService.channelCapabilities).not.toHaveBeenCalled();
+      });
     });
 
     it('does not check other events', async () => {

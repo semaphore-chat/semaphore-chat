@@ -2,11 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { AuthenticatedSocket } from '@/common/utils/socket.utils';
 import { RoomName } from '@/common/utils/room-name.util';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 
 @Injectable()
 export class RoomsService {
   private readonly logger = new Logger(RoomsService.name);
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly channelAccessService: ChannelAccessService,
+  ) {}
 
   /**
    * Join ALL rooms for a user across every community they belong to.
@@ -31,33 +35,14 @@ export class RoomsService {
       await client.join(RoomName.community(communityId));
     }
 
-    // Join all public channels across all communities
-    if (communityIds.length > 0) {
-      const publicChannels = await this.databaseService.channel.findMany({
-        where: {
-          communityId: { in: communityIds },
-          isPrivate: false,
-        },
-        select: { id: true },
-      });
-      for (const channel of publicChannels) {
-        await client.join(RoomName.channel(channel.id));
-      }
-    }
-
-    // Join all private channels the user has membership to, in communities
-    // they are still a member of (a leftover channel membership must not
-    // outlive the community membership)
-    const privateChannelMemberships =
-      await this.databaseService.channelMembership.findMany({
-        where: {
-          userId,
-          channel: { isPrivate: true, communityId: { in: communityIds } },
-        },
-        select: { channelId: true },
-      });
-    for (const membership of privateChannelMemberships) {
-      await client.join(RoomName.channel(membership.channelId));
+    // Join every channel the user can see (ChannelAccessService is the one
+    // visibility rule: public channels, private ones they're a member of)
+    const visibleChannelIds = await this.channelAccessService.visibleChannelIds(
+      userId,
+      communityIds,
+    );
+    for (const channelId of visibleChannelIds) {
+      await client.join(RoomName.channel(channelId));
     }
 
     // Join all DM groups

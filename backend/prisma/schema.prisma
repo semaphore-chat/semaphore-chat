@@ -309,6 +309,7 @@ model User {
   friendshipsB                  Friendship[]               @relation("FriendshipB")
 
   ChannelMembership ChannelMembership[] @relation("UserChannelMemberships")
+  channelOverwrites ChannelPermissionOverwrite[] @relation("UserChannelOverwrites")
   File              File[]
   ReadReceipts      ReadReceipt[]       @relation("UserReadReceipts")
 
@@ -548,6 +549,12 @@ model Channel {
   egressSessions EgressSession[] @relation("EgressSessionChannel")
   webhooks       Webhook[]
 
+  // Per-channel permission overwrites (allow/deny on top of community roles).
+  // `preset` is a display label for the settings UI only; enforcement reads
+  // the overwrites.
+  preset     ChannelPreset                @default(NORMAL)
+  overwrites ChannelPermissionOverwrite[] @relation("ChannelOverwrites")
+
   @@unique([communityId, name])
   @@index([communityId, type, position])
 }
@@ -564,6 +571,30 @@ model ChannelMembership {
   addedByUser User? @relation("ChannelMembershipAddedBy", fields: [addedBy], references: [id], onDelete: SetNull)
 
   @@unique([userId, channelId])
+}
+
+/// A per-channel allow/deny of channel-scoped actions for one target.
+/// Exactly one overwrite per (channel, EVERYONE), (channel, role) and
+/// (channel, member): partial unique indexes and CHECK constraints are in the
+/// migration's raw SQL. MEMBER targets are in the data model only (no API yet).
+model ChannelPermissionOverwrite {
+  id         String          @id @default(uuid())
+  channelId  String
+  targetType OverwriteTarget
+  roleId     String?
+  userId     String?
+  allow      RbacActions[]   @default([])
+  deny       RbacActions[]   @default([])
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  channel Channel @relation("ChannelOverwrites", fields: [channelId], references: [id], onDelete: Cascade)
+  role    Role?   @relation("RoleChannelOverwrites", fields: [roleId], references: [id], onDelete: Cascade)
+  user    User?   @relation("UserChannelOverwrites", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([channelId])
+  @@index([roleId])
+  @@index([userId])
 }
 
 model AliasGroup {
@@ -600,6 +631,8 @@ model Role {
   createdAt   DateTime      @default(now())
 
   UserRoles UserRoles[]
+
+  channelOverwrites ChannelPermissionOverwrite[] @relation("RoleChannelOverwrites")
 
   @@index([name, communityId])
 }
@@ -859,6 +892,20 @@ enum ChannelType {
   VOICE
 }
 
+enum OverwriteTarget {
+  EVERYONE
+  ROLE
+  MEMBER
+}
+
+enum ChannelPreset {
+  NORMAL
+  READ_ONLY
+  ANNOUNCEMENT
+  MODS_ONLY
+  CUSTOM
+}
+
 enum RbacActions {
   DELETE_MESSAGE
   DELETE_CHANNEL
@@ -919,6 +966,12 @@ enum RbacActions {
   CREATE_SOUNDBOARD_SOUND
   DELETE_SOUNDBOARD_SOUND
   READ_SOUNDBOARD_SOUND
+  ATTACH_FILES
+  SPEAK
+  VIDEO
+  SCREEN_SHARE
+  MANAGE_CHANNEL_PERMISSIONS
+  MANAGE_WEBHOOKS
 }
 
 enum InstanceRole {

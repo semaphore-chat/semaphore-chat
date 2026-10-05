@@ -8,6 +8,15 @@ import { REDIS_CLIENT } from '@/redis/redis.constants';
  * own after this many seconds. */
 const VALUE_TTL_SECONDS = 300;
 
+/**
+ * Version of the cached value format. Bump it whenever role action lists
+ * change shape or meaning in a migration (e.g. the channel-permission
+ * backfill added ATTACH_FILES/SPEAK/...): entries cached by the previous
+ * release are then ignored instead of serving stale lists (403s) for up to
+ * VALUE_TTL_SECONDS after a deploy.
+ */
+export const CACHE_VALUE_VERSION = 2;
+
 /** Max time to wait for Redis before treating the cache as unavailable and
  * falling through to the DB. Mirrors FailOpenThrottlerStorage/WsThrottleGuard
  * — a slow cache must never make permission checks slower than a plain DB
@@ -64,8 +73,8 @@ export type PermissionCacheReadResult =
  * The cached lookup result lives at a key that embeds both the user's and
  * the scope's current epoch:
  *
- *   rbac:actions:{userId}:instance:{userEpoch}:{instanceEpoch}
- *   rbac:actions:{userId}:{communityId}:{userEpoch}:{communityEpoch}
+ *   rbac:v{CACHE_VALUE_VERSION}:actions:{userId}:instance:{userEpoch}:{instanceEpoch}
+ *   rbac:v{CACHE_VALUE_VERSION}:actions:{userId}:{communityId}:{userEpoch}:{communityEpoch}
  *
  * Value: `JSON.stringify(RbacActions[])`, TTL 300s (SET EX) — the only data
  * PermissionsService actually needs from the two `findMany` results is the
@@ -319,7 +328,7 @@ export class PermissionsCacheService {
   ): string {
     const scopePart =
       scope.kind === 'instance' ? 'instance' : scope.communityId;
-    return `rbac:actions:${userId}:${scopePart}:${epochs.userEpoch}:${epochs.scopeEpoch}`;
+    return `rbac:v${CACHE_VALUE_VERSION}:actions:${userId}:${scopePart}:${epochs.userEpoch}:${epochs.scopeEpoch}`;
   }
 
   private userEpochKey(userId: string): string {

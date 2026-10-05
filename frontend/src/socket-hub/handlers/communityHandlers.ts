@@ -55,6 +55,35 @@ export const handleChannelDeleted: SocketEventHandler<typeof ServerEvents.CHANNE
   });
 };
 
+/**
+ * A channel's overwrites (or privacy) changed: refetch the channel list (it
+ * may appear or disappear) and the effective channel permissions.
+ */
+export const handleChannelPermissionsUpdated: SocketEventHandler<
+  typeof ServerEvents.CHANNEL_PERMISSIONS_UPDATED
+> = (_payload, queryClient: QueryClient) => {
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelsControllerFindAllForCommunity' }],
+  });
+  invalidateChannelPermissionQueries(queryClient);
+};
+
+/** Effective channel permissions depend on roles, overwrites and timeouts. */
+export function invalidateChannelPermissionQueries(queryClient: QueryClient) {
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelPermissionsControllerGetMyCommunityChannelPermissions' }],
+  });
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelPermissionsControllerGetMyChannelPermissions' }],
+  });
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelPermissionsControllerListChannelPermissions' }],
+  });
+  queryClient.invalidateQueries({
+    queryKey: [{ _id: 'channelPermissionsControllerGetOverwrites' }],
+  });
+}
+
 // =============================================================================
 // Community Lifecycle
 // =============================================================================

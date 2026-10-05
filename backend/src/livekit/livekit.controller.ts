@@ -16,6 +16,8 @@ import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { FULL_PUBLISH_GRANT, publishGrantFor } from './publish-grant.util';
 import { LivekitReplayService } from './livekit-replay.service';
 import { ClipLibraryService } from './clip-library.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
@@ -69,6 +71,7 @@ export class LivekitController {
     private readonly storageService: StorageService,
     private readonly voicePresenceService: VoicePresenceService,
     private readonly jwtService: JwtService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   /**
@@ -100,7 +103,17 @@ export class LivekitController {
       ...createTokenDto,
       identity: req.user.id,
     };
-    return this.livekitService.generateToken(tokenDto, this.sessionIdOf(req));
+    // What they may publish follows their channel voice capabilities
+    // (SPEAK/VIDEO/SCREEN_SHARE overwrites, community timeouts)
+    const caps = await this.channelAccessService.channelCapabilities(
+      req.user.id,
+      createTokenDto.roomId,
+    );
+    return this.livekitService.generateToken(
+      tokenDto,
+      this.sessionIdOf(req),
+      caps ? publishGrantFor(caps) : { canPublish: false },
+    );
   }
 
   @Post('dm-token')
@@ -120,7 +133,12 @@ export class LivekitController {
       ...createTokenDto,
       identity: req.user.id,
     };
-    return this.livekitService.generateToken(tokenDto, this.sessionIdOf(req));
+    // DM calls: timeouts are community-scoped, so DMs publish freely
+    return this.livekitService.generateToken(
+      tokenDto,
+      this.sessionIdOf(req),
+      FULL_PUBLISH_GRANT,
+    );
   }
 
   @Post('channels/:channelId/mute-participant')

@@ -1,3 +1,4 @@
+import { RolesModule } from '@/roles/roles.module';
 import { Module } from '@nestjs/common';
 import { ReadReceiptsService } from './read-receipts.service';
 import { ReadReceiptsController } from './read-receipts.controller';
@@ -19,6 +20,7 @@ import { RedisModule } from '@/redis/redis.module';
     UserModule,
     NotificationsModule,
     RedisModule,
+    RolesModule,
   ],
   exports: [ReadReceiptsService],
 })

@@ -71,6 +71,8 @@ export enum ServerEvents {
   CHANNEL_CREATED = 'channelCreated',
   CHANNEL_UPDATED = 'channelUpdated',
   CHANNEL_DELETED = 'channelDeleted',
+  /** A channel's permission overwrites changed: refetch channel permissions. */
+  CHANNEL_PERMISSIONS_UPDATED = 'channelPermissionsUpdated',
 
   // Community Lifecycle
   COMMUNITY_UPDATED = 'communityUpdated',

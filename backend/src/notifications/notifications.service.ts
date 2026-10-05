@@ -6,6 +6,7 @@ import {
   Inject,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { ChannelAccessService } from '@/roles/channel-access.service';
 import { DatabaseService } from '@/database/database.service';
 import {
   Message,
@@ -64,6 +65,7 @@ export class NotificationsService {
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly presenceService: PresenceService,
     private readonly configService: ConfigService,
+    private readonly channelAccessService: ChannelAccessService,
   ) {}
 
   /**
@@ -89,6 +91,12 @@ export class NotificationsService {
     // silently losing the fan-out.
     const mentionedUserIds = new Set<string>();
 
+    // Only users who can see the channel may be notified about it
+    // (ChannelAccessService): no names or content of hidden channels leak
+    // through mentions. Computed lazily, at most once: plain messages in
+    // large public channels never need it (see the threshold guard).
+    const viewers = this.lazyViewers(message.channelId);
+
     // Extract mentioned users from spans
     for (const span of message.spans) {
       if (span.type === SpanType.USER_MENTION && span.userId) {
@@ -98,7 +106,7 @@ export class NotificationsService {
       // Handle @here and @channel special mentions
       if (span.type === SpanType.SPECIAL_MENTION) {
         const users = await this.getSpecialMentionUsers(
-          message.channelId,
+          message.channelId ? await viewers() : null,
           span.specialKind,
         );
         users.forEach((userId) => mentionedUserIds.add(userId));
@@ -114,6 +122,18 @@ export class NotificationsService {
     // Remove the author from mentioned users (don't notify yourself)
     if (message.authorId) {
       mentionedUserIds.delete(message.authorId);
+    }
+
+    if (message.channelId && mentionedUserIds.size > 0) {
+      // Cheap for public channels: only the mentioned ids are looked up
+      const allowed = new Set(
+        await this.channelAccessService.filterViewers(message.channelId, [
+          ...mentionedUserIds,
+        ]),
+      );
+      for (const userId of mentionedUserIds) {
+        if (!allowed.has(userId)) mentionedUserIds.delete(userId);
+      }
     }
 
     // Create notifications for mentioned users
@@ -136,8 +156,22 @@ export class NotificationsService {
 
     // Handle CHANNEL_MESSAGE notifications for users with "all" notification level
     if (message.channelId) {
-      await this.createChannelMessageNotifications(message, mentionedUserIds);
+      await this.createChannelMessageNotifications(
+        message,
+        mentionedUserIds,
+        viewers,
+      );
     }
+  }
+
+  /** Memoized ChannelAccessService.viewerUserIds for one message. */
+  private lazyViewers(channelId: string | null): () => Promise<string[]> {
+    let pending: Promise<string[]> | null = null;
+    return () => {
+      if (!channelId) return Promise.resolve([]);
+      pending ??= this.channelAccessService.viewerUserIds(channelId);
+      return pending;
+    };
   }
 
   /**
@@ -152,67 +186,30 @@ export class NotificationsService {
   }
 
   /**
-   * Get users for special mentions (@here, @channel)
-   * For private channels, uses channelMembership. For public channels, uses
-   * community membership since public channels don't have channelMembership records.
+   * Get users for special mentions (@here, @channel): the channel's viewers
+   * (ChannelAccessService), and for @here only those seen recently.
    */
   private async getSpecialMentionUsers(
-    channelId: string | null,
+    channelViewers: string[] | null,
     specialKind: string | null,
   ): Promise<string[]> {
-    if (!channelId) return [];
-
-    const channel = await this.databaseService.channel.findUnique({
-      where: { id: channelId },
-      select: { isPrivate: true, communityId: true },
-    });
-
-    if (!channel) return [];
+    if (!channelViewers || channelViewers.length === 0) return [];
 
     if (specialKind === 'channel') {
-      // @channel - all channel/community members
-      if (channel.isPrivate) {
-        const memberships =
-          await this.databaseService.channelMembership.findMany({
-            where: { channelId },
-            select: { userId: true },
-          });
-        return memberships.map((m) => m.userId);
-      } else {
-        const memberships = await this.databaseService.membership.findMany({
-          where: { communityId: channel.communityId },
-          select: { userId: true },
-        });
-        return memberships.map((m) => m.userId);
-      }
+      return channelViewers;
     }
 
     if (specialKind === 'here') {
       // @here - only online members (users with recent lastSeen)
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-
-      if (channel.isPrivate) {
-        const memberships =
-          await this.databaseService.channelMembership.findMany({
-            where: {
-              channelId,
-              user: { lastSeen: { gt: fiveMinutesAgo } },
-            },
-            select: { userId: true },
-          });
-
-        return memberships.map((m) => m.userId);
-      } else {
-        const memberships = await this.databaseService.membership.findMany({
-          where: {
-            communityId: channel.communityId,
-            user: { lastSeen: { gt: fiveMinutesAgo } },
-          },
-          select: { userId: true },
-        });
-
-        return memberships.map((m) => m.userId);
-      }
+      const online = await this.databaseService.user.findMany({
+        where: {
+          id: { in: channelViewers },
+          lastSeen: { gt: fiveMinutesAgo },
+        },
+        select: { id: true },
+      });
+      return online.map((u) => u.id);
     }
 
     return [];
@@ -316,6 +313,7 @@ export class NotificationsService {
   private async createChannelMessageNotifications(
     message: Message,
     alreadyNotifiedUserIds: Set<string>,
+    viewers: () => Promise<string[]>,
   ): Promise<void> {
     if (!message.channelId) return;
     // Notification.authorId is required — matches createNotificationIfAllowed's
@@ -325,19 +323,20 @@ export class NotificationsService {
     const channelId = message.channelId;
     const authorId = message.authorId;
 
-    const channel = await this.databaseService.channel.findUnique({
-      where: { id: channelId },
-      select: { isPrivate: true, communityId: true },
-    });
-
-    if (!channel) return;
-
-    // Performance guard: skip for large communities
-    if (!channel.isPrivate) {
-      const memberCount = await this.databaseService.membership.count({
-        where: { communityId: channel.communityId },
+    // Performance guard (cheap path first, as before): a channel the whole
+    // community sees is skipped on the member count alone, without
+    // computing viewers; restricted channels are judged by their viewers.
+    const threshold = this.getChannelMessageMemberThreshold();
+    if (await this.channelAccessService.isVisibleToWholeCommunity(channelId)) {
+      const channel = await this.databaseService.channel.findUnique({
+        where: { id: channelId },
+        select: { communityId: true },
       });
-      const threshold = this.getChannelMessageMemberThreshold();
+      const memberCount = channel
+        ? await this.databaseService.membership.count({
+            where: { communityId: channel.communityId },
+          })
+        : 0;
       if (memberCount > threshold) {
         this.logger.warn(
           `Skipping CHANNEL_MESSAGE notifications for channel ${channelId}: community has ${memberCount} members (threshold: ${threshold})`,
@@ -346,22 +345,13 @@ export class NotificationsService {
       }
     }
 
-    // Get eligible users
-    let userIds: string[];
-    if (channel.isPrivate) {
-      const memberships = await this.databaseService.channelMembership.findMany(
-        {
-          where: { channelId },
-          select: { userId: true },
-        },
+    // Eligible users: the channel's viewers (ChannelAccessService)
+    const userIds = await viewers();
+    if (userIds.length > threshold) {
+      this.logger.warn(
+        `Skipping CHANNEL_MESSAGE notifications for channel ${channelId}: ${userIds.length} viewers (threshold: ${threshold})`,
       );
-      userIds = memberships.map((m) => m.userId);
-    } else {
-      const memberships = await this.databaseService.membership.findMany({
-        where: { communityId: channel.communityId },
-        select: { userId: true },
-      });
-      userIds = memberships.map((m) => m.userId);
+      return;
     }
 
     // Filter out author and already-notified users
@@ -1005,8 +995,21 @@ export class NotificationsService {
         return;
       }
 
+      // Channel threads: only subscribers who can still see the channel
+      // (ChannelAccessService); a subscription can outlive access.
+      let recipients = subscribers;
+      if (reply.channelId) {
+        const allowed = new Set(
+          await this.channelAccessService.filterViewers(
+            reply.channelId,
+            subscribers.map((s) => s.userId),
+          ),
+        );
+        recipients = subscribers.filter((s) => allowed.has(s.userId));
+      }
+
       // Create notifications for all subscribers
-      const notificationPromises = subscribers.map((subscriber) =>
+      const notificationPromises = recipients.map((subscriber) =>
         this.createNotificationIfAllowedForThread(
           subscriber.userId,
           reply,

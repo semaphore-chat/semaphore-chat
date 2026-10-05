@@ -16,8 +16,12 @@ export enum RoomEvents {
   MEMBERSHIP_REMOVED = 'membership.removed',
   MODERATION_USER_BANNED = 'moderation.user-banned',
   MODERATION_USER_KICKED = 'moderation.user-kicked',
+  /** A timeout was applied or removed: resync voice publish permissions. */
+  MODERATION_TIMEOUT_CHANGED = 'moderation.timeout-changed',
   CHANNEL_CREATED = 'channel.created',
   CHANNEL_DELETED = 'channel.deleted',
+  /** Who can see a channel may have changed (privacy toggle, overwrites). */
+  CHANNEL_VISIBILITY_CHANGED = 'channel.visibility-changed',
   CHANNEL_MEMBERSHIP_CREATED = 'channel-membership.created',
   CHANNEL_MEMBERSHIP_REMOVED = 'channel-membership.removed',
   DM_GROUP_CREATED = 'dm-group.created',
@@ -89,7 +93,16 @@ export interface ModerationUserKickedEvent {
 export interface ChannelCreatedEvent {
   channelId: string;
   communityId: string;
-  isPrivate: boolean;
+}
+
+export interface ModerationTimeoutChangedEvent {
+  userId: string;
+  communityId: string;
+}
+
+export interface ChannelVisibilityChangedEvent {
+  channelId: string;
+  communityId: string;
 }
 
 export interface ChannelDeletedEvent {

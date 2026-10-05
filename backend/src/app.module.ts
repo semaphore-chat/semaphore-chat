@@ -16,6 +16,7 @@ import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
 import { ChannelsModule } from './channels/channels.module';
+import { ChannelPermissionsModule } from './channel-permissions/channel-permissions.module';
 import { MessagesModule } from './messages/messages.module';
 import { RoomsModule } from './rooms/rooms.module';
 import { WebsocketService } from './websocket/websocket.service';
@@ -106,6 +107,7 @@ import { JobsModule } from './jobs/jobs.module';
       },
     }),
     ChannelsModule,
+    ChannelPermissionsModule,
     RoomsModule,
     WebsocketModule,
     RedisModule,

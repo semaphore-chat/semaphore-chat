@@ -21,7 +21,13 @@ jest.mock('livekit-server-sdk', () => {
         toJwt: jest.fn().mockResolvedValue('mock-jwt-token'),
       };
     }),
-    TrackSource: { MICROPHONE: 2 },
+    TrackSource: {
+      UNKNOWN: 0,
+      CAMERA: 1,
+      MICROPHONE: 2,
+      SCREEN_SHARE: 3,
+      SCREEN_SHARE_AUDIO: 4,
+    },
   };
 });
 
@@ -41,6 +47,7 @@ describe('LivekitService', () => {
     removeParticipant: jest.fn(),
     listRooms: jest.fn(),
     listParticipants: jest.fn(),
+    updateParticipant: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -197,6 +204,40 @@ describe('LivekitService', () => {
         canUpdateOwnMetadata: true,
       });
     });
+
+    it.each([
+      [
+        'subscribe-only (timed out)',
+        { canPublish: false },
+        { canPublish: false },
+      ],
+      [
+        'only the granted sources',
+        { canPublish: true, canPublishSources: [2, 3, 4] },
+        { canPublish: true, canPublishSources: [2, 3, 4] },
+      ],
+    ])(
+      'grants publishing from the PublishGrant: %s',
+      async (_name, grant, expected) => {
+        await service.generateToken(
+          { identity: 'user-123', roomId: 'room-456' },
+          undefined,
+          grant,
+        );
+
+        const mockAccessTokenInstance = (AccessToken as jest.Mock).mock.results[
+          (AccessToken as jest.Mock).mock.results.length - 1
+        ].value;
+        expect(mockAccessTokenInstance.addGrant).toHaveBeenCalledWith({
+          room: 'room-456',
+          roomJoin: true,
+          ...expected,
+          canSubscribe: true,
+          canPublishData: true,
+          canUpdateOwnMetadata: true,
+        });
+      },
+    );
 
     it('should throw LivekitException when API key is missing', async () => {
       jest.spyOn(configService, 'get').mockImplementation((key: string) => {
@@ -525,6 +566,52 @@ describe('LivekitService', () => {
         .compile();
 
       await expect(unit.listParticipantRooms('user-1')).resolves.toEqual([]);
+    });
+  });
+
+  describe('updatePublishPermissions', () => {
+    it('makes a connected participant listen-only', async () => {
+      await service.updatePublishPermissions('room-1', 'user-1', {
+        canPublish: false,
+      });
+
+      expect(mockRoomServiceClient.updateParticipant).toHaveBeenCalledWith(
+        'room-1',
+        'user-1',
+        undefined,
+        {
+          canSubscribe: true,
+          canPublishData: true,
+          canUpdateMetadata: true,
+          canPublish: false,
+          canPublishSources: [],
+        },
+      );
+    });
+
+    it('passes the allowed sources through', async () => {
+      await service.updatePublishPermissions('room-1', 'user-1', {
+        canPublish: true,
+        canPublishSources: [2],
+      });
+
+      expect(mockRoomServiceClient.updateParticipant).toHaveBeenCalledWith(
+        'room-1',
+        'user-1',
+        undefined,
+        expect.objectContaining({ canPublish: true, canPublishSources: [2] }),
+      );
+    });
+
+    it('swallows errors (participant not in the room)', async () => {
+      mockRoomServiceClient.updateParticipant.mockRejectedValueOnce(
+        new Error('participant not found'),
+      );
+      await expect(
+        service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: false,
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 

@@ -202,6 +202,7 @@ const voiceChannel = {
   createdAt: '2025-01-01T00:00:00Z',
   position: 0,
   slowmodeSeconds: 0,
+  preset: 'NORMAL' as const,
 };
 
 describe('VoiceChannelUserList - Clickable Icons', () => {

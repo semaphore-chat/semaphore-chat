@@ -6,7 +6,7 @@ import { FileAuthGuard } from './file-auth.guard';
 import { DatabaseModule } from '@/database/database.module';
 import { StorageModule } from '@/storage/storage.module';
 import { MembershipModule } from '@/membership/membership.module';
-import { ChannelMembershipModule } from '@/channel-membership/channel-membership.module';
+import { RolesModule } from '@/roles/roles.module';
 import { FileAccessGuard } from '@/file/file-access/file-access.guard';
 import {
   PublicAccessStrategy,
@@ -27,12 +27,7 @@ import { OptionalJwtAuthGuard } from '@/auth/optional-jwt-auth.guard';
     CommunityMembershipStrategy,
     MessageAttachmentStrategy,
   ],
-  imports: [
-    DatabaseModule,
-    StorageModule,
-    MembershipModule,
-    ChannelMembershipModule,
-  ],
+  imports: [DatabaseModule, StorageModule, MembershipModule, RolesModule],
   exports: [FileService],
 })
 export class FileModule {}

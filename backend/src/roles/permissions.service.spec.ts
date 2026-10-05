@@ -1,6 +1,9 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
-import { PermissionsService } from './permissions.service';
+import {
+  CHANNEL_PERMISSION_SELECT,
+  PermissionsService,
+} from './permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { PermissionsCacheService } from './permissions-cache.service';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
@@ -170,6 +173,7 @@ describe('PermissionsService', () => {
           id: channel.id,
           communityId: channel.communityId,
           isPrivate: false,
+          overwrites: [],
         });
 
         mockDatabase.userRoles.findMany.mockResolvedValue([
@@ -192,7 +196,7 @@ describe('PermissionsService', () => {
         expect(result).toBe(true);
         expect(mockDatabase.channel.findUnique).toHaveBeenCalledWith({
           where: { id: channel.id },
-          select: { communityId: true, isPrivate: true },
+          select: CHANNEL_PERMISSION_SELECT,
         });
       });
 
@@ -205,6 +209,7 @@ describe('PermissionsService', () => {
           id: channel.id,
           communityId: channel.communityId,
           isPrivate: true,
+          overwrites: [],
         });
 
         mockDatabase.channelMembership.findUnique.mockResolvedValue({
@@ -234,6 +239,7 @@ describe('PermissionsService', () => {
           where: {
             userId_channelId: { userId: user.id, channelId: channel.id },
           },
+          select: { id: true },
         });
       });
 
@@ -245,9 +251,21 @@ describe('PermissionsService', () => {
           id: channel.id,
           communityId: channel.communityId,
           isPrivate: true,
+          overwrites: [],
         });
 
         mockDatabase.channelMembership.findUnique.mockResolvedValue(null);
+        // A community Member whose roles grant the action...
+        const memberRole = RoleFactory.buildMember();
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId: user.id,
+            communityId: channel.communityId,
+            roleId: memberRole.id,
+            isInstanceRole: false,
+            role: memberRole,
+          },
+        ]);
 
         const result = await service.verifyActionsForUserAndResource(
           user.id,
@@ -256,8 +274,8 @@ describe('PermissionsService', () => {
           [RbacActions.READ_MESSAGE],
         );
 
+        // ...is still denied by the private-channel gate
         expect(result).toBe(false);
-        expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
 
       it('should deny when channel not found', async () => {
@@ -292,8 +310,10 @@ describe('PermissionsService', () => {
           channelId: channel.id,
           directMessageGroupId: null,
           channel: {
+            id: channel.id,
             communityId: channel.communityId,
             isPrivate: false,
+            overwrites: [],
           },
         });
 
@@ -331,8 +351,10 @@ describe('PermissionsService', () => {
           channelId: channel.id,
           directMessageGroupId: null,
           channel: {
+            id: channel.id,
             communityId: channel.communityId,
             isPrivate: true,
+            overwrites: [],
           },
         });
 
@@ -363,6 +385,7 @@ describe('PermissionsService', () => {
           where: {
             userId_channelId: { userId: user.id, channelId: channel.id },
           },
+          select: { id: true },
         });
       });
 
@@ -379,12 +402,25 @@ describe('PermissionsService', () => {
           channelId: channel.id,
           directMessageGroupId: null,
           channel: {
+            id: channel.id,
             communityId: channel.communityId,
             isPrivate: true,
+            overwrites: [],
           },
         });
 
         mockDatabase.channelMembership.findUnique.mockResolvedValue(null);
+        // A community Member whose roles grant the action...
+        const memberRole = RoleFactory.buildMember();
+        mockDatabase.userRoles.findMany.mockResolvedValue([
+          {
+            userId: user.id,
+            communityId: channel.communityId,
+            roleId: memberRole.id,
+            isInstanceRole: false,
+            role: memberRole,
+          },
+        ]);
 
         const result = await service.verifyActionsForUserAndResource(
           user.id,
@@ -393,8 +429,8 @@ describe('PermissionsService', () => {
           [RbacActions.READ_MESSAGE],
         );
 
+        // ...is still denied by the private-channel gate
         expect(result).toBe(false);
-        expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
 
       it('should grant access to DM message when user is member', async () => {
@@ -576,8 +612,8 @@ describe('PermissionsService', () => {
           [RbacActions.UPDATE_COMMUNITY],
         );
 
+        // ...is still denied by the private-channel gate
         expect(result).toBe(false);
-        expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
     });
 
@@ -776,6 +812,7 @@ describe('PermissionsService', () => {
           id: channel.id,
           communityId: channel.communityId,
           isPrivate: true,
+          overwrites: [],
         });
         mockDatabase.channelMembership.findUnique.mockResolvedValue({
           userId: user.id,
@@ -796,6 +833,212 @@ describe('PermissionsService', () => {
         // The role lookup itself did come from cache.
         expect(mockDatabase.userRoles.findMany).not.toHaveBeenCalled();
       });
+    });
+  });
+
+  describe('channel overwrites in the guard path', () => {
+    const user = UserFactory.build();
+    const memberRole = RoleFactory.buildMember({
+      id: 'member-role',
+      actions: [
+        RbacActions.READ_CHANNEL,
+        RbacActions.READ_MESSAGE,
+        RbacActions.CREATE_MESSAGE,
+        RbacActions.ATTACH_FILES,
+        RbacActions.CREATE_REACTION,
+        RbacActions.JOIN_CHANNEL,
+      ],
+    });
+    const announcement = (roleId: string) => ({
+      id: 'ch-1',
+      communityId: 'co-1',
+      isPrivate: false,
+      overwrites: [
+        {
+          targetType: 'EVERYONE',
+          roleId: null,
+          userId: null,
+          allow: [],
+          deny: [RbacActions.CREATE_MESSAGE],
+        },
+        {
+          targetType: 'ROLE',
+          roleId,
+          userId: null,
+          allow: [RbacActions.CREATE_MESSAGE],
+          deny: [],
+        },
+      ],
+    });
+
+    beforeEach(() => {
+      mockDatabase.userRoles.findMany.mockImplementation(
+        (args: { where: { roleId?: unknown } }) =>
+          Promise.resolve(
+            args.where.roleId
+              ? [] // the user holds none of the overwritten roles
+              : [{ userId: user.id, roleId: memberRole.id, role: memberRole }],
+          ),
+      );
+      mockDatabase.membership.findUnique.mockResolvedValue({ id: 'm1' });
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue(null);
+    });
+
+    it('applies the EVERYONE deny', async () => {
+      mockDatabase.channel.findUnique.mockResolvedValue(
+        announcement('mod-role'),
+      );
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.CREATE_MESSAGE],
+        ),
+      ).resolves.toBe(false);
+      // Only the overwritten role ids are looked up
+      expect(mockDatabase.userRoles.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ roleId: { in: ['mod-role'] } }),
+        }),
+      );
+    });
+
+    it('a role allow re-adds the action for holders of that role', async () => {
+      mockDatabase.channel.findUnique.mockResolvedValue(
+        announcement('mod-role'),
+      );
+      mockDatabase.userRoles.findMany.mockImplementation(
+        (args: { where: { roleId?: unknown } }) =>
+          Promise.resolve(
+            args.where.roleId
+              ? [{ roleId: 'mod-role' }]
+              : [{ userId: user.id, roleId: memberRole.id, role: memberRole }],
+          ),
+      );
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.CREATE_MESSAGE],
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it('applies to MESSAGE resources (reactions, thread replies) via the channel', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        channelId: 'ch-1',
+        directMessageGroupId: null,
+        channel: announcement('mod-role'),
+      });
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'msg-1',
+          RbacResourceType.MESSAGE,
+          [RbacActions.CREATE_MESSAGE],
+        ),
+      ).resolves.toBe(false);
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'msg-1',
+          RbacResourceType.MESSAGE,
+          [RbacActions.CREATE_REACTION],
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it('requires community membership once a channel has overwrites', async () => {
+      mockDatabase.channel.findUnique.mockResolvedValue(
+        announcement('mod-role'),
+      );
+      mockDatabase.membership.findUnique.mockResolvedValue(null);
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.READ_MESSAGE],
+        ),
+      ).resolves.toBe(false);
+    });
+
+    it('looks the timeout up only for actions a timeout blocks', async () => {
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        id: 'ch-1',
+        communityId: 'co-1',
+        isPrivate: false,
+        overwrites: [],
+      });
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue({
+        expiresAt: new Date(Date.now() + 60_000),
+      });
+
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.READ_MESSAGE],
+        ),
+      ).resolves.toBe(true);
+      expect(mockDatabase.communityTimeout.findUnique).not.toHaveBeenCalled();
+
+      for (const action of [
+        RbacActions.CREATE_MESSAGE,
+        RbacActions.CREATE_REACTION,
+        RbacActions.ATTACH_FILES,
+      ]) {
+        await expect(
+          service.verifyActionsForUserAndResource(
+            user.id,
+            'ch-1',
+            RbacResourceType.CHANNEL,
+            [action],
+          ),
+        ).resolves.toBe(false);
+      }
+      // ...but connecting to voice stays allowed
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.JOIN_CHANNEL],
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it('an expired timeout no longer blocks', async () => {
+      mockDatabase.channel.findUnique.mockResolvedValue({
+        id: 'ch-1',
+        communityId: 'co-1',
+        isPrivate: false,
+        overwrites: [],
+      });
+      mockDatabase.communityTimeout.findUnique.mockResolvedValue({
+        expiresAt: new Date(Date.now() - 1000),
+      });
+      await expect(
+        service.verifyActionsForUserAndResource(
+          user.id,
+          'ch-1',
+          RbacResourceType.CHANNEL,
+          [RbacActions.CREATE_MESSAGE],
+        ),
+      ).resolves.toBe(true);
+    });
+
+    it('userHasChannelActions applies the instance OWNER bypass', async () => {
+      mockDatabase.user.findUnique.mockResolvedValue({ role: 'OWNER' });
+      await expect(
+        service.userHasChannelActions(user.id, 'ch-1', [
+          RbacActions.ATTACH_FILES,
+        ]),
+      ).resolves.toBe(true);
+      expect(mockDatabase.channel.findUnique).not.toHaveBeenCalled();
     });
   });
 });
