@@ -48,3 +48,16 @@ export const MEMBER_LIST_WIDTH = 240;
  * typing starts or stops).
  */
 export const TYPING_INDICATOR_HEIGHT = 32;
+
+/**
+ * Docked right-hand side panel (threads, pinned messages, search) on wide
+ * desktop windows. Same width as the thread drawer it replaces.
+ */
+export const SIDE_PANEL_WIDTH = 400;
+
+/**
+ * Narrowest the chat column gets next to the docked side panel. At the
+ * docking breakpoint (1200px) the rail, channel list and panel leave it 480px;
+ * this guards the column if the sidebars ever grow.
+ */
+export const CHAT_COLUMN_MIN_WIDTH = 400;
