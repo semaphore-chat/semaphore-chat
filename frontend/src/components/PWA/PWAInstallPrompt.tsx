@@ -20,6 +20,7 @@ import {
   useBottomChromeOffset,
   useMeasuredChromeItem,
   useSnackbarGap,
+  useToastPlacement,
   useToastQueue,
 } from '../../contexts/BottomChromeContext';
 
@@ -39,7 +40,8 @@ export const PWAInstallPrompt: React.FC = () => {
   const [showIOSInstructions, setShowIOSInstructions] = useState(false);
   const [isInstalling, setIsInstalling] = useState(false);
   const isMyTurn = useToastQueue('install', TOAST_PRIORITY.INSTALL, isInstallable);
-  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST);
+  const placement = useToastPlacement();
+  const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.TOAST, { skipOrders: placement.skipOrders });
   const snackbarGap = useSnackbarGap();
   const measureRef = useMeasuredChromeItem({
     extraHeight: snackbarGap,
@@ -74,7 +76,7 @@ export const PWAInstallPrompt: React.FC = () => {
       <Snackbar
         ref={showIOSInstructions ? undefined : measureRef}
         open={!showIOSInstructions}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
         sx={snackbarBottomSx(offset, snackbarGap)}
       >
@@ -119,7 +121,7 @@ export const PWAInstallPrompt: React.FC = () => {
       <Snackbar
         ref={showIOSInstructions ? measureRef : undefined}
         open={showIOSInstructions}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        anchorOrigin={placement.anchorOrigin}
         data-chrome-offset={offset.px}
         sx={snackbarBottomSx(offset, snackbarGap)}
       >

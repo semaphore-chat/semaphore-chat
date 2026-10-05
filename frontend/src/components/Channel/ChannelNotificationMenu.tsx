@@ -17,7 +17,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import {
-  Notifications,
+  AlternateEmail,
   NotificationsActive,
   NotificationsOff,
   NotificationsPaused,
@@ -106,11 +106,11 @@ export const ChannelNotificationMenu: React.FC<ChannelNotificationMenuProps> = (
       case NotificationLevel.All:
         return <NotificationsActive />;
       case NotificationLevel.Mentions:
-        return <Notifications />;
+        return <AlternateEmail />;
       case NotificationLevel.None:
         return <NotificationsOff />;
       default:
-        return <Notifications />;
+        return <AlternateEmail />;
     }
   };
 
@@ -180,7 +180,7 @@ export const ChannelNotificationMenu: React.FC<ChannelNotificationMenuProps> = (
           disabled={isLoading}
         >
           <ListItemIcon>
-            {currentLevel === NotificationLevel.Mentions ? <Check /> : <Notifications />}
+            {currentLevel === NotificationLevel.Mentions ? <Check /> : <AlternateEmail />}
           </ListItemIcon>
           <ListItemText
             primary="Only @mentions"

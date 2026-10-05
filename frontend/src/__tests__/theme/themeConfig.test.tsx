@@ -125,6 +125,15 @@ describe('generateTheme', () => {
     expect(chipRoot(generateTheme('light', 'purple', 'vibrant')).color).not.toBe('#000000');
   });
 
+  it.each(THEME_MATRIX)('paints toasts in the app surface colour, not an inverted ground ($mode + $intensity)', (entry) => {
+    const theme = generateTheme(entry.mode, 'blue', entry.intensity);
+    const root = (theme.components?.MuiSnackbarContent?.styleOverrides as { root: { backgroundColor: string } }).root;
+    // Dark UI must not get a near-white toast (and light UI not a near-black one).
+    const dark = entry.mode === 'dark';
+    const lum = getContrastRatio(root.backgroundColor, '#000000');
+    expect(dark ? lum < 4 : lum > 12).toBe(true);
+  });
+
   it('renders snackbars (message prop and SnackbarContent) in every theme', () => {
     renderInEveryTheme(
       () => (

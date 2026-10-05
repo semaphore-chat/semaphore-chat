@@ -109,7 +109,7 @@ export const AutoUpdater = () => {
       {/* Downloading update notification */}
       <Snackbar
         open={downloading}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
         <Alert severity="info" icon={<Download />}>
           <Typography variant="body2">
@@ -124,7 +124,7 @@ export const AutoUpdater = () => {
       {/* Update downloaded notification */}
       <Snackbar
         open={updateDownloaded}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
         <Alert
           severity="success"
