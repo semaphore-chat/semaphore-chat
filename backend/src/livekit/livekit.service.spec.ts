@@ -495,6 +495,27 @@ describe('LivekitService', () => {
       ).rejects.toThrow('Failed to mute participant');
     });
 
+    it('returns 404, not 500, when the participant is not in the room', async () => {
+      // LiveKit's ServerError for an identity that isn't connected to the room
+      mockRoomServiceClient.getParticipant.mockRejectedValue(
+        Object.assign(new Error('participant not found'), {
+          status: 404,
+          code: 'not_found',
+        }),
+      );
+
+      const error: unknown = await service
+        .muteParticipant('room-1', 'user-1', true)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(LivekitException);
+      expect((error as LivekitException).getStatus()).toBe(404);
+      expect((error as LivekitException).message).toBe(
+        'Participant is not in this voice channel',
+      );
+      expect(mockRoomServiceClient.mutePublishedTrack).not.toHaveBeenCalled();
+    });
+
     it('should skip non-microphone tracks', async () => {
       mockRoomServiceClient.getParticipant.mockResolvedValue({
         tracks: [

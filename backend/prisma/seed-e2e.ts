@@ -5,9 +5,10 @@
  * for E2E testing. Run with: npx ts-node prisma/seed-e2e.ts
  */
 
-import { PrismaClient, InstanceRole, RbacActions } from '@prisma/client';
+import { PrismaClient, InstanceRole } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as bcrypt from 'bcrypt';
+import { DEFAULT_MEMBER_ROLE } from '../src/roles/default-roles.config';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
@@ -98,19 +99,6 @@ const TEST_USERS = [
  * and join its voice channels. Other USERs (e.g. `member`) get no role.
  */
 const COMMUNITY_MEMBER_ROLE_USERS = ['voiceban', 'voicedmban'];
-const MEMBER_ROLE_ACTIONS: RbacActions[] = [
-  RbacActions.READ_COMMUNITY,
-  RbacActions.READ_CHANNEL,
-  RbacActions.READ_MEMBER,
-  RbacActions.READ_MESSAGE,
-  RbacActions.CREATE_MESSAGE,
-  RbacActions.JOIN_CHANNEL,
-  RbacActions.CREATE_REACTION,
-  RbacActions.DELETE_REACTION,
-  RbacActions.READ_ALIAS_GROUP,
-  RbacActions.READ_ALIAS_GROUP_MEMBER,
-  RbacActions.READ_SOUNDBOARD_SOUND,
-];
 
 // Test communities
 const TEST_COMMUNITIES = [
@@ -223,11 +211,14 @@ async function main() {
     if (communityData.name === 'Test Community') {
       const memberRole = await prisma.role.create({
         data: {
-          name: 'Member',
+          name: DEFAULT_MEMBER_ROLE.name,
           communityId: community.id,
           isDefault: true,
-          position: 100,
-          actions: MEMBER_ROLE_ACTIONS,
+          position: DEFAULT_MEMBER_ROLE.position,
+          // The canonical list, so actions added later (SPEAK, VIDEO,
+          // SCREEN_SHARE in #570) reach the seeded role too: the migration
+          // backfill only covers roles that exist when it runs
+          actions: DEFAULT_MEMBER_ROLE.actions,
         },
       });
       await prisma.userRoles.createMany({
