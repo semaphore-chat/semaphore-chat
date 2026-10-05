@@ -84,7 +84,7 @@
     "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.4",
     "socket.io-client": "^4.8.4",
-    "virtua": "^0.52.8"
+    "virtua": "^0.52.10"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
