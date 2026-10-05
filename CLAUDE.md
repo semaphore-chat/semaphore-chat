@@ -561,6 +561,45 @@ Frontend server state is managed entirely through TanStack Query (React Query). 
 
 - Remove orphan containers when using docker to run commands
 
+## Cutting a release
+
+Releases are cut from `main` by pushing an annotated `vX.Y.Z` tag; CI builds and publishes everything from the tag. Follow these steps in order, and confirm the version and the tag push with Mike (it publishes images, the desktop release and the chart).
+
+**1. Pick the version.** Semver on 0.x: a minor bump (`0.6.0`) for new features, database migrations or anything in "Breaking changes / upgrade checklist"; a patch bump (`0.5.1`) only for fixes with no migrations or upgrade steps.
+
+**2. Test main** (all green before the changelog PR):
+
+| Check | How |
+|---|---|
+| CI on main | Every workflow on the latest `main` commit is green (`gh run list --branch main`) |
+| Full E2E incl. real-LiveKit voice | `gh workflow run e2e-tests.yml --ref main`, then `gh run watch <id> --exit-status`. The voice job only runs on dispatch or the nightly. Jobs that end "cancelled" after exactly 15 min with no steps never got a runner: `gh run rerun <id>` |
+| Release smoke E2E | `scripts/run-e2e.sh release-` (`frontend/e2e/release-*.spec.ts`: landing, error pages, permission presets, hidden private channels, docked panel, mentions, message authz) |
+| Upgrade from the previous release | Only when there are new migrations (`git diff --name-only vPREV..HEAD -- backend/prisma/migrations`). On a per-ticket stack: apply `vPREV`'s migrations from a `vPREV` worktree, seed realistic data (custom roles with odd permission sets, private channels, sessions, spans), snapshot, run `main`'s migrations on the same DB, then verify row counts are unchanged, data/backfill migrations did exactly what they say, `prisma migrate status` is clean, and `main`'s backend boots and serves `/api/health` on the upgraded DB. A spelled-out task for DeepSeek |
+| Packaged desktop app | `scripts/run-electron-smoke.sh <ticket> --build`. In the main checkout, regenerate the gitignored API client first (`frontend/src/api-client/` goes stale; see OpenAPI SDK Client Regeneration) or the build fails with `MISSING_EXPORT` |
+| Things only a human can judge | Ask Mike: real voice and screen-share quality between two machines, the desktop app on his Linux desktop, and a database backup before deploying migrations |
+
+**3. Changelog PR.** In `CHANGELOG.md` (Keep a Changelog), turn `## [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD` and leave an empty `## [Unreleased]` above it. Sections in this order: `### ⚠️ Breaking changes / upgrade checklist` (migrations, required versions, new env vars, behaviour admins must know), `### Security`, `### Added`, `### Changed`, `### Fixed`, `### Upgrade notes` (what to do for each checklist item). Every PR in `git log --oneline vPREV..HEAD` must be referenced at least once (dependency bumps can share one line). Write from the PR descriptions (`gh pr view <n>`), in user-facing words. Merge it like any PR.
+
+**4. Tag** (after the changelog PR is merged and with Mike's go-ahead):
+
+```bash
+git fetch origin && git switch main && git pull --ff-only
+git tag -a vX.Y.Z -m "vX.Y.Z"
+git push origin vX.Y.Z
+```
+
+**5. What the tag publishes:**
+
+| Workflow | Publishes |
+|---|---|
+| `docker-publish.yml` | `ghcr.io/semaphore-chat/semaphore-chat-backend` and `-frontend`, tagged `X.Y.Z`, `X.Y` and `X`. The Trivy scan blocks on HIGH/CRITICAL: fix new CVEs (apk floors in the Dockerfiles, `pnpm.overrides`) before tagging |
+| `electron-build.yml` | The GitHub Release `vX.Y.Z` (published, auto-generated notes) with the Windows installer and Linux AppImage, .deb and .rpm |
+| `helm-publish.yml` | The Helm chart, version `X.Y.Z`, to GHCR |
+
+Single-artifact re-releases use `docker-vX.Y.Z`, `electron-vX.Y.Z` or `helm-vX.Y.Z` tags.
+
+**6. Verify.** Watch the three runs (`gh run list --event push --limit 5`, `gh run watch <id> --exit-status`), check `gh release view vX.Y.Z` lists every artifact, and that `docker manifest inspect ghcr.io/semaphore-chat/semaphore-chat-backend:X.Y.Z` resolves. Optionally replace the auto-generated release notes with the changelog section (`gh release edit vX.Y.Z --notes-file <file>`).
+
 ## Sensitive User Fields Policy
 
 **Preventing user data leaks requires defense-in-depth. Follow these rules when working with User data:**
