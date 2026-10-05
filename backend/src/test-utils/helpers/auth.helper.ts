@@ -18,9 +18,11 @@ export function createMockHttpExecutionContext(
     body?: Record<string, any>;
     query?: Record<string, any>;
     headers?: Record<string, any>;
+    method?: string;
   } = {},
 ): ExecutionContext {
   const {
+    method = 'GET',
     user = UserFactory.build(),
     params = {},
     body = {},
@@ -29,6 +31,7 @@ export function createMockHttpExecutionContext(
   } = overrides;
 
   const request = {
+    method,
     user,
     params,
     body,

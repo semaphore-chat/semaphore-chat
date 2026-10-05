@@ -1,8 +1,11 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { InstanceRole, RbacActions } from '@prisma/client';
 import { MessageOwnershipGuard } from './message-ownership.guard';
 import { MessagesService } from '@/messages/messages.service';
-import { RbacGuard } from './rbac.guard';
+import { PermissionsService } from '@/roles/permissions.service';
+import { RbacResourceType } from './rbac-resource.decorator';
 import {
   UserFactory,
   MessageFactory,
@@ -12,7 +15,10 @@ import {
 describe('MessageOwnershipGuard', () => {
   let guard: MessageOwnershipGuard;
   let messagesService: Mocked<MessagesService>;
-  let rbacGuard: Mocked<RbacGuard>;
+  let permissionsService: Mocked<PermissionsService>;
+
+  const ctx = (method: string, user: any, id = 'm1') =>
+    createMockHttpExecutionContext({ user, params: { id }, method });
 
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(
@@ -20,320 +26,111 @@ describe('MessageOwnershipGuard', () => {
     ).compile();
     guard = unit;
     messagesService = unitRef.get(MessagesService);
-    rbacGuard = unitRef.get(RbacGuard);
+    permissionsService = unitRef.get(PermissionsService);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
+  afterEach(() => jest.clearAllMocks());
 
-  describe('Message ownership check', () => {
-    it('should allow access when user is message owner', async () => {
+  describe('author', () => {
+    it.each(['PATCH', 'DELETE', 'POST'])('is allowed %s', async (method) => {
       const user = UserFactory.build();
-      const message = MessageFactory.build({ authorId: user.id });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(messagesService.findOne).toHaveBeenCalledWith(message.id);
-      expect(rbacGuard.canActivate).not.toHaveBeenCalled();
-    });
-
-    it('should fall back to RBAC when user is not message owner', async () => {
-      const user = UserFactory.build();
-      const message = MessageFactory.build({ authorId: 'different-user-id' });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(messagesService.findOne).toHaveBeenCalledWith(message.id);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should deny access via RBAC when user is not owner and lacks permissions', async () => {
-      const user = UserFactory.build();
-      const message = MessageFactory.build({ authorId: 'different-user-id' });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
+      messagesService.findOne.mockResolvedValue(
+        MessageFactory.build({ authorId: user.id }) as any,
+      );
+      await expect(guard.canActivate(ctx(method, user))).resolves.toBe(true);
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).not.toHaveBeenCalled();
     });
   });
 
-  describe('No message ID scenarios', () => {
-    it('should fall back to RBAC when no messageId in params', async () => {
+  describe('non-author', () => {
+    const other = () =>
+      MessageFactory.build({ authorId: 'someone-else' }) as any;
+
+    it.each(['PATCH', 'POST'])('is denied %s', async (method) => {
+      messagesService.findOne.mockResolvedValue(other());
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+      await expect(
+        guard.canActivate(ctx(method, UserFactory.build())),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('is allowed DELETE with DELETE_ANY_MESSAGE', async () => {
       const user = UserFactory.build();
+      const message = other();
+      messagesService.findOne.mockResolvedValue(message);
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+      await expect(
+        guard.canActivate(ctx('DELETE', user, message.id)),
+      ).resolves.toBe(true);
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).toHaveBeenCalledWith(user.id, message.id, RbacResourceType.MESSAGE, [
+        RbacActions.DELETE_ANY_MESSAGE,
+      ]);
+    });
+
+    it('is denied DELETE without DELETE_ANY_MESSAGE', async () => {
+      messagesService.findOne.mockResolvedValue(other());
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+      await expect(
+        guard.canActivate(ctx('DELETE', UserFactory.build())),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('is denied DELETE of a DM message without consulting permissions', async () => {
+      messagesService.findOne.mockResolvedValue(
+        MessageFactory.build({
+          authorId: 'someone-else',
+          directMessageGroupId: 'dm-1',
+        }) as any,
+      );
+      await expect(
+        guard.canActivate(ctx('DELETE', UserFactory.build())),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('instance OWNER may DELETE', async () => {
+      messagesService.findOne.mockResolvedValue(other());
+      const owner = UserFactory.build({ role: InstanceRole.OWNER });
+      await expect(guard.canActivate(ctx('DELETE', owner))).resolves.toBe(true);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('does not allow a missing message through (404 propagates)', async () => {
+      messagesService.findOne.mockRejectedValue(new NotFoundException());
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
+      for (const method of ['PATCH', 'DELETE', 'POST']) {
+        await expect(
+          guard.canActivate(ctx(method, UserFactory.build())),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      }
+    });
+
+    it('denies when there is no user', async () => {
+      await expect(guard.canActivate(ctx('DELETE', null))).resolves.toBe(false);
+    });
+
+    it('denies when there is no message id', async () => {
       const context = createMockHttpExecutionContext({
-        user,
+        user: UserFactory.build(),
         params: {},
+        method: 'DELETE',
       });
-
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should fall back to RBAC when messageId is undefined', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: undefined },
-      });
-
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should fall back to RBAC when messageId is null', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: null },
-      });
-
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-  });
-
-  describe('No user scenarios', () => {
-    it('should deny access when no user is authenticated', async () => {
-      // Create custom context with explicit undefined user (not using factory default)
-
-      const mockContext = {
-        switchToHttp: jest.fn().mockReturnValue({
-          getRequest: jest.fn().mockReturnValue({
-            user: undefined,
-            params: { id: 'message-123' },
-          }),
-        }),
-        getType: jest.fn().mockReturnValue('http'),
-        getClass: jest.fn(),
-        getHandler: jest.fn(),
-        getArgs: jest.fn(),
-        getArgByIndex: jest.fn(),
-        switchToRpc: jest.fn(),
-        switchToWs: jest.fn(),
-      } as any;
-
-      const result = await guard.canActivate(mockContext);
-
-      expect(result).toBe(false);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).not.toHaveBeenCalled();
-    });
-
-    it('should deny access when user is null', async () => {
-      const context = createMockHttpExecutionContext({
-        user: null,
-        params: { id: 'message-123' },
-      });
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('Message not found scenarios', () => {
-    it('should fall back to RBAC when message is not found', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: 'nonexistent-message' },
-      });
-
-      messagesService.findOne.mockRejectedValue(new Error('Not found'));
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(messagesService.findOne).toHaveBeenCalledWith(
-        'nonexistent-message',
-      );
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should allow access via RBAC when message not found but user has permissions', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: 'nonexistent-message' },
-      });
-
-      messagesService.findOne.mockRejectedValue(new Error('Not found'));
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-  });
-
-  describe('Ownership vs RBAC priority', () => {
-    it('should prioritize ownership over RBAC checks', async () => {
-      const user = UserFactory.build();
-      const message = MessageFactory.build({ authorId: user.id });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-      // Mock RBAC to return false to ensure ownership check takes precedence
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      // RBAC should not be called because ownership check succeeded
-      expect(rbacGuard.canActivate).not.toHaveBeenCalled();
-    });
-
-    it('should use RBAC when ownership check fails', async () => {
-      const user = UserFactory.build();
-      const message = MessageFactory.build({ authorId: 'other-user-id' });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-  });
-
-  describe('Error handling', () => {
-    it('should handle database errors gracefully', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: 'message-123' },
-      });
-
-      messagesService.findOne.mockRejectedValue(
-        new Error('Database connection lost'),
-      );
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should handle service errors gracefully', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: 'message-123' },
-      });
-
-      messagesService.findOne.mockRejectedValue(
-        new TypeError('Unexpected error'),
-      );
-      rbacGuard.canActivate.mockResolvedValue(true);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-  });
-
-  describe('Edge cases', () => {
-    it('should handle empty string messageId', async () => {
-      const user = UserFactory.build();
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: '' },
-      });
-
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(messagesService.findOne).not.toHaveBeenCalled();
-      expect(rbacGuard.canActivate).toHaveBeenCalledWith(context);
-    });
-
-    it('should correctly compare user IDs for ownership', async () => {
-      const userId = 'user-exact-match';
-      const user = UserFactory.build({ id: userId });
-      const message = MessageFactory.build({ authorId: userId });
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(true);
-      expect(message.authorId).toBe(user.id);
-    });
-
-    it('should not grant access for similar but different user IDs', async () => {
-      const user = UserFactory.build({ id: 'user-123' });
-      const message = MessageFactory.build({ authorId: 'user-124' }); // Off by one
-      const context = createMockHttpExecutionContext({
-        user,
-        params: { id: message.id },
-      });
-
-      messagesService.findOne.mockResolvedValue(message as any);
-      rbacGuard.canActivate.mockResolvedValue(false);
-
-      const result = await guard.canActivate(context);
-
-      expect(result).toBe(false);
-      expect(rbacGuard.canActivate).toHaveBeenCalled();
+      await expect(guard.canActivate(context)).resolves.toBe(false);
     });
   });
 });
