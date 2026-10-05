@@ -9,7 +9,7 @@
  * ```
  */
 
-export { test, expect, TEST_USER, TEST_USER_2 } from './auth.fixture';
+export { test, expect, TEST_USER, TEST_USER_2, API_BASE } from './auth.fixture';
 export {
   loginViaApi,
   registerViaApi,
@@ -29,3 +29,14 @@ export {
   waitForMessage,
   cleanupTestCommunities,
 } from './test-data';
+
+export {
+  MEMBER_USER,
+  DESKTOP_VIEWPORT,
+  openSession,
+  createWorld,
+  sendSpans,
+  shot,
+  channelUrl,
+} from './release';
+export type { Session, ReleaseWorld } from './release';
