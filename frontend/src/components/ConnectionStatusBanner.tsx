@@ -3,7 +3,7 @@ import { Chip, CircularProgress, useMediaQuery } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { useSocketConnected } from "../hooks/useSocket";
 import { useResponsive } from "../hooks/useResponsive";
-import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from "../contexts/BottomChromeContext";
+import { BOTTOM_CHROME_ORDER, useBottomChromeOffset, useToastPlacement } from "../contexts/BottomChromeContext";
 
 /**
  * "Reconnecting…" chip. Top of the bottom stack (BottomChromeContext): it
@@ -14,7 +14,8 @@ import { BOTTOM_CHROME_ORDER, useBottomChromeOffset } from "../contexts/BottomCh
  * sidebar, not the chat column, so it skips the composer level — otherwise
  * it floats a composer's height up over the sidebar's rows. From `md` up the
  * (centred) toast can't reach the left edge either, so it skips that level
- * too. The phone layout (any width) has a full-width composer, so nothing is
+ * too, except on the desktop layout where the toast is bottom-left, in the
+ * chip's own column, and the chip stacks above it. The phone layout (any width) has a full-width composer, so nothing is
  * skipped there. It always clears
  * the full-width nav and voice bar.
  */
@@ -22,11 +23,12 @@ export const ConnectionStatusBanner: React.FC = () => {
   const isConnected = useSocketConnected();
   const theme = useTheme();
   const { isMobile } = useResponsive();
+  const { constrained: toastInSidebar } = useToastPlacement();
   const isMdUp = useMediaQuery(theme.breakpoints.up("md"));
   const offset = useBottomChromeOffset(BOTTOM_CHROME_ORDER.CHIP, {
     skipOrders: isMobile
       ? undefined
-      : isMdUp
+      : isMdUp && !toastInSidebar
         ? [BOTTOM_CHROME_ORDER.COMPOSER, BOTTOM_CHROME_ORDER.TOAST]
         : [BOTTOM_CHROME_ORDER.COMPOSER],
   });

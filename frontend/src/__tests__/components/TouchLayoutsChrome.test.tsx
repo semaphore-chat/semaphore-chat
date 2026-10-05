@@ -297,9 +297,9 @@ describe('Reconnecting chip placement by layout', () => {
     expect(renderChip()).toBe(70 + 80);
   });
 
-  it('desktop: only the full-width voice bar counts', () => {
+  it('desktop: the voice bar and the bottom-left toast count (same column), the composer does not', () => {
     stubViewportWidth(1400);
-    expect(renderChip()).toBe(70);
+    expect(renderChip()).toBe(70 + 80);
   });
 
   it('narrow Electron window (desktop layout): the composer is skipped', () => {
