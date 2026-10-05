@@ -78,14 +78,21 @@ const manyPinsScenario: Scenario = (() => {
   const messages = bigCommunityScenario.messagesByChannel[generalChannel.id] ?? [];
   const [template] = bigCommunityScenario.pinnedByChannel[generalChannel.id] ?? [];
   if (!template) return bigCommunityScenario;
-  const pins = messages.slice(2, 9).map((m, i) => ({
+  const people = [bigCommunityScenario.me, ...bigCommunityScenario.users];
+  const pins = messages.slice(2, 9).map((m, i) => {
+    const author = people.find((u) => u.id === m.authorId);
+    return {
     ...template,
+    author: author
+      ? { id: author.id, username: author.username, displayName: author.displayName, avatarUrl: author.avatarUrl }
+      : null,
     id: m.id,
     authorId: m.authorId,
     spans: m.spans as never,
     sentAt: m.sentAt,
     pinnedAt: new Date(Date.parse(template.pinnedAt ?? m.sentAt) - i * 3_600_000).toISOString(),
-  }));
+    };
+  });
   return {
     ...bigCommunityScenario,
     pinnedByChannel: { ...bigCommunityScenario.pinnedByChannel, [generalChannel.id]: [template, ...pins] },
