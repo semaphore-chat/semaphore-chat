@@ -1,6 +1,6 @@
 # Channel permissions, read-only and announcement channels: design
 
-Status: **proposal for owner review**. No code has been written.
+Status: **approved by the owner 2026-10-04**, with the decisions recorded in section 11 (they override anything earlier in this doc). Phase 1 is being built on `feat/channel-permissions-phase1`.
 Date: 2026-10-04. Branch: `design/channel-permissions`.
 
 ## Goal
@@ -235,12 +235,17 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
 - **UX**: admins lock their own role out of posting. Mitigated by preset defaults and a warning in the advanced editor when the actor's own roles lose CREATE_MESSAGE.
 - **Old Electron clients**: they show the composer, and the server rejects the send (today's fail-open behavior, so acceptable).
 
-### Open questions for the owner
-1. Hide channels you can't see from the channel list? Today private channel names are visible to every member with a lock. Recommended: hide.
-2. Add a community `ADMINISTRATOR` action that bypasses overwrites, like Discord? Recommended: not in v1.
-3. Per-member overwrites: phase 5, or never (private-channel membership already covers per-user view)?
-4. A new `MANAGE_CHANNEL_PERMISSIONS` action (Admin only by default), or reuse `UPDATE_CHANNEL`, which Moderators also have by default? Recommended: new action.
-5. Should announcements allow thread replies? This needs `SEND_IN_THREADS`.
-6. Move the timeout check into the resolver as a mask? That also blocks reactions, thread replies and speaking, which today ignore timeouts.
-7. Is it intended that webhooks keep posting into read-only and announcement channels (bots, feeds)? Recommended: yes.
-8. Categories don't exist. If they come later, add category-level overwrites with Discord-style "sync" inheritance. OK to leave out of scope?
+### Open questions (answered, see section 11)
+
+## 11. Owner decisions (2026-10-04)
+
+| # | Question | Decision | Effect on the design |
+|---|---|---|---|
+| 1 | Hide channels the user can't view? | **Yes** | Ships with the visibility work in phase 3 (filtered `findAll`, rooms, notifications). Phase 1 keeps today's list. |
+| 2 | Community `ADMINISTRATOR` that ignores overwrites? | **No** | Only the instance OWNER bypass (step 1) exists. Presets keep pre-selecting manager roles. |
+| 3 | Per-member overwrites? | **Data model only** | `OverwriteTarget` keeps `MEMBER` (plus `EVERYONE`, `ROLE`) so no later migration is needed. The API rejects `MEMBER`; no UI. |
+| 4 | New `MANAGE_CHANNEL_PERMISSIONS`? | **Yes, backfilled** | Backfill to every role that has `UPDATE_CHANNEL` today (that is what edits a channel's privacy now), so nobody loses an ability. Default roles that have `UPDATE_CHANNEL` get it too. |
+| 5 | Thread replies in announcement channels? | **No** for v1 | No `SEND_IN_THREADS`; thread replies follow CREATE_MESSAGE. |
+| 6 | Timeouts block everything? | **Yes** | Step 7 is in from phase 1: CREATE_MESSAGE (so thread replies too), CREATE_REACTION, ATTACH_FILES, SPEAK, VIDEO, SCREEN_SHARE. |
+| 7 | Webhooks in read-only channels? | **Yes**, plus a new `MANAGE_WEBHOOKS` | Webhook posting is not gated by overwrites. Webhook CRUD moves from `UPDATE_CHANNEL` to `MANAGE_WEBHOOKS` (community-scoped), backfilled to every role with `UPDATE_CHANNEL`. |
+| 8 | Category inheritance? | **Skip** | Out of scope. |
