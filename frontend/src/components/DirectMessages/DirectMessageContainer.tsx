@@ -31,11 +31,16 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
   // Get DM group info to get members for mentions
   const { data: dmGroup } = useQuery(directMessagesControllerFindDmGroupOptions({ path: { id: dmGroupId } }));
 
-  // "Message @Alice" for a 1:1 DM, "Message <group title>" for a group.
+  // "Message @Alice" for a 1:1 DM, "Message <name>" for a named group, and
+  // "Message the group" for an unnamed one (its title is a long list of names).
   const dmTitle = getDmHeaderName(dmGroup, user?.id);
-  const dmPlaceholder = dmTitle
-    ? `Message ${dmGroup?.isGroup || dmGroup?.name ? '' : '@'}${dmTitle}`
-    : "Type a message...";
+  const dmPlaceholder = !dmTitle
+    ? "Type a message..."
+    : dmGroup?.name
+      ? `Message ${dmGroup.name}`
+      : dmGroup?.isGroup
+        ? "Message the group"
+        : `Message @${dmTitle}`;
 
   // Auto-mark notifications as read when viewing this DM
   useAutoMarkNotificationsRead({
