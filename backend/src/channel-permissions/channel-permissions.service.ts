@@ -13,7 +13,7 @@ import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsService } from '@/roles/permissions.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import {
-  effectiveForRole,
+  effectiveForRoleSet,
   OVERWRITABLE_ACTIONS,
 } from '@/roles/channel-permissions.util';
 import { UserEntity } from '@/user/dto/user-response.dto';
@@ -305,51 +305,27 @@ export class ChannelPermissionsService {
     }
 
     // 2. Role hierarchy (as moderation; lower position = higher rank).
-    // Judged by effect: for each role, what a holder of just that role gets
-    // in this channel before vs after the change.
     const changedRoleIds = new Set(
       changed.map((c) => c.roleId).filter((r): r is string => !!r),
     );
     const everyoneChanged = changed.some((c) => c.roleId === null);
     if (changedRoleIds.size === 0 && !everyoneChanged) return;
 
-    const [actorRoles, communityRoles] = await Promise.all([
-      this.databaseService.userRoles.findMany({
-        where: { userId: actor.id, communityId, isInstanceRole: false },
-        select: { role: { select: { position: true } } },
-      }),
+    const [{ best: actorBest, isTop }, communityRoles] = await Promise.all([
+      this.permissionsService.getRank(actor.id, communityId),
       this.databaseService.role.findMany({
         where: { communityId },
-        select: { id: true, name: true, position: true, actions: true },
+        select: { id: true, name: true, position: true },
       }),
     ]);
-    const actorBest = actorRoles.length
-      ? Math.min(...actorRoles.map((r) => r.role.position))
-      : Number.MAX_SAFE_INTEGER;
-    const topPosition = Math.min(
-      ...communityRoles.map((r) => r.position),
-      Number.MAX_SAFE_INTEGER,
-    );
-    const asInput = (m: Map<string, (typeof existing)[number]>) =>
-      [...m.values()].map((o) => ({ ...o, userId: null }));
-    const beforeSet = asInput(before);
-    const afterSet = asInput(after);
-    const lostBy = (role: (typeof communityRoles)[number]) => {
-      const was = effectiveForRole(role, beforeSet);
-      const now = effectiveForRole(role, afterSet);
-      return [...was].filter((a) => !now.has(a));
-    };
 
-    // 2a. An entry for a role at or above the actor may change only if it
-    // involves no deny and takes nothing away from that role: e.g. the
-    // automatic allows that keep an @everyone deny off higher roles, which
-    // relaxing the preset later removes again.
+    // 2a. No deny may be written on (or removed from) a role ranked at or
+    // above the actor.
     const outranked = communityRoles.filter((r) => {
       if (!changedRoleIds.has(r.id) || r.position > actorBest) return false;
       const old = before.get(`ROLE:${r.id}`);
       const next = after.get(`ROLE:${r.id}`);
-      const touchesDeny = !!old?.deny.length || !!next?.deny.length;
-      return touchesDeny || lostBy(r).length > 0;
+      return !!old?.deny.length || !!next?.deny.length;
     });
     if (outranked.length > 0) {
       throw new ForbiddenException(
@@ -359,21 +335,31 @@ export class ChannelPermissionsService {
       );
     }
 
-    // 2b. An @everyone change must not take anything from roles ranked
-    // above the actor (they keep it through an explicit ROLE allow in the
-    // same set; the preset UI adds these automatically). Holders of the
+    // 2b. Judged by effect on real people: no other member ranked at or
+    // above the actor (peers included) may lose anything they can do in
+    // this channel, computed from the role set each of them actually holds
+    // (a deny on a lower role they also hold counts). Holders of the
     // community's top-ranked role are exempt.
-    if (everyoneChanged && actorBest > topPosition) {
-      const stripped = new Set(
-        communityRoles
-          .filter((r) => r.position < actorBest)
-          .flatMap((r) => lostBy(r)),
+    if (isTop) return;
+    const asInput = (m: Map<string, (typeof existing)[number]>) =>
+      [...m.values()].map((o) => ({ ...o, userId: null }));
+    const beforeSet = asInput(before);
+    const afterSet = asInput(after);
+    const users = await this.permissionsService.usersRankedAtOrAbove(
+      communityId,
+      actorBest,
+      actor.id,
+    );
+    const stripped = new Set<string>();
+    for (const roles of users.values()) {
+      const was = effectiveForRoleSet(roles, beforeSet);
+      const now = effectiveForRoleSet(roles, afterSet);
+      for (const action of was) if (!now.has(action)) stripped.add(action);
+    }
+    if (stripped.size > 0) {
+      throw new ForbiddenException(
+        `This would remove ${[...stripped].join(', ')} from roles above yours; add allows for them or ask an admin`,
       );
-      if (stripped.size > 0) {
-        throw new ForbiddenException(
-          `This would remove ${[...stripped].join(', ')} from roles above yours; add allows for them or ask an admin`,
-        );
-      }
     }
   }
 }

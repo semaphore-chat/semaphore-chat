@@ -22,7 +22,8 @@ export interface Span {
   specialKind?: string;
   communityId?: string;
   // For CHANNEL_MENTION spans
-  channelId?: string;
+  // null when redacted for a reader who can't see the channel
+  channelId?: string | null;
   aliasId?: string;
   // For EMOJI spans: id of the community CustomEmoji this shortcode resolved to.
   emojiId?: string;

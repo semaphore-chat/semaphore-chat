@@ -22,7 +22,7 @@ export const HIDDEN_CHANNEL_MENTION_LABEL = "#private-channel";
  * visible channels. Visible channel: a link to it. Otherwise a muted,
  * non-interactive "#private-channel".
  */
-const ChannelMention: React.FC<{ channelId?: string }> = ({ channelId }) => {
+const ChannelMention: React.FC<{ channelId?: string | null }> = ({ channelId }) => {
   const theme = useTheme();
   const navigate = useNavigate();
   const channel = useChannelMentionTarget(channelId);

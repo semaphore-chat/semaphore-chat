@@ -63,4 +63,14 @@ describe('#channel mention spans', () => {
     });
     expect(screen.getByTestId('channel-mention')).toHaveTextContent('#general');
   });
+
+  it('a mention the server redacted (channelId null) renders as #private-channel', () => {
+    renderWithProviders(
+      <MessageSpan span={{ type: SpanType.CHANNEL_MENTION, channelId: null }} index={0} />,
+    );
+    expect(screen.getByTestId('channel-mention-hidden')).toHaveTextContent(
+      HIDDEN_CHANNEL_MENTION_LABEL,
+    );
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+  });
 });

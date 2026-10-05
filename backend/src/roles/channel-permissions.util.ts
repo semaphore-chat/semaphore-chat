@@ -274,10 +274,23 @@ export function effectiveForRole(
   role: { id: string; actions: RbacActions[] },
   overwrites: OverwriteInput[],
 ): Set<RbacActions> {
-  return computeOverwrites(new Set(role.actions), {
+  return effectiveForRoleSet([role], overwrites);
+}
+
+/**
+ * What a user holding exactly `roles` gets in a channel with `overwrites`
+ * (role/everyone overwrites only; no privacy, membership or timeout). Used
+ * to judge an overwrite change by its effect on real users' role sets.
+ */
+export function effectiveForRoleSet(
+  roles: readonly { id: string; actions: RbacActions[] }[],
+  overwrites: OverwriteInput[],
+): Set<RbacActions> {
+  const actions = roles.flatMap((r) => r.actions);
+  return computeOverwrites(new Set(actions), {
     userId: '',
-    baseActions: role.actions,
-    roleIds: [role.id],
+    baseActions: actions,
+    roleIds: roles.map((r) => r.id),
     isCommunityMember: true,
     isPrivate: false,
     hasChannelMembership: false,

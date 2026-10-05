@@ -371,4 +371,175 @@ describe('Channel permissions phase 2 (e2e)', () => {
       ).toBe(0);
     });
   });
+
+  describe('security re-check regressions', () => {
+    const post = (
+      who: Who,
+      channelId: string,
+      spans: object[],
+      extra: object = {},
+    ) =>
+      as(who).post('/api/messages', {
+        channelId,
+        spans,
+        attachments: [],
+        ...extra,
+      });
+
+    async function addUser(username: string, roleIds: string[]) {
+      const creds = { username, password: 'Password123!' };
+      const user = await registerUser(app, creds);
+      const accessToken = (await loginUser(app, username, creds.password))
+        .accessToken;
+      await as('owner')
+        .post('/api/membership', { userId: user.id, communityId })
+        .expect(201);
+      for (const roleId of roleIds) {
+        await as('owner')
+          .post(`/api/roles/community/${communityId}/assign`, {
+            userId: user.id,
+            roleId,
+          })
+          .expect(204);
+      }
+      return { id: user.id, token: accessToken };
+    }
+
+    it('a Moderator cannot make a public channel private over the admins (probe: was 200)', async () => {
+      const channelId = await createChannel('p2-privatize', false);
+      const res = await as('mod')
+        .patch(`/api/channels/${channelId}`, { isPrivate: true })
+        .expect(403);
+      expect((res.body as { message: string }).message).toContain(
+        'members ranked at or above you',
+      );
+      expect(
+        (await db.channel.findUniqueOrThrow({ where: { id: channelId } }))
+          .isPrivate,
+      ).toBe(false);
+      await as('admin').get(`/api/channels/${channelId}`).expect(200);
+    });
+
+    it('the top role may make a channel private', async () => {
+      const channelId = await createChannel('p2-privatize-top', false);
+      await as('admin')
+        .patch(`/api/channels/${channelId}`, { isPrivate: true })
+        .expect(200);
+      // ...and the owner can always undo it
+      await as('owner')
+        .patch(`/api/channels/${channelId}`, { isPrivate: false })
+        .expect(200);
+    });
+
+    it('a deny on a lower role may not hit higher users who also hold it (probe: was 200)', async () => {
+      const channelId = await createChannel('p2-lower-role', false);
+      const memberRole = await db.role.findFirstOrThrow({
+        where: { communityId, name: 'Member' },
+      });
+      const res = await as('mod')
+        .put(`/api/channels/${channelId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            {
+              targetType: 'ROLE',
+              roleId: memberRole.id,
+              allow: [],
+              deny: ['CREATE_MESSAGE'],
+            },
+            {
+              targetType: 'ROLE',
+              roleId: moderatorRoleId,
+              allow: ['CREATE_MESSAGE'],
+              deny: [],
+            },
+          ],
+        })
+        .expect(403);
+      expect((res.body as { message: string }).message).toContain(
+        'CREATE_MESSAGE',
+      );
+      await post('admin', channelId, [text('admins still post')]).expect(201);
+    });
+
+    it('same-rank peers are protected too (Peer probe)', async () => {
+      const channelId = await createChannel('p2-peer', false);
+      const peerRole = await db.role.create({
+        data: {
+          name: 'Peer',
+          communityId,
+          position: 20, // same rank as Moderator
+          actions: ['READ_CHANNEL', 'READ_MESSAGE', 'CREATE_MESSAGE'],
+        },
+      });
+      const peer = await addUser('p2-peer', [peerRole.id]);
+      const adminRole = await db.role.findFirstOrThrow({
+        where: { communityId, name: 'Community Admin' },
+      });
+      // Keeps the admins and the Moderator role posting, but not Peer
+      const res = await as('mod')
+        .put(`/api/channels/${channelId}/overwrites`, {
+          preset: 'CUSTOM',
+          overwrites: [
+            {
+              targetType: 'EVERYONE',
+              roleId: null,
+              allow: [],
+              deny: ['CREATE_MESSAGE'],
+            },
+            {
+              targetType: 'ROLE',
+              roleId: adminRole.id,
+              allow: ['CREATE_MESSAGE'],
+              deny: [],
+            },
+            {
+              targetType: 'ROLE',
+              roleId: moderatorRoleId,
+              allow: ['CREATE_MESSAGE'],
+              deny: [],
+            },
+          ],
+        })
+        .expect(403);
+      expect((res.body as { message: string }).message).toContain(
+        'CREATE_MESSAGE',
+      );
+      await http()
+        .post('/api/messages')
+        .set('Authorization', `Bearer ${peer.token}`)
+        .send({ channelId, spans: [text('peer still posts')], attachments: [] })
+        .expect(201);
+    });
+
+    it("a member never receives the id of a channel they can't see", async () => {
+      const sent = await post('owner', generalId, [
+        text('see '),
+        mention(secretId),
+      ]).expect(201);
+      const messageId = (sent.body as { id: string }).id;
+      // A reply quoting it (reply previews carry the quoted spans)
+      await post('admin', generalId, [text('ok')], {
+        replyToId: messageId,
+      }).expect(201);
+
+      const asMember = await as('member')
+        .get(`/api/messages/channel/${generalId}`)
+        .expect(200);
+      expect(JSON.stringify(asMember.body)).not.toContain(secretId);
+      const mentionSpans =
+        JSON.stringify(asMember.body).match(/"CHANNEL_MENTION"/g) ?? [];
+      expect(mentionSpans.length).toBeGreaterThanOrEqual(2); // the message and the preview
+
+      const single = await as('member')
+        .get(`/api/messages/${messageId}`)
+        .expect(200);
+      expect(JSON.stringify(single.body)).not.toContain(secretId);
+
+      // The owner, who can see it, gets the id
+      const asOwner = await as('owner')
+        .get(`/api/messages/channel/${generalId}`)
+        .expect(200);
+      expect(JSON.stringify(asOwner.body)).toContain(secretId);
+    });
+  });
 });

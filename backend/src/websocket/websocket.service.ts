@@ -1,4 +1,5 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { ChannelMentionRedactionService } from '@/roles/channel-mention-redaction.service';
 import { Server } from 'socket.io';
 import {
   ClientToServerEvents,
@@ -15,11 +16,59 @@ export class WebsocketService {
   private readonly logger = new Logger(WebsocketService.name);
   private server: AppServer;
 
+  constructor(
+    @Optional()
+    private readonly mentionRedaction?: ChannelMentionRedactionService,
+  ) {}
+
   setServer(server: AppServer) {
     this.server = server;
   }
 
+  /** Per-room emit chains, so a redacted (async) emit keeps its order. */
+  private readonly pendingByRoom = new Map<string, Promise<void>>();
+
+  /**
+   * Emits to a room. A payload carrying #channel mentions is first run
+   * through ChannelMentionRedactionService for the room's audience (async);
+   * later emits to the same room wait behind it, so order is preserved.
+   */
   sendToRoom<E extends keyof ServerToClientEvents>(
+    room: string,
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ): boolean {
+    const needsRedaction =
+      !!this.mentionRedaction &&
+      args.some((arg) =>
+        ChannelMentionRedactionService.hasChannelMentions(arg),
+      );
+    const pending = this.pendingByRoom.get(room);
+    if (!needsRedaction && !pending) return this.emitNow(room, event, ...args);
+
+    const run = (pending ?? Promise.resolve())
+      .then(async () => {
+        const safeArgs = needsRedaction
+          ? ((await Promise.all(
+              args.map((arg) => this.mentionRedaction!.forRoom(room, arg)),
+            )) as typeof args)
+          : args;
+        this.emitNow(room, event, ...safeArgs);
+      })
+      .catch((error) =>
+        this.logger.error(
+          `Failed to send event "${event}" to room "${room}"`,
+          error,
+        ),
+      );
+    this.pendingByRoom.set(room, run);
+    void run.finally(() => {
+      if (this.pendingByRoom.get(room) === run) this.pendingByRoom.delete(room);
+    });
+    return true;
+  }
+
+  private emitNow<E extends keyof ServerToClientEvents>(
     room: string,
     event: E,
     ...args: Parameters<ServerToClientEvents[E]>

@@ -81,6 +81,9 @@ describe('ChannelPermissionsService', () => {
       { id: MOD_ROLE, name: 'Moderator', position: 20, actions: [] },
     ]);
     channelAccess.audienceRoomFor.mockResolvedValue(`community:${COMMUNITY}`);
+    // The actor holds the community's top-ranked role (Community Admin)
+    permissions.getRank.mockResolvedValue({ best: 10, isTop: true });
+    permissions.usersRankedAtOrAbove.mockResolvedValue(new Map());
     permissions.getCommunityActions.mockResolvedValue(
       DEFAULT_ADMIN_ROLE.actions,
     );
@@ -387,6 +390,7 @@ describe('ChannelPermissionsService', () => {
 
     it('hierarchy: EVERYONE overwrites need no rank', async () => {
       db.userRoles.findMany.mockResolvedValue([{ role: { position: 100 } }]);
+      permissions.getRank.mockResolvedValue({ best: 100, isTop: false });
       await service.replaceOverwrites(
         CHANNEL,
         {
@@ -414,8 +418,18 @@ describe('ChannelPermissionsService', () => {
         deny: [A.CREATE_MESSAGE],
       };
 
+      const adminRole = { id: ADMIN_ROLE, actions: [A.CREATE_MESSAGE] };
+      const modRole = { id: MOD_ROLE, actions: [A.CREATE_MESSAGE] };
+      const memberRole = { id: MEMBER_ROLE, actions: [A.CREATE_MESSAGE] };
+
       beforeEach(() => {
         db.userRoles.findMany.mockResolvedValue([{ role: { position: 20 } }]);
+        // The actor is a Moderator; the Community Admin above them also
+        // holds Member (their real role set)
+        permissions.getRank.mockResolvedValue({ best: 20, isTop: false });
+        permissions.usersRankedAtOrAbove.mockResolvedValue(
+          new Map([['admin-user', [adminRole, memberRole]]]),
+        );
         db.role.findMany.mockResolvedValue([
           {
             id: ADMIN_ROLE,
@@ -491,7 +505,7 @@ describe('ChannelPermissionsService', () => {
         ).rejects.toThrow('roles below your highest role: Community Admin');
       });
 
-      it("can't drop the higher role's allow afterwards", async () => {
+      it("can't drop the higher role's allow afterwards (judged by its effect on the admin)", async () => {
         db.channelPermissionOverwrite.findMany.mockResolvedValue([
           { ...denyPosting, roleId: null },
           {
@@ -507,7 +521,9 @@ describe('ChannelPermissionsService', () => {
             { preset: ChannelPreset.READ_ONLY, overwrites: [denyPosting] },
             moderator,
           ),
-        ).rejects.toThrow('roles below your highest role: Community Admin');
+        ).rejects.toThrow(
+          'This would remove CREATE_MESSAGE from roles above yours; add allows for them or ask an admin',
+        );
       });
 
       it('can relax a preset: drop the @everyone deny together with the automatic allow', async () => {
@@ -542,6 +558,9 @@ describe('ChannelPermissionsService', () => {
           },
           { id: MOD_ROLE, name: 'Moderator', position: 20, actions: readOnly },
         ]);
+        permissions.usersRankedAtOrAbove.mockResolvedValue(
+          new Map([['admin-user', [{ id: ADMIN_ROLE, actions: readOnly }]]]),
+        );
         db.channelPermissionOverwrite.findMany.mockResolvedValue([
           {
             targetType: OverwriteTarget.EVERYONE,
@@ -579,7 +598,7 @@ describe('ChannelPermissionsService', () => {
         expect(db.$transaction).toHaveBeenCalled();
       });
 
-      it('an already-stored EVERYONE deny is not re-checked', async () => {
+      it('extending a stored EVERYONE deny only checks what higher users still had', async () => {
         db.channelPermissionOverwrite.findMany.mockResolvedValue([
           { ...denyPosting, roleId: null },
         ]);
@@ -598,9 +617,87 @@ describe('ChannelPermissionsService', () => {
 
       it('holders of the top-ranked role are exempt', async () => {
         db.userRoles.findMany.mockResolvedValue([{ role: { position: 10 } }]);
+        permissions.getRank.mockResolvedValue({ best: 10, isTop: true });
         await service.replaceOverwrites(
           CHANNEL,
           { preset: ChannelPreset.READ_ONLY, overwrites: [denyPosting] },
+          admin,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+        expect(permissions.usersRankedAtOrAbove).not.toHaveBeenCalled();
+      });
+
+      const memberDeny = {
+        targetType: OverwriteTarget.ROLE,
+        roleId: MEMBER_ROLE,
+        allow: [],
+        deny: [A.CREATE_MESSAGE],
+      };
+      const modAllow = {
+        targetType: OverwriteTarget.ROLE,
+        roleId: MOD_ROLE,
+        allow: [A.CREATE_MESSAGE],
+        deny: [],
+      };
+
+      it('review probe: a Member deny + Moderator allow is refused when an admin also holds Member', async () => {
+        db.role.count.mockResolvedValue(2); // both roles are the community's
+        await expect(
+          service.replaceOverwrites(
+            CHANNEL,
+            {
+              preset: ChannelPreset.CUSTOM,
+              overwrites: [memberDeny, modAllow],
+            },
+            moderator,
+          ),
+        ).rejects.toThrow(
+          'This would remove CREATE_MESSAGE from roles above yours; add allows for them or ask an admin',
+        );
+        expect(permissions.usersRankedAtOrAbove).toHaveBeenCalledWith(
+          COMMUNITY,
+          20,
+          moderator.id,
+        );
+        expect(db.$transaction).not.toHaveBeenCalled();
+      });
+
+      it('a peer (same rank, not the actor) losing an action is refused', async () => {
+        permissions.usersRankedAtOrAbove.mockResolvedValue(
+          new Map([['peer-mod', [modRole, memberRole]]]),
+        );
+        await expect(
+          service.replaceOverwrites(
+            CHANNEL,
+            { preset: ChannelPreset.CUSTOM, overwrites: [memberDeny] },
+            moderator,
+          ),
+        ).rejects.toBeInstanceOf(ForbiddenException);
+      });
+
+      it("the actor's own loss is allowed (the actor is excluded)", async () => {
+        // Nobody else at or above the actor holds Member
+        permissions.usersRankedAtOrAbove.mockResolvedValue(
+          new Map([['admin-user', [adminRole]]]),
+        );
+        await service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.CUSTOM, overwrites: [memberDeny] },
+          moderator,
+        );
+        expect(db.$transaction).toHaveBeenCalled();
+        expect(permissions.usersRankedAtOrAbove).toHaveBeenCalledWith(
+          COMMUNITY,
+          20,
+          moderator.id,
+        );
+      });
+
+      it('a top-role actor may do what a Moderator may not', async () => {
+        permissions.getRank.mockResolvedValue({ best: 10, isTop: true });
+        await service.replaceOverwrites(
+          CHANNEL,
+          { preset: ChannelPreset.CUSTOM, overwrites: [memberDeny] },
           admin,
         );
         expect(db.$transaction).toHaveBeenCalled();

@@ -359,3 +359,9 @@ Phases 1 and 2 (~1.5 weeks) deliver announcement, read-only and no-attachments c
 - **Mods-only** is a disabled card ("Coming soon — use Private for now") until phase 3.
 - **Custom** shows a read-only summary. The matrix editor is phase 5.
 - **Frontend boundary.** `__tests__/features/channelCapabilities.boundary.test.ts` fails if a component, page, hook or feature names a channel-scoped action. Only `useChannelPermissions` decides channel capabilities.
+
+### Phase 2 security re-check fixes
+
+- **Public → private is treated as an @everyone view deny.** It is refused unless the actor is the instance owner, holds the top-ranked role, or everyone ranked at or above them (peers included) is already on the channel's member list. Private → public is unchanged: view plus `MANAGE_CHANNEL_PERMISSIONS`.
+- **Overwrite changes are judged on real users.** The check uses the full role sets of members ranked at or above the actor, peers included, loaded from `userRoles`. A change is refused if any of them, other than the actor, loses an action in the channel; the top-ranked role is exempt. A deny on a role ranked at or above the actor is still refused outright.
+- **Hidden channel ids no longer reach readers.** `ChannelMentionRedactionService` is the one step that removes the id from mentions of channels a reader can't see. It runs on every REST response (global interceptor) and on every socket payload (`WebsocketService.sendToRoom`). For socket rooms it redacts per audience: user room, community room, or channel room, where an id is kept only if every viewer of the room can view the mentioned channel. A per-room queue keeps emits in order.

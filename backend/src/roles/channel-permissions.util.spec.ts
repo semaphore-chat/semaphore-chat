@@ -2,6 +2,7 @@ import { OverwriteTarget, RbacActions as A } from '@prisma/client';
 import {
   canViewChannel,
   effectiveForRole,
+  effectiveForRoleSet,
   postingRoleNames,
   OVERWRITABLE_ACTIONS,
   channelActionsGranted,
@@ -481,6 +482,55 @@ describe('channel permission resolution', () => {
       ]);
       expect(eff.has(A.CREATE_MESSAGE)).toBe(true);
       expect(eff.has(A.CREATE_REACTION)).toBe(false);
+    });
+  });
+
+  describe('effectiveForRoleSet', () => {
+    const MEMBER_ROLE = 'role-member';
+    const ADMIN_ROLE = 'role-admin';
+    const admin = { id: ADMIN_ROLE, actions: [A.CREATE_MESSAGE] };
+    const memberRole = { id: MEMBER_ROLE, actions: [A.CREATE_MESSAGE] };
+
+    it('a deny on a lower role reaches a user who also holds a higher role without an allow (the review probe)', () => {
+      const overwrites = [
+        role(MEMBER_ROLE, [], [A.CREATE_MESSAGE]),
+        role(MOD_ROLE, [A.CREATE_MESSAGE]),
+      ];
+      // Judged per role, Community Admin alone keeps posting...
+      expect(effectiveForRole(admin, overwrites).has(A.CREATE_MESSAGE)).toBe(
+        true,
+      );
+      // ...but the real admin also holds Member, and loses it
+      expect(
+        effectiveForRoleSet([admin, memberRole], overwrites).has(
+          A.CREATE_MESSAGE,
+        ),
+      ).toBe(false);
+    });
+
+    it("any of the user's roles' allows beats the deny", () => {
+      const overwrites = [
+        role(MEMBER_ROLE, [], [A.CREATE_MESSAGE]),
+        role(ADMIN_ROLE, [A.CREATE_MESSAGE]),
+      ];
+      expect(
+        effectiveForRoleSet([admin, memberRole], overwrites).has(
+          A.CREATE_MESSAGE,
+        ),
+      ).toBe(true);
+    });
+
+    it('unions the base actions of every role', () => {
+      const eff = effectiveForRoleSet(
+        [
+          { id: 'a', actions: [A.CREATE_MESSAGE] },
+          { id: 'b', actions: [A.CREATE_REACTION] },
+        ],
+        [],
+      );
+      expect([...eff].sort()).toEqual(
+        [A.CREATE_MESSAGE, A.CREATE_REACTION].sort(),
+      );
     });
   });
 });

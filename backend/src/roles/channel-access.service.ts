@@ -255,6 +255,18 @@ export class ChannelAccessService {
     return candidateIds.filter((id) => viewers.has(id));
   }
 
+  /** Which of `userIds` are on the channel's (private) member list. */
+  async channelMemberIds(
+    channelId: string,
+    userIds: string[],
+  ): Promise<string[]> {
+    const rows = await this.databaseService.channelMembership.findMany({
+      where: { channelId, userId: { in: userIds } },
+      select: { userId: true },
+    });
+    return rows.map((r) => r.userId);
+  }
+
   /** Whether every community member sees the channel (false if missing). */
   async isVisibleToWholeCommunity(channelId: string): Promise<boolean> {
     const channel = await this.databaseService.channel.findUnique({
