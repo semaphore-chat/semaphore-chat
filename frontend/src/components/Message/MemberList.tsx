@@ -156,6 +156,8 @@ const MemberRow: React.FC<{
         primary={
           <Typography
             variant="listItem"
+            // A block, so noWrap can truncate (listItem maps to an inline span).
+            component="div"
             noWrap
             // dir="auto": an Arabic/Hebrew name truncates at its own end
             // (visual left), keeping its first word; the row stays left-aligned.
