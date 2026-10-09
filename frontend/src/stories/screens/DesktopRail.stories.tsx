@@ -22,7 +22,7 @@ const byLabel = (label: string) => () => document.querySelector<HTMLElement>(`[a
 const menuItem = (text: RegExp) => () =>
   Array.from(document.querySelectorAll<HTMLElement>('[role="menuitem"]')).find((el) => text.test(el.textContent ?? ''));
 
-/** #general with the collapsed rail; 5 unread notifications on the inbox. */
+/** #general with the collapsed rail; 3 unread notifications on the inbox. */
 export const Collapsed = defineScreen(bigCommunityScenario, generalPath);
 Collapsed.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920'] };
 
