@@ -14,7 +14,7 @@ import {
   useTheme,
 } from "@mui/material";
 import { APPBAR_HEIGHT } from "../../constants/layout";
-import { useMobileBreakpoint } from "../../hooks/useResponsive";
+import { useMobileBreakpoint, useResponsive } from "../../hooks/useResponsive";
 import {
   Menu as MenuIcon,
   Dashboard as DashboardIcon,
@@ -51,6 +51,9 @@ const AdminLayout: React.FC = () => {
   const location = useLocation();
   const theme = useTheme();
   const isMobile = useMobileBreakpoint();
+  // Desktop has no app bar: fill the content area. Phone/tablet subtract theirs.
+  const { isDesktop } = useResponsive();
+  const minHeight = isDesktop ? "100%" : `calc(var(--full-dvh) - ${APPBAR_HEIGHT}px)`;
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const isActive = (path: string) => {
@@ -107,7 +110,7 @@ const AdminLayout: React.FC = () => {
   );
 
   return (
-    <Box sx={{ display: "flex", minHeight: `calc(var(--full-dvh) - ${APPBAR_HEIGHT}px)` }}>
+    <Box sx={{ display: "flex", minHeight }}>
       {/* Sidebar */}
       {isMobile ? (
         <Drawer
@@ -135,7 +138,7 @@ const AdminLayout: React.FC = () => {
               width: DRAWER_WIDTH,
               boxSizing: "border-box",
               position: "relative",
-              minHeight: `calc(var(--full-dvh) - ${APPBAR_HEIGHT}px)`,
+              minHeight,
               backgroundColor: theme.palette.background.paper,
             },
           }}

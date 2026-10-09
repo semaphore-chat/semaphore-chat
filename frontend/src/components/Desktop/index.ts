@@ -1,9 +1,8 @@
 /**
  * Desktop Layout Components
  *
- * Full AppBar + sidebar + voice bottom bar layout for desktop (>= 1200px).
+ * Community rail + routed page + voice bottom bar layout for desktop (>= 1200px, and Electron).
  */
 
 export { DesktopLayout } from './DesktopLayout';
-export { DesktopAppBar } from './DesktopAppBar';
 export { DesktopContentArea } from './DesktopContentArea';

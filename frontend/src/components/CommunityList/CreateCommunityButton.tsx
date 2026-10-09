@@ -19,7 +19,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
   const theme = useTheme();
 
   const content = (
-    <Button onClick={onClick} variant="text" sx={{ width: "90%", padding: 0 }}>
+    <Button onClick={onClick} variant="text" sx={{ width: isExpanded ? "100%" : "90%", minWidth: 0, padding: 0 }}>
       <Box
         sx={{
           position: "relative",
@@ -28,7 +28,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
           alignItems: "center",
           borderRadius: 2,
           overflow: "hidden",
-          padding: "8px",
+          padding: isExpanded ? "4px" : "8px",
           transition: "background 0.2s, box-shadow 0.2s",
           background: alpha(theme.palette.text.secondary, 0.12),
           border: `2px dashed ${alpha(theme.palette.text.secondary, 0.3)}`,
@@ -40,16 +40,17 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
       >
         <Avatar
           sx={{
-            width: 48,
-            height: 48,
+            // Smaller in the 160px expanded rail, so the name gets the room.
+            width: isExpanded ? 32 : 48,
+            height: isExpanded ? 32 : 48,
             bgcolor: "action.hover",
             ml: isExpanded ? 0 : "auto",
-            mr: isExpanded ? 2 : "auto",
+            mr: isExpanded ? 1 : "auto",
             zIndex: 1,
             transition: "box-shadow 0.2s",
           }}
         >
-          <AddIcon sx={{ color: "text.primary", fontSize: 'icon.2xl' }} />
+          <AddIcon sx={{ color: "text.primary", fontSize: isExpanded ? 'icon.xl' : 'icon.2xl' }} />
         </Avatar>
         {isExpanded && (
           <Box
@@ -71,21 +72,10 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
                 fontWeight: 600,
                 color: "text.secondary",
                 alignItems: "left",
+                maxWidth: "100%",
               }}
             >
-              Create Community
-            </Typography>
-            <Typography
-              variant="body2"
-              noWrap
-              sx={{
-                opacity: 0.6,
-                fontSize: 'scale.sm',
-                color: "text.secondary",
-                fontStyle: "italic",
-              }}
-            >
-              Start your own community
+              New community
             </Typography>
           </Box>
         )}

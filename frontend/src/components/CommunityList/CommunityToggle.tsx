@@ -1,212 +1,162 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { communityControllerFindAllMineOptions } from "../../api-client/@tanstack/react-query.gen";
+import {
+  communityControllerFindAllMineOptions,
+  notificationsControllerGetUnreadCountOptions,
+} from "../../api-client/@tanstack/react-query.gen";
 import Drawer from "@mui/material/Drawer";
 import Box from "@mui/material/Box";
-import { styled } from "@mui/system";
-import { useResponsive } from "../../hooks/useResponsive";
+import { styled } from "@mui/material/styles";
+import { Divider, IconButton, Tooltip } from "@mui/material";
+import ChatIcon from "@mui/icons-material/Chat";
+import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
+import MenuIcon from "@mui/icons-material/Menu";
+import MenuOpenIcon from "@mui/icons-material/MenuOpen";
+import { useParams, useNavigate } from "react-router-dom";
 import CommunityListItem from "./CommunityListItem";
 import CreateCommunityButton from "./CreateCommunityButton";
-import { useParams, useNavigate } from "react-router-dom";
-import { Tooltip, Button, Avatar, Badge } from "@mui/material";
-import ChatIcon from "@mui/icons-material/Chat";
+import { RailNavButton } from "./RailNavButton";
+import { RailUserMenu } from "../Desktop/RailUserMenu";
 import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
+import { RAIL_EXPANDED_WIDTH, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "../../constants/layout";
+import type { User } from "../../types/auth.type";
 
 interface CommunityToggleProps {
   isExpanded: boolean;
-  appBarHeight: number;
+  onToggleExpanded: () => void;
+  /** Opens the notification inbox (NotificationCenter). */
+  onOpenNotifications: () => void;
+  /** In a call the voice bar covers the bottom of the window: the rail stops above it. */
+  voiceConnected: boolean;
+  user: User | undefined;
 }
 
-const COLLAPSED_WIDTH = 80;
-const EXPANDED_WIDTH = 320;
-
-const Sidebar = styled(Drawer, {
-  shouldForwardProp: (prop) =>
-    prop !== "appBarHeight" && prop !== "expanded" && prop !== "isMobile",
-})<{
-  appBarHeight: number;
-  expanded: boolean;
-  isMobile: boolean;
-}>(({ appBarHeight, expanded, isMobile, theme }) => ({
-  width: expanded ? (isMobile ? "100vw" : EXPANDED_WIDTH) : COLLAPSED_WIDTH,
-  flexShrink: 0,
-  zIndex: 1200,
-  "& .MuiDrawer-paper": {
-    width: expanded ? (isMobile ? "100vw" : EXPANDED_WIDTH) : COLLAPSED_WIDTH,
-    boxSizing: "border-box",
-    background: theme.palette.background.paper,
-    borderRight: `1px solid ${theme.palette.divider}`,
-    display: "flex",
-    alignItems: "center",
-    paddingTop: 16,
-    paddingBottom: 16,
-    top: appBarHeight,
-    height: `calc(var(--full-dvh) - ${appBarHeight}px)`,
-    transition: "width 0.3s cubic-bezier(0.4,0,0.2,1)",
-    overflowX: "hidden",
-  },
-  "&.MuiDrawer-root": {
-    top: appBarHeight,
-    height: `calc(var(--full-dvh) - ${appBarHeight}px)`,
-  },
-}));
-
-const CommunityList = styled(Box, {
-  shouldForwardProp: (prop) => prop !== "expanded",
-})<{ expanded: boolean }>(({ expanded }) => {
+const Rail = styled(Drawer, {
+  shouldForwardProp: (prop) => prop !== "expanded" && prop !== "bottomInset",
+})<{ expanded: boolean; bottomInset: number }>(({ expanded, bottomInset, theme }) => {
+  const width = expanded ? RAIL_EXPANDED_WIDTH : SIDEBAR_WIDTH;
+  const height = `calc(var(--full-dvh) - ${bottomInset}px)`;
   return {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: expanded ? "stretch" : "center",
-    gap: 12,
-    width: "100%",
-    paddingRight: expanded ? 4 : 0,
-    paddingLeft: expanded ? 4 : 0,
+    width,
+    flexShrink: 0,
+    zIndex: 1200,
+    "&.MuiDrawer-root": { top: 0, height },
+    "& .MuiDrawer-paper": {
+      width,
+      top: 0,
+      height,
+      boxSizing: "border-box",
+      background: theme.palette.background.paper,
+      borderRight: `1px solid ${theme.palette.divider}`,
+      display: "flex",
+      flexDirection: "column",
+      transition: "width 0.3s cubic-bezier(0.4,0,0.2,1)",
+      overflowX: "hidden",
+    },
   };
 });
 
+const Section = styled(Box, {
+  shouldForwardProp: (prop) => prop !== "expanded",
+})<{ expanded: boolean }>(({ expanded, theme }) => ({
+  display: "flex",
+  flexDirection: "column",
+  alignItems: expanded ? "stretch" : "center",
+  gap: theme.spacing(1),
+  padding: theme.spacing(0, expanded ? 1 : 0),
+}));
+
+/**
+ * The desktop community rail. Top: Direct Messages and the notification inbox.
+ * Middle (scrolls): communities and "create". Foot: the expand toggle and your
+ * account menu. Expanded, it's a 160px labelled list.
+ */
 const CommunityToggle: React.FC<CommunityToggleProps> = ({
-  appBarHeight,
   isExpanded,
+  onToggleExpanded,
+  onOpenNotifications,
+  voiceConnected,
+  user,
 }) => {
   const { data: communities, isLoading, error } = useQuery(communityControllerFindAllMineOptions());
-  const { isMobile } = useResponsive();
+  const { data: unread } = useQuery({
+    ...notificationsControllerGetUnreadCountOptions(),
+    refetchOnWindowFocus: true,
+  });
   const { communityId } = useParams();
   const navigate = useNavigate();
   const canCreateCommunity = useCanPerformAction("INSTANCE", undefined, RBAC_ACTIONS.CREATE_COMMUNITY);
   const { totalDmUnreadCount: totalDmUnread } = useReadReceipts();
-
-  const handleCreateCommunity = () => {
-    // Navigate to create community page (you may need to adjust this route)
-    navigate("/community/create");
-  };
-
-  const handleDirectMessages = () => {
-    navigate("/direct-messages");
-  };
+  const unreadNotifications = unread?.count ?? 0;
 
   return (
-    <Sidebar
+    <Rail
       variant="permanent"
       anchor="left"
-      appBarHeight={appBarHeight}
       expanded={isExpanded}
-      isMobile={isMobile}
+      bottomInset={voiceConnected ? VOICE_BAR_HEIGHT : 0}
     >
-      <Box
-        sx={{
-          width: "100%",
-          display: "flex",
-          justifyContent: isExpanded ? "flex-end" : "center",
-          mb: 2,
-        }}
-      ></Box>
-      <CommunityList expanded={isExpanded}>
-        {/* Direct Messages button at the top */}
-        <Box sx={{ mb: 2 }}>
-          {isExpanded ? (
-            <Button
-              onClick={handleDirectMessages}
-              variant="text"
-              sx={{ 
-                width: "90%", 
-                padding: 0,
-                justifyContent: "flex-start",
-              }}
-            >
-              <Box
-                sx={{
-                  position: "relative",
-                  width: "100%",
-                  display: "flex",
-                  alignItems: "center",
-                  borderRadius: 2,
-                  overflow: "hidden",
-                  padding: "8px",
-                  transition: "background 0.2s, box-shadow 0.2s",
-                  "&:hover": {
-                    backgroundColor: "action.hover",
-                  },
-                }}
-              >
-                <Badge
-                  badgeContent={totalDmUnread}
-                  color="error"
-                  max={99}
-                  overlap="circular"
-                >
-                  <Avatar
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      bgcolor: "primary.main",
-                      mr: 2,
-                    }}
-                  >
-                    <ChatIcon sx={{ color: "primary.contrastText" }} />
-                  </Avatar>
-                </Badge>
-                <Box sx={{ textAlign: "left", textTransform: "none" }}>
-                  <Box sx={{ fontSize: 'scale.base', fontWeight: 600, color: "text.primary" }}>
-                    Direct Messages
-                  </Box>
+      <Section expanded={isExpanded} sx={{ pt: 2, pb: 1 }}>
+        <RailNavButton
+          label="Messages"
+          ariaLabel="Direct Messages"
+          icon={<ChatIcon sx={{ color: "primary.contrastText" }} />}
+          onClick={() => navigate("/direct-messages")}
+          isExpanded={isExpanded}
+          badgeContent={totalDmUnread}
+        />
+        <RailNavButton
+          label="Notifications"
+          ariaLabel={`Notifications, ${unreadNotifications} unread`}
+          icon={<NotificationsNoneIcon sx={{ color: "text.primary" }} />}
+          onClick={onOpenNotifications}
+          isExpanded={isExpanded}
+          badgeContent={unreadNotifications}
+          avatarSx={{ bgcolor: "action.selected" }}
+        />
+      </Section>
+      <Divider sx={{ mx: 2 }} />
+      <Box sx={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "hidden", py: 1.5 }}>
+        <Section expanded={isExpanded} sx={{ gap: 1.5 }}>
+          {isLoading && <Box color="grey.500">Loading...</Box>}
+          {error && <Box color="error.main">Error loading</Box>}
+          {communities && communities.length > 0
+            ? communities.map((community) => (
+                <CommunityListItem
+                  key={community.id}
+                  community={community}
+                  isExpanded={isExpanded}
+                  selected={communityId === community.id}
+                />
+              ))
+            : !isLoading && (
+                <Box sx={{ color: "grey.500", fontSize: "scale.sm", textAlign: "center" }}>
+                  No communities
                 </Box>
-              </Box>
-            </Button>
-          ) : (
-            <Tooltip title="Direct Messages" placement="right" arrow>
-              <Button
-                onClick={handleDirectMessages}
-                variant="text"
-                sx={{ width: "90%", padding: 0 }}
-              >
-                <Badge
-                  badgeContent={totalDmUnread}
-                  color="error"
-                  max={99}
-                  overlap="circular"
-                >
-                  <Avatar
-                    sx={{
-                      width: 48,
-                      height: 48,
-                      bgcolor: "primary.main",
-                    }}
-                  >
-                    <ChatIcon sx={{ color: "primary.contrastText" }} />
-                  </Avatar>
-                </Badge>
-              </Button>
-            </Tooltip>
+              )}
+          {canCreateCommunity && (
+            <CreateCommunityButton isExpanded={isExpanded} onClick={() => navigate("/community/create")} />
           )}
+        </Section>
+      </Box>
+      <Divider sx={{ mx: 2 }} />
+      <Section expanded={isExpanded} sx={{ py: 1 }}>
+        <Box sx={{ display: "flex", justifyContent: isExpanded ? "flex-start" : "center" }}>
+          <Tooltip title={isExpanded ? "Collapse sidebar" : "Expand sidebar"} placement="right" arrow>
+            <IconButton
+              onClick={onToggleExpanded}
+              aria-label={isExpanded ? "Collapse sidebar" : "Expand sidebar"}
+              aria-expanded={isExpanded}
+            >
+              {isExpanded ? <MenuOpenIcon /> : <MenuIcon />}
+            </IconButton>
+          </Tooltip>
         </Box>
-        
-        {isLoading && <Box color="grey.500">Loading...</Box>}
-        {error && <Box color="error.main">Error loading</Box>}
-        {communities && communities.length > 0
-          ? communities.map((community) => (
-              <CommunityListItem
-                key={community.id}
-                community={community}
-                isExpanded={isExpanded}
-                selected={communityId === community.id}
-              />
-            ))
-          : !isLoading && (
-              <Box sx={{ color: "grey.500", fontSize: "scale.sm" }}>
-                No communities
-              </Box>
-            )}
-        {canCreateCommunity && (
-          <CreateCommunityButton
-            isExpanded={isExpanded}
-            onClick={handleCreateCommunity}
-          />
-        )}
-      </CommunityList>
-    </Sidebar>
+        <RailUserMenu user={user} isExpanded={isExpanded} />
+      </Section>
+    </Rail>
   );
 };
 

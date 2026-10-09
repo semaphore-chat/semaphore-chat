@@ -126,28 +126,23 @@ test.describe('Authentication', () => {
   });
 
   test.describe('Logout', () => {
-    test('logout clears session and redirects to login', async ({ page, request }) => {
-      const { accessToken } = await loginViaApi(request, TEST_USER);
-      await page.goto('/');
-      await setAuthToken(page, accessToken);
-      await page.reload();
+    test('logout clears session and redirects to login', async ({ page }) => {
+      // A real login (a token alone, without the refresh cookie, doesn't keep the app signed in).
+      await page.goto('/login');
+      await page.locator('#username').fill(TEST_USER.username);
+      await page.locator('#password').fill(TEST_USER.password);
+      await page.getByRole('button', { name: 'Login' }).click();
 
-      const logoutButton = page.getByRole('button', { name: /logout|sign out/i })
-        .or(page.getByRole('menuitem', { name: /logout|sign out/i }));
+      // Desktop: the account menu at the foot of the community rail, then confirm.
+      await page.getByRole('button', { name: 'Account menu' }).click();
+      await page.getByRole('menuitem', { name: /log out/i }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Log out' }).click();
 
-      const profileMenu = page.locator('[data-testid="profile-menu"], [aria-label*="profile"], [aria-label*="account"]');
-      if (await profileMenu.isVisible()) {
-        await profileMenu.click();
-      }
+      // Back on the login form (the app routes in the hash, so check the page, not the URL).
+      await expect(page.locator('#username')).toBeVisible({ timeout: 10000 });
 
-      if (await logoutButton.isVisible()) {
-        await logoutButton.click();
-
-        await page.waitForURL(/\/login/, { timeout: 10000 });
-
-        const hasToken = await isAuthenticated(page);
-        expect(hasToken).toBe(false);
-      }
+      const hasToken = await isAuthenticated(page);
+      expect(hasToken).toBe(false);
     });
   });
 });

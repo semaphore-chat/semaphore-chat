@@ -123,9 +123,11 @@ export const ChannelNotificationMenu: React.FC<ChannelNotificationMenuProps> = (
       [NotificationLevel.None]: 'Nothing',
     }[effectiveLevel];
 
+    // "Notification settings", not "Notifications": the inbox (bell in the
+    // community rail) is a different thing.
     return currentLevel === NotificationLevel.Default
-      ? `Notifications: ${levelText} (default)`
-      : `Notifications: ${levelText}`;
+      ? `Notification settings: ${levelText} (default)`
+      : `Notification settings: ${levelText}`;
   };
 
   const isLoading = isSettingOverride || isDeletingOverride;
