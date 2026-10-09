@@ -276,7 +276,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               {channel?.name}
             </Box>
             <Box sx={{ color: 'text.secondary', mb: 3 }}>
-              This is a voice channel. Join to start talking!
+              Voice channel
             </Box>
             {channel && <VoiceChannelJoinButton channel={channel} />}
           </Box>

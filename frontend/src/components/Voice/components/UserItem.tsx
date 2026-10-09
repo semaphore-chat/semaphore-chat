@@ -8,7 +8,6 @@ import {
   Divider,
 } from "@mui/material";
 import {
-  Mic,
   MicOff,
   Videocam,
   ScreenShare,
@@ -66,8 +65,8 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
 
   const statusIcons = [];
 
+  // Only the unusual: no "mic on" icon on every row.
   if (userState.isMuted) statusIcons.push(<MicOff key="muted" fontSize="small" />);
-  else statusIcons.push(<Mic key="mic" fontSize="small" />);
 
   if (userState.isDeafened)
     statusIcons.push(<VolumeOff key="deafened" fontSize="small" />);
