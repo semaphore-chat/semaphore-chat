@@ -172,10 +172,15 @@ const AdminLayout: React.FC = () => {
             </Typography>
           </Box>
         )}
-        {/* Desktop: list-page width (left-aligned); the drawer is the section nav. */}
-        <Box sx={{ maxWidth: isDesktop ? PAGE_LIST_MAX_WIDTH : undefined }}>
+        {/* Desktop: list-page width (left-aligned); the drawer is the section nav.
+            height 100% keeps full-height states (403, empty) centred as before. */}
+        {isDesktop ? (
+          <Box sx={{ maxWidth: PAGE_LIST_MAX_WIDTH, height: "100%" }}>
+            <Outlet />
+          </Box>
+        ) : (
           <Outlet />
-        </Box>
+        )}
       </Box>
     </Box>
   );
