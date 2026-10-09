@@ -126,6 +126,7 @@ export const CONNECTION_QUALITY = {
 export const CONNECTION_STATE = {
   Disconnected: 'disconnected' satisfies `${ConnectionState.Disconnected}`,
   Connected: 'connected' satisfies `${ConnectionState.Connected}`,
+  Reconnecting: 'reconnecting' satisfies `${ConnectionState.Reconnecting}`,
 } as const;
 
 // ---- DisconnectReason (numeric protobuf enum — see file doc comment) ----

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -81,7 +81,15 @@ function loadPlacement(region: Rect | null): PipPlacement {
   const key = region ? chatPlacementKey(window.innerWidth) : PIP_PLACEMENT_KEY;
   const saved = getCachedItem<unknown>(key);
   if (isValidPlacement(saved)) return saved;
-  return region ? defaultRegionPlacement(region) : defaultPlacement();
+  if (!region) return defaultPlacement();
+  // First time in this bucket: start from the corner (and size) the user
+  // chose for the window-based card, docked in the column; the size is
+  // fitted to the column when rendering.
+  const legacy = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
+  if (isValidPlacement(legacy)) {
+    return { ...legacy, offset: { x: 0, y: 0 }, docked: true };
+  }
+  return defaultRegionPlacement(region);
 }
 
 /**
@@ -202,8 +210,11 @@ export const FloatCard: React.FC = () => {
   const recomputeViewport = useCallback(() => {
     const vp = region ? regionViewport(region) : computeViewport(state.isConnected, chromeBottom);
     setViewport(vp);
-    // Too-small column: the pill shows; don't shrink (and persist) the card.
-    if (region && !regionFitsCard(region)) return;
+    // Column mode: the column shrinks for transient reasons (the composer
+    // grows, the docked panel opens), so the card is only fitted to it when
+    // rendering (`fittedSize`) — the saved size changes only on a user
+    // resize. The window-based card keeps its original clamp-and-save.
+    if (region) return;
     setPlacement(prev => {
       const clampedSize = clampSizeToViewport(prev.size, vp);
       if (clampedSize.width === prev.size.width && clampedSize.height === prev.size.height) {
@@ -244,16 +255,28 @@ export const FloatCard: React.FC = () => {
   // it doesn't show dock zones or move the card yet. handleDragMove promotes
   // it to a real drag (isDragging) the first time movement crosses
   // DRAG_THRESHOLD_PX; below that, releasing the pointer is a no-op click.
+  // The card's size as shown: the saved size fitted to the current area.
+  // (For the window-based card this equals placement.size, which
+  // recomputeViewport already clamped and saved.)
+  // Memoized so the drag handlers keep stable identities mid-gesture.
+  const fittedPlacement = useMemo<PipPlacement>(() => {
+    const size = clampSizeToViewport(placement.size, viewport);
+    return size.width === placement.size.width && size.height === placement.size.height
+      ? placement
+      : { ...placement, size };
+  }, [placement, viewport]);
+  const fittedSize = fittedPlacement.size;
+
   const handleDragStart = useCallback((e: React.PointerEvent) => {
     if (activePointerIdRef.current !== null) return;
     e.preventDefault();
     activePointerIdRef.current = e.pointerId;
     dragStartClientRef.current = { x: e.clientX, y: e.clientY };
     hasCrossedDragThresholdRef.current = false;
-    const abs = toAbsolute(placement, viewport);
+    const abs = toAbsolute(fittedPlacement, viewport);
     dragOffsetRef.current = { x: e.clientX - abs.x, y: e.clientY - abs.y };
     setIsPointerDown(true);
-  }, [placement, viewport]);
+  }, [fittedPlacement, viewport]);
 
   // Reads bookkeeping from refs only, so this callback's identity never
   // changes — the window listener effect below doesn't need to re-subscribe
@@ -296,10 +319,10 @@ export const FloatCard: React.FC = () => {
     const zone = hitTestDockZone({ x: e.clientX, y: e.clientY }, viewport);
     const nextPlacement: PipPlacement = zone
       ? { ...placement, anchor: zone, offset: { x: 0, y: 0 }, docked: true }
-      : { ...placement, ...fromAbsolute(dropPos, placement.size, viewport), docked: false };
+      : { ...placement, ...fromAbsolute(dropPos, fittedSize, viewport), docked: false };
     setPlacement(nextPlacement);
     setCachedItem(storageKey, nextPlacement);
-  }, [placement, viewport, storageKey]);
+  }, [placement, fittedSize, viewport, storageKey]);
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.PointerEvent) => {
@@ -309,11 +332,11 @@ export const FloatCard: React.FC = () => {
     activePointerIdRef.current = e.pointerId;
     // Freeze the top-left corner for the gesture; only size tracks the
     // pointer, so the card grows toward the bottom-right handle in place.
-    setDragPos(toAbsolute(placement, viewport));
-    setLiveSize(placement.size);
-    setResizeStart({ x: e.clientX, y: e.clientY, width: placement.size.width, height: placement.size.height });
+    setDragPos(toAbsolute(fittedPlacement, viewport));
+    setLiveSize(fittedSize);
+    setResizeStart({ x: e.clientX, y: e.clientY, width: fittedSize.width, height: fittedSize.height });
     setIsResizing(true);
-  }, [placement, viewport]);
+  }, [fittedPlacement, fittedSize, viewport]);
 
   const handleResizeMove = useCallback((e: PointerEvent) => {
     if (e.pointerId !== activePointerIdRef.current) return;
@@ -402,7 +425,7 @@ export const FloatCard: React.FC = () => {
   // Minimized view (pill) — also when the message column is too small for
   // the card; then a click opens the call instead of expanding the card.
   if (state.pipCollapsed || forcePill) {
-    const pillPos = toAbsolute(placement, viewport, PILL_SIZE);
+    const pillPos = toAbsolute(fittedPlacement, viewport, PILL_SIZE);
     return (
       <Paper
         ref={pipRef}
@@ -421,7 +444,7 @@ export const FloatCard: React.FC = () => {
             transform: 'scale(1.05)',
           },
         }}
-        onClick={forcePill && !state.pipCollapsed ? handleCardClick : toggleCollapsed}
+        onClick={forcePill ? handleCardClick : toggleCollapsed}
       >
         <Box
           sx={{
@@ -450,8 +473,8 @@ export const FloatCard: React.FC = () => {
   }
 
   const isLocalSelection = !!selection && state.room?.localParticipant === selection.participant;
-  const renderedPos = dragPos ?? toAbsolute(placement, viewport);
-  const renderedSize = liveSize ?? placement.size;
+  const renderedPos = dragPos ?? toAbsolute(fittedPlacement, viewport);
+  const renderedSize = liveSize ?? fittedSize;
 
   return (
     <>

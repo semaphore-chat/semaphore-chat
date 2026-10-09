@@ -52,6 +52,10 @@ vi.mock('livekit-client', () => {
       Disconnected: 'disconnected',
       MediaDevicesChanged: 'mediaDevicesChanged',
       ActiveDeviceChanged: 'activeDeviceChanged',
+      TrackMuted: 'trackMuted',
+      TrackUnmuted: 'trackUnmuted',
+      LocalTrackPublished: 'localTrackPublished',
+      LocalTrackUnpublished: 'localTrackUnpublished',
     },
     DisconnectReason: {},
     VideoCaptureOptions: {},
@@ -128,12 +132,13 @@ import {
   switchAudioOutputDevice,
   toggleScreenShareUnified,
   getRoomOptions,
+  canPublishMicrophone,
 } from '../../features/voice/voiceActions';
 import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
-import { getCachedItem } from '../../utils/storage';
+import { getCachedItem, setCachedItem } from '../../utils/storage';
 import { publishScreenShare } from '../../features/voice/screenSharePublish';
 import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
 import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
@@ -236,6 +241,56 @@ describe('voiceActions', () => {
       expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
       expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
       expect(deps.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: VoiceActionType.SetConnected }));
+    });
+
+    describe('mic permission from the token (listen-only joins from anywhere)', () => {
+      const withPermissions = (permissions: unknown) => {
+        (mockLocalParticipant as Record<string, unknown>).permissions = permissions;
+      };
+      beforeEach(() => withPermissions(undefined));
+
+      it('skips enabling the mic when the token cannot publish at all', async () => {
+        withPermissions({ canPublish: false, canPublishSources: [] });
+        await joinVoiceChannel(params, createMockDeps());
+        expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
+        withPermissions(undefined);
+      });
+
+      it('skips enabling the mic when the allowed sources lack MICROPHONE', async () => {
+        withPermissions({ canPublish: true, canPublishSources: [1, 3, 4] });
+        await joinVoiceChannel(params, createMockDeps());
+        expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
+        withPermissions(undefined);
+      });
+
+      it('enables the mic when MICROPHONE is allowed', async () => {
+        withPermissions({ canPublish: true, canPublishSources: [2] });
+        await joinVoiceChannel(params, createMockDeps());
+        expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true, expect.anything());
+        withPermissions(undefined);
+      });
+    });
+
+    describe('saved mic state for a recovery rejoin', () => {
+      const savedCall = () =>
+        vi.mocked(setCachedItem).mock.calls.filter(([key]) => key === 'semaphore_voice_connection').slice(-1)[0]?.[1] as
+          | { micMuted?: boolean }
+          | undefined;
+
+      it('saves micMuted with the connection', async () => {
+        await joinVoiceChannel(params, createMockDeps());
+        expect(savedCall()).toMatchObject({ channelId: 'ch-1', micMuted: false });
+      });
+
+      it('updates the saved micMuted when the local mic is muted later', async () => {
+        await joinVoiceChannel(params, createMockDeps());
+        vi.mocked(getCachedItem).mockImplementation((key: string) =>
+          key === 'semaphore_voice_connection' ? { contextType: 'channel', channelId: 'ch-1', micMuted: false, timestamp: 1 } : null,
+        );
+        mockRoomInstance.localParticipant.isMicrophoneEnabled = false;
+        roomEventHandlers['trackMuted']();
+        expect(savedCall()).toMatchObject({ micMuted: true, timestamp: 1 });
+      });
     });
 
     it('requests a token and connects to the room', async () => {
@@ -787,5 +842,18 @@ describe('voiceActions', () => {
       expect(mockLocalParticipant.setScreenShareEnabled).toHaveBeenCalledWith(false);
       expect(publishScreenShare).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('canPublishMicrophone', () => {
+  it.each([
+    [undefined, true],
+    [{ canPublish: true }, true],
+    [{ canPublish: true, canPublishSources: [] }, true],
+    [{ canPublish: true, canPublishSources: [2] }, true],
+    [{ canPublish: false }, false],
+    [{ canPublish: true, canPublishSources: [1] }, false],
+  ])('%o → %s', (permissions, expected) => {
+    expect(canPublishMicrophone(permissions)).toBe(expected);
   });
 });

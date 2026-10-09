@@ -67,3 +67,10 @@ export function voiceStatusBadges(
   }
   return badges;
 }
+
+const BADGE_RANK: Record<VoiceStatusBadgeKind, number> = { 'server-muted': 0, deafened: 1, muted: 2 };
+
+/** The single badge a small tile has room for: server-muted > deafened > muted. */
+export function pickCompactBadge(badges: VoiceStatusBadge[]): VoiceStatusBadge | undefined {
+  return [...badges].sort((a, b) => BADGE_RANK[a.kind] - BADGE_RANK[b.kind])[0];
+}

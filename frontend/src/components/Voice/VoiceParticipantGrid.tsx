@@ -56,11 +56,18 @@ export const VoiceParticipantGrid: React.FC<VoiceParticipantGridProps> = ({ user
         const state = deriveUserState(NO_LIVEKIT, user);
         const badges = voiceStatusBadges(state);
         const name = user.displayName || user.username;
+        // The badges are icons; say them in the button's name too
+        const states = [
+          ...badges.map((b) => b.label.toLowerCase()),
+          ...(state.isVideoEnabled ? ['camera on'] : []),
+          ...(state.isScreenSharing ? ['sharing screen'] : []),
+        ];
+        const accessibleName = [name, ...states].join(', ');
         return (
           <Box component="li" key={user.id} sx={{ minWidth: 0 }}>
             <ButtonBase
               onClick={() => openProfile(user.id)}
-              aria-label={name}
+              aria-label={accessibleName}
               sx={{
                 width: '100%',
                 display: 'flex',

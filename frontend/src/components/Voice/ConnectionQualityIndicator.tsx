@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Tooltip } from '@mui/material';
 import { useTheme } from '@mui/material/styles';
+import { readableTextColor } from '../../theme/themeConfig';
 import type { Participant, Room } from 'livekit-client';
-import { CONNECTION_QUALITY, ROOM_EVENT } from '../../features/voice/livekitEvents';
+import { CONNECTION_QUALITY, CONNECTION_STATE, ROOM_EVENT } from '../../features/voice/livekitEvents';
 import { describeConnectionQuality, type Quality } from '../../features/voice/connectionQuality';
 
 const BAR_HEIGHTS = [6, 10, 14];
+/** WCAG 2.x 1.4.11 minimum for graphical objects. */
+const NON_TEXT_CONTRAST = 3;
 
 /**
  * Three-bar signal for YOUR connection to the voice server (LiveKit's local
@@ -20,6 +23,9 @@ export const ConnectionQualityIndicator: React.FC<{ room: Room | null | undefine
   const [reconnecting, setReconnecting] = useState(false);
 
   useEffect(() => {
+    // Start from the new room's actual state, so a flag from the previous
+    // room (or a missed `reconnected`) can't stick.
+    setReconnecting(room?.state === CONNECTION_STATE.Reconnecting);
     if (!room) return;
     setQuality(room.localParticipant?.connectionQuality ?? CONNECTION_QUALITY.Unknown);
     const onQuality = (q: Quality, participant?: Participant) => {
@@ -30,18 +36,24 @@ export const ConnectionQualityIndicator: React.FC<{ room: Room | null | undefine
     room.on(ROOM_EVENT.ConnectionQualityChanged, onQuality);
     room.on(ROOM_EVENT.Reconnecting, onReconnecting);
     room.on(ROOM_EVENT.Reconnected, onReconnected);
+    room.on(ROOM_EVENT.Disconnected, onReconnected);
     return () => {
       room.off(ROOM_EVENT.ConnectionQualityChanged, onQuality);
       room.off(ROOM_EVENT.Reconnecting, onReconnecting);
       room.off(ROOM_EVENT.Reconnected, onReconnected);
+      room.off(ROOM_EVENT.Disconnected, onReconnected);
     };
   }, [room]);
 
   const info = describeConnectionQuality(quality, reconnecting);
+  // Lit bars must reach 3:1 non-text contrast (WCAG 1.4.11) on the bar's
+  // surface: keep the status hue, darkened/lightened only as far as needed.
+  const surface = theme.palette.background.paper;
+  const towards = theme.palette.mode === 'light' ? '#000000' : '#ffffff';
   const color = {
-    positive: theme.palette.semantic.status.positive,
-    warning: theme.palette.warning.main,
-    negative: theme.palette.error.main,
+    positive: readableTextColor(theme.palette.semantic.status.positive, [surface], towards, NON_TEXT_CONTRAST),
+    warning: readableTextColor(theme.palette.warning.main, [surface], towards, NON_TEXT_CONTRAST),
+    negative: readableTextColor(theme.palette.error.main, [surface], towards, NON_TEXT_CONTRAST),
     unknown: theme.palette.text.disabled,
   }[info.tone];
   const label = `Connection: ${info.label}`;

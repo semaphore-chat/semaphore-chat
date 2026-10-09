@@ -32,10 +32,16 @@ describe('CompactVoiceTile (phone, big calls)', () => {
     expect(screen.getByTestId('compact-participant-tile')).toHaveAccessibleName('Ada, muted by a moderator');
   });
 
-  it('deafened with a live mic: the headset badge', () => {
-    renderWithProviders(
-      <CompactVoiceTile participant={participant(JSON.stringify({ isDeafened: true }))} audioTrack={mic(false)} />,
-    );
+  it('deafened (which also mutes the mic): the headset badge wins over muted', () => {
+    renderWithProviders(<CompactVoiceTile participant={participant(JSON.stringify({ isDeafened: true }))} />);
     expect(screen.getByTestId('voice-badge-deafened')).toBeInTheDocument();
+    expect(screen.queryByTestId('voice-badge-muted')).not.toBeInTheDocument();
+  });
+
+  it('server-muted wins over deafened', () => {
+    renderWithProviders(
+      <CompactVoiceTile participant={participant(JSON.stringify({ isDeafened: true }))} isServerMuted />,
+    );
+    expect(screen.getByTestId('voice-badge-server-muted')).toBeInTheDocument();
   });
 });

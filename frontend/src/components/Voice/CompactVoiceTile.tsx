@@ -10,7 +10,7 @@ import type {
 import UserAvatar from '../Common/UserAvatar';
 import { useSpeaking } from '../../hooks/useSpeaking';
 import { voiceTileColor } from '../../utils/voiceTileColor';
-import { voiceStatusBadges } from './components/voiceUserState';
+import { pickCompactBadge, voiceStatusBadges } from './components/voiceUserState';
 
 function isDeafenedMeta(metadata: string | undefined): boolean {
   if (!metadata) return false;
@@ -46,13 +46,15 @@ const CompactVoiceTile: React.FC<CompactVoiceTileProps> = ({ participant, audioT
   const hasAudio = !!audioTrack && !audioTrack.isMuted;
   const displayName = participant.name || participant.identity;
   const tint = voiceTileColor(participant.identity);
-  // One corner badge, for the most notable unusual state: server-muted (red)
-  // over self-muted / deafened (grey).
-  const badge = voiceStatusBadges({
-    isMuted: !hasAudio,
-    isDeafened: isDeafenedMeta(participant.metadata),
-    isServerMuted,
-  })[0];
+  // One corner badge, for the most notable unusual state:
+  // server-muted (red) > deafened > self-muted (grey).
+  const badge = pickCompactBadge(
+    voiceStatusBadges({
+      isMuted: !hasAudio,
+      isDeafened: isDeafenedMeta(participant.metadata),
+      isServerMuted,
+    }),
+  );
   const positive = theme.palette.semantic.status.positive;
 
   return (

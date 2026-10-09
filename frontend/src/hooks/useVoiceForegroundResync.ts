@@ -11,7 +11,8 @@ interface ResyncActions {
     channelName: string,
     communityId: string,
     isPrivate: boolean,
-    createdAt: string
+    createdAt: string,
+    options?: { startMuted?: boolean },
   ) => Promise<void>;
   joinDmVoice: (dmGroupId: string, dmGroupName: string) => Promise<void>;
 }
@@ -61,6 +62,10 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
 
     const roomDead = !room || room.state === CONNECTION_STATE.Disconnected;
     if (roomDead) {
+      // Read before the rejoin replaces the room: a user who was muted stays
+      // muted (a dead room still reports its last local mic state). No room
+      // at all → unknown → the default (mic on).
+      const wasMicMuted = room?.localParticipant?.isMicrophoneEnabled === false;
       resyncInProgressRef.current = true;
       logger.warn(`[Voice] Room dead while context connected (${trigger}) — rejoining`);
       try {
@@ -78,7 +83,8 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
             state.channelName,
             state.communityId,
             state.isPrivate,
-            state.createdAt
+            state.createdAt,
+            { startMuted: wasMicMuted },
           );
         } else {
           logger.error('[Voice] Cannot rejoin: incomplete voice context state');

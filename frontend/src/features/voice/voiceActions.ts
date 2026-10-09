@@ -57,6 +57,12 @@ export interface SavedVoiceConnection {
   createdAt?: string;
   dmGroupId?: string;
   dmGroupName?: string;
+  /**
+   * Mic was off when last seen (joined muted, or muted since), so a recovery
+   * rejoin keeps it off. Absent in records saved before this field existed:
+   * treated as unmuted (the old behaviour).
+   */
+  micMuted?: boolean;
   timestamp: number;
 }
 
@@ -67,6 +73,36 @@ function saveConnectionState(connection: Omit<SavedVoiceConnection, 'timestamp'>
   };
   setCachedItem(VOICE_CONNECTION_KEY, savedConnection);
   logger.info('[Voice] Saved connection state for recovery:', savedConnection);
+}
+
+/**
+ * Keep the saved connection's mic state current (it changes after the join:
+ * mute toggles, deafen, push-to-talk, server mute). Keeps the original
+ * timestamp; no-op when nothing is saved.
+ */
+function updateSavedMicMuted(micMuted: boolean) {
+  const saved = getCachedItem<SavedVoiceConnection>(VOICE_CONNECTION_KEY);
+  if (!saved || saved.micMuted === micMuted) return;
+  setCachedItem(VOICE_CONNECTION_KEY, { ...saved, micMuted });
+}
+
+/** LiveKit protocol `TrackSource.MICROPHONE` (canPublishSources holds protocol values). */
+const PROTOCOL_TRACK_SOURCE_MICROPHONE = 2;
+
+/**
+ * Whether the token lets this participant publish a microphone. The backend
+ * (publishGrantFor) sends `canPublish: false` with no SPEAK, or a
+ * `canPublishSources` list without MICROPHONE when only some sources are
+ * allowed. Unknown permissions count as allowed.
+ */
+export function canPublishMicrophone(
+  permissions: { canPublish?: boolean; canPublishSources?: readonly number[] } | undefined,
+): boolean {
+  if (!permissions) return true;
+  if (permissions.canPublish === false) return false;
+  const sources = permissions.canPublishSources;
+  if (sources && sources.length > 0 && !sources.includes(PROTOCOL_TRACK_SOURCE_MICROPHONE)) return false;
+  return true;
 }
 
 function clearConnectionState() {
@@ -248,6 +284,12 @@ async function connectToLiveKitRoom(
     dispatchSelectedDevice(dispatch, kind, deviceId);
   });
   room.on(RoomEvent.MediaDevicesChanged, () => handleMediaDevicesChanged(room, dispatch));
+  // Remember the mic state for a recovery rejoin (see SavedVoiceConnection.micMuted)
+  const syncSavedMic = () => updateSavedMicMuted(!room.localParticipant.isMicrophoneEnabled);
+  room.on(RoomEvent.TrackMuted, syncSavedMic);
+  room.on(RoomEvent.TrackUnmuted, syncSavedMic);
+  room.on(RoomEvent.LocalTrackPublished, syncSavedMic);
+  room.on(RoomEvent.LocalTrackUnpublished, syncSavedMic);
 
   try {
     logger.info('[Voice] Connecting to LiveKit server:', url);
@@ -273,11 +315,18 @@ async function connectToLiveKitRoom(
   const voiceSettings = getCachedItem<VoiceSettings>(VOICE_SETTINGS_KEY);
   const isPushToTalk = voiceSettings?.inputMode === 'push_to_talk';
 
-  if (isPushToTalk || options.startMuted) {
-    // Push-to-talk, "Join muted" and listen-only joins (no SPEAK, whose token
-    // can't publish anyway) start with the mic off — and skip the up-to-5s
-    // wait for a mic enable that would fail.
-    logger.info(`[Voice] ${isPushToTalk ? 'Push to Talk mode' : 'Joining muted'} - microphone starts disabled`);
+  // No SPEAK in this channel: the token can't publish a mic, so don't try
+  // (and don't wait up to 5s for it to fail) — whichever way the join came
+  // (sidebar, pre-join while permissions are still loading, recovery).
+  const micAllowed = canPublishMicrophone(
+    room.localParticipant.permissions as { canPublish?: boolean; canPublishSources?: number[] } | undefined,
+  );
+
+  if (isPushToTalk || options.startMuted || !micAllowed) {
+    // Push-to-talk, "Join muted" and listen-only joins start with the mic off.
+    logger.info(
+      `[Voice] ${isPushToTalk ? 'Push to Talk mode' : micAllowed ? 'Joining muted' : 'Listen-only (no mic permission)'} - microphone starts disabled`,
+    );
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
     } catch {
@@ -389,7 +438,7 @@ export async function joinVoiceChannel(
     logger.info('[Voice] Got LiveKit token');
 
     logger.info('[Voice] Connecting to LiveKit room...');
-    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted });
+    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted });
 
     dispatch({
       type: VoiceActionType.SetConnected,
@@ -419,6 +468,7 @@ export async function joinVoiceChannel(
       communityId,
       isPrivate,
       createdAt,
+      micMuted: !room.localParticipant.isMicrophoneEnabled,
     });
 
     playSound(Sounds.connected);

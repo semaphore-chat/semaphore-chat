@@ -87,8 +87,9 @@ describe('VoiceChannelPreJoin', () => {
     renderWithProviders(<VoiceChannelPreJoin channel={channel} />);
 
     const p1 = (await screen.findByRole('button', { name: 'Person 1' })).closest('li')!;
-    const p2 = screen.getByRole('button', { name: 'Person 2' }).closest('li')!;
-    const p3 = screen.getByRole('button', { name: 'Person 3' }).closest('li')!;
+    // The icons are also in each person's accessible name
+    const p2 = screen.getByRole('button', { name: 'Person 2, deafened' }).closest('li')!;
+    const p3 = screen.getByRole('button', { name: 'Person 3, muted by a moderator' }).closest('li')!;
     expect(within(p1).queryByTestId(/voice-badge-/)).not.toBeInTheDocument();
     expect(within(p2).getByTestId('voice-badge-deafened')).toHaveAttribute('data-tone', 'neutral');
     expect(within(p3).getByTestId('voice-badge-server-muted')).toHaveAttribute('data-tone', 'danger');

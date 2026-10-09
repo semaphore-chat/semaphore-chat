@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, within, act } from '@testing-library/react';
+import { screen, fireEvent, within, act, render } from '@testing-library/react';
+import { ThemeProvider, getContrastRatio } from '@mui/material/styles';
+import { compositeOver } from '../test-utils/color';
+import { generateTheme } from '../../theme/themeConfig';
+import { ConnectionQualityIndicator } from '../../components/Voice/ConnectionQualityIndicator';
 import { renderWithProviders } from '../test-utils';
 import { VoiceBottomBarContent as VoiceBottomBar } from '../../components/Voice/VoiceBottomBarContent';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
@@ -356,7 +360,7 @@ describe('VoiceBottomBarContent', () => {
   it('video toggle calls toggleVideo', async () => {
     const { user } = renderWithProviders(<VoiceBottomBar />);
 
-    const videoButton = screen.getByRole('button', { name: /turn on camera/i });
+    const videoButton = screen.getByRole('button', { name: /^camera$/i });
     await user.click(videoButton);
 
     expect(mockActions.toggleVideo).toHaveBeenCalled();
@@ -397,6 +401,7 @@ describe('VoiceBottomBarContent', () => {
       const handlers = new Map<string, Set<Handler>>();
       const localParticipant = { connectionQuality: quality };
       return {
+        state: 'connected',
         localParticipant,
         on: vi.fn((e: string, h: Handler) => {
           if (!handlers.has(e)) handlers.set(e, new Set());
@@ -449,6 +454,54 @@ describe('VoiceBottomBarContent', () => {
       expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Good');
     });
 
+    it('starts from the room\'s own state: a room that is reconnecting shows it', () => {
+      const room = { ...fakeRoom('good'), state: 'reconnecting' };
+      renderWithRoom(room);
+      expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Reconnecting…');
+    });
+
+    it('does not stay on "Reconnecting…" after the room disconnects or is replaced', () => {
+      const room = fakeRoom('good');
+      const { rerender } = renderWithRoom(room);
+      act(() => room.emit('reconnecting'));
+      act(() => room.emit('disconnected'));
+      expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Good');
+
+      act(() => room.emit('reconnecting'));
+      const next = { ...fakeRoom('excellent'), state: 'connected' };
+      voiceState = { ...defaultVoiceState, room: next as never };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: voiceState, actions: mockActions } as never);
+      rerender(<VoiceBottomBar />);
+      expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Excellent');
+    });
+
+    it.each([
+      ['light', 'purple', 'vibrant'],
+      ['light', 'amber', 'balanced'],
+      ['light', 'teal', 'minimal'],
+      ['dark', 'teal', 'minimal'],
+      ['dark', 'lime', 'vibrant'],
+    ] as const)('lit bars reach 3:1 non-text contrast on the bar (%s, %s, %s)', (mode, accent, intensity) => {
+      const theme = generateTheme(mode, accent, intensity);
+      // Every lit bar colour (positive for good/excellent, warning for poor),
+      // against the bar's own surface — the WCAG 1.4.11 non-text minimum.
+      for (const quality of ['excellent', 'good', 'poor']) {
+        const { unmount } = render(
+          <ThemeProvider theme={theme}>
+            <ConnectionQualityIndicator room={fakeRoom(quality) as never} />
+          </ThemeProvider>,
+        );
+        const indicator = screen.getByTestId('connection-quality');
+        const litCount = Number(indicator.getAttribute('data-bars'));
+        expect(litCount).toBeGreaterThan(0);
+        for (const bar of Array.from(indicator.children).slice(0, litCount)) {
+          const painted = compositeOver(getComputedStyle(bar).backgroundColor, theme.palette.background.paper);
+          expect(getContrastRatio(painted, theme.palette.background.paper)).toBeGreaterThanOrEqual(3);
+        }
+        unmount();
+      }
+    });
+
     it('is not shown on phone', () => {
       vi.mocked(useResponsive).mockReturnValue({
         isMobile: true,
@@ -483,9 +536,12 @@ describe('VoiceBottomBarContent', () => {
     expect(dividersBetween(settings, hangUp)).toBe(1);
   });
 
-  it('camera button keeps one camera icon and reports its state with aria-pressed', () => {
+  it('toggles keep fixed names and report their state with aria-pressed', () => {
     renderWithProviders(<VoiceBottomBar />);
-    const camera = screen.getByRole('button', { name: /turn on camera/i });
+    expect(screen.getByRole('button', { name: 'Mute' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Deafen' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'Share screen' })).toHaveAttribute('aria-pressed', 'false');
+    const camera = screen.getByRole('button', { name: 'Camera' });
     expect(camera).toHaveAttribute('aria-pressed', 'false');
     // The call-view button no longer uses a camera glyph
     expect(screen.queryByTestId('VideoCallIcon')).not.toBeInTheDocument();
@@ -950,7 +1006,7 @@ describe('VoiceBottomBarContent', () => {
       expect(buttons).toHaveLength(5);
       expect(within(controls).getByRole('button', { name: /^mute$/i })).toBeInTheDocument();
       expect(within(controls).getByRole('button', { name: /^deafen$/i })).toBeInTheDocument();
-      expect(within(controls).getByRole('button', { name: /turn on camera/i })).toBeInTheDocument();
+      expect(within(controls).getByRole('button', { name: /^camera$/i })).toBeInTheDocument();
       expect(within(controls).getByRole('button', { name: /disconnect/i })).toBeInTheDocument();
       expect(within(controls).getByRole('button', { name: /more voice options/i })).toBeInTheDocument();
       // Secondary actions are not in the bar.
@@ -1081,9 +1137,11 @@ describe('VoiceBottomBarContent', () => {
       });
       renderWithProviders(<VoiceBottomBar />);
 
-      const blocked = screen.getAllByRole('button', { name: reason });
-      expect(blocked).toHaveLength(3);
-      blocked.forEach((button) => expect(button).toBeDisabled());
+      const blocked = ['Mute', 'Camera', 'Share screen'].map((name) => screen.getByRole('button', { name }));
+      blocked.forEach((button) => {
+        expect(button).toBeDisabled();
+        expect(button).toHaveAccessibleDescription(reason);
+      });
       // Deafen (listening) is untouched
       expect(screen.getByRole('button', { name: /deafen/i })).toBeEnabled();
     });
@@ -1096,12 +1154,12 @@ describe('VoiceBottomBarContent', () => {
       });
       renderWithProviders(<VoiceBottomBar />);
 
-      expect(
-        screen.getByRole('button', { name: "You can't use video in this channel" }),
-      ).toBeDisabled();
-      expect(
-        screen.getByRole('button', { name: "You can't share your screen in this channel" }),
-      ).toBeDisabled();
+      const camera = screen.getByRole('button', { name: 'Camera' });
+      expect(camera).toBeDisabled();
+      expect(camera).toHaveAccessibleDescription("You can't use video in this channel");
+      const share = screen.getByRole('button', { name: 'Share screen' });
+      expect(share).toBeDisabled();
+      expect(share).toHaveAccessibleDescription("You can't share your screen in this channel");
       fireEvent.click(screen.getByRole('button', { name: /^mute$/i }));
       expect(mockActions.toggleMute).toHaveBeenCalled();
     });
@@ -1117,7 +1175,7 @@ describe('VoiceBottomBarContent', () => {
       });
       renderWithProviders(<VoiceBottomBar />);
 
-      const camera = screen.getByRole('button', { name: /turn off camera/i });
+      const camera = screen.getByRole('button', { name: /^camera$/i });
       expect(camera).toBeEnabled();
       fireEvent.click(camera);
       expect(mockActions.toggleVideo).toHaveBeenCalled();

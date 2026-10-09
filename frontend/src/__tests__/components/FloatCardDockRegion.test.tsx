@@ -9,7 +9,7 @@ import { renderWithProviders } from '../test-utils';
 import { FloatCard } from '../../components/Voice/FloatCard';
 import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
-import { DOCK_MARGIN, REGION_BOTTOM_LANE, defaultPlacement, type PipPlacement, type Rect } from '../../utils/pipPosition';
+import { DOCK_MARGIN, EDGE_PADDING, REGION_BOTTOM_LANE, defaultPlacement, type PipPlacement, type Rect } from '../../utils/pipPosition';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -271,4 +271,53 @@ describe('FloatCard in the message column', () => {
     // Default window placement: 480x360
     expect(card()).toHaveStyle({ width: '480px', height: '360px' });
   });
+
+  it('a temporary column shrink fits the card when rendering but never shrinks the saved size', () => {
+    const wide: Rect = { ...region, width: 1100 };
+    const saved = { ...defaultPlacement(), size: { width: 480, height: 360 } };
+    setCachedItem('semaphore_pip_placement:chat:1280', saved);
+    mockRegion = wide;
+    const { rerender } = renderWithProviders(<FloatCard />);
+    expect(card()).toHaveStyle({ width: '480px' });
+
+    // The docked panel opens / the composer grows: the column gets narrower
+    mockRegion = { ...region, width: 400 };
+    rerender(<FloatCard />);
+    expect(card()).toHaveStyle({ width: `${400 - EDGE_PADDING * 2}px` });
+    expect(getCachedItem<PipPlacement>('semaphore_pip_placement:chat:1280')!.size).toEqual({ width: 480, height: 360 });
+
+    // ...and closes again: back to the user's size
+    mockRegion = wide;
+    rerender(<FloatCard />);
+    expect(card()).toHaveStyle({ width: '480px' });
+  });
+
+  it('first time in a bucket: starts from the window-based card\'s corner and size, fitted to the column', () => {
+    setCachedItem('semaphore_pip_placement', {
+      ...defaultPlacement(),
+      anchor: 'top-left',
+      docked: false,
+      offset: { x: 300, y: 200 },
+      size: { width: 400, height: 300 },
+    });
+    renderWithProviders(<FloatCard />);
+    expect(card()).toHaveStyle({
+      left: `${region.left + DOCK_MARGIN}px`,
+      top: `${region.top + DOCK_MARGIN}px`,
+      width: '400px',
+    });
+  });
+
+  it('a forced pill opens the call even when the card was collapsed', () => {
+    mockRegion = { ...region, width: 300 };
+    mockConnectionState = { ...defaultConnectionState, pipCollapsed: true, room: mockRoom };
+    vi.mocked(useVoiceConnection).mockReturnValue({ state: mockConnectionState, actions: mockActions } as never);
+    renderWithProviders(<FloatCard />);
+    act(() => {
+      screen.getByTestId('float-card-pill').click();
+    });
+    expect(mockNavigate).toHaveBeenCalledWith('/community/community-1/channel/channel-1');
+    expect(mockActions.setPipCollapsed).not.toHaveBeenCalled();
+  });
 });
+

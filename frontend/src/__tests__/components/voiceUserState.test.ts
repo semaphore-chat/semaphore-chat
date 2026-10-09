@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { voiceStatusBadges } from '../../components/Voice/components/voiceUserState';
+import { pickCompactBadge, voiceStatusBadges } from '../../components/Voice/components/voiceUserState';
 
 describe('voiceStatusBadges', () => {
   const base = { isMuted: false, isDeafened: false, isServerMuted: false };
@@ -25,5 +25,17 @@ describe('voiceStatusBadges', () => {
       'muted',
       'deafened',
     ]);
+  });
+});
+
+describe('pickCompactBadge', () => {
+  const badges = (s: { isMuted?: boolean; isDeafened?: boolean; isServerMuted?: boolean }) =>
+    voiceStatusBadges({ isMuted: false, isDeafened: false, isServerMuted: false, ...s });
+
+  it('ranks server-muted > deafened > muted', () => {
+    expect(pickCompactBadge(badges({ isMuted: true, isDeafened: true }))?.kind).toBe('deafened');
+    expect(pickCompactBadge(badges({ isServerMuted: true, isDeafened: true }))?.kind).toBe('server-muted');
+    expect(pickCompactBadge(badges({ isMuted: true }))?.kind).toBe('muted');
+    expect(pickCompactBadge(badges({}))).toBeUndefined();
   });
 });

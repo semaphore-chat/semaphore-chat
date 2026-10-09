@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from "react";
+import React, { useState, useCallback, useEffect, useId, useRef, Suspense, lazy } from "react";
+import { visuallyHidden } from "@mui/utils";
 import {
   Box,
   Paper,
@@ -146,6 +147,13 @@ const VoiceBottomBarContent: React.FC = () => {
         : isPTTActive
           ? (isPTTKeyHeld ? "Transmitting..." : `Hold ${pttKeyDisplay} to talk`)
           : (!isMicrophoneEnabled ? "Unmute" : "Mute");
+  // Accessible names stay fixed ("Mute", "Deafen", "Camera", "Share screen")
+  // with aria-pressed carrying the state; the extra context the tooltip
+  // shows (a permission block, push-to-talk, server mute) is the
+  // description. Hold-to-talk isn't a toggle, so it keeps its own name.
+  const micLabel = isHoldToTalk && !micBlocked ? "Hold to talk" : "Mute";
+  const descIds = { mic: useId(), camera: useId(), share: useId() };
+  const micDescription = micTitle === "Mute" || micTitle === "Unmute" || micTitle === micLabel ? "" : micTitle;
   const cameraTitle = cameraBlocked
     ? publish.videoBlockedReason
     : isCameraEnabled ? "Turn off camera" : "Turn on camera";
@@ -352,6 +360,13 @@ const VoiceBottomBarContent: React.FC = () => {
 
           </Box>
 
+          {/* Descriptions for the toggles above (see micLabel) */}
+          <Box component="span" sx={visuallyHidden}>
+            <span id={descIds.mic}>{micDescription}</span>
+            <span id={descIds.camera}>{cameraBlocked ? cameraTitle : ""}</span>
+            <span id={descIds.share}>{shareBlocked ? shareTitle : ""}</span>
+          </Box>
+
           {/* Voice Controls */}
           <Box
             data-testid="voice-bar-controls"
@@ -366,7 +381,9 @@ const VoiceBottomBarContent: React.FC = () => {
               <span>
               <IconButton
                 disabled={micBlocked}
-                aria-label={micTitle}
+                aria-label={micLabel}
+                aria-pressed={isHoldToTalk && !micBlocked ? undefined : !isMicrophoneEnabled}
+                aria-describedby={micDescription ? descIds.mic : undefined}
                 onClick={isPTTActive || state.isServerMuted ? undefined : actions.toggleMute}
                 onPointerDown={isHoldToTalk ? handlePttPointerDown : undefined}
                 onPointerUp={isHoldToTalk ? handlePttPointerUp : undefined}
@@ -418,6 +435,8 @@ const VoiceBottomBarContent: React.FC = () => {
             {/* Headphones/Deafen - a primary control on every layout */}
             <Tooltip title={state.isDeafened ? "Undeafen" : "Deafen"} arrow={!isMobile}>
               <IconButton
+                aria-label="Deafen"
+                aria-pressed={state.isDeafened}
                 onClick={actions.toggleDeafen}
                 color={state.isDeafened ? "error" : "default"}
                 sx={{
@@ -450,8 +469,9 @@ const VoiceBottomBarContent: React.FC = () => {
               <span>
               <IconButton
                 disabled={cameraBlocked}
-                aria-label={cameraTitle}
+                aria-label="Camera"
                 aria-pressed={isCameraEnabled}
+                aria-describedby={cameraBlocked ? descIds.camera : undefined}
                 onClick={handleToggleVideo}
                 color={isCameraEnabled ? "primary" : "default"}
                 size={isMobile ? "medium" : "medium"}
@@ -508,7 +528,9 @@ const VoiceBottomBarContent: React.FC = () => {
               >
                 <IconButton
                   disabled={shareBlocked}
-                  aria-label={shareTitle}
+                  aria-label="Share screen"
+                  aria-pressed={screenShare.isScreenSharing}
+                  aria-describedby={shareBlocked ? descIds.share : undefined}
                   onClick={handleToggleScreenShare}
                   color={screenShare.isScreenSharing ? "primary" : "default"}
                   size={isMobile ? "medium" : "medium"}

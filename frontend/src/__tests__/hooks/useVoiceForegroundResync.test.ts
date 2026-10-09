@@ -108,8 +108,39 @@ describe('useVoiceForegroundResync', () => {
       'General Voice',
       'comm-1',
       false,
-      '2026-01-01T00:00:00.000Z'
+      '2026-01-01T00:00:00.000Z',
+      { startMuted: false },
     );
+  });
+
+  it('rejoins muted when the dead room had the mic off ("Join muted" survives a resync)', async () => {
+    const room = {
+      ...createMockRoom({ state: CONNECTION_STATE.Disconnected }),
+      localParticipant: { isMicrophoneEnabled: false },
+    };
+    const actions = createActions();
+    renderHook(() =>
+      useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions })
+    );
+
+    await fireVisibilityChange();
+
+    expect(actions.joinVoiceChannel.mock.calls[0][5]).toEqual({ startMuted: true });
+  });
+
+  it('rejoins with the mic on when the dead room had it on', async () => {
+    const room = {
+      ...createMockRoom({ state: CONNECTION_STATE.Disconnected }),
+      localParticipant: { isMicrophoneEnabled: true },
+    };
+    const actions = createActions();
+    renderHook(() =>
+      useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions })
+    );
+
+    await fireVisibilityChange();
+
+    expect(actions.joinVoiceChannel.mock.calls[0][5]).toEqual({ startMuted: false });
   });
 
   it('rejoins via joinDmVoice for DM contexts', async () => {
