@@ -16,7 +16,7 @@ import { usePushResync } from "./hooks/usePushResync";
 import { LayoutProviders } from "./components/LayoutProviders";
 
 const Layout: React.FC = () => {
-  const { user: userData, isLoading, isError } = useCurrentUser();
+  const { user: userData } = useCurrentUser();
   const { data: publicSettings } = useQuery(instanceControllerGetPublicSettingsOptions());
   const instanceName = publicSettings?.name || "Semaphore Chat";
   const { isMobile, isTablet } = useResponsive();
@@ -64,12 +64,7 @@ const Layout: React.FC = () => {
       ) : isTablet ? (
         <TabletLayout />
       ) : (
-        <DesktopLayout
-          instanceName={instanceName}
-          isLoading={isLoading}
-          isError={isError}
-          userData={userData as User | undefined}
-        />
+        <DesktopLayout userData={userData as User | undefined} />
       )}
     </LayoutProviders>
   );

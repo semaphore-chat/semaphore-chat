@@ -6,14 +6,20 @@
  */
 
 /**
- * Main app bar height (top navigation)
+ * Top app bar height on phone and tablet. The desktop layout has no app bar:
+ * navigation and the account menu live in the community rail.
  */
 export const APPBAR_HEIGHT = 64;
 
 /**
- * Community sidebar width (left side)
+ * Community rail width (left side, desktop), collapsed.
  */
 export const SIDEBAR_WIDTH = 80;
+
+/**
+ * Community rail width when expanded into a labelled list (desktop).
+ */
+export const RAIL_EXPANDED_WIDTH = 160;
 
 /**
  * Voice bottom bar height (when connected to voice)

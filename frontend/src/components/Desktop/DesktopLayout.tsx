@@ -14,46 +14,35 @@ import { VoiceBottomBar } from "../Voice/VoiceBottomBar";
 import { AudioRenderer } from "../Voice/AudioRenderer";
 import { PersistentVideoOverlay } from "../Voice/PersistentVideoOverlay";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import { APPBAR_HEIGHT } from "../../constants/layout";
 import type { User } from "../../types/auth.type";
-import { DesktopAppBar } from "./DesktopAppBar";
 import { DesktopContentArea } from "./DesktopContentArea";
 
 interface DesktopLayoutProps {
-  instanceName: string;
-  isLoading: boolean;
-  isError: boolean;
   userData: User | undefined;
 }
 
-/** Desktop layout (original): full AppBar + sidebar + voice bottom bar. */
-export const DesktopLayout: React.FC<DesktopLayoutProps> = ({
-  instanceName,
-  isLoading,
-  isError,
-  userData,
-}) => {
+/**
+ * Desktop layout: the community rail (navigation, notification inbox, account
+ * menu) + the routed page + the voice bottom bar. No top app bar; Electron
+ * keeps its native window frame, so the window still drags by its title bar.
+ */
+export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
   const { state: voiceState } = useVoiceConnection();
   const [isMenuExpanded, setIsMenuExpanded] = React.useState(false);
   const [notificationCenterOpen, setNotificationCenterOpen] = React.useState(false);
 
   return (
     <>
-      <DesktopAppBar
-        instanceName={instanceName}
-        isLoading={isLoading}
-        isError={isError}
-        userData={userData}
-        onToggleMenu={() => setIsMenuExpanded((expanded) => !expanded)}
-        onNotificationCenterOpen={() => setNotificationCenterOpen(true)}
-      />
       <NotificationCenter
         open={notificationCenterOpen}
         onClose={() => setNotificationCenterOpen(false)}
       />
       <CommunityToggle
         isExpanded={isMenuExpanded}
-        appBarHeight={APPBAR_HEIGHT}
+        onToggleExpanded={() => setIsMenuExpanded((expanded) => !expanded)}
+        onOpenNotifications={() => setNotificationCenterOpen(true)}
+        voiceConnected={voiceState.isConnected}
+        user={userData}
       />
       <TrackSubscriptionProvider>
         <VoiceEventLogProvider>

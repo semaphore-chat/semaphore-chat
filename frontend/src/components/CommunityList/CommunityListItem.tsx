@@ -35,7 +35,7 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
     <Button
       onClick={() => navigateToCommunity(community.id)}
       variant="text"
-      sx={{ width: "90%", padding: 0 }}
+      sx={{ width: isExpanded ? "100%" : "90%", minWidth: 0, padding: 0 }}
     >
       <Box
         sx={{
@@ -45,7 +45,7 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
           alignItems: "center",
           borderRadius: 2,
           overflow: "hidden",
-          padding: "8px",
+          padding: isExpanded ? "4px" : "8px",
           transition: "background 0.2s, box-shadow 0.2s",
           background: selected ? alpha(theme.palette.primary.main, 0.12) : undefined,
           boxShadow: selected ? `0 0 0 2px ${theme.palette.primary.main}` : undefined,
@@ -53,16 +53,17 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
       >
         <Avatar
           sx={{
-            width: 48,
-            height: 48,
+            // Smaller in the 160px expanded rail, so the name gets the room.
+            width: isExpanded ? 32 : 48,
+            height: isExpanded ? 32 : 48,
             ...(!community.avatar && {
               bgcolor: stringToColor(community.id).bg,
               color: stringToColor(community.id).text,
             }),
             fontWeight: 700,
-            fontSize: 'scale.3xl',
+            fontSize: isExpanded ? 'scale.base' : 'scale.3xl',
             ml: isExpanded ? 0 : "auto",
-            mr: isExpanded ? 2 : "auto",
+            mr: isExpanded ? 1 : "auto",
             zIndex: 1,
             transition: "box-shadow 0.2s",
           }}

@@ -132,22 +132,15 @@ test.describe('Authentication', () => {
       await setAuthToken(page, accessToken);
       await page.reload();
 
-      const logoutButton = page.getByRole('button', { name: /logout|sign out/i })
-        .or(page.getByRole('menuitem', { name: /logout|sign out/i }));
+      // Desktop: the account menu at the foot of the community rail, then confirm.
+      await page.getByRole('button', { name: 'Account menu' }).click();
+      await page.getByRole('menuitem', { name: /log out/i }).click();
+      await page.getByRole('dialog').getByRole('button', { name: 'Log out' }).click();
 
-      const profileMenu = page.locator('[data-testid="profile-menu"], [aria-label*="profile"], [aria-label*="account"]');
-      if (await profileMenu.isVisible()) {
-        await profileMenu.click();
-      }
+      await page.waitForURL(/\/login/, { timeout: 10000 });
 
-      if (await logoutButton.isVisible()) {
-        await logoutButton.click();
-
-        await page.waitForURL(/\/login/, { timeout: 10000 });
-
-        const hasToken = await isAuthenticated(page);
-        expect(hasToken).toBe(false);
-      }
+      const hasToken = await isAuthenticated(page);
+      expect(hasToken).toBe(false);
     });
   });
 });
