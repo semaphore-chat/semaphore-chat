@@ -87,12 +87,12 @@ export const VoiceParticipantGrid: React.FC<VoiceParticipantGridProps> = ({ user
                     <VoiceStatusBadges badges={badges} size={14} onDisc />
                     {state.isVideoEnabled && (
                       <Box component="span" aria-label="Camera on" role="img" sx={discSx}>
-                        <Videocam sx={{ fontSize: 14 }} />
+                        <Videocam sx={{ fontSize: 'icon.sm' }} />
                       </Box>
                     )}
                     {state.isScreenSharing && (
                       <Box component="span" aria-label="Sharing screen" role="img" sx={discSx}>
-                        <ScreenShare sx={{ fontSize: 14 }} />
+                        <ScreenShare sx={{ fontSize: 'icon.sm' }} />
                       </Box>
                     )}
                   </Box>

@@ -150,6 +150,8 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
       return (
         <pre
           key={index}
+          // MessageComponent widens it past the text cap (CODE_BLOCK_MAX_WIDTH).
+          className="message-code-block"
           style={{
             margin: '4px 0',
             padding: '8px 12px',
@@ -159,9 +161,9 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
             fontFamily:
               'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
             fontSize: '0.85em',
-            whiteSpace: 'pre-wrap',
+            // Code keeps its lines: long ones scroll instead of wrapping.
+            whiteSpace: 'pre',
             overflowX: 'auto',
-            wordBreak: 'break-word',
           }}
         >
           <code>{span.text ?? ""}</code>

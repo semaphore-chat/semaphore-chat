@@ -679,7 +679,7 @@ const AdminDebugPage: React.FC = () => {
   return (
     <Box sx={{ p: 4, maxWidth: 900, mx: "auto" }}>
       <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-        <BugReportIcon sx={{ fontSize: 40 }} />
+        <BugReportIcon sx={{ fontSize: 'icon.4xl' }} />
         <Typography variant="h4">WebSocket Debug Panel</Typography>
       </Stack>
 
@@ -784,7 +784,7 @@ const AdminDebugPage: React.FC = () => {
                   sx={{
                     mb: 0.5,
                     fontFamily: "monospace",
-                    fontSize: 12,
+                    fontSize: 'scale.sm',
                     color: result.success ? "success.main" : "error.main",
                   }}
                 >

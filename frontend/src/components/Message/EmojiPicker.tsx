@@ -341,7 +341,7 @@ const EmojiPickerContent: React.FC<{
                     aria-label={EMOJI_NAMES[emoji]?.[0] ?? emoji}
                     onClick={() => onEmojiClick(emoji)}
                     sx={{
-                      fontSize: touch ? '24px' : '16px',
+                      fontSize: touch ? 'icon.2xl' : 'icon.md',
                       padding: touch ? '8px' : '4px',
                       borderRadius: '4px',
                       aspectRatio: '1',

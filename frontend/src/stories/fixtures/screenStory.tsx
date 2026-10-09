@@ -30,8 +30,10 @@ export interface StoryMeta {
    * capture this story at, for a story that only makes sense at some widths —
    * e.g. a 320 px column is a phone layout that tablet and desktop never show.
    * Default: phone, tablet and desktop (only `phone-short` for `*keyboard*` stories).
+   * `desktop-1280` (1280×800) and `desktop-1920` (1920×1080) are opt-in: only
+   * stories that list them get them.
    */
-  viewports?: ('phone' | 'phone-short' | 'tablet' | 'desktop')[];
+  viewports?: ('phone' | 'phone-short' | 'tablet' | 'desktop' | 'desktop-1280' | 'desktop-1920')[];
   [key: string]: unknown;
 }
 

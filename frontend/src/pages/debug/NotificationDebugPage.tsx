@@ -256,7 +256,7 @@ const NotificationDebugPage: React.FC = () => {
   return (
     <Box sx={{ p: 4, maxWidth: 900, mx: 'auto' }}>
       <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-        <NotificationsActiveIcon sx={{ fontSize: 40 }} />
+        <NotificationsActiveIcon sx={{ fontSize: 'icon.4xl' }} />
         <Typography variant="h4">Notification Debug Panel</Typography>
       </Stack>
 
@@ -546,7 +546,7 @@ const NotificationDebugPage: React.FC = () => {
                   sx={{
                     mb: 0.5,
                     fontFamily: 'monospace',
-                    fontSize: 12,
+                    fontSize: 'scale.sm',
                     color: result.success ? 'success.main' : 'error.main',
                   }}
                 >

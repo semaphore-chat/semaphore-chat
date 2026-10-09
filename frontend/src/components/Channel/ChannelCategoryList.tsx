@@ -147,7 +147,7 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
     );
   }
 
-  const headerFontSize = compact ? "0.6875rem" : undefined;
+  const headerFontSize = compact ? 'scale.xs' : undefined;
 
   const renderCategory = (label: string, items: Channel[]) => {
     if (items.length === 0) return null;
@@ -180,8 +180,7 @@ const ChannelCategoryList: React.FC<ChannelCategoryListProps> = ({
             <ListItemText
               primary={label.toUpperCase()}
               primaryTypographyProps={{
-                variant: "caption",
-                fontWeight: 700,
+                variant: "sectionLabel",
                 color: "text.secondary",
                 ...(headerFontSize ? { fontSize: headerFontSize } : {}),
               }}

@@ -113,7 +113,7 @@ const AppearanceSettings: React.FC = () => {
                 title={color.name}
               >
                 {settings.accentColor === color.id && (
-                  <CheckCircle sx={{ color: 'white', fontSize: 24 }} />
+                  <CheckCircle sx={{ color: 'white', fontSize: 'icon.2xl' }} />
                 )}
               </Box>
             ))}

@@ -438,7 +438,7 @@ const AdminInvitePage: React.FC = () => {
                                   variant="outlined"
                                   sx={{ 
                                     height: 20, 
-                                    fontSize: '0.7rem',
+                                    fontSize: 'scale.xs',
                                     bgcolor: isDisabled ? 'transparent' : 'primary.50',
                                     borderColor: isDisabled ? 'error.main' : 'primary.main',
                                     color: isDisabled ? 'error.main' : 'primary.main',
@@ -485,7 +485,7 @@ const AdminInvitePage: React.FC = () => {
               alignItems="center" 
               py={6}
             >
-              <LinkIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+              <LinkIcon sx={{ fontSize: 'icon.5xl', color: 'text.secondary', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No invites created yet
               </Typography>

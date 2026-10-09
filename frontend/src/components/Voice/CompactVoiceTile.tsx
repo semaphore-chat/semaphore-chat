@@ -107,8 +107,8 @@ const CompactVoiceTile: React.FC<CompactVoiceTileProps> = ({ participant, audioT
             data-testid={`voice-badge-${badge.kind}`}
           >
             {badge.kind === 'deafened'
-              ? <HeadsetOff sx={{ fontSize: 12, color: 'common.white' }} />
-              : <MicOff sx={{ fontSize: 12, color: 'common.white' }} />}
+              ? <HeadsetOff sx={{ fontSize: 'icon.xs', color: 'common.white' }} />
+              : <MicOff sx={{ fontSize: 'icon.xs', color: 'common.white' }} />}
           </Box>
         )}
       </Box>

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { Box } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 import { generateTheme } from '../../theme/themeConfig';
 import { TYPE_SCALE, ICON_SCALE, FONT_FAMILY, RADIUS_UNIT } from '../../theme/tokens';
@@ -27,6 +27,8 @@ function typographyTokens(theme = generateTheme('dark', 'blue', 'minimal')) {
   };
 }
 
+const CHAT_ROLES = ['messageBody', 'listItem', 'meta', 'sectionLabel'] as const;
+
 describe('theme type scale and shape', () => {
   it('matches the typography token snapshot', () => {
     expect(typographyTokens()).toMatchSnapshot();
@@ -46,6 +48,36 @@ describe('theme type scale and shape', () => {
     for (const v of VARIANTS) {
       expect(allowed.has(theme.typography[v].fontSize as string), `${v} = ${theme.typography[v].fontSize}`).toBe(true);
     }
+  });
+
+  it('defines the chat type roles on the scale, with nothing below 11px', () => {
+    const theme = generateTheme('dark', 'blue', 'minimal');
+    const sizes = Object.fromEntries(CHAT_ROLES.map((v) => [v, theme.typography[v].fontSize]));
+    expect(sizes).toEqual({
+      messageBody: TYPE_SCALE.lg, // 16
+      listItem: TYPE_SCALE.base, // 14
+      meta: TYPE_SCALE.sm, // 12
+      sectionLabel: TYPE_SCALE.sm, // 12
+    });
+    for (const v of CHAT_ROLES) {
+      expect([400, 500, 600, 700], v).toContain(theme.typography[v].fontWeight);
+    }
+    expect(theme.typography.sectionLabel.textTransform).toBe('uppercase');
+  });
+
+  it('renders the chat type roles as Typography variants', () => {
+    render(
+      <ThemeProvider theme={generateTheme('dark', 'blue', 'minimal')}>
+        <Typography variant="messageBody">body</Typography>
+        <Typography variant="meta">meta</Typography>
+      </ThemeProvider>,
+    );
+    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize);
+    // messageBody is a block (message spans can hold a <pre>); meta is inline.
+    expect(screen.getByText('body').tagName).toBe('DIV');
+    expect(screen.getByText('body')).toHaveStyle({ fontSize: `${rootPx}px` });
+    expect(screen.getByText('meta').tagName).toBe('SPAN');
+    expect(screen.getByText('meta')).toHaveStyle({ fontSize: `${0.75 * rootPx}px` });
   });
 
   it('only uses font weights that are actually loaded (400/500/600/700)', () => {
@@ -120,5 +152,30 @@ describe('theme type scale and shape', () => {
     for (const [file, src] of Object.entries(sources)) {
       expect(src.match(/fontSize\s*:\s*['"]?\d[\d.]*(px|rem)?['"]?/g), file).toBeNull();
     }
+  });
+
+  it('has no raw font-size literals in components or pages (use a variant or a scale/icon token)', () => {
+    // Raw literals: `fontSize: 12`, `fontSize: '0.75rem'`, `fontSize: touch ? '24px' : '16px'`.
+    // `em` values are fine: they size relative to the parent on purpose
+    // (inline code at 0.85em of the message text).
+    const ALLOWLIST: string[] = [
+      // Nothing yet. Add `path/from/src.tsx` with a comment saying why the
+      // size can't come from the scale.
+    ];
+    const sources = import.meta.glob('../../{components,pages}/**/*.tsx', {
+      query: '?raw',
+      import: 'default',
+      eager: true,
+    }) as Record<string, string>;
+    const raw = /fontSize\s*[:=]\s*\{?\s*(?:[^,;}\n]*?\?\s*)?(?:\d[\d.]*\b(?!\s*\w)|['"][\d.]+(?:px|rem)['"])/g;
+    const bad: string[] = [];
+    for (const [file, src] of Object.entries(sources)) {
+      const rel = file.replace('../../', '');
+      if (ALLOWLIST.includes(rel)) continue;
+      for (const [i, line] of src.split('\n').entries()) {
+        if (line.match(raw)) bad.push(`${rel}:${i + 1}: ${line.trim()}`);
+      }
+    }
+    expect(bad).toEqual([]);
   });
 });

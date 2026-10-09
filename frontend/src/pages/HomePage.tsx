@@ -148,7 +148,7 @@ const DesktopHomePage: React.FC = () => {
           }}
         >
           <Box display="flex" alignItems="center" gap={2} mb={2}>
-            <PersonAddIcon sx={{ fontSize: 32 }} />
+            <PersonAddIcon sx={{ fontSize: 'icon.3xl' }} />
             <Box>
               <Typography variant="h6" fontWeight="bold">
                 Invite Users to Semaphore Chat
@@ -250,7 +250,7 @@ const DesktopHomePage: React.FC = () => {
                 height: 80,
                 marginBottom: 2,
                 backgroundColor: "#1976d2",
-                fontSize: 32,
+                fontSize: 'scale.4xl',
                 border: 4,
                 borderColor: "background.paper",
               }}
@@ -304,7 +304,7 @@ const DesktopHomePage: React.FC = () => {
             gap: 2,
           }}
         >
-          <DesktopIcon color="primary" sx={{ fontSize: 28 }} />
+          <DesktopIcon color="primary" sx={{ fontSize: 'icon.3xl' }} />
           <Box sx={{ flex: 1 }}>
             <Typography variant="subtitle2">
               Get Semaphore Chat Desktop

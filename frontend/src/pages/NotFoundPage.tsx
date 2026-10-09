@@ -15,7 +15,7 @@ const NotFoundPage = () => {
         gap: 2,
       }}
     >
-      <Typography variant="h1" sx={{ fontSize: "4rem", fontWeight: 700 }}>
+      <Typography variant="h1" sx={{ fontSize: 'scale.7xl', fontWeight: 700 }}>
         404
       </Typography>
       <Typography variant="h6" color="text.secondary">

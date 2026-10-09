@@ -94,7 +94,7 @@ const LoginPage: React.FC = () => {
         aria-labelledby="login-title"
       >
         <LockOutlined
-          sx={{ fontSize: 40, color: "#1976d2", marginBottom: 2 }}
+          sx={{ fontSize: 'icon.4xl', color: "#1976d2", marginBottom: 2 }}
           aria-hidden="true"
         />
         <Typography

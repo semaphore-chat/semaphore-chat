@@ -31,6 +31,7 @@ exports[`theme type scale and shape > matches the typography token snapshot 1`] 
     "lg": "1rem",
     "md": "0.8125rem",
     "sm": "0.75rem",
+    "touch": "0.9375rem",
     "xl": "1.125rem",
     "xs": "0.6875rem",
   },

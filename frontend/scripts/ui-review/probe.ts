@@ -56,7 +56,7 @@ const quietMs = plan.quietMs ?? 600;
 // CPU-bound (React dev build + coverage instrumentation): scale with cores.
 const concurrency = plan.concurrency ?? Math.min(12, Math.max(2, availableParallelism() - 2));
 const sources = new Map<string, Promise<string>>();
-const PROBE_ORDER = ['desktop', 'tablet', 'phone', 'phone-short'];
+const PROBE_ORDER = ['desktop', 'desktop-1920', 'desktop-1280', 'tablet', 'phone', 'phone-short'];
 
 function sourceFor(url: string): Promise<string> {
   if (!sources.has(url)) {

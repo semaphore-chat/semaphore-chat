@@ -335,7 +335,7 @@ const AudioVideoSettingsPanel: React.FC<AudioVideoSettingsPanelProps> = ({
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                     <Typography variant="body2">Voice Isolation</Typography>
-                    <Chip label="Experimental" size="small" variant="outlined" color="warning" sx={{ height: 20, fontSize: 'scale.2xs' }} />
+                    <Chip label="Experimental" size="small" variant="outlined" color="warning" sx={{ height: 20, fontSize: 'scale.xs' }} />
                   </Box>
                   <Typography variant="caption" color="text.secondary">
                     Uses AI to isolate your voice

@@ -37,6 +37,16 @@ describe('viewportsForStory', () => {
     expect(viewportsForStory('message-input--keyboard-open', REVIEW_VIEWPORTS, ['phone-short', 'tablet'])).toEqual(['phone-short', 'tablet']);
   });
 
+  it('shoots desktop-1280 / desktop-1920 only for stories that ask for them', () => {
+    expect(viewportsForStory('x--y')).not.toContain('desktop-1920');
+    expect(viewportsForStory('x--y', REVIEW_VIEWPORTS, ['desktop-1280', 'desktop', 'desktop-1920'])).toEqual([
+      'desktop',
+      'desktop-1280',
+      'desktop-1920',
+    ]);
+    expect(storyViewports({ viewports: ['desktop-1920'] })).toEqual(['desktop-1920']);
+  });
+
   it('only returns requested viewports (the probe order, for instance)', () => {
     expect(viewportsForStory('x--y', ['desktop', 'tablet', 'phone', 'phone-short'], ['phone', 'tablet'])).toEqual(['tablet', 'phone']);
   });

@@ -1,4 +1,5 @@
 import { createTheme, Theme, alpha, getContrastRatio } from '@mui/material/styles';
+import type { CSSProperties } from 'react';
 import { chipClasses } from '@mui/material/Chip';
 import type { ThemeMode, AccentColor, ThemeIntensity } from './constants';
 import { FONT_FAMILY, HTML_FONT_SIZE, TYPE_SCALE, ICON_SCALE, RADIUS_UNIT } from './tokens';
@@ -20,10 +21,18 @@ declare module '@mui/material/styles' {
   interface TypographyVariants {
     scale: TypeScale;
     icon: IconScale;
+    messageBody: CSSProperties;
+    listItem: CSSProperties;
+    meta: CSSProperties;
+    sectionLabel: CSSProperties;
   }
   interface TypographyVariantsOptions {
     scale?: TypeScale;
     icon?: IconScale;
+    messageBody?: CSSProperties;
+    listItem?: CSSProperties;
+    meta?: CSSProperties;
+    sectionLabel?: CSSProperties;
   }
   interface TypeBackground {
     /**
@@ -70,6 +79,16 @@ declare module '@mui/material/styles' {
         heavy?: string;
       };
     };
+  }
+}
+
+// The chat type roles (see tokens.ts, "CHAT TYPE ROLES") as Typography variants.
+declare module '@mui/material/Typography' {
+  interface TypographyPropsVariantOverrides {
+    messageBody: true;
+    listItem: true;
+    meta: true;
+    sectionLabel: true;
   }
 }
 
@@ -319,6 +338,18 @@ export function generateTheme(
       button: { fontSize: TYPE_SCALE.base, fontWeight: 500 },
       caption: { fontSize: TYPE_SCALE.sm, fontWeight: 400 },
       overline: { fontSize: TYPE_SCALE.sm, fontWeight: 400 },
+      // Chat type roles (tokens.ts, "CHAT TYPE ROLES"). Nothing below 11px
+      // except badge counters.
+      messageBody: { fontSize: TYPE_SCALE.lg, fontWeight: 400, lineHeight: 1.5 },
+      listItem: { fontSize: TYPE_SCALE.base, fontWeight: 500, lineHeight: 1.43 },
+      meta: { fontSize: TYPE_SCALE.sm, fontWeight: 400, lineHeight: 1.5 },
+      sectionLabel: {
+        fontSize: TYPE_SCALE.sm,
+        fontWeight: 700,
+        lineHeight: 1.5,
+        letterSpacing: '0.04em',
+        textTransform: 'uppercase',
+      },
     },
     palette: {
       mode,
@@ -549,6 +580,14 @@ export function generateTheme(
 
       // Typography for links
       MuiTypography: {
+        defaultProps: {
+          variantMapping: {
+            messageBody: 'div',
+            listItem: 'span',
+            meta: 'span',
+            sectionLabel: 'span',
+          },
+        },
         styleOverrides: {
           root: {
             '&.MuiTypography-colorPrimary': {

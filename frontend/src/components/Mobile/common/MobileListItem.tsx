@@ -143,11 +143,11 @@ export const MobileListItem: React.FC<MobileListItemProps> = ({
           primaryTypographyProps={{
             noWrap: true,
             fontWeight: selected ? 600 : 400,
-            fontSize: dense ? '0.875rem' : '0.9375rem',
+            fontSize: dense ? 'scale.base' : 'scale.touch',
           }}
           secondaryTypographyProps={{
             noWrap: true,
-            fontSize: dense ? '0.75rem' : '0.8125rem',
+            fontSize: dense ? 'scale.sm' : 'scale.md',
           }}
         />
       </ListItemButton>

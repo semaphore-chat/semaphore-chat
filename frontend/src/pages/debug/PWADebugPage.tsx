@@ -303,7 +303,7 @@ const PWADebugPage: React.FC = () => {
   return (
     <Box sx={{ p: 3, maxWidth: 900, mx: 'auto' }}>
       <Stack direction="row" alignItems="center" spacing={2} sx={{ mb: 3 }}>
-        <PhoneAndroidIcon sx={{ fontSize: 40 }} />
+        <PhoneAndroidIcon sx={{ fontSize: 'icon.4xl' }} />
         <Typography variant="h4">PWA Debug Panel</Typography>
       </Stack>
 
@@ -364,7 +364,7 @@ const PWADebugPage: React.FC = () => {
                         <Typography
                           variant="body2"
                           component="span"
-                          sx={{ fontFamily: 'monospace', fontSize: 12, wordBreak: 'break-all' }}
+                          sx={{ fontFamily: 'monospace', fontSize: 'scale.sm', wordBreak: 'break-all' }}
                         >
                           {item.value}
                         </Typography>
@@ -431,7 +431,7 @@ const PWADebugPage: React.FC = () => {
               <Typography
                 variant="body2"
                 component="pre"
-                sx={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', m: 0 }}
+                sx={{ fontFamily: 'monospace', fontSize: 'scale.sm', whiteSpace: 'pre-wrap', m: 0 }}
               >
                 {JSON.stringify(manifestData, null, 2)}
               </Typography>
@@ -451,7 +451,7 @@ const PWADebugPage: React.FC = () => {
           <Divider sx={{ mb: 2 }} />
           <Typography variant="body2"><strong>Status:</strong> {swStatus}</Typography>
           {swDetail && (
-            <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace', fontSize: 12 }}>
+            <Typography variant="body2" sx={{ mt: 1, fontFamily: 'monospace', fontSize: 'scale.sm' }}>
               {swDetail}
             </Typography>
           )}
