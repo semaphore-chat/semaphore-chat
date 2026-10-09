@@ -16,7 +16,7 @@ const settings = '/settings';
 const communityEdit = `/community/${primaryCommunity.id}/edit`;
 
 const navButton = (label: string) => () =>
-  Array.from(document.querySelectorAll<HTMLElement>('nav button')).find((b) => b.textContent === label);
+  Array.from(document.querySelectorAll<HTMLElement>('nav button, [role="tab"]')).find((b) => b.textContent === label);
 const switchLabelled = (text: string) => () =>
   Array.from(document.querySelectorAll<HTMLElement>('label')).find((l) => l.textContent?.includes(text))
     ?.querySelector<HTMLElement>('input[type="checkbox"]');
