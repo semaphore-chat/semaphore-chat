@@ -72,6 +72,7 @@ const CreateCommunityButton: React.FC<CreateCommunityButtonProps> = ({
                 fontWeight: 600,
                 color: "text.secondary",
                 alignItems: "left",
+                maxWidth: "100%",
               }}
             >
               New community

@@ -92,19 +92,14 @@ const CommunityListItem: React.FC<CommunityListItemProps> = ({
                 fontWeight: 600,
                 color: "text.primary",
                 alignItems: "left",
+                // The column aligns its children to the start, which sizes them
+                // to their content: cap it so noWrap can truncate.
+                maxWidth: "100%",
               }}
             >
               {community.name}
             </Typography>
-            {community.description && (
-              <Typography
-                variant="body2"
-                noWrap
-                sx={{ opacity: 0.8, fontSize: 'scale.sm', color: "text.secondary" }}
-              >
-                {community.description}
-              </Typography>
-            )}
+            {/* No description line: no room for it in the 160px expanded rail. */}
           </Box>
         )}
         {bannerUrl && isExpanded && (
