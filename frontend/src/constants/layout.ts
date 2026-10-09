@@ -61,3 +61,21 @@ export const SIDE_PANEL_WIDTH = 400;
  * this guards the column if the sidebars ever grow.
  */
 export const CHAT_COLUMN_MIN_WIDTH = 400;
+
+/**
+ * Longest line of message text: about 80 characters of the 16px message font
+ * (~720px). Long paragraphs stay readable on wide windows; the column stays
+ * left-aligned under the avatars. Images, GIFs and link cards keep their own caps.
+ */
+export const MESSAGE_TEXT_MAX_WIDTH = "80ch";
+
+/**
+ * Widest a code block in a message grows past the text cap (in the code font's
+ * own `ch`), never wider than the message column; longer lines scroll. Only on
+ * columns of at least CODE_BLOCK_UNWRAP_MIN_COLUMN_PX: narrower ones (phones,
+ * tablets) wrap code lines as before.
+ */
+export const CODE_BLOCK_MAX_WIDTH = "120ch";
+
+/** Message column width (px, ~80ch of message text) from which code blocks stop wrapping. */
+export const CODE_BLOCK_UNWRAP_MIN_COLUMN_PX = 720;

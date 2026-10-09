@@ -141,7 +141,7 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
           color: theme.palette.error.main,
         }}
       >
-        {icon ?? <ErrorIcon sx={{ fontSize: compact ? 28 : 48 }} />}
+        {icon ?? <ErrorIcon sx={{ fontSize: compact ? 'icon.3xl' : 'icon.5xl' }} />}
       </Box>
       <Typography
         variant={compact ? 'subtitle2' : 'h6'}

@@ -34,7 +34,18 @@
  *
  * A test (`__tests__/theme/typographyTokens.test.tsx`) fails on any
  * `'scale.x'`/`'icon.x'` string in components that isn't a real token, since a
- * typo would otherwise silently emit invalid CSS.
+ * typo would otherwise silently emit invalid CSS. Another fails on raw
+ * `fontSize` literals (`12`, `'0.75rem'`, `'16px'`) in components and pages;
+ * `em` values stay allowed, since they size relative to the parent on purpose.
+ *
+ * CHAT TYPE ROLES
+ * ---------------
+ * The desktop type scale, as Typography variants on top of TYPE_SCALE:
+ *   messageBody  16px     message text (same as body1)
+ *   listItem     14px/500 channel, member and DM names
+ *   meta         12px     timestamps, status lines, captions
+ *   sectionLabel 12px/700 uppercase sidebar and member-list section headers
+ * Nothing renders text below 11px (`xs`); `2xs` is for badge counters only.
  *
  * RADIUS
  * ------
@@ -63,11 +74,12 @@ export const HTML_FONT_SIZE = 16;
 
 /** Font sizes, in rem (px at a 16px root in comments). */
 export const TYPE_SCALE = {
-  '2xs': '0.625rem', // 10 — tiny badges, counters inside pills
-  xs: '0.6875rem', //  11 — meta text, bottom-nav labels, tile captions
+  '2xs': '0.625rem', // 10 — badge counters and initials in tiny avatars ONLY (never text)
+  xs: '0.6875rem', //  11 — the smallest text: chips, compact labels, bottom-nav labels
   sm: '0.75rem', //    12 — caption, secondary lines, timestamps
   md: '0.8125rem', //  13 — compact body (reactions, pickers)
   base: '0.875rem', // 14 — body2, list row names, buttons
+  touch: '0.9375rem', // 15 — list row names on touch screens
   lg: '1rem', //       16 — body1; inputs (≥16px stops iOS focus zoom)
   xl: '1.125rem', //   18 — app-bar titles
   '2xl': '1.25rem', // 20 — h6, section titles, inline emoji

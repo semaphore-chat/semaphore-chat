@@ -1,5 +1,6 @@
 import React from 'react';
 import { defineScreen } from '../fixtures/screenStory';
+import { asElectron } from '../fixtures/electron';
 import { bigCommunityScenario, primaryCommunity, generalChannel } from '../fixtures/scenarios';
 import { useSimulateReactions } from '../fixtures/reactions';
 import type { Reaction } from '../../types/message.type';
@@ -30,3 +31,12 @@ const ReactToNewest: React.FC = () => {
 export const ChannelChatBusyReactionAdded = defineScreen(bigCommunityScenario, generalPath, {
   overlay: <ReactToNewest />,
 });
+
+/** The busy #general in a narrow (1280) and a wide (1920) desktop window: the
+ * desktop type scale and the 80ch message cap at both ends of the range. */
+export const ChannelChatBusyWide = defineScreen(bigCommunityScenario, generalPath);
+ChannelChatBusyWide.meta = { viewports: ['desktop-1280', 'desktop-1920'] };
+
+/** The same in the Electron app at 1920. */
+export const ChannelChatBusyWideElectron = asElectron(defineScreen(bigCommunityScenario, generalPath));
+ChannelChatBusyWideElectron.meta = { viewports: ['desktop-1920'] };

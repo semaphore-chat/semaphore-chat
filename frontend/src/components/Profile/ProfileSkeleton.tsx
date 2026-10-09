@@ -22,7 +22,7 @@ const ProfileSkeleton: React.FC = () => (
           sx={{ position: "absolute", top: -60, left: 24, border: "4px solid", borderColor: "background.paper" }}
         />
         <Box ml={17}>
-          <Skeleton variant="text" width="40%" sx={{ fontSize: "2.125rem" }} />
+          <Skeleton variant="text" width="40%" sx={{ fontSize: 'scale.4xl' }} />
           <Skeleton variant="text" width="25%" />
           <Skeleton variant="text" width="70%" sx={{ mt: 2 }} />
           <Skeleton variant="text" width="55%" />
@@ -31,7 +31,7 @@ const ProfileSkeleton: React.FC = () => (
     </Paper>
 
     <Paper sx={{ mt: 3, p: 3 }}>
-      <Skeleton variant="text" width="20%" sx={{ fontSize: "1.5rem", mb: 2 }} />
+      <Skeleton variant="text" width="20%" sx={{ fontSize: 'scale.3xl', mb: 2 }} />
       <Box sx={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 2 }}>
         {[0, 1, 2].map((i) => (
           <Skeleton key={i} variant="rounded" height={120} />

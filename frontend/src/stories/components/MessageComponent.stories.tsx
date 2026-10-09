@@ -73,6 +73,61 @@ export const LongTextAndCode = defineComponent(bigCommunityScenario, () => (
   />
 ));
 
+const longParagraph =
+  "Long paragraphs stay readable on wide windows: message text stops at about 80 characters a line (MESSAGE_TEXT_MAX_WIDTH), measured from the text column and left-aligned under the avatar, instead of running the full width of a 1920px window. " +
+  "Images, GIFs and link cards keep their own caps, and code blocks may grow to 120 characters of the code font before they scroll sideways.";
+
+/**
+ * The 80ch message cap in a full-width column (no story wrapper): a long
+ * paragraph, a code block with a line past 120ch (scrolls), a grouped
+ * follow-up, an image and a link card. Shot at 1280, 1440 and 1920.
+ */
+export const WideColumnLineLength = defineComponent(
+  bigCommunityScenario,
+  () => (
+    <>
+      <MessageComponent
+        message={createMessage({
+          ...common,
+          spans: [
+            createSpan({ text: longParagraph }),
+            createSpan({
+              type: SpanType.CODE_BLOCK,
+              text:
+                "const backoff = (attempt: number) => Math.min(MAX_DELAY_MS, BASE_DELAY_MS * 2 ** attempt) + Math.floor(Math.random() * JITTER_MS); // full jitter keeps reconnecting clients from stampeding the gateway\nretry(connect, { attempts: 5, backoff });",
+            }),
+          ],
+        })}
+        {...contextProps}
+      />
+      <MessageComponent
+        grouped
+        message={createMessage({ ...common, spans: [createSpan({ text: longParagraph })] })}
+        {...contextProps}
+      />
+      <MessageComponent
+        grouped
+        message={createMessage({
+          ...common,
+          spans: [createSpan({ text: 'and the PR with the screenshot' })],
+          attachments: [{ id: 'story-attach-wide', filename: 'screenshot.png', mimeType: 'image/png', fileType: 'IMAGE', size: 245_760 } as never],
+          linkPreviews: [
+            {
+              url: 'https://example.com/pull/482',
+              title: 'Retry socket reconnects with jittered backoff · Pull Request #482',
+              description: 'Reconnects now back off exponentially with jitter, so a flaky network no longer stampedes the gateway.',
+              siteName: 'GitHub',
+            },
+          ],
+        })}
+        {...contextProps}
+      />
+    </>
+  ),
+  { maxWidth: false },
+);
+WideColumnLineLength.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920', 'phone'] };
+
 /** #channel mentions: a visible channel links; a hidden one is "#private-channel". */
 export const WithChannelMentions = defineComponent(bigCommunityScenario, () => (
   <WithChannelList communityId={primaryCommunity.id}>

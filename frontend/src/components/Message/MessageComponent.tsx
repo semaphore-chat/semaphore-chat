@@ -41,6 +41,7 @@ import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
 import { useContextMenuFocusRestore } from "../../hooks/useContextMenuFocusRestore";
 import { OptimisticMessageActions } from "./OptimisticMessageActions";
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from "../../utils/messageTime";
+import { CODE_BLOCK_MAX_WIDTH, CODE_BLOCK_UNWRAP_MIN_COLUMN_PX, MESSAGE_TEXT_MAX_WIDTH } from "../../constants/layout";
 
 /** Avatar column width (32px avatar + 12px gap) — grouped rows keep it empty
  * (or show the hover time) so their text lines up with the header row. */
@@ -362,13 +363,16 @@ function MessageComponentInner({
             data-sheet-open={actionsSheetOpen ? "true" : undefined}
             noWrap
             sx={{
-              width: AVATAR_GUTTER_PX,
+              // Borrows 8px of the row's left padding so an 11px "12:34 PM"
+              // fits the avatar gutter; the text still ends where it did.
+              width: AVATAR_GUTTER_PX + 8,
+              ml: -1,
               flexShrink: 0,
               pr: 1,
               // Vertically centred on the first line of body1 text.
               lineHeight: 1.5,
               pt: "3px",
-              fontSize: 'scale.2xs',
+              fontSize: 'scale.xs',
               textAlign: "right",
               color: "text.secondary",
               opacity: actionsSheetOpen ? 1 : 0,
@@ -396,7 +400,8 @@ function MessageComponentInner({
           )}
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0 }}>
+      {/* A size container, so code blocks can cap themselves at the column width (cqi). */}
+      <div style={{ flex: 1, minWidth: 0, containerType: "inline-size" }}>
         {!grouped && (
         <Box
           data-testid="message-author-line"
@@ -411,7 +416,7 @@ function MessageComponentInner({
               >
                 {message.webhook!.name}
               </Typography>
-              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 'scale.2xs', flexShrink: 0, alignSelf: "center" }} />
+              <Chip label="APP" size="small" sx={{ height: 18, fontSize: 'scale.xs', flexShrink: 0, alignSelf: "center" }} />
             </>
           ) : message.authorId ? (
             <Link
@@ -480,21 +485,23 @@ function MessageComponentInner({
           />
         )}
         {isEditing ? (
-          <MessageEditForm
-            editText={editText}
-            editAttachments={editAttachments}
-            onTextChange={setEditText}
-            onSave={handleEditSave}
-            onCancel={handleEditCancel}
-            onRemoveAttachment={handleRemoveAttachment}
-          />
+          <Box sx={{ maxWidth: MESSAGE_TEXT_MAX_WIDTH }}>
+            <MessageEditForm
+              editText={editText}
+              editAttachments={editAttachments}
+              onTextChange={setEditText}
+              onSave={handleEditSave}
+              onCancel={handleEditCancel}
+              onRemoveAttachment={handleRemoveAttachment}
+            />
+          </Box>
         ) : (
           <>
             {gifUrl ? (
               <>
                 <GifEmbed url={gifUrl} onError={() => setGifEmbedFailed(true)} />
                 {grouped && (
-                  <Typography component="div" variant="body1">
+                  <Typography component="div" variant="messageBody">
                     <MessageStatusMarks
                       edited={!!message.editedAt}
                       isPending={isPending}
@@ -507,9 +514,31 @@ function MessageComponentInner({
                 )}
               </>
             ) : (
-              // component="div": spans can render block content (a code block's <pre>),
-              // which a <p> must not contain. MUI's body1 zeroes the margin either way.
-              <Typography component="div" variant="body1" sx={{ whiteSpace: 'pre-wrap', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
+              // component="div": spans can render block content (a code block's
+              // <pre>), which a <p> must not contain.
+              <Typography
+                component="div"
+                variant="messageBody"
+                data-testid="message-body"
+                sx={{
+                  maxWidth: MESSAGE_TEXT_MAX_WIDTH,
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
+                  wordBreak: 'break-word',
+                  // On a column wider than the text cap, code blocks keep their
+                  // lines and may run past the cap, up to 120ch of the column;
+                  // longer lines scroll. Narrower columns (phones) wrap as before.
+                  [`@container (min-width: ${CODE_BLOCK_UNWRAP_MIN_COLUMN_PX}px)`]: {
+                    '& .message-code-block': {
+                      whiteSpace: 'pre',
+                      wordBreak: 'normal',
+                      width: 'max-content',
+                      minWidth: '100%',
+                      maxWidth: `min(${CODE_BLOCK_MAX_WIDTH}, 100cqi)`,
+                    },
+                  },
+                }}
+              >
                 {renderMessageSpans(message.spans, emojiById)}
                 {grouped && (
                   <>

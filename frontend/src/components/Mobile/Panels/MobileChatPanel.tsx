@@ -270,9 +270,9 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
             gap: 3,
           }}
         >
-          <Box sx={{ fontSize: 64 }}>🔊</Box>
+          <Box sx={{ fontSize: 'icon.6xl' }}>🔊</Box>
           <Box>
-            <Box sx={{ fontSize: '1.25rem', fontWeight: 600, mb: 1 }}>
+            <Box sx={{ fontSize: 'scale.2xl', fontWeight: 600, mb: 1 }}>
               {channel?.name}
             </Box>
             <Box sx={{ color: 'text.secondary', mb: 3 }}>
@@ -411,7 +411,7 @@ export const MobileChatPanel: React.FC<MobileChatPanelProps> = ({
               borderColor: 'divider',
             }}
           >
-            <Typography variant="h6" sx={{ fontSize: '1rem', fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ fontSize: 'scale.lg', fontWeight: 600 }}>
               Members
             </Typography>
             <IconButton

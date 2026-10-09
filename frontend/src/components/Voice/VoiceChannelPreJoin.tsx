@@ -47,7 +47,7 @@ export const VoiceChannelPreJoin: React.FC<VoiceChannelPreJoinProps> = ({ channe
     >
       <Box sx={{ width: '100%', maxWidth: 720, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2.5, my: 'auto' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, maxWidth: '100%' }}>
-          <VolumeUp color="primary" sx={{ fontSize: 36, flexShrink: 0 }} />
+          <VolumeUp color="primary" sx={{ fontSize: 'icon.4xl', flexShrink: 0 }} />
           <Typography variant="h4" component="h1" noWrap sx={{ minWidth: 0 }}>
             {channel.name}
           </Typography>

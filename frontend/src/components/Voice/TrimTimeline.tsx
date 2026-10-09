@@ -48,7 +48,7 @@ const TrimTimeline: React.FC<TrimTimelineProps> = ({
               left: `${(t / maxDuration) * 100}%`,
               transform: 'translateX(-50%)',
               color: 'text.secondary',
-              fontSize: 'scale.2xs',
+              fontSize: 'scale.xs',
             }}
           >
             {formatPlaybackTime(t)}

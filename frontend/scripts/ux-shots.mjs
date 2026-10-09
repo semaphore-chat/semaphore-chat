@@ -77,9 +77,14 @@ const VIEWPORTS = {
   'phone-short': { width: 390, height: 500, isMobile: true, hasTouch: true, deviceScaleFactor: 1 },
   tablet: { width: 820, height: 1180, isMobile: false, hasTouch: true, deviceScaleFactor: 1 },
   desktop: { width: 1440, height: 900, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
+  // Opt-in only: a story gets these when its meta.viewports names them.
+  'desktop-1280': { width: 1280, height: 800, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
+  'desktop-1920': { width: 1920, height: 1080, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
 };
+/** Shot only for stories that name them (keep in sync with scripts/ui-review/lib/viewports.ts). */
+const OPT_IN_VIEWPORTS = ['phone-short', 'desktop-1280', 'desktop-1920'];
 
-const requestedViewports = (process.env.UX_SHOTS_VIEWPORTS || 'phone,phone-short,tablet,desktop')
+const requestedViewports = (process.env.UX_SHOTS_VIEWPORTS || 'phone,phone-short,tablet,desktop,desktop-1280,desktop-1920')
   .split(',')
   .map((v) => v.trim())
   .filter(Boolean);
@@ -238,7 +243,7 @@ function viewportsForStory(storyId, storyMeta) {
   if (isKeyboardStory) {
     return requestedViewports.filter((name) => name === 'phone-short');
   }
-  return requestedViewports.filter((name) => name !== 'phone-short');
+  return requestedViewports.filter((name) => !OPT_IN_VIEWPORTS.includes(name));
 }
 
 async function shootStory(browser, storyId, viewportName) {

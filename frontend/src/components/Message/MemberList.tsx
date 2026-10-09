@@ -79,14 +79,8 @@ interface RoleGroup {
 const SectionHeader: React.FC<{ label: string; count: number }> = ({ label, count }) => (
   <ListItem sx={{ px: 2, pt: 2, pb: 0.5 }}>
     <Typography
-      variant="overline"
-      sx={{
-        fontSize: 'scale.xs',
-        fontWeight: 600,
-        letterSpacing: "0.05em",
-        color: "text.secondary",
-        lineHeight: 1.5,
-      }}
+      variant="sectionLabel"
+      sx={{ color: "text.secondary" }}
     >
       {label} — {count}
     </Typography>
@@ -161,14 +155,14 @@ const MemberRow: React.FC<{
       <ListItemText
         primary={
           <Typography
-            variant="body2"
+            variant="listItem"
+            // A block, so noWrap can truncate (listItem maps to an inline span).
+            component="div"
             noWrap
             // dir="auto": an Arabic/Hebrew name truncates at its own end
             // (visual left), keeping its first word; the row stays left-aligned.
             dir="auto"
             sx={{
-              fontWeight: 500,
-              fontSize: 'scale.base',
               lineHeight: 1.2,
               textAlign: 'left',
             }}
@@ -179,10 +173,9 @@ const MemberRow: React.FC<{
         secondary={
           member.status ? (
             <Typography
-              variant="caption"
+              variant="meta"
               sx={{
                 color: "text.secondary",
-                fontSize: 'scale.xs',
                 lineHeight: 1.2,
                 display: "block",
                 overflow: "hidden",

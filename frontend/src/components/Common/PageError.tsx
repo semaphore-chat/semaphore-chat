@@ -25,9 +25,9 @@ const PageError: React.FC<PageErrorProps> = ({ error, copy, onRetry, homePath = 
   const info = getPageErrorInfo(error, copy);
   const icon =
     info.kind === 'forbidden' ? (
-      <LockIcon sx={{ fontSize: 48 }} />
+      <LockIcon sx={{ fontSize: 'icon.5xl' }} />
     ) : info.kind === 'not-found' ? (
-      <NotFoundIcon sx={{ fontSize: 48 }} />
+      <NotFoundIcon sx={{ fontSize: 'icon.5xl' }} />
     ) : undefined;
 
   return (

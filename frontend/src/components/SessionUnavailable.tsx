@@ -30,7 +30,7 @@ export function SessionUnavailable({ onRetry, onSignIn }: SessionUnavailableProp
         textAlign: "center",
       }}
     >
-      <CloudOffOutlined sx={{ fontSize: 48, color: "text.secondary" }} />
+      <CloudOffOutlined sx={{ fontSize: 'icon.5xl', color: "text.secondary" }} />
       <Typography variant="h6" component="h1">
         Can't reach the server
       </Typography>

@@ -6,6 +6,7 @@
  */
 
 import React, { useState } from "react";
+import { Box } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { Span, SpanType } from "../../types/message.type";
 import type { CustomEmojiDto } from "../../api-client/types.gen";
@@ -148,12 +149,16 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
       );
     case SpanType.CODE_BLOCK:
       return (
-        <pre
+        <Box
+          component="pre"
           key={index}
-          style={{
+          // MessageComponent lets it grow past the text cap on wide columns
+          // (CODE_BLOCK_MAX_WIDTH); sx (a class, not an inline style) so it can.
+          className="message-code-block"
+          sx={{
             margin: '4px 0',
             padding: '8px 12px',
-            borderRadius: 6,
+            borderRadius: '6px',
             backgroundColor: theme.palette.action.hover,
             border: `1px solid ${theme.palette.divider}`,
             fontFamily:
@@ -165,7 +170,7 @@ export const MessageSpan: React.FC<MessageSpanProps> = ({ span, index, emojiById
           }}
         >
           <code>{span.text ?? ""}</code>
-        </pre>
+        </Box>
       );
     case SpanType.PLAINTEXT:
     default: {

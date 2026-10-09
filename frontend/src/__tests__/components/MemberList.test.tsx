@@ -103,6 +103,20 @@ describe('MemberList', () => {
     expect(screen.getByText('Offline User')).toBeInTheDocument();
   });
 
+  it('uses the chat type roles: a block listItem name (so it can truncate), a meta status, a section label', () => {
+    renderWithProviders(
+      <MemberList
+        members={[createMember({ displayName: 'A Very Long Display Name Indeed', isOnline: true, status: 'deep work' })]}
+        title="Members"
+      />,
+    );
+    const name = screen.getByText('A Very Long Display Name Indeed');
+    expect(name.tagName).toBe('DIV');
+    expect(name).toHaveClass('MuiTypography-listItem', 'MuiTypography-noWrap');
+    expect(screen.getByText('deep work')).toHaveClass('MuiTypography-meta');
+    expect(screen.getByText(/Online — 1/)).toHaveClass('MuiTypography-sectionLabel');
+  });
+
   it('shows loading skeletons when isLoading is true', () => {
     renderWithProviders(
       <MemberList members={[]} isLoading={true} title="Members" />,

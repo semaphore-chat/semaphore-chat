@@ -211,7 +211,7 @@ export function ChannelRow({
             minWidth: 0,
             my: 0.5,
             "& .MuiListItemText-primary": {
-              fontSize: touch ? "0.9375rem" : "0.875rem",
+              fontSize: touch ? 'scale.touch' : 'scale.base',
               fontWeight: isUnread ? 700 : selected ? 600 : 500,
               color: isUnread ? "text.primary" : undefined,
             },
@@ -235,7 +235,7 @@ export function ChannelRow({
               pl: 1,
               flexShrink: 0,
               "& .MuiBadge-badge": {
-                fontSize: touch ? 11 : 10,
+                fontSize: 'scale.xs',
                 height: touch ? 18 : 16,
                 minWidth: touch ? 18 : 16,
                 position: "static",

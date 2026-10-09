@@ -62,7 +62,7 @@ export const MemberListDrawerButton: React.FC<MemberListDrawerButtonProps> = ({
               borderColor: "divider",
             }}
           >
-            <Typography variant="h6" sx={{ fontSize: "1rem", fontWeight: 600 }}>
+            <Typography variant="h6" sx={{ fontSize: 'scale.lg', fontWeight: 600 }}>
               Members
             </Typography>
             <IconButton size="small" aria-label="Close members" onClick={() => setOpen(false)} sx={{ mr: -1 }}>

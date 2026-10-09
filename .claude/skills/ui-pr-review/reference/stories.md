@@ -100,7 +100,7 @@ export const LongNamesNarrow320 = defineComponent(scenario, () => (
 LongNamesNarrow320.meta = { viewports: ['phone'] };
 ```
 
-- The names are `phone`, `phone-short`, `tablet` and `desktop`. The type (`StoryMeta` in `fixtures/screenStory.tsx`) catches typos, and the review stops on an invalid list.
+- The names are `phone`, `phone-short`, `tablet` and `desktop`, plus the opt-in `desktop-1280` (1280×800) and `desktop-1920` (1920×1080), which only stories that list them get. The type (`StoryMeta` in `fixtures/screenStory.tsx`) catches typos, and the review stops on an invalid list.
 - Ladle reads the meta statically, so it must be a top-level `MyStory.meta = { ... };` statement with an object literal: no variables, no `as const`, and not set inside a helper.
 - The review probes, captures and compares the story only at those viewports, on both sides. `scripts/ux-shots.mjs` honours it too.
 - Use it only for widths the app can't show at the other viewports. Leave everything else at all three, so a regression at another width stays visible.
