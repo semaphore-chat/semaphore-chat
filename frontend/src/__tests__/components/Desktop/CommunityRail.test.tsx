@@ -11,10 +11,13 @@ vi.mock('react-router-dom', async (importOriginal) => {
 });
 
 let mockUnread = 0;
+let mockCommunities: ({ id: string; name: string } | null)[] = [];
+const mockWarn = vi.hoisted(() => vi.fn());
+vi.mock('../../../utils/logger', () => ({ logger: { warn: mockWarn, error: vi.fn(), info: vi.fn(), debug: vi.fn(), log: vi.fn() } }));
 vi.mock('../../../api-client/@tanstack/react-query.gen', () => ({
   communityControllerFindAllMineOptions: () => ({
     queryKey: ['test-communities'],
-    queryFn: async () => [{ id: 'c1', name: 'Nightowl Collective' }],
+    queryFn: async () => mockCommunities,
   }),
   notificationsControllerGetUnreadCountOptions: () => ({
     queryKey: ['test-unread', mockUnread],
@@ -59,6 +62,7 @@ describe('Desktop community rail', () => {
     vi.clearAllMocks();
     mockUnread = 0;
     mockDmUnread = 0;
+    mockCommunities = [{ id: 'c1', name: 'Nightowl Collective' }];
   });
 
   it('puts Direct Messages, then the notification inbox, at the top', async () => {
@@ -109,5 +113,12 @@ describe('Desktop community rail', () => {
     const cssText = () => Array.from(document.querySelectorAll('style')).map((el) => el.textContent).join('\n');
     renderRail({ voiceConnected: true });
     expect(cssText()).toContain(`height:calc(var(--full-dvh) - ${VOICE_BAR_HEIGHT}px)`);
+  });
+
+  it('skips a null community entry (and logs it) instead of crashing', async () => {
+    mockCommunities = [null, { id: 'c1', name: 'Nightowl Collective' }];
+    renderRail();
+    expect(await screen.findByText('Nightowl Collective')).toBeInTheDocument();
+    expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('skipped 1 null community'));
   });
 });

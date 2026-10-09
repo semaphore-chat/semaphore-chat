@@ -22,6 +22,7 @@ import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { RAIL_EXPANDED_WIDTH, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "../../constants/layout";
 import type { User } from "../../types/auth.type";
+import { logger } from "../../utils/logger";
 
 interface CommunityToggleProps {
   isExpanded: boolean;
@@ -80,7 +81,17 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
   voiceConnected,
   user,
 }) => {
-  const { data: communities, isLoading, error } = useQuery(communityControllerFindAllMineOptions());
+  const { data: rawCommunities, isLoading, error } = useQuery(communityControllerFindAllMineOptions());
+  // The list can come back with a null entry (a community deleted while the
+  // server built the response: it loads memberships, then their communities).
+  // Skip it rather than crash the rail, but say so.
+  const communities = React.useMemo(() => {
+    const valid = rawCommunities?.filter((community) => community != null);
+    if (rawCommunities && valid && valid.length !== rawCommunities.length) {
+      logger.warn(`[CommunityRail] skipped ${rawCommunities.length - valid.length} null community entries from /communities/mine`);
+    }
+    return valid;
+  }, [rawCommunities]);
   const { data: unread } = useQuery({
     ...notificationsControllerGetUnreadCountOptions(),
     refetchOnWindowFocus: true,

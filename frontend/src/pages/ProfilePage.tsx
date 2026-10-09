@@ -15,6 +15,20 @@ import ProfileSkeleton from "../components/Profile/ProfileSkeleton";
 import PageError from "../components/Common/PageError";
 import { PROFILE_ERROR_COPY } from "../utils/pageError";
 import { ClipLibrary } from "../components/Profile/ClipLibrary";
+import { ListPageShell } from "../components/Common/PageShell";
+import { useResponsive } from "../hooks/useResponsive";
+
+/** Desktop: the list page shell. Phone/tablet: the centred container they had. */
+const PageFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isDesktop } = useResponsive();
+  return isDesktop ? (
+    <ListPageShell>{children}</ListPageShell>
+  ) : (
+    <Container maxWidth="md" sx={{ py: 3 }}>
+      {children}
+    </Container>
+  );
+};
 
 const ProfilePage: React.FC = () => {
   const { userId } = useParams<{ userId: string }>();
@@ -40,19 +54,19 @@ const ProfilePage: React.FC = () => {
 
   if (error || !profileUser) {
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
+      <PageFrame>
         <PageError
           error={error}
           copy={PROFILE_ERROR_COPY}
           onRetry={() => void refetch()}
           fullHeight={false}
         />
-      </Container>
+      </PageFrame>
     );
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
+    <PageFrame>
       <Box mb={3} display="flex" justifyContent="space-between" alignItems="center">
         <Button
           startIcon={<ArrowBackIcon />}
@@ -79,7 +93,7 @@ const ProfilePage: React.FC = () => {
       <Paper sx={{ mt: 3, p: 3 }}>
         <ClipLibrary userId={userId!} isOwnProfile={isOwnProfile} />
       </Paper>
-    </Container>
+    </PageFrame>
   );
 };
 
