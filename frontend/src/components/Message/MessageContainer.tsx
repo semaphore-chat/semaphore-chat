@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { refreshFloatDockRegion, useFloatRegionRef } from "../../hooks/useFloatDockRegion";
 import { Box, Fab } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -202,11 +203,21 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   // The composer grows (reply banner, file tray, multi-line draft), so the
   // floating FABs track its measured height instead of a fixed offset.
   const [composerBoxEl, setComposerBoxEl] = useState<HTMLDivElement | null>(null);
+  // The message column and composer also define where the desktop voice
+  // float card docks (above the composer, off the member list / side panel).
+  const chatRegionRef = useFloatRegionRef('chat');
+  const composerRegionRef = useFloatRegionRef('composer', { observe: false });
   const composerBoxRef = useCallback((el: HTMLDivElement | null) => {
     messageInputBoxRef.current = el;
     setComposerBoxEl(el);
-  }, []);
+    composerRegionRef(el);
+  }, [composerRegionRef]);
   const composerHeight = useElementHeight(composerBoxEl);
+  // The composer's top bounds the float card's dock region; it moves as the
+  // composer grows (multi-line draft, reply banner, file tray).
+  useEffect(() => {
+    refreshFloatDockRegion();
+  }, [composerHeight]);
   const fabBottom = composerHeight > 0 ? composerHeight + FAB_GAP : FALLBACK_FAB_BOTTOM;
 
   const handleEscapeToInput = useCallback(() => {
@@ -467,6 +478,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
     >
       {/* Message Area */}
       <Box
+        ref={chatRegionRef}
         sx={{
           flex: 1,
           display: "flex",

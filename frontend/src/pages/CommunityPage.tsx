@@ -9,7 +9,8 @@ import {
 import { Avatar, Box, Typography } from "@mui/material";
 import ChannelList from "../components/Channel/ChannelList";
 import ChannelMessageContainer from "../components/Channel/ChannelMessageContainer";
-import { VideoTiles, VoiceChannelUserList } from "../components/Voice";
+import { VideoTiles } from "../components/Voice";
+import { VoiceChannelPreJoin } from "../components/Voice/VoiceChannelPreJoin";
 import EditCommunityButton from "../components/Community/EditCommunityButton";
 import TwoColumnLayout from "../components/Common/TwoColumnLayout";
 import { styled } from "@mui/material/styles";
@@ -119,37 +120,7 @@ const DesktopCommunityPage: React.FC = () => {
         );
       }
 
-      return (
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            height: '100%',
-            flexDirection: 'column',
-            gap: 3,
-            p: 4,
-          }}
-        >
-          <Typography variant="h4" textAlign="center">
-            🔊 {channelData.name}
-          </Typography>
-
-          <Typography variant="body1" color="text.secondary" textAlign="center">
-            Click on this voice channel in the sidebar to join
-          </Typography>
-
-          <Box sx={{ maxWidth: 600, width: '100%' }}>
-            <VoiceChannelUserList channel={channelData} />
-          </Box>
-
-          {voiceState.isConnected && voiceState.currentChannelId !== channelId && (
-            <Typography variant="body2" color="warning.main" textAlign="center" sx={{ maxWidth: 400 }}>
-              You're currently connected to "{voiceState.channelName}". Click this channel to switch.
-            </Typography>
-          )}
-        </Box>
-      );
+      return <VoiceChannelPreJoin channel={channelData} />;
     }
 
     if (voiceState.isConnected && channelData?.type === ChannelType.TEXT) {

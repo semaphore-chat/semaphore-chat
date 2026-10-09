@@ -19,11 +19,20 @@ export interface Size {
   height: number;
 }
 
-/** bottomInset is VOICE_BAR_HEIGHT when connected to voice, else 0. */
+/**
+ * The area the card lives in. Normally the window (origin 0,0; bottomInset is
+ * the bottom chrome — VOICE_BAR_HEIGHT when connected to voice, else 0). On
+ * desktop text views it's the message column above the composer instead
+ * (see `regionViewport`), with `left`/`top` its offset in the window.
+ */
 export interface Viewport {
   width: number;
   height: number;
   bottomInset: number;
+  /** Window x of the area's left edge (default 0). */
+  left?: number;
+  /** Window y of the area's top edge (default 0). */
+  top?: number;
 }
 
 export interface PipPlacement {
@@ -82,12 +91,17 @@ const splitAnchor = (anchor: PipAnchor): [vSide: 'top' | 'bottom', hSide: 'left'
   return [vSide as 'top' | 'bottom', hSide as 'left' | 'right'];
 };
 
+const originOf = (vp: Viewport): Point => ({ x: vp.left ?? 0, y: vp.top ?? 0 });
+
 const clampPosition = (pos: Point, size: Size, vp: Viewport): Point => {
-  const maxX = Math.max(EDGE_PADDING, vp.width - size.width - EDGE_PADDING);
-  const maxY = Math.max(EDGE_PADDING, vp.height - vp.bottomInset - size.height - EDGE_PADDING);
+  const o = originOf(vp);
+  const minX = o.x + EDGE_PADDING;
+  const minY = o.y + EDGE_PADDING;
+  const maxX = Math.max(minX, o.x + vp.width - size.width - EDGE_PADDING);
+  const maxY = Math.max(minY, o.y + vp.height - vp.bottomInset - size.height - EDGE_PADDING);
   return {
-    x: Math.min(Math.max(pos.x, EDGE_PADDING), maxX),
-    y: Math.min(Math.max(pos.y, EDGE_PADDING), maxY),
+    x: Math.min(Math.max(pos.x, minX), maxX),
+    y: Math.min(Math.max(pos.y, minY), maxY),
   };
 };
 
@@ -101,6 +115,7 @@ const clampPosition = (pos: Point, size: Size, vp: Viewport): Point => {
 export const toAbsolute = (placement: PipPlacement, vp: Viewport, sizeOverride?: Size): Point => {
   const size = sizeOverride ?? placement.size;
   const [vSide, hSide] = splitAnchor(placement.anchor);
+  const o = originOf(vp);
 
   let x: number;
   let y: number;
@@ -113,7 +128,7 @@ export const toAbsolute = (placement: PipPlacement, vp: Viewport, sizeOverride?:
     y = vSide === 'top' ? placement.offset.y : vp.height - vp.bottomInset - size.height - placement.offset.y;
   }
 
-  return clampPosition({ x, y }, size, vp);
+  return clampPosition({ x: o.x + x, y: o.y + y }, size, vp);
 };
 
 /**
@@ -121,7 +136,9 @@ export const toAbsolute = (placement: PipPlacement, vp: Viewport, sizeOverride?:
  * corner and are always non-negative, so a free placement survives a
  * viewport resize without drifting off-screen.
  */
-export const fromAbsolute = (pos: Point, size: Size, vp: Viewport): { anchor: PipAnchor; offset: Point } => {
+export const fromAbsolute = (absPos: Point, size: Size, vp: Viewport): { anchor: PipAnchor; offset: Point } => {
+  const o = originOf(vp);
+  const pos = { x: absPos.x - o.x, y: absPos.y - o.y };
   const centerX = pos.x + size.width / 2;
   const centerY = pos.y + size.height / 2;
   const usableHeight = vp.height - vp.bottomInset;
@@ -151,10 +168,11 @@ export const clampSizeToViewport = (size: Size, vp: Viewport): Size => {
 
 /** Four ~160x140 corner rects inset by DOCK_MARGIN (bottom ones above bottomInset). */
 export const dockZoneRects = (vp: Viewport): DockZoneRect[] => {
-  const left = DOCK_MARGIN;
-  const right = vp.width - DOCK_MARGIN - DOCK_ZONE_WIDTH;
-  const top = DOCK_MARGIN;
-  const bottom = vp.height - vp.bottomInset - DOCK_MARGIN - DOCK_ZONE_HEIGHT;
+  const o = originOf(vp);
+  const left = o.x + DOCK_MARGIN;
+  const right = o.x + vp.width - DOCK_MARGIN - DOCK_ZONE_WIDTH;
+  const top = o.y + DOCK_MARGIN;
+  const bottom = o.y + vp.height - vp.bottomInset - DOCK_MARGIN - DOCK_ZONE_HEIGHT;
 
   return [
     { anchor: 'top-left', x: left, y: top, width: DOCK_ZONE_WIDTH, height: DOCK_ZONE_HEIGHT },
@@ -178,3 +196,59 @@ export const defaultPlacement = (): PipPlacement => ({
   docked: true,
   collapsed: false,
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// Message-column docking (desktop text views)
+// ─────────────────────────────────────────────────────────────────────────
+
+export interface Rect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Room kept free at the bottom of the message column, above the composer:
+ * the typing indicator and the "jump to latest" button (40px + gap) live
+ * there, so a card docked bottom-right doesn't hide them.
+ */
+export const REGION_BOTTOM_LANE = 56;
+
+/** A region narrower than this can't hold the smallest card (+ margins): show the pill. */
+export const MIN_REGION_WIDTH = MIN_WIDTH + DOCK_MARGIN * 2;
+/** Likewise for height (card + bottom lane + margins). */
+export const MIN_REGION_HEIGHT = MIN_HEIGHT + REGION_BOTTOM_LANE + DOCK_MARGIN * 2;
+
+/** The message column (above the composer) as a Viewport for the geometry above. */
+export const regionViewport = (region: Rect): Viewport => ({
+  left: region.left,
+  top: region.top,
+  width: region.width,
+  height: region.height,
+  bottomInset: REGION_BOTTOM_LANE,
+});
+
+export const regionFitsCard = (region: Rect): boolean =>
+  region.width >= MIN_REGION_WIDTH && region.height >= MIN_REGION_HEIGHT;
+
+/**
+ * Default card for a message column: docked bottom-right, at most 45% of
+ * the column's width (480px max, 320px min), 4:3.
+ */
+export const defaultRegionPlacement = (region: Rect): PipPlacement => {
+  const width = Math.round(Math.min(DEFAULT_WIDTH, Math.max(MIN_WIDTH, region.width * 0.45)));
+  return {
+    ...defaultPlacement(),
+    size: { width, height: Math.max(MIN_HEIGHT, Math.round((width * 3) / 4)) },
+  };
+};
+
+/** Window-width buckets the message-column placement is remembered per. */
+export const viewportBucket = (windowWidth: number): string => {
+  if (windowWidth < 1280) return 'lt1280';
+  if (windowWidth < 1600) return '1280';
+  if (windowWidth < 1920) return '1600';
+  if (windowWidth < 2560) return '1920';
+  return '2560';
+};

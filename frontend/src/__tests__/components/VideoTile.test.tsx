@@ -284,4 +284,53 @@ describe('VideoTile', () => {
       expect(pub.track.attach).toHaveBeenCalledWith(video);
     });
   });
+
+  describe('avatar tile (P14)', () => {
+    const mic = (muted: boolean) => createMockTrackPublication('microphone', muted);
+
+    it('puts the name (and "(You)") under the avatar, with no corner dots when nothing is unusual', () => {
+      renderTile({
+        isLocal: true,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        audioTrack: mic(false) as any,
+      });
+      const tile = screen.getByTestId('voice-avatar-tile');
+      expect(tile).toHaveTextContent('RemoteUser (You)');
+      expect(screen.queryByTestId(/voice-badge-/)).not.toBeInTheDocument();
+      expect(screen.queryByTestId('MicIcon')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('VideocamOffIcon')).not.toBeInTheDocument();
+    });
+
+    it('self-muted is a grey mic-off; server-muted is red', () => {
+      const { unmount } = renderTile({});
+      expect(screen.getByTestId('voice-badge-muted')).toHaveAttribute('data-tone', 'neutral');
+      unmount();
+
+      renderTile({ isServerMuted: true });
+      expect(screen.getByTestId('voice-badge-server-muted')).toHaveAttribute('data-tone', 'danger');
+      expect(screen.queryByTestId('voice-badge-muted')).not.toBeInTheDocument();
+    });
+
+    it('shows deafened from the participant metadata', () => {
+      renderTile({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        participant: { ...createMockParticipant('Deaf'), metadata: JSON.stringify({ isDeafened: true }) } as any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        audioTrack: mic(false) as any,
+      });
+      expect(screen.getByTestId('voice-badge-deafened')).toBeInTheDocument();
+    });
+
+    it('rings the avatar while speaking, and the tile edge glows', () => {
+      mockIsSpeaking.mockReturnValue(true);
+      renderTile({});
+      expect(screen.getByTestId('voice-tile-avatar')).toHaveAttribute('data-speaking', 'true');
+    });
+
+    it('does not ring the avatar while quiet', () => {
+      renderTile({});
+      expect(screen.getByTestId('voice-tile-avatar')).toHaveAttribute('data-speaking', 'false');
+    });
+  });
 });
+

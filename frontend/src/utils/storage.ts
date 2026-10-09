@@ -1,8 +1,13 @@
-// Generic localStorage abstraction with optional expiration
+// Generic localStorage abstraction with optional expiration.
+//
+// Every access is wrapped in try/catch: the localStorage accessor itself can
+// throw (private windows, blocked site data, sandboxed previews), and a
+// quota-exceeded write must never break the UI. Reads fall back to null and
+// writes are best-effort.
 export function getCachedItem<T>(key: string): T | null {
-  const raw = localStorage.getItem(key);
-  if (!raw) return null;
   try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (parsed && typeof parsed === "object" && parsed._expiresAt) {
       if (Date.now() > parsed._expiresAt) {
@@ -18,16 +23,24 @@ export function getCachedItem<T>(key: string): T | null {
 }
 
 export function setCachedItem<T>(key: string, value: T, ttlMs?: number) {
-  if (ttlMs) {
-    localStorage.setItem(
-      key,
-      JSON.stringify({ value, _expiresAt: Date.now() + ttlMs })
-    );
-  } else {
-    localStorage.setItem(key, JSON.stringify(value));
+  try {
+    if (ttlMs) {
+      localStorage.setItem(
+        key,
+        JSON.stringify({ value, _expiresAt: Date.now() + ttlMs })
+      );
+    } else {
+      localStorage.setItem(key, JSON.stringify(value));
+    }
+  } catch {
+    // Best-effort: storage unavailable or full.
   }
 }
 
 export function removeCachedItem(key: string) {
-  localStorage.removeItem(key);
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // Best-effort: storage unavailable.
+  }
 }

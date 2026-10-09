@@ -18,6 +18,10 @@ import { useVoice, useVoiceDispatch, VoiceActionType } from '../../contexts/Voic
 import { useTrackSubscriptionActions } from '../../hooks/useTrackSubscription';
 import VideoTile from './VideoTile';
 import CompactVoiceTile, { COMPACT_TILE_HEIGHT } from './CompactVoiceTile';
+import SoloCallPanel from './SoloCallPanel';
+import { useServerMutedVoiceUsers } from '../../hooks/useServerMutedVoiceUsers';
+import { ROOM_EVENT } from '../../features/voice/livekitEvents';
+import { VoiceSessionType } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
 
 // Re-exported so existing importers of VideoLayoutMode from this module keep working.
@@ -39,6 +43,13 @@ const GRID_CONSTANTS = {
 export const PHONE_COMPACT_TILE_THRESHOLD = 6;
 /** Minimum compact-tile width: 3 columns at 320-390px, more in landscape. */
 const COMPACT_TILE_MIN_WIDTH = 96;
+/**
+ * Desktop grid: no camera/avatar tile grows past this (about a third of a
+ * 1920 screen), so a small call doesn't fill a big monitor with grey. Screen
+ * shares are exempt — they need the room.
+ */
+export const GRID_TILE_MAX_WIDTH = 640;
+const GRID_TILE_MAX_HEIGHT = 480;
 import { Track, RoomEvent } from 'livekit-client';
 import type {
   TrackPublication,
@@ -66,6 +77,9 @@ export const VideoTiles: React.FC = () => {
   const { dispatch } = useVoiceDispatch();
   const trackActions = useTrackSubscriptionActions();
   const [trackUpdate, setTrackUpdate] = useState(0); // Force re-render on track changes
+  const serverMuted = useServerMutedVoiceUsers(
+    state.contextType === VoiceSessionType.Channel ? state.currentChannelId : null,
+  );
 
   // Define callbacks before any early returns (React hooks must be called unconditionally)
   // Memoize grid layout calculation
@@ -275,6 +289,8 @@ export const VideoTiles: React.FC = () => {
     state.room.on(RoomEvent.TrackUnmuted, handleTrackChange);
     state.room.on(RoomEvent.ParticipantDisconnected, handleTrackChange);
     state.room.on(RoomEvent.ParticipantConnected, handleTrackChange);
+    // Deafen state lives in participant metadata
+    state.room.on(ROOM_EVENT.ParticipantMetadataChanged, handleTrackChange);
 
     return () => {
       state.room?.localParticipant.off('trackPublished', handleTrackChange);
@@ -287,6 +303,7 @@ export const VideoTiles: React.FC = () => {
       state.room?.off(RoomEvent.TrackUnmuted, handleTrackChange);
       state.room?.off(RoomEvent.ParticipantDisconnected, handleTrackChange);
       state.room?.off(RoomEvent.ParticipantConnected, handleTrackChange);
+      state.room?.off(ROOM_EVENT.ParticipantMetadataChanged, handleTrackChange);
     };
   }, [state.room]);
 
@@ -342,8 +359,10 @@ export const VideoTiles: React.FC = () => {
   }
 
   // Layout rendering functions
-  const renderGridTile = (tile: VideoTileData) => (
+  const renderGridTile = (tile: VideoTileData, compact = false) => (
     <VideoTile
+      compact={compact}
+      isServerMuted={serverMuted.has(tile.participant.identity)}
       participant={tile.participant}
       videoTrack={tile.videoTrack}
       audioTrack={tile.audioTrack}
@@ -392,6 +411,7 @@ export const VideoTiles: React.FC = () => {
               participant={tile.participant}
               audioTrack={tile.audioTrack}
               isLocal={tile.isLocal}
+              isServerMuted={serverMuted.has(tile.participant.identity)}
             />
           );
         }
@@ -421,17 +441,21 @@ export const VideoTiles: React.FC = () => {
     const rows = Math.ceil(videoTiles.length / cols);
     const tileWidth = `${100 / cols}%`;
     const tileHeight = `${100 / rows}%`;
+    // Desktop only, and not with a screen share in the grid (see GRID_TILE_MAX_WIDTH)
+    const capped = !isMobile && !videoTiles.some((t) => t.tileType === 'screen');
 
     return (
       <Box
         data-testid="video-tiles-grid"
         data-density="regular"
+        data-capped={capped ? 'true' : 'false'}
         sx={{
           display: 'flex',
           flexWrap: 'wrap',
           height: '100%',
           width: '100%',
           overflow: 'hidden',
+          ...(capped && { justifyContent: 'center', alignContent: 'center' }),
         }}
       >
         {videoTiles.map((tile) => (
@@ -440,6 +464,7 @@ export const VideoTiles: React.FC = () => {
             sx={{
               width: tileWidth,
               height: tileHeight,
+              ...(capped && { maxWidth: GRID_TILE_MAX_WIDTH, maxHeight: GRID_TILE_MAX_HEIGHT }),
               p: 0.5,
               boxSizing: 'border-box',
             }}
@@ -448,6 +473,40 @@ export const VideoTiles: React.FC = () => {
           </Box>
         ))}
       </Box>
+    );
+  };
+
+  // Alone in the call (and not sharing a screen): a "you're the only one
+  // here" panel with your own tile as a corner thumbnail.
+  const isSolo =
+    state.room.remoteParticipants.size === 0 &&
+    videoTiles.length > 0 &&
+    videoTiles.every((t) => t.isLocal && (t.tileType === 'avatar' || t.tileType === 'camera'));
+
+  const renderSoloLayout = () => {
+    const ownTile = videoTiles.find((t) => t.tileType === 'camera') ?? videoTiles[0];
+    const isChannel = state.contextType === VoiceSessionType.Channel;
+    return (
+      <SoloCallPanel
+        compact={isMobile}
+        title={(isChannel ? state.channelName : state.dmGroupName) || 'Voice'}
+        channelLink={
+          isChannel && state.communityId && state.currentChannelId
+            ? { communityId: state.communityId, channelId: state.currentChannelId }
+            : undefined
+        }
+        thumbnail={
+          <VideoTile
+            compact
+            participant={ownTile.participant}
+            videoTrack={ownTile.videoTrack}
+            audioTrack={ownTile.audioTrack}
+            isLocal
+            isReplayBufferActive={isReplayBufferActive}
+            isServerMuted={serverMuted.has(ownTile.participant.identity)}
+          />
+        }
+      />
     );
   };
 
@@ -486,6 +545,7 @@ export const VideoTiles: React.FC = () => {
           }
         >
           <VideoTile
+            isServerMuted={serverMuted.has(pinnedTile.participant.identity)}
             participant={pinnedTile.participant}
             videoTrack={pinnedTile.videoTrack}
             audioTrack={pinnedTile.audioTrack}
@@ -533,6 +593,7 @@ export const VideoTiles: React.FC = () => {
                 minWidth: 0,
               }}>
                 <VideoTile
+                  isServerMuted={serverMuted.has(tile.participant.identity)}
                   participant={tile.participant}
                   videoTrack={tile.videoTrack}
                   audioTrack={tile.audioTrack}
@@ -565,6 +626,7 @@ export const VideoTiles: React.FC = () => {
     return (
       <Box sx={{ height: '100%', width: '100%' }}>
         <VideoTile
+          isServerMuted={serverMuted.has(spotlightedTile.participant.identity)}
           participant={spotlightedTile.participant}
           videoTrack={spotlightedTile.videoTrack}
           audioTrack={spotlightedTile.audioTrack}
@@ -661,9 +723,13 @@ export const VideoTiles: React.FC = () => {
 
       {/* Main Video Area */}
       <Box sx={{ flex: 1, overflow: 'hidden', p: isMobile ? 0.5 : 1, minHeight: 0 }}>
-        {layoutMode === VideoLayoutMode.Grid && renderGridLayout()}
-        {layoutMode === VideoLayoutMode.Sidebar && renderSidebarLayout()}
-        {layoutMode === VideoLayoutMode.Spotlight && renderSpotlightLayout()}
+        {isSolo ? renderSoloLayout() : (
+          <>
+            {layoutMode === VideoLayoutMode.Grid && renderGridLayout()}
+            {layoutMode === VideoLayoutMode.Sidebar && renderSidebarLayout()}
+            {layoutMode === VideoLayoutMode.Spotlight && renderSpotlightLayout()}
+          </>
+        )}
       </Box>
     </Box>
   );

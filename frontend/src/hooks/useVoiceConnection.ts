@@ -55,7 +55,8 @@ export const useVoiceConnection = () => {
       channelName: string,
       communityId: string,
       isPrivate: boolean,
-      createdAt: string
+      createdAt: string,
+      options: { startMuted?: boolean } = {},
     ) => {
       logger.info('[useVoiceConnection] handleJoinVoiceChannel called');
       logger.info('[useVoiceConnection] user:', user?.id, 'connectionInfo:', !!connectionInfo);
@@ -97,6 +98,7 @@ export const useVoiceConnection = () => {
           },
           // Forward the full backend payload so future connection fields are preserved.
           connectionInfo: livekitConnectionInfo,
+          startMuted: options.startMuted,
         },
         deps
       );

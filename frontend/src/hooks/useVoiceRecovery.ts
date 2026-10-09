@@ -61,7 +61,9 @@ export function useVoiceRecovery() {
             savedConnection.channelName,
             savedConnection.communityId,
             savedConnection.isPrivate ?? false,
-            savedConnection.createdAt ?? new Date().toISOString()
+            savedConnection.createdAt ?? new Date().toISOString(),
+            // Keep the mic off if it was off (older saved records lack the field)
+            { startMuted: savedConnection.micMuted === true },
           );
 
           logger.info('[VoiceRecovery] ✓ Successfully recovered channel voice connection');

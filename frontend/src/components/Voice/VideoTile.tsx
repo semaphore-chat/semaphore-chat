@@ -9,10 +9,7 @@ import {
 } from '@mui/material';
 import { useTheme, alpha } from '@mui/material/styles';
 import {
-  Mic,
-  MicOff,
   Videocam,
-  VideocamOff,
   ScreenShare,
   FiberManualRecord,
   VisibilityOff,
@@ -28,6 +25,25 @@ import ScreenShareVolumeControl from './ScreenShareVolumeControl';
 import { useSpeaking } from '../../hooks/useSpeaking';
 import { useResponsive } from '../../hooks/useResponsive';
 import { setScreenShareFocused } from '../../utils/screenShareViewQuality';
+import { voiceTileColor } from '../../utils/voiceTileColor';
+import { voiceStatusBadges } from './components/voiceUserState';
+import { VoiceStatusBadges } from './components/VoiceStatusBadges';
+
+/**
+ * The avatar's initial scales with the avatar (container-query height units),
+ * not the type scale: a 128px circle with a 20px letter looks empty.
+ */
+const AVATAR_INITIAL_SCALE = '42cqh';
+
+/** Is this participant deafened, per their LiveKit metadata (`{ isDeafened }`). */
+function isParticipantDeafened(participant: { metadata?: string }): boolean {
+  if (!participant.metadata) return false;
+  try {
+    return Boolean(JSON.parse(participant.metadata)?.isDeafened);
+  } catch {
+    return false;
+  }
+}
 
 export interface VideoTileProps {
   participant: RemoteParticipant | LocalParticipant;
@@ -47,6 +63,10 @@ export interface VideoTileProps {
   placeholderType?: 'camera' | 'screen';
   onWatch?: () => void;
   onStopWatching?: () => void;
+  /** Server-muted by a moderator (from voice presence; LiveKit doesn't carry it). */
+  isServerMuted?: boolean;
+  /** Smaller type and avatar, for thumbnails (solo-call corner tile). */
+  compact?: boolean;
 }
 
 const VideoTile: React.FC<VideoTileProps> = ({
@@ -63,6 +83,8 @@ const VideoTile: React.FC<VideoTileProps> = ({
   placeholderType,
   onWatch,
   onStopWatching,
+  isServerMuted = false,
+  compact = false,
 }) => {
   const theme = useTheme();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -72,14 +94,25 @@ const VideoTile: React.FC<VideoTileProps> = ({
   // Touch layouts never hover, so the name/status strip stays visible there.
   const { shouldUseTouchUI } = useResponsive();
 
-  // Discord-style speaking ring: constant transparent border swapped to the
-  // positive status color while speaking, so the ring never shifts layout.
-  // Applied to camera and avatar/placeholder tiles only — never screen shares.
+  // Speaking: the tile edge turns the positive colour AND glows (the border
+  // is always 2px — transparent when quiet — so it never shifts layout). On
+  // avatar tiles the avatar also gets a 3px ring (see below). Never on screen
+  // shares. The glow pulses, except under prefers-reduced-motion.
+  const positive = theme.palette.semantic.status.positive;
   const speakingRingSx = (active: boolean) => ({
-    border: active
-      ? `2px solid ${theme.palette.semantic.status.positive}`
-      : '2px solid transparent',
-    transition: 'border-color 0.2s ease',
+    border: active ? `2px solid ${positive}` : '2px solid transparent',
+    boxShadow: active
+      ? `inset 0 0 0 1px ${positive}, 0 0 18px ${alpha(positive, 0.45)}`
+      : 'none',
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+    ...(active && {
+      animation: 'voiceTileGlow 1.6s ease-in-out infinite',
+      '@keyframes voiceTileGlow': {
+        '0%, 100%': { boxShadow: `inset 0 0 0 1px ${positive}, 0 0 10px ${alpha(positive, 0.3)}` },
+        '50%': { boxShadow: `inset 0 0 0 1px ${positive}, 0 0 22px ${alpha(positive, 0.55)}` },
+      },
+      '@media (prefers-reduced-motion: reduce)': { animation: 'none' },
+    }),
   });
   // Handle video track
   useEffect(() => {
@@ -129,6 +162,14 @@ const VideoTile: React.FC<VideoTileProps> = ({
   const hasAudio = audioTrack && !audioTrack.isMuted;
   const displayName = participant.name || participant.identity;
   const isSharing = hasScreen;
+  const speaking = isSpeaking(participant.identity);
+  // Only the unusual: self-muted (grey), server-muted (red), deafened (grey).
+  const badges = voiceStatusBadges({
+    isMuted: !hasAudio,
+    isDeafened: isParticipantDeafened(participant),
+    isServerMuted,
+  });
+  const tint = voiceTileColor(participant.identity);
 
   // Placeholder tile for unwatched streams — whole tile is clickable
   if (isPlaceholder && onWatch) {
@@ -240,94 +281,90 @@ const VideoTile: React.FC<VideoTileProps> = ({
         />
       ) : (
         <Box
+          data-testid="voice-avatar-tile"
           sx={{
             width: '100%',
             height: '100%',
             display: 'flex',
+            flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            backgroundColor: 'grey.800',
+            gap: compact ? 0.5 : 1.5,
+            px: 1,
+            boxSizing: 'border-box',
+            backgroundColor: 'grey.900',
+            backgroundImage: `radial-gradient(circle at 50% 42%, ${alpha(tint, 0.32)}, ${alpha(tint, 0.12)} 70%)`,
           }}
         >
-          <Box sx={{ height: 'min(120px, 60%)', aspectRatio: '1 / 1', flexShrink: 1, minHeight: 32 }}>
-            <UserAvatar userId={participant.identity} displayName={participant.name} size="fluid" />
+          <Box
+            data-testid="voice-tile-avatar"
+            data-speaking={speaking ? 'true' : 'false'}
+            sx={{
+              height: compact ? 'min(64px, 55%)' : 'min(128px, 50%)',
+              aspectRatio: '1 / 1',
+              flexShrink: 1,
+              minHeight: 28,
+              borderRadius: '50%',
+              // Size the initial with the avatar (container query units)
+              containerType: 'size',
+              '& .MuiAvatar-root': { fontSize: AVATAR_INITIAL_SCALE },
+              boxShadow: speaking ? `0 0 0 3px ${positive}` : '0 0 0 3px transparent',
+              transition: 'box-shadow 0.15s ease',
+            }}
+          >
+            <UserAvatar
+              userId={participant.identity}
+              displayName={participant.name}
+              size="fluid"
+              fallbackColor={tint}
+            />
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, maxWidth: '100%', minWidth: 0 }}>
+            <Typography
+              variant={compact ? 'caption' : 'body2'}
+              noWrap
+              sx={{ color: 'grey.100', fontWeight: 600, minWidth: 0 }}
+            >
+              {displayName}{isLocal && ' (You)'}
+            </Typography>
+            <VoiceStatusBadges badges={badges} size={compact ? 14 : 16} />
           </Box>
         </Box>
       )}
 
-      {/* Overlay Controls */}
-      <Fade in={isHovered || !hasVideo || shouldUseTouchUI}>
+      {/* Name + unusual states, over video only (avatar tiles show them under the avatar) */}
+      {(hasVideo || hasScreen) && (
+      <Fade in={isHovered || shouldUseTouchUI}>
         <Box
           sx={{
             position: 'absolute',
             bottom: 0,
             left: 0,
             right: 0,
-            backgroundImage: `linear-gradient(transparent, ${alpha(theme.palette.background.paper, 0.85)})`,
+            backgroundImage: `linear-gradient(transparent, ${alpha(theme.palette.common.black, 0.7)})`,
             p: 1,
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1, mr: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0, flex: 1 }}>
             <Typography
-              variant="caption"
+              variant="body2"
               noWrap
               sx={{
                 color: 'white',
-                fontWeight: 'bold',
+                fontWeight: 600,
                 textShadow: '1px 1px 2px rgba(0,0,0,0.8)',
                 minWidth: 0,
               }}
             >
               {displayName} {isLocal && '(You)'} {isSharing && ' - Screen'}
             </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', gap: 0.5 }}>
-            {/* Audio indicator */}
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: hasAudio ? alpha(theme.palette.semantic.status.positive, 0.8) : alpha(theme.palette.semantic.status.negative, 0.8),
-              }}
-            >
-              {hasAudio ? (
-                <Mic sx={{ fontSize: 'icon.xs', color: 'white' }} />
-              ) : (
-                <MicOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
-              )}
-            </Box>
-
-            {/* Video/Screen share indicator */}
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '50%',
-                backgroundColor: (hasVideo || hasScreen) ? alpha(theme.palette.semantic.status.positive, 0.8) : alpha(theme.palette.semantic.status.negative, 0.8),
-              }}
-            >
-              {hasScreen ? (
-                <ScreenShare sx={{ fontSize: 'icon.xs', color: 'white' }} />
-              ) : hasVideo ? (
-                <Videocam sx={{ fontSize: 'icon.xs', color: 'white' }} />
-              ) : (
-                <VideocamOff sx={{ fontSize: 'icon.xs', color: 'white' }} />
-              )}
-            </Box>
+            <VoiceStatusBadges badges={badges} size={16} />
           </Box>
         </Box>
       </Fade>
+      )}
 
       {/* Action buttons - top right */}
       <Fade in={isHovered || isSpotlighted}>

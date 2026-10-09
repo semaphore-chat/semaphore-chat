@@ -56,10 +56,10 @@ ARG BUILD_DATE
 # Pull in Alpine security patches first — the nginx base image can lag fixed
 # packages (e.g. openssl CVEs in libcrypto3/libssl3), which fails the Trivy
 # gate in CI. Then install gettext for envsubst (env variable substitution).
-# The pcre2 floor (CVE-2026-103111) both enforces the patched version and
-# busts this layer's build cache (a cached `apk upgrade` layer keeps serving
-# stale packages).
-RUN apk upgrade --no-cache && apk add --no-cache gettext 'pcre2>=10.49-r0'
+# The pcre2 (CVE-2026-103111) and tiff (CVE-2026-4775) floors both enforce
+# the patched versions and bust this layer's build cache (a cached
+# `apk upgrade` layer keeps serving stale packages).
+RUN apk upgrade --no-cache && apk add --no-cache gettext 'pcre2>=10.49-r0' 'tiff>=4.7.2-r0'
 
 # Remove default nginx config
 RUN rm /etc/nginx/nginx.conf

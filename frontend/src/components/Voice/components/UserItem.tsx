@@ -8,7 +8,6 @@ import {
   Divider,
 } from "@mui/material";
 import {
-  Mic,
   MicOff,
   Videocam,
   ScreenShare,
@@ -17,7 +16,6 @@ import {
 import type { VoicePresenceUserDto } from "../../../api-client/types.gen";
 import { useParticipantTracks } from "../../../hooks/useParticipantTracks";
 import UserAvatar from "../../Common/UserAvatar";
-import { formatDistanceToNow } from "date-fns";
 import { deriveUserState } from "./voiceUserState";
 import { useResponsive } from "../../../hooks/useResponsive";
 import { useLongPress } from "../../../hooks/useSwipeGesture";
@@ -67,8 +65,8 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
 
   const statusIcons = [];
 
+  // Only the unusual: no "mic on" icon on every row.
   if (userState.isMuted) statusIcons.push(<MicOff key="muted" fontSize="small" />);
-  else statusIcons.push(<Mic key="mic" fontSize="small" />);
 
   if (userState.isDeafened)
     statusIcons.push(<VolumeOff key="deafened" fontSize="small" />);
@@ -76,10 +74,6 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
     statusIcons.push(<Videocam key="video" fontSize="small" />);
   if (userState.isScreenSharing)
     statusIcons.push(<ScreenShare key="screen" fontSize="small" />);
-
-  const joinedAgo = formatDistanceToNow(new Date(user.joinedAt), {
-    addSuffix: true,
-  });
 
   return (
     <React.Fragment key={user.id}>
@@ -127,13 +121,6 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
                 ))}
               </Box>
             </Box>
-          }
-          secondary={
-            !showInline && (
-              <Typography variant="caption" color="text.secondary">
-                Joined {joinedAgo}
-              </Typography>
-            )
           }
         />
       </ListItem>
