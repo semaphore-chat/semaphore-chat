@@ -212,7 +212,18 @@ export const StickySaveBar: React.FC<StickySaveBarProps> = ({
     role="region"
     aria-label="Unsaved changes"
     elevation={8}
-    sx={{ mt: 2, px: 2, py: 1.25, display: "flex", alignItems: "center", gap: 1.5, flexWrap: "wrap" }}
+    sx={{
+      mt: 2,
+      px: 2,
+      py: 1.25,
+      display: "flex",
+      alignItems: "center",
+      gap: 1.5,
+      flexWrap: "wrap",
+      // Stands apart from the card it floats over (shadows barely show in dark mode).
+      border: 1,
+      borderColor: "primary.main",
+    }}
   >
     <Typography variant="listItem" sx={{ flex: 1, minWidth: 0 }}>
       {message}

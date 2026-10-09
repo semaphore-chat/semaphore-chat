@@ -79,5 +79,6 @@ FriendsShell.meta = { viewports: ['desktop-1280', 'desktop-1920'] };
 export const ProfileShell = defineScreen(bigCommunityScenario, `/profile/${bigCommunityScenario.me.id}`);
 ProfileShell.meta = { viewports: ['desktop-1920'] };
 
-export const AdminUsersShell = defineScreen(bigCommunityScenario, '/admin/users');
-AdminUsersShell.meta = { viewports: ['desktop-1920'] };
+// /admin/communities: the sandbox has no fixture for the users table.
+export const AdminCommunitiesShell = defineScreen(bigCommunityScenario, '/admin/communities');
+AdminCommunitiesShell.meta = { viewports: ['desktop-1920'] };
