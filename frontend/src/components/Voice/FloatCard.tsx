@@ -43,7 +43,13 @@ import {
   hitTestDockZone,
   defaultPlacement,
   isValidPlacement,
+  defaultRegionPlacement,
+  regionFitsCard,
+  regionViewport,
+  viewportBucket,
+  type Rect,
 } from '../../utils/pipPosition';
+import { useFloatDockRegion } from '../../hooks/useFloatDockRegion';
 import UserAvatar from '../Common/UserAvatar';
 import VideoTile from './VideoTile';
 import DockZonesOverlay from './DockZonesOverlay';
@@ -64,9 +70,18 @@ const DRAG_THRESHOLD_PX = 5;
 /** Visible size of the float card's control buttons on touch (hit area is 44px). */
 const FLOAT_TOUCH_BUTTON = 36;
 
-function loadInitialPlacement(): PipPlacement {
-  const saved = getCachedItem<unknown>(PIP_PLACEMENT_KEY);
-  return isValidPlacement(saved) ? saved : defaultPlacement();
+/**
+ * Placement inside the message column, remembered per window-width bucket
+ * (a spot that suits a 2560 window rarely suits a 1280 one). The window-
+ * based placement keeps the original single key, unchanged.
+ */
+const chatPlacementKey = (windowWidth: number) => `${PIP_PLACEMENT_KEY}:chat:${viewportBucket(windowWidth)}`;
+
+function loadPlacement(region: Rect | null): PipPlacement {
+  const key = region ? chatPlacementKey(window.innerWidth) : PIP_PLACEMENT_KEY;
+  const saved = getCachedItem<unknown>(key);
+  if (isValidPlacement(saved)) return saved;
+  return region ? defaultRegionPlacement(region) : defaultPlacement();
 }
 
 /**
@@ -125,8 +140,30 @@ export const FloatCard: React.FC = () => {
   ).px;
   const [isCardHovered, setIsCardHovered] = useState(false);
 
-  const [placement, setPlacement] = useState<PipPlacement>(loadInitialPlacement);
-  const [viewport, setViewport] = useState<Viewport>(() => computeViewport(state.isConnected, chromeBottom));
+  // Desktop text views: dock inside the message column, above the composer
+  // (null elsewhere — voice stage, settings, touch layouts — where the card
+  // keeps its original window-based placement).
+  const region = useFloatDockRegion(!touchLayout);
+  const regionMode = region !== null;
+  // A column too small for even the smallest card shows the pill instead.
+  const forcePill = !!region && !regionFitsCard(region);
+  const storageKey = region ? chatPlacementKey(window.innerWidth) : PIP_PLACEMENT_KEY;
+
+  const [placement, setPlacement] = useState<PipPlacement>(() => loadPlacement(region));
+  const [viewport, setViewport] = useState<Viewport>(() =>
+    region ? regionViewport(region) : computeViewport(state.isConnected, chromeBottom),
+  );
+
+  // Switching between window and column placement (or between width
+  // buckets) loads that mode's own saved placement.
+  const loadedKeyRef = useRef(storageKey);
+  useEffect(() => {
+    if (loadedKeyRef.current === storageKey) return;
+    loadedKeyRef.current = storageKey;
+    const next = loadPlacement(region);
+    setPlacement({ ...next, collapsed: state.pipCollapsed });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the storage key changes
+  }, [storageKey]);
 
   // Transient gesture state — absolute pixel position/size while a
   // drag/resize is in progress. null when idle, so rendered position/size
@@ -163,18 +200,20 @@ export const FloatCard: React.FC = () => {
   // Position is derived (toAbsolute), so viewport changes only need to
   // re-clamp size — the old dedicated position-clamp effect is gone.
   const recomputeViewport = useCallback(() => {
-    const vp = computeViewport(state.isConnected, chromeBottom);
+    const vp = region ? regionViewport(region) : computeViewport(state.isConnected, chromeBottom);
     setViewport(vp);
+    // Too-small column: the pill shows; don't shrink (and persist) the card.
+    if (region && !regionFitsCard(region)) return;
     setPlacement(prev => {
       const clampedSize = clampSizeToViewport(prev.size, vp);
       if (clampedSize.width === prev.size.width && clampedSize.height === prev.size.height) {
         return prev;
       }
       const next = { ...prev, size: clampedSize };
-      setCachedItem(PIP_PLACEMENT_KEY, next);
+      setCachedItem(storageKey, next);
       return next;
     });
-  }, [state.isConnected, chromeBottom]);
+  }, [state.isConnected, chromeBottom, region, storageKey]);
 
   // Re-derive on mount and whenever the voice bar's presence (or the
   // bottom chrome's height) changes.
@@ -195,9 +234,11 @@ export const FloatCard: React.FC = () => {
   }, [state.pipCollapsed]);
 
   useEffect(() => {
+    // Column mode re-derives from the region store, which already tracks resizes.
+    if (regionMode) return;
     window.addEventListener('resize', recomputeViewport);
     return () => window.removeEventListener('resize', recomputeViewport);
-  }, [recomputeViewport]);
+  }, [recomputeViewport, regionMode]);
 
   // Drag handlers. handleDragStart only "arms" the gesture (isPointerDown) —
   // it doesn't show dock zones or move the card yet. handleDragMove promotes
@@ -257,8 +298,8 @@ export const FloatCard: React.FC = () => {
       ? { ...placement, anchor: zone, offset: { x: 0, y: 0 }, docked: true }
       : { ...placement, ...fromAbsolute(dropPos, placement.size, viewport), docked: false };
     setPlacement(nextPlacement);
-    setCachedItem(PIP_PLACEMENT_KEY, nextPlacement);
-  }, [placement, viewport]);
+    setCachedItem(storageKey, nextPlacement);
+  }, [placement, viewport, storageKey]);
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.PointerEvent) => {
@@ -301,8 +342,8 @@ export const FloatCard: React.FC = () => {
       ? { ...placement, size: finalSize }
       : { ...placement, size: finalSize, ...fromAbsolute(frozenPos, finalSize, viewport) };
     setPlacement(nextPlacement);
-    setCachedItem(PIP_PLACEMENT_KEY, nextPlacement);
-  }, [isResizing, liveSize, dragPos, placement, viewport]);
+    setCachedItem(storageKey, nextPlacement);
+  }, [isResizing, liveSize, dragPos, placement, viewport, storageKey]);
 
   // Global pointer event listeners for drag/resize (pointer events unify mouse
   // and touch, so this works for touch tablets as well as mouse users)
@@ -358,8 +399,9 @@ export const FloatCard: React.FC = () => {
     navigate(target);
   }, [state, navigate]);
 
-  // Minimized view (pill)
-  if (state.pipCollapsed) {
+  // Minimized view (pill) — also when the message column is too small for
+  // the card; then a click opens the call instead of expanding the card.
+  if (state.pipCollapsed || forcePill) {
     const pillPos = toAbsolute(placement, viewport, PILL_SIZE);
     return (
       <Paper
@@ -379,7 +421,7 @@ export const FloatCard: React.FC = () => {
             transform: 'scale(1.05)',
           },
         }}
-        onClick={toggleCollapsed}
+        onClick={forcePill && !state.pipCollapsed ? handleCardClick : toggleCollapsed}
       >
         <Box
           sx={{

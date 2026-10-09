@@ -371,6 +371,8 @@ export function createMediaRoom(
   me: VoicePersona,
   remotes: VoicePersona[],
   watched: { cameras?: string[]; screens?: string[] } = {},
+  /** The local participant's LiveKit ConnectionQuality (voice bar signal bars). */
+  connectionQuality: 'excellent' | 'good' | 'poor' | 'lost' | 'unknown' = 'excellent',
 ): Room {
   const emitter = new Emitter();
   const remoteParticipants = new Map<string, RemoteParticipant>();
@@ -389,8 +391,10 @@ export function createMediaRoom(
     .filter((p) => p.speaking && p.user.id !== me.user.id)
     .map((p) => remoteParticipants.get(p.user.id)!);
   if (speakers.length > 0) emitter.setSticky('activeSpeakersChanged', speakers);
+  const localParticipant = mediaParticipant(me, { camera: true, screen: true }) as unknown as LocalParticipant;
+  (localParticipant as unknown as { connectionQuality: string }).connectionQuality = connectionQuality;
   return {
-    localParticipant: mediaParticipant(me, { camera: true, screen: true }) as unknown as LocalParticipant,
+    localParticipant,
     remoteParticipants,
     on: emitter.on,
     off: emitter.off,

@@ -22,6 +22,11 @@ interface UserAvatarProps {
   showStatus?: boolean;
   isOnline?: boolean;
   clickable?: boolean;
+  /**
+   * Background for the initial when there's no image. Voice tiles only
+   * (see utils/voiceTileColor.ts); everywhere else keeps MUI's default.
+   */
+  fallbackColor?: string;
 }
 
 const UserAvatar: React.FC<UserAvatarProps> = ({
@@ -31,6 +36,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
   showStatus = false,
   isOnline = false,
   clickable = false,
+  fallbackColor,
 }) => {
   // "fluid" fills the parent container instead of using a fixed pixel size
   const avatarSize = size === "fluid" ? "100%" : sizeMap[size];
@@ -66,6 +72,7 @@ const UserAvatar: React.FC<UserAvatarProps> = ({
       sx={{
         width: avatarSize,
         height: avatarSize,
+        ...(fallbackColor && !blobUrl && { bgcolor: fallbackColor, color: "common.white" }),
         cursor: clickable && userId ? "pointer" : "default",
         transition: "opacity 0.2s",
         "&:hover": clickable && userId ? { opacity: 0.8 } : {},

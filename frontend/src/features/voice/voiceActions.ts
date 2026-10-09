@@ -204,7 +204,8 @@ async function connectToLiveKitRoom(
   url: string,
   token: string,
   setRoom: (room: Room | null) => void,
-  dispatch: React.Dispatch<VoiceAction>
+  dispatch: React.Dispatch<VoiceAction>,
+  options: { startMuted?: boolean } = {},
 ): Promise<Room> {
   logger.info('[Voice] Creating new LiveKit room instance');
   // Dynamically import livekit-client (and its Web Worker timer shim) here —
@@ -272,8 +273,11 @@ async function connectToLiveKitRoom(
   const voiceSettings = getCachedItem<VoiceSettings>(VOICE_SETTINGS_KEY);
   const isPushToTalk = voiceSettings?.inputMode === 'push_to_talk';
 
-  if (isPushToTalk) {
-    logger.info('[Voice] Push to Talk mode - microphone starts disabled');
+  if (isPushToTalk || options.startMuted) {
+    // Push-to-talk, "Join muted" and listen-only joins (no SPEAK, whose token
+    // can't publish anyway) start with the mic off — and skip the up-to-5s
+    // wait for a mic enable that would fail.
+    logger.info(`[Voice] ${isPushToTalk ? 'Push to Talk mode' : 'Joining muted'} - microphone starts disabled`);
     try {
       await room.localParticipant.setMicrophoneEnabled(false);
     } catch {
@@ -342,13 +346,15 @@ interface JoinVoiceChannelParams {
   createdAt: string;
   user: { id: string; username: string; displayName?: string };
   connectionInfo: { url: string };
+  /** Join with the microphone off ("Join muted", or listen-only). */
+  startMuted?: boolean;
 }
 
 export async function joinVoiceChannel(
   params: JoinVoiceChannelParams,
   deps: VoiceActionDeps
 ) {
-  const { channelId, channelName, communityId, isPrivate, createdAt, user, connectionInfo } = params;
+  const { channelId, channelName, communityId, isPrivate, createdAt, user, connectionInfo, startMuted } = params;
   const { dispatch, setRoom } = deps;
 
   logger.info('[Voice] === Starting voice channel join ===');
@@ -383,7 +389,7 @@ export async function joinVoiceChannel(
     logger.info('[Voice] Got LiveKit token');
 
     logger.info('[Voice] Connecting to LiveKit room...');
-    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch);
+    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted });
 
     dispatch({
       type: VoiceActionType.SetConnected,

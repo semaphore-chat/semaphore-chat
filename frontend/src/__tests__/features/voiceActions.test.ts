@@ -222,6 +222,22 @@ describe('voiceActions', () => {
       });
     });
 
+    it('enables the microphone on a normal join', async () => {
+      const deps = createMockDeps();
+      await joinVoiceChannel(params, deps);
+
+      expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(true, expect.anything());
+    });
+
+    it('startMuted ("Join muted" / listen-only) keeps the microphone off', async () => {
+      const deps = createMockDeps();
+      await joinVoiceChannel({ ...params, startMuted: true }, deps);
+
+      expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
+      expect(mockRoomInstance.localParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
+      expect(deps.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: VoiceActionType.SetConnected }));
+    });
+
     it('requests a token and connects to the room', async () => {
       const deps = createMockDeps();
       await joinVoiceChannel(params, deps);

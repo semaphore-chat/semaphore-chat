@@ -2,7 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, act, within } from '@testing-library/react';
 import { useSyncExternalStore } from 'react';
 import { renderWithProviders } from '../test-utils';
-import { VideoTiles, PHONE_COMPACT_TILE_THRESHOLD } from '../../components/Voice/VideoTiles';
+import { VideoTiles, PHONE_COMPACT_TILE_THRESHOLD, GRID_TILE_MAX_WIDTH } from '../../components/Voice/VideoTiles';
+import { http, HttpResponse } from 'msw';
+import { server } from '../msw/server';
 import { VoiceSessionType, VoiceActionType } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
 
@@ -142,6 +144,11 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
     client: createClient(createConfig({ baseUrl: 'http://localhost:3000' })),
   };
 });
+
+const mockCopyToClipboard = vi.fn().mockResolvedValue(undefined);
+vi.mock('../../utils/clipboard', () => ({
+  copyToClipboard: (text: string) => mockCopyToClipboard(text),
+}));
 
 // --- Event emitter helpers ---
 type Handler = (...args: unknown[]) => void;
@@ -640,7 +647,7 @@ describe('VideoTiles', () => {
       expect(within(card).queryByTestId('MicIcon')).not.toBeInTheDocument();
     });
 
-    it('shows a live mic indicator when the mic publication is unmuted', () => {
+    it('shows no mic badge when the mic publication is unmuted (only unusual states get an icon)', () => {
       mockWatchingCameras = new Set(['TalkingSharer']);
       remoteParticipants.set(
         'remote-1',
@@ -655,8 +662,8 @@ describe('VideoTiles', () => {
 
       // Scoped to this participant's tile — the local avatar tile shows MicOffIcon.
       const card = screen.getByText('TalkingSharer').closest('[class*="MuiCard"]') as HTMLElement;
-      expect(within(card).getByTestId('MicIcon')).toBeInTheDocument();
       expect(within(card).queryByTestId('MicOffIcon')).not.toBeInTheDocument();
+      expect(within(card).queryByTestId('MicIcon')).not.toBeInTheDocument();
     });
   });
 
@@ -979,6 +986,104 @@ describe('VideoTiles', () => {
       const name = screen.getByText(/FatimaSatoTheUnbreakableNameWithNoSpacesAtAll/);
       expect(name).toHaveClass('MuiTypography-noWrap');
       expect(getComputedStyle(name).textOverflow).toBe('ellipsis');
+    });
+  });
+
+  describe('solo call (P14)', () => {
+    it('shows "You\'re the only one here", the channel and your own tile as a corner thumbnail', () => {
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByText("You're the only one here")).toBeInTheDocument();
+      expect(screen.getByText('General Voice')).toBeInTheDocument();
+      const thumb = screen.getByTestId('solo-call-thumbnail');
+      expect(within(thumb).getByText(/local-user/)).toBeInTheDocument();
+      expect(screen.queryByTestId('video-tiles-grid')).not.toBeInTheDocument();
+    });
+
+    it('copies the channel link', async () => {
+      const { user } = renderWithProviders(<VideoTiles />);
+
+      await user.click(screen.getByRole('button', { name: 'Copy channel link' }));
+
+      expect(mockCopyToClipboard).toHaveBeenCalledWith(expect.stringMatching(/\/#\/community\/c1\/channel\/ch-1$/));
+      expect(await screen.findByRole('button', { name: 'Link copied' })).toBeInTheDocument();
+    });
+
+    it('DM call: waits for others, with no link to copy', () => {
+      voiceState = { ...defaultVoiceState, contextType: VoiceSessionType.Dm, dmGroupName: 'Alex' as never, room: mockRoom };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: voiceState, actions: mockActions } as never);
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByText('Waiting for others to join…')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Copy channel link' })).not.toBeInTheDocument();
+    });
+
+    it('a solo screen share keeps the regular grid', () => {
+      vi.mocked(useLocalMediaState).mockReturnValue({
+        isCameraEnabled: false,
+        isMicrophoneEnabled: true,
+        isScreenShareEnabled: true,
+        audioTrack: undefined,
+        videoTrack: undefined,
+      });
+      mockLocalParticipant.videoTrackPublications.set('screen', createMockTrackPublication('screen_share'));
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.queryByTestId('solo-call-panel')).not.toBeInTheDocument();
+      expect(screen.getByTestId('video-tiles-grid')).toBeInTheDocument();
+    });
+
+    it('goes back to the grid when someone joins', () => {
+      renderWithProviders(<VideoTiles />);
+      expect(screen.getByTestId('solo-call-panel')).toBeInTheDocument();
+
+      remoteParticipants.set('remote-1', createMockParticipant('Joiner'));
+      act(() => emitRoomEvent('participantConnected'));
+
+      expect(screen.queryByTestId('solo-call-panel')).not.toBeInTheDocument();
+      expect(screen.getByText('Joiner')).toBeInTheDocument();
+    });
+  });
+
+  describe('desktop grid width cap (P14)', () => {
+    it('caps camera/avatar tiles and centres the grid', () => {
+      remoteParticipants.set('r1', createMockParticipant('A'));
+      remoteParticipants.set('r2', createMockParticipant('B'));
+      remoteParticipants.set('r3', createMockParticipant('C'));
+      renderWithProviders(<VideoTiles />);
+
+      const grid = screen.getByTestId('video-tiles-grid');
+      expect(grid).toHaveAttribute('data-capped', 'true');
+      expect(grid).toHaveStyle({ justifyContent: 'center' });
+      expect(grid.firstElementChild).toHaveStyle({ maxWidth: `${GRID_TILE_MAX_WIDTH}px` });
+    });
+
+    it('does not cap a grid with a screen share in it', () => {
+      mockWatchingScreenShares = new Set(['Sharer']);
+      remoteParticipants.set('r1', createMockParticipant('Sharer', [createMockTrackPublication('screen_share')]));
+      renderWithProviders(<VideoTiles />);
+
+      expect(screen.getByTestId('video-tiles-grid')).toHaveAttribute('data-capped', 'false');
+    });
+  });
+
+  describe('server-muted badge (P14)', () => {
+    it('marks a server-muted participant red, from voice presence', async () => {
+      server.use(
+        http.get('*/api/channels/ch-1/voice-presence', () =>
+          HttpResponse.json({
+            channelId: 'ch-1',
+            count: 1,
+            users: [{ id: 'muted-id', username: 'Muted', joinedAt: '2025-01-01T00:00:00Z', isDeafened: false, isServerMuted: true }],
+          }),
+        ),
+      );
+      remoteParticipants.set('muted-id', { ...createMockParticipant('Muted'), identity: 'muted-id' });
+      renderWithProviders(<VideoTiles />);
+
+      const card = (await screen.findByTestId('voice-badge-server-muted')).closest('[class*="MuiCard"]') as HTMLElement;
+      expect(within(card).getByText('Muted')).toBeInTheDocument();
+      expect(within(card).getByTestId('voice-badge-server-muted')).toHaveAttribute('data-tone', 'danger');
     });
   });
 });

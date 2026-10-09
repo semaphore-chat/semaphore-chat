@@ -5,7 +5,6 @@ import {
   Typography,
   IconButton,
   Tooltip,
-  Chip,
   Divider,
   Menu,
   MenuItem,
@@ -32,7 +31,7 @@ import {
   VolumeUp,
   FiberManualRecord,
   MovieCreation,
-  VideoCall,
+  PictureInPictureAlt,
   SpeakerPhone,
   PhoneInTalk,
   MoreHoriz,
@@ -67,6 +66,7 @@ import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
 import { MobileSheet } from "../Mobile/common/MobileSheet";
 import { soundboardPlayer } from "../../features/voice/soundboardPlayer";
+import { ConnectionQualityIndicator } from "./ConnectionQualityIndicator";
 
 // Debug panel is opt-in (Ctrl+Shift+D) and rarely used — keep it out of this
 // already-lazy chunk until actually toggled on.
@@ -347,15 +347,8 @@ const VoiceBottomBarContent: React.FC = () => {
               </Box>
             </Box>
 
-            {/* Connection Status - hide on mobile */}
-            {!isMobile && (
-              <Chip
-                label={state.isConnected ? "Connected" : "Connecting..."}
-                color={state.isConnected ? "success" : "warning"}
-                size="small"
-                sx={{ height: 24 }}
-              />
-            )}
+            {/* Connection quality (3 bars, detail on hover) - hide on mobile */}
+            {!isMobile && <ConnectionQualityIndicator room={state.room} />}
 
           </Box>
 
@@ -458,6 +451,7 @@ const VoiceBottomBarContent: React.FC = () => {
               <IconButton
                 disabled={cameraBlocked}
                 aria-label={cameraTitle}
+                aria-pressed={isCameraEnabled}
                 onClick={handleToggleVideo}
                 color={isCameraEnabled ? "primary" : "default"}
                 size={isMobile ? "medium" : "medium"}
@@ -540,6 +534,9 @@ const VoiceBottomBarContent: React.FC = () => {
               </span>
             </Tooltip>
 
+            {/* [replay, soundboard, call view, settings] */}
+            <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
+
             {/* Capture Replay - only show when replay buffer is active */}
             {isReplayBufferActive && (
               <Tooltip
@@ -575,8 +572,9 @@ const VoiceBottomBarContent: React.FC = () => {
 
             {/* Show Video Tiles - visible when tiles are hidden and user is connected */}
             {!state.showVideoTiles && state.isConnected && (
-              <Tooltip title="Show Video Tiles" arrow={!isMobile}>
+              <Tooltip title="Open call view" arrow={!isMobile}>
                 <IconButton
+                  aria-label="Open call view"
                   onClick={() => actions.revealVideoTiles()}
                   size={isMobile ? "medium" : "medium"}
                   sx={{
@@ -587,7 +585,7 @@ const VoiceBottomBarContent: React.FC = () => {
                     },
                   }}
                 >
-                  <VideoCall />
+                  <PictureInPictureAlt />
                 </IconButton>
               </Tooltip>
             )}
@@ -620,9 +618,8 @@ const VoiceBottomBarContent: React.FC = () => {
             {/* Settings - hide on mobile, use menu instead */}
             {!isMobile && (
               <>
-                <Divider orientation="vertical" flexItem sx={{ mx: 1 }} />
                 <Tooltip title="Voice settings">
-                  <IconButton onClick={handleSettingsClick}>
+                  <IconButton onClick={handleSettingsClick} aria-label="Voice settings">
                     <Settings />
                   </IconButton>
                 </Tooltip>
@@ -785,9 +782,9 @@ const VoiceBottomBarContent: React.FC = () => {
                   sx={moreItemSx}
                 >
                   <ListItemIcon>
-                    <VideoCall />
+                    <PictureInPictureAlt />
                   </ListItemIcon>
-                  <ListItemText primary="Show video tiles" />
+                  <ListItemText primary="Open call view" />
                 </ListItemButton>
               )}
 

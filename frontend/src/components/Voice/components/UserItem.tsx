@@ -17,7 +17,6 @@ import {
 import type { VoicePresenceUserDto } from "../../../api-client/types.gen";
 import { useParticipantTracks } from "../../../hooks/useParticipantTracks";
 import UserAvatar from "../../Common/UserAvatar";
-import { formatDistanceToNow } from "date-fns";
 import { deriveUserState } from "./voiceUserState";
 import { useResponsive } from "../../../hooks/useResponsive";
 import { useLongPress } from "../../../hooks/useSwipeGesture";
@@ -77,10 +76,6 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
   if (userState.isScreenSharing)
     statusIcons.push(<ScreenShare key="screen" fontSize="small" />);
 
-  const joinedAgo = formatDistanceToNow(new Date(user.joinedAt), {
-    addSuffix: true,
-  });
-
   return (
     <React.Fragment key={user.id}>
       <ListItem
@@ -127,13 +122,6 @@ const UserItem: React.FC<UserItemProps> = React.memo(({
                 ))}
               </Box>
             </Box>
-          }
-          secondary={
-            !showInline && (
-              <Typography variant="caption" color="text.secondary">
-                Joined {joinedAgo}
-              </Typography>
-            )
           }
         />
       </ListItem>

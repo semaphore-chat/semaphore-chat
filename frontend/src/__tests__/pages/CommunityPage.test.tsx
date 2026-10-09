@@ -68,7 +68,12 @@ vi.mock('../../hooks/useResponsive', () => ({
 
 vi.mock('../../components/Voice', () => ({
   VideoTiles: () => <div data-testid="video-tiles" />,
-  VoiceChannelUserList: () => <div data-testid="voice-user-list" />,
+}));
+
+vi.mock('../../components/Voice/VoiceChannelPreJoin', () => ({
+  VoiceChannelPreJoin: ({ channel }: { channel: { name: string } }) => (
+    <div data-testid="voice-prejoin">{channel.name}</div>
+  ),
 }));
 
 vi.mock('../../components/Channel/ChannelList', () => ({
@@ -109,39 +114,33 @@ describe('CommunityPage', () => {
     mockVoiceState = { isConnected: false, currentChannelId: null, channelName: null };
   });
 
-  it('renders VideoTiles and not VoiceChannelUserList when connected to this voice channel', async () => {
+  it('renders VideoTiles and not the pre-join screen when connected to this voice channel', async () => {
     mockChannelData = { id: 'channel-1', type: ChannelType.VOICE, name: 'General Voice' };
     mockVoiceState = { isConnected: true, currentChannelId: 'channel-1', channelName: 'General Voice' };
 
     renderCommunityPage('/community/community-1/channel/channel-1');
 
     expect(await screen.findByTestId('video-tiles')).toBeInTheDocument();
-    expect(screen.queryByTestId('voice-user-list')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('voice-prejoin')).not.toBeInTheDocument();
   });
 
-  it('renders join prompt and VoiceChannelUserList when not connected', async () => {
+  it('renders the pre-join screen when not connected to this voice channel', async () => {
     mockChannelData = { id: 'channel-1', type: ChannelType.VOICE, name: 'General Voice' };
     mockVoiceState = { isConnected: false, currentChannelId: null, channelName: null };
 
     renderCommunityPage('/community/community-1/channel/channel-1');
 
-    expect(
-      await screen.findByText('Click on this voice channel in the sidebar to join')
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('voice-user-list')).toBeInTheDocument();
+    expect(await screen.findByTestId('voice-prejoin')).toHaveTextContent('General Voice');
     expect(screen.queryByTestId('video-tiles')).not.toBeInTheDocument();
   });
 
-  it('renders the connected-elsewhere warning when connected to a different voice channel', async () => {
+  it('renders the pre-join screen when connected to a different voice channel', async () => {
     mockChannelData = { id: 'channel-1', type: ChannelType.VOICE, name: 'General Voice' };
     mockVoiceState = { isConnected: true, currentChannelId: 'other-channel', channelName: 'Other Voice' };
 
     renderCommunityPage('/community/community-1/channel/channel-1');
 
-    expect(
-      await screen.findByText(/You're currently connected to "Other Voice"/)
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('voice-user-list')).toBeInTheDocument();
+    expect(await screen.findByTestId('voice-prejoin')).toBeInTheDocument();
     expect(screen.queryByTestId('video-tiles')).not.toBeInTheDocument();
   });
 

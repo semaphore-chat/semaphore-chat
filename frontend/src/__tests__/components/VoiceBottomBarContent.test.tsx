@@ -1,9 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, fireEvent, within } from '@testing-library/react';
-import { ThemeProvider, getContrastRatio } from '@mui/material/styles';
+import { screen, fireEvent, within, act } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
-import { compositeOver } from '../test-utils/color';
-import { generateTheme } from '../../theme/themeConfig';
 import { VoiceBottomBarContent as VoiceBottomBar } from '../../components/Voice/VoiceBottomBarContent';
 import { VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { VideoLayoutMode } from '../../types/videoLayout';
@@ -394,34 +391,104 @@ describe('VoiceBottomBarContent', () => {
     expect(screen.queryByRole('button', { name: /capture replay/i })).not.toBeInTheDocument();
   });
 
-  it('shows connected chip', () => {
-    renderWithProviders(<VoiceBottomBar />);
+  describe('connection quality (replaces the "Connected" chip)', () => {
+    type Handler = (...args: unknown[]) => void;
+    function fakeRoom(quality: string) {
+      const handlers = new Map<string, Set<Handler>>();
+      const localParticipant = { connectionQuality: quality };
+      return {
+        localParticipant,
+        on: vi.fn((e: string, h: Handler) => {
+          if (!handlers.has(e)) handlers.set(e, new Set());
+          handlers.get(e)!.add(h);
+        }),
+        off: vi.fn((e: string, h: Handler) => handlers.get(e)?.delete(h)),
+        emit: (e: string, ...args: unknown[]) => handlers.get(e)?.forEach((h) => h(...args)),
+      };
+    }
+    function renderWithRoom(room: ReturnType<typeof fakeRoom>) {
+      voiceState = { ...defaultVoiceState, room: room as never };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: voiceState, actions: mockActions } as never);
+      return renderWithProviders(<VoiceBottomBar />);
+    }
 
-    expect(screen.getByText('Connected')).toBeInTheDocument();
+    it('no longer shows a "Connected" pill next to "Voice Connected"', () => {
+      renderWithProviders(<VoiceBottomBar />);
+      expect(screen.queryByText('Connected')).not.toBeInTheDocument();
+      expect(screen.getByText('Voice Connected')).toBeInTheDocument();
+    });
+
+    it.each([
+      ['excellent', '3', 'Connection: Excellent'],
+      ['good', '2', 'Connection: Good'],
+      ['poor', '1', 'Connection: Poor'],
+      ['lost', '0', 'Connection: Lost'],
+      ['unknown', '0', 'Connection: Measuring…'],
+    ])('shows %s quality as %s bars', (quality, bars, label) => {
+      renderWithRoom(fakeRoom(quality));
+      const indicator = screen.getByTestId('connection-quality');
+      expect(indicator).toHaveAttribute('data-bars', bars);
+      expect(indicator).toHaveAccessibleName(label);
+    });
+
+    it('follows the local participant\'s quality changes and ignores remote ones', () => {
+      const room = fakeRoom('excellent');
+      renderWithRoom(room);
+      act(() => room.emit('connectionQualityChanged', 'poor', { identity: 'someone-else' }));
+      expect(screen.getByTestId('connection-quality')).toHaveAttribute('data-bars', '3');
+      act(() => room.emit('connectionQualityChanged', 'poor', room.localParticipant));
+      expect(screen.getByTestId('connection-quality')).toHaveAttribute('data-bars', '1');
+    });
+
+    it('says when it is reconnecting', () => {
+      const room = fakeRoom('good');
+      renderWithRoom(room);
+      act(() => room.emit('reconnecting'));
+      expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Reconnecting…');
+      act(() => room.emit('reconnected'));
+      expect(screen.getByTestId('connection-quality')).toHaveAccessibleName('Connection: Good');
+    });
+
+    it('is not shown on phone', () => {
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: true,
+        isTablet: false,
+        isDesktop: false,
+        deviceType: 'phone',
+      } as never);
+      renderWithRoom(fakeRoom('good'));
+      expect(screen.queryByTestId('connection-quality')).not.toBeInTheDocument();
+    });
   });
 
-  // The chip used to be accent.lighter on a pale accent tint in light mode
-  // (~1.0-1.8:1). Checks the painted colours, on the bar's own surface.
-  it.each([
-    ['light', 'purple', 'vibrant'],
-    ['light', 'amber', 'balanced'],
-    ['light', 'teal', 'minimal'],
-    ['dark', 'teal', 'minimal'],
-    ['dark', 'lime', 'vibrant'],
-  ] as const)('renders the "Connected" chip at WCAG AA contrast (%s, %s, %s)', (mode, accent, intensity) => {
-    const theme = generateTheme(mode, accent, intensity);
-    renderWithProviders(
-      <ThemeProvider theme={theme}>
-        <VoiceBottomBar />
-      </ThemeProvider>,
-      // Exactly this theme, not nested inside the helper's default one.
-      { withTheme: false },
+  it('groups the desktop controls as [mic, deafen] · [camera, share] · [extras, settings] · hang up', () => {
+    renderWithProviders(<VoiceBottomBar />);
+    const controls = screen.getByTestId('voice-bar-controls');
+    const sequence = Array.from(controls.querySelectorAll('button, hr, [role="separator"]')).map((el) =>
+      el.tagName === 'BUTTON' ? el.getAttribute('aria-label') : '|',
     );
+    const at = (pattern: RegExp) => sequence.findIndex((x) => x !== '|' && pattern.test(x ?? ''));
+    const dividersBetween = (a: number, b: number) =>
+      sequence.slice(Math.min(a, b) + 1, Math.max(a, b)).filter((x) => x === '|').length;
+    const mic = at(/mute/i);
+    const deafen = at(/deafen/i);
+    const camera = at(/camera/i);
+    const share = at(/share screen/i);
+    const settings = at(/voice settings/i);
+    const hangUp = at(/disconnect/i);
+    expect(dividersBetween(mic, deafen)).toBe(0);
+    expect(dividersBetween(deafen, camera)).toBe(1);
+    expect(dividersBetween(camera, share)).toBe(0);
+    expect(dividersBetween(share, settings)).toBe(1);
+    expect(dividersBetween(settings, hangUp)).toBe(1);
+  });
 
-    const chip = screen.getByText('Connected').closest<HTMLElement>('.MuiChip-root')!;
-    const style = getComputedStyle(chip);
-    const painted = compositeOver(style.backgroundColor, theme.palette.background.paper);
-    expect(getContrastRatio(style.color, painted)).toBeGreaterThanOrEqual(4.5);
+  it('camera button keeps one camera icon and reports its state with aria-pressed', () => {
+    renderWithProviders(<VoiceBottomBar />);
+    const camera = screen.getByRole('button', { name: /turn on camera/i });
+    expect(camera).toHaveAttribute('aria-pressed', 'false');
+    // The call-view button no longer uses a camera glyph
+    expect(screen.queryByTestId('VideoCallIcon')).not.toBeInTheDocument();
   });
 
   it('keeps deafen on phone but moves settings into "more"', () => {
@@ -529,7 +596,7 @@ describe('VoiceBottomBarContent', () => {
 
     renderWithProviders(<VoiceBottomBar />);
 
-    expect(screen.getByRole('button', { name: /show video tiles/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /open call view/i })).toBeInTheDocument();
   });
 
   it('hides "Show Video Tiles" button when tiles are already shown', () => {
@@ -541,7 +608,7 @@ describe('VoiceBottomBarContent', () => {
 
     renderWithProviders(<VoiceBottomBar />);
 
-    expect(screen.queryByRole('button', { name: /show video tiles/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /open call view/i })).not.toBeInTheDocument();
   });
 
   it('"Show Video Tiles" button reveals (show + un-collapse) rather than just showing', async () => {
@@ -553,7 +620,7 @@ describe('VoiceBottomBarContent', () => {
 
     const { user } = renderWithProviders(<VoiceBottomBar />);
 
-    await user.click(screen.getByRole('button', { name: /show video tiles/i }));
+    await user.click(screen.getByRole('button', { name: /open call view/i }));
 
     expect(mockActions.revealVideoTiles).toHaveBeenCalled();
     expect(mockActions.setShowVideoTiles).not.toHaveBeenCalled();
@@ -900,7 +967,7 @@ describe('VoiceBottomBarContent', () => {
 
       const sheet = await screen.findByTestId('voice-more-sheet');
       expect(within(sheet).getByRole('button', { name: /share screen/i })).toBeInTheDocument();
-      expect(within(sheet).getByRole('button', { name: /show video tiles/i })).toBeInTheDocument();
+      expect(within(sheet).getByRole('button', { name: /open call view/i })).toBeInTheDocument();
       expect(within(sheet).getByRole('button', { name: /open soundboard/i })).toBeInTheDocument();
       expect(within(sheet).getByRole('button', { name: /voice & video settings/i })).toBeInTheDocument();
       expect(within(sheet).getByRole('button', { name: /all settings/i })).toBeInTheDocument();
@@ -912,7 +979,7 @@ describe('VoiceBottomBarContent', () => {
 
       await user.click(screen.getByRole('button', { name: /more voice options/i }));
       const sheet = await screen.findByTestId('voice-more-sheet');
-      await user.click(within(sheet).getByRole('button', { name: /show video tiles/i }));
+      await user.click(within(sheet).getByRole('button', { name: /open call view/i }));
 
       expect(mockActions.revealVideoTiles).toHaveBeenCalled();
       await vi.waitFor(() => expect(screen.queryByTestId('voice-more-sheet')).not.toBeInTheDocument());

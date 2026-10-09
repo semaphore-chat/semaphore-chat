@@ -114,8 +114,11 @@ export const TRACK_SOURCE = {
 // ---- ConnectionQuality ----
 
 export const CONNECTION_QUALITY = {
+  Excellent: 'excellent' satisfies `${ConnectionQuality.Excellent}`,
+  Good: 'good' satisfies `${ConnectionQuality.Good}`,
   Poor: 'poor' satisfies `${ConnectionQuality.Poor}`,
   Lost: 'lost' satisfies `${ConnectionQuality.Lost}`,
+  Unknown: 'unknown' satisfies `${ConnectionQuality.Unknown}`,
 } as const;
 
 // ---- ConnectionState ----

@@ -1,0 +1,41 @@
+import { describe, it, expect, vi } from 'vitest';
+import { screen } from '@testing-library/react';
+import { renderWithProviders } from '../test-utils';
+import CompactVoiceTile from '../../components/Voice/CompactVoiceTile';
+
+vi.mock('../../components/Common/UserAvatar', () => ({
+  default: () => <div data-testid="avatar" />,
+}));
+vi.mock('../../hooks/useSpeaking', () => ({
+  useSpeaking: () => ({ speakingMap: new Map(), isSpeaking: () => false }),
+}));
+
+const participant = (metadata?: string) => ({ identity: 'u1', name: 'Ada', metadata }) as never;
+const mic = (muted: boolean) => ({ source: 'microphone', isMuted: muted }) as never;
+
+describe('CompactVoiceTile (phone, big calls)', () => {
+  it('no badge when the mic is live', () => {
+    renderWithProviders(<CompactVoiceTile participant={participant()} audioTrack={mic(false)} />);
+    expect(screen.queryByTestId(/voice-badge-/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('compact-participant-tile')).toHaveAccessibleName('Ada');
+  });
+
+  it('self-muted: a grey badge, not red', () => {
+    renderWithProviders(<CompactVoiceTile participant={participant()} />);
+    expect(screen.getByTestId('voice-badge-muted')).toBeInTheDocument();
+    expect(screen.getByTestId('compact-participant-tile')).toHaveAccessibleName('Ada, muted');
+  });
+
+  it('server-muted: the red badge, named for screen readers', () => {
+    renderWithProviders(<CompactVoiceTile participant={participant()} isServerMuted />);
+    expect(screen.getByTestId('voice-badge-server-muted')).toBeInTheDocument();
+    expect(screen.getByTestId('compact-participant-tile')).toHaveAccessibleName('Ada, muted by a moderator');
+  });
+
+  it('deafened with a live mic: the headset badge', () => {
+    renderWithProviders(
+      <CompactVoiceTile participant={participant(JSON.stringify({ isDeafened: true }))} audioTrack={mic(false)} />,
+    );
+    expect(screen.getByTestId('voice-badge-deafened')).toBeInTheDocument();
+  });
+});

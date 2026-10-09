@@ -65,4 +65,30 @@ describe('storage utilities', () => {
       expect(getCachedItem('nonexistent')).toBeNull();
     });
   });
+
+  describe('when storage is unavailable (private window, blocked site data)', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('getCachedItem returns null when the accessor throws', () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError');
+      });
+      expect(getCachedItem('anything')).toBeNull();
+    });
+
+    it('setCachedItem swallows a throwing (or full) storage', () => {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('full', 'QuotaExceededError');
+      });
+      expect(() => setCachedItem('k', { a: 1 })).not.toThrow();
+      expect(() => setCachedItem('k', { a: 1 }, 1000)).not.toThrow();
+    });
+
+    it('removeCachedItem swallows a throwing storage', () => {
+      vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+        throw new DOMException('denied', 'SecurityError');
+      });
+      expect(() => removeCachedItem('k')).not.toThrow();
+    });
+  });
 });
