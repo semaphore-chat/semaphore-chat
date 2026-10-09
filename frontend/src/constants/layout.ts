@@ -71,6 +71,11 @@ export const MESSAGE_TEXT_MAX_WIDTH = "80ch";
 
 /**
  * Widest a code block in a message grows past the text cap (in the code font's
- * own `ch`), never wider than the message column; longer lines scroll.
+ * own `ch`), never wider than the message column; longer lines scroll. Only on
+ * columns of at least CODE_BLOCK_UNWRAP_MIN_COLUMN_PX: narrower ones (phones,
+ * tablets) wrap code lines as before.
  */
 export const CODE_BLOCK_MAX_WIDTH = "120ch";
+
+/** Message column width (px, ~80ch of message text) from which code blocks stop wrapping. */
+export const CODE_BLOCK_UNWRAP_MIN_COLUMN_PX = 720;

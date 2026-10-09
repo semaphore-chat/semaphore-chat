@@ -41,7 +41,7 @@ import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
 import { useContextMenuFocusRestore } from "../../hooks/useContextMenuFocusRestore";
 import { OptimisticMessageActions } from "./OptimisticMessageActions";
 import { formatClockTime, formatFullTimestamp, formatMessageTime } from "../../utils/messageTime";
-import { CODE_BLOCK_MAX_WIDTH, MESSAGE_TEXT_MAX_WIDTH } from "../../constants/layout";
+import { CODE_BLOCK_MAX_WIDTH, CODE_BLOCK_UNWRAP_MIN_COLUMN_PX, MESSAGE_TEXT_MAX_WIDTH } from "../../constants/layout";
 
 /** Avatar column width (32px avatar + 12px gap) — grouped rows keep it empty
  * (or show the hover time) so their text lines up with the header row. */
@@ -525,11 +525,17 @@ function MessageComponentInner({
                   whiteSpace: 'pre-wrap',
                   overflowWrap: 'break-word',
                   wordBreak: 'break-word',
-                  // Code blocks may run past the text cap, up to the column.
-                  '& .message-code-block': {
-                    width: 'max-content',
-                    minWidth: '100%',
-                    maxWidth: `min(${CODE_BLOCK_MAX_WIDTH}, 100cqi)`,
+                  // On a column wider than the text cap, code blocks keep their
+                  // lines and may run past the cap, up to 120ch of the column;
+                  // longer lines scroll. Narrower columns (phones) wrap as before.
+                  [`@container (min-width: ${CODE_BLOCK_UNWRAP_MIN_COLUMN_PX}px)`]: {
+                    '& .message-code-block': {
+                      whiteSpace: 'pre',
+                      wordBreak: 'normal',
+                      width: 'max-content',
+                      minWidth: '100%',
+                      maxWidth: `min(${CODE_BLOCK_MAX_WIDTH}, 100cqi)`,
+                    },
                   },
                 }}
               >

@@ -19,7 +19,7 @@ export const TypeScale = defineComponent(bigCommunityScenario, () => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
     {ROLES.map(([variant, text]) => (
       <Box key={variant}>
-        <Typography variant="meta" color="text.secondary">
+        <Typography variant="meta" component="div" color="text.secondary">
           {variant}
         </Typography>
         <Typography variant={variant}>{text}</Typography>
@@ -28,7 +28,7 @@ export const TypeScale = defineComponent(bigCommunityScenario, () => (
     <Divider />
     {Object.entries(TYPE_SCALE).map(([step, size]) => (
       <Box key={step} sx={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
-        <Typography variant="meta" color="text.secondary" sx={{ width: 96, flexShrink: 0 }}>
+        <Typography variant="meta" color="text.secondary" noWrap sx={{ width: 160, flexShrink: 0 }}>
           {`scale.${step} · ${size}`}
         </Typography>
         <Box sx={{ fontSize: `scale.${step}`, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>

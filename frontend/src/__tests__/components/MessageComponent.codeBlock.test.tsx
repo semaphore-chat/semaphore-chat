@@ -109,24 +109,26 @@ describe('MessageComponent code blocks', () => {
     expect(body).toHaveTextContent('Works now.');
   });
 
-  it('caps message text at 80ch and lets code blocks grow to 120ch of the column', () => {
+  it('caps message text at 80ch; on wide columns code blocks keep their lines up to 120ch', () => {
     renderWithProviders(<MessageComponent message={codeBlockMessage()} />);
 
-    // jsdom's CSSOM drops `ch`/`cqi` values, so read the emitted rules instead.
+    // jsdom's CSSOM drops `ch`/`cqi` values and @container rules, so read the
+    // emitted CSS instead.
     const css = Array.from(document.querySelectorAll('style'))
       .map((el) => el.textContent ?? '')
       .join('\n');
     const body = screen.getByTestId('message-body');
     const bodyClass = Array.from(body.classList).find((c) => c.startsWith('css-'))!;
-    const bodyRule = css.slice(css.indexOf(`.${bodyClass}{`));
-    expect(bodyRule).toMatch(/^[^}]*max-width:80ch/);
-    expect(bodyRule).toMatch(
-      new RegExp(`\\.${bodyClass} \\.message-code-block\\{[^}]*width:max-content;min-width:100%;max-width:min\\(120ch, ?100cqi\\);?\\}`),
-    );
+    expect(css.slice(css.indexOf(`.${bodyClass}{`))).toMatch(/^[^}]*max-width:80ch/);
+    const wide = css.match(new RegExp(`@container \\(min-width: ?720px\\)\\{\\.${bodyClass} \\.message-code-block\\{([^}]*)\\}`));
+    expect(wide, 'wide-column code block rule').not.toBeNull();
+    expect(wide![1]).toContain('white-space:pre;');
+    expect(wide![1]).toContain('width:max-content;');
+    expect(wide![1]).toContain('max-width:min(120ch, 100cqi);');
 
+    // Outside that rule (narrow columns, phones) code wraps as before.
     const pre = screen.getByText(/const x = 1;/).closest('pre')!;
     expect(pre).toHaveClass('message-code-block');
-    // Long code lines scroll instead of wrapping.
-    expect(pre).toHaveStyle({ whiteSpace: 'pre', overflowX: 'auto' });
+    expect(pre).toHaveStyle({ whiteSpace: 'pre-wrap', overflowX: 'auto' });
   });
 });
