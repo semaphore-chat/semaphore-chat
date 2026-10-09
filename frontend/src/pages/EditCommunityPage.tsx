@@ -40,6 +40,8 @@ import {
   TimeoutListPanel,
   ModerationLogsPanel,
 } from "../components/Moderation";
+import { FormPageShell } from "../components/Common/PageShell";
+import { useResponsive } from "../hooks/useResponsive";
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -80,6 +82,7 @@ const EditCommunityPage: React.FC = () => {
   const navigate = useNavigate();
   const { communityId } = useParams<{ communityId: string }>();
   const [tabValue, setTabValue] = useState(0);
+  const { isDesktop } = useResponsive();
 
   const queryClient = useQueryClient();
 
@@ -237,23 +240,206 @@ const EditCommunityPage: React.FC = () => {
     );
   }
 
+  // The management sections: tabs on phone/tablet, a section nav on desktop.
+  // Every section but the settings form is a table, so it gets the wide column.
+  const panels: { id: string; label: string; disabled?: boolean; wide: boolean; content: React.ReactNode }[] = [
+    {
+      id: "settings",
+      label: "Settings",
+      disabled: !canUpdateCommunity,
+      wide: false,
+      content: (
+        canUpdateCommunity ? (
+          <Box sx={isDesktop ? undefined : { maxWidth: 600, mx: "auto" }}>
+            <CommunitySettingsForm
+              onSubmit={handleSubmit}
+              error={error || uploadError}
+              errorMessage={
+                uploadError
+                  ? `File upload failed: ${uploadError.message}`
+                  : "Failed to update community. Please try again."
+              }
+              isLoading={isLoading || isUploading}
+              isFormValid={formData.name.trim().length > 0}
+              submitButtonText="Update Community"
+              loadingText={isUploading ? "Uploading files..." : "Updating..."}
+            >
+              <CommunityFormContent
+                formData={formData}
+                previewUrls={previewUrls}
+                formErrors={formErrors}
+                onNameChange={handleInputChange("name")}
+                onDescriptionChange={handleInputChange("description")}
+                onAvatarChange={handleInputChange("avatar")}
+                onBannerChange={handleInputChange("banner")}
+              />
+            </CommunitySettingsForm>
+          </Box>
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to update community settings.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "members",
+      label: "Members",
+      disabled: !canManageMembers,
+      wide: true,
+      content: (
+        canManageMembers ? (
+          <MemberManagement communityId={communityId!} />
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to manage community members.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "channels",
+      label: "Channels",
+      disabled: !canManageChannels,
+      wide: true,
+      content: (
+        canManageChannels ? (
+          <ChannelManagement communityId={communityId!} />
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to manage channels.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "private-channels",
+      label: "Private Channels",
+      disabled: !canManageChannels,
+      wide: true,
+      content: (
+        canManageChannels && channels ? (
+          <PrivateChannelMembership 
+            channels={channels}
+            communityId={communityId!}
+          />
+        ) : canManageChannels ? (
+          <Box display="flex" justifyContent="center" p={2}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to manage private channel membership.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "roles",
+      label: "Roles",
+      wide: true,
+      content: (
+        <RoleManagement communityId={communityId!} />
+      ),
+    },
+    {
+      id: "mention-groups",
+      label: "Mention Groups",
+      wide: true,
+      content: (
+        <AliasGroupManagement communityId={communityId!} />
+      ),
+    },
+    {
+      id: "custom-emoji",
+      label: "Custom Emoji",
+      disabled: !canManageEmojis,
+      wide: true,
+      content: (
+        canManageEmojis ? (
+          <CustomEmojiManagement communityId={communityId!} />
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to manage custom emojis.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "moderation",
+      label: "Moderation",
+      disabled: !canViewModeration,
+      wide: true,
+      content: (
+        canViewModeration ? (
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
+              <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
+                <BanListPanel communityId={communityId!} />
+              </Box>
+              <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
+                <TimeoutListPanel communityId={communityId!} />
+              </Box>
+            </Box>
+            <Box>
+              <ModerationLogsPanel communityId={communityId!} />
+            </Box>
+          </Box>
+        ) : (
+          <Alert severity="warning">
+            You don't have permission to view moderation tools.
+          </Alert>
+        )
+      ),
+    },
+    {
+      id: "soundboard",
+      label: "Soundboard",
+      wide: true,
+      content: (
+        <SoundboardManagement communityId={communityId!} />
+      ),
+    },
+  ];
+  const active = panels[tabValue];
+
+  const breadcrumbs = (
+    <Breadcrumbs>
+      <Link
+        component="button"
+        variant="body1"
+        onClick={handleGoBack}
+        underline="hover"
+        sx={{ cursor: 'pointer' }}
+      >
+        {community.name}
+      </Link>
+      <Typography color="text.primary">Manage Community</Typography>
+    </Breadcrumbs>
+  );
+
+  if (isDesktop) {
+    return (
+      <FormPageShell
+        overline={breadcrumbs}
+        title={active.label}
+        sections={panels.map(({ id, label, disabled }) => ({ id, label, disabled }))}
+        activeSection={active.id}
+        onSelectSection={(id) => setTabValue(panels.findIndex((p) => p.id === id))}
+        navLabel="Community management sections"
+        wide={active.wide}
+      >
+        <Box role="region" aria-label={active.label}>
+          {active.content}
+        </Box>
+      </FormPageShell>
+    );
+  }
+
   return (
     <Root>
       {/* Header */}
-      <Box mb={3}>
-        <Breadcrumbs>
-          <Link
-            component="button"
-            variant="body1"
-            onClick={handleGoBack}
-            underline="hover"
-            sx={{ cursor: 'pointer' }}
-          >
-            {community.name}
-          </Link>
-          <Typography color="text.primary">Manage Community</Typography>
-        </Breadcrumbs>
-      </Box>
+      <Box mb={3}>{breadcrumbs}</Box>
 
       {/* Tabs */}
       <Paper>
@@ -266,133 +452,18 @@ const EditCommunityPage: React.FC = () => {
             scrollButtons="auto"
             allowScrollButtonsMobile
           >
-            <Tab label="Settings" {...a11yProps(0)} disabled={!canUpdateCommunity} />
-            <Tab label="Members" {...a11yProps(1)} disabled={!canManageMembers} />
-            <Tab label="Channels" {...a11yProps(2)} disabled={!canManageChannels} />
-            <Tab label="Private Channels" {...a11yProps(3)} disabled={!canManageChannels} />
-            <Tab label="Roles" {...a11yProps(4)} />
-            <Tab label="Mention Groups" {...a11yProps(5)} />
-            <Tab label="Custom Emoji" {...a11yProps(6)} disabled={!canManageEmojis} />
-            <Tab label="Moderation" {...a11yProps(7)} disabled={!canViewModeration} />
-            <Tab label="Soundboard" {...a11yProps(8)} />
+            {panels.map((panel, index) => (
+              <Tab key={panel.id} label={panel.label} {...a11yProps(index)} disabled={panel.disabled} />
+            ))}
           </Tabs>
         </Box>
 
         {/* Tab Panels */}
-        <TabPanel value={tabValue} index={0}>
-          {canUpdateCommunity ? (
-            <div style={{ maxWidth: 600, margin: "0 auto" }}>
-              <CommunitySettingsForm
-                onSubmit={handleSubmit}
-                error={error || uploadError}
-                errorMessage={
-                  uploadError
-                    ? `File upload failed: ${uploadError.message}`
-                    : "Failed to update community. Please try again."
-                }
-                isLoading={isLoading || isUploading}
-                isFormValid={formData.name.trim().length > 0}
-                submitButtonText="Update Community"
-                loadingText={isUploading ? "Uploading files..." : "Updating..."}
-              >
-                <CommunityFormContent
-                  formData={formData}
-                  previewUrls={previewUrls}
-                  formErrors={formErrors}
-                  onNameChange={handleInputChange("name")}
-                  onDescriptionChange={handleInputChange("description")}
-                  onAvatarChange={handleInputChange("avatar")}
-                  onBannerChange={handleInputChange("banner")}
-                />
-              </CommunitySettingsForm>
-            </div>
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to update community settings.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
-          {canManageMembers ? (
-            <MemberManagement communityId={communityId!} />
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to manage community members.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={2}>
-          {canManageChannels ? (
-            <ChannelManagement communityId={communityId!} />
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to manage channels.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={3}>
-          {canManageChannels && channels ? (
-            <PrivateChannelMembership 
-              channels={channels}
-              communityId={communityId!}
-            />
-          ) : canManageChannels ? (
-            <Box display="flex" justifyContent="center" p={2}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to manage private channel membership.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={4}>
-          <RoleManagement communityId={communityId!} />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={5}>
-          <AliasGroupManagement communityId={communityId!} />
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={6}>
-          {canManageEmojis ? (
-            <CustomEmojiManagement communityId={communityId!} />
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to manage custom emojis.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={7}>
-          {canViewModeration ? (
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 3 }}>
-              <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
-                  <BanListPanel communityId={communityId!} />
-                </Box>
-                <Box sx={{ flex: "1 1 300px", minWidth: { xs: "100%", sm: 300 } }}>
-                  <TimeoutListPanel communityId={communityId!} />
-                </Box>
-              </Box>
-              <Box>
-                <ModerationLogsPanel communityId={communityId!} />
-              </Box>
-            </Box>
-          ) : (
-            <Alert severity="warning">
-              You don't have permission to view moderation tools.
-            </Alert>
-          )}
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={8}>
-          <SoundboardManagement communityId={communityId!} />
-        </TabPanel>
+        {panels.map((panel, index) => (
+          <TabPanel key={panel.id} value={tabValue} index={index}>
+            {panel.content}
+          </TabPanel>
+        ))}
       </Paper>
     </Root>
   );

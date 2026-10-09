@@ -45,9 +45,10 @@ describe('FriendsPage', () => {
     expect(screen.getByTestId('location')).toHaveTextContent(/^\/direct-messages\/dm-42$/);
   });
 
-  it('desktop: floating card with the panel title', () => {
+  it('desktop: in the list page shell (no floating card), with the panel title', () => {
     renderPage();
     expect(panelProps.mock.lastCall?.[0].hideTitle).toBeFalsy();
+    expect(screen.getByTestId('list-page-shell')).toBeInTheDocument();
   });
 
   it.each([

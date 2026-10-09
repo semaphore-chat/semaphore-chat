@@ -5,6 +5,7 @@
  * DND mode, sound settings, and default channel notification level.
  */
 
+import { createPortal } from 'react-dom';
 import React, { useState, useEffect } from 'react';
 import {
   Card,
@@ -39,6 +40,7 @@ import {
   notificationsControllerUpdateSettingsMutation,
   pushNotificationsControllerSendTestPushToSelfMutation,
 } from '../../api-client/@tanstack/react-query.gen';
+import { StickySaveBar, useSaveBarSlot } from '../Common/PageShell';
 
 import { useNotificationPermission } from '../../hooks/useNotificationPermission';
 import { usePushNotifications } from '../../hooks/usePushNotifications';
@@ -96,10 +98,14 @@ export const NotificationSettings: React.FC = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [testPushResult, setTestPushResult] = useState<{ success: boolean; message: string } | null>(null);
 
+  // The last saved values, to tell whether the form has unsaved changes.
+  const [savedValues, setSavedValues] = useState<UpdateNotificationSettingsDto | null>(null);
+  const saveBarSlot = useSaveBarSlot();
+
   // Update form when settings load
   useEffect(() => {
     if (settings) {
-      setFormValues({
+      const loaded: UpdateNotificationSettingsDto = {
         desktopEnabled: settings.desktopEnabled,
         playSound: settings.playSound,
         // GET response DTO types these as plain string; the update DTO narrows
@@ -110,9 +116,21 @@ export const NotificationSettings: React.FC = () => {
         dndEndTime: settings.dndEndTime || '08:00',
         defaultChannelLevel: settings.defaultChannelLevel as UpdateNotificationSettingsDto['defaultChannelLevel'],
         dmNotifications: settings.dmNotifications,
-      });
+      };
+      setFormValues(loaded);
+      setSavedValues(loaded);
     }
   }, [settings]);
+
+  const isDirty =
+    !!savedValues &&
+    (Object.keys(formValues) as (keyof UpdateNotificationSettingsDto)[]).some(
+      (key) => formValues[key] !== savedValues[key],
+    );
+
+  const handleReset = () => {
+    if (savedValues) setFormValues(savedValues);
+  };
 
   const handleChange = <K extends keyof UpdateNotificationSettingsDto>(
     key: K,
@@ -128,6 +146,7 @@ export const NotificationSettings: React.FC = () => {
       // window in the user's local time when sending push notifications
       const dndTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
       await updateSettings({ body: { ...formValues, dndTimezone } });
+      setSavedValues(formValues);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (error) {
@@ -465,24 +484,45 @@ export const NotificationSettings: React.FC = () => {
           </Alert>
         )}
 
-        <Divider sx={{ my: 3 }} />
+        {!saveBarSlot && <Divider sx={{ my: 3 }} />}
 
-        {/* Save Button */}
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-          <Button
-            variant="contained"
-            onClick={handleSave}
-            disabled={isUpdating}
-            startIcon={isUpdating && <CircularProgress size={20} />}
-          >
-            {isUpdating ? 'Saving...' : 'Save Changes'}
-          </Button>
-          {saveSuccess && (
-            <Typography variant="body2" color="success.main">
-              Settings saved successfully!
-            </Typography>
-          )}
-        </Box>
+        {/* Save: in a desktop form shell, a sticky bar at the foot of the page
+            while there are unsaved changes; elsewhere an inline button. */}
+        {saveBarSlot ? (
+          <>
+            {isDirty &&
+              createPortal(
+                <StickySaveBar
+                  message="Unsaved notification settings"
+                  saving={isUpdating}
+                  onSave={handleSave}
+                  onReset={handleReset}
+                />,
+                saveBarSlot,
+              )}
+            {saveSuccess && (
+              <Typography variant="body2" color="success.main">
+                Settings saved successfully!
+              </Typography>
+            )}
+          </>
+        ) : (
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+            <Button
+              variant="contained"
+              onClick={handleSave}
+              disabled={isUpdating}
+              startIcon={isUpdating && <CircularProgress size={20} />}
+            >
+              {isUpdating ? 'Saving...' : 'Save Changes'}
+            </Button>
+            {saveSuccess && (
+              <Typography variant="body2" color="success.main">
+                Settings saved successfully!
+              </Typography>
+            )}
+          </Box>
+        )}
       </CardContent>
     </Card>
   );

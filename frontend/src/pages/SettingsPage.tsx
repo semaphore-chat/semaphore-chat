@@ -34,6 +34,9 @@ import { useTheme, type ThemeIntensity } from '../contexts/ThemeContext';
 import { accentColors } from '../theme/constants';
 import { isElectron, hasElectronFeature, getElectronAPI } from '../utils/platform';
 import { getActiveServer, updateServer } from '../utils/serverStorage';
+import { FormPageShell, type FormPageSection } from '../components/Common/PageShell';
+import { useScrollSpy } from '../hooks/useScrollSpy';
+import { useResponsive } from '../hooks/useResponsive';
 
 interface HealthResponse {
   status: string;
@@ -159,6 +162,17 @@ const AppearanceSettings: React.FC = () => {
 
 const SettingsPage: React.FC = () => {
   const [isElectronApp, setIsElectronApp] = useState(false);
+  const { isDesktop } = useResponsive();
+
+  // Section nav for the desktop form shell; the Electron-only section only when present.
+  const sections: FormPageSection[] = [
+    { id: 'settings-notifications', label: 'Notifications' },
+    { id: 'settings-voice', label: 'Voice & video' },
+    { id: 'settings-appearance', label: 'Appearance' },
+    { id: 'settings-sessions', label: 'Sessions' },
+    ...(isElectronApp ? [{ id: 'settings-desktop-app', label: 'Desktop app' }] : []),
+  ];
+  const [activeSection, scrollToSection] = useScrollSpy(sections.map((section) => section.id));
   const [currentBackendUrl, setCurrentBackendUrl] = useState<string | null>(null);
   const [appVersion, setAppVersion] = useState<string | null>(null);
   const [backendVersion, setBackendVersion] = useState<string | null>(null);
@@ -296,32 +310,35 @@ const SettingsPage: React.FC = () => {
     }
   };
 
-  return (
-    <Box sx={{ p: 4 }}>
-      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Settings /> Settings
-      </Typography>
+  const body = (
+    <>
 
       {/* Install App Section (web, only when installable) */}
       <InstallAppSettings />
 
       {/* Notification Settings Section */}
-      <Box sx={{ mb: 3 }}>
+      <Box id="settings-notifications" sx={{ mb: 3, scrollMarginTop: 24 }}>
         <NotificationSettings />
       </Box>
 
       {/* Voice & Video Settings Section */}
-      <VoiceSettings />
+      <Box id="settings-voice" sx={{ scrollMarginTop: 24 }}>
+        <VoiceSettings />
+      </Box>
 
       {/* Appearance Settings Section */}
-      <AppearanceSettings />
+      <Box id="settings-appearance" sx={{ scrollMarginTop: 24 }}>
+        <AppearanceSettings />
+      </Box>
 
       {/* Sessions Settings Section */}
-      <SessionsSettings />
+      <Box id="settings-sessions" sx={{ scrollMarginTop: 24 }}>
+        <SessionsSettings />
+      </Box>
 
       {/* Backend Configuration Section (Electron only) */}
       {isElectronApp && (
-        <>
+        <Box id="settings-desktop-app" sx={{ scrollMarginTop: 24 }}>
           <Card sx={{ mb: 3 }}>
             <CardContent>
               <Typography variant="h6" gutterBottom>
@@ -384,7 +401,7 @@ const SettingsPage: React.FC = () => {
               </Box>
             </CardContent>
           </Card>
-        </>
+        </Box>
       )}
 
       {/* Change Backend URL Dialog */}
@@ -437,6 +454,33 @@ const SettingsPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+    </>
+  );
+
+  if (isDesktop) {
+    return (
+      <FormPageShell
+        title={
+          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 1 }}>
+            <Settings /> Settings
+          </Box>
+        }
+        sections={sections}
+        activeSection={activeSection}
+        onSelectSection={scrollToSection}
+        navLabel="Settings sections"
+      >
+        {body}
+      </FormPageShell>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 4 }}>
+      <Typography variant="h4" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Settings /> Settings
+      </Typography>
+      {body}
     </Box>
   );
 };

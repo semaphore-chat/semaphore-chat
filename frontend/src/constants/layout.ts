@@ -85,3 +85,17 @@ export const CODE_BLOCK_MAX_WIDTH = "120ch";
 
 /** Message column width (px, ~80ch of message text) from which code blocks stop wrapping. */
 export const CODE_BLOCK_UNWRAP_MIN_COLUMN_PX = 720;
+
+/**
+ * Page shells (components/Common/PageShell.tsx), desktop only. List pages
+ * (notifications, friends, profile, admin tables) cap at PAGE_LIST_MAX_WIDTH,
+ * left-aligned at the content edge. Form pages put a FORM_NAV_WIDTH section
+ * nav next to a FORM_COLUMN_WIDTH column (FORM_WIDE_COLUMN_WIDTH for tables);
+ * when the shell is narrower than FORM_SHELL_COLLAPSE_PX (an 800px Electron
+ * window, the expanded rail) the nav becomes a row of tabs above the column.
+ */
+export const PAGE_LIST_MAX_WIDTH = 960;
+export const FORM_NAV_WIDTH = 220;
+export const FORM_COLUMN_WIDTH = 680;
+export const FORM_WIDE_COLUMN_WIDTH = 960;
+export const FORM_SHELL_COLLAPSE_PX = 940;

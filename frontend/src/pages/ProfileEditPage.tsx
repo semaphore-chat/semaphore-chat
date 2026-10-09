@@ -18,6 +18,20 @@ import { useCurrentUser } from "../hooks/useCurrentUser";
 import { useFileUpload } from "../hooks/useFileUpload";
 import { useProfileForm } from "../hooks/useProfileForm";
 import { ProfileEditForm } from "../components/Profile";
+import { FormPageShell } from "../components/Common/PageShell";
+import { useResponsive } from "../hooks/useResponsive";
+
+/** Desktop: the form page shell (one column, no section nav). Phone/tablet: the centred container they had. */
+const PageFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isDesktop } = useResponsive();
+  return isDesktop ? (
+    <FormPageShell>{children}</FormPageShell>
+  ) : (
+    <Container maxWidth="md" sx={{ py: 3 }}>
+      {children}
+    </Container>
+  );
+};
 
 const ProfileEditPage: React.FC = () => {
   const navigate = useNavigate();
@@ -120,26 +134,26 @@ const ProfileEditPage: React.FC = () => {
 
   if (isLoadingProfile) {
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
+      <PageFrame>
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
           <CircularProgress />
         </Box>
-      </Container>
+      </PageFrame>
     );
   }
 
   if (!currentUser) {
     return (
-      <Container maxWidth="md" sx={{ py: 3 }}>
+      <PageFrame>
         <Alert severity="error">
           Failed to load profile. Please try again.
         </Alert>
-      </Container>
+      </PageFrame>
     );
   }
 
   return (
-    <Container maxWidth="md" sx={{ py: 3 }}>
+    <PageFrame>
       <Box mb={3}>
         <Button
           startIcon={<ArrowBackIcon />}
@@ -196,7 +210,7 @@ const ProfileEditPage: React.FC = () => {
           </Box>
         </Box>
       </Paper>
-    </Container>
+    </PageFrame>
   );
 };
 
