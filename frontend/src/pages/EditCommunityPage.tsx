@@ -40,7 +40,7 @@ import {
   TimeoutListPanel,
   ModerationLogsPanel,
 } from "../components/Moderation";
-import { FormPageShell } from "../components/Common/PageShell";
+import { FormPageShell, FormPageTabPanel } from "../components/Common/PageShell";
 import { useResponsive } from "../hooks/useResponsive";
 
 interface TabPanelProps {
@@ -427,11 +427,10 @@ const EditCommunityPage: React.FC = () => {
         activeSection={active.id}
         onSelectSection={(id) => setTabValue(panels.findIndex((p) => p.id === id))}
         navLabel="Community management sections"
+        navMode="tabs"
         wide={active.wide}
       >
-        <Box role="region" aria-label={active.label}>
-          {active.content}
-        </Box>
+        <FormPageTabPanel sectionId={active.id}>{active.content}</FormPageTabPanel>
       </FormPageShell>
     );
   }

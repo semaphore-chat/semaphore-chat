@@ -5,6 +5,7 @@ import {
   FormPageShell,
   ListPageShell,
   StickySaveBar,
+  FormPageTabPanel,
   useSaveBarSlot,
 } from '../../components/Common/PageShell';
 
@@ -83,5 +84,36 @@ describe('StickySaveBar', () => {
     renderWithProviders(<StickySaveBar saving onSave={vi.fn()} onReset={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Reset' })).toBeDisabled();
     expect(screen.getByRole('button', { name: /saving/i })).toBeDisabled();
+  });
+});
+
+describe('FormPageShell navMode="tabs" (sections switch, e.g. community settings)', () => {
+  it('is a tablist with tabs and a labelled tab panel', () => {
+    renderWithProviders(
+      <FormPageShell sections={SECTIONS} activeSection="b" navMode="tabs" navLabel="Community management sections">
+        <FormPageTabPanel sectionId="b">beta content</FormPageTabPanel>
+      </FormPageShell>,
+    );
+    expect(screen.getByRole('tablist', { name: 'Community management sections' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
+    const beta = screen.getByRole('tab', { name: 'Beta' });
+    expect(beta).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Alpha' })).toHaveAttribute('aria-selected', 'false');
+    expect(screen.getByRole('tabpanel', { name: 'Beta' })).toHaveTextContent('beta content');
+  });
+
+  it('arrow keys move to the next enabled tab, skipping disabled ones', async () => {
+    const onSelect = vi.fn();
+    const { user } = renderWithProviders(
+      <FormPageShell sections={SECTIONS} activeSection="b" navMode="tabs" onSelectSection={onSelect}>
+        body
+      </FormPageShell>,
+    );
+    screen.getByRole('tab', { name: 'Beta' }).focus();
+    await user.keyboard('{ArrowDown}');
+    // Gamma is disabled: wraps to Alpha.
+    expect(onSelect).toHaveBeenLastCalledWith('a');
+    await user.keyboard('{End}');
+    expect(onSelect).toHaveBeenLastCalledWith('b');
   });
 });

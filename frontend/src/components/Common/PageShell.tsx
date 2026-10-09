@@ -77,10 +77,30 @@ interface FormPageShellProps extends ShellHeaderProps {
   onSelectSection?: (id: string) => void;
   /** Accessible name of the section nav. */
   navLabel?: string;
+  /**
+   * "scroll" (default): the nav jumps around one long page (a <nav> of
+   * buttons). "tabs": it switches which section is shown, so it is a tablist
+   * (role="tab" items, arrow keys) and the page wraps the shown section in
+   * `<FormPageTabPanel>`.
+   */
+  navMode?: "scroll" | "tabs";
   /** A 960px column, for sections that are tables. */
   wide?: boolean;
   children: React.ReactNode;
 }
+
+const formTabId = (id: string) => `form-section-tab-${id}`;
+const formTabPanelId = (id: string) => `form-section-panel-${id}`;
+
+/** The shown section of a `navMode="tabs"` FormPageShell. */
+export const FormPageTabPanel: React.FC<{ sectionId: string; children: React.ReactNode }> = ({
+  sectionId,
+  children,
+}) => (
+  <Box role="tabpanel" id={formTabPanelId(sectionId)} aria-labelledby={formTabId(sectionId)}>
+    {children}
+  </Box>
+);
 
 /**
  * The element at the foot of the form column that a sticky save bar portals
@@ -101,12 +121,45 @@ export const FormPageShell: React.FC<FormPageShellProps> = ({
   activeSection,
   onSelectSection,
   navLabel = "Sections",
+  navMode = "scroll",
   wide,
   children,
   ...header
 }) => {
   const [slot, setSlot] = useState<HTMLElement | null>(null);
   const hasNav = !!sections && sections.length > 0;
+  const isTabs = navMode === "tabs";
+
+  // Tablist keys (WAI-ARIA tabs): arrows move to the previous/next enabled tab
+  // and select it; Home/End jump to the first/last.
+  const handleTabKeys = (event: React.KeyboardEvent<HTMLElement>) => {
+    const enabled = (sections ?? []).filter((x) => !x.disabled);
+    if (enabled.length === 0) return;
+    const current = enabled.findIndex((x) => x.id === activeSection);
+    let next: number;
+    switch (event.key) {
+      case "ArrowDown":
+      case "ArrowRight":
+        next = (current + 1) % enabled.length;
+        break;
+      case "ArrowUp":
+      case "ArrowLeft":
+        next = (current - 1 + enabled.length) % enabled.length;
+        break;
+      case "Home":
+        next = 0;
+        break;
+      case "End":
+        next = enabled.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    const target = enabled[next];
+    onSelectSection?.(target.id);
+    document.getElementById(formTabId(target.id))?.focus();
+  };
   const column = wide ? FORM_WIDE_COLUMN_WIDTH : FORM_COLUMN_WIDTH;
 
   return (
@@ -125,8 +178,9 @@ export const FormPageShell: React.FC<FormPageShellProps> = ({
       >
         {hasNav && (
           <Box
-            component="nav"
+            component={isTabs ? "div" : "nav"}
             aria-label={navLabel}
+            {...(isTabs && { role: "tablist", "aria-orientation": "vertical" as const, onKeyDown: handleTabKeys })}
             sx={{
               position: "sticky",
               top: 24,
@@ -152,7 +206,15 @@ export const FormPageShell: React.FC<FormPageShellProps> = ({
                 <ButtonBase
                   key={s.id}
                   disabled={s.disabled}
-                  aria-current={selected ? "true" : undefined}
+                  {...(isTabs
+                    ? {
+                        role: "tab",
+                        id: formTabId(s.id),
+                        "aria-selected": selected,
+                        "aria-controls": formTabPanelId(s.id),
+                        tabIndex: selected ? 0 : -1,
+                      }
+                    : { "aria-current": selected ? ("true" as const) : undefined })}
                   onClick={() => onSelectSection?.(s.id)}
                   sx={{
                     justifyContent: "flex-start",
