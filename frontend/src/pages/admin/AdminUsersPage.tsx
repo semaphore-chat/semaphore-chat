@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { logger } from "../../utils/logger";
 import {
   Box,
@@ -63,7 +64,12 @@ import ResetPasswordDialog from "../../components/admin/ResetPasswordDialog";
 
 const AdminUsersPage: React.FC = () => {
   const [search, setSearch] = useState("");
-  const [bannedFilter, setBannedFilter] = useState<string>("all");
+  const [searchParams] = useSearchParams();
+  // `?status=banned|active` (e.g. from the dashboard's "Banned users" tile) preselects the status filter.
+  const [bannedFilter, setBannedFilter] = useState<string>(() => {
+    const status = searchParams.get("status");
+    return status === "banned" || status === "active" ? status : "all";
+  });
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);

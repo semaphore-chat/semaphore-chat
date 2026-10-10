@@ -466,6 +466,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
 
     // ── Voice ────────────────────────────────────────────────────────
     http.get('/api/livekit/connection-info', () => HttpResponse.json({ url: 'wss://ladle-sandbox.invalid' })),
+    http.get('/api/livekit/health', () => HttpResponse.json({ status: 'healthy', configured: true })),
     http.get('/api/channels/:channelId/voice-presence', ({ params }) => {
       const users = scenario.voicePresenceByChannel[String(params.channelId)] ?? [];
       const response: ChannelVoicePresenceResponseDto = { channelId: String(params.channelId), users, count: users.length };
