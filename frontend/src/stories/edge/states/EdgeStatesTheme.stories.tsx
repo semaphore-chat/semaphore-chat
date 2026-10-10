@@ -6,6 +6,7 @@
  * them (see `fixtures/edge/states.ts`), independent of Ladle's theme toggle.
  */
 import { edgeScreen } from '../../fixtures/edge/states';
+import { withOpenedContextRead } from '../../fixtures/modifiers';
 import type { ThemeSettings } from '../../../theme/constants';
 import {
   bigCommunityScenario,
@@ -15,6 +16,9 @@ import {
 } from '../../fixtures/scenarios';
 
 const s = bigCommunityScenario;
+// The open DM is read (`withOpenedContextRead`): the app clears what it shows, so seeding dm-1
+// unread would leave the rail's Direct Messages badge racing that clear.
+const dmChatScenario = withOpenedContextRead(s, firstDmGroup.id);
 const light: ThemeSettings = { mode: 'light', accentColor: 'teal', intensity: 'minimal' };
 const dark: ThemeSettings = { mode: 'dark', accentColor: 'teal', intensity: 'minimal' };
 
@@ -33,8 +37,8 @@ export const LightChannelList = edgeScreen(s, screens.channelList, { theme: ligh
 export const DarkChannelList = edgeScreen(s, screens.channelList, { theme: dark });
 export const LightDmList = edgeScreen(s, screens.dmList, { theme: light });
 export const DarkDmList = edgeScreen(s, screens.dmList, { theme: dark });
-export const LightDmChat = edgeScreen(s, screens.dmChat, { theme: light });
-export const DarkDmChat = edgeScreen(s, screens.dmChat, { theme: dark });
+export const LightDmChat = edgeScreen(dmChatScenario, screens.dmChat, { theme: light });
+export const DarkDmChat = edgeScreen(dmChatScenario, screens.dmChat, { theme: dark });
 export const LightNotifications = edgeScreen(s, screens.notifications, { theme: light });
 export const DarkNotifications = edgeScreen(s, screens.notifications, { theme: dark });
 export const LightSettings = edgeScreen(s, screens.settings, { theme: light });

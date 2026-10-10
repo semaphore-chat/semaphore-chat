@@ -5,6 +5,7 @@
  */
 import { edgeScreen, withHangingEndpoint } from '../../fixtures/edge/states';
 import { ClickOnMount } from '../../fixtures/interactions';
+import { withOpenedContextRead } from '../../fixtures/modifiers';
 import { findButtonByIconTestId, findButtonByText, findRoleButtonContaining } from '../../fixtures/domQueries';
 import { getDmDisplayName } from '../../../utils/dmHelpers';
 import {
@@ -17,6 +18,9 @@ import {
 
 const s = bigCommunityScenario;
 const chatPath = `/community/${primaryCommunity.id}/channel/${generalChannel.id}`;
+// The conversation these stories open is read (`withOpenedContextRead`): the app clears what it
+// shows, so seeding dm-1 unread would leave the rail's Direct Messages badge racing that clear.
+const dmScenario = withOpenedContextRead(s, firstDmGroup.id);
 
 // Module-level (stable) so ClickOnMount's effect runs once: one click on the row.
 const firstDmName = getDmDisplayName(firstDmGroup, s.me.id);
@@ -37,7 +41,8 @@ export const DmList = edgeScreen(s, '/direct-messages', {
   extraHandlers: [withHangingEndpoint('get', '/api/direct-messages')],
 });
 
-/** An open DM while its messages are pending. */
+/** An open DM while its messages are pending. Unlike `DmHeader` (whose messages load, so the app
+ * reads it), this DM keeps its seeded unread: the pending page never marks it read. */
 export const DmChat = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
   extraHandlers: [withHangingEndpoint('get', `/api/messages/group/${firstDmGroup.id}`)],
 });
@@ -47,7 +52,7 @@ export const DmChat = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
  * DM list are both pending, so nothing knows its name yet: the header holds a
  * neutral placeholder (it used to read "Unknown" on desktop, blank on phone).
  */
-export const DmHeader = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
+export const DmHeader = edgeScreen(dmScenario, `/direct-messages/${firstDmGroup.id}`, {
   extraHandlers: [
     withHangingEndpoint('get', `/api/direct-messages/${firstDmGroup.id}`),
     withHangingEndpoint('get', '/api/direct-messages'),
@@ -58,7 +63,7 @@ export const DmHeader = edgeScreen(s, `/direct-messages/${firstDmGroup.id}`, {
  * A DM picked from the DM list while the conversation itself is still pending:
  * the header already shows the name the list row had.
  */
-export const DmHeaderFromList = edgeScreen(s, '/direct-messages', {
+export const DmHeaderFromList = edgeScreen(dmScenario, '/direct-messages', {
   extraHandlers: [withHangingEndpoint('get', `/api/direct-messages/${firstDmGroup.id}`)],
   overlay: <ClickOnMount find={findFirstDmRow} />,
 });

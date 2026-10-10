@@ -104,5 +104,6 @@ export function asElectron(
     return <Story />;
   };
   ElectronStory.msw = Story.msw;
+  ElectronStory.path = Story.path;
   return ElectronStory;
 }

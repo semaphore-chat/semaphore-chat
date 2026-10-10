@@ -651,6 +651,7 @@ export function defineShowcase(path: string, options: ShowcaseOptions = {}): Lad
       ...voiceHeartbeatHandlers,
     ],
   });
+  Story.path = path;
   return Story;
 }
 

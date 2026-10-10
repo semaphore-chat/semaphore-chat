@@ -41,6 +41,12 @@ export interface LadleStoryComponent {
   (): ReactElement;
   msw?: HttpHandler[];
   meta?: StoryMeta;
+  /**
+   * The route this story renders (the `path` `defineScreen` was given). Not used by Ladle — the
+   * story-determinism test reads it to find the conversation a story's route opens, whose unread
+   * the fixture must not seed (see `__tests__/stories/storyFixtureDeterminism.test.ts`).
+   */
+  path?: string;
 }
 
 export function defineScreen(scenario: Scenario, path: string, options: DefineScreenOptions = {}): LadleStoryComponent {
@@ -48,5 +54,6 @@ export function defineScreen(scenario: Scenario, path: string, options: DefineSc
     <SandboxShell path={path} voiceState={options.voiceState} overlay={options.overlay} />
   );
   Screen.msw = makeHandlers(scenario, options);
+  Screen.path = path;
   return Screen;
 }

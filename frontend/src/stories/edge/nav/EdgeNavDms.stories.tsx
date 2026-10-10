@@ -7,6 +7,7 @@
 import { ClickOnMount } from '../../fixtures/interactions';
 import { findButtonByIconTestId } from '../../fixtures/domQueries';
 import { defineNavScreen, navBase, withDmGroups, DM_POOL } from '../../fixtures/edge/nav';
+import { withOpenedContextRead } from '../../fixtures/modifiers';
 
 const many = withDmGroups(navBase(), DM_POOL, 120);
 
@@ -21,6 +22,6 @@ export const OneUnread = defineNavScreen(withDmGroups(navBase(), DM_POOL.slice(0
 
 /** A 15-member unnamed group DM open, member list opened. */
 const bigGroup = many.dmGroups.find((g) => g.members.length >= 10 && !g.name)!;
-export const BigGroupOpen = defineNavScreen(many, `/direct-messages/${bigGroup.id}`, {
+export const BigGroupOpen = defineNavScreen(withOpenedContextRead(many, bigGroup.id), `/direct-messages/${bigGroup.id}`, {
   overlay: <ClickOnMount find={() => findButtonByIconTestId('PeopleIcon')} />,
 });
