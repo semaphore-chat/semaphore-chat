@@ -176,9 +176,23 @@ interface StatTileProps {
 }
 
 const StatTile: React.FC<StatTileProps> = ({ label, value, icon, to }) => {
+  const chevron = <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />;
+  // Phone: icon and chevron on a top row, the number and label below at full tile width,
+  // so labels like "Active invites" fit two tiles side by side. Wider: one row.
   const body = (
-    <CardContent sx={{ display: "flex", alignItems: "center", gap: 1.5, "&:last-child": { pb: 2 } }}>
-      <Box sx={{ color: "text.secondary", display: "flex", flexShrink: 0 }}>{icon}</Box>
+    <CardContent
+      sx={{
+        display: "flex",
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "stretch", sm: "center" },
+        gap: { xs: 0.5, sm: 1.5 },
+        "&:last-child": { pb: 2 },
+      }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <Box sx={{ color: "text.secondary", display: "flex" }}>{icon}</Box>
+        {to && <Box sx={{ display: { xs: "flex", sm: "none" } }}>{chevron}</Box>}
+      </Box>
       <Box sx={{ minWidth: 0, flex: 1 }}>
         <Typography
           variant="h5"
@@ -189,11 +203,11 @@ const StatTile: React.FC<StatTileProps> = ({ label, value, icon, to }) => {
         >
           {formatCount(value)}
         </Typography>
-        <Typography variant="body2" color="text.secondary" noWrap>
+        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
           {label}
         </Typography>
       </Box>
-      {to && <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />}
+      {to && <Box sx={{ display: { xs: "none", sm: "flex" } }}>{chevron}</Box>}
     </CardContent>
   );
   return (
