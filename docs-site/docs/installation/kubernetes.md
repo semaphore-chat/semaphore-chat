@@ -260,7 +260,7 @@ The chart doesn't bundle LiveKit, so this is what your LiveKit deployment (LiveK
 
 | Port | Protocol | Exposed | Purpose |
 |------|----------|---------|---------|
-| `7880` | TCP | via ingress/LB | Signaling and the HTTP API (`rtc.port`, default `7880`). TLS-terminated by the ingress; the browser and the backend both use the `wss://` URL. |
+| `7880` | TCP | via ingress/LB | Signaling and the HTTP API (top-level `port`, default `7880`). TLS-terminated by the ingress; the browser and the backend both use the `wss://` URL. |
 | `7881` | TCP | direct | ICE/TCP (`rtc.tcp_port`) — the fallback when a client can't use UDP. Must reach the pod directly: it can't sit behind the ingress or a TLS-terminating proxy, because the transport is already end-to-end encrypted. |
 | `7882` | UDP | direct | The single-port UDP mux (`rtc.udp_port`): all WebRTC media for every client on one UDP port. |
 
