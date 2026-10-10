@@ -100,6 +100,19 @@ export const IncomingCallBanner = defineEdgeScreen(scenario, {
   overlay: <FireServerEvent socket={ringSocket} event={ServerEvents.DM_VOICE_CALL_STARTED} payload={callStarted(edgeDmGroup.id)} />,
 });
 
+/**
+ * Incoming DM call while reading that DM conversation: the banner pushes the
+ * page down instead of covering it, so the conversation header (and its
+ * "Start voice call" button) stays visible and clickable. Desktop has no app
+ * bar, so before this the banner sat right on top of the DM header.
+ */
+const ringInDmSocket = createControllableSocket();
+export const IncomingCallOverDmConversation = defineEdgeScreen(dmScenario, {
+  path: dmPath,
+  socket: ringInDmSocket,
+  overlay: <FireServerEvent socket={ringInDmSocket} event={ServerEvents.DM_VOICE_CALL_STARTED} payload={callStarted(edgeDmGroup.id)} />,
+});
+
 /** Incoming DM call while already connected to a community voice channel (banner on top, voice bar at bottom). */
 const busyCrew: VoicePersona[] = [{ user: me }, ...others(scenario, 3).map((user, i) => ({ user, speaking: i === 0 }))];
 const busySocket = createControllableSocket();

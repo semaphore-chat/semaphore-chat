@@ -24,6 +24,7 @@ import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { RAIL_EXPANDED_WIDTH, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "../../constants/layout";
 import type { User } from "../../types/auth.type";
 import { logger } from "../../utils/logger";
+import { useTopChromeHeight } from "../../contexts/BottomChromeContext";
 
 interface CommunityToggleProps {
   isExpanded: boolean;
@@ -36,18 +37,18 @@ interface CommunityToggleProps {
 }
 
 const Rail = styled(Drawer, {
-  shouldForwardProp: (prop) => prop !== "expanded" && prop !== "bottomInset",
-})<{ expanded: boolean; bottomInset: number }>(({ expanded, bottomInset, theme }) => {
+  shouldForwardProp: (prop) => prop !== "expanded" && prop !== "bottomInset" && prop !== "topInset",
+})<{ expanded: boolean; bottomInset: number; topInset: number }>(({ expanded, bottomInset, topInset, theme }) => {
   const width = expanded ? RAIL_EXPANDED_WIDTH : SIDEBAR_WIDTH;
-  const height = `calc(var(--full-dvh) - ${bottomInset}px)`;
+  const height = `calc(var(--full-dvh) - ${bottomInset + topInset}px)`;
   return {
     width,
     flexShrink: 0,
     zIndex: 1200,
-    "&.MuiDrawer-root": { top: 0, height },
+    "&.MuiDrawer-root": { top: topInset, height },
     "& .MuiDrawer-paper": {
       width,
-      top: 0,
+      top: topInset,
       height,
       boxSizing: "border-box",
       background: theme.palette.background.paper,
@@ -102,6 +103,7 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
   const canCreateCommunity = useCanPerformAction("INSTANCE", undefined, RBAC_ACTIONS.CREATE_COMMUNITY);
   const { totalDmUnreadCount: totalDmUnread } = useReadReceipts();
   const unreadNotifications = unread?.count ?? 0;
+  const topInset = useTopChromeHeight();
 
   return (
     <Rail
@@ -109,6 +111,8 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
       anchor="left"
       expanded={isExpanded}
       bottomInset={voiceConnected ? VOICE_BAR_HEIGHT : 0}
+      // Below the incoming-call banner while it rings
+      topInset={topInset}
     >
       <Section expanded={isExpanded} sx={{ pt: 2, pb: 1 }}>
         <RailNavButton

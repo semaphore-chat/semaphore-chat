@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
 import { renderWithProviders } from '../../test-utils';
 import CommunityToggle from '../../../components/CommunityList/CommunityToggle';
+import { BottomChromeProvider, TOP_CHROME_ORDER, useChromeItem } from '../../../contexts/BottomChromeContext';
 import { RAIL_EXPANDED_WIDTH, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from '../../../constants/layout';
 
 const mockNavigate = vi.fn();
@@ -115,6 +116,28 @@ describe('Desktop community rail', () => {
     const cssText = () => Array.from(document.querySelectorAll('style')).map((el) => el.textContent).join('\n');
     renderRail({ voiceConnected: true });
     expect(cssText()).toContain(`height:calc(var(--full-dvh) - ${VOICE_BAR_HEIGHT}px)`);
+  });
+
+  it('starts below the incoming-call banner while it rings, so the banner never covers the rail', () => {
+    const Banner = () => {
+      useChromeItem({ id: 'incoming-call', edge: 'top', order: TOP_CHROME_ORDER.INCOMING_CALL, height: 72 });
+      return null;
+    };
+    const cssText = () => Array.from(document.querySelectorAll('style')).map((el) => el.textContent).join('\n');
+    renderWithProviders(
+      <BottomChromeProvider>
+        <Banner />
+        <CommunityToggle
+          isExpanded={false}
+          onToggleExpanded={vi.fn()}
+          onOpenNotifications={vi.fn()}
+          voiceConnected={true}
+          user={undefined}
+        />
+      </BottomChromeProvider>,
+    );
+    expect(railPaper()).toHaveStyle({ top: '72px' });
+    expect(cssText()).toContain(`height:calc(var(--full-dvh) - ${VOICE_BAR_HEIGHT + 72}px)`);
   });
 
   it('skips a null community entry (and logs it) instead of crashing', async () => {

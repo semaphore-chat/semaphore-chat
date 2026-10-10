@@ -13,6 +13,7 @@ import {
   BottomChromeProvider,
   useBottomChromeOffset,
   useChromeItem,
+  useTopChromeHeight,
   useTopChromeHost,
   useTopChromeOffset,
   TOP_CHROME_ORDER,
@@ -92,10 +93,12 @@ import { UpdateToast } from '../../components/PWA/UpdateToast';
 import { PWAInstallPrompt } from '../../components/PWA/PWAInstallPrompt';
 import { OfflineBanner } from '../../components/PWA/OfflineBanner';
 import { IncomingCallBanner } from '../../components/DirectMessage/IncomingCallBanner';
+import { DesktopContentArea } from '../../components/Desktop/DesktopContentArea';
 
 const OffsetProbe: React.FC<{ order: number }> = ({ order }) => (
   <div data-testid={`offset-${order}`}>{useBottomChromeOffset(order).px}</div>
 );
+const TopHeightProbe: React.FC = () => <div data-testid="top-height">{useTopChromeHeight()}</div>;
 const TopProbe: React.FC = () => <div data-testid="top-host">{useTopChromeHost()}</div>;
 const TopOffsetProbe: React.FC<{ order: number }> = ({ order }) => (
   <div data-testid={`top-offset-${order}`}>{useTopChromeOffset(order).px}</div>
@@ -299,20 +302,52 @@ describe('top chrome', () => {
     expect(Number(screen.getByTestId('top-host').textContent)).toBeGreaterThan(0);
   });
 
-  it('with no touch layout mounted (desktop / Electron) both keep their overlay presentation', () => {
+  it('with no touch layout mounted (desktop / Electron) the offline banner stays a snackbar, but the call banner still reserves its height', () => {
     platform.electron = true;
     setOnLine(false);
     call.incoming = { dmGroupId: 'dm-1', dmGroupName: 'Pat', callerName: 'Pat', callerAvatar: '' };
     inStore(
       <>
+        <TopHeightProbe />
         <OfflineBanner />
         <IncomingCallBanner />
       </>,
     );
     expect(screen.queryByTestId('offline-strip')).not.toBeInTheDocument();
     expect(screen.getByText("You're offline").closest('.MuiSnackbar-root')).toBeInTheDocument();
-    const banner = screen.getByText('Incoming voice call').closest('[role="alert"]') as HTMLElement;
-    expect(getComputedStyle(banner).top).toBe('0px');
+    expect(screen.getByText('Incoming voice call').closest('[role="alert"]')).toBeInTheDocument();
+    // jsdom has no ResizeObserver: the banner reports its 64px fallback height.
+    expect(screen.getByTestId('top-height')).toHaveTextContent('64');
+  });
+
+  it('on desktop the page starts below the ringing call banner, so its header controls stay clickable', () => {
+    platform.electron = true;
+    call.incoming = { dmGroupId: 'dm-1', dmGroupName: 'Pat', callerName: 'Pat', callerAvatar: '' };
+    inStore(
+      <>
+        <IncomingCallBanner />
+        <div data-testid="content">
+          <DesktopContentArea voiceConnected={false} isMenuExpanded={false} />
+        </div>
+      </>,
+    );
+    const area = screen.getByTestId('content').firstElementChild as HTMLElement;
+    expect(area).toHaveStyle({ top: '64px' });
+  });
+
+  it('on desktop the page goes back to the top once the call stops ringing', () => {
+    platform.electron = true;
+    call.incoming = null;
+    inStore(
+      <>
+        <IncomingCallBanner />
+        <div data-testid="content">
+          <DesktopContentArea voiceConnected={false} isMenuExpanded={false} />
+        </div>
+      </>,
+    );
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByTestId('content').firstElementChild as HTMLElement).toHaveStyle({ top: '0px' });
   });
 });
 

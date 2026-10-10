@@ -23,24 +23,27 @@ const pulseKeyframes = {
 };
 
 /**
- * Incoming DM call banner. On the phone/tablet layouts (which host top
- * chrome, see BottomChromeContext) it registers as top chrome and pushes the
- * app bar and content down, below the offline strip if that's showing.
- * Elsewhere (desktop, Electron) it overlays the top of the window as before.
+ * Incoming DM call banner: a full-width strip at the top of the window that
+ * registers as top chrome (see BottomChromeContext), so the layout pushes its
+ * content down instead of the banner covering it. On phone/tablet that's the
+ * app bar (below the offline strip if that's showing); on desktop and in
+ * Electron, which have no app bar, it's the page header and the rail, whose
+ * controls (e.g. a DM's "Start voice call") must stay clickable while it rings.
+ * Touch-sized buttons only on the phone/tablet layouts.
  */
 export const IncomingCallBanner: React.FC = () => {
   const { incomingCall, dismissCall } = useIncomingCall();
   const { actions } = useVoiceConnection();
-  const asTopChrome = useHasTopChromeHost();
+  const touchLayout = useHasTopChromeHost();
   const top = useTopChromeOffset(TOP_CHROME_ORDER.INCOMING_CALL);
   const measureRef = useMeasuredChromeItem({
     id: "incoming-call",
     edge: "top",
     order: TOP_CHROME_ORDER.INCOMING_CALL,
     fallbackHeight: 64,
-    enabled: asTopChrome && !!incomingCall,
+    enabled: !!incomingCall,
   });
-  const buttonSize = asTopChrome ? { minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM } : {};
+  const buttonSize = touchLayout ? { minWidth: TOUCH_TARGETS.MINIMUM, minHeight: TOUCH_TARGETS.MINIMUM } : {};
 
   if (!incomingCall) {
     return null;
@@ -67,15 +70,15 @@ export const IncomingCallBanner: React.FC = () => {
       elevation={8}
       sx={{
         position: "fixed",
-        top: asTopChrome ? top.css : 0,
+        top: top.css,
         left: 0,
         right: 0,
         zIndex: 1400,
-        ...(asTopChrome ? { borderRadius: 0 } : {}),
+        borderRadius: 0,
         display: "flex",
         alignItems: "center",
         gap: 2,
-        px: asTopChrome ? 2 : 3,
+        px: touchLayout ? 2 : 3,
         py: 1.5,
         borderBottom: "2px solid",
         borderColor: "success.main",
