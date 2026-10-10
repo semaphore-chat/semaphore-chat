@@ -386,8 +386,10 @@ const VoiceBottomBarContent: React.FC = () => {
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
                 </Typography>
-                {state.reconnect && !shouldUseTouchUI ? (
-                  reconnectStatus
+                {state.reconnect ? (
+                  // Touch layouts show it in its own row above (and no
+                  // "Voice Connected" while reconnecting).
+                  !shouldUseTouchUI && reconnectStatus
                 ) : (
                   !isMobile && (
                     <Typography variant="caption" color="text.secondary">

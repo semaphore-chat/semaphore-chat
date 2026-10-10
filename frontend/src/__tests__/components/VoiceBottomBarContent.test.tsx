@@ -337,6 +337,21 @@ describe('VoiceBottomBarContent', () => {
       expect(screen.queryByText('Voice Connected')).not.toBeInTheDocument();
     });
 
+    it('touch tablet: status in its own row, no "Voice Connected" while reconnecting', () => {
+      reconnecting(false);
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile: false,
+        isTablet: true,
+        isDesktop: false,
+        deviceType: 'tablet',
+        shouldUseTouchUI: true,
+      } as never);
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting voice (3)…');
+      expect(screen.queryByText('Voice Connected')).not.toBeInTheDocument();
+    });
+
     it('Cancel stops reconnecting', async () => {
       reconnecting(false);
       const { user } = renderWithProviders(<VoiceBottomBar />);
