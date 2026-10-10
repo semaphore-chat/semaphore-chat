@@ -121,7 +121,7 @@ helm uninstall semaphore-chat
 |-----------|-------------|---------|
 | `livekit.url` | LiveKit WebSocket URL | `wss://livekit.example.com` |
 | `livekit.apiKey` | LiveKit API key | Required |
-| `livekit.apiSecret` | LiveKit API secret | Required |
+| `livekit.apiSecret` | LiveKit API secret. Also verifies incoming webhook signatures, so it must match the key LiveKit signs with (and be ≥ 32 characters) | Required |
 
 ### Secrets Configuration
 

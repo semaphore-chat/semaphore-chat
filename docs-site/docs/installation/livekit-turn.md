@@ -34,8 +34,11 @@ graph LR
     SNI -->|"SNI = turn.example.com<br/>(TLS passthrough)"| LK[LiveKit TURN/TLS<br/>:5349]
     SNI -->|"any other SNI"| Proxy[Reverse proxy<br/>:8443]
     Proxy --> App[Semaphore Chat]
-    LK -->|"relay UDP 50000-50100"| Client
+    LK -->|"relay UDP 50000-50100<br/>(101 ports, inclusive)"| Client
 ```
+
+!!! note "`relay_range_end` is inclusive"
+    LiveKit allocates relay ports from `relay_range_start` **through `relay_range_end` inclusive**. With `50000`/`50100` that is **101 ports** (`50000`–`50100`), and port `50100` is usable. LiveKit hands both bounds to pion/turn's `RelayAddressGeneratorPortRange`, whose `MaxPort` is documented as *"the maximum (inclusive) port to allocate"*. Forward every port in the range end to end — a firewall rule that stops at `50099` leaves the last port unreachable, and a TURN session that lands on it stalls.
 
 ## 1. Configure LiveKit
 
@@ -58,6 +61,7 @@ turn:
   cert_file: /etc/livekit/turn.crt
   key_file: /etc/livekit/turn.key
   # Pin the relay range so it can be forwarded (the default is 30000-40000).
+  # Both bounds are inclusive: this is 101 ports, 50000 through 50100.
   relay_range_start: 50000
   relay_range_end: 50100
 ```
@@ -69,7 +73,7 @@ Notes on the fields:
 | `domain` | `turn.example.com` | Advertised to clients and must match the TLS certificate. A wildcard certificate (`*.example.com`) works. |
 | `tls_port` | `5349` | Where LiveKit listens. Clients are still told 443; the SNI router connects here. |
 | `external_tls` | `false` | LiveKit terminates TLS itself, using `cert_file`/`key_file`. Set `true` only if an L4 proxy terminates TURN/TLS for you and forwards plaintext. |
-| `relay_range_start` / `relay_range_end` | `50000` / `50100` | Pin the relay ports. A range of ~100 ports is plenty for a small instance; size it to your expected concurrent TURN sessions. |
+| `relay_range_start` / `relay_range_end` | `50000` / `50100` | Pin the relay ports. Both bounds are **inclusive**, so this is 101 ports (`50000`–`50100`). A range of ~100 ports is plenty for a small instance; size it to your expected concurrent TURN sessions, and forward every port in it. |
 | `udp_port` | unset | Enables TURN over UDP on a second port. Not needed here — restrictive networks need TURN/TLS on 443. If you set it, that UDP port must be reachable too. |
 
 !!! tip "Certificate"
@@ -194,7 +198,7 @@ Then have your reverse proxy (NPM, nginx, Caddy, Traefik…) listen for HTTPS on
 | `5349` | TCP | LiveKit's TURN/TLS listener (`turn.tls_port`). Internal: the SNI router and LiveKit must reach each other here. Do **not** expose it publicly when the router owns 443. |
 | `7881` | TCP | Direct WebRTC over TCP (fallback when UDP is blocked). |
 | `7882` | UDP | Direct WebRTC media. |
-| `50000`–`50100` | UDP | TURN relay media (`turn.relay_range_start`–`end`). Forward from your router/firewall to LiveKit. |
+| `50000`–`50100` | UDP | TURN relay media (`turn.relay_range_start`–`end`, both inclusive — 101 ports). Forward from your router/firewall to LiveKit. |
 
 Docker Compose publishes the relay range like any other port:
 
@@ -208,11 +212,11 @@ services:
       - "50000-50100:50000-50100/udp"  # TURN relay media
 ```
 
-On a home router or firewall, port-forward UDP `50000`–`50100` to the host running LiveKit as well.
+On a home router or firewall, port-forward UDP `50000`–`50100` (all 101 ports, inclusive) to the host running LiveKit as well.
 
 ## Kubernetes
 
-On Kubernetes, the relay ports must reach the LiveKit pod through its LoadBalancer Service. A Service cannot declare a port range, so list each UDP port (`50000` through `50100`) in the LiveKit Service — the same Service that carries `7881`/`7882`, or the chart's TURN load-balancer Service.
+On Kubernetes, the relay ports must reach the LiveKit pod through its LoadBalancer Service. A Service cannot declare a port range, so list each UDP port (`50000` through `50100`, inclusive — 101 entries) in the LiveKit Service — the same Service that carries `7881`/`7882`, or the chart's TURN load-balancer Service.
 
 ```yaml title="livekit-relay-service.yaml (fragment)"
 apiVersion: v1
@@ -230,7 +234,8 @@ spec:
       port: 5349
       targetPort: 5349
       protocol: TCP
-    # TURN relay range, one entry per port (matches turn.relay_range_start/end).
+    # TURN relay range, one entry per port — 50000 through 50100 inclusive
+    # (101 ports), matching turn.relay_range_start/end.
     - name: relay-50000
       port: 50000
       targetPort: 50000
@@ -266,7 +271,7 @@ If you deploy LiveKit with its Helm chart, add the range to the Service the char
 4. **Simulate a blocked network.** To confirm the fallback path without a restrictive carrier, temporarily block inbound UDP 7882 and see whether the call still connects (it should fall back to TURN).
 
 !!! tip "Nothing relayed?"
-    If candidates gather but media never flows, the relay range is almost certainly not reachable. Confirm UDP `50000`–`50100` is forwarded end to end — firewall, router, and LoadBalancer — and matches `relay_range_start`/`relay_range_end` exactly. If relay candidates never appear at all, the SNI router or the TLS certificate for `turn.example.com` is the problem: verify the certificate matches the `turn.domain` and that 443 is answered by the SNI router, not the reverse proxy.
+    If candidates gather but media never flows, the relay range is almost certainly not reachable. Confirm UDP `50000`–`50100` (all 101 ports, inclusive) is forwarded end to end — firewall, router, and LoadBalancer — and matches `relay_range_start`/`relay_range_end` exactly. If relay candidates never appear at all, the SNI router or the TLS certificate for `turn.example.com` is the problem: verify the certificate matches the `turn.domain` and that 443 is answered by the SNI router, not the reverse proxy.
 
 ## See also
 
