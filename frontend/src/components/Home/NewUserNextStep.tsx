@@ -4,6 +4,7 @@ import { Add as AddIcon, ChatBubbleOutline as ChatIcon, Groups as GroupsIcon } f
 import { Link } from "react-router-dom";
 import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 
 /**
  * The one next step for a user in no communities. Existing users can't redeem
@@ -28,7 +29,7 @@ const NewUserNextStep: React.FC = () => {
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 3 }}>
             Communities hold your channels and voice rooms. Create one and invite people to it.
           </Typography>
-          <Button component={Link} to="/community/create" variant="contained" startIcon={<AddIcon />}>
+          <Button component={Link} to="/community/create" variant="contained" startIcon={<AddIcon />} sx={{ minHeight: TOUCH_TARGETS.MINIMUM }}>
             Create a community
           </Button>
         </>
@@ -39,7 +40,7 @@ const NewUserNextStep: React.FC = () => {
             meantime.
           </Typography>
           <Box sx={{ display: "flex", justifyContent: "center" }}>
-            <Button component={Link} to="/direct-messages" variant="outlined" startIcon={<ChatIcon />}>
+            <Button component={Link} to="/direct-messages" variant="outlined" startIcon={<ChatIcon />} sx={{ minHeight: TOUCH_TARGETS.MINIMUM }}>
               Message someone
             </Button>
           </Box>
