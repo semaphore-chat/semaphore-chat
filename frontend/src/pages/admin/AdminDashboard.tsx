@@ -271,7 +271,15 @@ const UsageBar: React.FC<{
       value={Math.min(percent, 100)}
       color={color}
       aria-label={`${label} ${Math.round(percent)}% used`}
-      sx={{ height: 6, borderRadius: 1, mt: 0.5 }}
+      sx={(theme) => ({
+        height: 6,
+        borderRadius: 1,
+        mt: 0.5,
+        // The theme paints every LinearProgress bar in the accent colour, which
+        // would hide the warning/error state; set it explicitly.
+        backgroundColor: alpha(theme.palette[color].main, 0.2),
+        "& .MuiLinearProgress-bar": { backgroundColor: theme.palette[color].main },
+      })}
     />
   </Box>
 );
