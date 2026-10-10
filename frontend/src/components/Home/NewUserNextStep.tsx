@@ -22,8 +22,9 @@ const NewUserNextStep: React.FC<{ fullWidth?: boolean }> = ({ fullWidth = false 
         p: { xs: 3, sm: 4 },
         borderRadius: 2,
         textAlign: "center",
-        width: "100%",
-        ...(!fullWidth && { maxWidth: 520, mx: "auto" }),
+        // Desktop: a block that fills the Home column. Phone/tablet: a centred
+        // 520px card (border-box, so the padding stays inside the width).
+        ...(!fullWidth && { width: "100%", maxWidth: 520, mx: "auto", boxSizing: "border-box" }),
       }}
     >
       <GroupsIcon color="primary" sx={{ fontSize: "icon.3xl", mb: 1 }} />
