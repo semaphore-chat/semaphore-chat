@@ -19,6 +19,7 @@ import {
   DISCONNECT_REASON_ROOM_DELETED,
 } from '../features/voice/livekitEvents';
 import { setVoiceReconnectCanceller } from '../features/voice/reconnectControl';
+import { definitiveRejoinFailure, errorMessageOf } from '../features/voice/voiceEndReason';
 
 interface ResyncJoinOptions {
   startMuted?: boolean;
@@ -88,7 +89,9 @@ function isReadyToRejoin(): boolean {
  * the browser is online and the window visible. It rejoins from live context
  * state (NOT the localStorage saved-connection; its 5-minute expiry is too
  * short for a locked phone) and keeps the mic muted if it was. After the
- * last attempt fails, the call ends with VoiceEndReason.ReconnectFailed.
+ * last attempt fails, the call ends with VoiceEndReason.ReconnectFailed. A
+ * definitive refusal (401 after the session refresh, 403, 404) ends it at
+ * once with its own reason; network, timeout and 5xx errors keep retrying.
  * Hanging up cancels the loop. Foreground transitions (visibility, pageshow,
  * resume, online, Electron wake from sleep / unlock) skip the current wait.
  *
@@ -244,13 +247,20 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
           return;
         } catch (error) {
           if (signal.aborted) return;
+          const finalReason = definitiveRejoinFailure(error);
+          if (finalReason) {
+            // Access lost, channel gone or session over: retrying can't help.
+            logger.warn(`[Voice] Rejoin attempt ${attempt} refused (${finalReason}) — not retrying`);
+            await latestRef.current.actions.endVoiceSession(finalReason, errorMessageOf(error));
+            return;
+          }
           lastError = error;
           logger.warn(`[Voice] Rejoin attempt ${attempt} failed:`, error);
         }
       }
 
       logger.error('[Voice] Giving up rejoining after', maxAttempts, 'attempts');
-      const message = lastError instanceof Error ? lastError.message : null;
+      const message = errorMessageOf(lastError);
       await latestRef.current.actions.endVoiceSession(VoiceEndReason.ReconnectFailed, message);
     } catch (error) {
       if (!(error instanceof LoopAborted)) {

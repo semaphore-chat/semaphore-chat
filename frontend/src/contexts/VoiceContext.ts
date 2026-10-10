@@ -24,6 +24,12 @@ export enum VoiceEndReason {
   RoomDeleted = 'room_deleted',
   /** The connection dropped and every automatic rejoin attempt failed. */
   ReconnectFailed = 'reconnect_failed',
+  /** A rejoin was refused with 403: no access to the channel any more (removed, banned, permissions). */
+  AccessLost = 'access_lost',
+  /** A rejoin got 404: the channel or DM no longer exists. */
+  ChannelNotFound = 'channel_not_found',
+  /** A rejoin got 401 after the session refresh: the session is gone (signed out, revoked). */
+  SessionExpired = 'session_expired',
 }
 
 export interface VoiceEnded {

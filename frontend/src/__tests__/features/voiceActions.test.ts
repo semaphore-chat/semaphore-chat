@@ -1027,6 +1027,18 @@ describe('voiceActions resilience (#309)', () => {
     });
   });
 
+  describe('token endpoint errors reach the rejoin loop unchanged', () => {
+    it.each([401, 403, 404, 503])('rethrows the %i API body as is', async (statusCode) => {
+      const body = { statusCode, message: 'nope', error: 'x' };
+      vi.mocked(livekitControllerGenerateToken).mockRejectedValueOnce(body);
+      const deps = createMockDeps();
+
+      await expect(joinVoiceChannel({ ...params, quiet: true }, deps)).rejects.toBe(body);
+      expect(mockRoomInstance.connect).not.toHaveBeenCalled();
+      expect(getPendingJoin()).toBeNull();
+    });
+  });
+
   describe('quiet rejoin', () => {
     it('dropping the dead room skips the REST leave, sounds and state reset', async () => {
       const deps = createMockDeps();

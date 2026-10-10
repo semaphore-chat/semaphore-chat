@@ -421,6 +421,113 @@ describe('useVoiceForegroundResync', () => {
     });
   });
 
+  describe('definitive rejoin failures (no retry)', () => {
+    /** What the generated API client throws: the parsed NestJS error body. */
+    const apiError = (statusCode: number, message: string) => ({ statusCode, message, error: 'x' });
+
+    it.each([
+      ['401 after the session refresh (session gone)', apiError(401, 'Unauthorized'), VoiceEndReason.SessionExpired],
+      ['403 (access lost / banned)', apiError(403, 'Forbidden resource'), VoiceEndReason.AccessLost],
+      ['404 (channel deleted)', apiError(404, 'Channel not found'), VoiceEndReason.ChannelNotFound],
+    ])('ends the call at once on %s', async (_label, error, reason) => {
+      const actions = createActions();
+      actions.joinVoiceChannel.mockRejectedValue(error);
+      renderHook(() =>
+        useVoiceForegroundResync({ room: deadRoom() as unknown as Room, state: createVoiceState(), actions })
+      );
+
+      await fireVisibilityChange();
+      await advance(REJOIN_BACKOFF_MS[0]);
+
+      expect(actions.endVoiceSession).toHaveBeenCalledTimes(1);
+      expect(actions.endVoiceSession).toHaveBeenCalledWith(reason, error.message);
+
+      // No further attempts
+      await advance(10 * 60_000);
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(1);
+      expect(actions.endVoiceSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops a DM rejoin on 403 too', async () => {
+      const actions = createActions();
+      actions.joinDmVoice.mockRejectedValue(apiError(403, 'Forbidden resource'));
+      renderHook(() =>
+        useVoiceForegroundResync({
+          room: null,
+          state: createVoiceState({
+            contextType: VoiceSessionType.Dm,
+            currentChannelId: null,
+            channelName: null,
+            communityId: null,
+            currentDmGroupId: 'dm-1',
+            dmGroupName: 'Alice & Bob',
+          }),
+          actions,
+        })
+      );
+
+      await fireVisibilityChange();
+      await advance(10 * 60_000);
+
+      expect(actions.joinDmVoice).toHaveBeenCalledTimes(1);
+      expect(actions.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.AccessLost, 'Forbidden resource');
+    });
+
+    it('stops on a definitive failure after earlier retryable ones', async () => {
+      const actions = createActions();
+      actions.joinVoiceChannel
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockRejectedValueOnce(apiError(403, 'Forbidden resource'));
+      renderHook(() =>
+        useVoiceForegroundResync({ room: deadRoom() as unknown as Room, state: createVoiceState(), actions })
+      );
+
+      await fireVisibilityChange();
+      await advance(10 * 60_000);
+
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(2);
+      expect(actions.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.AccessLost, 'Forbidden resource');
+    });
+
+    it.each([
+      ['a network error', new TypeError('Failed to fetch')],
+      ['a timeout', new Error('Microphone enable timeout (5s)')],
+      ['a LiveKit connection error', new Error('could not establish signal connection')],
+      ['500', apiError(500, 'Internal server error')],
+      ['502', apiError(502, 'Bad Gateway')],
+      ['503 (session refresh unavailable)', apiError(503, 'Could not refresh the session. Try again.')],
+      ['429', apiError(429, 'Too Many Requests')],
+    ])('keeps retrying after %s', async (_label, error) => {
+      const actions = createActions();
+      actions.joinVoiceChannel.mockRejectedValueOnce(error).mockRejectedValueOnce(error);
+      renderHook(() =>
+        useVoiceForegroundResync({ room: deadRoom() as unknown as Room, state: createVoiceState(), actions })
+      );
+
+      await fireVisibilityChange();
+      await advance(REJOIN_BACKOFF_MS[0] + REJOIN_BACKOFF_MS[1] + REJOIN_BACKOFF_MS[2]);
+
+      // Two failures, then the third attempt succeeds
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(3);
+      expect(actions.endVoiceSession).not.toHaveBeenCalled();
+      expect(mockDispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetReconnect, payload: null });
+    });
+
+    it('ends with ReconnectFailed and the API message when only retryable errors occur', async () => {
+      const actions = createActions();
+      actions.joinVoiceChannel.mockRejectedValue(apiError(503, 'Service Unavailable'));
+      renderHook(() =>
+        useVoiceForegroundResync({ room: deadRoom() as unknown as Room, state: createVoiceState(), actions })
+      );
+
+      await fireVisibilityChange();
+      await advance(10 * 60_000);
+
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(REJOIN_BACKOFF_MS.length);
+      expect(actions.endVoiceSession).toHaveBeenCalledWith(VoiceEndReason.ReconnectFailed, 'Service Unavailable');
+    });
+  });
+
   describe('disconnect reasons', () => {
     it.each([
       ['DUPLICATE_IDENTITY (same account on another device)', DisconnectReason.DUPLICATE_IDENTITY, VoiceEndReason.DuplicateIdentity],
