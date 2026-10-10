@@ -17,14 +17,15 @@ export function describeVoiceEnd(reason: VoiceEndReason): string {
 
 /**
  * HTTP status of an error from the generated API client, which throws the
- * parsed NestJS error body (`{ statusCode, message, error }`).
+ * parsed NestJS error body (`{ statusCode, message, error }`). Only that
+ * body counts: a LiveKit `ConnectionError` also carries a `status` (its
+ * validate endpoint's 401/403/404, e.g. clock skew or an API-key mismatch),
+ * and those stay retryable.
  */
 function httpStatusOf(error: unknown): number | null {
-  if (!error || typeof error !== 'object') return null;
-  const { statusCode, status } = error as { statusCode?: unknown; status?: unknown };
-  if (typeof statusCode === 'number') return statusCode;
-  if (typeof status === 'number') return status;
-  return null;
+  if (!error || typeof error !== 'object' || error instanceof Error) return null;
+  const { statusCode } = error as { statusCode?: unknown };
+  return typeof statusCode === 'number' ? statusCode : null;
 }
 
 /**

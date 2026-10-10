@@ -43,6 +43,7 @@ const Layout: React.FC = () => {
   // so mounting it here doesn't reintroduce an eager livekit-client value import.
   useVoiceForegroundResync({
     room: voiceState.room,
+    getRoom: voiceActions.getRoom,
     state: voiceState,
     actions: {
       joinVoiceChannel: voiceActions.joinVoiceChannel,

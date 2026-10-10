@@ -304,5 +304,32 @@ describe('useVoicePresenceHeartbeat', () => {
       tick();
       expect(mockRefreshPresence).toHaveBeenCalledTimes(2);
     });
+
+    it('treats a signal-only resume (signalReconnecting) like reconnecting, with the same grace', () => {
+      const { room, setState } = createRoom('connected');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      mockRefreshPresence.mockClear();
+
+      setState('signalReconnecting');
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+
+      // Moving on to a full reconnect keeps the original start time
+      vi.advanceTimersByTime(HEARTBEAT_RECONNECTING_GRACE_MS / 2);
+      setState('reconnecting');
+      vi.advanceTimersByTime(HEARTBEAT_RECONNECTING_GRACE_MS / 2);
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+    });
+
+    it('a room that mounts mid signal-resume still gets heartbeats within the grace', () => {
+      const { room } = createRoom('signalReconnecting');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -42,6 +42,12 @@ interface ResyncActions {
 
 interface UseVoiceForegroundResyncOptions {
   room: Room | null;
+  /**
+   * The current room, read synchronously (RoomProvider's ref): after a rejoin
+   * attempt resolves, React may not have re-rendered with the new room yet.
+   * Falls back to the `room` prop.
+   */
+  getRoom?: () => Room | null;
   state: VoiceState;
   actions: ResyncActions;
 }
@@ -102,16 +108,20 @@ function isReadyToRejoin(): boolean {
  * autoplay block after backgrounding) → room.startAudio(). livekit only does
  * this itself on iOS.
  */
-export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForegroundResyncOptions): void {
+export function useVoiceForegroundResync({ room, getRoom, state, actions }: UseVoiceForegroundResyncOptions): void {
   const { dispatch } = useVoiceDispatch();
   const electronAPI = useElectronAPI();
   const loopRef = useRef<AbortController | null>(null);
   /** Ends the current backoff wait early (a foreground transition). */
   const wakeRef = useRef<(() => void) | null>(null);
+  /** A rejoin attempt is running (joining, enabling the mic, registering presence). */
+  const attemptInFlightRef = useRef(false);
+  /** The room disconnected while an attempt was running: that attempt didn't stick. */
+  const roomDiedDuringAttemptRef = useRef(false);
 
   // Keep latest values in refs so the event listeners never go stale.
-  const latestRef = useRef({ room, state, actions, dispatch });
-  latestRef.current = { room, state, actions, dispatch };
+  const latestRef = useRef({ room, getRoom, state, actions, dispatch });
+  latestRef.current = { room, getRoom, state, actions, dispatch };
 
   /** Wait `ms`, or less if woken; rejects with LoopAborted on cancel. */
   const waitDelay = (ms: number, signal: AbortSignal) =>
@@ -210,6 +220,14 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
     // muted (a dead room still reports its last local mic state). No room
     // at all → unknown → the default (mic on).
     const startMuted = room?.localParticipant?.isMicrophoneEnabled === false;
+    const deadRoom = room;
+    /** After an attempt resolved: did the room it created die already? */
+    const attemptRoomIsDead = () => {
+      if (roomDiedDuringAttemptRef.current) return true;
+      const { getRoom, room } = latestRef.current;
+      const current = getRoom ? getRoom() : room;
+      return !!current && current !== deadRoom && current.state === CONNECTION_STATE.Disconnected;
+    };
 
     const controller = new AbortController();
     loopRef.current = controller;
@@ -240,8 +258,21 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
 
         logger.info(`[Voice] Rejoin attempt ${attempt}/${maxAttempts}`);
         try {
-          await rejoinOnce(startMuted);
+          roomDiedDuringAttemptRef.current = false;
+          attemptInFlightRef.current = true;
+          try {
+            await rejoinOnce(startMuted);
+          } finally {
+            attemptInFlightRef.current = false;
+          }
           if (signal.aborted) return;
+          if (attemptRoomIsDead()) {
+            // The new room dropped while the attempt was finishing (mic,
+            // presence): not a success, keep going.
+            lastError = new Error('The voice connection dropped again while rejoining');
+            logger.warn(`[Voice] Rejoin attempt ${attempt} connected, but the room disconnected again`);
+            continue;
+          }
           logger.info('[Voice] Rejoin complete');
           latestRef.current.dispatch({ type: VoiceActionType.SetReconnect, payload: null });
           return;
@@ -367,6 +398,12 @@ export function useVoiceForegroundResync({ room, state, actions }: UseVoiceForeg
       if (finalReason) {
         logger.warn('[Voice] Disconnected for good:', finalReason, '— not rejoining');
         void latestRef.current.actions.endVoiceSession(finalReason);
+        return;
+      }
+      if (attemptInFlightRef.current) {
+        // The room a rejoin attempt just created died before the attempt
+        // finished: the loop treats that attempt as failed.
+        roomDiedDuringAttemptRef.current = true;
         return;
       }
       // The loop itself waits for the network and a visible window.

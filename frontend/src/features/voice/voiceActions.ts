@@ -5,7 +5,7 @@
 // the single place a Room is constructed, so the bytes only download when a
 // user actually joins a voice/DM call (see PR-11 bundle splitting).
 import type { Room, DisconnectReason, VideoCaptureOptions, AudioCaptureOptions } from "livekit-client";
-import { VoiceSessionType, VoiceActionType, type VoiceAction, type VoiceState, type VoiceEndReason } from "../../contexts/VoiceContext";
+import { VoiceSessionType, VoiceActionType, VoiceEndReason, type VoiceAction, type VoiceState } from "../../contexts/VoiceContext";
 import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from "../../api-client/sdk.gen";
 import { queryClient } from "../../queryClient";
 
@@ -32,6 +32,8 @@ const VOICE_CONNECTION_KEY = 'semaphore_voice_connection';
 const CONNECTION_EXPIRY_MS = 5 * 60 * 1000;
 /** How long a hang-up waits for the REST presence leave before aborting it. */
 export const LEAVE_REST_TIMEOUT_MS = 3000;
+/** How long a join waits for the REST presence registration before moving on. */
+export const JOIN_PRESENCE_TIMEOUT_MS = 5000;
 /** How long a join waits for the microphone before joining muted. */
 export const MIC_ENABLE_TIMEOUT_MS = 5000;
 
@@ -338,7 +340,7 @@ async function connectToLiveKitRoom(
   token: string,
   setRoom: (room: Room | null) => void,
   dispatch: React.Dispatch<VoiceAction>,
-  options: { startMuted?: boolean; pending?: PendingJoin } = {},
+  options: { startMuted?: boolean; pending?: PendingJoin; isDeafened?: boolean } = {},
 ): Promise<Room> {
   logger.info('[Voice] Creating new LiveKit room instance');
   // Dynamically import livekit-client (and its Web Worker timer shim) here —
@@ -407,7 +409,8 @@ async function connectToLiveKitRoom(
     throwIfCancelled(options.pending);
     setRoom(room);
 
-    const initialMetadata = JSON.stringify({ isDeafened: false });
+    // A rejoin while deafened must keep showing others we're deafened.
+    const initialMetadata = JSON.stringify({ isDeafened: options.isDeafened === true });
     await room.localParticipant.setMetadata(initialMetadata);
     logger.info('[Voice] Set initial participant metadata');
   } catch (error) {
@@ -561,7 +564,8 @@ export async function joinVoiceChannel(
 
     logger.info('[Voice] Connecting to LiveKit room...');
     throwIfCancelled(join);
-    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join });
+    const isDeafened = deps.getVoiceState().isDeafened;
+    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join, isDeafened });
     throwIfCancelled(join);
 
     dispatch({
@@ -573,12 +577,44 @@ export async function joinVoiceChannel(
     // mid-call SW reload would drop the connection (see swUpdate / UpdateToast).
     setUpdateDeferred(true);
 
+    // Connected: free the join slot now, so a slow presence request below
+    // doesn't block clicking another channel. From here a hang-up (or a
+    // switch, or a final disconnect) shows as the room no longer being ours.
+    endJoin(join);
+    const stillJoined = () => !join.cancelled && deps.getRoom() === room;
+
     // Register presence directly (belt-and-suspenders alongside LiveKit webhooks)
+    let presenceRegistered = false;
+    const presenceAbort = new AbortController();
+    const presenceTimer = setTimeout(() => presenceAbort.abort(), JOIN_PRESENCE_TIMEOUT_MS);
     try {
-      await voicePresenceControllerJoinPresence({ path: { channelId } });
+      await voicePresenceControllerJoinPresence({ path: { channelId }, signal: presenceAbort.signal });
+      presenceRegistered = true;
       logger.info('[Voice] Registered voice presence via REST');
     } catch (err) {
       logger.warn('[Voice] Failed to register voice presence (webhook will handle it):', err);
+    } finally {
+      clearTimeout(presenceTimer);
+    }
+
+    if (!stillJoined()) {
+      // Hung up (or ended) while presence was being registered: don't save
+      // the connection (a refresh would rejoin) or play the connect sound,
+      // and undo the late registration, which may have landed after the
+      // hang-up's leave. Not after a duplicate identity: the other device
+      // (same user) is in the channel now.
+      logger.info('[Voice] Left while registering presence — not completing the join');
+      if (presenceRegistered && deps.getVoiceState().lastEnded?.reason !== VoiceEndReason.DuplicateIdentity) {
+        sendLeavePresence(channelId);
+      }
+      return;
+    }
+
+    // A rejoin while deafened: the fresh presence must show it too.
+    if (isDeafened) {
+      voicePresenceControllerUpdateDeafenState({ path: { channelId }, body: { isDeafened: true } }).catch((err) => {
+        logger.warn('[Voice] Failed to restore deafen state on backend:', err);
+      });
     }
 
     queryClient.invalidateQueries({ queryKey: [{ _id: 'voicePresenceControllerGetChannelPresence' }] });
@@ -781,7 +817,11 @@ export async function joinDmVoice(
     });
 
     throwIfCancelled(join);
-    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join });
+    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, {
+      startMuted,
+      pending: join,
+      isDeafened: deps.getVoiceState().isDeafened,
+    });
     throwIfCancelled(join);
 
     dispatch({

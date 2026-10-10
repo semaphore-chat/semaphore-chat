@@ -51,11 +51,13 @@ export function useVoicePresenceHeartbeat({
       return;
     }
 
+    // Full reconnect or signal-only resume: both are "briefly reconnecting".
+    const isReconnecting = (state: string) =>
+      state === CONNECTION_STATE.Reconnecting || state === CONNECTION_STATE.SignalReconnecting;
     // When the room started reconnecting (null while it isn't).
-    let reconnectingSince: number | null =
-      room.state === CONNECTION_STATE.Reconnecting ? Date.now() : null;
+    let reconnectingSince: number | null = isReconnecting(room.state) ? Date.now() : null;
     const handleStateChanged = (state: string) => {
-      if (state === CONNECTION_STATE.Reconnecting) {
+      if (isReconnecting(state)) {
         reconnectingSince ??= Date.now();
       } else {
         reconnectingSince = null;
@@ -65,7 +67,7 @@ export function useVoicePresenceHeartbeat({
 
     const roomIsLive = () => {
       if (room.state === CONNECTION_STATE.Connected) return true;
-      if (room.state === CONNECTION_STATE.Reconnecting) {
+      if (isReconnecting(room.state)) {
         return reconnectingSince === null || Date.now() - reconnectingSince < HEARTBEAT_RECONNECTING_GRACE_MS;
       }
       return false;

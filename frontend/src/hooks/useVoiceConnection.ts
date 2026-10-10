@@ -285,6 +285,8 @@ export const useVoiceConnection = () => {
       // Cancelling an automatic rejoin hangs up (it cancels the loop too).
       cancelReconnect: handleLeaveVoiceChannel,
       endVoiceSession: handleEndVoiceSession,
+      /** The current room, read synchronously (not from render state). */
+      getRoom,
       toggleAudio: handleToggleAudio,
       toggleVideo: handleToggleVideo,
       toggleScreenShare: handleToggleScreenShare,

@@ -147,6 +147,7 @@ import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
+import { JOIN_PRESENCE_TIMEOUT_MS } from '../../features/voice/voiceActions';
 import { publishScreenShare } from '../../features/voice/screenSharePublish';
 import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
 import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
@@ -162,7 +163,8 @@ function createMockDeps(overrides: Partial<{
 }> = {}) {
   const dispatch = vi.fn();
   const hasRoomOverride = 'room' in overrides;
-  const room = hasRoomOverride ? overrides.room : mockRoomInstance;
+  // Like RoomProvider: setRoom changes what getRoom returns (synchronously)
+  let room = hasRoomOverride ? overrides.room : mockRoomInstance;
   return {
     dispatch,
     getVoiceState: (): VoiceState => ({
@@ -197,7 +199,7 @@ function createMockDeps(overrides: Partial<{
       lastEnded: null,
     }),
     getRoom: () => room as Room | null,
-    setRoom: vi.fn(),
+    setRoom: vi.fn((next: Room | null) => { room = next; }),
   };
 }
 
@@ -323,7 +325,10 @@ describe('voiceActions', () => {
       const deps = createMockDeps();
       await joinVoiceChannel(params, deps);
 
-      expect(voicePresenceControllerJoinPresence).toHaveBeenCalledWith({ path: { channelId: 'ch-1' } });
+      expect(voicePresenceControllerJoinPresence).toHaveBeenCalledWith({
+        path: { channelId: 'ch-1' },
+        signal: expect.any(AbortSignal),
+      });
     });
 
     it('dispatches SET_CONNECTION_ERROR on token failure', async () => {
@@ -1024,6 +1029,162 @@ describe('voiceActions resilience (#309)', () => {
 
       resolveToken({ data: { token: 'mock-dm-token' } });
       await first;
+    });
+  });
+
+  describe('presence registration after connecting (review #1)', () => {
+    /** Deps whose room is real state: setRoom changes what getRoom returns. */
+    function statefulDeps(extra: Partial<VoiceState> = {}) {
+      const base = createMockDeps({ room: null });
+      let room: Room | null = null;
+      let state = base.getVoiceState();
+      state = { ...state, ...extra };
+      return {
+        ...base,
+        getVoiceState: () => state,
+        setVoiceState: (patch: Partial<VoiceState>) => { state = { ...state, ...patch }; },
+        getRoom: () => room,
+        setRoom: vi.fn((r: Room | null) => { room = r; }),
+      };
+    }
+    const savedConnection = () =>
+      vi.mocked(setCachedItem).mock.calls.filter(([key]) => key === 'semaphore_voice_connection');
+
+    it('hang-up while presence is registering: no saved connection, no connect sound, and the late join is undone', async () => {
+      let resolvePresence: () => void = () => {};
+      vi.mocked(voicePresenceControllerJoinPresence).mockReturnValueOnce(
+        new Promise<void>((resolve) => { resolvePresence = resolve; }) as never,
+      );
+      const deps = statefulDeps();
+
+      const joining = joinVoiceChannel(params, deps);
+      await vi.waitFor(() => expect(voicePresenceControllerJoinPresence).toHaveBeenCalled());
+
+      await leaveVoiceChannel(deps);
+      expect(voicePresenceControllerLeavePresence).toHaveBeenCalledTimes(1);
+
+      resolvePresence();
+      await joining;
+
+      expect(savedConnection()).toHaveLength(0);
+      expect(playSound).not.toHaveBeenCalledWith('connected');
+      // The leave after the late presence join undoes it
+      expect(voicePresenceControllerLeavePresence).toHaveBeenCalledTimes(2);
+      expect(
+        vi.mocked(voicePresenceControllerJoinPresence).mock.invocationCallOrder[0],
+      ).toBeLessThan(vi.mocked(voicePresenceControllerLeavePresence).mock.invocationCallOrder[1]);
+    });
+
+    it('no compensating leave when the late presence request failed', async () => {
+      let rejectPresence: (e: unknown) => void = () => {};
+      vi.mocked(voicePresenceControllerJoinPresence).mockReturnValueOnce(
+        new Promise<void>((_, reject) => { rejectPresence = reject; }) as never,
+      );
+      const deps = statefulDeps();
+
+      const joining = joinVoiceChannel(params, deps);
+      await vi.waitFor(() => expect(voicePresenceControllerJoinPresence).toHaveBeenCalled());
+      await leaveVoiceChannel(deps);
+      rejectPresence(new Error('offline'));
+      await joining;
+
+      expect(voicePresenceControllerLeavePresence).toHaveBeenCalledTimes(1);
+      expect(savedConnection()).toHaveLength(0);
+    });
+
+    it('a duplicate identity in that window: nothing saved, and no leave (the other device is in the channel)', async () => {
+      let resolvePresence: () => void = () => {};
+      vi.mocked(voicePresenceControllerJoinPresence).mockReturnValueOnce(
+        new Promise<void>((resolve) => { resolvePresence = resolve; }) as never,
+      );
+      const deps = statefulDeps();
+
+      const joining = joinVoiceChannel(params, deps);
+      await vi.waitFor(() => expect(voicePresenceControllerJoinPresence).toHaveBeenCalled());
+
+      await endVoiceSession(VoiceEndReason.DuplicateIdentity, deps);
+      deps.setVoiceState({
+        isConnected: false,
+        lastEnded: { reason: VoiceEndReason.DuplicateIdentity, error: null, at: Date.now() },
+      });
+      resolvePresence();
+      await joining;
+
+      expect(savedConnection()).toHaveLength(0);
+      expect(voicePresenceControllerLeavePresence).not.toHaveBeenCalled();
+    });
+
+    it('frees the join slot during the presence request, so another channel can be joined', async () => {
+      let resolvePresence: () => void = () => {};
+      vi.mocked(voicePresenceControllerJoinPresence).mockReturnValueOnce(
+        new Promise<void>((resolve) => { resolvePresence = resolve; }) as never,
+      );
+      const deps = statefulDeps();
+
+      const first = joinVoiceChannel(params, deps);
+      await vi.waitFor(() => expect(voicePresenceControllerJoinPresence).toHaveBeenCalled());
+      expect(getPendingJoin()).toBeNull();
+
+      await joinVoiceChannel({ ...params, channelId: 'ch-2' }, deps);
+      expect(livekitControllerGenerateToken).toHaveBeenCalledTimes(2);
+
+      resolvePresence();
+      await first;
+      // The first join lost its room to the second: it doesn't save itself
+      expect(savedConnection().map(([, v]) => (v as { channelId: string }).channelId)).toEqual(['ch-2']);
+    });
+
+    it('gives the presence request a timeout and still completes the join', async () => {
+      vi.useFakeTimers();
+      try {
+        let signal: AbortSignal | undefined;
+        vi.mocked(voicePresenceControllerJoinPresence).mockImplementationOnce(((opts: { signal: AbortSignal }) => {
+          signal = opts.signal;
+          return new Promise((_, reject) => opts.signal.addEventListener('abort', () => reject(new Error('aborted'))));
+        }) as never);
+        const deps = statefulDeps();
+
+        const joining = joinVoiceChannel(params, deps);
+        await vi.advanceTimersByTimeAsync(JOIN_PRESENCE_TIMEOUT_MS - 1);
+        expect(signal?.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        await joining;
+
+        expect(signal?.aborted).toBe(true);
+        expect(savedConnection()).toHaveLength(1);
+        expect(playSound).toHaveBeenCalledWith('connected');
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('deafened rejoin (review #3)', () => {
+    it('starts with isDeafened: true in metadata and restores the backend deafen state', async () => {
+      const deps = createMockDeps({ isDeafened: true });
+
+      await joinVoiceChannel({ ...params, quiet: true, startMuted: true }, deps);
+
+      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: true }));
+      expect(voicePresenceControllerUpdateDeafenState).toHaveBeenCalledWith({
+        path: { channelId: 'ch-1' },
+        body: { isDeafened: true },
+      });
+    });
+
+    it('a DM rejoin while deafened keeps the metadata deafened', async () => {
+      const deps = createMockDeps({ isDeafened: true });
+      await joinDmVoice(
+        { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo, quiet: true },
+        deps,
+      );
+      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: true }));
+    });
+
+    it('not deafened: metadata false and no deafen update', async () => {
+      await joinVoiceChannel(params, createMockDeps());
+      expect(mockLocalParticipant.setMetadata).toHaveBeenCalledWith(JSON.stringify({ isDeafened: false }));
+      expect(voicePresenceControllerUpdateDeafenState).not.toHaveBeenCalled();
     });
   });
 

@@ -368,6 +368,61 @@ describe('useVoiceForegroundResync', () => {
       expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(5);
     });
 
+    it('an attempt whose new room is already dead when it resolves counts as failed', async () => {
+      const actions = createActions();
+      // RoomProvider's ref: updated at once, before React re-renders
+      let currentRoom: MockRoom | null = deadRoom();
+      const initialRoom = currentRoom;
+      renderHook(() =>
+        useVoiceForegroundResync({
+          room: initialRoom as unknown as Room,
+          getRoom: () => currentRoom as unknown as Room | null,
+          state: createVoiceState(),
+          actions,
+        })
+      );
+      // Attempt 1 connects a room that drops again before the attempt finishes
+      actions.joinVoiceChannel.mockImplementationOnce(async () => {
+        currentRoom = createMockRoom({ state: CONNECTION_STATE.Disconnected });
+      });
+
+      await fireVisibilityChange();
+      await advance(REJOIN_BACKOFF_MS[0]);
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(1);
+      expect(mockDispatch).not.toHaveBeenCalledWith({ type: VoiceActionType.SetReconnect, payload: null });
+
+      // The loop goes on to attempt 2, which sticks
+      actions.joinVoiceChannel.mockImplementationOnce(async () => {
+        currentRoom = createMockRoom();
+      });
+      await advance(REJOIN_BACKOFF_MS[1]);
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(2);
+      expect(mockDispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetReconnect, payload: null });
+      expect(actions.endVoiceSession).not.toHaveBeenCalled();
+    });
+
+    it('a Disconnected event from the new room during an attempt makes that attempt fail', async () => {
+      const actions = createActions();
+      const newRoom = createMockRoom();
+      const { rerender } = renderHook(
+        ({ room }) => useVoiceForegroundResync({ room: room as unknown as Room, state: createVoiceState(), actions }),
+        { initialProps: { room: deadRoom() as MockRoom | null } },
+      );
+      actions.joinVoiceChannel.mockImplementationOnce(async () => {
+        rerender({ room: newRoom });
+        // Drops (e.g. while the mic is being enabled), before the attempt resolves
+        disconnectHandlerOf(newRoom)(DisconnectReason.SIGNAL_CLOSE);
+      });
+
+      await fireVisibilityChange();
+      await advance(REJOIN_BACKOFF_MS[0]);
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(1);
+
+      await advance(REJOIN_BACKOFF_MS[1]);
+      expect(actions.joinVoiceChannel).toHaveBeenCalledTimes(2);
+      expect(mockDispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetReconnect, payload: null });
+    });
+
     it('resets on success: the next drop starts again at attempt 1', async () => {
       const room = createMockRoom();
       const actions = createActions();
@@ -493,6 +548,10 @@ describe('useVoiceForegroundResync', () => {
       ['a network error', new TypeError('Failed to fetch')],
       ['a timeout', new Error('Microphone enable timeout (5s)')],
       ['a LiveKit connection error', new Error('could not establish signal connection')],
+      [
+        'a LiveKit ConnectionError with a validate 403 status',
+        Object.assign(new Error('not allowed'), { name: 'ConnectionError', status: 403, reason: 1 }),
+      ],
       ['500', apiError(500, 'Internal server error')],
       ['502', apiError(502, 'Bad Gateway')],
       ['503 (session refresh unavailable)', apiError(503, 'Could not refresh the session. Try again.')],

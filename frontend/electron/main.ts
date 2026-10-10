@@ -799,9 +799,6 @@ function setupIpcHandlers() {
 }
 
 /**
- * Create the main application window
- */
-/**
  * Tell the renderer when the system wakes from sleep or the screen is
  * unlocked, so it can re-check its voice connection. After a lid close the
  * window never stopped being "visible", so the page gets no visibilitychange.
@@ -815,6 +812,9 @@ function setupPowerMonitor() {
   powerMonitor.on('unlock-screen', notify('unlock-screen'));
 }
 
+/**
+ * Create the main application window
+ */
 function createWindow() {
   const windowState = loadWindowState();
 

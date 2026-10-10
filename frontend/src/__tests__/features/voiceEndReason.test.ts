@@ -11,7 +11,6 @@ describe('definitiveRejoinFailure', () => {
     [{ statusCode: 401, message: 'Unauthorized' }, VoiceEndReason.SessionExpired],
     [{ statusCode: 403, message: 'Forbidden resource' }, VoiceEndReason.AccessLost],
     [{ statusCode: 404, message: 'Not Found' }, VoiceEndReason.ChannelNotFound],
-    [{ status: 403 }, VoiceEndReason.AccessLost],
   ])('%j is definitive', (error, reason) => {
     expect(definitiveRejoinFailure(error)).toBe(reason);
   });
@@ -26,6 +25,19 @@ describe('definitiveRejoinFailure', () => {
     ['an Error', new Error('timeout')],
     ['a string body', 'Bad Gateway'],
     ['null', null],
+    ['an object with only `status`', { status: 403 }],
+    [
+      'a LiveKit ConnectionError (validate 401)',
+      Object.assign(new Error('could not establish signal connection'), { name: 'ConnectionError', status: 401, reason: 1 }),
+    ],
+    [
+      'a LiveKit ConnectionError (validate 403)',
+      Object.assign(new Error('not allowed'), { name: 'ConnectionError', status: 403, reason: 1 }),
+    ],
+    [
+      'an Error that happens to carry statusCode 404',
+      Object.assign(new Error('x'), { statusCode: 404 }),
+    ],
     ['undefined', undefined],
   ])('%s is retryable', (_label, error) => {
     expect(definitiveRejoinFailure(error)).toBeNull();
