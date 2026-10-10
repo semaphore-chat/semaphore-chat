@@ -1,5 +1,7 @@
 import React, { useCallback } from "react";
-import { Alert, AlertTitle, Button } from "@mui/material";
+import { Alert, AlertTitle, Button, IconButton } from "@mui/material";
+import { Close } from "@mui/icons-material";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useVoiceDispatch, VoiceActionType } from "../../contexts/VoiceContext";
 import { logger } from "../../utils/logger";
@@ -14,6 +16,12 @@ import { describeVoiceNotice } from "./voiceNoticeModel";
  * Rendered by the always-mounted VoiceBottomBar shell, so no livekit-client
  * imports here (see features/voice/livekitEvents.ts).
  */
+/** Full-size touch targets on phones and tablets, compact on desktop. */
+const touchTarget = {
+  minWidth: { xs: TOUCH_TARGETS.MINIMUM, md: "auto" },
+  minHeight: { xs: TOUCH_TARGETS.MINIMUM, md: "auto" },
+};
+
 export const VoiceNotice: React.FC = () => {
   const { state, actions } = useVoiceConnection();
   const { dispatch } = useVoiceDispatch();
@@ -51,14 +59,19 @@ export const VoiceNotice: React.FC = () => {
       key={notice.id}
       severity={notice.severity}
       variant="outlined"
-      onClose={dismiss}
       data-testid="voice-notice"
+      // Alert drops its own close button when `action` is set, so both live here.
       action={
-        retryTarget ? (
-          <Button color="inherit" size="small" onClick={retry} disabled={state.isConnecting}>
-            Retry
-          </Button>
-        ) : undefined
+        <>
+          {retryTarget && (
+            <Button color="inherit" size="small" onClick={retry} disabled={state.isConnecting} sx={touchTarget}>
+              Retry
+            </Button>
+          )}
+          <IconButton aria-label="Close" color="inherit" size="small" onClick={dismiss} sx={touchTarget}>
+            <Close fontSize="small" />
+          </IconButton>
+        </>
       }
       sx={{
         bgcolor: "background.paper",

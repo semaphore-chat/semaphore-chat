@@ -147,6 +147,16 @@ describe('VoiceNotice', () => {
     expect(screen.getByTestId('voice-notice')).toHaveTextContent(VOICE_FAILURE_COPY[VoiceFailureKind.Permission].title);
   });
 
+  it('a notice with Retry can still be dismissed', async () => {
+    voiceState = failure(VoiceFailureKind.MediaUnreachable);
+    const { user } = renderWithProviders(<VoiceNotice />);
+
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(mockDispatch).toHaveBeenCalledWith({ type: VoiceActionType.ClearVoiceNotice });
+    expect(mockJoinVoiceChannel).not.toHaveBeenCalled();
+  });
+
   it('dismissing clears the notice', async () => {
     voiceState = ended(VoiceEndReason.ParticipantRemoved);
     const { user } = renderWithProviders(<VoiceNotice />);
