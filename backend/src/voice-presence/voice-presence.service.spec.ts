@@ -1084,6 +1084,38 @@ describe('VoicePresenceService', () => {
       expect(mockPipeline.del).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
+
+    it('stores a DM rejoin sid so the old session left is ignored', async () => {
+      const dmGroupId = 'dm-rejoin';
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(storedPresence('LK_old'));
+
+      await service.handleWebhookParticipantJoined(
+        dmGroupId,
+        userId,
+        undefined,
+        undefined,
+        'LK_new',
+      );
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        `dm_voice_presence:user:${dmGroupId}:${userId}`,
+        expect.stringContaining('"sid":"LK_new"'),
+        'EX',
+        90,
+      );
+
+      const updatedRecord = mockRedis.set.mock.calls[0][1] as string;
+      mockRedis.get.mockResolvedValue(updatedRecord);
+      mockPipeline.del.mockClear();
+
+      await service.handleWebhookParticipantLeft(dmGroupId, userId, 'LK_old');
+
+      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
   });
 
   describe('getDmPresence', () => {
