@@ -660,6 +660,28 @@ describe('LivekitService', () => {
         }),
       ).resolves.toBeUndefined();
     });
+
+    it('gives up on a hung LiveKit call instead of hanging', async () => {
+      jest.useFakeTimers();
+      try {
+        mockRoomServiceClient.updateParticipant.mockImplementation(
+          () => new Promise<void>(() => {}),
+        );
+        const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+        const promise = service.updatePublishPermissions('room-1', 'user-1', {
+          canPublish: false,
+        });
+        jest.advanceTimersByTime(5000);
+
+        await expect(promise).resolves.toBeUndefined();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('timed out after 5000ms'),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('removeParticipant', () => {
@@ -716,6 +738,26 @@ describe('LivekitService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         'LiveKit credentials not configured, cannot remove participant',
       );
+    });
+
+    it('gives up on a hung LiveKit call instead of hanging', async () => {
+      jest.useFakeTimers();
+      try {
+        mockRoomServiceClient.removeParticipant.mockImplementation(
+          () => new Promise<void>(() => {}),
+        );
+        const warnSpy = jest.spyOn(service['logger'], 'warn');
+
+        const promise = service.removeParticipant('room-1', 'user-1');
+        jest.advanceTimersByTime(5000);
+
+        await expect(promise).resolves.toBeUndefined();
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('timed out after 5000ms'),
+        );
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

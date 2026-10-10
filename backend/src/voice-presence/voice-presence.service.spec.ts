@@ -958,6 +958,166 @@ describe('VoicePresenceService', () => {
     });
   });
 
+  /**
+   * A user who rejoins (new LiveKit participant session, same identity) can
+   * have the old session's participant_left delivered *after* the new join.
+   * The stored sid lets presence tell the two apart.
+   */
+  describe('stale participant_left after a rejoin', () => {
+    const channelId = 'channel-rejoin';
+    const userId = 'user-rejoin';
+
+    const storedPresence = (sid?: string) =>
+      JSON.stringify({
+        id: userId,
+        username: 'rejoiner',
+        joinedAt: new Date().toISOString(),
+        isDeafened: false,
+        isServerMuted: false,
+        ...(sid ? { sid } : {}),
+      });
+
+    it('keeps the new session and emits no VOICE_USER_LEFT when the old left arrives late', async () => {
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(null);
+      // The presence record currently belongs to the old session
+      mockRedis.get.mockResolvedValue(storedPresence('LK_old'));
+
+      // New session joins (same identity, new sid) before the old leave
+      await service.handleWebhookParticipantJoined(
+        channelId,
+        userId,
+        undefined,
+        undefined,
+        'LK_new',
+      );
+
+      // The stored record now carries the new session's sid
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        `voice_presence:user:${channelId}:${userId}`,
+        expect.stringContaining('"sid":"LK_new"'),
+        'EX',
+        90,
+      );
+
+      // The old session's participant_left arrives out of order
+      const updatedRecord = mockRedis.set.mock.calls[0][1] as string;
+      mockRedis.get.mockResolvedValue(updatedRecord);
+      mockPipeline.del.mockClear();
+
+      await service.handleWebhookParticipantLeft(channelId, userId, 'LK_old');
+
+      // Presence is untouched: no delete, no broadcast, no replay teardown
+      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(mockPipeline.srem).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+      expect(eventEmitter.emit).not.toHaveBeenCalledWith(
+        VOICE_USER_LEFT,
+        expect.anything(),
+      );
+
+      // Round-trip: the rejoin is still visible through the read path
+      mockRedis.smembers.mockResolvedValue([userId]);
+      mockRedis.mget.mockResolvedValue([updatedRecord]);
+      const presence = await service.getChannelPresence(channelId);
+      expect(presence).toHaveLength(1);
+    });
+
+    it('removes presence when the departing sid matches the stored one', async () => {
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(storedPresence('LK_same'));
+
+      await service.handleWebhookParticipantLeft(channelId, userId, 'LK_same');
+
+      expect(mockPipeline.del).toHaveBeenCalledWith(
+        `voice_presence:user:${channelId}:${userId}`,
+      );
+      expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+        channelId,
+        ServerEvents.VOICE_CHANNEL_USER_LEFT,
+        expect.objectContaining({ channelId, userId }),
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(VOICE_USER_LEFT, {
+        userId,
+        channelId,
+      });
+    });
+
+    it('keeps the old behaviour when no sid is stored (REST-only presence)', async () => {
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(null);
+      mockRedis.get.mockResolvedValue(storedPresence());
+
+      await service.handleWebhookParticipantLeft(channelId, userId, 'LK_any');
+
+      expect(mockPipeline.del).toHaveBeenCalledWith(
+        `voice_presence:user:${channelId}:${userId}`,
+      );
+      expect(eventEmitter.emit).toHaveBeenCalledWith(VOICE_USER_LEFT, {
+        userId,
+        channelId,
+      });
+    });
+
+    it('REST join never clears a sid stored by the webhook', async () => {
+      mockRedis.get.mockResolvedValue(storedPresence('LK_1'));
+      mockRedis.expire.mockResolvedValue(1);
+
+      await service.joinVoiceChannelDirect(channelId, userId);
+
+      // TTL refreshed, record not rewritten (so the sid survives)
+      expect(mockRedis.expire).toHaveBeenCalledWith(
+        `voice_presence:user:${channelId}:${userId}`,
+        90,
+      );
+      expect(mockRedis.set).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('ignores a stale DM participant_left too', async () => {
+      const dmGroupId = 'dm-rejoin';
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(storedPresence('LK_new'));
+
+      await service.handleWebhookParticipantLeft(dmGroupId, userId, 'LK_old');
+
+      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('stores a DM rejoin sid so the old session left is ignored', async () => {
+      const dmGroupId = 'dm-rejoin';
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(storedPresence('LK_old'));
+
+      await service.handleWebhookParticipantJoined(
+        dmGroupId,
+        userId,
+        undefined,
+        undefined,
+        'LK_new',
+      );
+
+      expect(mockRedis.set).toHaveBeenCalledWith(
+        `dm_voice_presence:user:${dmGroupId}:${userId}`,
+        expect.stringContaining('"sid":"LK_new"'),
+        'EX',
+        90,
+      );
+
+      const updatedRecord = mockRedis.set.mock.calls[0][1] as string;
+      mockRedis.get.mockResolvedValue(updatedRecord);
+      mockPipeline.del.mockClear();
+
+      await service.handleWebhookParticipantLeft(dmGroupId, userId, 'LK_old');
+
+      expect(mockPipeline.del).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getDmPresence', () => {
     it('should return all users in DM voice call', async () => {
       const dmGroupId = 'dm-group-123';

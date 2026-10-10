@@ -52,6 +52,7 @@ import { createHash } from 'crypto';
 import * as path from 'path';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import { withTimeout } from './livekit-request-timeout.util';
 
 @Injectable()
 export class LivekitReplayService implements OnApplicationBootstrap {
@@ -210,9 +211,12 @@ export class LivekitReplayService implements OnApplicationBootstrap {
 
       if (participantIdentity) {
         try {
-          const participant = await this.roomServiceClient.getParticipant(
-            roomName,
-            participantIdentity,
+          const participant = await withTimeout(
+            this.roomServiceClient.getParticipant(
+              roomName,
+              participantIdentity,
+            ),
+            `getParticipant ${roomName}/${participantIdentity}`,
           );
 
           const videoTrack = participant.tracks.find(
