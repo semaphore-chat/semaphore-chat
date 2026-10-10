@@ -220,23 +220,69 @@ Same pattern — bundled or external:
 Semaphore Chat requires a LiveKit server for voice and video. The chart doesn't bundle LiveKit — use [LiveKit Cloud](https://cloud.livekit.io/) or a [self-hosted deployment](https://docs.livekit.io/home/self-hosting/deployment/).
 
 !!! warning "LiveKit server 1.7 or later required"
-    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the bundled `livekit/livekit-server:latest` image qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
+    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the `livekit/livekit-server:v1.13.7` image the Compose examples pin qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
 
 ```yaml
 livekit:
   url: "wss://your-livekit-server.com"
   apiKey: "your-api-key"
   apiSecret: "your-api-secret"
-  webhookSecret: "your-webhook-secret"  # optional
 ```
 
-Configure your LiveKit server to send webhooks to `https://your-domain.com/api/livekit/webhook` for voice presence tracking.
+Configure your LiveKit server to send webhooks to `https://your-domain.com/api/livekit/webhook` for voice presence tracking:
+
+```yaml
+webhook:
+  # Must match the backend's LIVEKIT_API_KEY — LiveKit signs webhook payloads
+  # with it, and the backend verifies them with the same API key/secret pair.
+  api_key: your-api-key
+  urls:
+    - https://your-domain.com/api/livekit/webhook
+```
+
+!!! warning "Don't skip the webhook"
+    Without `webhook.urls` the backend is never told who joined or left a voice channel:
+
+    - **Voice presence** falls back to the REST endpoints plus the client heartbeat — the sidebar can show someone in a channel after they've gone (until the TTL expires) and miss someone who joined.
+    - The **`participant_joined` revocation safety net is lost.** LiveKit tokens last an hour and can't be revoked, so a banned or deleted user, or someone whose password changed, could rejoin voice with a token they already had. The webhook is what removes them immediately; without it that user stays in the call. See [Voice access revocation](../architecture/backend.md#voice-access-revocation).
+
+    The endpoint itself lives at `POST /api/livekit/webhook` and verifies the signature with `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET` — there is no separate webhook secret.
 
 !!! tip "Users on restricted networks can't join voice"
     Direct WebRTC uses UDP 7882 (and TCP 7881). If some users are behind firewalls that only allow 80/443, enable LiveKit's built-in TURN server and expose its relay UDP range on the LoadBalancer. See [TURN behind a reverse proxy](livekit-turn.md).
 
 !!! note "Replay capture with LiveKit Cloud"
     LiveKit Cloud writes egress output to cloud storage (S3/GCS/Azure Blob), which Semaphore Chat can't read from yet. Replay capture is not available with LiveKit Cloud until cloud storage support is added — voice and video calls work normally. See [#227](https://github.com/semaphore-chat/semaphore-chat/issues/227) for progress.
+
+### LiveKit networking
+
+The chart doesn't bundle LiveKit, so this is what your LiveKit deployment (LiveKit's own Helm chart, or your manifests) has to get right. Only LiveKit's signaling port belongs behind the ingress; its media ports must be reachable directly.
+
+| Port | Protocol | Exposed | Purpose |
+|------|----------|---------|---------|
+| `7880` | TCP | via ingress/LB | Signaling and the HTTP API (top-level `port`, default `7880`). TLS-terminated by the ingress; the browser and the backend both use the `wss://` URL. |
+| `7881` | TCP | direct | ICE/TCP (`rtc.tcp_port`) — the fallback when a client can't use UDP. Must reach the pod directly: it can't sit behind the ingress or a TLS-terminating proxy, because the transport is already end-to-end encrypted. |
+| `7882` | UDP | direct | The single-port UDP mux (`rtc.udp_port`): all WebRTC media for every client on one UDP port. |
+
+Both media ports must work: a client whose UDP is blocked falls back to TCP `7881`, and one with UDP and TCP both blocked needs TURN/TLS on 443 — the last resort, below. Setting `rtc.udp_port` **replaces** `rtc.port_range_start`/`rtc.port_range_end` (the range is ignored when the mux is set), so you open one UDP port instead of a thousand. LiveKit's own [ports and firewall reference](https://docs.livekit.io/transport/self-hosting/ports-firewall/) covers the same list.
+
+!!! warning "Preserve the client's source IP"
+    The single-port UDP mux tells connections apart by source address. Anything that rewrites it — SNAT, or a Service with the default `externalTrafficPolicy: Cluster` — makes several clients look like one address, and their ICE connections collide: calls connect and then drop.
+
+    - **`LoadBalancer` Service** — set `externalTrafficPolicy: Local`. The default `Cluster` sends each packet from the node the LB picked, through kube-proxy, replacing the source address with the node's; `Local` delivers it to a LiveKit pod on the receiving node and keeps the real client address. The trade-off: a node without a LiveKit pod drops the packet, so pin LiveKit to the nodes the LoadBalancer targets.
+    - **`hostNetwork: true`** — the pod binds the node's ports directly, so there is no Service or kube-proxy in the media path and the source address is preserved with nothing to configure. Costs: run one LiveKit per node that clients reach (node selector/affinity, or a DaemonSet) and open `7881`/`7882` on the node's firewall yourself.
+
+**`use_external_ip` and a changing public IP.** With `rtc.use_external_ip: true` (and no `node_ip`), LiveKit discovers its public address via STUN **once, at startup**, and advertises it in its ICE candidates. If the public address changes while LiveKit keeps running — a new LoadBalancer IP, a re-NATed floating IP — the candidates go stale and calls keep failing until the pod restarts. Restart LiveKit on an address change (a CronJob or operator watching the LoadBalancer address); the Docker Compose stack ships an `livekit-ip-watcher` sidecar for exactly this. A static address needs nothing.
+
+**Test the fallback paths.** The direct path nearly always works, which is how the fallbacks quietly stay broken. On a real call:
+
+1. **Direct.** Open `chrome://webrtc-internals`, select the peer connection and find its selected candidate pair: it should be a `host` or `srflx` candidate on UDP `7882`.
+2. **TCP fallback.** Relaunch Chrome with `--force-webrtc-ip-handling-policy=disable_non_proxied_udp` — the WebRTC IP handling policy "disable non-proxied UDP", the same value used by the `WebRtcIPHandlingPolicy` enterprise policy — so it won't use direct UDP. The pair should fall to TCP `7881` on the LiveKit host. Still on UDP means the flag didn't apply; never connecting means `7881` isn't reachable. (Chrome only; on Firefox block inbound UDP 7882 with a firewall rule instead.)
+3. **Relay (TURN/TLS).** With TURN enabled, block UDP `7882` and TCP `7881` for the client: the selected pair must be a `relay` candidate on `turns:turn.example.com:443?transport=tcp`. If no relay candidate ever appears, TURN itself is misconfigured — see the [TURN page's Verify section](livekit-turn.md#verify).
+4. **Close the loop.** `kubectl get svc -n <namespace> <livekit-service>` should show `7881`, `7882` and any relay ports, at the address your clients resolve. A client that only ever connects over `7881` usually means the UDP port isn't reachable from outside.
+
+!!! tip "TURN is opt-in"
+    TURN/TLS on 443 is the last resort, for clients that allow nothing but HTTPS. Enable it in the LiveKit config and expose its relay range on the LoadBalancer Service — the full walkthrough is in [TURN behind a reverse proxy](livekit-turn.md), including the `turnLoadbalancer` Service the LiveKit chart exposes (only `443` → `tls_port` by default).
 
 ### File storage
 

@@ -31,7 +31,7 @@
 
 services:
   livekit-e2e:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.13.7
     container_name: ${E2E_STACK:-semaphore-e2e}-livekit
     environment:
       # NOTE: LIVEKIT_CONFIG is duplicated (with deliberate differences) in docker-compose.yml and docker-compose.voice-e2e.host.yml — keep keys/ports in sync when editing.

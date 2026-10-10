@@ -338,13 +338,10 @@ livekit:
   # LiveKit server URL (WebSocket endpoint)
   url: "wss://livekit.example.com"
 
-  # LiveKit API credentials
+  # LiveKit API credentials. The secret also verifies incoming webhook
+  # signatures (WebhookReceiver), so it must be at least 32 characters.
   apiKey: "your-livekit-api-key"
   apiSecret: "your-livekit-api-secret"
-
-  # Webhook secret for verifying LiveKit webhook signatures
-  # Generate with: openssl rand -hex 32
-  webhookSecret: "your-livekit-webhook-secret"
 
 # ============================================
 # Application Secrets

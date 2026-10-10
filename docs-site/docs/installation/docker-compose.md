@@ -102,7 +102,7 @@ Copy the Compose file for your chosen setup:
           - backend
 
       livekit:
-        image: livekit/livekit-server:latest
+        image: livekit/livekit-server:v1.13.7
         restart: unless-stopped
         environment:
           LIVEKIT_CONFIG: |
@@ -132,7 +132,7 @@ Copy the Compose file for your chosen setup:
         restart: "no"
 
       livekit-egress:
-        image: livekit/egress:latest
+        image: livekit/egress:v1.14.1
         restart: unless-stopped
         cap_add:
           - SYS_ADMIN
@@ -230,6 +230,7 @@ Copy the Compose file for your chosen setup:
     - **IP watcher** — monitors your public IP and restarts LiveKit if it changes (important for dynamic IPs)
     - **`LIVEKIT_INTERNAL_URL`** — the backend uses this Docker-internal address for server-to-server API calls, while `LIVEKIT_URL` is the browser-facing address returned to clients
     - The LiveKit API key/secret are shared between the backend and LiveKit — the backend uses them to generate tokens and LiveKit uses them to sign webhook payloads
+    - **TURN is not enabled** — the LiveKit config in this file has no `turn:` section, so there is no 443 fallback out of the box. Add one for users on networks that only allow HTTPS: [TURN behind a reverse proxy](livekit-turn.md)
 
 === "Batteries included"
 
@@ -279,7 +280,7 @@ Copy the Compose file for your chosen setup:
           - backend
 
       livekit:
-        image: livekit/livekit-server:latest
+        image: livekit/livekit-server:v1.13.7
         restart: unless-stopped
         environment:
           LIVEKIT_CONFIG: |
@@ -310,7 +311,7 @@ Copy the Compose file for your chosen setup:
         restart: "no"
 
       livekit-egress:
-        image: livekit/egress:latest
+        image: livekit/egress:v1.14.1
         restart: unless-stopped
         cap_add:
           - SYS_ADMIN
@@ -386,6 +387,7 @@ Copy the Compose file for your chosen setup:
     - `webhook` — pre-configured to send voice presence events back to the backend (requires `api_key` to sign payloads)
     - `LIVEKIT_INTERNAL_URL` — the backend uses this Docker-internal address for server-to-server API calls, while `LIVEKIT_URL` is the browser-facing address returned to clients
     - **IP watcher** — monitors your public IP and restarts LiveKit if it changes (important for dynamic IPs)
+    - **TURN is not enabled** — the LiveKit config in this file has no `turn:` section, so there is no 443 fallback out of the box. Add one for users on networks that only allow HTTPS: [TURN behind a reverse proxy](livekit-turn.md)
 
     **You need to configure your reverse proxy** to route traffic to these services. See [Reverse proxy and HTTPS](#reverse-proxy-and-https) below.
 
@@ -609,7 +611,10 @@ docker compose down -v
 If you chose the "Bring your own LiveKit" setup, follow these steps to enable voice and video.
 
 !!! warning "LiveKit server 1.7 or later required"
-    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the bundled `livekit/livekit-server:latest` image qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
+    Semaphore Chat needs LiveKit server **1.7+** (LiveKit Cloud is always current; the bundled `livekit/livekit-server:v1.13.7` image qualifies). It relies on participant attributes, which older servers don't support, to end a user's voice access when they log out, their session is revoked, their password changes, or they are banned or deleted. With an older server, someone who just logged in again after a password change can be removed from voice as if they were using an old token.
+
+!!! note "LiveKit images are pinned, not `:latest`"
+    The Compose examples use `livekit/livekit-server:v1.13.7` and `livekit/egress:v1.14.1` instead of `:latest`, so a deployment gets the same release the docs and tests were run against. To bump: change the tag in `docker-compose.yml` (and `docker-compose.voice-e2e.yml`), then `docker compose pull livekit livekit-egress`. Any LiveKit server 1.7+ works, and LiveKit Cloud needs no pin. Check the current releases at [livekit/livekit](https://github.com/livekit/livekit/releases) and [livekit/egress](https://github.com/livekit/egress/releases).
 
 ### LiveKit Cloud
 

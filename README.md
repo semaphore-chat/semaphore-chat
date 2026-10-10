@@ -155,7 +155,7 @@ services:
       - backend
 
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.13.7
     restart: unless-stopped
     environment:
       LIVEKIT_CONFIG: |
@@ -185,7 +185,7 @@ services:
     restart: "no"
 
   livekit-egress:
-    image: livekit/egress:latest
+    image: livekit/egress:v1.14.1
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN
@@ -347,7 +347,7 @@ services:
       - backend
 
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:v1.13.7
     restart: unless-stopped
     environment:
       LIVEKIT_CONFIG: |
@@ -378,7 +378,7 @@ services:
     restart: "no"
 
   livekit-egress:
-    image: livekit/egress:latest
+    image: livekit/egress:v1.14.1
     restart: unless-stopped
     cap_add:
       - SYS_ADMIN

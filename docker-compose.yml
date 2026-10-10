@@ -202,7 +202,9 @@ services:
       - "redisdata:/data"
 
   livekit:
-    image: livekit/livekit-server:latest
+    # Pinned (not :latest) so dev, e2e and docs stay on the same tested release;
+    # the same tag is used in docker-compose.voice-e2e.yml, the docs and the README.
+    image: livekit/livekit-server:v1.13.7
     environment:
       # NOTE: LIVEKIT_CONFIG is duplicated (with deliberate differences) in docker-compose.voice-e2e.yml and docker-compose.voice-e2e.host.yml — keep keys/ports in sync when editing.
       LIVEKIT_CONFIG: |
@@ -290,7 +292,7 @@ services:
     restart: "no"
 
   livekit-egress:
-    image: livekit/egress:latest
+    image: livekit/egress:v1.14.1
     cap_add:
       - SYS_ADMIN
     environment:
