@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { useVoicePresenceHeartbeat } from '../../hooks/useVoicePresenceHeartbeat';
+import type { Room } from 'livekit-client';
+import { useVoicePresenceHeartbeat, HEARTBEAT_RECONNECTING_GRACE_MS } from '../../hooks/useVoicePresenceHeartbeat';
 
 // Mock SDK functions
 const mockRefreshPresence = vi.fn().mockResolvedValue(undefined);
@@ -50,6 +51,26 @@ class MockWorker {
 // Replace global Worker with mock
 const OriginalWorker = globalThis.Worker;
 
+/** A LiveKit room stand-in: `state` plus captured event handlers. */
+function createRoom(state: string) {
+  const handlers: Record<string, (...args: unknown[]) => void> = {};
+  const room = {
+    state,
+    on: vi.fn((event: string, handler: (...args: unknown[]) => void) => {
+      handlers[event] = handler;
+    }),
+    off: vi.fn(),
+  };
+  /** Change the state the way livekit does (state, then ConnectionStateChanged). */
+  const setState = (next: string) => {
+    room.state = next;
+    handlers.connectionStateChanged?.(next);
+  };
+  return { room: room as unknown as Room, setState };
+}
+
+let liveRoom: Room;
+
 describe('useVoicePresenceHeartbeat', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -57,6 +78,7 @@ describe('useVoicePresenceHeartbeat', () => {
     lastWorkerInstance = null;
     workerShouldFail = false;
     globalThis.Worker = MockWorker as unknown as typeof Worker;
+    liveRoom = createRoom('connected').room;
   });
 
   afterEach(() => {
@@ -70,6 +92,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: null,
         dmGroupId: null,
         contextType: null,
+        room: liveRoom,
       }),
     );
 
@@ -83,6 +106,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -97,6 +121,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: null,
         dmGroupId: 'dm-1',
         contextType: 'dm' as never,
+        room: liveRoom,
       }),
     );
 
@@ -111,6 +136,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -128,6 +154,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -148,6 +175,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -165,6 +193,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -186,6 +215,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -209,6 +239,7 @@ describe('useVoicePresenceHeartbeat', () => {
         channelId: 'ch-1',
         dmGroupId: null,
         contextType: 'channel' as never,
+        room: liveRoom,
       }),
     );
 
@@ -217,5 +248,88 @@ describe('useVoicePresenceHeartbeat', () => {
 
     vi.advanceTimersByTime(60_000);
     expect(mockRefreshPresence).not.toHaveBeenCalled();
+  });
+
+  describe('room state (no ghost presence from a dead room)', () => {
+    const tick = () =>
+      lastWorkerInstance!.onmessage!({ data: { type: 'tick', name: 'heartbeat' } } as MessageEvent);
+
+    it('does not start without a room', () => {
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room: null }),
+      );
+      expect(lastWorkerInstance).toBeNull();
+      expect(mockRefreshPresence).not.toHaveBeenCalled();
+    });
+
+    it('stops sending once the room is disconnected', () => {
+      const { room, setState } = createRoom('connected');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+
+      setState('disconnected');
+      tick();
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not send for a room that is already dead on mount', () => {
+      const { room } = createRoom('disconnected');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      tick();
+      expect(mockRefreshPresence).not.toHaveBeenCalled();
+    });
+
+    it('keeps sending while briefly reconnecting, then stops after the grace period', () => {
+      const { room, setState } = createRoom('connected');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      mockRefreshPresence.mockClear();
+
+      setState('reconnecting');
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+
+      vi.advanceTimersByTime(HEARTBEAT_RECONNECTING_GRACE_MS);
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+
+      // Reconnected: heartbeats resume
+      setState('connected');
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(2);
+    });
+
+    it('treats a signal-only resume (signalReconnecting) like reconnecting, with the same grace', () => {
+      const { room, setState } = createRoom('connected');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      mockRefreshPresence.mockClear();
+
+      setState('signalReconnecting');
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+
+      // Moving on to a full reconnect keeps the original start time
+      vi.advanceTimersByTime(HEARTBEAT_RECONNECTING_GRACE_MS / 2);
+      setState('reconnecting');
+      vi.advanceTimersByTime(HEARTBEAT_RECONNECTING_GRACE_MS / 2);
+      tick();
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+    });
+
+    it('a room that mounts mid signal-resume still gets heartbeats within the grace', () => {
+      const { room } = createRoom('signalReconnecting');
+      renderHook(() =>
+        useVoicePresenceHeartbeat({ channelId: 'ch-1', dmGroupId: null, contextType: 'channel' as never, room }),
+      );
+      expect(mockRefreshPresence).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -16,6 +16,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Button,
+  CircularProgress,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -188,6 +190,7 @@ const VoiceBottomBarContent: React.FC = () => {
     channelId: state.currentChannelId,
     dmGroupId: state.currentDmGroupId,
     contextType: state.contextType,
+    room: state.room,
   });
 
   // Implement proper deafen functionality (mute received audio)
@@ -314,6 +317,39 @@ const VoiceBottomBarContent: React.FC = () => {
 
   const displayType = state.contextType === VoiceSessionType.Dm ? 'DM Voice Call' : 'Voice Connected';
 
+  // An automatic rejoin after the connection dropped (see
+  // useVoiceForegroundResync). Cancel hangs up. Inline under the name on
+  // desktop; on touch layouts its own full-width row (the controls leave the
+  // phone name column too narrow, and Cancel needs a full touch target).
+  const reconnectStatus = state.reconnect ? (
+    <Box
+      role="status"
+      data-testid="voice-reconnecting"
+      sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}
+    >
+      <CircularProgress size={10} thickness={6} color="warning" sx={{ flexShrink: 0 }} />
+      <Typography variant="caption" color="warning.main" noWrap sx={{ minWidth: 0 }}>
+        Reconnecting voice ({state.reconnect.attempt})…
+      </Typography>
+      <Button
+        size="small"
+        onClick={actions.cancelReconnect}
+        sx={{
+          minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 0,
+          minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 0,
+          px: shouldUseTouchUI ? 1 : 0.5,
+          py: 0,
+          ml: shouldUseTouchUI ? "auto" : 0,
+          typography: "caption",
+          textTransform: "none",
+          flexShrink: 0,
+        }}
+      >
+        Cancel
+      </Button>
+    </Box>
+  ) : null;
+
   return (
     <>
       {/* Main Bottom Bar */}
@@ -328,6 +364,9 @@ const VoiceBottomBarContent: React.FC = () => {
           borderColor: "divider",
         }}
       >
+        {shouldUseTouchUI && reconnectStatus && (
+          <Box sx={{ px: 1.5, borderBottom: 1, borderColor: "divider" }}>{reconnectStatus}</Box>
+        )}
         <Box
           sx={{
             display: "flex",
@@ -347,10 +386,16 @@ const VoiceBottomBarContent: React.FC = () => {
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
                 </Typography>
-                {!isMobile && (
-                  <Typography variant="caption" color="text.secondary">
-                    {displayType}
-                  </Typography>
+                {state.reconnect ? (
+                  // Touch layouts show it in its own row above (and no
+                  // "Voice Connected" while reconnecting).
+                  !shouldUseTouchUI && reconnectStatus
+                ) : (
+                  !isMobile && (
+                    <Typography variant="caption" color="text.secondary">
+                      {displayType}
+                    </Typography>
+                  )
                 )}
               </Box>
             </Box>

@@ -41,6 +41,8 @@ const defaultVoiceState: VoiceState = {
   layoutMode: VideoLayoutMode.Grid,
   pinnedTileId: null,
   spotlightTileId: null,
+  reconnect: null,
+  lastEnded: null,
 };
 
 let voiceState = { ...defaultVoiceState };

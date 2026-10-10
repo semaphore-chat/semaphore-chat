@@ -5,7 +5,7 @@
 // the single place a Room is constructed, so the bytes only download when a
 // user actually joins a voice/DM call (see PR-11 bundle splitting).
 import type { Room, DisconnectReason, VideoCaptureOptions, AudioCaptureOptions } from "livekit-client";
-import { VoiceSessionType, VoiceActionType, type VoiceAction, type VoiceState } from "../../contexts/VoiceContext";
+import { VoiceSessionType, VoiceActionType, VoiceEndReason, type VoiceAction, type VoiceState } from "../../contexts/VoiceContext";
 import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from "../../api-client/sdk.gen";
 import { queryClient } from "../../queryClient";
 
@@ -20,6 +20,7 @@ import { getAccessToken } from "../../utils/tokenService";
 import { getApiUrl } from "../../config/env";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { setUpdateDeferred } from "../../utils/swUpdate";
+import { cancelVoiceReconnect } from "./reconnectControl";
 
 // Storage key must match useDeviceSettings.ts
 const DEVICE_PREFERENCES_KEY = 'semaphore_device_preferences';
@@ -29,6 +30,104 @@ const VOICE_SETTINGS_KEY = 'semaphore_voice_settings';
 const VOICE_CONNECTION_KEY = 'semaphore_voice_connection';
 // Connection state expires after 5 minutes (used for recovery on page refresh)
 const CONNECTION_EXPIRY_MS = 5 * 60 * 1000;
+/** How long a hang-up waits for the REST presence leave before aborting it. */
+export const LEAVE_REST_TIMEOUT_MS = 3000;
+/** How long a join waits for the REST presence registration before moving on. */
+export const JOIN_PRESENCE_TIMEOUT_MS = 5000;
+/** How long a join waits for the microphone before joining muted. */
+export const MIC_ENABLE_TIMEOUT_MS = 5000;
+
+// =============================================================================
+// PENDING JOIN (one join at a time; a hang-up cancels it)
+// =============================================================================
+
+/**
+ * The join in flight, if any. Only one runs at a time: a second join while
+ * one is pending (a double-click on a channel row) is ignored, and a hang-up
+ * while "Connecting…" cancels it (`room.disconnect()` aborts `room.connect()`).
+ */
+export interface PendingJoin {
+  /** 'user' = a join the user started; 'rejoin' = an automatic rejoin after a drop. */
+  kind: 'user' | 'rejoin';
+  channelId?: string;
+  dmGroupId?: string;
+  cancelled: boolean;
+  /** The Room being connected, once constructed. */
+  room: Room | null;
+}
+
+let pendingJoin: PendingJoin | null = null;
+
+/** Thrown inside a join once it has been cancelled; never escapes the join. */
+class JoinCancelledError extends Error {
+  constructor() {
+    super('Voice join cancelled');
+    this.name = 'JoinCancelledError';
+  }
+}
+
+export function getPendingJoin(): PendingJoin | null {
+  return pendingJoin;
+}
+
+/**
+ * Claim the single join slot. Returns null when a join is already pending
+ * (the caller should do nothing), except that a user join takes over from an
+ * automatic rejoin (cancelling it): the user picked where they want to be.
+ */
+export function beginJoin(target: Omit<PendingJoin, 'cancelled' | 'room'>): PendingJoin | null {
+  if (pendingJoin) {
+    if (target.kind === 'user' && pendingJoin.kind === 'rejoin') {
+      cancelPendingJoin();
+    } else {
+      logger.info('[Voice] A join is already in progress; ignoring this one');
+      return null;
+    }
+  }
+  pendingJoin = { ...target, cancelled: false, room: null };
+  return pendingJoin;
+}
+
+export function endJoin(join: PendingJoin): void {
+  if (pendingJoin === join) {
+    pendingJoin = null;
+  }
+}
+
+/** Cancel the pending join, if any (aborting its room.connect()). */
+export function cancelPendingJoin(): PendingJoin | null {
+  const join = pendingJoin;
+  if (!join) return null;
+  pendingJoin = null;
+  join.cancelled = true;
+  if (join.room) {
+    logger.info('[Voice] Cancelling the pending join');
+    void join.room.disconnect().catch(() => {});
+  }
+  return join;
+}
+
+function throwIfCancelled(join: PendingJoin | undefined): void {
+  if (join?.cancelled) {
+    throw new JoinCancelledError();
+  }
+}
+
+// =============================================================================
+// MICROPHONE INTENT (for a mic enable that settles after its timeout)
+// =============================================================================
+
+/**
+ * The mic state the user last asked for per room (toggle / undeafen). A join
+ * whose mic enable times out tells the user they joined muted; if the enable
+ * then succeeds late, the mic is turned off again unless the user has since
+ * unmuted on purpose.
+ */
+const micIntent = new WeakMap<Room, boolean>();
+
+function noteMicIntent(room: Room, enabled: boolean): void {
+  micIntent.set(room, enabled);
+}
 
 interface DevicePreferences {
   audioInputDeviceId: string;
@@ -241,7 +340,7 @@ async function connectToLiveKitRoom(
   token: string,
   setRoom: (room: Room | null) => void,
   dispatch: React.Dispatch<VoiceAction>,
-  options: { startMuted?: boolean } = {},
+  options: { startMuted?: boolean; pending?: PendingJoin; isDeafened?: boolean } = {},
 ): Promise<Room> {
   logger.info('[Voice] Creating new LiveKit room instance');
   // Dynamically import livekit-client (and its Web Worker timer shim) here —
@@ -257,7 +356,12 @@ async function connectToLiveKitRoom(
   // Route livekit's connection-critical timers through a Web Worker so
   // background-tab timer throttling can't starve ping/pong on mobile (#350).
   installLivekitWorkerTimers();
+  throwIfCancelled(options.pending);
   const room = new Room(getRoomOptions());
+  if (options.pending) {
+    // A hang-up from here on disconnects this room, which aborts connect().
+    options.pending.room = room;
+  }
 
   // Register connection state monitoring before connecting so we catch
   // any events that fire during the connection handshake.
@@ -302,12 +406,17 @@ async function connectToLiveKitRoom(
     // watch/placeholder UX.
     await room.connect(url, token, { autoSubscribe: false });
     logger.info('[Voice] Connected to LiveKit room, state:', room.state);
+    throwIfCancelled(options.pending);
     setRoom(room);
 
-    const initialMetadata = JSON.stringify({ isDeafened: false });
+    // A rejoin while deafened must keep showing others we're deafened.
+    const initialMetadata = JSON.stringify({ isDeafened: options.isDeafened === true });
     await room.localParticipant.setMetadata(initialMetadata);
     logger.info('[Voice] Set initial participant metadata');
   } catch (error) {
+    if (options.pending?.cancelled) {
+      throw new JoinCancelledError();
+    }
     logger.error('[Voice] Failed to connect to LiveKit room:', error);
     throw error;
   }
@@ -334,15 +443,35 @@ async function connectToLiveKitRoom(
     }
   } else {
     logger.info('[Voice] Voice Activity mode - attempting to enable microphone...');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+    const micPromise = room.localParticipant.setMicrophoneEnabled(true, getAudioCaptureOptions());
     try {
-      const micPromise = room.localParticipant.setMicrophoneEnabled(true, getAudioCaptureOptions());
-      const timeoutPromise = new Promise<void>((_, reject) =>
-        setTimeout(() => reject(new Error('Microphone enable timeout (5s)')), 5000)
-      );
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          timedOut = true;
+          reject(new Error(`Microphone enable timeout (${MIC_ENABLE_TIMEOUT_MS / 1000}s)`));
+        }, MIC_ENABLE_TIMEOUT_MS);
+      });
       await Promise.race([micPromise, timeoutPromise]);
       logger.info('[Voice] Microphone enabled successfully');
     } catch (error) {
       logger.warn('[Voice] Failed to enable microphone (user will join muted):', error);
+      if (timedOut) {
+        // The enable can still succeed later: keep the mic off unless the
+        // user has unmuted since (they were told they joined muted).
+        micPromise.then(
+          () => {
+            if (micIntent.get(room) !== true && room.localParticipant.isMicrophoneEnabled) {
+              logger.info('[Voice] Late microphone enable after the timeout — turning it off again');
+              room.localParticipant.setMicrophoneEnabled(false).catch(() => {});
+            }
+          },
+          () => {},
+        );
+      }
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -397,14 +526,25 @@ interface JoinVoiceChannelParams {
   connectionInfo: { url: string };
   /** Join with the microphone off ("Join muted", or listen-only). */
   startMuted?: boolean;
+  /** An automatic rejoin: no connect sound (the call never ended for the user). */
+  quiet?: boolean;
+  /** The join slot the caller already claimed (beginJoin); claimed here when absent. */
+  claimedJoin?: PendingJoin;
 }
 
 export async function joinVoiceChannel(
   params: JoinVoiceChannelParams,
   deps: VoiceActionDeps
 ) {
-  const { channelId, channelName, communityId, isPrivate, createdAt, user, connectionInfo, startMuted } = params;
+  const { channelId, channelName, communityId, isPrivate, createdAt, user, connectionInfo, startMuted, quiet } = params;
   const { dispatch, setRoom } = deps;
+
+  // Use the caller's claim (useVoiceConnection claims before leaving the
+  // previous call) or claim the join slot here; a second concurrent join is
+  // ignored.
+  const ownJoin = params.claimedJoin ? null : beginJoin({ kind: quiet ? 'rejoin' : 'user', channelId });
+  const join = params.claimedJoin ?? ownJoin;
+  if (!join) return;
 
   logger.info('[Voice] === Starting voice channel join ===');
   logger.info('[Voice] Channel:', channelId, channelName);
@@ -423,7 +563,10 @@ export async function joinVoiceChannel(
     logger.info('[Voice] Got LiveKit token');
 
     logger.info('[Voice] Connecting to LiveKit room...');
-    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted });
+    throwIfCancelled(join);
+    const isDeafened = deps.getVoiceState().isDeafened;
+    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, { startMuted, pending: join, isDeafened });
+    throwIfCancelled(join);
 
     dispatch({
       type: VoiceActionType.SetConnected,
@@ -434,12 +577,44 @@ export async function joinVoiceChannel(
     // mid-call SW reload would drop the connection (see swUpdate / UpdateToast).
     setUpdateDeferred(true);
 
+    // Connected: free the join slot now, so a slow presence request below
+    // doesn't block clicking another channel. From here a hang-up (or a
+    // switch, or a final disconnect) shows as the room no longer being ours.
+    endJoin(join);
+    const stillJoined = () => !join.cancelled && deps.getRoom() === room;
+
     // Register presence directly (belt-and-suspenders alongside LiveKit webhooks)
+    let presenceRegistered = false;
+    const presenceAbort = new AbortController();
+    const presenceTimer = setTimeout(() => presenceAbort.abort(), JOIN_PRESENCE_TIMEOUT_MS);
     try {
-      await voicePresenceControllerJoinPresence({ path: { channelId } });
+      await voicePresenceControllerJoinPresence({ path: { channelId }, signal: presenceAbort.signal });
+      presenceRegistered = true;
       logger.info('[Voice] Registered voice presence via REST');
     } catch (err) {
       logger.warn('[Voice] Failed to register voice presence (webhook will handle it):', err);
+    } finally {
+      clearTimeout(presenceTimer);
+    }
+
+    if (!stillJoined()) {
+      // Hung up (or ended) while presence was being registered: don't save
+      // the connection (a refresh would rejoin) or play the connect sound,
+      // and undo the late registration, which may have landed after the
+      // hang-up's leave. Not after a duplicate identity: the other device
+      // (same user) is in the channel now.
+      logger.info('[Voice] Left while registering presence — not completing the join');
+      if (presenceRegistered && deps.getVoiceState().lastEnded?.reason !== VoiceEndReason.DuplicateIdentity) {
+        sendLeavePresence(channelId);
+      }
+      return;
+    }
+
+    // A rejoin while deafened: the fresh presence must show it too.
+    if (isDeafened) {
+      voicePresenceControllerUpdateDeafenState({ path: { channelId }, body: { isDeafened: true } }).catch((err) => {
+        logger.warn('[Voice] Failed to restore deafen state on backend:', err);
+      });
     }
 
     queryClient.invalidateQueries({ queryKey: [{ _id: 'voicePresenceControllerGetChannelPresence' }] });
@@ -456,66 +631,151 @@ export async function joinVoiceChannel(
       micMuted: !room.localParticipant.isMicrophoneEnabled,
     });
 
-    playSound(Sounds.connected);
+    if (!quiet) playSound(Sounds.connected);
     logger.info('[Voice] === Voice channel join complete ===');
   } catch (error) {
+    if (join.cancelled || error instanceof JoinCancelledError) {
+      // Hung up while connecting: the hang-up already reset the state.
+      logger.info('[Voice] Voice channel join cancelled');
+      discardCancelledRoom(join, deps);
+      return;
+    }
     logger.error("[Voice] Failed to join voice channel:", error);
     const message = error instanceof Error ? error.message : "Failed to join voice channel";
     dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
     setRoom(null);
     throw error;
+  } finally {
+    if (ownJoin) endJoin(ownJoin);
   }
 }
 
-export async function leaveVoiceChannel(deps: VoiceActionDeps) {
+/** A join was cancelled after its room connected: drop that room. */
+function discardCancelledRoom(join: PendingJoin, deps: VoiceActionDeps) {
+  const room = join.room;
+  if (!room) return;
+  void room.disconnect().catch(() => {});
+  if (deps.getRoom() === room) {
+    deps.setRoom(null);
+  }
+}
+
+interface LeaveOptions {
+  /**
+   * Leave the previous call without cancelling the pending join: used by a
+   * join that has already claimed the slot and leaves the old call first.
+   */
+  keepPendingJoin?: boolean;
+}
+
+/** Best-effort REST presence leave, aborted after LEAVE_REST_TIMEOUT_MS; never awaited by the hang-up. */
+function sendLeavePresence(channelId: string): void {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LEAVE_REST_TIMEOUT_MS);
+  voicePresenceControllerLeavePresence({ path: { channelId }, signal: controller.signal })
+    .then(() => logger.info('[Voice] Removed voice presence via REST'))
+    .catch((err) => logger.warn('[Voice] Failed to remove voice presence (webhook will handle it):', err))
+    .finally(() => clearTimeout(timer));
+}
+
+/** Tear down a room: soundboard graph and LiveKit connection, in parallel. */
+async function disposeRoom(room: Room): Promise<void> {
+  const { soundboardPlayer } = await import("./soundboardPlayer");
+  const results = await Promise.allSettled([
+    soundboardPlayer.dispose(room),
+    room.disconnect(),
+  ]);
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      logger.warn('[Voice] Error while disconnecting the room:', result.reason);
+    }
+  }
+}
+
+/**
+ * Hang up (channel or DM): cancels a pending join or a running rejoin loop,
+ * updates the UI at once, and disconnects LiveKit. The REST presence leave
+ * runs in the background with a timeout, so a dead network never holds up
+ * the hang-up.
+ */
+async function leaveVoice(deps: VoiceActionDeps, options: LeaveOptions = {}) {
   const { dispatch, getVoiceState, getRoom, setRoom } = deps;
-  const { currentChannelId } = getVoiceState();
+  const state = getVoiceState();
   const room = getRoom();
 
-  if (!currentChannelId || !room) {
-    logger.warn('[Voice] leaveVoiceChannel: No channel or room', { currentChannelId, room: !!room });
+  cancelVoiceReconnect();
+  const cancelledJoin = options.keepPendingJoin ? null : cancelPendingJoin();
+  const { currentChannelId } = state;
+
+  if (!room && !cancelledJoin && !currentChannelId && !state.currentDmGroupId && !state.isConnecting) {
+    logger.warn('[Voice] leave: nothing to leave');
     return;
   }
 
-  logger.info('[Voice] === Leaving voice channel ===');
-  logger.info('[Voice] Channel:', currentChannelId);
+  logger.info('[Voice] === Leaving voice ===', { channelId: currentChannelId, dmGroupId: state.currentDmGroupId });
 
-  try {
-    // Notify backend before disconnecting (best-effort)
-    try {
-      await voicePresenceControllerLeavePresence({ path: { channelId: currentChannelId } });
-      logger.info('[Voice] Removed voice presence via REST');
-    } catch (err) {
-      logger.warn('[Voice] Failed to remove voice presence (webhook will handle it):', err);
-    }
-
-    // Tear down the soundboard graph before disconnecting so the published
-    // track/AudioContext don't leak across sessions. Dynamically imported —
-    // this module isn't needed until an active room exists (see PR-11).
-    const { soundboardPlayer } = await import("./soundboardPlayer");
-    await soundboardPlayer.dispose(room).catch(() => {});
-
-    logger.info('[Voice] Disconnecting from LiveKit room...');
-    await room.disconnect();
-    logger.info('[Voice] Disconnected from LiveKit');
-
-    setRoom(null);
-    dispatch({ type: VoiceActionType.SetDisconnected });
-    clearConnectionState();
-    setUpdateDeferred(false);
-
+  // Optimistic: the UI shows the call as over right away.
+  setRoom(null);
+  dispatch({ type: VoiceActionType.SetDisconnected });
+  clearConnectionState();
+  setUpdateDeferred(false);
+  if (state.isConnected) {
     playSound(Sounds.disconnected);
-    logger.info('[Voice] === Voice channel leave complete ===');
-  } catch (error) {
-    logger.error('[Voice] Failed to leave voice channel:', error);
-    const message = error instanceof Error ? error.message : "Failed to leave voice channel";
-    dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
-    throw error;
-  } finally {
-    // Never leave a pending SW update suppressed after the call is over,
-    // even when disconnect throws.
-    setUpdateDeferred(false);
   }
+
+  if (currentChannelId && state.isConnected) {
+    sendLeavePresence(currentChannelId);
+  }
+
+  if (room) {
+    await disposeRoom(room);
+  }
+  logger.info('[Voice] === Voice leave complete ===');
+}
+
+export async function leaveVoiceChannel(deps: VoiceActionDeps, options: LeaveOptions = {}) {
+  await leaveVoice(deps, options);
+}
+
+/**
+ * End the call without a hang-up from the user (removed, duplicate login,
+ * room deleted, every rejoin failed). No REST leave: the server already
+ * knows, and for a duplicate identity it would remove the other device's
+ * presence. Records the reason in voice state for the UI.
+ */
+export async function endVoiceSession(
+  reason: VoiceEndReason,
+  deps: VoiceActionDeps,
+  error: string | null = null,
+) {
+  const { dispatch, getRoom, setRoom } = deps;
+  const room = getRoom();
+  cancelVoiceReconnect();
+  cancelPendingJoin();
+  logger.warn('[Voice] Voice session ended:', reason, error ?? '');
+
+  setRoom(null);
+  dispatch({ type: VoiceActionType.SetDisconnected, payload: { reason, error } });
+  // Don't let a page refresh rejoin (it would kick the other device).
+  clearConnectionState();
+  setUpdateDeferred(false);
+  playSound(Sounds.disconnected);
+
+  if (room) {
+    await disposeRoom(room);
+  }
+}
+
+/**
+ * Drop a dead room before an automatic rejoin, without any of a hang-up's
+ * side effects (REST leave, sounds, state reset): the bar stays up showing
+ * "Reconnecting".
+ */
+export async function discardRoomForRejoin(deps: VoiceActionDeps) {
+  const room = deps.getRoom();
+  if (!room) return;
+  deps.setRoom(null);
+  await disposeRoom(room);
 }
 
 // =============================================================================
@@ -527,14 +787,24 @@ interface JoinDmVoiceParams {
   dmGroupName: string;
   user: { id: string; username: string; displayName?: string };
   connectionInfo: { url: string };
+  /** Join with the microphone off (a rejoin keeps the mic state). */
+  startMuted?: boolean;
+  /** An automatic rejoin: no connect sound. */
+  quiet?: boolean;
+  /** The join slot the caller already claimed (beginJoin); claimed here when absent. */
+  claimedJoin?: PendingJoin;
 }
 
 export async function joinDmVoice(
   params: JoinDmVoiceParams,
   deps: VoiceActionDeps
 ) {
-  const { dmGroupId, dmGroupName, user, connectionInfo } = params;
+  const { dmGroupId, dmGroupName, user, connectionInfo, startMuted, quiet } = params;
   const { dispatch, setRoom } = deps;
+
+  const ownJoin = params.claimedJoin ? null : beginJoin({ kind: quiet ? 'rejoin' : 'user', dmGroupId });
+  const join = params.claimedJoin ?? ownJoin;
+  if (!join) return;
 
   try {
     dispatch({ type: VoiceActionType.SetConnecting, payload: true });
@@ -546,7 +816,13 @@ export async function joinDmVoice(
       throwOnError: true,
     });
 
-    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch);
+    throwIfCancelled(join);
+    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, {
+      startMuted,
+      pending: join,
+      isDeafened: deps.getVoiceState().isDeafened,
+    });
+    throwIfCancelled(join);
 
     dispatch({
       type: VoiceActionType.SetDmConnected,
@@ -566,41 +842,25 @@ export async function joinDmVoice(
       dmGroupName,
     });
 
-    playSound(Sounds.connected);
+    if (!quiet) playSound(Sounds.connected);
   } catch (error) {
+    if (join.cancelled || error instanceof JoinCancelledError) {
+      logger.info('[Voice] DM voice join cancelled');
+      discardCancelledRoom(join, deps);
+      return;
+    }
     logger.error("Failed to join DM voice call:", error);
     const message = error instanceof Error ? error.message : "Failed to join DM voice call";
     dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
     setRoom(null);
     throw error;
+  } finally {
+    if (ownJoin) endJoin(ownJoin);
   }
 }
 
-export async function leaveDmVoice(deps: VoiceActionDeps) {
-  const { dispatch, getVoiceState, getRoom, setRoom } = deps;
-  const { currentDmGroupId } = getVoiceState();
-  const room = getRoom();
-
-  if (!currentDmGroupId || !room) return;
-
-  try {
-    const { soundboardPlayer } = await import("./soundboardPlayer");
-    await soundboardPlayer.dispose(room).catch(() => {});
-    await room.disconnect();
-    setRoom(null);
-    dispatch({ type: VoiceActionType.SetDisconnected });
-    clearConnectionState();
-    setUpdateDeferred(false);
-    playSound(Sounds.disconnected);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to leave DM voice call";
-    dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
-    throw error;
-  } finally {
-    // Never leave a pending SW update suppressed after the call is over,
-    // even when disconnect throws.
-    setUpdateDeferred(false);
-  }
+export async function leaveDmVoice(deps: VoiceActionDeps, options: LeaveOptions = {}) {
+  await leaveVoice(deps, options);
 }
 
 // =============================================================================
@@ -630,6 +890,7 @@ export async function toggleMicrophone(deps: VoiceActionDeps) {
   logger.info('[Voice] Toggling microphone:', isCurrentlyEnabled, '->', newState);
 
   try {
+    noteMicIntent(room, newState);
     await room.localParticipant.setMicrophoneEnabled(newState, newState ? getAudioCaptureOptions() : undefined);
     playSound(newState ? Sounds.toggleOn : Sounds.toggleOff);
     logger.info('[Voice] Microphone toggled successfully');
@@ -877,6 +1138,7 @@ export async function toggleDeafenUnified(deps: VoiceActionDeps) {
       // Restore mic state from before deafen (but not if server-muted)
       const currentState = getVoiceState();
       if (!currentState.wasMutedBeforeDeafen && !currentState.isServerMuted) {
+        noteMicIntent(room, true);
         await room.localParticipant.setMicrophoneEnabled(true, getAudioCaptureOptions());
       }
       // Play sound only on undeafen — user can't hear it while deafened

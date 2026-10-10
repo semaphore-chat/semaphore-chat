@@ -78,3 +78,54 @@ export const MoreSheetOpen = defineComponent(
   ),
   { maxWidth: false, voiceState: connectedVoiceState },
 );
+
+/**
+ * The connection dropped and an automatic rejoin is running (#309): the bar
+ * stays up with "Reconnecting voice (n)…" and a Cancel (hang up) button.
+ */
+const reconnectingVoiceState = {
+  ...connectedVoiceState,
+  reconnect: { attempt: 3, maxAttempts: 11, nextRetryAt: Date.now() + 5000 },
+};
+
+export const Reconnecting = defineComponent(
+  bigCommunityScenario,
+  () => (
+    <ReplayBufferProvider>
+      <VoiceBottomBar />
+    </ReplayBufferProvider>
+  ),
+  { maxWidth: false, voiceState: reconnectingVoiceState },
+);
+
+/** Reconnecting in a 320px column with a long channel name: the status and Cancel must not clip. */
+export const ReconnectingNarrow320 = defineComponent(
+  bigCommunityScenario,
+  () => (
+    <ReplayBufferProvider>
+      <Box
+        sx={{
+          width: 320,
+          height: 160,
+          position: 'relative',
+          transform: 'translateZ(0)',
+          outline: '1px dashed',
+          outlineColor: 'divider',
+        }}
+      >
+        <VoiceBottomBar />
+      </Box>
+    </ReplayBufferProvider>
+  ),
+  {
+    maxWidth: false,
+    voiceState: {
+      ...reconnectingVoiceState,
+      channelName: 'Late-night co-working and lo-fi beats',
+      reconnect: { attempt: 11, maxAttempts: 11, nextRetryAt: null },
+    },
+  },
+);
+
+// A 320px column is a phone layout only.
+ReconnectingNarrow320.meta = { viewports: ['phone'] };

@@ -238,6 +238,18 @@ const electronAPI = {
   notifyDeepLinkReady: () => {
     ipcRenderer.send('deep-link:ready');
   },
+
+  // Wake from sleep / screen unlock (powerMonitor in main): the renderer
+  // re-checks its voice connection, since a lid close doesn't change the
+  // window's visibility.
+  onSystemResume: (callback: (event: 'resume' | 'unlock-screen') => void) => {
+    const subscription = (_event: IpcRendererEvent, kind: 'resume' | 'unlock-screen') => callback(kind);
+    ipcRenderer.on('system:resume', subscription);
+
+    return () => {
+      ipcRenderer.removeListener('system:resume', subscription);
+    };
+  },
 };
 
 // Expose protected methods to renderer process

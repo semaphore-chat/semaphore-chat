@@ -39,6 +39,8 @@ const initialState: VoiceState = {
   layoutMode: VideoLayoutMode.Grid,
   pinnedTileId: null,
   spotlightTileId: null,
+  reconnect: null,
+  lastEnded: null,
 };
 
 function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
@@ -47,7 +49,7 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
       return {
         ...state,
         isConnecting: action.payload,
-        ...(action.payload ? { connectionError: null } : {}),
+        ...(action.payload ? { connectionError: null, lastEnded: null } : {}),
       };
     case VoiceActionType.SetConnected:
       return {
@@ -55,6 +57,7 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
         isConnected: true,
         isConnecting: false,
         connectionError: null,
+        reconnect: null,
         contextType: VoiceSessionType.Channel,
         currentChannelId: action.payload.channelId,
         channelName: action.payload.channelName,
@@ -70,6 +73,7 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
         isConnected: true,
         isConnecting: false,
         connectionError: null,
+        reconnect: null,
         contextType: VoiceSessionType.Dm,
         currentDmGroupId: action.payload.dmGroupId,
         dmGroupName: action.payload.dmGroupName,
@@ -86,7 +90,12 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
         ...initialState,
         showVideoTiles: state.showVideoTiles,
         pipCollapsed: state.pipCollapsed,
+        lastEnded: action.payload
+          ? { reason: action.payload.reason, error: action.payload.error ?? null, at: Date.now() }
+          : null,
       };
+    case VoiceActionType.SetReconnect:
+      return { ...state, reconnect: action.payload };
     case VoiceActionType.SetConnectionError:
       return { ...state, isConnecting: false, connectionError: action.payload };
     case VoiceActionType.SetDeafened:
