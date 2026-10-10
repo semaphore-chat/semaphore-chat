@@ -169,18 +169,24 @@ export function ChannelRow({
         data-variant={variant}
         onClick={handleClick}
       >
-        {/* Unread pill on the left edge */}
-        {isUnread && (
+        {/* State pill flush with the sidebar's left edge (the row is inset by
+            its margin, so it sits outside the row box): 4x8 when unread,
+            4x20 when selected, like the community rail's selected state. */}
+        {(isUnread || selected) && (
           <Box
-            data-testid="unread-indicator"
-            sx={{
+            data-testid={selected ? "selected-indicator" : "unread-indicator"}
+            data-state={selected ? "selected" : "unread"}
+            sx={(theme) => ({
               position: "absolute",
-              left: 0,
+              left: theme.spacing(-1),
+              top: "50%",
+              transform: "translateY(-50%)",
               width: 4,
-              height: 8,
+              height: selected ? 20 : 8,
               borderRadius: "0 4px 4px 0",
-              bgcolor: "text.primary",
-            }}
+              bgcolor: alpha(theme.palette.text.primary, 0.8),
+              transition: "height 0.15s ease-in-out",
+            })}
           />
         )}
         <ListItemIcon

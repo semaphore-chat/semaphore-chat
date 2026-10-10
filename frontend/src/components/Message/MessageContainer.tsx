@@ -205,7 +205,15 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   const [composerBoxEl, setComposerBoxEl] = useState<HTMLDivElement | null>(null);
   // The message column and composer also define where the desktop voice
   // float card docks (above the composer, off the member list / side panel).
-  const chatRegionRef = useFloatRegionRef('chat');
+  const floatChatRegionRef = useFloatRegionRef('chat');
+  // The chat column's height, published as --chat-column-height so the
+  // composer can cap the draft input at a share of it (MessageInput).
+  const [chatColumnEl, setChatColumnEl] = useState<HTMLDivElement | null>(null);
+  const chatColumnHeight = useElementHeight(chatColumnEl);
+  const chatRegionRef = useCallback((el: HTMLDivElement | null) => {
+    setChatColumnEl(el);
+    floatChatRegionRef(el);
+  }, [floatChatRegionRef]);
   const composerRegionRef = useFloatRegionRef('composer', { observe: false });
   const composerBoxRef = useCallback((el: HTMLDivElement | null) => {
     messageInputBoxRef.current = el;
@@ -479,6 +487,7 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
       {/* Message Area */}
       <Box
         ref={chatRegionRef}
+        style={chatColumnHeight > 0 ? ({ '--chat-column-height': `${chatColumnHeight}px` } as React.CSSProperties) : undefined}
         sx={{
           flex: 1,
           display: "flex",

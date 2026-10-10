@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import { screen } from '@testing-library/react';
+import { ThemeProvider } from '@mui/material/styles';
+import { generateTheme } from '../../theme/themeConfig';
 import { renderWithProviders } from '../test-utils';
-import { renderInEveryTheme } from '../test-utils/themeMatrix';
+import { renderInEveryTheme, THEME_MATRIX } from '../test-utils/themeMatrix';
 import { createTestQueryClient } from '../test-utils/queryClient';
 import { createTestWrapper } from '../test-utils/wrappers';
 import ReplyComposerBanner, { replySnippet } from '../../components/Message/ReplyComposerBanner';
@@ -27,6 +29,27 @@ describe('ReplyComposerBanner', () => {
     expect(snippet).toHaveTextContent('So here is the full write-up of what happened');
     // Single line, truncated with an ellipsis by CSS.
     expect(snippet).toHaveStyle({ whiteSpace: 'nowrap', textOverflow: 'ellipsis' });
+  });
+
+  it.each(THEME_MATRIX)('sets the snippet in the body font, muted, on one line ($mode + $intensity)', (entry) => {
+    const theme = generateTheme(entry.mode, 'blue', entry.intensity);
+    const message = createMessage({ spans: [createSpan({ text: 'const x = 1; // looks like code' })] });
+    renderWithProviders(
+      <ThemeProvider theme={theme}>
+        <ReplyComposerBanner replyToMessage={message} onCancel={vi.fn()} />
+      </ThemeProvider>,
+    );
+    const style = getComputedStyle(screen.getByTestId('reply-banner-snippet'));
+    expect(style.fontFamily).toBe(theme.typography.fontFamily);
+    expect(style.fontFamily).not.toMatch(/mono|courier/i);
+    const probe = document.createElement('div');
+    probe.style.color = theme.palette.text.secondary;
+    document.body.appendChild(probe);
+    expect(style.color).toBe(getComputedStyle(probe).color);
+    probe.remove();
+    expect(style.whiteSpace).toBe('nowrap');
+    expect(style.overflow).toBe('hidden');
+    expect(style.textOverflow).toBe('ellipsis');
   });
 
   it('cancels from the close button', async () => {

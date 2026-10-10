@@ -40,6 +40,7 @@ import {
   notificationsControllerUpdateSettingsMutation,
   pushNotificationsControllerSendTestPushToSelfMutation,
 } from '../../api-client/@tanstack/react-query.gen';
+import SettingsCardSkeleton from './SettingsCardSkeleton';
 import { StickySaveBar, useSaveBarSlot } from '../Common/PageShell';
 
 import { useNotificationPermission } from '../../hooks/useNotificationPermission';
@@ -163,15 +164,7 @@ export const NotificationSettings: React.FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <Card>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-            <CircularProgress />
-          </Box>
-        </CardContent>
-      </Card>
-    );
+    return <SettingsCardSkeleton label="Loading notification settings" />;
   }
 
   if (error) {

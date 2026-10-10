@@ -778,13 +778,24 @@ export default function MessageInput({
               updateCursorPosition();
               captureSelection();
             }}
-            sx={{ flex: 1, minWidth: 0 }}
+            sx={{
+              flex: 1,
+              minWidth: 0,
+              // Cap the draft at 40% of the chat column (published by
+              // MessageContainer), then scroll; 100vh stands in where there is
+              // no column (stories, tests).
+              "& textarea:not([aria-hidden])": {
+                maxHeight: "calc(var(--chat-column-height, 100vh) * 0.4)",
+                overflowY: "auto !important",
+              },
+            }}
             inputRef={inputRef}
             autoComplete="off"
             multiline
             // With the on-screen keyboard up, the viewport is roughly halved;
             // cap the field lower so reply + files + draft leave room for messages.
-            maxRows={keyboardOpen ? 2 : 4}
+            // Desktop has no row cap: the 40% column cap below applies instead.
+            maxRows={compactComposer ? (keyboardOpen ? 2 : 4) : undefined}
             slotProps={{
               // Note: no `role="combobox"` and no `aria-expanded` here — this
               // field is `multiline` (renders a <textarea>), and ARIA 1.2's

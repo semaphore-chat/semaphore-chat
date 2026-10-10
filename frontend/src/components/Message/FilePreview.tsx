@@ -134,6 +134,7 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
         return (
           <Box key={index} role="listitem" sx={{ flexShrink: 0, maxWidth: 200, minWidth: 0 }}>
             <Chip
+              data-testid="pending-file-chip"
               title={file.name}
               icon={<InsertDriveFileOutlinedIcon />}
               label={file.name}
@@ -141,6 +142,16 @@ export const FilePreview: React.FC<FilePreviewProps> = ({
               deleteIcon={<CloseIcon />}
               sx={{
                 maxWidth: "100%",
+                // Neutral, not the theme's accent-tinted chip: the tray isn't a
+                // call to action, and the accent is kept for what is.
+                backgroundColor: "action.selected",
+                color: "text.primary",
+                border: 1,
+                borderColor: "divider",
+                boxShadow: "none",
+                "&.Mui-focusVisible": { backgroundColor: "action.focus" },
+                "& .MuiChip-icon, & .MuiChip-deleteIcon": { color: "text.secondary" },
+                "& .MuiChip-deleteIcon:hover": { color: "text.primary" },
                 "& .MuiChip-label": {
                   overflow: "hidden",
                   textOverflow: "ellipsis",

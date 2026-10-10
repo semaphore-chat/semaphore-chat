@@ -323,4 +323,26 @@ describe('MessageInput', () => {
       expectNoAxeViolations(results);
     });
   });
+
+  describe('draft height cap', () => {
+    // jsdom has no layout, so assert the emotion-generated rule itself.
+    const cssText = () =>
+      Array.from(document.querySelectorAll('style'))
+        .map((el) => el.textContent ?? '')
+        .join('\n');
+
+    it('caps the draft at 40% of the chat column height, then scrolls', () => {
+      setup();
+      expect(cssText()).toMatch(/max-height:\s*calc\(var\(--chat-column-height,\s*100vh\)\s*\*\s*0\.4\)/);
+      expect(cssText()).toMatch(/overflow-y:\s*auto\s*!important/);
+    });
+
+    it('drops the fixed 4-row cap on desktop (the 40% cap applies instead)', () => {
+      const { input } = setup();
+      const long = 'line\n'.repeat(12);
+      fireEvent.change(input, { target: { value: long } });
+      // MUI's autosize writes an inline max-height only when maxRows is set.
+      expect(input.style.maxHeight).toBe('');
+    });
+  });
 });
