@@ -405,6 +405,17 @@ export function useTopChromeHost(): number {
   return useMemo(() => computeTopChromeHeight(items), [items]);
 }
 
+/**
+ * Total height of the top-edge chrome, without registering as a host (so
+ * top-edge items that only become strips under a host, like the offline
+ * banner, keep their overlay form). The desktop shell uses it to push the
+ * content area and the rail below the incoming-call banner.
+ */
+export function useTopChromeHeight(): number {
+  const { items } = useChromeSnapshot();
+  return useMemo(() => computeTopChromeHeight(items), [items]);
+}
+
 /** Whether a layout that pushes content down for top chrome is mounted. */
 export function useHasTopChromeHost(): boolean {
   return useChromeSnapshot().topHosts > 0;

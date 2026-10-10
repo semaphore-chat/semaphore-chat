@@ -3,17 +3,20 @@ import { Box } from "@mui/material";
 import { Outlet } from "react-router-dom";
 import { RAIL_EXPANDED_WIDTH, SIDEBAR_WIDTH, VOICE_BAR_HEIGHT } from "../../constants/layout";
 import { RouteErrorBoundary } from "../RouteErrorBoundary";
+import { useTopChromeHeight } from "../../contexts/BottomChromeContext";
 
 /** Content area that hosts the routed page content */
 export const DesktopContentArea: React.FC<{ voiceConnected: boolean; isMenuExpanded: boolean }> = ({
   voiceConnected,
   isMenuExpanded,
 }) => {
+  // The incoming-call banner sits above the page: start the page below it
+  const topInset = useTopChromeHeight();
   return (
     <Box
       sx={{
         position: "absolute",
-        top: 0,
+        top: topInset,
         left: isMenuExpanded ? RAIL_EXPANDED_WIDTH : SIDEBAR_WIDTH,
         right: 0,
         bottom: voiceConnected ? VOICE_BAR_HEIGHT : 0,
