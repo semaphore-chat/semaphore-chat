@@ -32,11 +32,51 @@ export enum VoiceEndReason {
   SessionExpired = 'session_expired',
 }
 
+/** What a voice join was for, so a notice can offer Retry. */
+export type VoiceJoinTarget =
+  | {
+      type: 'channel';
+      channelId: string;
+      channelName: string;
+      communityId: string;
+      isPrivate: boolean;
+      createdAt: string;
+    }
+  | { type: 'dm'; dmGroupId: string; dmGroupName: string };
+
 export interface VoiceEnded {
   reason: VoiceEndReason;
   /** The last error message, when there was one (ReconnectFailed). */
   error: string | null;
   /** Epoch ms. */
+  at: number;
+  /** The call that ended (for Retry), when known. */
+  target?: VoiceJoinTarget | null;
+}
+
+/**
+ * How a failed join is classified for the user (features/voice/joinFailure.ts).
+ * The string values are what the client reports to
+ * POST /voice/diagnostics/join-failure.
+ */
+export enum VoiceFailureKind {
+  /** Signalling worked but WebRTC media couldn't connect (UDP blocked, no TURN). */
+  MediaUnreachable = 'media_unreachable',
+  /** The voice server (or the API) couldn't be reached at all. */
+  ServerUnreachable = 'server_unreachable',
+  Permission = 'permission',
+  NotFound = 'not_found',
+  Session = 'session',
+  ServerError = 'server_error',
+  Unknown = 'unknown',
+}
+
+/** A join the user started that failed; shown by VoiceNotice until dismissed or retried. */
+export interface VoiceJoinFailure {
+  kind: VoiceFailureKind;
+  /** The raw error message (for details / diagnostics). */
+  error: string | null;
+  target: VoiceJoinTarget;
   at: number;
 }
 
@@ -84,6 +124,8 @@ export interface VoiceState {
   reconnect: VoiceReconnectState | null;
   /** Why the last call ended involuntarily; cleared by a new join or a user hang-up. */
   lastEnded: VoiceEnded | null;
+  /** The last user-started join that failed; cleared by a new join or dismissal. */
+  joinFailure: VoiceJoinFailure | null;
 }
 
 export enum VoiceActionType {
@@ -112,6 +154,9 @@ export enum VoiceActionType {
   TogglePinTile = 'TOGGLE_PIN_TILE',
   ToggleSpotlightTile = 'TOGGLE_SPOTLIGHT_TILE',
   SetReconnect = 'SET_RECONNECT',
+  SetJoinFailure = 'SET_JOIN_FAILURE',
+  /** Dismiss the voice notice (join failure / why the call ended). */
+  ClearVoiceNotice = 'CLEAR_VOICE_NOTICE',
 }
 
 export type VoiceAction =
@@ -139,7 +184,9 @@ export type VoiceAction =
   | { type: VoiceActionType.SetLayoutMode; payload: VideoLayoutMode }
   | { type: VoiceActionType.TogglePinTile; payload: string }
   | { type: VoiceActionType.ToggleSpotlightTile; payload: string }
-  | { type: VoiceActionType.SetReconnect; payload: VoiceReconnectState | null };
+  | { type: VoiceActionType.SetReconnect; payload: VoiceReconnectState | null }
+  | { type: VoiceActionType.SetJoinFailure; payload: Omit<VoiceJoinFailure, 'at'> }
+  | { type: VoiceActionType.ClearVoiceNotice };
 
 // Split into two contexts to avoid unnecessary re-renders
 export const VoiceStateContext = createContext<VoiceState | null>(null);

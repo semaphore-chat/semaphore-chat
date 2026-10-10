@@ -76,6 +76,7 @@ vi.mock('../../api-client/sdk.gen', () => ({
   voicePresenceControllerJoinPresence: vi.fn().mockResolvedValue(undefined),
   voicePresenceControllerLeavePresence: vi.fn().mockResolvedValue(undefined),
   voicePresenceControllerUpdateDeafenState: vi.fn().mockResolvedValue(undefined),
+  voiceDiagnosticsControllerReportJoinFailure: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../../main', () => ({
@@ -140,14 +141,17 @@ import {
   getRoomOptions,
   canPublishMicrophone,
 } from '../../features/voice/voiceActions';
-import { VoiceActionType, VoiceEndReason, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { VoiceActionType, VoiceEndReason, VoiceFailureKind, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
 import { playSound } from '../../hooks/useSound';
 import { setVoiceReconnectCanceller } from '../../features/voice/reconnectControl';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
 import { getCachedItem, setCachedItem } from '../../utils/storage';
-import { JOIN_PRESENCE_TIMEOUT_MS } from '../../features/voice/voiceActions';
+import { JOIN_PRESENCE_TIMEOUT_MS, ICE_SUMMARY_DELAY_MS } from '../../features/voice/voiceActions';
+import { getJoinAttempts, resetJoinAttempts } from '../../features/voice/joinAttemptLog';
+import { resetJoinFailureReporting } from '../../features/voice/joinFailureReport';
+import { voiceDiagnosticsControllerReportJoinFailure } from '../../api-client/sdk.gen';
 import { publishScreenShare } from '../../features/voice/screenSharePublish';
 import { getScreenShareSettings, DEFAULT_SCREEN_SHARE_SETTINGS } from '../../utils/screenShareState';
 import { getScreenShareAudioConfig } from '../../utils/screenShareResolution';
@@ -197,6 +201,7 @@ function createMockDeps(overrides: Partial<{
       spotlightTileId: null,
       reconnect: null,
       lastEnded: null,
+      joinFailure: null,
     }),
     getRoom: () => room as Room | null,
     setRoom: vi.fn((next: Room | null) => { room = next; }),
@@ -1188,6 +1193,121 @@ describe('voiceActions resilience (#309)', () => {
     });
   });
 
+  describe('join attempts: log, notice and report (PR B)', () => {
+    beforeEach(() => {
+      resetJoinAttempts();
+      resetJoinFailureReporting();
+      vi.mocked(voiceDiagnosticsControllerReportJoinFailure).mockClear();
+    });
+
+    it('a failed user join shows the classified notice with the channel to retry, and is logged and reported', async () => {
+      vi.mocked(livekitControllerGenerateToken).mockRejectedValueOnce({ statusCode: 403, message: 'Forbidden resource' });
+      const deps = createMockDeps();
+
+      await expect(joinVoiceChannel(params, deps)).rejects.toBeDefined();
+
+      expect(deps.dispatch).toHaveBeenCalledWith({
+        type: VoiceActionType.SetJoinFailure,
+        payload: {
+          kind: VoiceFailureKind.Permission,
+          error: 'Forbidden resource',
+          target: {
+            type: 'channel',
+            channelId: 'ch-1',
+            channelName: 'General',
+            communityId: 'c1',
+            isPrivate: false,
+            createdAt: '2025-01-01',
+          },
+        },
+      });
+      expect(getJoinAttempts().slice(-1)[0]).toMatchObject({
+        outcome: 'failed',
+        errorKind: VoiceFailureKind.Permission,
+        target: { type: 'channel', channelId: 'ch-1' },
+        quiet: false,
+      });
+      expect(voiceDiagnosticsControllerReportJoinFailure).toHaveBeenCalledTimes(1);
+    });
+
+    it('a LiveKit pc failure is classified as media unreachable', async () => {
+      mockRoomInstance.connect.mockRejectedValueOnce(
+        Object.assign(new Error('could not establish pc connection'), { name: 'ConnectionError', reason: 2 }),
+      );
+      const deps = createMockDeps();
+
+      await expect(joinVoiceChannel(params, deps)).rejects.toBeDefined();
+      expect(deps.dispatch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: VoiceActionType.SetJoinFailure,
+          payload: expect.objectContaining({ kind: VoiceFailureKind.MediaUnreachable }),
+        }),
+      );
+    });
+
+    it('an automatic rejoin failure is logged and reported, but shows no join notice', async () => {
+      vi.mocked(livekitControllerGenerateToken).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      const deps = createMockDeps();
+
+      await expect(joinVoiceChannel({ ...params, quiet: true }, deps)).rejects.toBeDefined();
+      expect(deps.dispatch.mock.calls.map(([a]) => a.type)).not.toContain(VoiceActionType.SetJoinFailure);
+      expect(getJoinAttempts().slice(-1)[0]).toMatchObject({ outcome: 'failed', quiet: true });
+      expect(voiceDiagnosticsControllerReportJoinFailure).toHaveBeenCalledTimes(1);
+    });
+
+    it('a DM join failure targets the DM', async () => {
+      const { livekitControllerGenerateDmToken } = await import('../../api-client/sdk.gen');
+      vi.mocked(livekitControllerGenerateDmToken).mockRejectedValueOnce({ statusCode: 500, message: 'boom' });
+      const deps = createMockDeps();
+
+      await expect(
+        joinDmVoice({ dmGroupId: 'dm-1', dmGroupName: 'Alice', user: params.user, connectionInfo: params.connectionInfo }, deps),
+      ).rejects.toBeDefined();
+      expect(deps.dispatch).toHaveBeenCalledWith({
+        type: VoiceActionType.SetJoinFailure,
+        payload: { kind: VoiceFailureKind.ServerError, error: 'boom', target: { type: 'dm', dmGroupId: 'dm-1', dmGroupName: 'Alice' } },
+      });
+    });
+
+    it('a successful join is logged, then gets its ICE summary', async () => {
+      vi.useFakeTimers();
+      try {
+        await joinVoiceChannel(params, createMockDeps());
+        expect(getJoinAttempts().slice(-1)[0]).toMatchObject({ outcome: 'success', target: { type: 'channel', channelId: 'ch-1' } });
+        await vi.advanceTimersByTimeAsync(ICE_SUMMARY_DELAY_MS);
+        // The mock room has no engine: the summary is recorded as unknown
+        expect(getJoinAttempts().slice(-1)[0].ice).toBeNull();
+        expect(voiceDiagnosticsControllerReportJoinFailure).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('a cancelled join is logged as cancelled, with no notice or report', async () => {
+      let resolveToken: (v: unknown) => void = () => {};
+      vi.mocked(livekitControllerGenerateToken).mockReturnValueOnce(
+        new Promise((resolve) => { resolveToken = resolve; }) as never,
+      );
+      const deps = createMockDeps({ channelId: null, room: null });
+      const joining = joinVoiceChannel(params, deps);
+      await leaveVoiceChannel(deps);
+      resolveToken({ data: { token: 'mock-token' } });
+      await joining;
+
+      expect(getJoinAttempts().slice(-1)[0]).toMatchObject({ outcome: 'cancelled' });
+      expect(deps.dispatch.mock.calls.map(([a]) => a.type)).not.toContain(VoiceActionType.SetJoinFailure);
+      expect(voiceDiagnosticsControllerReportJoinFailure).not.toHaveBeenCalled();
+    });
+
+    it('a broken reporter never changes how the join fails', async () => {
+      vi.mocked(voiceDiagnosticsControllerReportJoinFailure).mockImplementationOnce(() => {
+        throw new Error('reporter bug');
+      });
+      vi.mocked(livekitControllerGenerateToken).mockRejectedValueOnce(new Error('Token failed'));
+      await expect(joinVoiceChannel(params, createMockDeps())).rejects.toThrow('Token failed');
+    });
+  });
+
   describe('token endpoint errors reach the rejoin loop unchanged', () => {
     it.each([401, 403, 404, 503])('rethrows the %i API body as is', async (statusCode) => {
       const body = { statusCode, message: 'nope', error: 'x' };
@@ -1313,6 +1433,9 @@ describe('voiceActions resilience (#309)', () => {
       vi.useFakeTimers();
       try {
         await joinVoiceChannel(params, createMockDeps());
+        // Only the delayed ICE-summary read is left
+        expect(vi.getTimerCount()).toBe(1);
+        await vi.advanceTimersByTimeAsync(ICE_SUMMARY_DELAY_MS);
         expect(vi.getTimerCount()).toBe(0);
       } finally {
         vi.useRealTimers();

@@ -3,7 +3,6 @@ import { Box, Button, CircularProgress, Typography } from '@mui/material';
 import { Headphones, Mic, MicOff, Block } from '@mui/icons-material';
 import { useVoiceConnection } from '../../hooks/useVoiceConnection';
 import { useChannelPermissions } from '../../hooks/useChannelPermissions';
-import { useNotification } from '../../contexts/NotificationContext';
 import { playSound, Sounds } from '../../hooks/useSound';
 import { ChannelType, type Channel } from '../../types/channel.type';
 import { TOUCH_TARGETS } from '../../utils/breakpoints';
@@ -27,7 +26,6 @@ export const VoiceChannelJoinButton: React.FC<VoiceChannelJoinButtonProps> = ({
 }) => {
   const { state, actions } = useVoiceConnection();
   const { can, timedOutUntil } = useChannelPermissions(channel.communityId, channel.id);
-  const { showNotification } = useNotification();
   const [pending, setPending] = useState<'voice' | 'muted' | null>(null);
 
   if (channel.type !== ChannelType.VOICE) {
@@ -63,7 +61,7 @@ export const VoiceChannelJoinButton: React.FC<VoiceChannelJoinButtonProps> = ({
     } catch (error) {
       logger.error('Failed to join voice channel:', error);
       playSound(Sounds.error);
-      showNotification('Failed to join voice channel. Please try again.', 'error');
+      // The voice notice (VoiceNotice) explains the failure and offers Retry.
     } finally {
       setPending(null);
     }

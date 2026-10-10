@@ -18,6 +18,14 @@ import { fileURLToPath } from 'url';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import { parseDeepLink, extractDeepLinkUrls, DEEP_LINK_PROTOCOL, type DeepLinkRoute } from './deep-link-parser';
 import { choosePasswordStore, probeSecretService } from './passwordStore';
+import log from 'electron-log/main';
+import { formatVoiceLogEntry } from './voiceLog';
+
+// The app's log file (electron-log's default location: Linux
+// ~/.config/<app>/logs/main.log, macOS ~/Library/Logs/<app>/main.log,
+// Windows %USERPROFILE%\AppData\Roaming\<app>\logs\main.log). Voice
+// join failures and wake events go here, so a user can attach it to a report.
+const voiceLog = log.scope('voice');
 
 // ─── App Settings (single JSON file in userData) ────────────────────────────
 
@@ -574,6 +582,12 @@ function setupAutoUpdater() {
  * Setup IPC handlers
  */
 function setupIpcHandlers() {
+  // Voice events from the renderer, into the log file (validated: renderer input).
+  ipcMain.on('voice:log', (_event, raw: unknown) => {
+    const entry = formatVoiceLogEntry(raw);
+    if (entry) voiceLog[entry.level](entry.line);
+  });
+
   // Check for updates manually
   ipcMain.on('check-for-updates', () => {
     if (process.env.NODE_ENV !== 'development') {
@@ -806,6 +820,7 @@ function setupIpcHandlers() {
 function setupPowerMonitor() {
   const notify = (kind: 'resume' | 'unlock-screen') => () => {
     console.log(`powerMonitor: ${kind}`);
+    voiceLog.info(`system-${kind}`);
     mainWindow?.webContents.send('system:resume', kind);
   };
   powerMonitor.on('resume', notify('resume'));

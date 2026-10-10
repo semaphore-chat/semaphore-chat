@@ -30,6 +30,7 @@ import { MembershipModule } from './membership/membership.module';
 import { ChannelMembershipModule } from './channel-membership/channel-membership.module';
 import { LivekitModule } from './livekit/livekit.module';
 import { VoicePresenceModule } from './voice-presence/voice-presence.module';
+import { VoiceDiagnosticsModule } from './voice-diagnostics/voice-diagnostics.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { DirectMessagesModule } from './direct-messages/direct-messages.module';
 import { FileUploadModule } from './file-upload/file-upload.module';
@@ -117,6 +118,7 @@ import { JobsModule } from './jobs/jobs.module';
     ChannelMembershipModule,
     LivekitModule,
     VoicePresenceModule,
+    VoiceDiagnosticsModule,
     OnboardingModule,
     DirectMessagesModule,
     FileUploadModule,

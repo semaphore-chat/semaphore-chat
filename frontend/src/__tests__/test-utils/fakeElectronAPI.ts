@@ -71,6 +71,7 @@ export function createFakeElectronAPI<O extends Partial<ElectronAPI> = Record<ne
     onDeepLink: subscribe,
     notifyDeepLinkReady: noop,
     onSystemResume: subscribe,
+    logVoiceEvent: noop,
   };
   return { ...defaults, ...overrides } as CompleteElectronAPI & O;
 }

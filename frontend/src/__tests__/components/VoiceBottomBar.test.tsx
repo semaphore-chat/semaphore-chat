@@ -43,6 +43,7 @@ const defaultVoiceState: VoiceState = {
   spotlightTileId: null,
   reconnect: null,
   lastEnded: null,
+  joinFailure: null,
 };
 
 let voiceState = { ...defaultVoiceState };

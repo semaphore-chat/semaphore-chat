@@ -66,6 +66,7 @@ const defaultVoiceState: VoiceState & { room: null } = {
   spotlightTileId: null,
   reconnect: null,
   lastEnded: null,
+  joinFailure: null,
   room: null,
 };
 

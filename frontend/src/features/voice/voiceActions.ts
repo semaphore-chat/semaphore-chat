@@ -5,7 +5,15 @@
 // the single place a Room is constructed, so the bytes only download when a
 // user actually joins a voice/DM call (see PR-11 bundle splitting).
 import type { Room, DisconnectReason, VideoCaptureOptions, AudioCaptureOptions } from "livekit-client";
-import { VoiceSessionType, VoiceActionType, VoiceEndReason, type VoiceAction, type VoiceState } from "../../contexts/VoiceContext";
+import {
+  VoiceSessionType,
+  VoiceActionType,
+  VoiceEndReason,
+  VoiceFailureKind,
+  type VoiceAction,
+  type VoiceJoinTarget,
+  type VoiceState,
+} from "../../contexts/VoiceContext";
 import { livekitControllerGenerateToken, livekitControllerGenerateDmToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from "../../api-client/sdk.gen";
 import { queryClient } from "../../queryClient";
 
@@ -21,6 +29,10 @@ import { getApiUrl } from "../../config/env";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { setUpdateDeferred } from "../../utils/swUpdate";
 import { cancelVoiceReconnect } from "./reconnectControl";
+import { classifyJoinFailure, joinErrorMessage } from "./joinFailure";
+import { recordJoinAttempt, setJoinAttemptIce, type JoinAttempt } from "./joinAttemptLog";
+import { reportJoinFailure } from "./joinFailureReport";
+import { getIceSummary } from "./iceSummary";
 
 // Storage key must match useDeviceSettings.ts
 const DEVICE_PREFERENCES_KEY = 'semaphore_device_preferences';
@@ -532,6 +544,61 @@ interface JoinVoiceChannelParams {
   claimedJoin?: PendingJoin;
 }
 
+// =============================================================================
+// JOIN ATTEMPT BOOKKEEPING (attempt log, failure notice, failure reports)
+// =============================================================================
+
+/** When to read the ICE path after a successful connect (the publisher connects with the first track). */
+export const ICE_SUMMARY_DELAY_MS = 2000;
+
+type AttemptStart = Pick<JoinAttempt, 'startedAt' | 'target' | 'quiet'>;
+
+function startAttempt(target: JoinAttempt['target'], quiet: boolean | undefined): AttemptStart {
+  return { startedAt: Date.now(), target, quiet: quiet === true };
+}
+
+function attemptSucceeded(start: AttemptStart, room: Room) {
+  const attempt = recordJoinAttempt({ ...start, durationMs: Date.now() - start.startedAt, outcome: 'success' });
+  setTimeout(() => {
+    void getIceSummary(room).then((ice) => setJoinAttemptIce(attempt, ice));
+  }, ICE_SUMMARY_DELAY_MS);
+}
+
+function attemptCancelled(start: AttemptStart) {
+  recordJoinAttempt({ ...start, durationMs: Date.now() - start.startedAt, outcome: 'cancelled' });
+}
+
+/**
+ * A join failed: log it, report it (rate-limited), and for a join the user
+ * started, show the voice notice with a Retry target. Automatic rejoins
+ * report only: their outcome is the loop's (lastEnded).
+ */
+function attemptFailed(
+  start: AttemptStart,
+  error: unknown,
+  joinTarget: VoiceJoinTarget,
+  dispatch: React.Dispatch<VoiceAction>,
+) {
+  const kind = classifyJoinFailure(error) ?? VoiceFailureKind.Unknown;
+  const message = joinErrorMessage(error);
+  const attempt = recordJoinAttempt({
+    ...start,
+    durationMs: Date.now() - start.startedAt,
+    outcome: 'failed',
+    errorKind: kind,
+    errorMessage: message ?? undefined,
+  });
+  try {
+    reportJoinFailure(attempt);
+  } catch (err) {
+    // Diagnostics must never change how a join fails.
+    logger.warn('[Voice] Could not report the join failure:', err);
+  }
+  if (!start.quiet) {
+    dispatch({ type: VoiceActionType.SetJoinFailure, payload: { kind, error: message, target: joinTarget } });
+  }
+}
+
 export async function joinVoiceChannel(
   params: JoinVoiceChannelParams,
   deps: VoiceActionDeps
@@ -545,6 +612,7 @@ export async function joinVoiceChannel(
   const ownJoin = params.claimedJoin ? null : beginJoin({ kind: quiet ? 'rejoin' : 'user', channelId });
   const join = params.claimedJoin ?? ownJoin;
   if (!join) return;
+  const attempt = startAttempt({ type: 'channel', channelId }, quiet);
 
   logger.info('[Voice] === Starting voice channel join ===');
   logger.info('[Voice] Channel:', channelId, channelName);
@@ -607,6 +675,7 @@ export async function joinVoiceChannel(
       if (presenceRegistered && deps.getVoiceState().lastEnded?.reason !== VoiceEndReason.DuplicateIdentity) {
         sendLeavePresence(channelId);
       }
+      attemptCancelled(attempt);
       return;
     }
 
@@ -632,17 +701,25 @@ export async function joinVoiceChannel(
     });
 
     if (!quiet) playSound(Sounds.connected);
+    attemptSucceeded(attempt, room);
     logger.info('[Voice] === Voice channel join complete ===');
   } catch (error) {
     if (join.cancelled || error instanceof JoinCancelledError) {
       // Hung up while connecting: the hang-up already reset the state.
       logger.info('[Voice] Voice channel join cancelled');
       discardCancelledRoom(join, deps);
+      attemptCancelled(attempt);
       return;
     }
     logger.error("[Voice] Failed to join voice channel:", error);
     const message = error instanceof Error ? error.message : "Failed to join voice channel";
     dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
+    attemptFailed(
+      attempt,
+      error,
+      { type: 'channel', channelId, channelName, communityId, isPrivate, createdAt },
+      dispatch,
+    );
     setRoom(null);
     throw error;
   } finally {
@@ -805,6 +882,7 @@ export async function joinDmVoice(
   const ownJoin = params.claimedJoin ? null : beginJoin({ kind: quiet ? 'rejoin' : 'user', dmGroupId });
   const join = params.claimedJoin ?? ownJoin;
   if (!join) return;
+  const attempt = startAttempt({ type: 'dm', dmGroupId }, quiet);
 
   try {
     dispatch({ type: VoiceActionType.SetConnecting, payload: true });
@@ -817,7 +895,7 @@ export async function joinDmVoice(
     });
 
     throwIfCancelled(join);
-    await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, {
+    const room = await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch, {
       startMuted,
       pending: join,
       isDeafened: deps.getVoiceState().isDeafened,
@@ -843,15 +921,18 @@ export async function joinDmVoice(
     });
 
     if (!quiet) playSound(Sounds.connected);
+    attemptSucceeded(attempt, room);
   } catch (error) {
     if (join.cancelled || error instanceof JoinCancelledError) {
       logger.info('[Voice] DM voice join cancelled');
       discardCancelledRoom(join, deps);
+      attemptCancelled(attempt);
       return;
     }
     logger.error("Failed to join DM voice call:", error);
     const message = error instanceof Error ? error.message : "Failed to join DM voice call";
     dispatch({ type: VoiceActionType.SetConnectionError, payload: message });
+    attemptFailed(attempt, error, { type: 'dm', dmGroupId, dmGroupName }, dispatch);
     setRoom(null);
     throw error;
   } finally {

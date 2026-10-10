@@ -6069,6 +6069,30 @@
         ]
       }
     },
+    "/api/voice/diagnostics/join-failure": {
+      "post": {
+        "operationId": "VoiceDiagnosticsController_reportJoinFailure",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportJoinFailureDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Logged"
+          }
+        },
+        "tags": [
+          "VoiceDiagnostics"
+        ]
+      }
+    },
     "/api/onboarding/status": {
       "get": {
         "operationId": "OnboardingController_getStatus",
@@ -12625,6 +12649,77 @@
           "userId",
           "channelId",
           "joinedAt"
+        ]
+      },
+      "ReportJoinFailureDto": {
+        "type": "object",
+        "properties": {
+          "errorClass": {
+            "enum": [
+              "media_unreachable",
+              "server_unreachable",
+              "permission",
+              "not_found",
+              "session",
+              "server_error",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "durationMs": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 600000,
+            "description": "How long the attempt took, in ms"
+          },
+          "candidateTypes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "host",
+                "srflx",
+                "prflx",
+                "relay"
+              ]
+            }
+          },
+          "platform": {
+            "enum": [
+              "web",
+              "electron"
+            ],
+            "type": "string"
+          },
+          "os": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "appVersion": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "channelId": {
+            "type": "string",
+            "maxLength": 64,
+            "description": "The voice channel, for channel joins"
+          },
+          "isDm": {
+            "type": "boolean",
+            "description": "A DM call (no channel id is sent for DMs)"
+          }
+        },
+        "required": [
+          "errorClass",
+          "message",
+          "durationMs",
+          "platform",
+          "appVersion",
+          "isDm"
         ]
       },
       "OnboardingStatusDto": {

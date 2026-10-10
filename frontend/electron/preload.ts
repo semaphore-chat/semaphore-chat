@@ -239,6 +239,11 @@ const electronAPI = {
     ipcRenderer.send('deep-link:ready');
   },
 
+  // Voice events into the app's log file (validated by main, see voiceLog.ts).
+  logVoiceEvent: (entry: { level: 'info' | 'warn' | 'error'; event: string; data?: Record<string, unknown> }) => {
+    ipcRenderer.send('voice:log', entry);
+  },
+
   // Wake from sleep / screen unlock (powerMonitor in main): the renderer
   // re-checks its voice connection, since a lid close doesn't change the
   // window's visibility.

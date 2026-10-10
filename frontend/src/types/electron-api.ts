@@ -56,6 +56,13 @@ export type DeepLinkRoute =
 
 export type SystemResumeEvent = 'resume' | 'unlock-screen';
 
+/** A voice event for the desktop app's log file (electron/voiceLog.ts validates it). */
+export interface VoiceLogEntry {
+  level: 'info' | 'warn' | 'error';
+  event: string;
+  data?: Record<string, unknown>;
+}
+
 export interface ElectronAPI {
   platform?: string;
   isElectron?: boolean;
@@ -94,6 +101,8 @@ export interface ElectronAPI {
    * powerMonitor `resume` / `unlock-screen`). Missing on older desktop builds.
    */
   onSystemResume?: (callback: (event: SystemResumeEvent) => void) => (() => void);
+  /** Write a voice event to the desktop app's log file. Missing on older desktop builds. */
+  logVoiceEvent?: (entry: VoiceLogEntry) => void;
   [key: string]: unknown;
 }
 
