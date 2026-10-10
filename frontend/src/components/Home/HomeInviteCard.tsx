@@ -42,7 +42,7 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
   const queryClient = useQueryClient();
   const [dismissed, setDismissed] = useState(readDismissed);
   const [lastCode, setLastCode] = useState<string | null>(null);
-  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState<string | null>(null);
 
   const { hasPermissions: canCreateInvites } = useUserPermissions({
     resourceType: "INSTANCE",
@@ -71,10 +71,16 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
       };
       const invite = await createInvite({ body });
       setLastCode(invite.code);
-      await copyToClipboard(inviteUrl(invite.code));
-      setSnackbarOpen(true);
+      try {
+        await copyToClipboard(inviteUrl(invite.code));
+        setSnackbar("Invite link copied to clipboard!");
+      } catch (error) {
+        logger.error("Failed to copy invite link:", error);
+        setSnackbar("Invite created, but it couldn't be copied. Use the copy button.");
+      }
     } catch (error) {
       logger.error("Failed to create invite:", error);
+      setSnackbar("Couldn't create an invite link. Try again.");
     }
   };
 
@@ -82,9 +88,10 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
     if (!lastCode) return;
     try {
       await copyToClipboard(inviteUrl(lastCode));
-      setSnackbarOpen(true);
+      setSnackbar("Invite link copied to clipboard!");
     } catch (error) {
       logger.error("Failed to copy invite link:", error);
+      setSnackbar("Couldn't copy the invite link.");
     }
   };
 
@@ -134,10 +141,10 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
         </Tooltip>
       </Box>
       <Snackbar
-        open={snackbarOpen}
+        open={snackbar !== null}
         autoHideDuration={3000}
-        onClose={() => setSnackbarOpen(false)}
-        message="Invite link copied to clipboard!"
+        onClose={() => setSnackbar(null)}
+        message={snackbar}
       />
     </Paper>
   );
