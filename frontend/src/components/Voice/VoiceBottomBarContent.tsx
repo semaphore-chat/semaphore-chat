@@ -317,6 +317,39 @@ const VoiceBottomBarContent: React.FC = () => {
 
   const displayType = state.contextType === VoiceSessionType.Dm ? 'DM Voice Call' : 'Voice Connected';
 
+  // An automatic rejoin after the connection dropped (see
+  // useVoiceForegroundResync). Cancel hangs up. Inline under the name on
+  // desktop; its own full-width row on phones, where the controls leave the
+  // name column too narrow for it.
+  const reconnectStatus = state.reconnect ? (
+    <Box
+      role="status"
+      data-testid="voice-reconnecting"
+      sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}
+    >
+      <CircularProgress size={10} thickness={6} color="warning" sx={{ flexShrink: 0 }} />
+      <Typography variant="caption" color="warning.main" noWrap sx={{ minWidth: 0 }}>
+        Reconnecting voice ({state.reconnect.attempt})…
+      </Typography>
+      <Button
+        size="small"
+        onClick={actions.cancelReconnect}
+        sx={{
+          minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : 0,
+          minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : 0,
+          px: isMobile ? 1 : 0.5,
+          py: 0,
+          ml: isMobile ? "auto" : 0,
+          typography: "caption",
+          textTransform: "none",
+          flexShrink: 0,
+        }}
+      >
+        Cancel
+      </Button>
+    </Box>
+  ) : null;
+
   return (
     <>
       {/* Main Bottom Bar */}
@@ -331,6 +364,9 @@ const VoiceBottomBarContent: React.FC = () => {
           borderColor: "divider",
         }}
       >
+        {isMobile && reconnectStatus && (
+          <Box sx={{ px: 1.5, borderBottom: 1, borderColor: "divider" }}>{reconnectStatus}</Box>
+        )}
         <Box
           sx={{
             display: "flex",
@@ -350,26 +386,8 @@ const VoiceBottomBarContent: React.FC = () => {
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
                 </Typography>
-                {state.reconnect ? (
-                  // An automatic rejoin after the connection dropped (see
-                  // useVoiceForegroundResync). Cancel hangs up.
-                  <Box
-                    role="status"
-                    data-testid="voice-reconnecting"
-                    sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}
-                  >
-                    <CircularProgress size={10} thickness={6} color="warning" sx={{ flexShrink: 0 }} />
-                    <Typography variant="caption" color="warning.main" noWrap>
-                      Reconnecting voice ({state.reconnect.attempt})…
-                    </Typography>
-                    <Button
-                      size="small"
-                      onClick={actions.cancelReconnect}
-                      sx={{ minWidth: 0, px: 0.5, py: 0, typography: "caption", textTransform: "none", flexShrink: 0 }}
-                    >
-                      Cancel
-                    </Button>
-                  </Box>
+                {state.reconnect && !isMobile ? (
+                  reconnectStatus
                 ) : (
                   !isMobile && (
                     <Typography variant="caption" color="text.secondary">

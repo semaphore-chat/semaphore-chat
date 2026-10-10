@@ -126,3 +126,6 @@ export const ReconnectingNarrow320 = defineComponent(
     },
   },
 );
+
+// A 320px column is a phone layout only.
+ReconnectingNarrow320.meta = { viewports: ['phone'] };
