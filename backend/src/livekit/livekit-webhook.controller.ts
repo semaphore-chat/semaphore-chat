@@ -198,6 +198,7 @@ export class LivekitWebhookController {
         participant.identity,
         participant.name,
         participant.metadata,
+        participant.sid,
       );
     } catch (error) {
       this.logger.error(
@@ -232,7 +233,16 @@ export class LivekitWebhookController {
     this.logger.warn(
       `Removing ${identity} from LiveKit room ${roomName}: ${denial}`,
     );
-    await this.livekitService.removeParticipant(roomName, identity);
+    try {
+      await this.livekitService.removeParticipant(roomName, identity);
+    } catch (error) {
+      // A hung or failed LiveKit call must never stall the webhook: the
+      // participant is still denied presence below, and LiveKit's own
+      // connection will be cleaned up when it notices.
+      this.logger.error(
+        `Failed to remove ${identity} from LiveKit room ${roomName}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
     return true;
   }
 
@@ -292,6 +302,7 @@ export class LivekitWebhookController {
       await this.voicePresenceService.handleWebhookParticipantLeft(
         room.name,
         participant.identity,
+        participant.sid,
       );
     } catch (error) {
       this.logger.error(

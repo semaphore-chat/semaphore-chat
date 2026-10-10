@@ -23,6 +23,7 @@ import { RoomName } from '@/common/utils/room-name.util';
  * - User identity info (id, username, displayName, avatarUrl)
  * - joinedAt timestamp
  * - isDeafened (custom UI state not in LiveKit)
+ * - sid (LiveKit participant session id, when the webhook told us)
  */
 export interface VoicePresenceUser {
   id: string;
@@ -32,6 +33,13 @@ export interface VoicePresenceUser {
   joinedAt: Date;
   isDeafened: boolean;
   isServerMuted: boolean;
+  /**
+   * LiveKit participant session id, when known. Set by the
+   * participant_joined webhook so that a stale participant_left from an
+   * older session (same identity, different sid) can be recognised and
+   * ignored. Absent for REST-only presence.
+   */
+  sid?: string;
 }
 
 @Injectable()
@@ -78,8 +86,17 @@ export class VoicePresenceService {
 
   /**
    * Leave a voice channel - called by LiveKit webhook handler
+   *
+   * When the webhook carries the departing participant's sid, a stored
+   * presence record with a different sid belongs to a newer session (the
+   * user rejoined, or another device took over the identity): the stale
+   * leave is ignored so it can't wipe the new session's presence.
    */
-  async leaveVoiceChannel(channelId: string, userId: string): Promise<void> {
+  async leaveVoiceChannel(
+    channelId: string,
+    userId: string,
+    sid?: string,
+  ): Promise<void> {
     try {
       // Keys for Redis SET architecture
       const userDataKey = `${this.VOICE_PRESENCE_USER_DATA_PREFIX}:${channelId}:${userId}`;
@@ -96,6 +113,13 @@ export class VoicePresenceService {
       }
 
       const userData = JSON.parse(userDataStr) as VoicePresenceUser;
+
+      if (sid && userData.sid && userData.sid !== sid) {
+        this.logger.log(
+          `Ignoring stale participant_left for user ${userId} in channel ${channelId}: left session ${sid} is not the current session ${userData.sid}`,
+        );
+        return;
+      }
 
       // Use pipeline for atomic operations
       const pipeline = this.redis.pipeline();
@@ -290,6 +314,7 @@ export class VoicePresenceService {
     userId: string,
     participantName?: string,
     metadata?: string,
+    sid?: string,
   ): Promise<void> {
     try {
       // Determine if this is a channel or DM based on the room name
@@ -307,6 +332,7 @@ export class VoicePresenceService {
           userId,
           participantName,
           metadata,
+          sid,
         );
       } else {
         // This is a channel voice call
@@ -315,6 +341,7 @@ export class VoicePresenceService {
           userId,
           participantName,
           metadata,
+          sid,
         );
       }
     } catch (error) {
@@ -336,6 +363,7 @@ export class VoicePresenceService {
   async handleWebhookParticipantLeft(
     roomName: string,
     userId: string,
+    sid?: string,
   ): Promise<void> {
     try {
       // Check if this is a DM or channel
@@ -344,9 +372,9 @@ export class VoicePresenceService {
       });
 
       if (dmGroup) {
-        await this.leaveDmVoice(roomName, userId);
+        await this.leaveDmVoice(roomName, userId, sid);
       } else {
-        await this.leaveVoiceChannel(roomName, userId);
+        await this.leaveVoiceChannel(roomName, userId, sid);
       }
     } catch (error) {
       this.logger.error(
@@ -365,35 +393,56 @@ export class VoicePresenceService {
     userId: string,
     participantName?: string,
     metadata?: string,
+    sid?: string,
   ): Promise<void> {
     // Check if user is already in the channel (duplicate webhook or reconnection)
     const userDataKey = `${this.VOICE_PRESENCE_USER_DATA_PREFIX}:${channelId}:${userId}`;
     const existingData = await this.redis.get(userDataKey);
 
     if (existingData) {
-      // User already in channel - just refresh TTL and maybe update metadata
-      this.logger.debug(
-        `User ${userId} already in channel ${channelId}, refreshing presence`,
-      );
-      await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
+      // User already in channel - refresh TTL and update the stored session.
+      // A different sid means a new LiveKit session for the same identity
+      // (rejoin, or another device took over): store it so a lingering
+      // participant_left from the old session is recognised as stale. The
+      // REST join path also lands here without a sid, and must not clear the
+      // sid a webhook already stored.
+      const userData = JSON.parse(existingData) as VoicePresenceUser;
+      let changed = false;
+
+      if (sid && userData.sid !== sid) {
+        this.logger.debug(
+          `User ${userId} rejoined channel ${channelId} with new session ${sid}, refreshing presence`,
+        );
+        userData.sid = sid;
+        changed = true;
+      } else {
+        this.logger.debug(
+          `User ${userId} already in channel ${channelId}, refreshing presence`,
+        );
+      }
 
       // Update metadata if provided (for isDeafened sync)
       if (metadata) {
-        const userData = JSON.parse(existingData) as VoicePresenceUser;
         try {
           const parsedMeta = JSON.parse(metadata) as { isDeafened?: boolean };
           if (parsedMeta.isDeafened !== undefined) {
             userData.isDeafened = parsedMeta.isDeafened;
-            await this.redis.set(
-              userDataKey,
-              JSON.stringify(userData),
-              'EX',
-              this.VOICE_PRESENCE_TTL,
-            );
+            changed = true;
           }
         } catch {
           // Invalid metadata JSON, ignore
         }
+      }
+
+      if (changed) {
+        await this.redis.set(
+          userDataKey,
+          JSON.stringify(userData),
+          'EX',
+          this.VOICE_PRESENCE_TTL,
+        );
+      } else {
+        await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
       }
       return;
     }
@@ -430,6 +479,7 @@ export class VoicePresenceService {
       joinedAt: new Date(),
       isDeafened,
       isServerMuted: false,
+      ...(sid ? { sid } : {}),
     };
 
     // Keys for Redis SET architecture
@@ -478,17 +528,35 @@ export class VoicePresenceService {
     userId: string,
     participantName?: string,
     metadata?: string,
+    sid?: string,
   ): Promise<void> {
     // Check if user is already in the DM call
     const userDataKey = `${this.DM_VOICE_PRESENCE_USER_DATA_PREFIX}:${dmGroupId}:${userId}`;
     const existingData = await this.redis.get(userDataKey);
 
     if (existingData) {
-      // User already in DM call - refresh TTL
-      this.logger.debug(
-        `User ${userId} already in DM ${dmGroupId}, refreshing presence`,
-      );
-      await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
+      // User already in DM call - refresh TTL and store a new session's sid
+      // (so a stale participant_left from the old session is ignored). Never
+      // clear a stored sid: the REST/refresh path lands here without one.
+      const userData = JSON.parse(existingData) as VoicePresenceUser;
+
+      if (sid && userData.sid !== sid) {
+        this.logger.debug(
+          `User ${userId} rejoined DM ${dmGroupId} with new session ${sid}, refreshing presence`,
+        );
+        userData.sid = sid;
+        await this.redis.set(
+          userDataKey,
+          JSON.stringify(userData),
+          'EX',
+          this.VOICE_PRESENCE_TTL,
+        );
+      } else {
+        this.logger.debug(
+          `User ${userId} already in DM ${dmGroupId}, refreshing presence`,
+        );
+        await this.redis.expire(userDataKey, this.VOICE_PRESENCE_TTL);
+      }
       return;
     }
 
@@ -524,6 +592,7 @@ export class VoicePresenceService {
       joinedAt: new Date(),
       isDeafened,
       isServerMuted: false,
+      ...(sid ? { sid } : {}),
     };
 
     // Keys for Redis SET architecture (DM-specific)
@@ -715,8 +784,15 @@ export class VoicePresenceService {
 
   /**
    * Leave a DM voice call - called by LiveKit webhook handler
+   *
+   * Like leaveVoiceChannel, a departing sid that differs from the stored one
+   * is a stale participant_left from a superseded session and is ignored.
    */
-  async leaveDmVoice(dmGroupId: string, userId: string): Promise<void> {
+  async leaveDmVoice(
+    dmGroupId: string,
+    userId: string,
+    sid?: string,
+  ): Promise<void> {
     try {
       // Keys for Redis SET architecture (DM-specific)
       const userDataKey = `${this.DM_VOICE_PRESENCE_USER_DATA_PREFIX}:${dmGroupId}:${userId}`;
@@ -733,6 +809,13 @@ export class VoicePresenceService {
       }
 
       const userData = JSON.parse(userDataStr) as VoicePresenceUser;
+
+      if (sid && userData.sid && userData.sid !== sid) {
+        this.logger.log(
+          `Ignoring stale participant_left for user ${userId} in DM call ${dmGroupId}: left session ${sid} is not the current session ${userData.sid}`,
+        );
+        return;
+      }
 
       // Use pipeline for atomic operations
       const pipeline = this.redis.pipeline();

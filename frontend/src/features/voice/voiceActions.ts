@@ -16,7 +16,7 @@ import { publishScreenShare } from "./screenSharePublish";
 import { logger } from "../../utils/logger";
 import { isElectron } from "../../utils/platform";
 import { getCachedItem, setCachedItem, removeCachedItem } from "../../utils/storage";
-import { refreshToken as refreshAuthToken, getAccessToken } from "../../utils/tokenService";
+import { getAccessToken } from "../../utils/tokenService";
 import { getApiUrl } from "../../config/env";
 import { playSound, Sounds } from "../../hooks/useSound";
 import { setUpdateDeferred } from "../../utils/swUpdate";
@@ -414,27 +414,12 @@ export async function joinVoiceChannel(
     dispatch({ type: VoiceActionType.SetConnecting, payload: true });
 
     logger.info('[Voice] Requesting LiveKit token...');
-    let tokenResponse;
-    try {
-      const { data } = await livekitControllerGenerateToken({
-        body: { roomId: channelId, identity: user.id, name: user.displayName || user.username },
-        throwOnError: true,
-      });
-      tokenResponse = data;
-    } catch (error) {
-      // If 401, try refreshing the access token and retry once
-      if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-        logger.warn('[Voice] Token may be stale, attempting refresh...');
-        await refreshAuthToken();
-        const { data } = await livekitControllerGenerateToken({
-          body: { roomId: channelId, identity: user.id, name: user.displayName || user.username },
-          throwOnError: true,
-        });
-        tokenResponse = data;
-      } else {
-        throw error;
-      }
-    }
+    // A 401 is handled by the API client's response interceptor, which
+    // refreshes the session and retries the request (api-client-config.ts).
+    const { data: tokenResponse } = await livekitControllerGenerateToken({
+      body: { roomId: channelId, identity: user.id, name: user.displayName || user.username },
+      throwOnError: true,
+    });
     logger.info('[Voice] Got LiveKit token');
 
     logger.info('[Voice] Connecting to LiveKit room...');
@@ -554,26 +539,12 @@ export async function joinDmVoice(
   try {
     dispatch({ type: VoiceActionType.SetConnecting, payload: true });
 
-    let tokenResponse;
-    try {
-      const { data } = await livekitControllerGenerateDmToken({
-        body: { roomId: dmGroupId, identity: user.id, name: user.displayName || user.username },
-        throwOnError: true,
-      });
-      tokenResponse = data;
-    } catch (error) {
-      if (error instanceof Error && (error.message.includes('401') || error.message.includes('Unauthorized'))) {
-        logger.warn('[Voice] DM token may be stale, attempting refresh...');
-        await refreshAuthToken();
-        const { data } = await livekitControllerGenerateDmToken({
-          body: { roomId: dmGroupId, identity: user.id, name: user.displayName || user.username },
-          throwOnError: true,
-        });
-        tokenResponse = data;
-      } else {
-        throw error;
-      }
-    }
+    // A 401 is handled by the API client's response interceptor, which
+    // refreshes the session and retries the request (api-client-config.ts).
+    const { data: tokenResponse } = await livekitControllerGenerateDmToken({
+      body: { roomId: dmGroupId, identity: user.id, name: user.displayName || user.username },
+      throwOnError: true,
+    });
 
     await connectToLiveKitRoom(connectionInfo.url, tokenResponse.token, setRoom, dispatch);
 

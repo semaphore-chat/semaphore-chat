@@ -10,6 +10,7 @@ import { TokenResponseDto } from './dto/token-response.dto';
 import { LivekitException } from './exceptions/livekit.exception';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import { FULL_PUBLISH_GRANT, PublishGrant } from './publish-grant.util';
+import { withTimeout } from './livekit-request-timeout.util';
 import {
   LIVEKIT_ISSUED_AT_ATTRIBUTE,
   LIVEKIT_SESSION_ATTRIBUTE,
@@ -167,9 +168,9 @@ export class LivekitService {
     }
 
     try {
-      await this.roomServiceClient.removeParticipant(
-        roomId,
-        participantIdentity,
+      await withTimeout(
+        this.roomServiceClient.removeParticipant(roomId, participantIdentity),
+        `removeParticipant ${roomId}/${participantIdentity}`,
       );
       this.logger.log(
         `Removed participant ${participantIdentity} from room ${roomId}`,
@@ -191,8 +192,10 @@ export class LivekitService {
   async listParticipantIdentities(roomId: string): Promise<string[]> {
     if (!this.roomServiceClient) return [];
     try {
-      const participants =
-        await this.roomServiceClient.listParticipants(roomId);
+      const participants = await withTimeout(
+        this.roomServiceClient.listParticipants(roomId),
+        `listParticipants ${roomId}`,
+      );
       return participants.map((p) => p.identity);
     } catch (error) {
       this.logger.debug(
@@ -218,10 +221,13 @@ export class LivekitService {
     if (!client) return [];
 
     try {
-      const rooms = await client.listRooms();
+      const rooms = await withTimeout(client.listRooms(), 'listRooms');
       const results = await Promise.allSettled(
         rooms.map(async (room) => {
-          const participants = await client.listParticipants(room.name);
+          const participants = await withTimeout(
+            client.listParticipants(room.name),
+            `listParticipants ${room.name}`,
+          );
           const participant = participants.find(
             (p) => p.identity === participantIdentity,
           );
@@ -263,17 +269,15 @@ export class LivekitService {
   ): Promise<void> {
     if (!this.roomServiceClient) return;
     try {
-      await this.roomServiceClient.updateParticipant(
-        roomId,
-        identity,
-        undefined,
-        {
+      await withTimeout(
+        this.roomServiceClient.updateParticipant(roomId, identity, undefined, {
           canSubscribe: true,
           canPublishData: true,
           canUpdateMetadata: true,
           canPublish: publish.canPublish,
           canPublishSources: publish.canPublishSources ?? [],
-        },
+        }),
+        `updateParticipant ${roomId}/${identity}`,
       );
       this.logger.log(
         `Updated publish permissions of ${identity} in room ${roomId}: ${publish.canPublish ? (publish.canPublishSources ?? 'all').toString() : 'none'}`,
@@ -301,18 +305,21 @@ export class LivekitService {
     }
 
     try {
-      const participant = await this.roomServiceClient.getParticipant(
-        roomId,
-        participantIdentity,
+      const participant = await withTimeout(
+        this.roomServiceClient.getParticipant(roomId, participantIdentity),
+        `getParticipant ${roomId}/${participantIdentity}`,
       );
 
       for (const track of participant.tracks) {
         if (track.source === TrackSource.MICROPHONE) {
-          await this.roomServiceClient.mutePublishedTrack(
-            roomId,
-            participantIdentity,
-            track.sid,
-            mute,
+          await withTimeout(
+            this.roomServiceClient.mutePublishedTrack(
+              roomId,
+              participantIdentity,
+              track.sid,
+              mute,
+            ),
+            `mutePublishedTrack ${roomId}/${participantIdentity}`,
           );
         }
       }

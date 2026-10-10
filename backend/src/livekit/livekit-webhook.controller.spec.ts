@@ -8,7 +8,11 @@ import { LivekitAccessService } from './livekit-access.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 
 import { ConfigService } from '@nestjs/config';
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  RawBodyRequest,
+} from '@nestjs/common';
 import { WebhookReceiver } from 'livekit-server-sdk';
 import {
   LiveKitWebhookDto,
@@ -395,7 +399,30 @@ describe('LivekitWebhookController', () => {
       expect(livekitService.removeParticipant).not.toHaveBeenCalled();
       expect(
         voicePresenceService.handleWebhookParticipantJoined,
-      ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined);
+      ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined, undefined);
+    });
+
+    it('passes the participant sid through to presence', async () => {
+      const body = {
+        event: LiveKitWebhookEvent.PARTICIPANT_JOINED,
+        room: { name: 'room-1' },
+        participant: { identity: 'user-1', name: 'User', sid: 'LK_1' },
+      } as LiveKitWebhookDto;
+      webhookReceiverMock.receive.mockResolvedValue({
+        event: 'participant_joined',
+        room: { name: 'room-1' },
+        participant: { identity: 'user-1', kind: 0, attributes },
+      });
+
+      await controller.handleWebhook(
+        createMockRequest(JSON.stringify(body)) as RawBodyRequest<Request>,
+        'Bearer token',
+        body,
+      );
+
+      expect(
+        voicePresenceService.handleWebhookParticipantJoined,
+      ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined, 'LK_1');
     });
 
     it.each([
@@ -524,18 +551,63 @@ describe('LivekitWebhookController', () => {
       });
     });
 
+    it('acknowledges and registers presence when removing a revoked participant fails', async () => {
+      livekitAccessService.checkJoin.mockResolvedValue('USER_BANNED');
+      livekitService.removeParticipant.mockRejectedValue(
+        new Error(
+          'LiveKit request timed out after 5000ms: removeParticipant room-1/user-1',
+        ),
+      );
+
+      await expect(joined()).resolves.toEqual({ success: true });
+
+      // A failed removal still denies presence to the revoked participant
+      expect(
+        voicePresenceService.handleWebhookParticipantJoined,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('acknowledges and registers presence when clamping permissions fails', async () => {
+      channelAccessService.channelCapabilities.mockResolvedValue({
+        channelId: 'room-1',
+        view: true,
+        post: true,
+        attach: true,
+        react: true,
+        threadReply: true,
+        connect: true,
+        speak: false,
+        video: false,
+        share: false,
+        managePermissions: false,
+        timedOutUntil: null,
+        postingRoleNames: [],
+      });
+      livekitService.updatePublishPermissions.mockRejectedValue(
+        new Error(
+          'LiveKit request timed out after 5000ms: updateParticipant room-1/user-1',
+        ),
+      );
+
+      await expect(joined()).resolves.toEqual({ success: true });
+
+      expect(
+        voicePresenceService.handleWebhookParticipantJoined,
+      ).toHaveBeenCalledWith('room-1', 'user-1', 'User', undefined, undefined);
+    });
+
     it('does not check other events', async () => {
       const body = {
         event: LiveKitWebhookEvent.PARTICIPANT_LEFT,
         room: { name: 'room-1' },
-        participant: { identity: 'user-1' },
+        participant: { identity: 'user-1', sid: 'LK_left' },
       } as LiveKitWebhookDto;
       webhookReceiverMock.receive.mockResolvedValue({
         event: 'participant_left',
       });
 
       await controller.handleWebhook(
-        createMockRequest('{}') as any,
+        createMockRequest('{}') as RawBodyRequest<Request>,
         'Bearer token',
         body,
       );
@@ -543,7 +615,7 @@ describe('LivekitWebhookController', () => {
       expect(livekitAccessService.checkJoin).not.toHaveBeenCalled();
       expect(
         voicePresenceService.handleWebhookParticipantLeft,
-      ).toHaveBeenCalledWith('room-1', 'user-1');
+      ).toHaveBeenCalledWith('room-1', 'user-1', 'LK_left');
     });
   });
 });
