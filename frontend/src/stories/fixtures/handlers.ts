@@ -139,7 +139,14 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
       return HttpResponse.json(results.slice(0, 10));
     }),
 
-    http.get('/api/users/admin/list', () => HttpResponse.json(allScenarioUsers(scenario))),
+    // Same shape as the API ({ users }), honouring the page's banned filter.
+    http.get('/api/users/admin/list', ({ request }) => {
+      const banned = new URL(request.url).searchParams.get('banned');
+      const users = allScenarioUsers(scenario)
+        .map((u) => ({ banned: false, bannedAt: null, bannedById: null, ...u }))
+        .filter((u) => banned === null || String(u.banned) === banned);
+      return HttpResponse.json({ users });
+    }),
     http.get('/api/users', () => HttpResponse.json(allScenarioUsers(scenario))),
 
     http.get('/api/users/username/:name', ({ params }) => {
