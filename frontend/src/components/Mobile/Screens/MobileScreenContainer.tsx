@@ -25,6 +25,7 @@
 
 import React from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import ZeroCommunityGate from '../../Home/ZeroCommunityGate';
 import { Box, Slide, Typography } from '@mui/material';
 import {
   useMobileNavigation,
@@ -166,24 +167,26 @@ export const MobileScreenContainer: React.FC<MobileScreenContainerProps> = ({
           return (
             <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
               <MobileAppBar title="Home" showDrawerTrigger />
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  flex: 1,
-                  gap: 2,
-                  p: 3,
-                }}
-              >
-                <Typography variant="h6" color="text.secondary">
-                  No Community Selected
-                </Typography>
-                <Typography variant="body2" color="text.secondary" textAlign="center">
-                  Tap the menu icon to select a community.
-                </Typography>
-              </Box>
+              <ZeroCommunityGate>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flex: 1,
+                    gap: 2,
+                    p: 3,
+                  }}
+                >
+                  <Typography variant="h6" color="text.secondary">
+                    No Community Selected
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" textAlign="center">
+                    Tap the menu icon to select a community.
+                  </Typography>
+                </Box>
+              </ZeroCommunityGate>
             </Box>
           );
         }
