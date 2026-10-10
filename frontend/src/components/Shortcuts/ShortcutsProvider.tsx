@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
 import { Box } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import {
   ShortcutsContext,
   type ConversationTarget,
@@ -9,17 +10,6 @@ import {
 import { useGlobalShortcuts } from "../../hooks/useGlobalShortcuts";
 import { ShortcutSheet } from "./ShortcutSheet";
 
-const visuallyHidden = {
-  position: "absolute",
-  width: 1,
-  height: 1,
-  p: 0,
-  m: "-1px",
-  overflow: "hidden",
-  clip: "rect(0 0 0 0)",
-  whiteSpace: "nowrap",
-  border: 0,
-} as const;
 
 /**
  * Global keyboard shortcuts for the desktop layout: holds what the sidebar
