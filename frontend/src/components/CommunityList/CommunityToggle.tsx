@@ -7,7 +7,8 @@ import {
 import Drawer from "@mui/material/Drawer";
 import Box from "@mui/material/Box";
 import { styled } from "@mui/material/styles";
-import { Divider, IconButton, Tooltip } from "@mui/material";
+import { Divider, IconButton, Tooltip, Typography } from "@mui/material";
+import GroupsOutlinedIcon from "@mui/icons-material/GroupsOutlined";
 import ChatIcon from "@mui/icons-material/Chat";
 import NotificationsNoneIcon from "@mui/icons-material/NotificationsNone";
 import MenuIcon from "@mui/icons-material/Menu";
@@ -142,11 +143,26 @@ const CommunityToggle: React.FC<CommunityToggleProps> = ({
                   selected={communityId === community.id}
                 />
               ))
-            : !isLoading && (
-                <Box sx={{ color: "grey.500", fontSize: "scale.sm", textAlign: "center" }}>
-                  No communities
-                </Box>
-              )}
+            : !isLoading &&
+              !error &&
+              // With the create permission the "+" button below is the empty
+              // state; Home explains the rest.
+              !canCreateCommunity &&
+              (isExpanded ? (
+                <Typography variant="body2" color="text.secondary" sx={{ px: 1 }}>
+                  No communities yet
+                </Typography>
+              ) : (
+                <Tooltip title="Not in any communities yet" placement="right" arrow>
+                  <Box
+                    role="img"
+                    aria-label="Not in any communities yet"
+                    sx={{ display: "flex", justifyContent: "center", color: "text.disabled" }}
+                  >
+                    <GroupsOutlinedIcon />
+                  </Box>
+                </Tooltip>
+              ))}
           {canCreateCommunity && (
             <CreateCommunityButton isExpanded={isExpanded} onClick={() => navigate("/community/create")} />
           )}

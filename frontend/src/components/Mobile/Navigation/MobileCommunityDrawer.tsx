@@ -32,6 +32,8 @@ import { useQuery } from '@tanstack/react-query';
 import { communityControllerFindAllMineOptions } from '../../../api-client/@tanstack/react-query.gen';
 import { useAuthenticatedImage } from '../../../hooks/useAuthenticatedImage';
 import { useReadReceipts } from '../../../hooks/useReadReceipts';
+import { useCanPerformAction } from '../../../features/roles/useUserPermissions';
+import { RBAC_ACTIONS } from '../../../constants/rbacActions';
 import { MOBILE_CONSTANTS, TOUCH_TARGETS, MOBILE_ANIMATIONS } from '../../../utils/breakpoints';
 import { stringToColor, getCommunityInitials } from '../../../utils/communityHelpers';
 import type { Community } from '../../../types/community.type';
@@ -120,6 +122,7 @@ const MobileCommunityDrawer: React.FC = () => {
   const allowSwipeToOpen = state.currentScreen === 'channels';
   const { data: communities, isLoading } = useQuery(communityControllerFindAllMineOptions());
   const { totalDmUnreadCount: totalDmUnread } = useReadReceipts();
+  const canCreateCommunity = useCanPerformAction("INSTANCE", undefined, RBAC_ACTIONS.CREATE_COMMUNITY);
 
   const handleCommunitySelect = (communityId: string) => {
     navigateToChannels(communityId);
@@ -243,34 +246,41 @@ const MobileCommunityDrawer: React.FC = () => {
                   No communities yet
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Create or join a community to get started
+                  {canCreateCommunity
+                    ? 'Create a community to get started'
+                    : 'Ask an admin to add you to a community'}
                 </Typography>
               </Box>
             )}
           </List>
         </Box>
 
-        <Divider />
-
-        {/* Create community button */}
-        <Box sx={{ p: 2, pb: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
-          <ListItemButton
-            onClick={handleCreateCommunity}
-            sx={{
-              borderRadius: 2,
-              border: 1,
-              borderColor: 'divider',
-              borderStyle: 'dashed',
-              justifyContent: 'center',
-              gap: 1,
-            }}
-          >
-            <AddIcon color="primary" />
-            <Typography color="primary" fontWeight={500}>
-              Create Community
-            </Typography>
-          </ListItemButton>
-        </Box>
+        {/* Create community button (only with the instance permission) */}
+        {canCreateCommunity ? (
+          <>
+            <Divider />
+            <Box sx={{ p: 2, pb: 'calc(env(safe-area-inset-bottom) + 16px)' }}>
+              <ListItemButton
+                onClick={handleCreateCommunity}
+                sx={{
+                  borderRadius: 2,
+                  border: 1,
+                  borderColor: 'divider',
+                  borderStyle: 'dashed',
+                  justifyContent: 'center',
+                  gap: 1,
+                }}
+              >
+                <AddIcon color="primary" />
+                <Typography color="primary" fontWeight={500}>
+                  Create Community
+                </Typography>
+              </ListItemButton>
+            </Box>
+          </>
+        ) : (
+          <Box sx={{ pb: 'env(safe-area-inset-bottom)' }} />
+        )}
       </Box>
     </SwipeableDrawer>
   );

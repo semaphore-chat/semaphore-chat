@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Outlet } from 'react-router-dom';
+import ZeroCommunityGate from '../../Home/ZeroCommunityGate';
 import { Box, Typography } from '@mui/material';
 import { useMobileNavigation } from '../Navigation/MobileNavigationContext';
 import { MobileChatPanel } from '../Panels/MobileChatPanel';
@@ -66,24 +67,26 @@ export const TabletContentArea: React.FC<TabletContentAreaProps> = ({
         // No community yet: the sidebar offers "Choose a community".
         if (!communityId) {
           return (
-            <Box
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                gap: 2,
-                p: 3,
-              }}
-            >
-              <Typography variant="h6" color="text.secondary">
-                No Community Selected
-              </Typography>
-              <Typography variant="body2" color="text.secondary" textAlign="center">
-                Choose a community from the sidebar to see its channels.
-              </Typography>
-            </Box>
+            <ZeroCommunityGate>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  gap: 2,
+                  p: 3,
+                }}
+              >
+                <Typography variant="h6" color="text.secondary">
+                  No Community Selected
+                </Typography>
+                <Typography variant="body2" color="text.secondary" textAlign="center">
+                  Choose a community from the sidebar to see its channels.
+                </Typography>
+              </Box>
+            </ZeroCommunityGate>
           );
         }
         return null;

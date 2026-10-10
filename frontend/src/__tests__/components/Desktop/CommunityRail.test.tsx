@@ -31,8 +31,9 @@ vi.mock('../../../components/CommunityList/CommunityListItem', () => ({
 vi.mock('../../../components/Desktop/RailUserMenu', () => ({
   RailUserMenu: () => <button>Account menu</button>,
 }));
+let mockCanCreate = true;
 vi.mock('../../../features/roles/useUserPermissions', () => ({
-  useCanPerformAction: () => true,
+  useCanPerformAction: () => mockCanCreate,
 }));
 let mockDmUnread = 0;
 vi.mock('../../../hooks/useReadReceipts', () => ({
@@ -62,6 +63,7 @@ describe('Desktop community rail', () => {
     vi.clearAllMocks();
     mockUnread = 0;
     mockDmUnread = 0;
+    mockCanCreate = true;
     mockCommunities = [{ id: 'c1', name: 'Nightowl Collective' }];
   });
 
@@ -120,5 +122,31 @@ describe('Desktop community rail', () => {
     renderRail();
     expect(await screen.findByText('Nightowl Collective')).toBeInTheDocument();
     expect(mockWarn).toHaveBeenCalledWith(expect.stringContaining('skipped 1 null community'));
+  });
+
+  describe('with no communities', () => {
+    beforeEach(() => {
+      mockCommunities = [];
+    });
+
+    it('relies on the create button when the user may create one', async () => {
+      renderRail();
+      expect(await screen.findByRole('button', { name: /create/i })).toBeInTheDocument();
+      expect(screen.queryByText(/no communities/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('img', { name: 'Not in any communities yet' })).not.toBeInTheDocument();
+    });
+
+    it('shows an icon with a label in the collapsed rail when the user cannot create one', async () => {
+      mockCanCreate = false;
+      renderRail();
+      expect(await screen.findByRole('img', { name: 'Not in any communities yet' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /create/i })).not.toBeInTheDocument();
+    });
+
+    it('shows readable text in the expanded rail when the user cannot create one', async () => {
+      mockCanCreate = false;
+      renderRail({ isExpanded: true });
+      expect(await screen.findByText('No communities yet')).toBeInTheDocument();
+    });
   });
 });
