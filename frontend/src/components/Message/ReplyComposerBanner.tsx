@@ -88,13 +88,14 @@ const ReplyComposerBanner: React.FC<ReplyComposerBannerProps> = ({
           component="div"
           data-testid="reply-banner-snippet"
           title={snippet}
-          sx={{
-            color: "text.primary",
-            opacity: 0.8,
+          sx={(theme) => ({
+            // Body font (never the code font), muted, one line with an ellipsis.
+            fontFamily: theme.typography.fontFamily,
+            color: "text.secondary",
             whiteSpace: "nowrap",
             overflow: "hidden",
             textOverflow: "ellipsis",
-          }}
+          })}
         >
           {snippet}
         </Typography>

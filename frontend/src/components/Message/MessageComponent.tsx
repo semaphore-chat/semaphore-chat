@@ -624,6 +624,7 @@ function MessageComponentInner({
         onReplyInThread={handleOpenThread}
         onQuoteReply={onQuoteReply && !message.deletedAt && !isOptimistic ? () => onQuoteReply(message) : undefined}
         onAddReaction={handleAddReaction}
+        onEmojiSelect={handleEmojiSelect}
       />
       {shouldUseTouchUI && (
         <MessageActionsSheet

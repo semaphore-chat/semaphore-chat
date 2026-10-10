@@ -5,6 +5,7 @@ import MessageContextMenu, {
   type MessageContextMenuProps,
 } from '../../components/Message/MessageContextMenu';
 import { createMessage } from '../test-utils/factories';
+import { QUICK_REACTIONS } from '../../components/Message/emojiData';
 import { SpanType } from '../../types/message.type';
 
 // Mock clipboard utility
@@ -269,5 +270,80 @@ describe('MessageContextMenu', () => {
     expect(screen.queryByText('Copy Message Content')).not.toBeInTheDocument();
     // The MUI Menu may still render a hidden container
     expect(container.querySelector('[role="menu"]')).not.toBeInTheDocument();
+  });
+
+  describe('layout', () => {
+    const allPermissions = () =>
+      defaultProps({
+        canEdit: true,
+        canDelete: true,
+        canPin: true,
+        canReact: true,
+        canThread: true,
+        onQuoteReply: vi.fn(),
+        onEmojiSelect: vi.fn(),
+      });
+
+    it('orders items Reply, Thread, React, Edit, Pin, Copy, then Delete last', () => {
+      renderWithProviders(<MessageContextMenu {...allPermissions()} />);
+      const labels = screen
+        .getAllByRole('menuitem')
+        .filter((el) => !el.hasAttribute('data-quick-reaction'))
+        .map((el) => el.textContent);
+      expect(labels).toEqual([
+        'Reply',
+        'Reply in Thread',
+        'Add Reaction',
+        'Edit Message',
+        'Pin Message',
+        'Copy Message Content',
+        'Delete Message',
+      ]);
+    });
+
+    it('puts a divider before Delete and renders it in the error colour', () => {
+      renderWithProviders(<MessageContextMenu {...allPermissions()} />);
+      const del = screen.getByRole('menuitem', { name: 'Delete Message' });
+      expect(del.previousElementSibling?.tagName).toBe('HR');
+      expect(del).toHaveStyle({ color: 'rgb(244, 67, 54)' });
+    });
+
+    it('shows no shortcut hints, as no message action has a real shortcut', () => {
+      renderWithProviders(<MessageContextMenu {...allPermissions()} />);
+      for (const item of screen.getAllByRole('menuitem').filter((el) => !el.hasAttribute('data-quick-reaction'))) {
+        expect(item.querySelector('.MuiTypography-caption')).toBeNull();
+      }
+    });
+
+    it('shows the quick-reaction row first and reacts + closes on click', async () => {
+      const props = allPermissions();
+      const { user } = renderWithProviders(<MessageContextMenu {...props} />);
+      const items = screen.getAllByRole('menuitem');
+      // The reaction row comes before Reply: the emoji items, then "+".
+      expect(items.slice(0, QUICK_REACTIONS.length).map((el) => el.textContent)).toEqual(QUICK_REACTIONS);
+      expect(items[QUICK_REACTIONS.length]).toHaveAccessibleName('More reactions');
+      expect(items[QUICK_REACTIONS.length + 1]).toHaveTextContent('Reply');
+      const first = QUICK_REACTIONS[0];
+      await user.click(screen.getByRole('menuitem', { name: `React with ${first}` }));
+      expect(props.onEmojiSelect).toHaveBeenCalledWith(first);
+      expect(props.onClose).toHaveBeenCalledOnce();
+    });
+
+    it('the + button opens the full picker', async () => {
+      const props = allPermissions();
+      const { user } = renderWithProviders(<MessageContextMenu {...props} />);
+      await user.click(screen.getByRole('menuitem', { name: 'More reactions' }));
+      expect(props.onAddReaction).toHaveBeenCalledOnce();
+    });
+
+    it('hides the quick-reaction row without react permission', () => {
+      renderWithProviders(<MessageContextMenu {...{ ...allPermissions(), canReact: false }} />);
+      expect(document.querySelector('[data-quick-reaction]')).toBeNull();
+    });
+
+    it('has no divider before Copy when there is no Delete', () => {
+      renderWithProviders(<MessageContextMenu {...defaultProps()} />);
+      expect(document.querySelector('hr')).toBeNull();
+    });
   });
 });

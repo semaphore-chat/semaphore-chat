@@ -27,6 +27,11 @@ export interface MessageAction {
   label: string;
   icon: React.ReactNode;
   group: MessageActionGroup;
+  /**
+   * Keyboard shortcut hint shown on the right of the desktop menu. Set it
+   * only for an action that really has that shortcut; none do today.
+   */
+  shortcut?: string;
   /** Destructive actions render in the error color. */
   destructive?: boolean;
   /** Performs the action. Does NOT close the surrounding menu/sheet. */
@@ -58,8 +63,8 @@ export interface MessageActionConfig {
 
 /**
  * Build the ordered list of actions for a message given the caller's
- * permissions and handlers. Order and inclusion mirror the original
- * MessageContextMenu exactly.
+ * permissions and handlers. Order: Reply, Thread, React, Edit, Pin, Copy,
+ * then Delete last (destructive).
  */
 export function getMessageActions(config: MessageActionConfig): MessageAction[] {
   const {
@@ -107,16 +112,6 @@ export function getMessageActions(config: MessageActionConfig): MessageAction[] 
     });
   }
 
-  // Moderation / edit
-  if (canPin) {
-    actions.push({
-      key: 'pin',
-      label: isPinned ? 'Unpin Message' : 'Pin Message',
-      icon: React.createElement(PushPinIcon, { fontSize: 'small' }),
-      group: 'moderation',
-      run: () => (isPinned ? handlers.onUnpin() : handlers.onPin()),
-    });
-  }
   if (canEdit) {
     actions.push({
       key: 'edit',
@@ -126,17 +121,15 @@ export function getMessageActions(config: MessageActionConfig): MessageAction[] 
       run: () => handlers.onEdit(),
     });
   }
-  if (canDelete) {
+  if (canPin) {
     actions.push({
-      key: 'delete',
-      label: 'Delete Message',
-      icon: React.createElement(DeleteIcon, { fontSize: 'small' }),
+      key: 'pin',
+      label: isPinned ? 'Unpin Message' : 'Pin Message',
+      icon: React.createElement(PushPinIcon, { fontSize: 'small' }),
       group: 'moderation',
-      destructive: true,
-      run: () => handlers.onDelete(),
+      run: () => (isPinned ? handlers.onUnpin() : handlers.onPin()),
     });
   }
-
   // Copy — always available
   actions.push({
     key: 'copy',
@@ -152,6 +145,18 @@ export function getMessageActions(config: MessageActionConfig): MessageAction[] 
       }
     },
   });
+
+  if (canDelete) {
+    actions.push({
+      key: 'delete',
+      label: 'Delete Message',
+      icon: React.createElement(DeleteIcon, { fontSize: 'small' }),
+      group: 'moderation',
+      destructive: true,
+      run: () => handlers.onDelete(),
+    });
+  }
+
 
   return actions;
 }

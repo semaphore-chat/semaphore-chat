@@ -99,6 +99,53 @@ describe('ChannelRow', () => {
     expect(screen.getByText('general')).not.toHaveStyle({ fontWeight: 700 });
   });
 
+  describe('state pill', () => {
+    const channel = createChannel({ id: 'ch-1', name: 'general', type: 'TEXT' });
+
+    it.each(THEME_MATRIX)('is 4x8 when unread and 4x20 when selected ($mode + $intensity)', (entry) => {
+      mockUnreadCount.mockReturnValue(3);
+      const theme = generateTheme(entry.mode, 'blue', entry.intensity);
+      const { unmount } = renderWithProviders(
+        <ThemeProvider theme={theme}>
+          <ChannelRow channel={channel} communityId="c1" selected={false} variant="desktop" />
+        </ThemeProvider>,
+      );
+      const unread = screen.getByTestId('unread-indicator');
+      expect(unread).toHaveStyle({ width: '4px', height: '8px' });
+      expect(unread).toHaveAttribute('data-state', 'unread');
+      unmount();
+
+      renderWithProviders(
+        <ThemeProvider theme={theme}>
+          <ChannelRow channel={channel} communityId="c1" selected variant="desktop" />
+        </ThemeProvider>,
+      );
+      const selected = screen.getByTestId('selected-indicator');
+      expect(selected).toHaveStyle({ width: '4px', height: '20px' });
+      expect(screen.queryByTestId('unread-indicator')).not.toBeInTheDocument();
+    });
+
+    it('uses the text colour at 80% opacity', () => {
+      mockUnreadCount.mockReturnValue(3);
+      const theme = generateTheme('dark', 'blue', 'minimal');
+      renderWithProviders(
+        <ThemeProvider theme={theme}>
+          <ChannelRow channel={channel} communityId="c1" selected={false} variant="desktop" />
+        </ThemeProvider>,
+      );
+      const bg = getComputedStyle(screen.getByTestId('unread-indicator')).backgroundColor;
+      expect(bg).toMatch(/rgba\(.*0\.8\)/);
+    });
+
+    it('shows no pill for a read, unselected channel', () => {
+      renderWithProviders(
+        <ChannelRow channel={channel} communityId="c1" selected={false} variant="desktop" />,
+      );
+      expect(screen.queryByTestId('unread-indicator')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('selected-indicator')).not.toBeInTheDocument();
+    });
+  });
+
   it('marks the selected row', () => {
     const channel = createChannel({ id: 'ch-1', name: 'general', type: 'TEXT' });
     renderWithProviders(
