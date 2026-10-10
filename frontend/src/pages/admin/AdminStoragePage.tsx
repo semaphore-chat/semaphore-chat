@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { logger } from "../../utils/logger";
 import {
   Box,
@@ -47,7 +48,12 @@ const AdminStoragePage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
-  const [minPercentFilter, setMinPercentFilter] = useState<string>("");
+  const [searchParams] = useSearchParams();
+  // `?minPercent=90` (e.g. from the dashboard's over-quota item) preselects the usage filter.
+  const [minPercentFilter, setMinPercentFilter] = useState<string>(() => {
+    const minPercent = searchParams.get("minPercent") ?? "";
+    return /^\d+$/.test(minPercent) ? minPercent : "";
+  });
 
   // Build query params
   const queryParams = {

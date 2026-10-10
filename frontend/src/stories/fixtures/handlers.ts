@@ -139,7 +139,14 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
       return HttpResponse.json(results.slice(0, 10));
     }),
 
-    http.get('/api/users/admin/list', () => HttpResponse.json(allScenarioUsers(scenario))),
+    // Same shape as the API ({ users }), honouring the page's banned filter.
+    http.get('/api/users/admin/list', ({ request }) => {
+      const banned = new URL(request.url).searchParams.get('banned');
+      const users = allScenarioUsers(scenario)
+        .map((u) => ({ banned: false, bannedAt: null, bannedById: null, ...u }))
+        .filter((u) => banned === null || String(u.banned) === banned);
+      return HttpResponse.json({ users });
+    }),
     http.get('/api/users', () => HttpResponse.json(allScenarioUsers(scenario))),
 
     http.get('/api/users/username/:name', ({ params }) => {
@@ -466,6 +473,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
 
     // ── Voice ────────────────────────────────────────────────────────
     http.get('/api/livekit/connection-info', () => HttpResponse.json({ url: 'wss://ladle-sandbox.invalid' })),
+    http.get('/api/livekit/health', () => HttpResponse.json({ status: 'healthy', configured: true })),
     http.get('/api/channels/:channelId/voice-presence', ({ params }) => {
       const users = scenario.voicePresenceByChannel[String(params.channelId)] ?? [];
       const response: ChannelVoicePresenceResponseDto = { channelId: String(params.channelId), users, count: users.length };

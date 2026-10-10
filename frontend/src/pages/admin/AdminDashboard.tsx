@@ -1,14 +1,20 @@
 import React from "react";
+import { Link as RouterLink } from "react-router-dom";
 import {
   Box,
-  Typography,
-  Grid,
+  Button,
   Card,
+  CardActionArea,
   CardContent,
-  CircularProgress,
+  Grid,
   LinearProgress,
-  Divider,
+  Link,
+  Paper,
+  Skeleton,
+  Stack,
+  Typography,
 } from "@mui/material";
+import { alpha } from "@mui/material/styles";
 import {
   People as PeopleIcon,
   Groups as CommunitiesIcon,
@@ -16,20 +22,24 @@ import {
   Message as MessagesIcon,
   Link as InvitesIcon,
   Block as BannedIcon,
-  Storage as StorageIcon,
-  Memory as MemoryIcon,
-  Computer as ComputerIcon,
-  Warning as WarningIcon,
+  ErrorOutline as ErrorIcon,
+  WarningAmber as WarningIcon,
+  CheckCircleOutline as AllGoodIcon,
+  ChevronRight as ChevronRightIcon,
+  OpenInNew as OpenInNewIcon,
 } from "@mui/icons-material";
-import { useTheme } from "@mui/material/styles";
 import { useQuery } from "@tanstack/react-query";
 import {
   instanceControllerGetStatsOptions,
+  livekitControllerValidateConfigurationOptions,
   storageQuotaControllerGetInstanceStorageStatsOptions,
 } from "../../api-client/@tanstack/react-query.gen";
+import type { InstanceStorageStatsDto } from "../../api-client/types.gen";
 import { formatFileSize } from "../../utils/format";
 import PageError from "../../components/Common/PageError";
 import { ADMIN_ERROR_COPY } from "../../utils/pageError";
+import { TOUCH_TARGETS } from "../../utils/breakpoints";
+import { diskSeverity, getAttentionItems, type AttentionItem } from "./adminAttention";
 
 // Helper to format uptime
 const formatUptime = (seconds: number): string => {
@@ -41,362 +51,373 @@ const formatUptime = (seconds: number): string => {
   return `${minutes}m`;
 };
 
-interface StatCardProps {
-  title: string;
+/** Counts from a million up are shown compact ("1.2M") so two tiles still fit side by side on a phone. */
+const COMPACT_FROM = 1_000_000;
+const compactFormat = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
+const formatCount = (value: number) =>
+  value >= COMPACT_FROM ? compactFormat.format(value) : value.toLocaleString();
+
+const SectionHeading: React.FC<{ id: string; children: React.ReactNode; action?: React.ReactNode }> = ({
+  id,
+  children,
+  action,
+}) => (
+  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, mb: 1.5 }}>
+    <Typography id={id} variant="h6" component="h2" fontWeight="bold">
+      {children}
+    </Typography>
+    {action}
+  </Box>
+);
+
+// ── Needs attention ─────────────────────────────────────────────────────────
+
+const AttentionRow: React.FC<{ item: AttentionItem; onRetry: () => void }> = ({ item, onRetry }) => {
+  const Icon = item.severity === "error" ? ErrorIcon : WarningIcon;
+  const actionSx = { minHeight: TOUCH_TARGETS.MINIMUM, flexShrink: 0, alignSelf: { xs: "flex-end", sm: "center" } };
+
+  let action: React.ReactNode;
+  if (item.to) {
+    action = (
+      <Button component={RouterLink} to={item.to} color={item.severity} endIcon={<ChevronRightIcon />} sx={actionSx}>
+        {item.actionLabel}
+      </Button>
+    );
+  } else if (item.href) {
+    action = (
+      <Button
+        component="a"
+        href={item.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        color={item.severity}
+        endIcon={<OpenInNewIcon />}
+        sx={actionSx}
+      >
+        {item.actionLabel}
+      </Button>
+    );
+  } else {
+    action = (
+      <Button onClick={onRetry} color={item.severity} sx={actionSx}>
+        {item.actionLabel}
+      </Button>
+    );
+  }
+
+  return (
+    <Paper
+      component="li"
+      variant="outlined"
+      data-testid={`attention-${item.id}`}
+      data-severity={item.severity}
+      sx={(theme) => ({
+        listStyle: "none",
+        display: "flex",
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "stretch", sm: "center" },
+        gap: { xs: 0.5, sm: 2 },
+        py: 1,
+        pl: 2,
+        pr: 1,
+        borderLeft: `4px solid ${theme.palette[item.severity].main}`,
+        backgroundColor: alpha(theme.palette[item.severity].main, 0.08),
+      })}
+    >
+      <Box sx={{ display: "flex", alignItems: "flex-start", gap: 1.5, flex: 1, minWidth: 0, py: 0.5 }}>
+        <Icon color={item.severity} sx={{ mt: 0.25 }} />
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="body1" fontWeight={600} sx={{ overflowWrap: "anywhere" }}>
+            {item.title}
+          </Typography>
+          {item.detail && (
+            <Typography variant="body2" color="text.secondary">
+              {item.detail}
+            </Typography>
+          )}
+        </Box>
+      </Box>
+      {action}
+    </Paper>
+  );
+};
+
+const AttentionSection: React.FC<{ items: AttentionItem[]; onRetry: () => void }> = ({ items, onRetry }) => {
+  if (items.length === 0) {
+    return (
+      <Box
+        role="status"
+        sx={{ display: "flex", alignItems: "center", gap: 1, mb: 4, color: "text.secondary" }}
+      >
+        <AllGoodIcon color="success" />
+        <Typography variant="body1">All good: nothing needs attention.</Typography>
+      </Box>
+    );
+  }
+  return (
+    <Box component="section" aria-labelledby="admin-attention-heading" sx={{ mb: 4 }}>
+      <SectionHeading id="admin-attention-heading">Needs attention</SectionHeading>
+      <Stack component="ul" spacing={1} sx={{ m: 0, p: 0 }}>
+        {items.map((item) => (
+          <AttentionRow key={item.id} item={item} onRetry={onRetry} />
+        ))}
+      </Stack>
+    </Box>
+  );
+};
+
+// ── Totals ──────────────────────────────────────────────────────────────────
+
+interface StatTileProps {
+  label: string;
   value: number;
-  icon: React.ReactNode;
-  color: string;
+  icon: React.ReactElement;
+  to?: string;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color }) => (
-  <Card
-    sx={{
-      height: "100%",
-      position: "relative",
-      overflow: "hidden",
-      transition: "transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out",
-      "&:hover": {
-        transform: "translateY(-2px)",
-      },
-    }}
-  >
-    {/* Subtle gradient accent at top */}
-    <Box
+const StatTile: React.FC<StatTileProps> = ({ label, value, icon, to }) => {
+  const chevron = <ChevronRightIcon sx={{ color: "text.disabled", flexShrink: 0 }} />;
+  // Phone: icon and chevron on a top row, the number and label below at full tile width,
+  // so labels like "Active invites" fit two tiles side by side. Wider: one row.
+  const body = (
+    <CardContent
       sx={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        height: 4,
-        backgroundImage: `linear-gradient(90deg, ${color} 0%, ${color}88 100%)`,
+        display: "flex",
+        flexDirection: { xs: "column", sm: "row" },
+        alignItems: { xs: "stretch", sm: "center" },
+        gap: { xs: 0.5, sm: 1.5 },
+        "&:last-child": { pb: 2 },
       }}
-    />
-    <CardContent sx={{ pt: 3 }}>
-      <Box sx={{ display: "flex", alignItems: "center", gap: 2 }}>
-        <Box
-          sx={{
-            p: 1.5,
-            borderRadius: 2,
-            backgroundImage: `linear-gradient(135deg, ${color}25 0%, ${color}15 100%)`,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+    >
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <Box sx={{ color: "text.secondary", display: "flex" }}>{icon}</Box>
+        {to && <Box sx={{ display: { xs: "flex", sm: "none" } }}>{chevron}</Box>}
+      </Box>
+      <Box sx={{ minWidth: 0, flex: 1 }}>
+        <Typography
+          variant="h5"
+          component="p"
+          fontWeight="bold"
+          title={value.toLocaleString()}
+          sx={{ overflowWrap: "anywhere", lineHeight: 1.2 }}
         >
-          {React.cloneElement(icon as React.ReactElement<{ sx?: object }>, {
-            sx: { fontSize: 'icon.3xl', color },
-          })}
-        </Box>
-        <Box>
-          <Typography variant="h4" fontWeight="bold">
-            {value.toLocaleString()}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {title}
-          </Typography>
-        </Box>
+          {formatCount(value)}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ overflowWrap: "anywhere" }}>
+          {label}
+        </Typography>
+      </Box>
+      {to && <Box sx={{ display: { xs: "none", sm: "flex" } }}>{chevron}</Box>}
+    </CardContent>
+  );
+  return (
+    <Card variant="outlined" sx={{ height: "100%" }}>
+      {to ? (
+        <CardActionArea
+          component={RouterLink}
+          to={to}
+          aria-label={`${label}: ${value.toLocaleString()}`}
+          sx={{ height: "100%" }}
+        >
+          {body}
+        </CardActionArea>
+      ) : (
+        body
+      )}
+    </Card>
+  );
+};
+
+const TILE_GRID = { xs: 6, md: 4 } as const;
+
+const TileSkeleton: React.FC = () => (
+  <Card variant="outlined">
+    <CardContent sx={{ display: "flex", alignItems: "center", gap: 1.5, "&:last-child": { pb: 2 } }}>
+      <Skeleton variant="circular" width={24} height={24} />
+      <Box sx={{ flex: 1 }}>
+        <Skeleton width="50%" height={32} />
+        <Skeleton width="70%" />
       </Box>
     </CardContent>
   </Card>
 );
 
-const AdminDashboard: React.FC = () => {
-  const theme = useTheme();
-  const { data: stats, isLoading, error, refetch } = useQuery(instanceControllerGetStatsOptions());
-  const { data: storageStats, isLoading: storageLoading } = useQuery(storageQuotaControllerGetInstanceStorageStatsOptions());
+// ── Storage & server ────────────────────────────────────────────────────────
 
-  if (isLoading) {
-    return (
-      <Box
-        sx={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          minHeight: 400,
-        }}
-      >
-        <CircularProgress />
-      </Box>
-    );
-  }
+const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, py: 0.5 }}>
+    <Typography variant="body2" color="text.secondary" sx={{ flexShrink: 0 }}>
+      {label}
+    </Typography>
+    <Typography variant="body2" fontWeight="bold" sx={{ textAlign: "right", overflowWrap: "anywhere", minWidth: 0 }}>
+      {children}
+    </Typography>
+  </Box>
+);
+
+const UsageBar: React.FC<{
+  label: string;
+  used: number;
+  total: number;
+  percent: number;
+  color: "primary" | "warning" | "error";
+}> = ({ label, used, total, percent, color }) => (
+  <Box sx={{ py: 0.5 }}>
+    <Row label={label}>
+      {formatFileSize(used)} / {formatFileSize(total)} ({Math.round(percent)}%)
+    </Row>
+    <LinearProgress
+      variant="determinate"
+      value={Math.min(percent, 100)}
+      color={color}
+      aria-label={`${label} ${Math.round(percent)}% used`}
+      sx={(theme) => ({
+        height: 6,
+        borderRadius: 1,
+        mt: 0.5,
+        // The theme paints every LinearProgress bar in the accent colour, which
+        // would hide the warning/error state; set it explicitly.
+        backgroundColor: alpha(theme.palette[color].main, 0.2),
+        "& .MuiLinearProgress-bar": { backgroundColor: theme.palette[color].main },
+      })}
+    />
+  </Box>
+);
+
+const StoragePanel: React.FC<{ storage: InstanceStorageStatsDto }> = ({ storage }) => {
+  const { server } = storage;
+  return (
+    <Card variant="outlined">
+      <CardContent>
+        <Grid container spacing={{ xs: 2, md: 4 }}>
+          <Grid size={{ xs: 12, md: 6 }}>
+            {server.diskTotalBytes > 0 && (
+              <UsageBar
+                label="Server disk"
+                used={server.diskUsedBytes}
+                total={server.diskTotalBytes}
+                percent={server.diskUsedPercent}
+                color={diskSeverity(server.diskUsedPercent) ?? "primary"}
+              />
+            )}
+            <UsageBar
+              label="Server memory"
+              used={server.memoryUsedBytes}
+              total={server.memoryTotalBytes}
+              percent={server.memoryUsedPercent}
+              color="primary"
+            />
+            <Row label="CPU">{server.cpuCores} cores</Row>
+            <Row label="Load average">{server.loadAverage.map((l) => l.toFixed(2)).join(", ")}</Row>
+            <Row label="Uptime">{formatUptime(server.uptime)}</Row>
+            <Row label="Platform">
+              {server.platform} ({server.hostname})
+            </Row>
+          </Grid>
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Row label="Files stored">
+              {formatFileSize(storage.totalStorageUsedBytes)} in {storage.totalFileCount.toLocaleString()} files
+            </Row>
+            <Row label="Avg per user">{formatFileSize(storage.averageStoragePerUserBytes)}</Row>
+            <Row label="Default quota">{formatFileSize(storage.defaultQuotaBytes)}</Row>
+            <Row label="Max file size">{formatFileSize(storage.maxFileSizeBytes)}</Row>
+            <Row label="Users at 75–90% of quota">{storage.usersApproachingQuota.toLocaleString()}</Row>
+            {storage.storageByType.length > 0 && (
+              <Box sx={{ mt: 1.5 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  By type
+                </Typography>
+                {storage.storageByType.map((item) => (
+                  <Row key={item.type} label={item.type.replace(/_/g, " ").toLowerCase()}>
+                    {formatFileSize(item.bytes)} · {item.count.toLocaleString()} files
+                  </Row>
+                ))}
+              </Box>
+            )}
+          </Grid>
+        </Grid>
+      </CardContent>
+    </Card>
+  );
+};
+
+// ── Page ────────────────────────────────────────────────────────────────────
+
+const AdminDashboard: React.FC = () => {
+  const { data: stats, isLoading, error, refetch } = useQuery(instanceControllerGetStatsOptions());
+  const storageQuery = useQuery(storageQuotaControllerGetInstanceStorageStatsOptions());
+  const { data: livekit } = useQuery(livekitControllerValidateConfigurationOptions());
 
   if (error) {
     return <PageError error={error} copy={ADMIN_ERROR_COPY} onRetry={() => void refetch()} />;
   }
 
+  const storage = storageQuery.data;
+  const attentionReady = !storageQuery.isLoading;
+  const attentionItems = getAttentionItems({
+    storage,
+    storageError: storageQuery.isError,
+    livekit,
+  });
+
+  const tiles: StatTileProps[] = stats
+    ? [
+        { label: "Users", value: stats.totalUsers, icon: <PeopleIcon />, to: "/admin/users" },
+        { label: "Communities", value: stats.totalCommunities, icon: <CommunitiesIcon />, to: "/admin/communities" },
+        { label: "Channels", value: stats.totalChannels, icon: <ChannelsIcon />, to: "/admin/communities" },
+        { label: "Messages", value: stats.totalMessages, icon: <MessagesIcon /> },
+        { label: "Active invites", value: stats.activeInvites, icon: <InvitesIcon />, to: "/admin/invites" },
+        { label: "Banned users", value: stats.bannedUsers, icon: <BannedIcon />, to: "/admin/users?status=banned" },
+      ]
+    : [];
+
   return (
     <Box>
-      <Typography variant="h4" gutterBottom fontWeight="bold">
+      <Typography variant="h4" component="h1" gutterBottom fontWeight="bold">
         Dashboard
       </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Overview of your instance statistics
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+        Overview of your instance
       </Typography>
 
-      {/* Instance Stats */}
-      <Grid container spacing={3}>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Total Users"
-            value={stats?.totalUsers ?? 0}
-            icon={<PeopleIcon />}
-            color={theme.palette.info.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Communities"
-            value={stats?.totalCommunities ?? 0}
-            icon={<CommunitiesIcon />}
-            color={theme.palette.success.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Channels"
-            value={stats?.totalChannels ?? 0}
-            icon={<ChannelsIcon />}
-            color={theme.palette.warning.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Messages"
-            value={stats?.totalMessages ?? 0}
-            icon={<MessagesIcon />}
-            color={theme.palette.secondary.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Active Invites"
-            value={stats?.activeInvites ?? 0}
-            icon={<InvitesIcon />}
-            color={theme.palette.primary.main}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 4 }}>
-          <StatCard
-            title="Banned Users"
-            value={stats?.bannedUsers ?? 0}
-            icon={<BannedIcon />}
-            color={theme.palette.error.main}
-          />
-        </Grid>
-      </Grid>
+      {attentionReady ? (
+        <AttentionSection items={attentionItems} onRetry={() => void storageQuery.refetch()} />
+      ) : (
+        <Skeleton variant="rounded" height={48} sx={{ mb: 4 }} aria-label="Checking instance health" />
+      )}
 
-      {/* Storage & Server Stats */}
-      <Typography variant="h5" sx={{ mt: 5, mb: 3 }} fontWeight="bold">
-        Storage & Server
-      </Typography>
-
-      {storageLoading ? (
-        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-          <CircularProgress size={24} />
-        </Box>
-      ) : storageStats ? (
-        <Grid container spacing={3}>
-          {/* Storage Overview Card */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                  <StorageIcon color="primary" />
-                  <Typography variant="h6" fontWeight="bold">
-                    Storage Overview
-                  </Typography>
-                </Box>
-                <Divider sx={{ mb: 2 }} />
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Total Used
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatFileSize(storageStats.totalStorageUsedBytes)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Total Files
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {storageStats.totalFileCount.toLocaleString()}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Avg per User
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatFileSize(storageStats.averageStoragePerUserBytes)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Default Quota
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatFileSize(storageStats.defaultQuotaBytes)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Max File Size
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatFileSize(storageStats.maxFileSizeBytes)}
-                  </Typography>
-                </Box>
-
-                {/* Quota Health */}
-                {(storageStats.usersApproachingQuota > 0 || storageStats.usersOverQuota > 0) && (
-                  <Box sx={{ mt: 2, p: 1.5, bgcolor: "warning.main", borderRadius: 1, opacity: 0.15 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <WarningIcon color="warning" fontSize="small" />
-                      <Typography variant="body2">
-                        {storageStats.usersOverQuota > 0 && (
-                          <strong>{storageStats.usersOverQuota} users over 90% quota. </strong>
-                        )}
-                        {storageStats.usersApproachingQuota > 0 && (
-                          <span>{storageStats.usersApproachingQuota} users at 75-90%.</span>
-                        )}
-                      </Typography>
-                    </Box>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Server Stats Card */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                  <ComputerIcon color="primary" />
-                  <Typography variant="h6" fontWeight="bold">
-                    Server Status
-                  </Typography>
-                </Box>
-                <Divider sx={{ mb: 2 }} />
-
-                {/* Memory */}
-                <Box sx={{ mb: 2 }}>
-                  <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-                    <Typography variant="body2" color="text.secondary">
-                      Memory
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {formatFileSize(storageStats.server.memoryUsedBytes)} / {formatFileSize(storageStats.server.memoryTotalBytes)}
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={storageStats.server.memoryUsedPercent}
-                    sx={{ height: 6, borderRadius: 1 }}
-                    color={storageStats.server.memoryUsedPercent > 90 ? "error" : storageStats.server.memoryUsedPercent > 75 ? "warning" : "primary"}
-                  />
-                </Box>
-
-                {/* Disk */}
-                {storageStats.server.diskTotalBytes > 0 && (
-                  <Box sx={{ mb: 2 }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        Disk
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {formatFileSize(storageStats.server.diskUsedBytes)} / {formatFileSize(storageStats.server.diskTotalBytes)}
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={storageStats.server.diskUsedPercent}
-                      sx={{ height: 6, borderRadius: 1 }}
-                      color={storageStats.server.diskUsedPercent > 90 ? "error" : storageStats.server.diskUsedPercent > 75 ? "warning" : "primary"}
-                    />
-                  </Box>
-                )}
-
-                {/* CPU & System Info */}
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    CPU
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {storageStats.server.cpuCores} cores
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Load Average
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {storageStats.server.loadAverage.map(l => l.toFixed(2)).join(", ")}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between", mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Uptime
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {formatUptime(storageStats.server.uptime)}
-                  </Typography>
-                </Box>
-
-                <Box sx={{ display: "flex", justifyContent: "space-between" }}>
-                  <Typography variant="body2" color="text.secondary">
-                    Platform
-                  </Typography>
-                  <Typography variant="body2" fontWeight="bold">
-                    {storageStats.server.platform} ({storageStats.server.hostname})
-                  </Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-
-          {/* Storage by Type Card */}
-          <Grid size={{ xs: 12 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2 }}>
-                  <MemoryIcon color="primary" />
-                  <Typography variant="h6" fontWeight="bold">
-                    Storage by Type
-                  </Typography>
-                </Box>
-                <Divider sx={{ mb: 2 }} />
-
-                <Grid container spacing={2}>
-                  {storageStats.storageByType.map((item) => (
-                    <Grid size={{ xs: 6, sm: 4, md: 3 }} key={item.type}>
-                      <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: 1, textAlign: "center" }}>
-                        <Typography variant="h6" fontWeight="bold">
-                          {formatFileSize(item.bytes)}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {item.type.replace(/_/g, " ")}
-                        </Typography>
-                        <Typography variant="caption" color="text.disabled">
-                          {item.count.toLocaleString()} files
-                        </Typography>
-                      </Box>
-                    </Grid>
-                  ))}
+      <Box component="section" aria-labelledby="admin-totals-heading" sx={{ mb: 4 }}>
+        <SectionHeading id="admin-totals-heading">Totals</SectionHeading>
+        <Grid container spacing={{ xs: 1.5, sm: 2 }} aria-busy={isLoading}>
+          {isLoading
+            ? Array.from({ length: 6 }, (_, i) => (
+                <Grid key={i} size={TILE_GRID}>
+                  <TileSkeleton />
                 </Grid>
-              </CardContent>
-            </Card>
-          </Grid>
+              ))
+            : tiles.map((tile) => (
+                <Grid key={tile.label} size={TILE_GRID}>
+                  <StatTile {...tile} />
+                </Grid>
+              ))}
         </Grid>
-      ) : null}
+      </Box>
+
+      {!storageQuery.isError && (
+        <Box component="section" aria-labelledby="admin-storage-heading">
+          <SectionHeading
+            id="admin-storage-heading"
+            action={
+              <Link component={RouterLink} to="/admin/storage" underline="hover" variant="body2">
+                View storage
+              </Link>
+            }
+          >
+            Storage &amp; server
+          </SectionHeading>
+          {storage ? <StoragePanel storage={storage} /> : <Skeleton variant="rounded" height={220} />}
+        </Box>
+      )}
     </Box>
   );
 };
