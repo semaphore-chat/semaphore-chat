@@ -54,6 +54,8 @@ export type DeepLinkRoute =
   | { type: 'dm'; dmGroupId: string }
   | { type: 'invite'; inviteCode: string };
 
+export type SystemResumeEvent = 'resume' | 'unlock-screen';
+
 export interface ElectronAPI {
   platform?: string;
   isElectron?: boolean;
@@ -87,6 +89,11 @@ export interface ElectronAPI {
   // Deep links (semaphore://)
   onDeepLink?: (callback: (route: DeepLinkRoute) => void) => (() => void);
   notifyDeepLinkReady?: () => void;
+  /**
+   * The system woke from sleep or the screen was unlocked (Electron
+   * powerMonitor `resume` / `unlock-screen`). Missing on older desktop builds.
+   */
+  onSystemResume?: (callback: (event: SystemResumeEvent) => void) => (() => void);
   [key: string]: unknown;
 }
 

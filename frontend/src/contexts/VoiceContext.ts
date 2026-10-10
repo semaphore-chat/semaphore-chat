@@ -10,6 +10,42 @@ export enum VoiceSessionType {
   Dm = 'dm',
 }
 
+/**
+ * Why a call ended without the user hanging up. Recorded in
+ * `VoiceState.lastEnded` so the UI can tell the user (see
+ * features/voice/voiceEndReason.ts for the messages).
+ */
+export enum VoiceEndReason {
+  /** The same account joined voice from another device (newest join wins). */
+  DuplicateIdentity = 'duplicate_identity',
+  /** A moderator removed us, we lost access to the channel, or the session was revoked. */
+  ParticipantRemoved = 'participant_removed',
+  /** The LiveKit room was deleted (e.g. the channel was deleted). */
+  RoomDeleted = 'room_deleted',
+  /** The connection dropped and every automatic rejoin attempt failed. */
+  ReconnectFailed = 'reconnect_failed',
+}
+
+export interface VoiceEnded {
+  reason: VoiceEndReason;
+  /** The last error message, when there was one (ReconnectFailed). */
+  error: string | null;
+  /** Epoch ms. */
+  at: number;
+}
+
+/**
+ * An automatic rejoin in progress after the connection dropped (see
+ * useVoiceForegroundResync). The call stays "connected" in the UI meanwhile.
+ */
+export interface VoiceReconnectState {
+  /** 1-based attempt number. */
+  attempt: number;
+  maxAttempts: number;
+  /** Epoch ms of the next attempt; null while waiting for the network or the window to be visible, or while an attempt runs. */
+  nextRetryAt: number | null;
+}
+
 export interface VoiceState {
   isConnected: boolean;
   isConnecting: boolean;
@@ -38,6 +74,10 @@ export interface VoiceState {
   layoutMode: VideoLayoutMode;
   pinnedTileId: string | null;
   spotlightTileId: string | null;
+  /** Set while an automatic rejoin is in progress; null otherwise. */
+  reconnect: VoiceReconnectState | null;
+  /** Why the last call ended involuntarily; cleared by a new join or a user hang-up. */
+  lastEnded: VoiceEnded | null;
 }
 
 export enum VoiceActionType {
@@ -65,13 +105,14 @@ export enum VoiceActionType {
   SetLayoutMode = 'SET_LAYOUT_MODE',
   TogglePinTile = 'TOGGLE_PIN_TILE',
   ToggleSpotlightTile = 'TOGGLE_SPOTLIGHT_TILE',
+  SetReconnect = 'SET_RECONNECT',
 }
 
 export type VoiceAction =
   | { type: VoiceActionType.SetConnecting; payload: boolean }
   | { type: VoiceActionType.SetConnected; payload: { channelId: string; channelName: string; communityId: string; isPrivate: boolean; createdAt: string } }
   | { type: VoiceActionType.SetDmConnected; payload: { dmGroupId: string; dmGroupName: string } }
-  | { type: VoiceActionType.SetDisconnected }
+  | { type: VoiceActionType.SetDisconnected; payload?: { reason: VoiceEndReason; error?: string | null } }
   | { type: VoiceActionType.SetConnectionError; payload: string }
   | { type: VoiceActionType.SetDeafened; payload: boolean }
   | { type: VoiceActionType.SetShowVideoTiles; payload: boolean }
@@ -91,7 +132,8 @@ export type VoiceAction =
   | { type: VoiceActionType.SetStageMounted; payload: boolean }
   | { type: VoiceActionType.SetLayoutMode; payload: VideoLayoutMode }
   | { type: VoiceActionType.TogglePinTile; payload: string }
-  | { type: VoiceActionType.ToggleSpotlightTile; payload: string };
+  | { type: VoiceActionType.ToggleSpotlightTile; payload: string }
+  | { type: VoiceActionType.SetReconnect; payload: VoiceReconnectState | null };
 
 // Split into two contexts to avoid unnecessary re-renders
 export const VoiceStateContext = createContext<VoiceState | null>(null);

@@ -1,15 +1,29 @@
 import { useEffect, useRef } from 'react';
+import type { Room } from 'livekit-client';
 import { VoiceSessionType } from '../contexts/VoiceContext';
 import { voicePresenceControllerRefreshPresence } from '../api-client/sdk.gen';
 import { dmVoicePresenceControllerRefreshDmPresence } from '../api-client/sdk.gen';
 import { logger } from '../utils/logger';
+import { CONNECTION_STATE, ROOM_EVENT } from '../features/voice/livekitEvents';
 
 const HEARTBEAT_INTERVAL_MS = 30_000; // 30 seconds
+/**
+ * How long heartbeats continue while LiveKit is reconnecting on its own.
+ * Past this, others should stop seeing us in the channel until the
+ * connection is back (the Redis TTL is 90 s).
+ */
+export const HEARTBEAT_RECONNECTING_GRACE_MS = 60_000;
 
 interface VoicePresenceHeartbeatParams {
   channelId: string | null;
   dmGroupId: string | null;
   contextType: VoiceSessionType | null;
+  /**
+   * The LiveKit room. Heartbeats only go out while it is connected (or
+   * briefly reconnecting): a dead room must not keep refreshing presence, or
+   * others see a ghost (e.g. a minimized Electron window whose call died).
+   */
+  room: Room | null;
 }
 
 /**
@@ -24,6 +38,7 @@ export function useVoicePresenceHeartbeat({
   channelId,
   dmGroupId,
   contextType,
+  room,
 }: VoicePresenceHeartbeatParams) {
   const workerRef = useRef<Worker | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -32,11 +47,34 @@ export function useVoicePresenceHeartbeat({
     const isChannel = contextType === VoiceSessionType.Channel && channelId;
     const isDm = contextType === VoiceSessionType.Dm && dmGroupId;
 
-    if (!isChannel && !isDm) {
+    if ((!isChannel && !isDm) || !room) {
       return;
     }
 
+    // When the room started reconnecting (null while it isn't).
+    let reconnectingSince: number | null =
+      room.state === CONNECTION_STATE.Reconnecting ? Date.now() : null;
+    const handleStateChanged = (state: string) => {
+      if (state === CONNECTION_STATE.Reconnecting) {
+        reconnectingSince ??= Date.now();
+      } else {
+        reconnectingSince = null;
+      }
+    };
+    room.on(ROOM_EVENT.ConnectionStateChanged, handleStateChanged);
+
+    const roomIsLive = () => {
+      if (room.state === CONNECTION_STATE.Connected) return true;
+      if (room.state === CONNECTION_STATE.Reconnecting) {
+        return reconnectingSince === null || Date.now() - reconnectingSince < HEARTBEAT_RECONNECTING_GRACE_MS;
+      }
+      return false;
+    };
+
     const sendHeartbeat = async () => {
+      if (!roomIsLive()) {
+        return;
+      }
       try {
         if (isChannel) {
           await voicePresenceControllerRefreshPresence({
@@ -86,6 +124,7 @@ export function useVoicePresenceHeartbeat({
     }
 
     return () => {
+      room.off(ROOM_EVENT.ConnectionStateChanged, handleStateChanged);
       if (workerRef.current) {
         workerRef.current.postMessage({ type: 'stop', name: 'heartbeat' });
         workerRef.current.terminate();
@@ -96,5 +135,5 @@ export function useVoicePresenceHeartbeat({
         intervalRef.current = null;
       }
     };
-  }, [channelId, dmGroupId, contextType]);
+  }, [channelId, dmGroupId, contextType, room]);
 }

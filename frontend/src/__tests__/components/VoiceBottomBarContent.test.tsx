@@ -27,6 +27,7 @@ const mockActions = {
   setPipCollapsed: vi.fn(),
   revealVideoTiles: vi.fn(),
   leaveVoiceChannel: vi.fn(),
+  cancelReconnect: vi.fn(),
   switchAudioInputDevice: vi.fn(),
   switchVideoInputDevice: vi.fn(),
   joinVoiceChannel: vi.fn(),
@@ -63,6 +64,8 @@ const defaultVoiceState: VoiceState & { room: null } = {
   layoutMode: VideoLayoutMode.Grid,
   pinnedTileId: null,
   spotlightTileId: null,
+  reconnect: null,
+  lastEnded: null,
   room: null,
 };
 
@@ -310,6 +313,42 @@ describe('VoiceBottomBarContent', () => {
 
     expect(screen.getByText('Group Chat')).toBeInTheDocument();
     expect(screen.getByText('DM Voice Call')).toBeInTheDocument();
+  });
+
+  describe('automatic rejoin (connection dropped)', () => {
+    const reconnecting = (isMobile: boolean) => {
+      voiceState = { ...defaultVoiceState, reconnect: { attempt: 3, maxAttempts: 11, nextRetryAt: Date.now() + 5000 } };
+      vi.mocked(useVoiceConnection).mockReturnValue({ state: voiceState, actions: mockActions } as never);
+      vi.mocked(useResponsive).mockReturnValue({
+        isMobile,
+        isTablet: false,
+        isDesktop: !isMobile,
+        deviceType: isMobile ? 'mobile' : 'desktop',
+        shouldUseTouchUI: isMobile,
+      } as never);
+    };
+
+    it.each([false, true])('shows "Reconnecting voice (n)…" in place of the status (mobile: %s)', (isMobile) => {
+      reconnecting(isMobile);
+      renderWithProviders(<VoiceBottomBar />);
+
+      expect(screen.getByRole('status')).toHaveTextContent('Reconnecting voice (3)…');
+      expect(screen.getByText('General Voice')).toBeInTheDocument();
+      expect(screen.queryByText('Voice Connected')).not.toBeInTheDocument();
+    });
+
+    it('Cancel stops reconnecting', async () => {
+      reconnecting(false);
+      const { user } = renderWithProviders(<VoiceBottomBar />);
+
+      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(mockActions.cancelReconnect).toHaveBeenCalled();
+    });
+
+    it('shows no reconnect status while connected normally', () => {
+      renderWithProviders(<VoiceBottomBar />);
+      expect(screen.queryByTestId('voice-reconnecting')).not.toBeInTheDocument();
+    });
   });
 
   it('mute button calls toggleMute', async () => {

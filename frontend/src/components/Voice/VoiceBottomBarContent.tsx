@@ -16,6 +16,8 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Button,
+  CircularProgress,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import {
@@ -188,6 +190,7 @@ const VoiceBottomBarContent: React.FC = () => {
     channelId: state.currentChannelId,
     dmGroupId: state.currentDmGroupId,
     contextType: state.contextType,
+    room: state.room,
   });
 
   // Implement proper deafen functionality (mute received audio)
@@ -347,10 +350,32 @@ const VoiceBottomBarContent: React.FC = () => {
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
                 </Typography>
-                {!isMobile && (
-                  <Typography variant="caption" color="text.secondary">
-                    {displayType}
-                  </Typography>
+                {state.reconnect ? (
+                  // An automatic rejoin after the connection dropped (see
+                  // useVoiceForegroundResync). Cancel hangs up.
+                  <Box
+                    role="status"
+                    data-testid="voice-reconnecting"
+                    sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 0 }}
+                  >
+                    <CircularProgress size={10} thickness={6} color="warning" sx={{ flexShrink: 0 }} />
+                    <Typography variant="caption" color="warning.main" noWrap>
+                      Reconnecting voice ({state.reconnect.attempt})…
+                    </Typography>
+                    <Button
+                      size="small"
+                      onClick={actions.cancelReconnect}
+                      sx={{ minWidth: 0, px: 0.5, py: 0, typography: "caption", textTransform: "none", flexShrink: 0 }}
+                    >
+                      Cancel
+                    </Button>
+                  </Box>
+                ) : (
+                  !isMobile && (
+                    <Typography variant="caption" color="text.secondary">
+                      {displayType}
+                    </Typography>
+                  )
                 )}
               </Box>
             </Box>

@@ -47,6 +47,7 @@ const Layout: React.FC = () => {
     actions: {
       joinVoiceChannel: voiceActions.joinVoiceChannel,
       joinDmVoice: voiceActions.joinDmVoice,
+      endVoiceSession: voiceActions.endVoiceSession,
     },
   });
 

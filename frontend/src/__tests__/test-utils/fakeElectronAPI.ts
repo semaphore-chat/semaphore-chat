@@ -70,6 +70,7 @@ export function createFakeElectronAPI<O extends Partial<ElectronAPI> = Record<ne
     releasePowerSaveBlock: () => Promise.resolve(),
     onDeepLink: subscribe,
     notifyDeepLinkReady: noop,
+    onSystemResume: subscribe,
   };
   return { ...defaults, ...overrides } as CompleteElectronAPI & O;
 }

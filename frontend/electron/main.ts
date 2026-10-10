@@ -8,7 +8,7 @@
 import {
   app, BrowserWindow, ipcMain, session, desktopCapturer, Notification,
   Tray, Menu, nativeImage, screen, dialog, safeStorage, shell,
-  powerSaveBlocker, clipboard,
+  powerSaveBlocker, clipboard, powerMonitor,
 } from 'electron';
 import { autoUpdater, UpdateInfo, ProgressInfo } from 'electron-updater';
 import { initMain } from 'electron-audio-loopback';
@@ -801,6 +801,20 @@ function setupIpcHandlers() {
 /**
  * Create the main application window
  */
+/**
+ * Tell the renderer when the system wakes from sleep or the screen is
+ * unlocked, so it can re-check its voice connection. After a lid close the
+ * window never stopped being "visible", so the page gets no visibilitychange.
+ */
+function setupPowerMonitor() {
+  const notify = (kind: 'resume' | 'unlock-screen') => () => {
+    console.log(`powerMonitor: ${kind}`);
+    mainWindow?.webContents.send('system:resume', kind);
+  };
+  powerMonitor.on('resume', notify('resume'));
+  powerMonitor.on('unlock-screen', notify('unlock-screen'));
+}
+
 function createWindow() {
   const windowState = loadWindowState();
 
@@ -1168,6 +1182,7 @@ app.whenReady().then(() => {
   });
 
   createWindow();
+  setupPowerMonitor();
   setupTray();
   setupApplicationMenu();
   setupAutoUpdater();

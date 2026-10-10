@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { useVoice, useVoiceDispatch, VoiceSessionType, VoiceActionType } from "../contexts/VoiceContext";
+import { useVoice, useVoiceDispatch, VoiceSessionType, VoiceActionType, type VoiceEndReason } from "../contexts/VoiceContext";
 import { useRoom } from "./useRoom";
 import { useQuery } from "@tanstack/react-query";
 import { livekitControllerGetConnectionInfoOptions } from "../api-client/@tanstack/react-query.gen";
@@ -10,6 +10,10 @@ import {
   leaveVoiceChannel,
   joinDmVoice,
   leaveDmVoice,
+  endVoiceSession,
+  discardRoomForRejoin,
+  beginJoin,
+  endJoin,
   toggleMicrophone,
   toggleCameraUnified,
   toggleScreenShareUnified,
@@ -35,6 +39,40 @@ function hasLivekitUrl(value: unknown): value is LivekitConnectionInfo {
   return typeof candidate.url === "string" && candidate.url.length > 0;
 }
 
+/**
+ * Options for a join. `quiet` is an automatic rejoin of the current call
+ * after the connection dropped (useVoiceForegroundResync): the dead room is
+ * dropped without a hang-up (no REST leave, no sounds, the bar stays up) and
+ * the join plays no connect sound.
+ */
+export interface VoiceJoinOptions {
+  startMuted?: boolean;
+  quiet?: boolean;
+}
+
+type VoiceDeps = Parameters<typeof leaveVoiceChannel>[0];
+
+/**
+ * Before a join: hang up the current call, or, for a quiet rejoin, only drop
+ * the dead room. The caller holds the join slot, so the hang-up must not
+ * cancel it.
+ */
+async function leaveCurrentBeforeJoin(deps: VoiceDeps, quiet: boolean) {
+  const currentState = deps.getVoiceState();
+  if (quiet) {
+    await discardRoomForRejoin(deps);
+    return;
+  }
+  if (currentState.isConnected) {
+    logger.info('[useVoiceConnection] Already connected, leaving the current call first');
+    if (currentState.contextType === VoiceSessionType.Dm) {
+      await leaveDmVoice(deps, { keepPendingJoin: true });
+    } else {
+      await leaveVoiceChannel(deps, { keepPendingJoin: true });
+    }
+  }
+}
+
 export const useVoiceConnection = () => {
   const voiceState = useVoice();
   const { dispatch, stateRef } = useVoiceDispatch();
@@ -56,7 +94,7 @@ export const useVoiceConnection = () => {
       communityId: string,
       isPrivate: boolean,
       createdAt: string,
-      options: { startMuted?: boolean } = {},
+      options: VoiceJoinOptions = {},
     ) => {
       logger.info('[useVoiceConnection] handleJoinVoiceChannel called');
       logger.info('[useVoiceConnection] user:', user?.id, 'connectionInfo:', !!connectionInfo);
@@ -71,44 +109,46 @@ export const useVoiceConnection = () => {
       }
       const livekitConnectionInfo = connectionInfo;
 
-      // Leave current channel/DM before joining a new one
-      const deps = getDeps();
-      const currentState = deps.getVoiceState();
-      if (currentState.isConnected) {
-        logger.info('[useVoiceConnection] Already connected, leaving current channel first');
-        if (currentState.contextType === VoiceSessionType.Dm) {
-          await leaveDmVoice(deps);
-        } else {
-          await leaveVoiceChannel(deps);
-        }
-      }
+      // One join at a time: claim the slot before leaving the current call,
+      // so a double-click can't start a second join meanwhile.
+      const join = beginJoin({ kind: options.quiet ? 'rejoin' : 'user', channelId });
+      if (!join) return;
+      try {
+        const deps = getDeps();
+        await leaveCurrentBeforeJoin(deps, options.quiet === true);
+        if (join.cancelled) return;
 
-      logger.info('[useVoiceConnection] Calling joinVoiceChannel...');
-      await joinVoiceChannel(
-        {
-          channelId,
-          channelName,
-          communityId,
-          isPrivate,
-          createdAt,
-          user: {
-            id: user.id,
-            username: user.username,
-            displayName: user.displayName ?? undefined,
+        logger.info('[useVoiceConnection] Calling joinVoiceChannel...');
+        await joinVoiceChannel(
+          {
+            channelId,
+            channelName,
+            communityId,
+            isPrivate,
+            createdAt,
+            user: {
+              id: user.id,
+              username: user.username,
+              displayName: user.displayName ?? undefined,
+            },
+            // Forward the full backend payload so future connection fields are preserved.
+            connectionInfo: livekitConnectionInfo,
+            startMuted: options.startMuted,
+            quiet: options.quiet,
+            claimedJoin: join,
           },
-          // Forward the full backend payload so future connection fields are preserved.
-          connectionInfo: livekitConnectionInfo,
-          startMuted: options.startMuted,
-        },
-        deps
-      );
-      logger.info('[useVoiceConnection] joinVoiceChannel completed');
+          deps
+        );
+        logger.info('[useVoiceConnection] joinVoiceChannel completed');
+      } finally {
+        endJoin(join);
+      }
     },
     [user, connectionInfo, getDeps]
   );
 
   const handleJoinDmVoice = useCallback(
-    async (dmGroupId: string, dmGroupName: string) => {
+    async (dmGroupId: string, dmGroupName: string, options: VoiceJoinOptions = {}) => {
       if (!user || !connectionInfo) {
         throw new Error("User or connection info not available");
       }
@@ -117,32 +157,33 @@ export const useVoiceConnection = () => {
       }
       const livekitConnectionInfo = connectionInfo;
 
-      // Leave current channel/DM before joining a new one
-      const deps = getDeps();
-      const currentState = deps.getVoiceState();
-      if (currentState.isConnected) {
-        logger.info('[useVoiceConnection] Already connected, leaving current channel/DM first');
-        if (currentState.contextType === VoiceSessionType.Dm) {
-          await leaveDmVoice(deps);
-        } else {
-          await leaveVoiceChannel(deps);
-        }
-      }
+      const join = beginJoin({ kind: options.quiet ? 'rejoin' : 'user', dmGroupId });
+      if (!join) return;
+      try {
+        const deps = getDeps();
+        await leaveCurrentBeforeJoin(deps, options.quiet === true);
+        if (join.cancelled) return;
 
-      await joinDmVoice(
-        {
-          dmGroupId,
-          dmGroupName,
-          user: {
-            id: user.id,
-            username: user.username,
-            displayName: user.displayName ?? undefined,
+        await joinDmVoice(
+          {
+            dmGroupId,
+            dmGroupName,
+            user: {
+              id: user.id,
+              username: user.username,
+              displayName: user.displayName ?? undefined,
+            },
+            // Forward the full backend payload so future connection fields are preserved.
+            connectionInfo: livekitConnectionInfo,
+            startMuted: options.startMuted,
+            quiet: options.quiet,
+            claimedJoin: join,
           },
-          // Forward the full backend payload so future connection fields are preserved.
-          connectionInfo: livekitConnectionInfo,
-        },
-        deps
-      );
+          deps
+        );
+      } finally {
+        endJoin(join);
+      }
     },
     [user, connectionInfo, getDeps]
   );
@@ -155,6 +196,13 @@ export const useVoiceConnection = () => {
       await leaveVoiceChannel(deps);
     }
   }, [getDeps]);
+
+  const handleEndVoiceSession = useCallback(
+    async (reason: VoiceEndReason, error: string | null = null) => {
+      await endVoiceSession(reason, getDeps(), error);
+    },
+    [getDeps]
+  );
 
   const handleToggleAudio = useCallback(async () => {
     await toggleMicrophone(getDeps());
@@ -234,6 +282,9 @@ export const useVoiceConnection = () => {
       joinVoiceChannel: handleJoinVoiceChannel,
       joinDmVoice: handleJoinDmVoice,
       leaveVoiceChannel: handleLeaveVoiceChannel,
+      // Cancelling an automatic rejoin hangs up (it cancels the loop too).
+      cancelReconnect: handleLeaveVoiceChannel,
+      endVoiceSession: handleEndVoiceSession,
       toggleAudio: handleToggleAudio,
       toggleVideo: handleToggleVideo,
       toggleScreenShare: handleToggleScreenShare,

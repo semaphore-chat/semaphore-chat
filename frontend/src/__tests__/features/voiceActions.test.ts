@@ -125,7 +125,13 @@ vi.mock('../../utils/logger', () => ({
 
 import {
   joinVoiceChannel,
+  joinDmVoice,
   leaveVoiceChannel,
+  endVoiceSession,
+  discardRoomForRejoin,
+  getPendingJoin,
+  LEAVE_REST_TIMEOUT_MS,
+  MIC_ENABLE_TIMEOUT_MS,
   toggleMicrophone,
   toggleDeafenUnified,
   switchAudioInputDevice,
@@ -134,7 +140,9 @@ import {
   getRoomOptions,
   canPublishMicrophone,
 } from '../../features/voice/voiceActions';
-import { VoiceActionType, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { VoiceActionType, VoiceEndReason, VoiceSessionType, type VoiceState } from '../../contexts/VoiceContext';
+import { playSound } from '../../hooks/useSound';
+import { setVoiceReconnectCanceller } from '../../features/voice/reconnectControl';
 import { VideoLayoutMode } from '../../types/videoLayout';
 import type { Room } from 'livekit-client';
 import { livekitControllerGenerateToken, voicePresenceControllerJoinPresence, voicePresenceControllerLeavePresence, voicePresenceControllerUpdateDeafenState } from '../../api-client/sdk.gen';
@@ -185,6 +193,8 @@ function createMockDeps(overrides: Partial<{
       layoutMode: VideoLayoutMode.Grid,
       pinnedTileId: null,
       spotlightTileId: null,
+      reconnect: null,
+      lastEnded: null,
     }),
     getRoom: () => room as Room | null,
     setRoom: vi.fn(),
@@ -393,7 +403,10 @@ describe('voiceActions', () => {
       const deps = createMockDeps();
       await leaveVoiceChannel(deps);
 
-      expect(voicePresenceControllerLeavePresence).toHaveBeenCalledWith({ path: { channelId: 'ch-1' } });
+      expect(voicePresenceControllerLeavePresence).toHaveBeenCalledWith({
+        path: { channelId: 'ch-1' },
+        signal: expect.any(AbortSignal),
+      });
     });
 
     it('returns early when no channel or room', async () => {
@@ -841,6 +854,296 @@ describe('voiceActions', () => {
 
       expect(mockLocalParticipant.setScreenShareEnabled).toHaveBeenCalledWith(false);
       expect(publishScreenShare).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('voiceActions resilience (#309)', () => {
+  const params = {
+    channelId: 'ch-1',
+    channelName: 'General',
+    communityId: 'c1',
+    isPrivate: false,
+    createdAt: '2025-01-01',
+    user: { id: 'user-1', username: 'testuser', displayName: 'Test User' },
+    connectionInfo: { url: 'ws://localhost:7880' },
+  };
+
+  /** Deps whose voice state is "connecting" (nothing joined yet). */
+  function connectingDeps() {
+    const deps = createMockDeps({ channelId: null, room: null });
+    const base = deps.getVoiceState();
+    return { ...deps, getVoiceState: () => ({ ...base, isConnected: false, isConnecting: true }) };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRoomInstance.connect.mockResolvedValue(undefined);
+    mockRoomInstance.disconnect.mockResolvedValue(undefined);
+    mockLocalParticipant.setMicrophoneEnabled.mockResolvedValue(undefined);
+    mockLocalParticipant.isMicrophoneEnabled = true;
+    vi.mocked(getCachedItem).mockReturnValue(null);
+    vi.mocked(voicePresenceControllerLeavePresence).mockResolvedValue(undefined as never);
+  });
+
+  describe('leave', () => {
+    it('updates the UI and disconnects LiveKit without waiting for the REST leave', async () => {
+      // A REST leave that never answers (dead network)
+      vi.mocked(voicePresenceControllerLeavePresence).mockReturnValue(new Promise(() => {}) as never);
+      const deps = createMockDeps();
+
+      await leaveVoiceChannel(deps);
+
+      expect(deps.dispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetDisconnected });
+      expect(deps.setRoom).toHaveBeenCalledWith(null);
+      expect(mockRoomInstance.disconnect).toHaveBeenCalled();
+      expect(playSound).toHaveBeenCalledWith('disconnected');
+    });
+
+    it('aborts the REST leave after the timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        let signal: AbortSignal | undefined;
+        vi.mocked(voicePresenceControllerLeavePresence).mockImplementation(((opts: { signal: AbortSignal }) => {
+          signal = opts.signal;
+          return new Promise(() => {});
+        }) as never);
+
+        await leaveVoiceChannel(createMockDeps());
+        expect(signal?.aborted).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(LEAVE_REST_TIMEOUT_MS - 1);
+        expect(signal?.aborted).toBe(false);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(signal?.aborted).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('updates the UI before LiveKit finishes disconnecting', async () => {
+      let finishDisconnect: () => void = () => {};
+      mockRoomInstance.disconnect.mockReturnValueOnce(new Promise<void>((resolve) => { finishDisconnect = resolve; }));
+      const deps = createMockDeps();
+
+      const leaving = leaveVoiceChannel(deps);
+      await vi.waitFor(() => expect(mockRoomInstance.disconnect).toHaveBeenCalled());
+      expect(deps.dispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetDisconnected });
+
+      finishDisconnect();
+      await leaving;
+    });
+
+    it('cancels a running rejoin loop', async () => {
+      const cancel = vi.fn();
+      setVoiceReconnectCanceller(cancel);
+
+      await leaveVoiceChannel(createMockDeps());
+
+      expect(cancel).toHaveBeenCalled();
+    });
+  });
+
+  describe('cancellable join', () => {
+    it('leave during "Connecting…" cancels the join', async () => {
+      let rejectConnect: (e: Error) => void = () => {};
+      mockRoomInstance.connect.mockReturnValueOnce(
+        new Promise<void>((_, reject) => { rejectConnect = reject; }),
+      );
+      // room.disconnect() aborts room.connect()
+      mockRoomInstance.disconnect.mockImplementationOnce(async () => {
+        rejectConnect(new Error('Client initiated disconnect'));
+      });
+      const deps = connectingDeps();
+
+      const joining = joinVoiceChannel(params, deps);
+      await vi.waitFor(() => expect(mockRoomInstance.connect).toHaveBeenCalled());
+      expect(getPendingJoin()).not.toBeNull();
+
+      await leaveVoiceChannel(deps);
+      await expect(joining).resolves.toBeUndefined();
+
+      expect(mockRoomInstance.disconnect).toHaveBeenCalled();
+      expect(deps.dispatch).toHaveBeenCalledWith({ type: VoiceActionType.SetDisconnected });
+      const types = deps.dispatch.mock.calls.map(([a]) => a.type);
+      expect(types).not.toContain(VoiceActionType.SetConnected);
+      expect(types).not.toContain(VoiceActionType.SetConnectionError);
+      expect(voicePresenceControllerJoinPresence).not.toHaveBeenCalled();
+      // Nothing was joined, so nothing to leave on the server and no hang-up sound
+      expect(voicePresenceControllerLeavePresence).not.toHaveBeenCalled();
+      expect(playSound).not.toHaveBeenCalled();
+      expect(getPendingJoin()).toBeNull();
+    });
+
+    it('leave while the token is being fetched cancels before connecting', async () => {
+      let resolveToken: (v: unknown) => void = () => {};
+      vi.mocked(livekitControllerGenerateToken).mockReturnValueOnce(
+        new Promise((resolve) => { resolveToken = resolve; }) as never,
+      );
+      const deps = connectingDeps();
+
+      const joining = joinVoiceChannel(params, deps);
+      await leaveVoiceChannel(deps);
+      resolveToken({ data: { token: 'mock-token' } });
+      await joining;
+
+      expect(mockRoomInstance.connect).not.toHaveBeenCalled();
+      expect(deps.dispatch.mock.calls.map(([a]) => a.type)).not.toContain(VoiceActionType.SetConnected);
+    });
+
+    it('ignores a second join while one is pending (double-click)', async () => {
+      let resolveToken: (v: unknown) => void = () => {};
+      vi.mocked(livekitControllerGenerateToken).mockReturnValueOnce(
+        new Promise((resolve) => { resolveToken = resolve; }) as never,
+      );
+      const deps = connectingDeps();
+
+      const first = joinVoiceChannel(params, deps);
+      const second = joinVoiceChannel(params, deps);
+      await second;
+      expect(livekitControllerGenerateToken).toHaveBeenCalledTimes(1);
+
+      resolveToken({ data: { token: 'mock-token' } });
+      await first;
+      expect(mockRoomInstance.connect).toHaveBeenCalledTimes(1);
+      expect(getPendingJoin()).toBeNull();
+    });
+
+    it('a DM join is guarded the same way', async () => {
+      let resolveToken: (v: unknown) => void = () => {};
+      const { livekitControllerGenerateDmToken } = await import('../../api-client/sdk.gen');
+      vi.mocked(livekitControllerGenerateDmToken).mockReturnValueOnce(
+        new Promise((resolve) => { resolveToken = resolve; }) as never,
+      );
+      const deps = connectingDeps();
+      const dmParams = { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo };
+
+      const first = joinDmVoice(dmParams, deps);
+      await joinDmVoice(dmParams, deps);
+      expect(livekitControllerGenerateDmToken).toHaveBeenCalledTimes(1);
+
+      resolveToken({ data: { token: 'mock-dm-token' } });
+      await first;
+    });
+  });
+
+  describe('quiet rejoin', () => {
+    it('dropping the dead room skips the REST leave, sounds and state reset', async () => {
+      const deps = createMockDeps();
+
+      await discardRoomForRejoin(deps);
+
+      expect(mockRoomInstance.disconnect).toHaveBeenCalled();
+      expect(deps.setRoom).toHaveBeenCalledWith(null);
+      expect(voicePresenceControllerLeavePresence).not.toHaveBeenCalled();
+      expect(playSound).not.toHaveBeenCalled();
+      expect(deps.dispatch).not.toHaveBeenCalled();
+    });
+
+    it('a quiet join plays no connect sound', async () => {
+      const deps = createMockDeps();
+
+      await joinVoiceChannel({ ...params, quiet: true }, deps);
+
+      expect(deps.dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: VoiceActionType.SetConnected }));
+      expect(playSound).not.toHaveBeenCalled();
+    });
+
+    it('a normal join plays the connect sound', async () => {
+      await joinVoiceChannel(params, createMockDeps());
+      expect(playSound).toHaveBeenCalledWith('connected');
+    });
+
+    it('a DM rejoin keeps the mic muted', async () => {
+      const deps = createMockDeps();
+      await joinDmVoice(
+        { dmGroupId: 'dm-1', dmGroupName: 'DM', user: params.user, connectionInfo: params.connectionInfo, startMuted: true, quiet: true },
+        deps,
+      );
+      expect(mockLocalParticipant.setMicrophoneEnabled).toHaveBeenCalledWith(false);
+      expect(mockLocalParticipant.setMicrophoneEnabled).not.toHaveBeenCalledWith(true, expect.anything());
+    });
+  });
+
+  describe('endVoiceSession', () => {
+    it('ends the call with the reason and no REST leave', async () => {
+      const deps = createMockDeps();
+
+      await endVoiceSession(VoiceEndReason.DuplicateIdentity, deps);
+
+      expect(deps.dispatch).toHaveBeenCalledWith({
+        type: VoiceActionType.SetDisconnected,
+        payload: { reason: VoiceEndReason.DuplicateIdentity, error: null },
+      });
+      expect(deps.setRoom).toHaveBeenCalledWith(null);
+      expect(mockRoomInstance.disconnect).toHaveBeenCalled();
+      expect(voicePresenceControllerLeavePresence).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('mic enable timeout', () => {
+    it('turns the mic off again when the enable succeeds after the timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveMic: () => void = () => {};
+        mockLocalParticipant.setMicrophoneEnabled.mockImplementationOnce(
+          () => new Promise<void>((resolve) => { resolveMic = resolve; }),
+        );
+        const deps = createMockDeps();
+
+        const joining = joinVoiceChannel(params, deps);
+        await vi.advanceTimersByTimeAsync(MIC_ENABLE_TIMEOUT_MS);
+        await joining;
+        expect(mockLocalParticipant.setMicrophoneEnabled).toHaveBeenCalledTimes(1);
+
+        // The enable lands late: the user was told they joined muted
+        mockLocalParticipant.isMicrophoneEnabled = true;
+        resolveMic();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(mockLocalParticipant.setMicrophoneEnabled).toHaveBeenLastCalledWith(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('leaves the mic on when the user unmuted after the timeout', async () => {
+      vi.useFakeTimers();
+      try {
+        let resolveMic: () => void = () => {};
+        mockLocalParticipant.setMicrophoneEnabled.mockImplementationOnce(
+          () => new Promise<void>((resolve) => { resolveMic = resolve; }),
+        );
+        mockLocalParticipant.isMicrophoneEnabled = false;
+        let joinedRoom: Room | null = null;
+        const deps = { ...createMockDeps(), setRoom: vi.fn((r: Room | null) => { if (r) joinedRoom = r; }) };
+
+        const joining = joinVoiceChannel(params, deps);
+        await vi.advanceTimersByTimeAsync(MIC_ENABLE_TIMEOUT_MS);
+        await joining;
+
+        // The user unmutes on purpose
+        await toggleMicrophone({ ...createMockDeps(), getRoom: () => joinedRoom });
+        const callsAfterUnmute = mockLocalParticipant.setMicrophoneEnabled.mock.calls.length;
+
+        mockLocalParticipant.isMicrophoneEnabled = true;
+        resolveMic();
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(mockLocalParticipant.setMicrophoneEnabled.mock.calls.length).toBe(callsAfterUnmute);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears the timeout when the mic enables in time', async () => {
+      vi.useFakeTimers();
+      try {
+        await joinVoiceChannel(params, createMockDeps());
+        expect(vi.getTimerCount()).toBe(0);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

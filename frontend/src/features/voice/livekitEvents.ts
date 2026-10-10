@@ -132,3 +132,9 @@ export const CONNECTION_STATE = {
 // ---- DisconnectReason (numeric protobuf enum — see file doc comment) ----
 
 export const DISCONNECT_REASON_CLIENT_INITIATED: DisconnectReason.CLIENT_INITIATED = 1;
+/** Another participant joined with the same identity (our user id): the same account on another device. */
+export const DISCONNECT_REASON_DUPLICATE_IDENTITY: DisconnectReason.DUPLICATE_IDENTITY = 2;
+/** Removed by the server (moderator kick, lost channel access, revoked session). */
+export const DISCONNECT_REASON_PARTICIPANT_REMOVED: DisconnectReason.PARTICIPANT_REMOVED = 4;
+/** The room was deleted on the server. */
+export const DISCONNECT_REASON_ROOM_DELETED: DisconnectReason.ROOM_DELETED = 5;
