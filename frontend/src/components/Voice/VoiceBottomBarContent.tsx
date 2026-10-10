@@ -319,8 +319,8 @@ const VoiceBottomBarContent: React.FC = () => {
 
   // An automatic rejoin after the connection dropped (see
   // useVoiceForegroundResync). Cancel hangs up. Inline under the name on
-  // desktop; its own full-width row on phones, where the controls leave the
-  // name column too narrow for it.
+  // desktop; on touch layouts its own full-width row (the controls leave the
+  // phone name column too narrow, and Cancel needs a full touch target).
   const reconnectStatus = state.reconnect ? (
     <Box
       role="status"
@@ -335,11 +335,11 @@ const VoiceBottomBarContent: React.FC = () => {
         size="small"
         onClick={actions.cancelReconnect}
         sx={{
-          minWidth: isMobile ? TOUCH_TARGETS.MINIMUM : 0,
-          minHeight: isMobile ? TOUCH_TARGETS.MINIMUM : 0,
-          px: isMobile ? 1 : 0.5,
+          minWidth: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 0,
+          minHeight: shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 0,
+          px: shouldUseTouchUI ? 1 : 0.5,
           py: 0,
-          ml: isMobile ? "auto" : 0,
+          ml: shouldUseTouchUI ? "auto" : 0,
           typography: "caption",
           textTransform: "none",
           flexShrink: 0,
@@ -364,7 +364,7 @@ const VoiceBottomBarContent: React.FC = () => {
           borderColor: "divider",
         }}
       >
-        {isMobile && reconnectStatus && (
+        {shouldUseTouchUI && reconnectStatus && (
           <Box sx={{ px: 1.5, borderBottom: 1, borderColor: "divider" }}>{reconnectStatus}</Box>
         )}
         <Box
@@ -386,7 +386,7 @@ const VoiceBottomBarContent: React.FC = () => {
                 <Typography variant="body2" fontWeight="medium" noWrap>
                   {displayName}
                 </Typography>
-                {state.reconnect && !isMobile ? (
+                {state.reconnect && !shouldUseTouchUI ? (
                   reconnectStatus
                 ) : (
                   !isMobile && (
