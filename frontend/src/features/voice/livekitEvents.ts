@@ -4,6 +4,7 @@ import type {
   ConnectionQuality,
   ConnectionState,
   DisconnectReason,
+  ConnectionErrorReason,
 } from 'livekit-client';
 
 /**
@@ -139,3 +140,26 @@ export const DISCONNECT_REASON_DUPLICATE_IDENTITY: DisconnectReason.DUPLICATE_ID
 export const DISCONNECT_REASON_PARTICIPANT_REMOVED: DisconnectReason.PARTICIPANT_REMOVED = 4;
 /** The room was deleted on the server. */
 export const DISCONNECT_REASON_ROOM_DELETED: DisconnectReason.ROOM_DELETED = 5;
+
+// ---- ConnectionErrorReason (numeric enum, see DisconnectReason above) ----
+
+/** `ConnectionError.reason` values, for classifying join failures without a runtime import. */
+export const CONNECTION_ERROR_REASON: {
+  NotAllowed: ConnectionErrorReason.NotAllowed;
+  ServerUnreachable: ConnectionErrorReason.ServerUnreachable;
+  InternalError: ConnectionErrorReason.InternalError;
+  Cancelled: ConnectionErrorReason.Cancelled;
+  LeaveRequest: ConnectionErrorReason.LeaveRequest;
+  Timeout: ConnectionErrorReason.Timeout;
+  WebSocket: ConnectionErrorReason.WebSocket;
+  ServiceNotFound: ConnectionErrorReason.ServiceNotFound;
+} = {
+  NotAllowed: 0,
+  ServerUnreachable: 1,
+  InternalError: 2,
+  Cancelled: 3,
+  LeaveRequest: 4,
+  Timeout: 5,
+  WebSocket: 6,
+  ServiceNotFound: 7,
+};

@@ -59,3 +59,14 @@ export function errorMessageOf(error: unknown): string | null {
   }
   return null;
 }
+
+/** A second line under the title, saying what happened or what to do. */
+export const VOICE_END_DETAILS: Record<VoiceEndReason, string> = {
+  [VoiceEndReason.DuplicateIdentity]: 'Voice moved to the device you joined from last.',
+  [VoiceEndReason.ParticipantRemoved]: 'A moderator removed you, or your access to the channel changed.',
+  [VoiceEndReason.RoomDeleted]: 'The call ended on the server.',
+  [VoiceEndReason.ReconnectFailed]: 'Check your connection, then try again.',
+  [VoiceEndReason.AccessLost]: 'Your permissions changed while you were reconnecting.',
+  [VoiceEndReason.ChannelNotFound]: 'It may have been deleted.',
+  [VoiceEndReason.SessionExpired]: 'You were signed out on this device.',
+};

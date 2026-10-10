@@ -4,6 +4,8 @@ import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { BOTTOM_CHROME_ORDER, useMeasuredChromeItem } from "../../contexts/BottomChromeContext";
 import { LAYOUT_CONSTANTS } from "../../utils/breakpoints";
 import { VOICE_BAR_HEIGHT } from "../../constants/layout";
+import { VoiceNotice } from "./VoiceNotice";
+import { describeVoiceNotice } from "./voiceNoticeModel";
 
 // The real bottom-bar UI (VoiceBottomBarContent) pulls in every voice-session
 // hook — including several that statically import livekit-client for runtime
@@ -35,11 +37,14 @@ interface VoiceBottomBarProps {
 export const VoiceBottomBar: React.FC<VoiceBottomBarProps> = ({ inline = false }) => {
   const { state } = useVoiceConnection();
   const isActive = state.isConnected && (!!state.currentChannelId || !!state.currentDmGroupId);
+  // Out of a call, the same spot shows the voice notice (a failed join, or
+  // why the call ended), hidden while a join is in progress.
+  const showNotice = !isActive && !state.isConnecting && describeVoiceNotice(state) !== null;
   const measureRef = useMeasuredChromeItem({
     id: "voice-bar",
     order: BOTTOM_CHROME_ORDER.VOICE_BAR,
     fallbackHeight: inline ? LAYOUT_CONSTANTS.VOICE_BAR_HEIGHT_MOBILE : VOICE_BAR_HEIGHT,
-    enabled: isActive,
+    enabled: isActive || showNotice,
   });
 
   // Warm the content chunk as soon as a join starts (the existing
@@ -53,7 +58,27 @@ export const VoiceBottomBar: React.FC<VoiceBottomBarProps> = ({ inline = false }
   }, [state.isConnecting]);
 
   if (!isActive) {
-    return null;
+    if (!showNotice) return null;
+    return (
+      <Box
+        ref={measureRef}
+        data-testid="voice-notice-shell"
+        sx={{
+          display: "flex",
+          justifyContent: "center",
+          px: inline ? 1 : 2,
+          pb: inline ? 1 : 2,
+          pt: 1,
+          // The notice catches clicks; the space around it doesn't.
+          pointerEvents: "none",
+          ...(inline
+            ? { position: "relative", flexShrink: 0, zIndex: 1250 }
+            : { position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 1300 }),
+        }}
+      >
+        <VoiceNotice />
+      </Box>
+    );
   }
 
   return (

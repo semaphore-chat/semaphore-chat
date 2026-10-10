@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { VoiceChannelJoinButton } from '../../components/Voice/VoiceChannelJoinButton';
 import { voiceJoinMode } from '../../components/Voice/voiceJoinMode';
@@ -104,12 +104,13 @@ describe('VoiceChannelJoinButton', () => {
     expect(screen.getByRole('button', { name: 'Join muted' })).toBeDisabled();
   });
 
-  it('reports a failed join', async () => {
+  it('leaves a failed join to the voice notice (no generic toast)', async () => {
     mockJoin.mockRejectedValueOnce(new Error('nope'));
     const { user } = renderWithProviders(<VoiceChannelJoinButton channel={channel} />);
 
     await user.click(screen.getByRole('button', { name: 'Join voice' }));
-    expect(mockShowNotification).toHaveBeenCalledWith('Failed to join voice channel. Please try again.', 'error');
+    await waitFor(() => expect(mockJoin).toHaveBeenCalled());
+    expect(mockShowNotification).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Join voice' })).toBeEnabled();
   });
 

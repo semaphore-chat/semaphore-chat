@@ -214,7 +214,7 @@ describe('Channel', () => {
     expect(mockRevealVideoTiles).toHaveBeenCalled();
   });
 
-  it('shows error notification when voice join fails', async () => {
+  it('leaves a failed join to the voice notice (no generic toast)', async () => {
     mockJoinVoiceChannel.mockRejectedValue(new Error('Connection failed'));
 
     const channel = createChannel({ id: 'vc-1', name: 'voice', type: 'VOICE', communityId: 'c1' });
@@ -224,9 +224,8 @@ describe('Channel', () => {
 
     await user.click(screen.getByText('voice'));
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
-      'Failed to join voice channel. Please try again.'
-    );
+    await waitFor(() => expect(mockJoinVoiceChannel).toHaveBeenCalled());
+    expect(screen.queryByText('Failed to join voice channel. Please try again.')).not.toBeInTheDocument();
   });
 
   it('renders VoiceChannelUserList for voice channels', () => {

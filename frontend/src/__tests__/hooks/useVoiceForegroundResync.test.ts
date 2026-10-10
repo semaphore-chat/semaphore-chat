@@ -74,6 +74,7 @@ function createVoiceState(overrides: Partial<VoiceState> = {}): VoiceState {
     spotlightTileId: null,
     reconnect: null,
     lastEnded: null,
+    joinFailure: null,
     ...overrides,
   };
 }

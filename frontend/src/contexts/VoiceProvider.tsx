@@ -8,6 +8,7 @@ import {
   VoiceSessionType,
   VoiceStateContext,
   type VoiceAction,
+  type VoiceJoinTarget,
   type VoiceState,
 } from "./VoiceContext";
 
@@ -41,7 +42,26 @@ const initialState: VoiceState = {
   spotlightTileId: null,
   reconnect: null,
   lastEnded: null,
+  joinFailure: null,
 };
+
+/** The call in progress, as a Retry target (null if the context is incomplete). */
+function currentTarget(state: VoiceState): VoiceJoinTarget | null {
+  if (state.contextType === VoiceSessionType.Dm && state.currentDmGroupId && state.dmGroupName) {
+    return { type: 'dm', dmGroupId: state.currentDmGroupId, dmGroupName: state.dmGroupName };
+  }
+  if (state.currentChannelId && state.channelName && state.communityId && state.isPrivate !== null && state.createdAt) {
+    return {
+      type: 'channel',
+      channelId: state.currentChannelId,
+      channelName: state.channelName,
+      communityId: state.communityId,
+      isPrivate: state.isPrivate,
+      createdAt: state.createdAt,
+    };
+  }
+  return null;
+}
 
 function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
   switch (action.type) {
@@ -49,7 +69,7 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
       return {
         ...state,
         isConnecting: action.payload,
-        ...(action.payload ? { connectionError: null, lastEnded: null } : {}),
+        ...(action.payload ? { connectionError: null, lastEnded: null, joinFailure: null } : {}),
       };
     case VoiceActionType.SetConnected:
       return {
@@ -91,9 +111,21 @@ function voiceReducer(state: VoiceState, action: VoiceAction): VoiceState {
         showVideoTiles: state.showVideoTiles,
         pipCollapsed: state.pipCollapsed,
         lastEnded: action.payload
-          ? { reason: action.payload.reason, error: action.payload.error ?? null, at: Date.now() }
+          ? {
+              reason: action.payload.reason,
+              error: action.payload.error ?? null,
+              at: Date.now(),
+              target: currentTarget(state),
+            }
           : null,
+        // A failed join stays visible until dismissed or retried (a hang-up
+        // during "Connecting…" doesn't count as a failure).
+        joinFailure: state.joinFailure,
       };
+    case VoiceActionType.SetJoinFailure:
+      return { ...state, joinFailure: { ...action.payload, at: Date.now() } };
+    case VoiceActionType.ClearVoiceNotice:
+      return { ...state, joinFailure: null, lastEnded: null };
     case VoiceActionType.SetReconnect:
       return { ...state, reconnect: action.payload };
     case VoiceActionType.SetConnectionError:

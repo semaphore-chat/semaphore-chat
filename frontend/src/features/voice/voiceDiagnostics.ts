@@ -1,6 +1,8 @@
 import type { Room, RemoteTrackPublication, RemoteParticipant, LocalParticipant, Track } from 'livekit-client';
 import type { VoiceEventEntry } from '../../hooks/useVoiceEventLogDef';
 import { TRACK_SOURCE } from './livekitEvents';
+import { getJoinAttempts, type JoinAttempt } from './joinAttemptLog';
+import { getIceSummary, type IceSummary } from './iceSummary';
 
 /**
  * IMPORTANT: this module is imported (statically, as VALUES — `captureDiagnostics`
@@ -162,6 +164,10 @@ export interface DiagnosticsSnapshot {
   devices: Array<{ kind: string; label: string; deviceId: string }>;
   /** The full event-log ring buffer (if the log provider is mounted). */
   events: VoiceEventEntry[];
+  /** Recent join attempts, failed ones included (they happen before any Room exists). */
+  joinAttempts: JoinAttempt[];
+  /** The ICE path of the live connection (candidate types, protocol, TURN), if connected. */
+  ice: IceSummary | null;
 }
 
 function findMicPublication(p: RemoteParticipant): RemoteTrackPublication | undefined {
@@ -209,7 +215,7 @@ async function enumerateDevicesSafe(): Promise<DiagnosticsSnapshot['devices']> {
   }
 }
 
-function getAppVersion(): string {
+export function getAppVersion(): string {
   // Vite injects this at build time; falls back gracefully in tests.
   return (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
 }
@@ -235,6 +241,8 @@ export async function captureDiagnostics(
       remotes: [],
       devices: await enumerateDevicesSafe(),
       events,
+      joinAttempts: getJoinAttempts(),
+      ice: null,
     };
   }
 
@@ -282,6 +290,8 @@ export async function captureDiagnostics(
     remotes,
     devices: await enumerateDevicesSafe(),
     events,
+    joinAttempts: getJoinAttempts(),
+    ice: await getIceSummary(room),
   };
 }
 

@@ -35,7 +35,6 @@ import {
 // always-mounted mobile layout — the barrel would drag livekit into the entry.
 import { VoiceChannelUserList } from "../Voice/VoiceChannelUserList";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
-import { useNotification } from "../../contexts/NotificationContext";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { logger } from "../../utils/logger";
 import { playSound, Sounds } from "../../hooks/useSound";
@@ -106,7 +105,6 @@ export function ChannelRow({
 }: ChannelRowProps) {
   const navigate = useNavigate();
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
-  const { showNotification } = useNotification();
   const { hasUnread, mentionCount } = useReadReceipts();
 
   const isText = channel.type === ChannelKind.TEXT;
@@ -145,7 +143,7 @@ export function ChannelRow({
     } catch (error) {
       logger.error("Failed to join voice channel:", error);
       playSound(Sounds.error);
-      showNotification("Failed to join voice channel. Please try again.", "error");
+      // The voice notice (VoiceNotice) explains the failure and offers Retry.
     }
   }, [
     onSelect,
@@ -157,7 +155,6 @@ export function ChannelRow({
     voiceState.currentChannelId,
     voiceState.isConnected,
     voiceActions,
-    showNotification,
   ]);
 
   return (
