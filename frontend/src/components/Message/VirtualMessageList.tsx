@@ -38,6 +38,8 @@ const CAP_EVICTION_SCAN_PREFIX = 51;
 
 export interface VirtualMessageListHandle {
   scrollToBottom: () => void;
+  /** Bring a message into view (nearest edge); no-op if it isn't in the list. */
+  scrollToMessage: (messageId: string) => void;
 }
 
 export interface VirtualMessageListProps {
@@ -454,7 +456,12 @@ const VirtualMessageList = forwardRef<VirtualMessageListHandle, VirtualMessageLi
       handle.scrollToIndex(len - 1, { align: "end" });
     }, [len]);
 
-    useImperativeHandle(ref, () => ({ scrollToBottom }), [scrollToBottom]);
+    const scrollToMessage = useCallback((messageId: string) => {
+      const index = orderedMessagesRef.current.findIndex((m) => m.id === messageId);
+      if (index >= 0) vlistRef.current?.scrollToIndex(index, { align: "nearest" });
+    }, []);
+
+    useImperativeHandle(ref, () => ({ scrollToBottom, scrollToMessage }), [scrollToBottom, scrollToMessage]);
 
     // ── Visible range while the whole list fits (see the module doc) ──
     const onVisibleRangeChangeRef = useRef(onVisibleRangeChange);

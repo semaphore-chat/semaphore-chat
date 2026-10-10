@@ -18,6 +18,7 @@ function splitFirstSentence(text: string): [string, string] {
   return match ? [match[1], match[2]] : [text, ""];
 }
 import VirtualMessageList, { type VirtualMessageListHandle } from "./VirtualMessageList";
+import { useEditRequest } from "../../contexts/EditRequestContext";
 import type { Message } from "../../types/message.type";
 import { useMessageVisibility } from "../../hooks/useMessageVisibility";
 import { isOptimisticMessageId } from "../../utils/messageCacheUpdaters";
@@ -172,6 +173,13 @@ const MessageContainer: React.FC<MessageContainerProps> = ({
   const scrollToBottom = useCallback(() => {
     virtualListRef.current?.scrollToBottom();
   }, []);
+
+  // ↑-to-edit: bring the requested message into view so its row mounts and
+  // opens its edit form.
+  const { request: editRequest } = useEditRequest();
+  useEffect(() => {
+    if (editRequest) virtualListRef.current?.scrollToMessage(editRequest.messageId);
+  }, [editRequest]);
 
   // scrollToBottom/atBottom are routed through refs so the deferred
   // detached->live scroll effect below always calls/reads the latest values

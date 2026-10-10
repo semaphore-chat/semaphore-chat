@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { COMPOSER_SCOPE_ATTR, COMPOSER_SCOPE_VALUE } from "../../utils/shortcuts";
 import {
   Box,
   IconButton,
@@ -80,6 +81,13 @@ export interface MessageInputProps {
   onSendMessage: (messageContent: string, spans: Span[], files?: File[]) => void;
   placeholder?: string;
   communityId?: string;
+  /**
+   * ↑ in the empty composer (desktop): open your last message's edit form.
+   * Returns false when there's no message to edit.
+   */
+  onEditLastMessage?: () => boolean;
+  /** Set while a quote reply is active: Esc in the composer cancels it. */
+  onCancelReply?: () => void;
 }
 
 /** "12 min", "2 h 5 min", "42 s" — rounded up so it never reads "0". */
@@ -162,6 +170,8 @@ export default function MessageInput({
   onSendMessage,
   placeholder = "Type a message...",
   communityId,
+  onEditLastMessage,
+  onCancelReply,
 }: MessageInputProps) {
   // The unsent text is a per-conversation draft, so it survives this
   // composer unmounting (e.g. switching screens on mobile).
@@ -681,6 +691,27 @@ export default function MessageInput({
       }
     }
 
+    // Esc cancels an active quote reply (handled, so the global Esc
+    // shortcut doesn't also mark the conversation read).
+    if (event.key === "Escape" && onCancelReply) {
+      event.preventDefault();
+      onCancelReply();
+      return;
+    }
+
+    // ↑ in an empty composer edits your last message (desktop keyboards).
+    if (
+      event.key === "ArrowUp" &&
+      !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey &&
+      !isTouchDevice &&
+      onEditLastMessage &&
+      !text &&
+      selectedFiles.length === 0
+    ) {
+      if (onEditLastMessage()) event.preventDefault();
+      return;
+    }
+
     // On touch devices, Enter inserts a newline (send is via the button only).
     // On desktop, Enter sends and Shift+Enter inserts a newline.
     if (event.key === "Enter" && !event.shiftKey && !isTouchDevice) {
@@ -703,7 +734,11 @@ export default function MessageInput({
   }
 
   return (
-    <Box sx={{ position: "relative", width: "100%" }} {...dropZoneProps}>
+    <Box
+      sx={{ position: "relative", width: "100%" }}
+      {...dropZoneProps}
+      {...{ [COMPOSER_SCOPE_ATTR]: COMPOSER_SCOPE_VALUE }}
+    >
       <DropZoneOverlay visible={isDragOver} />
       {mentionIsOpen && (
         <MentionDropdown
@@ -808,6 +843,7 @@ export default function MessageInput({
               // combobox-listbox relationship to assistive tech.
               htmlInput: {
                 "aria-autocomplete": "list",
+                "aria-keyshortcuts": onEditLastMessage && !isTouchDevice ? "ArrowUp" : undefined,
                 "aria-controls": mentionIsOpen ? MENTION_LISTBOX_ID : undefined,
                 "aria-activedescendant":
                   mentionIsOpen && mentionSuggestions.length > 0

@@ -6,6 +6,10 @@ import { List, Typography, Box, alpha, useTheme, Skeleton } from "@mui/material"
 import { Tag as TextIcon, VolumeUp as VoiceIcon } from "@mui/icons-material";
 import { ChannelType, Channel } from "../../types/channel.type";
 import { ErrorState } from "../Common/ListState";
+import { useNavigate, useParams } from "react-router-dom";
+import { useReadReceipts } from "../../hooks/useReadReceipts";
+import { useRegisterSidebarNav, type SidebarNav } from "../../contexts/ShortcutsContext";
+import { ariaKeyShortcuts } from "../../utils/shortcuts";
 
 interface ChannelListProps {
   communityId: string;
@@ -89,6 +93,28 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
     return { textChannels: text, voiceChannels: voice };
   }, [channels]);
 
+  // Alt+↑/↓ walk the text channels in sidebar order (voice channels would
+  // join the call, so they're skipped).
+  const navigate = useNavigate();
+  const { channelId: currentChannelId } = useParams<{ channelId: string }>();
+  const { allUnreadCounts } = useReadReceipts();
+  const sidebarNav = useMemo<SidebarNav>(() => {
+    const unread = new Set(
+      (allUnreadCounts ?? []).filter((c) => c.channelId && c.unreadCount > 0).map((c) => c.channelId),
+    );
+    return {
+      kind: "channel",
+      items: textChannels.map((c: Channel) => ({
+        id: c.id,
+        label: `#${c.name}`,
+        unread: c.id !== currentChannelId && unread.has(c.id),
+      })),
+      currentId: currentChannelId,
+      select: (id: string) => navigate(`/community/${communityId}/channel/${id}`),
+    };
+  }, [textChannels, currentChannelId, communityId, navigate, allUnreadCounts]);
+  useRegisterSidebarNav(sidebarNav);
+
   if (isLoading) return <LoadingSkeleton />;
 
   if (error) {
@@ -113,7 +139,12 @@ const ChannelList: React.FC<ChannelListProps> = ({ communityId }) => {
   }
 
   return (
-    <Box sx={{ width: "100%" }}>
+    <Box
+      component="nav"
+      aria-label="Channels"
+      aria-keyshortcuts={ariaKeyShortcuts(["prevChannel", "nextChannel", "prevUnread", "nextUnread"])}
+      sx={{ width: "100%" }}
+    >
       {/* Text Channels Section */}
       {textChannels.length > 0 && (
         <>

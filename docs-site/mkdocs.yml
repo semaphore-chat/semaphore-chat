@@ -39,6 +39,7 @@ theme:
 nav:
   - Home: index.md
   - Tour: tour.md
+  - Keyboard Shortcuts: keyboard-shortcuts.md
   - Installation:
       - Docker Compose: installation/docker-compose.md
       - Kubernetes: installation/kubernetes.md

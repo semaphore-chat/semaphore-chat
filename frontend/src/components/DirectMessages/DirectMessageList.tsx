@@ -12,7 +12,9 @@ import {
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import { useReadReceipts } from "../../hooks/useReadReceipts";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
-import { getDmOtherUser } from "../../utils/dmHelpers";
+import { getDmHeaderName, getDmOtherUser } from "../../utils/dmHelpers";
+import { useRegisterSidebarNav, type SidebarNav } from "../../contexts/ShortcutsContext";
+import { ariaKeyShortcuts } from "../../utils/shortcuts";
 
 import DmListItem from "./DmListItem";
 import CreateDmDialog from "./CreateDmDialog";
@@ -35,7 +37,27 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
   const { data: dmGroups = [], isLoading, error, refetch } = useQuery(directMessagesControllerFindUserDmGroupsOptions());
   const { data: currentUser } = useQuery(userControllerGetProfileOptions());
   const { state: voiceState } = useVoiceConnection();
-  const { unreadCount, mentionCount } = useReadReceipts();
+  const { unreadCount, mentionCount, allUnreadCounts } = useReadReceipts();
+
+  // Alt+↑/↓ walk the conversations in list order.
+  const sidebarNav = useMemo<SidebarNav>(() => {
+    const unread = new Set(
+      (allUnreadCounts ?? [])
+        .filter((c) => c.directMessageGroupId && c.unreadCount > 0)
+        .map((c) => c.directMessageGroupId),
+    );
+    return {
+      kind: "dm",
+      items: dmGroups.map((group) => ({
+        id: group.id,
+        label: getDmHeaderName(group, currentUser?.id) ?? "Conversation",
+        unread: group.id !== selectedDmGroupId && unread.has(group.id),
+      })),
+      currentId: selectedDmGroupId,
+      select: onSelectDmGroup,
+    };
+  }, [dmGroups, currentUser?.id, selectedDmGroupId, onSelectDmGroup, allUnreadCounts]);
+  useRegisterSidebarNav(sidebarNav);
 
   // Collect unique "other user" IDs from 1:1 DMs for presence query
   const otherUserIds = useMemo(() => {
@@ -76,25 +98,31 @@ const DirectMessageList: React.FC<DirectMessageListProps> = ({
             />
           }
         >
-          <List>
-            {dmGroups.map((dmGroup) => {
-              const otherUser = !dmGroup.isGroup ? getDmOtherUser(dmGroup, currentUser?.id) : null;
-              const isOnline = otherUser?.id ? presenceData?.presence?.[otherUser.id] ?? false : false;
-              return (
-                <DmListItem
-                  key={dmGroup.id}
-                  group={dmGroup}
-                  currentUserId={currentUser?.id}
-                  isSelected={selectedDmGroupId === dmGroup.id}
-                  onClick={() => onSelectDmGroup(dmGroup.id)}
-                  isInCall={voiceState.isConnected && voiceState.contextType === VoiceSessionType.Dm && voiceState.currentDmGroupId === dmGroup.id}
-                  unreadCount={unreadCount(dmGroup.id)}
-                  mentionCount={mentionCount(dmGroup.id)}
-                  isOnline={isOnline}
-                />
-              );
-            })}
-          </List>
+          <Box
+            component="nav"
+            aria-label="Conversations"
+            aria-keyshortcuts={ariaKeyShortcuts(["prevChannel", "nextChannel", "prevUnread", "nextUnread"])}
+          >
+            <List>
+              {dmGroups.map((dmGroup) => {
+                const otherUser = !dmGroup.isGroup ? getDmOtherUser(dmGroup, currentUser?.id) : null;
+                const isOnline = otherUser?.id ? presenceData?.presence?.[otherUser.id] ?? false : false;
+                return (
+                  <DmListItem
+                    key={dmGroup.id}
+                    group={dmGroup}
+                    currentUserId={currentUser?.id}
+                    isSelected={selectedDmGroupId === dmGroup.id}
+                    onClick={() => onSelectDmGroup(dmGroup.id)}
+                    isInCall={voiceState.isConnected && voiceState.contextType === VoiceSessionType.Dm && voiceState.currentDmGroupId === dmGroup.id}
+                    unreadCount={unreadCount(dmGroup.id)}
+                    mentionCount={mentionCount(dmGroup.id)}
+                    isOnline={isOnline}
+                  />
+                );
+              })}
+            </List>
+          </Box>
         </ListState>
       </Box>
 

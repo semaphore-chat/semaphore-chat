@@ -34,6 +34,8 @@ export const MessageEditForm: React.FC<MessageEditFormProps> = ({
       e.preventDefault();
       onSave();
     } else if (e.key === "Escape") {
+      // Handled: the global Esc shortcut must not also fire.
+      e.preventDefault();
       onCancel();
     }
   };

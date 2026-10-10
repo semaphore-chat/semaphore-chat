@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useRegisterConversation, type ConversationTarget } from "../../contexts/ShortcutsContext";
 import { Box, Typography, Paper, IconButton, Tooltip, Badge, Drawer } from "@mui/material";
 import useMediaQuery from "@mui/material/useMediaQuery";
 import SearchIcon from "@mui/icons-material/Search";
@@ -187,6 +188,24 @@ const ChannelMessageContainer: React.FC<ChannelMessageContainerProps> = ({
         : searchPanelOpen
           ? "search"
           : null;
+
+  // Esc (global shortcut, focus outside the panel): close the docked panel
+  // if one is open, otherwise mark the channel read.
+  const shortcutTarget = useMemo<ConversationTarget>(
+    () => ({
+      kind: "channel",
+      id: channelId,
+      closeDockedPanel: () => {
+        if (dockedPanel === "thread") handleCloseThread();
+        else if (dockedPanel === "pins") setPinnedPanelOpen(false);
+        else if (dockedPanel === "search") setSearchPanelOpen(false);
+        else return false;
+        return true;
+      },
+    }),
+    [channelId, dockedPanel, handleCloseThread],
+  );
+  useRegisterConversation(shortcutTarget);
 
   // Return focus when the docked panel closes, if focus went with it (to
   // <body>); a channel switch that closed it leaves focus alone. Focus goes to

@@ -17,6 +17,7 @@ import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 import LightModeOutlinedIcon from "@mui/icons-material/LightModeOutlined";
 import DarkModeOutlinedIcon from "@mui/icons-material/DarkModeOutlined";
 import LogoutIcon from "@mui/icons-material/Logout";
+import KeyboardOutlinedIcon from "@mui/icons-material/KeyboardOutlined";
 import UserAvatar from "../Common/UserAvatar";
 import ConfirmDialog from "../Common/ConfirmDialog";
 import { useLogout } from "../../hooks/useLogout";
@@ -24,6 +25,8 @@ import { useSocketConnected } from "../../hooks/useSocket";
 import { useUserPermissions } from "../../features/roles/useUserPermissions";
 import { useTheme as useThemeSettings } from "../../contexts/ThemeContext";
 import type { User } from "../../types/auth.type";
+import { useShortcuts } from "../../contexts/ShortcutsContext";
+import { ariaKeyShortcuts, shortcutHint } from "../../utils/shortcuts";
 
 interface RailUserMenuProps {
   user: User | undefined;
@@ -33,7 +36,8 @@ interface RailUserMenuProps {
 /**
  * The account button at the foot of the desktop community rail: your avatar
  * with a presence dot, opening a menu with your name and status, Profile,
- * Admin (when allowed), Settings, the theme switch and "Log out…" (confirmed).
+ * Admin (when allowed), Settings, the theme switch, "Keyboard shortcuts" (the
+ * shortcut sheet) and "Log out…" (confirmed).
  * Mute and deafen stay in the voice bar.
  */
 export const RailUserMenu: React.FC<RailUserMenuProps> = ({ user, isExpanded }) => {
@@ -43,6 +47,7 @@ export const RailUserMenu: React.FC<RailUserMenuProps> = ({ user, isExpanded }) 
   const { settings: themeSettings, toggleMode } = useThemeSettings();
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const { openShortcutSheet } = useShortcuts();
 
   // Same rule the old app bar used: the owner, or anyone who can read instance invites.
   const { hasPermissions: canViewInvites } = useUserPermissions({
@@ -149,6 +154,19 @@ export const RailUserMenu: React.FC<RailUserMenuProps> = ({ user, isExpanded }) 
             {isDark ? <LightModeOutlinedIcon fontSize="small" /> : <DarkModeOutlinedIcon fontSize="small" />}
           </ListItemIcon>
           <ListItemText>{isDark ? "Light theme" : "Dark theme"}</ListItemText>
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            close();
+            openShortcutSheet();
+          }}
+          aria-keyshortcuts={ariaKeyShortcuts(["shortcutSheet"])}
+        >
+          <ListItemIcon><KeyboardOutlinedIcon fontSize="small" /></ListItemIcon>
+          <ListItemText>Keyboard shortcuts</ListItemText>
+          <Typography variant="meta" component="span" aria-hidden sx={{ color: "text.secondary", ml: 2 }}>
+            {shortcutHint("shortcutSheet")}
+          </Typography>
         </MenuItem>
         <Divider sx={{ my: 0.5 }} />
         <MenuItem

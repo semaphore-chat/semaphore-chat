@@ -11,6 +11,7 @@ import { useAutoMarkNotificationsRead } from "../../hooks/useAutoMarkNotificatio
 import type { UserMention } from "../../utils/mentionParser";
 import { getDmHeaderName } from "../../utils/dmHelpers";
 import { VoiceSessionType } from "../../contexts/VoiceContext";
+import { useRegisterConversation, type ConversationTarget } from "../../contexts/ShortcutsContext";
 
 interface DirectMessageContainerProps {
   dmGroupId: string;
@@ -41,6 +42,10 @@ const DirectMessageContainer: React.FC<DirectMessageContainerProps> = ({
       : dmGroup?.isGroup
         ? "Message the group"
         : `Message @${dmTitle}`;
+
+  // Esc (global shortcut) marks the conversation read.
+  const shortcutTarget = React.useMemo<ConversationTarget>(() => ({ kind: "dm", id: dmGroupId }), [dmGroupId]);
+  useRegisterConversation(shortcutTarget);
 
   // Auto-mark notifications as read when viewing this DM
   useAutoMarkNotificationsRead({

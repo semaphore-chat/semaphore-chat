@@ -47,6 +47,19 @@ export const isWayland = (): boolean => {
 };
 
 /**
+ * Check if running on macOS (Electron's reported platform, else the browser's).
+ * Decides Cmd versus Ctrl for keyboard shortcuts and their labels.
+ */
+export const isMacPlatform = (): boolean => {
+  const api = getElectronAPI();
+  if (api?.platform) return api.platform === 'darwin';
+  if (typeof navigator === 'undefined') return false;
+  const uaData = (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData;
+  const platform = uaData?.platform || navigator.platform || '';
+  return /mac/i.test(platform);
+};
+
+/**
  * Check if running on mobile device
  */
 export const isMobile = (): boolean => {
@@ -134,6 +147,7 @@ export const isSecureContext = (): boolean => {
 export const platformUtils = {
   isElectron,
   isWayland,
+  isMacPlatform,
   isWeb,
   isMobile,
   isDesktopBrowser,
