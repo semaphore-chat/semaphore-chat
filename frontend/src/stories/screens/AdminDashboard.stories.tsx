@@ -76,3 +76,9 @@ export const AdminDashboardLongNumbers = defineScreen(bigCommunityScenario, '/ad
 
 /** Admin community table — community avatars are file ids resolved via AuthenticatedImage. */
 export const AdminCommunities = defineScreen(bigCommunityScenario, '/admin/communities');
+
+/** Deep link from the dashboard's "Banned users" tile: the users page opens with the Banned filter set. */
+export const AdminUsersBannedDeepLink = defineScreen(bigCommunityScenario, '/admin/users?status=banned');
+
+/** Deep link from the over-quota attention item: the storage page opens filtered to users at 90%+. */
+export const AdminStorageOverQuotaDeepLink = defineScreen(bigCommunityScenario, '/admin/storage?minPercent=90');
