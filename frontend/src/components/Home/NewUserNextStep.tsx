@@ -11,14 +11,20 @@ import { TOUCH_TARGETS } from "../../utils/breakpoints";
  * an invite link (invites are registration codes), so the step is "Create a
  * community" when they may, else "ask an admin to add you".
  */
-const NewUserNextStep: React.FC = () => {
+const NewUserNextStep: React.FC<{ fullWidth?: boolean }> = ({ fullWidth = false }) => {
   const canCreateCommunity = useCanPerformAction("INSTANCE", undefined, RBAC_ACTIONS.CREATE_COMMUNITY);
 
   return (
     <Paper
       variant="outlined"
       data-testid="new-user-next-step"
-      sx={{ p: { xs: 3, sm: 4 }, borderRadius: 2, textAlign: "center", maxWidth: 520, mx: "auto", width: "100%" }}
+      sx={{
+        p: { xs: 3, sm: 4 },
+        borderRadius: 2,
+        textAlign: "center",
+        width: "100%",
+        ...(!fullWidth && { maxWidth: 520, mx: "auto" }),
+      }}
     >
       <GroupsIcon color="primary" sx={{ fontSize: "icon.3xl", mb: 1 }} />
       <Typography variant="h6" component="h2" sx={{ fontWeight: 700 }}>

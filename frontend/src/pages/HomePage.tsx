@@ -139,7 +139,7 @@ const DesktopHomePage: React.FC = () => {
     if (communities.length === 0) {
       return (
         <>
-          <NewUserNextStep />
+          <NewUserNextStep fullWidth />
           {dmSection}
         </>
       );

@@ -53,9 +53,9 @@ export const CaughtUp = defineScreen(
 );
 CaughtUp.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920'] };
 
-/** In Electron: the desktop-app download card is gone. */
-export const BusyElectron = asElectron(defineScreen(busyScenario, '/'));
-BusyElectron.meta = { viewports: ['desktop'] };
+/** In Electron, nothing new: the desktop-app download card is gone from under the caught-up card. */
+export const CaughtUpElectron = asElectron(defineScreen(quietScenario, '/'));
+CaughtUpElectron.meta = { viewports: ['desktop'] };
 
 /** Electron's narrow (820px) window. */
 export const BusyElectronNarrow = asElectron(defineScreen(busyScenario, '/'));
