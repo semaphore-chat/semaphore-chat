@@ -215,7 +215,7 @@ async function enumerateDevicesSafe(): Promise<DiagnosticsSnapshot['devices']> {
   }
 }
 
-function getAppVersion(): string {
+export function getAppVersion(): string {
   // Vite injects this at build time; falls back gracefully in tests.
   return (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
 }

@@ -5,6 +5,7 @@ import { logger } from '../../utils/logger';
 import { VoiceFailureKind } from '../../contexts/VoiceContext';
 import type { JoinAttempt } from './joinAttemptLog';
 import { candidateTypesOf } from './iceSummary';
+import { getAppVersion } from './voiceDiagnostics';
 
 /**
  * Reports failed voice joins: to the server log (POST
@@ -16,10 +17,6 @@ export const JOIN_FAILURE_REPORT_INTERVAL_MS = 60_000;
 const MESSAGE_MAX = 500;
 
 let lastReportedAt = Number.NEGATIVE_INFINITY;
-
-function appVersion(): string {
-  return (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev';
-}
 
 function osName(): string | undefined {
   const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
@@ -54,7 +51,7 @@ export function reportJoinFailure(attempt: JoinAttempt, now: number = Date.now()
       candidateTypes: candidateTypes.length > 0 ? candidateTypes : undefined,
       platform: isElectron() ? 'electron' : 'web',
       os: osName(),
-      appVersion: appVersion().slice(0, 64),
+      appVersion: getAppVersion().slice(0, 64),
       channelId: attempt.target.type === 'channel' ? attempt.target.channelId : undefined,
       isDm: attempt.target.type === 'dm',
     },
