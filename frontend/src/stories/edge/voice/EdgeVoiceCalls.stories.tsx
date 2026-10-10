@@ -9,6 +9,7 @@
  */
 import { ServerEvents } from '@semaphore-chat/shared';
 import { TypeIntoTextareaOnMount } from '../../fixtures/interactions';
+import { withOpenedContextRead } from '../../fixtures/modifiers';
 import {
   channelVoiceState,
   createControllableSocket,
@@ -47,7 +48,10 @@ const callStarted = (dmGroupId: string, caller = edgeDmPartner) => ({
  * chat (the split view is desktop-only).
  */
 const dmPair: VoicePersona[] = [{ user: me }, { user: edgeDmPartner, speaking: true }];
-export const DmCallConnected = defineEdgeScreen(scenario, {
+// The open conversations are read (`withOpenedContextRead`): the app clears what it shows, so
+// seeding them unread would leave the rail's Direct Messages badge racing that clear.
+const dmScenario = withOpenedContextRead(scenario, edgeDmGroup.id);
+export const DmCallConnected = defineEdgeScreen(dmScenario, {
   path: dmPath,
   voiceState: dmVoiceState(edgeDmGroup.id, partnerName),
   room: createMediaRoom(dmPair[0], dmPair.slice(1)),
@@ -56,7 +60,7 @@ export const DmCallConnected = defineEdgeScreen(scenario, {
 
 /** DM video call: both cameras on (simulated feeds), video tiles shown — desktop split view with both feeds. */
 const dmVideo: VoicePersona[] = [{ user: me, camera: true }, { user: edgeDmPartner, camera: true, speaking: true }];
-export const DmVideoCall = defineEdgeScreen(scenario, {
+export const DmVideoCall = defineEdgeScreen(dmScenario, {
   path: dmPath,
   voiceState: dmVoiceState(edgeDmGroup.id, partnerName, {
     showVideoTiles: true,
@@ -79,7 +83,7 @@ const groupCall: VoicePersona[] = [
   { user: me },
   ...groupMembers.map((user, i) => ({ user, speaking: i === 0, camera: i === 0, micOn: i !== 2 })),
 ];
-export const DmGroupCallSplitView = defineEdgeScreen(scenario, {
+export const DmGroupCallSplitView = defineEdgeScreen(withOpenedContextRead(scenario, groupDm.id), {
   path: `/direct-messages/${groupDm.id}`,
   voiceState: dmVoiceState(groupDm.id, groupDm.name ?? 'Group call', {
     watchingCameras: new Set(groupMembers.slice(0, 1).map((u) => u.id)),

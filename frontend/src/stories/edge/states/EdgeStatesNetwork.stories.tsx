@@ -7,7 +7,7 @@
  */
 import { edgeScreen } from '../../fixtures/edge/states';
 import { defaultSettings } from '../../../theme/constants';
-import { withLongNames, withUnread } from '../../fixtures/modifiers';
+import { withLongNames, withOpenedContextRead, withUnread } from '../../fixtures/modifiers';
 import {
   bigCommunityScenario,
   primaryCommunity,
@@ -34,7 +34,9 @@ export const OfflineNotifications = edgeScreen(s, '/notifications', { offline: t
 
 export const ReconnectingChannelChat = edgeScreen(s, chatPath, { isSocketConnected: false });
 
-export const ReconnectingDmChat = edgeScreen(s, dmPath, { isSocketConnected: false });
+export const ReconnectingDmChat = edgeScreen(withOpenedContextRead(s, firstDmGroup.id), dmPath, {
+  isSocketConnected: false,
+});
 
 /** Reconnecting while in a voice call — the chip must sit above the voice bar. */
 export const ReconnectingWithVoice = edgeScreen(s, chatPath, { isSocketConnected: false, voice: true });

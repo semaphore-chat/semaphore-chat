@@ -41,6 +41,20 @@ export function withUnread(scenario: Scenario, contextId: string, unreadCount: n
   return { ...scenario, unreadByContextId: next };
 }
 
+/**
+ * The scenario as the app leaves it once the conversation `contextId` is on screen: that
+ * conversation read. The app marks the open conversation read as soon as its newest message is
+ * visible (`useMessageVisibility`), so a story whose route opens that conversation must apply this
+ * — otherwise the unread badges a screenshot catches (the rail's Direct Messages count, the
+ * bottom navigation, the DM list rows) depend on whether that async clear has landed yet, and the
+ * same story comes out with different numbers from one capture to the next. The exception is a
+ * conversation the app never gets to read (its messages hang, fail or don't exist): there the
+ * seed is faithful and nothing races.
+ */
+export function withOpenedContextRead(scenario: Scenario, contextId: string): Scenario {
+  return withUnread(scenario, contextId, 0);
+}
+
 /** Seed `n` scenario users (or explicit users) into a voice channel's presence list. */
 export function withVoiceParticipants(
   scenario: Scenario,

@@ -3,6 +3,7 @@ import { asElectron } from '../fixtures/electron';
 import { ClickOnMount, ScrollToBottomOnMount } from '../fixtures/interactions';
 import { findScrollablesIn } from '../fixtures/domQueries';
 import { bigCommunityScenario, primaryCommunity, generalChannel, firstDmGroup } from '../fixtures/scenarios';
+import { withOpenedContextRead } from '../fixtures/modifiers';
 import { edgeScreen } from '../fixtures/edge/states';
 import {
   defineNavScreen,
@@ -36,7 +37,9 @@ export const ChannelChat = asElectron(
 ChannelChat.meta = { viewports: ['tablet'] };
 
 /** An open DM: the DM list and the conversation side by side at 820px. */
-export const DmChat = asElectron(defineScreen(bigCommunityScenario, `/direct-messages/${firstDmGroup.id}`));
+export const DmChat = asElectron(
+  defineScreen(withOpenedContextRead(bigCommunityScenario, firstDmGroup.id), `/direct-messages/${firstDmGroup.id}`),
+);
 DmChat.meta = { viewports: ['tablet'] };
 
 /** Friends: the desktop card, not the tablet's full-bleed page. */
@@ -60,7 +63,7 @@ ChannelChatMembersOpen.meta = { viewports: ['tablet'] };
 
 /** The DM's participants, opened from the DM header's members button. */
 export const DmChatMembersOpen = asElectron(
-  defineScreen(bigCommunityScenario, `/direct-messages/${firstDmGroup.id}`, {
+  defineScreen(withOpenedContextRead(bigCommunityScenario, firstDmGroup.id), `/direct-messages/${firstDmGroup.id}`, {
     overlay: <ClickOnMount find={showMembersButton} />,
   }),
 );
@@ -97,5 +100,7 @@ const unnamedBigGroup = longNameDms.dmGroups.find((g) => g.members.length >= 10 
 
 /** An unnamed 15-person group DM: the long name truncates, and the call and
  * members buttons stay in the header. */
-export const DmChatLongName = asElectron(defineNavScreen(longNameDms, `/direct-messages/${unnamedBigGroup.id}`));
+export const DmChatLongName = asElectron(
+  defineNavScreen(withOpenedContextRead(longNameDms, unnamedBigGroup.id), `/direct-messages/${unnamedBigGroup.id}`),
+);
 DmChatLongName.meta = { viewports: ['tablet'] };

@@ -580,6 +580,7 @@ export function defineEdgeScreen(scenario: Scenario, options: EdgeScreenOptions)
     return createElement(SandboxShell, { path, voiceState }, tree);
   };
   Story.msw = makeHandlers(scenario, { extraHandlers: [...(extraHandlers ?? []), ...voiceHeartbeatHandlers] });
+  Story.path = path;
   return Story;
 }
 

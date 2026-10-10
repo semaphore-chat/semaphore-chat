@@ -243,6 +243,7 @@ export function edgeScreen(scenario: Scenario, path: string, options: EdgeScreen
   const extra = [...(options.extraHandlers ?? [])];
   if (options.theme) extra.push(appearanceHandler(scenario, options.theme));
   Screen.msw = makeHandlers(scenario, { extraHandlers: extra });
+  Screen.path = path;
   return Screen;
 }
 
