@@ -37,6 +37,8 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
   const [activeStep, setActiveStep] = useState(onCancel ? 1 : 0);
   // Whether the server can sign the app in through the browser
   const [browserLoginSupported, setBrowserLoginSupported] = useState(false);
+  // The server that passed the connection test, saved on confirm (commitServer)
+  const [pendingServer, setPendingServer] = useState<{ name: string; url: string } | null>(null);
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [error, setError] = useState('');
@@ -136,15 +138,10 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
         }
       }
 
-      // Save server (activeStep 1 === steps.length - 2, so save happens here)
-      try {
-        addOrActivateServer(serverName || new URL(cleanUrl).hostname || 'My Server', cleanUrl);
-        // A session (refresh token) belongs to the server it came from
-        clearTokens();
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to save server');
-        return;
-      }
+      // Saved only when the user confirms on the last step (commitServer):
+      // leaving the wizard before that (Escape when changing server) keeps
+      // the current server, its session and the app pointing at it
+      setPendingServer({ name: serverName || new URL(cleanUrl).hostname || 'My Server', url: cleanUrl });
     }
 
     setActiveStep((prevStep) => prevStep + 1);
@@ -155,11 +152,30 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+  /**
+   * Make the tested server the active one, all at once with the reload that
+   * onComplete does: storage never names a server the running app isn't
+   * about to use.
+   */
+  const commitServer = (): boolean => {
+    if (!pendingServer) return false;
+    try {
+      addOrActivateServer(pendingServer.name, pendingServer.url);
+      // A session (refresh token) belongs to the server it came from
+      clearTokens();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save server');
+      return false;
+    }
+  };
+
   const handleFinish = () => {
-    onComplete();
+    if (commitServer()) onComplete();
   };
 
   const handleSignInWithBrowser = () => {
+    if (!commitServer()) return;
     // The login screen starts it once the app has reloaded onto this server
     requestBrowserLoginOnLoad();
     onComplete();
@@ -225,6 +241,11 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
             <Typography variant="h5" gutterBottom color="success.main">
               ✓ Connected Successfully!
             </Typography>
+            {error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )}
             <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
               <Typography variant="body2">
                 <strong>{serverName || 'Server'}</strong>

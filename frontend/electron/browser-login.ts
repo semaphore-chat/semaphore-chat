@@ -214,3 +214,45 @@ export async function startBrowserLogin(options: {
 
   return { url, result, cancel: () => finish({ status: 'cancelled' }) };
 }
+
+/**
+ * The app's browser sign-in, one at a time: starting one cancels the last,
+ * and a cancel (or a newer start) that lands while an attempt is still
+ * binding its listener closes that listener as soon as it is bound, instead
+ * of leaving it up until its timeout.
+ */
+export class BrowserLoginSessions {
+  private active: BrowserLoginAttempt | null = null;
+  /** Bumped by every cancel, and so by every begin. */
+  private generation = 0;
+
+  constructor(private readonly start: typeof startBrowserLogin = startBrowserLogin) {}
+
+  /**
+   * Start an attempt. Resolves null if it was cancelled or replaced while
+   * starting (its listener is closed already); throws what `start` throws.
+   */
+  async begin(options: Parameters<typeof startBrowserLogin>[0]): Promise<BrowserLoginAttempt | null> {
+    this.cancel();
+    const generation = this.generation;
+    const attempt = await this.start(options);
+    if (generation !== this.generation) {
+      attempt.cancel();
+      return null;
+    }
+    this.active = attempt;
+    return attempt;
+  }
+
+  /** Cancel the attempt in progress, including one still starting. */
+  cancel(): void {
+    this.generation++;
+    this.active?.cancel();
+    this.active = null;
+  }
+
+  /** Forget an attempt that has settled. */
+  finished(attempt: BrowserLoginAttempt): void {
+    if (this.active === attempt) this.active = null;
+  }
+}

@@ -67,4 +67,48 @@ describe('ConnectionWizard', () => {
     expect(consumeBrowserLoginOnLoad()).toBe(true);
     expect(screen.getByRole('button', { name: /sign in with password/i })).toBeInTheDocument();
   });
+
+  it('changing server: leaving on the last step keeps the current server and session', async () => {
+    const old = addServer('Old', 'https://old.example.com');
+    localStorage.setItem('refreshToken', 'old-session');
+    serverAnswers({ desktopBrowserLogin: false });
+    const onCancel = vi.fn();
+    const onComplete = vi.fn();
+    const { user } = renderWithProviders(
+      <ConnectionWizard open onCancel={onCancel} onComplete={onComplete} />,
+      { electronAPI: createFakeElectronAPI() },
+    );
+
+    await connect(user);
+    await screen.findByRole('button', { name: /^finish$/i });
+    // Tested, not switched yet
+    expect(getActiveServer()?.id).toBe(old.id);
+    await user.keyboard('{Escape}');
+
+    expect(onCancel).toHaveBeenCalled();
+    expect(onComplete).not.toHaveBeenCalled();
+    expect(getActiveServer()?.id).toBe(old.id);
+    expect(getServers()).toHaveLength(1);
+    expect(localStorage.getItem('refreshToken')).toBe('old-session');
+  });
+
+  it('changing server: confirming switches and drops the old session together', async () => {
+    addServer('Old', 'https://old.example.com');
+    localStorage.setItem('refreshToken', 'old-session');
+    serverAnswers({ desktopBrowserLogin: false });
+    const onComplete = vi.fn(() => {
+      // What the app reloads onto
+      expect(getActiveServer()?.url).toBe(NEW_SERVER);
+      expect(localStorage.getItem('refreshToken')).toBeNull();
+    });
+    const { user } = renderWithProviders(
+      <ConnectionWizard open onCancel={vi.fn()} onComplete={onComplete} />,
+      { electronAPI: createFakeElectronAPI() },
+    );
+
+    await connect(user);
+    await user.click(await screen.findByRole('button', { name: /^finish$/i }));
+
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
 });

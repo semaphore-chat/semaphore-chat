@@ -101,6 +101,16 @@ describe('DeviceLoginGrantService', () => {
       });
     });
 
+    it.each(['too-short', 'c'.repeat(44), `${'c'.repeat(42)}=`, ''])(
+      'refuses a malformed challenge %p',
+      async (bad) => {
+        await expect(service.createApproved(bad, approver)).rejects.toThrow(
+          'Invalid code challenge',
+        );
+        expect(redis.set).not.toHaveBeenCalled();
+      },
+    );
+
     it('mints a different code each time', async () => {
       const a = await service.createApproved(challenge, approver);
       const b = await service.createApproved(challenge, approver);

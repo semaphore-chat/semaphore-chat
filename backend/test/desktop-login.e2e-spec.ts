@@ -163,6 +163,16 @@ describe('Desktop sign-in with browser (e2e)', () => {
       .expect(401);
   });
 
+  it('refuses a garbage bearer token even with a valid cookie', async () => {
+    const browser = await browserSignIn();
+    await request(server())
+      .post('/api/auth/desktop/authorize')
+      .set('Authorization', 'Bearer garbage')
+      .set('Cookie', `access_token=${browser.accessToken}`)
+      .send({ codeChallenge: pkce().challenge, codeChallengeMethod: 'S256' })
+      .expect(401);
+  });
+
   it('rejects malformed requests', async () => {
     const browser = await browserSignIn();
     await authorize(browser.accessToken, 'too-short').expect(400);

@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import { parseDeepLink, extractDeepLinkUrls, DEEP_LINK_PROTOCOL, type DeepLinkRoute } from './deep-link-parser';
-import { startBrowserLogin, type BrowserLoginAttempt, type BrowserLoginResult } from './browser-login';
+import { BrowserLoginSessions, type BrowserLoginAttempt, type BrowserLoginResult } from './browser-login';
 import { choosePasswordStore, probeSecretService } from './passwordStore';
 import log from 'electron-log/main';
 import { formatVoiceLogEntry } from './voiceLog';
@@ -825,14 +825,14 @@ function setupIpcHandlers() {
       if (typeof instanceUrl !== 'string' || typeof codeChallenge !== 'string') {
         return { status: 'error', message: 'Invalid request' };
       }
-      activeBrowserLogin?.cancel();
-      let attempt: BrowserLoginAttempt;
+      let attempt: BrowserLoginAttempt | null;
       try {
-        attempt = await startBrowserLogin({ instanceUrl, codeChallenge });
+        attempt = await browserLogins.begin({ instanceUrl, codeChallenge });
       } catch (error) {
         return { status: 'error', message: error instanceof Error ? error.message : String(error) };
       }
-      activeBrowserLogin = attempt;
+      // Cancelled or replaced while its listener was binding (closed already)
+      if (!attempt) return { status: 'cancelled' };
       try {
         await shell.openExternal(attempt.url);
       } catch (error) {
@@ -840,7 +840,7 @@ function setupIpcHandlers() {
         return { status: 'error', message: `Could not open the browser: ${String(error)}` };
       }
       const result = await attempt.result;
-      if (activeBrowserLogin === attempt) activeBrowserLogin = null;
+      browserLogins.finished(attempt);
       if (result.status === 'code' && mainWindow) {
         if (!mainWindow.isVisible()) mainWindow.show();
         if (mainWindow.isMinimized()) mainWindow.restore();
@@ -850,14 +850,16 @@ function setupIpcHandlers() {
     },
   );
 
-  ipcMain.handle('browser-login:cancel', () => {
-    activeBrowserLogin?.cancel();
-    activeBrowserLogin = null;
-  });
+  ipcMain.handle('browser-login:cancel', () => cancelBrowserLogin());
 }
 
-/** The browser sign-in in progress, if any (see 'browser-login:start'). */
-let activeBrowserLogin: BrowserLoginAttempt | null = null;
+/** The browser sign-in, one at a time (see 'browser-login:start'). */
+const browserLogins = new BrowserLoginSessions();
+
+/** Cancel the browser sign-in in progress, including one still starting. */
+function cancelBrowserLogin(): void {
+  browserLogins.cancel();
+}
 
 /**
  * Tell the renderer when the system wakes from sleep or the screen is
@@ -963,14 +965,14 @@ function createWindow() {
 
   // Handle window destroyed
   mainWindow.on('closed', () => {
-    activeBrowserLogin?.cancel();
+    cancelBrowserLogin();
     mainWindow = null;
   });
 
   // A reload (e.g. after changing server) or a crashed renderer abandons a
   // browser sign-in: nobody is left holding its PKCE verifier
-  mainWindow.webContents.on('did-start-loading', () => activeBrowserLogin?.cancel());
-  mainWindow.webContents.on('render-process-gone', () => activeBrowserLogin?.cancel());
+  mainWindow.webContents.on('did-start-loading', () => cancelBrowserLogin());
+  mainWindow.webContents.on('render-process-gone', () => cancelBrowserLogin());
 
   // Open target="_blank" links in the OS default browser instead of a new Electron window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

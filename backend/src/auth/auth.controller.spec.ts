@@ -1239,6 +1239,33 @@ describe('AuthController', () => {
         expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
       });
 
+      it('refuses a bearer token of another user than the one authenticated', async () => {
+        jwtService.decode.mockReturnValue({ ...claims, sub: 'someone-else' });
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer other-users-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
+      it('refuses a garbage bearer token even next to a valid cookie', async () => {
+        // decode() of something that isn't a JWT
+        jwtService.decode.mockReturnValue(null);
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer garbage' },
+          cookies: { access_token: 'valid-cookie-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(jwtService.decode).toHaveBeenCalledWith('garbage');
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
       it('refuses a token without a session', async () => {
         jwtService.decode.mockReturnValue({ ...claims, sid: undefined });
         const req = {

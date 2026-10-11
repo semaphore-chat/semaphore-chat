@@ -22,14 +22,18 @@ import {
 } from "../utils/desktopLogin";
 import { logger } from "../utils/logger";
 
-/** Sends the browser to the app's loopback listener. A seam for tests and stories. */
 export interface DesktopLoginPageProps {
+  /** Sends the browser to the app's loopback listener. A seam for tests and stories. */
   redirect?: (url: string) => void;
   /** Start in another state (stories). */
   initialPhase?: DesktopLoginPhase;
 }
 
-const defaultRedirect = (url: string) => window.location.assign(url);
+/**
+ * Replace, not assign: neither the callback URL (with its code) nor this
+ * confirm page stays in the browser's history, so Back can't replay either.
+ */
+const defaultRedirect = (url: string) => window.location.replace(url);
 
 export type DesktopLoginPhase = "confirm" | "handing-over" | "cancelled";
 

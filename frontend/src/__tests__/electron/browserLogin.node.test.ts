@@ -6,6 +6,7 @@
 import http from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BrowserLoginSessions,
   buildBrowserLoginUrl,
   startBrowserLogin,
   type BrowserLoginAttempt,
@@ -116,5 +117,63 @@ describe('startBrowserLogin', () => {
       timeoutMs: 20,
     });
     await expect(slow.result).resolves.toEqual({ status: 'timeout' });
+  });
+});
+
+describe('BrowserLoginSessions', () => {
+  const options = { instanceUrl: 'https://chat.example.com', codeChallenge: CHALLENGE };
+
+  /** A start whose listeners bind when the test says so, in call order. */
+  function slowStart() {
+    const attempts: BrowserLoginAttempt[] = [];
+    const binders: (() => Promise<void>)[] = [];
+    const start = (opts: typeof options) =>
+      new Promise<BrowserLoginAttempt>((resolve) => {
+        binders.push(async () => {
+          const attempt = await startBrowserLogin(opts);
+          attempts.push(attempt);
+          resolve(attempt);
+        });
+      });
+    const bind = async () => {
+      for (const binder of binders.splice(0)) await binder();
+    };
+    return { start, attempts, bind };
+  }
+
+  it('closes an attempt cancelled while its listener was binding', async () => {
+    const slow = slowStart();
+    const sessions = new BrowserLoginSessions(slow.start);
+
+    const begun = sessions.begin(options);
+    sessions.cancel();
+    await slow.bind();
+
+    await expect(begun).resolves.toBeNull();
+    await expect(slow.attempts[0].result).resolves.toEqual({ status: 'cancelled' });
+    const { port } = paramsOf(slow.attempts[0]);
+    await expect(get(`http://127.0.0.1:${port}/callback`)).rejects.toThrow();
+  });
+
+  it('a newer start replaces one still binding; cancel ends the running one', async () => {
+    const slow = slowStart();
+    const sessions = new BrowserLoginSessions(slow.start);
+
+    const first = sessions.begin(options);
+    const second = sessions.begin(options);
+    await slow.bind();
+
+    await expect(first).resolves.toBeNull();
+    await expect(slow.attempts[0].result).resolves.toEqual({ status: 'cancelled' });
+    const running = await second;
+    expect(running).toBe(slow.attempts[1]);
+
+    // A start after it has bound cancels it too
+    const next = sessions.begin(options);
+    await expect(running!.result).resolves.toEqual({ status: 'cancelled' });
+    await slow.bind();
+    const latest = await next;
+    sessions.cancel();
+    await expect(latest!.result).resolves.toEqual({ status: 'cancelled' });
   });
 });

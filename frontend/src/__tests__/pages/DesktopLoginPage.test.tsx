@@ -120,4 +120,28 @@ describe('DesktopLoginPage', () => {
     expect(screen.queryByRole('button', { name: /sign in to the desktop app/i })).not.toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
   });
+
+  it('replaces the history entry when handing over, so Back skips the code', async () => {
+    const replace = vi.fn();
+    const assign = vi.fn();
+    const location = vi.spyOn(window, 'location', 'get').mockReturnValue({
+      ...window.location,
+      replace,
+      assign,
+    } as Location);
+    try {
+      const { user } = renderWithProviders(<DesktopLoginPage />, {
+        routerProps: { initialEntries: [`/desktop-login?${query}`] },
+      });
+      await user.click(screen.getByRole('button', { name: /^sign in to the desktop app$/i }));
+      await waitFor(() =>
+        expect(replace).toHaveBeenCalledWith(
+          `http://127.0.0.1:51234/callback?code=${code}&state=${state}`,
+        ),
+      );
+      expect(assign).not.toHaveBeenCalled();
+    } finally {
+      location.mockRestore();
+    }
+  });
 });

@@ -1,4 +1,9 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import Redis from 'ioredis';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
@@ -128,6 +133,10 @@ export class DeviceLoginGrantService {
     codeChallenge: string,
     approver: AccessTokenClaims & { sid: string },
   ): Promise<{ id: string; expiresInSeconds: number }> {
+    // The DTO checks it too; this service may get other callers (QR login)
+    if (!CODE_CHALLENGE_PATTERN.test(codeChallenge)) {
+      throw new BadRequestException('Invalid code challenge');
+    }
     const id = randomBytes(GRANT_ID_BYTES).toString('base64url');
     const grant: DeviceLoginGrant = {
       id,
