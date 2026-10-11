@@ -23,6 +23,13 @@ const baseSummary = (): HomeSummary => ({
 });
 
 let mockSummary: HomeSummary = baseSummary();
+
+// The shell's measured width (null = not measured, as in jsdom).
+const shell = vi.hoisted(() => ({ width: null as number | null }));
+vi.mock('../../components/Common/PageShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../components/Common/PageShell')>()),
+  useShellWidth: () => shell.width,
+}));
 vi.mock('../../hooks/useHomeSummary', () => ({ useHomeSummary: () => mockSummary }));
 vi.mock('../../hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: { id: 'me', username: 'me' }, isLoading: false, isError: false }),
@@ -44,6 +51,7 @@ describe('HomePage', () => {
   beforeEach(() => {
     mockSummary = baseSummary();
     mockPerms = {};
+    shell.width = null;
     localStorage.clear();
   });
 
@@ -175,6 +183,78 @@ describe('HomePage', () => {
       setElectronAPIOverride(createFakeElectronAPI());
       renderWithProviders(<HomePage />);
       expect(screen.queryByTestId('home-download-card')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('layout by shell width', () => {
+    const busy = () => {
+      mockSummary.mentions = [
+        { channelId: 'ch1', channelName: 'general', communityId: 'c1', communityName: 'Gaming', mentionCount: 3 },
+      ];
+      mockSummary.unreadDms = [
+        {
+          group: createDmGroup({
+            id: 'dm1',
+            members: [
+              createDmGroupMember({ userId: 'me', user: { id: 'me', username: 'me' } }),
+              createDmGroupMember({ userId: 'u2', user: { id: 'u2', username: 'alice', displayName: 'Alice' } }),
+            ],
+          }),
+          unreadCount: 2,
+        },
+      ] as HomeSummary['unreadDms'];
+    };
+    const layout = () => screen.getByTestId('home-layout').getAttribute('data-layout');
+
+    it('is one column before the shell is measured and below 1200px', () => {
+      busy();
+      const { unmount } = renderWithProviders(<HomePage />);
+      expect(layout()).toBe('column');
+      unmount();
+      shell.width = 1150;
+      renderWithProviders(<HomePage />);
+      expect(layout()).toBe('column');
+    });
+
+    it('puts Mentions and Unread messages side by side from 1200px', () => {
+      busy();
+      shell.width = 1300;
+      renderWithProviders(<HomePage />);
+      expect(layout()).toBe('two');
+      const pair = screen.getByTestId('home-pair');
+      expect(within(pair).getByTestId('home-mentions')).toBeInTheDocument();
+      expect(within(pair).getByTestId('home-unread-dms')).toBeInTheDocument();
+      expect(screen.queryByTestId('home-side')).not.toBeInTheDocument();
+    });
+
+    it('moves the invite and download cards to a side column from 1560px', () => {
+      busy();
+      mockPerms = { CREATE_INSTANCE_INVITE: true };
+      shell.width = 1600;
+      renderWithProviders(<HomePage />);
+      expect(layout()).toBe('side');
+      const side = screen.getByRole('complementary', { name: 'Get started' });
+      expect(within(side).getByTestId('home-invite-card')).toBeInTheDocument();
+      expect(within(side).getByTestId('home-download-card')).toBeInTheDocument();
+    });
+
+    it('drops the side column once the invite card is dismissed in Electron (nothing left for it)', async () => {
+      busy();
+      mockPerms = { CREATE_INSTANCE_INVITE: true };
+      setElectronAPIOverride(createFakeElectronAPI());
+      shell.width = 1600;
+      const { user } = renderWithProviders(<HomePage />);
+      expect(layout()).toBe('side');
+      await user.click(screen.getByRole('button', { name: 'Dismiss invite card' }));
+      expect(layout()).toBe('two');
+      expect(screen.queryByTestId('home-side')).not.toBeInTheDocument();
+    });
+
+    it('keeps "all caught up" in one readable column at any width', () => {
+      shell.width = 2000;
+      renderWithProviders(<HomePage />);
+      expect(layout()).toBe('column');
+      expect(screen.getByTestId('home-caught-up')).toBeInTheDocument();
     });
   });
 });

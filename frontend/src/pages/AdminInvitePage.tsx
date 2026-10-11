@@ -251,7 +251,7 @@ const AdminInvitePage: React.FC = () => {
 
   if (!canViewInvites) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4 }}>
         <Alert severity="error">
           You don't have permission to view instance invites.
         </Alert>
@@ -261,7 +261,7 @@ const AdminInvitePage: React.FC = () => {
 
   if (loadingInvites) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4 }}>
         <Box display="flex" justifyContent="center" alignItems="center" minHeight="60vh">
           <CircularProgress />
         </Box>
@@ -271,7 +271,7 @@ const AdminInvitePage: React.FC = () => {
 
   if (invitesError) {
     return (
-      <Container maxWidth="lg" sx={{ py: 4 }}>
+      <Container maxWidth={false} sx={{ py: 4 }}>
         <Alert severity="error" action={
           <Button onClick={() => refetch()}>Retry</Button>
         }>
@@ -282,7 +282,7 @@ const AdminInvitePage: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth={false} sx={{ py: 4 }}>
       {/* Header */}
       <Box mb={4}>
         <Typography variant="h4" gutterBottom>

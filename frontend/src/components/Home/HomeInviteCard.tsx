@@ -37,17 +37,41 @@ function writeDismissed() {
 
 const inviteUrl = (code: string) => `${getInstanceUrl()}/#/join/${code}`;
 
-/** "Invite people" for users who may create instance invites; dismissible per browser. */
-const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ communities }) => {
-  const queryClient = useQueryClient();
+/**
+ * Whether Home shows the invite card (the user may create instance invites and
+ * hasn't dismissed it in this browser), and how to dismiss it. Home reads it to
+ * lay out its side column; the card uses it when Home doesn't pass `onDismiss`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components
+export function useHomeInviteCard() {
   const [dismissed, setDismissed] = useState(readDismissed);
-  const [lastCode, setLastCode] = useState<string | null>(null);
-  const [snackbar, setSnackbar] = useState<string | null>(null);
-
   const { hasPermissions: canCreateInvites } = useUserPermissions({
     resourceType: "INSTANCE",
     actions: ["CREATE_INSTANCE_INVITE"],
   });
+  const dismiss = () => {
+    writeDismissed();
+    setDismissed(true);
+  };
+  return { visible: canCreateInvites && !dismissed, dismiss };
+}
+
+interface HomeInviteCardProps {
+  communities: CommunityResponseDto[];
+  /**
+   * Controlled: the parent decides visibility (with `useHomeInviteCard`) and
+   * this dismisses it. Without it the card hides and dismisses itself.
+   */
+  onDismiss?: () => void;
+}
+
+/** "Invite people" for users who may create instance invites; dismissible per browser. */
+const HomeInviteCard: React.FC<HomeInviteCardProps> = ({ communities, onDismiss }) => {
+  const queryClient = useQueryClient();
+  const own = useHomeInviteCard();
+  const [lastCode, setLastCode] = useState<string | null>(null);
+  const [snackbar, setSnackbar] = useState<string | null>(null);
+
   const { hasPermissions: canViewInvites } = useUserPermissions({
     resourceType: "INSTANCE",
     actions: ["READ_INSTANCE_INVITE"],
@@ -58,7 +82,7 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
     onSuccess: () => invalidateInviteQueries(queryClient),
   });
 
-  if (!canCreateInvites || dismissed) return null;
+  if (!onDismiss && !own.visible) return null;
 
   const handleQuickInvite = async () => {
     try {
@@ -95,10 +119,7 @@ const HomeInviteCard: React.FC<{ communities: CommunityResponseDto[] }> = ({ com
     }
   };
 
-  const handleDismiss = () => {
-    writeDismissed();
-    setDismissed(true);
-  };
+  const handleDismiss = onDismiss ?? own.dismiss;
 
   return (
     <Paper

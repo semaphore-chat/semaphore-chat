@@ -87,15 +87,36 @@ export const CODE_BLOCK_MAX_WIDTH = "120ch";
 export const CODE_BLOCK_UNWRAP_MIN_COLUMN_PX = 720;
 
 /**
- * Page shells (components/Common/PageShell.tsx), desktop only. List pages
- * (notifications, friends, profile, admin tables) cap at PAGE_LIST_MAX_WIDTH,
- * left-aligned at the content edge. Form pages put a FORM_NAV_WIDTH section
- * nav next to a FORM_COLUMN_WIDTH column (FORM_WIDE_COLUMN_WIDTH for tables);
- * when the shell is narrower than FORM_SHELL_COLLAPSE_PX (an 800px Electron
- * window, the expanded rail) the nav becomes a row of tabs above the column.
+ * Page shells (components/Common/PageShell.tsx), desktop only. List pages cap
+ * at PAGE_LIST_MAX_WIDTH by default; a page can ask for another cap
+ * (PAGE_FEED_MAX_WIDTH for a readable feed, PAGE_PROFILE_MAX_WIDTH,
+ * PAGE_WIDE_MAX_WIDTH for Home's grid and the admin tables). User pages are
+ * centred in the content area; admin stays left-aligned next to its drawer.
+ * Form pages put a FORM_NAV_WIDTH section nav next to a FORM_COLUMN_WIDTH
+ * column (a fluid column up to FORM_WIDE_COLUMN_WIDTH for tables); when the
+ * shell is narrower than FORM_SHELL_COLLAPSE_PX (an 800px Electron window, the
+ * expanded rail) the nav becomes a row of tabs above the column.
  */
 export const PAGE_LIST_MAX_WIDTH = 960;
+export const PAGE_FEED_MAX_WIDTH = 800;
+export const PAGE_PROFILE_MAX_WIDTH = 1200;
+export const PAGE_WIDE_MAX_WIDTH = 1600;
 export const FORM_NAV_WIDTH = 220;
 export const FORM_COLUMN_WIDTH = 680;
-export const FORM_WIDE_COLUMN_WIDTH = 960;
+export const FORM_WIDE_COLUMN_WIDTH = 1280;
 export const FORM_SHELL_COLLAPSE_PX = 940;
+
+/**
+ * Home's layout by the shell's own width (not the viewport): one column below
+ * HOME_TWO_COLUMN_PX, Mentions | Unread messages side by side from it, and from
+ * HOME_SIDE_COLUMN_PX a HOME_SIDE_COLUMN_WIDTH column for the invite and
+ * download cards.
+ */
+export const HOME_TWO_COLUMN_PX = 1200;
+export const HOME_SIDE_COLUMN_PX = 1560;
+export const HOME_SIDE_COLUMN_WIDTH = 340;
+
+/** Friends: from this shell width the list gets a side panel (add friend, pending requests). */
+export const FRIENDS_SPLIT_PX = 1200;
+export const FRIENDS_LIST_MAX_WIDTH = 720;
+export const FRIENDS_SIDE_PANEL_WIDTH = 380;

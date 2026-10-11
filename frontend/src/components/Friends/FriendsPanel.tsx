@@ -22,12 +22,19 @@ interface FriendsPanelProps {
   compact?: boolean;
   /** Hide the "Friends" heading (the mobile app bar already shows it). */
   hideTitle?: boolean;
+  /**
+   * "tabs" (default): All | Pending tabs and an "Add Friend" button.
+   * "list": the friend list only, for the wide Friends page, whose side panel
+   * has the add-friend form and the pending requests.
+   */
+  layout?: "tabs" | "list";
 }
 
 const FriendsPanel: React.FC<FriendsPanelProps> = ({
   onSelectDmGroup,
   compact = false,
   hideTitle = false,
+  layout = "tabs",
 }) => {
   const [tabValue, setTabValue] = useState<"all" | "pending">("all");
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -38,6 +45,19 @@ const FriendsPanel: React.FC<FriendsPanelProps> = ({
   const friendsCount = friends?.length || 0;
   const pendingCount = (requests?.received.length || 0) + (requests?.sent.length || 0);
   const incomingCount = requests?.received.length || 0;
+
+  if (layout === "list") {
+    return (
+      <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
+          <Typography variant="h6">Friends ({friendsCount})</Typography>
+        </Box>
+        <Box sx={{ flex: 1, overflow: "auto" }}>
+          <FriendList onSelectDmGroup={onSelectDmGroup} />
+        </Box>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: "flex", flexDirection: "column", height: "100%" }}>

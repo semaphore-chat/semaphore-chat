@@ -16,13 +16,16 @@ import PageError from "../components/Common/PageError";
 import { PROFILE_ERROR_COPY } from "../utils/pageError";
 import { ClipLibrary } from "../components/Profile/ClipLibrary";
 import { ListPageShell } from "../components/Common/PageShell";
+import { PAGE_PROFILE_MAX_WIDTH } from "../constants/layout";
 import { useResponsive } from "../hooks/useResponsive";
 
 /** Desktop: the list page shell. Phone/tablet: the centred container they had. */
 const PageFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isDesktop } = useResponsive();
   return isDesktop ? (
-    <ListPageShell>{children}</ListPageShell>
+    <ListPageShell maxWidth={PAGE_PROFILE_MAX_WIDTH} align="center">
+      {children}
+    </ListPageShell>
   ) : (
     <Container maxWidth="md" sx={{ py: 3 }}>
       {children}

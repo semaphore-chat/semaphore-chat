@@ -228,7 +228,17 @@ const StatTile: React.FC<StatTileProps> = ({ label, value, icon, to }) => {
   );
 };
 
-const TILE_GRID = { xs: 6, md: 4 } as const;
+/**
+ * The totals tiles, by the section's own width (admin pages grow to 1600px):
+ * 2 a row on phones, 3 from 600px, all 6 in one row from 1200px.
+ */
+const TILE_GRID_SX = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: { xs: 1.5, sm: 2 },
+  "@container admin-totals (min-width: 600px)": { gridTemplateColumns: "repeat(3, minmax(0, 1fr))" },
+  "@container admin-totals (min-width: 1200px)": { gridTemplateColumns: "repeat(6, minmax(0, 1fr))" },
+} as const;
 
 const TileSkeleton: React.FC = () => (
   <Card variant="outlined">
@@ -386,21 +396,17 @@ const AdminDashboard: React.FC = () => {
         <Skeleton variant="rounded" height={48} sx={{ mb: 4 }} aria-label="Checking instance health" />
       )}
 
-      <Box component="section" aria-labelledby="admin-totals-heading" sx={{ mb: 4 }}>
+      <Box
+        component="section"
+        aria-labelledby="admin-totals-heading"
+        sx={{ mb: 4, containerType: "inline-size", containerName: "admin-totals" }}
+      >
         <SectionHeading id="admin-totals-heading">Totals</SectionHeading>
-        <Grid container spacing={{ xs: 1.5, sm: 2 }} aria-busy={isLoading}>
+        <Box sx={TILE_GRID_SX} aria-busy={isLoading}>
           {isLoading
-            ? Array.from({ length: 6 }, (_, i) => (
-                <Grid key={i} size={TILE_GRID}>
-                  <TileSkeleton />
-                </Grid>
-              ))
-            : tiles.map((tile) => (
-                <Grid key={tile.label} size={TILE_GRID}>
-                  <StatTile {...tile} />
-                </Grid>
-              ))}
-        </Grid>
+            ? Array.from({ length: 6 }, (_, i) => <TileSkeleton key={i} />)
+            : tiles.map((tile) => <StatTile key={tile.label} {...tile} />)}
+        </Box>
       </Box>
 
       {!storageQuery.isError && (

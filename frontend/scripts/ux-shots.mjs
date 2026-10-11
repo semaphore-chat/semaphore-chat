@@ -80,11 +80,12 @@ const VIEWPORTS = {
   // Opt-in only: a story gets these when its meta.viewports names them.
   'desktop-1280': { width: 1280, height: 800, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
   'desktop-1920': { width: 1920, height: 1080, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
+  'desktop-2560': { width: 2560, height: 1440, isMobile: false, hasTouch: false, deviceScaleFactor: 1 },
 };
 /** Shot only for stories that name them (keep in sync with scripts/ui-review/lib/viewports.ts). */
-const OPT_IN_VIEWPORTS = ['phone-short', 'desktop-1280', 'desktop-1920'];
+const OPT_IN_VIEWPORTS = ['phone-short', 'desktop-1280', 'desktop-1920', 'desktop-2560'];
 
-const requestedViewports = (process.env.UX_SHOTS_VIEWPORTS || 'phone,phone-short,tablet,desktop,desktop-1280,desktop-1920')
+const requestedViewports = (process.env.UX_SHOTS_VIEWPORTS || 'phone,phone-short,tablet,desktop,desktop-1280,desktop-1920,desktop-2560')
   .split(',')
   .map((v) => v.trim())
   .filter(Boolean);

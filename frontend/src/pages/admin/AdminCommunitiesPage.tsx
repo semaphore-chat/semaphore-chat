@@ -159,7 +159,7 @@ const AdminCommunitiesPage: React.FC = () => {
                               WebkitLineClamp: 1,
                               WebkitBoxOrient: "vertical",
                               overflow: "hidden",
-                              maxWidth: 300,
+                              maxWidth: 560,
                             }}
                           >
                             {community.description}

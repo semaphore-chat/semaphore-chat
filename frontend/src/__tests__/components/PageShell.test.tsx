@@ -7,6 +7,7 @@ import {
   StickySaveBar,
   FormPageTabPanel,
   useSaveBarSlot,
+  useShellWidth,
 } from '../../components/Common/PageShell';
 
 const SECTIONS = [
@@ -22,6 +23,43 @@ describe('ListPageShell', () => {
     renderWithProviders(<ListPageShell title="Notifications">body</ListPageShell>);
     expect(screen.getByRole('heading', { name: 'Notifications' })).toBeInTheDocument();
     expect(screen.getByTestId('list-page-shell')).toHaveStyle({ maxWidth: '960px' });
+  });
+
+  it('takes another cap, and centres itself with align="center"', () => {
+    renderWithProviders(
+      <ListPageShell maxWidth={1600} align="center">
+        body
+      </ListPageShell>,
+    );
+    const shell = screen.getByTestId('list-page-shell');
+    expect(shell).toHaveStyle({ maxWidth: '1600px', marginLeft: 'auto', marginRight: 'auto' });
+  });
+
+  it('is a size container whose width it hands to its children (null until measured)', () => {
+    const WidthProbe = () => <span data-testid="width">{String(useShellWidth())}</span>;
+    renderWithProviders(
+      <ListPageShell>
+        <WidthProbe />
+      </ListPageShell>,
+    );
+    expect(screen.getByTestId('list-page-shell')).toHaveStyle({ containerType: 'inline-size' });
+    expect(screen.getByTestId('width')).toHaveTextContent('null');
+  });
+
+  it('measures its content width with a ResizeObserver', () => {
+    const WidthProbe = () => <span data-testid="width">{String(useShellWidth())}</span>;
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ width: 1448 } as DOMRect);
+    try {
+      renderWithProviders(
+        <ListPageShell>
+          <WidthProbe />
+        </ListPageShell>,
+      );
+      // 1448 minus the shell's 24px padding on each side.
+      expect(screen.getByTestId('width')).toHaveTextContent('1400');
+    } finally {
+      rect.mockRestore();
+    }
   });
 });
 
@@ -115,5 +153,27 @@ describe('FormPageShell navMode="tabs" (sections switch, e.g. community settings
     expect(onSelect).toHaveBeenLastCalledWith('a');
     await user.keyboard('{End}');
     expect(onSelect).toHaveBeenLastCalledWith('b');
+  });
+});
+
+describe('FormPageShell alignment', () => {
+  it('centres the nav and column as one group with align="center"', () => {
+    renderWithProviders(
+      <FormPageShell title="Settings" sections={SECTIONS} activeSection="a" align="center">
+        body
+      </FormPageShell>,
+    );
+    const grid = screen.getByRole('navigation').parentElement as HTMLElement;
+    expect(grid).toHaveStyle({ justifyContent: 'center' });
+  });
+
+  it('stays at the content edge by default', () => {
+    renderWithProviders(
+      <FormPageShell title="Settings" sections={SECTIONS} activeSection="a">
+        body
+      </FormPageShell>,
+    );
+    const grid = screen.getByRole('navigation').parentElement as HTMLElement;
+    expect(grid).not.toHaveStyle({ justifyContent: 'center' });
   });
 });

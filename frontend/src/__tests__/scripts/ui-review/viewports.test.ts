@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest';
-import { REVIEW_VIEWPORTS, storyViewports, viewportsForStory } from '../../../../scripts/ui-review/lib/viewports.ts';
+import { REVIEW_VIEWPORTS, VIEWPORTS, storyViewports, viewportsForStory } from '../../../../scripts/ui-review/lib/viewports.ts';
 
 describe('storyViewports', () => {
   it('is null when the story sets no viewports', () => {
@@ -45,6 +45,15 @@ describe('viewportsForStory', () => {
       'desktop-1920',
     ]);
     expect(storyViewports({ viewports: ['desktop-1920'] })).toEqual(['desktop-1920']);
+  });
+
+  it('has a 2560x1440 desktop, opt-in like the other wide widths', () => {
+    expect(VIEWPORTS['desktop-2560']).toMatchObject({ width: 2560, height: 1440, isMobile: false });
+    expect(viewportsForStory('x--y')).not.toContain('desktop-2560');
+    expect(viewportsForStory('x--y', REVIEW_VIEWPORTS, ['desktop-1920', 'desktop-2560'])).toEqual([
+      'desktop-1920',
+      'desktop-2560',
+    ]);
   });
 
   it('only returns requested viewports (the probe order, for instance)', () => {

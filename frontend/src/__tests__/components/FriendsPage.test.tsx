@@ -11,8 +11,16 @@ vi.mock('../../hooks/useResponsive', () => ({
 // The panel's own behaviour (tabs, lists, add dialog) is covered elsewhere;
 // here we only need its props and a way to fire onSelectDmGroup.
 const panelProps = vi.fn();
+const shell = vi.hoisted(() => ({ width: null as number | null }));
+vi.mock('../../components/Common/PageShell', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../components/Common/PageShell')>()),
+  useShellWidth: () => shell.width,
+}));
+
 vi.mock('../../components/Friends', () => ({
-  FriendsPanel: (props: { onSelectDmGroup?: (id: string) => void; hideTitle?: boolean }) => {
+  AddFriendForm: () => <div role="group" aria-label="Add friend" />,
+  FriendRequestList: () => <div data-testid="requests" />,
+  FriendsPanel: (props: { onSelectDmGroup?: (id: string) => void; hideTitle?: boolean; layout?: string }) => {
     panelProps(props);
     return (
       <button onClick={() => props.onSelectDmGroup?.('dm-42')}>Message</button>
@@ -37,6 +45,26 @@ describe('FriendsPage', () => {
     panelProps.mockClear();
     responsive.isMobile = false;
     responsive.isTablet = false;
+    shell.width = null;
+  });
+
+  it('desktop below 1200px of shell: one centred card with the tabbed panel', () => {
+    shell.width = 1100;
+    renderPage();
+    expect(screen.getByTestId('friends-layout')).toHaveAttribute('data-layout', 'tabs');
+    expect(panelProps.mock.lastCall?.[0].layout).toBeUndefined();
+    expect(screen.queryByRole('group', { name: 'Add friend' })).not.toBeInTheDocument();
+  });
+
+  it('desktop from 1200px of shell: the list plus a side panel with add friend and pending requests', () => {
+    shell.width = 1300;
+    renderPage();
+    expect(screen.getByTestId('friends-layout')).toHaveAttribute('data-layout', 'split');
+    expect(panelProps.mock.lastCall?.[0].layout).toBe('list');
+    const side = screen.getByRole('complementary', { name: 'Add friends and requests' });
+    expect(side).toContainElement(screen.getByRole('group', { name: 'Add friend' }));
+    expect(side).toContainElement(screen.getByTestId('requests'));
+    expect(screen.getByRole('heading', { name: 'Pending requests' })).toBeInTheDocument();
   });
 
   it('"Message" opens the DM at /direct-messages/:id (there is no /dm route)', async () => {

@@ -25,7 +25,7 @@ import { useResponsive } from "../hooks/useResponsive";
 const PageFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isDesktop } = useResponsive();
   return isDesktop ? (
-    <FormPageShell>{children}</FormPageShell>
+    <FormPageShell align="center">{children}</FormPageShell>
   ) : (
     <Container maxWidth="md" sx={{ py: 3 }}>
       {children}
