@@ -5,7 +5,7 @@
  * Orchestrates message rendering, editing, deletion, and reactions.
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Avatar, Typography, Tooltip, Box, Chip, Link } from "@mui/material";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import ScheduleIcon from "@mui/icons-material/Schedule";
@@ -23,6 +23,8 @@ import { MessageToolbar } from "./MessageToolbar";
 import { renderMessageSpans } from "./MessageSpan";
 import { Container } from "./MessageComponentStyles";
 import { useMessageActions } from "./useMessageActions";
+import { useEditRequest } from "../../contexts/EditRequestContext";
+import { focusComposer } from "../../utils/shortcuts";
 import { isUserMentioned, getMessageLoneGifUrl } from "./messageUtils";
 import { GifEmbed } from "./GifEmbed";
 import UserAvatar from "../Common/UserAvatar";
@@ -220,6 +222,23 @@ function MessageComponentInner({
     handlePin,
     handleUnpin,
   } = useMessageActions(message, currentUser?.id);
+
+  // ↑ in an empty composer asks for your last message's edit form. After a
+  // keyboard-started edit ends, focus goes back to the composer.
+  const { request: editRequest, clear: clearEditRequest } = useEditRequest();
+  const keyboardEditRef = useRef(false);
+  useEffect(() => {
+    if (!editRequest || editRequest.messageId !== message.id) return;
+    clearEditRequest(editRequest.seq);
+    if (!canEdit || isEditing) return;
+    keyboardEditRef.current = true;
+    handleEditClick();
+  }, [editRequest, clearEditRequest, message.id, canEdit, isEditing, handleEditClick]);
+  useEffect(() => {
+    if (isEditing || !keyboardEditRef.current) return;
+    keyboardEditRef.current = false;
+    focusComposer();
+  }, [isEditing]);
 
   const { shouldUseTouchUI } = useResponsive();
 

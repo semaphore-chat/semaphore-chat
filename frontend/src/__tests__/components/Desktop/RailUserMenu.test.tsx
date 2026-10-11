@@ -3,6 +3,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import { renderWithProviders } from '../../test-utils';
 import { RailUserMenu } from '../../../components/Desktop/RailUserMenu';
 import type { User } from '../../../types/auth.type';
+import { ShortcutsContext } from '../../../contexts/ShortcutsContext';
 
 const mockNavigate = vi.fn();
 vi.mock('react-router-dom', async (importOriginal) => {
@@ -64,7 +65,7 @@ describe('RailUserMenu', () => {
     expect(header).toHaveTextContent('Alice Liddell');
     expect(header).toHaveTextContent('Reviewing UX');
     const items = screen.getAllByRole('menuitem').map((el) => el.textContent);
-    expect(items).toEqual(['Profile', 'Settings', 'Light theme', 'Log out…']);
+    expect(items).toEqual(['Profile', 'Settings', 'Light theme', 'Keyboard shortcutsCtrl+/', 'Log out…']);
   });
 
   it('falls back to the username and online state when there is no display name or status', async () => {
@@ -115,5 +116,20 @@ describe('RailUserMenu', () => {
     await user.click(screen.getByRole('menuitem', { name: /log out/i }));
     await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Log out' }));
     expect(mockHandleLogout).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the keyboard shortcut sheet, with its shortcut as a hint', async () => {
+    const openShortcutSheet = vi.fn();
+    const { user } = renderWithProviders(
+      <ShortcutsContext.Provider value={{ registerSidebar: () => () => {}, registerConversation: () => () => {}, openShortcutSheet }}>
+        <RailUserMenu user={alice} isExpanded={false} />
+      </ShortcutsContext.Provider>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Account menu' }));
+    const item = screen.getByRole('menuitem', { name: /keyboard shortcuts/i });
+    expect(item).toHaveAttribute('aria-keyshortcuts', 'Control+/');
+    expect(item).toHaveTextContent('Ctrl+/');
+    await user.click(item);
+    expect(openShortcutSheet).toHaveBeenCalledTimes(1);
   });
 });

@@ -16,6 +16,7 @@ import { PersistentVideoOverlay } from "../Voice/PersistentVideoOverlay";
 import { useVoiceConnection } from "../../hooks/useVoiceConnection";
 import type { User } from "../../types/auth.type";
 import { DesktopContentArea } from "./DesktopContentArea";
+import { ShortcutsProvider } from "../Shortcuts/ShortcutsProvider";
 
 interface DesktopLayoutProps {
   userData: User | undefined;
@@ -25,6 +26,7 @@ interface DesktopLayoutProps {
  * Desktop layout: the community rail (navigation, notification inbox, account
  * menu) + the routed page + the voice bottom bar. No top app bar; Electron
  * keeps its native window frame, so the window still drags by its title bar.
+ * The global keyboard shortcuts (Alt+↑/↓, Esc, Ctrl+/) live here too.
  */
 export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
   const { state: voiceState } = useVoiceConnection();
@@ -32,7 +34,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
   const [notificationCenterOpen, setNotificationCenterOpen] = React.useState(false);
 
   return (
-    <>
+    <ShortcutsProvider>
       <NotificationCenter
         open={notificationCenterOpen}
         onClose={() => setNotificationCenterOpen(false)}
@@ -55,7 +57,7 @@ export const DesktopLayout: React.FC<DesktopLayoutProps> = ({ userData }) => {
           <PersistentVideoOverlay />
         </VoiceEventLogProvider>
       </TrackSubscriptionProvider>
-    </>
+    </ShortcutsProvider>
   );
 };
 

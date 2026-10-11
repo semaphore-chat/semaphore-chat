@@ -12,6 +12,7 @@ import ChannelMessageContainer from '../../components/Channel/ChannelMessageCont
 import { ThreadPanelProvider } from '../../contexts/ThreadPanelProvider';
 import { DEVICE_BREAKPOINTS } from '../../utils/breakpoints';
 import type { Message } from '../../types/message.type';
+import { ShortcutsContext, type ConversationTarget } from '../../contexts/ShortcutsContext';
 
 const env = vi.hoisted(() => ({ electron: false, wide: true, phone: false }));
 
@@ -228,6 +229,37 @@ describe('ChannelMessageContainer docked side panel (wide desktop)', () => {
     await user.click(searchButton());
     expect(screen.queryByTestId('thread-panel')).not.toBeInTheDocument();
     expect(screen.getByTestId('search-panel')).toBeInTheDocument();
+  });
+
+  it('registers itself for the global Esc shortcut, which closes one docked panel per press', async () => {
+    let target: ConversationTarget | null = null;
+    const shortcuts = {
+      registerSidebar: () => () => {},
+      registerConversation: (c: ConversationTarget) => {
+        target = c;
+        return () => {
+          if (target === c) target = null;
+        };
+      },
+      openShortcutSheet: () => {},
+    };
+    const { user } = renderWithProviders(
+      <ShortcutsContext.Provider value={shortcuts}>{ui()}</ShortcutsContext.Provider>,
+      { routerProps: { initialEntries: ['/community/c1/channel/ch-1'] } },
+    );
+    const current = () => target as ConversationTarget | null;
+    expect(current()).toMatchObject({ kind: 'channel', id: 'ch-1' });
+    // Nothing open: Esc falls through to marking the channel read.
+    expect(current()!.closeDockedPanel!()).toBe(false);
+
+    for (const open of [() => user.click(pinsButton()), () => user.click(searchButton()), () => user.click(screen.getByRole('button', { name: 'open thread' }))]) {
+      await open();
+      expect(screen.getByRole('complementary')).toBeInTheDocument();
+      act(() => {
+        expect(current()!.closeDockedPanel!()).toBe(true);
+      });
+      await waitFor(() => expect(screen.queryByRole('complementary')).not.toBeInTheDocument());
+    }
   });
 
   it('the header button toggles its panel closed', async () => {

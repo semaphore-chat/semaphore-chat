@@ -40,7 +40,7 @@ InboxNoUnread.meta = { viewports: ['desktop'] };
 export const InboxManyUnread = defineScreen(bigCommunityScenario, generalPath, { extraHandlers: unreadCount(150) });
 InboxManyUnread.meta = { viewports: ['desktop'] };
 
-/** The account menu open: name and status, Profile, Admin (owner), Settings, theme, Log out…. */
+/** The account menu open: name and status, Profile, Admin (owner), Settings, theme, Keyboard shortcuts, Log out…. */
 export const AccountMenuOpen = defineScreen(bigCommunityScenario, generalPath, {
   overlay: <ClickOnMount find={byLabel('Account menu')} />,
 });
@@ -56,6 +56,17 @@ const OpenLogOutConfirm = () => (
 /** "Log out…" asks first. */
 export const LogOutConfirm = defineScreen(bigCommunityScenario, generalPath, { overlay: <OpenLogOutConfirm /> });
 LogOutConfirm.meta = { viewports: ['desktop'] };
+
+const OpenShortcutSheet = () => (
+  <>
+    <ClickOnMount find={byLabel('Account menu')} />
+    <ClickOnMount find={menuItem(/keyboard shortcuts/i)} />
+  </>
+);
+
+/** "Keyboard shortcuts" in the account menu opens the shortcut sheet (also Ctrl+/). */
+export const ShortcutSheetFromMenu = defineScreen(bigCommunityScenario, generalPath, { overlay: <OpenShortcutSheet /> });
+ShortcutSheetFromMenu.meta = { viewports: ['desktop-1280', 'desktop'] };
 
 const longNames = withLongNames(bigCommunityScenario);
 

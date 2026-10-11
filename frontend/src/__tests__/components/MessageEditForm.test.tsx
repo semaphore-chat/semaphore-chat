@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { renderWithProviders } from '../test-utils';
 import { MessageEditForm, type MessageEditFormProps } from '../../components/Message/MessageEditForm';
 import type { FileMetadata } from '../../types/message.type';
@@ -74,6 +74,13 @@ describe('MessageEditForm', () => {
     await user.keyboard('{Escape}');
 
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('marks Escape handled so the global Esc shortcut does not also fire', () => {
+    const props = defaultProps({ editText: 'Some text' });
+    renderWithProviders(<MessageEditForm {...props} />);
+    expect(fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' })).toBe(false);
+    expect(props.onCancel).toHaveBeenCalledOnce();
   });
 
   it('disables save button when text is empty and no attachments', () => {

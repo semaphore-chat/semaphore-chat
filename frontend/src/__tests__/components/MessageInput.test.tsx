@@ -210,6 +210,58 @@ describe('MessageInput', () => {
     });
   });
 
+  describe('keyboard shortcuts', () => {
+    function setupWith(props: { onEditLastMessage?: () => boolean; onCancelReply?: () => void }) {
+      renderWithProviders(
+        <MessageInput
+          contextType={VoiceSessionType.Dm}
+          contextId="dm-1"
+          userMentions={[]}
+          onSendMessage={vi.fn()}
+          {...props}
+        />,
+      );
+      return screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement;
+    }
+
+    it('↑ in the empty composer asks to edit the last message', () => {
+      const onEditLastMessage = vi.fn(() => true);
+      const input = setupWith({ onEditLastMessage });
+      expect(input).toHaveAttribute('aria-keyshortcuts', 'ArrowUp');
+      const notCancelled = fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+      expect(notCancelled).toBe(false);
+    });
+
+    it('leaves ↑ alone when there is text, a modifier, or no message to edit', () => {
+      const onEditLastMessage = vi.fn(() => false);
+      const input = setupWith({ onEditLastMessage });
+      expect(fireEvent.keyDown(input, { key: 'ArrowUp' })).toBe(true);
+      expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+      fireEvent.keyDown(input, { key: 'ArrowUp', altKey: true });
+      fireEvent.change(input, { target: { value: 'draft' } });
+      fireEvent.keyDown(input, { key: 'ArrowUp' });
+      expect(onEditLastMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('Esc cancels an active reply and is marked handled', () => {
+      const onCancelReply = vi.fn();
+      const input = setupWith({ onCancelReply });
+      expect(fireEvent.keyDown(input, { key: 'Escape' })).toBe(false);
+      expect(onCancelReply).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets Esc through when no reply is active', () => {
+      const input = setupWith({});
+      expect(fireEvent.keyDown(input, { key: 'Escape' })).toBe(true);
+    });
+
+    it('marks its root as the composer scope for global shortcuts', () => {
+      const input = setupWith({});
+      expect(input.closest('[data-shortcut-scope="composer"]')).not.toBeNull();
+    });
+  });
+
   describe('GIF picker', () => {
     it('hides the GIF button when gifSearchEnabled is false', async () => {
       mockGifSearchEnabled = false;
