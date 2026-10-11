@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { logger } from "../utils/logger";
 import {
   Box,
@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Alert,
   Link,
+  Divider,
 } from "@mui/material";
 import { LockOutlined } from "@mui/icons-material";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -21,10 +22,21 @@ import {
   storeElectronRefreshToken,
   type SignOutReason,
 } from "../utils/tokenService";
+import { safeLoginReturnTo } from "../utils/desktopLogin";
+import { getActiveServer } from "../utils/serverStorage";
+import { useElectronAPI } from "../contexts/ElectronContext";
+import { consumeBrowserLoginOnLoad, useBrowserLogin } from "../hooks/useBrowserLogin";
+import { BrowserLoginPanel } from "../components/Electron/BrowserLoginPanel";
+import { ConnectionWizard } from "../components/Electron/ConnectionWizard";
 
 /** Router state AuthGate passes when the server signed the user out. */
 export interface LoginLocationState {
   signOutReason?: SignOutReason;
+  /**
+   * Where to go once signed in: only the desktop sign-in page
+   * (safeLoginReturnTo), which sends signed-out users here first.
+   */
+  returnTo?: string;
 }
 
 /**
@@ -44,8 +56,21 @@ const LoginPage: React.FC = () => {
   const { mutateAsync: login, isPending: isLoading, error } = useMutation(authControllerLoginMutation());
   const { data: publicSettings } = useQuery(instanceControllerGetPublicSettingsOptions());
   const navigate = useNavigate();
-  const signOutReason = (useLocation().state as LoginLocationState | null)
-    ?.signOutReason;
+  const locationState = useLocation().state as LoginLocationState | null;
+  const signOutReason = locationState?.signOutReason;
+  const returnTo = safeLoginReturnTo(locationState?.returnTo);
+  const electronAPI = useElectronAPI();
+  const activeServer = electronAPI ? getActiveServer() : null;
+  const [changingServer, setChangingServer] = useState(false);
+  const browserLogin = useBrowserLogin(() => navigate("/"));
+  const { available: browserLoginAvailable, start: startBrowserLogin } = browserLogin;
+
+  // The connection wizard's "Sign in with browser" (before its reload)
+  useEffect(() => {
+    if (browserLoginAvailable && consumeBrowserLoginOnLoad()) {
+      void startBrowserLogin();
+    }
+  }, [browserLoginAvailable, startBrowserLogin]);
   const signOutMessage = signOutReason
     ? SIGN_OUT_MESSAGES[signOutReason]
     : undefined;
@@ -61,7 +86,7 @@ const LoginPage: React.FC = () => {
         await storeElectronRefreshToken(response.refreshToken);
       }
 
-      navigate("/");
+      navigate(returnTo ?? "/");
     } catch (err) {
       logger.error("Login failed:", err);
     }
@@ -124,6 +149,39 @@ const LoginPage: React.FC = () => {
             </Alert>
           )
         )}
+        {activeServer && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ marginBottom: 2, textAlign: "center", overflowWrap: "anywhere" }}
+          >
+            Server: <strong>{activeServer.name}</strong>{" · "}
+            <Link
+              component="button"
+              type="button"
+              underline="hover"
+              onClick={() => setChangingServer(true)}
+              sx={{ verticalAlign: "baseline" }}
+            >
+              Change server
+            </Link>
+          </Typography>
+        )}
+        {browserLogin.available && (
+          <>
+            <BrowserLoginPanel
+              phase={browserLogin.phase}
+              error={browserLogin.error}
+              onStart={() => void browserLogin.start()}
+              onCancel={browserLogin.cancel}
+            />
+            <Divider flexItem sx={{ marginY: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                or use your password
+              </Typography>
+            </Divider>
+          </>
+        )}
         <TextField
           id="username"
           label="Username"
@@ -147,7 +205,7 @@ const LoginPage: React.FC = () => {
         />
         <Button
           type="submit"
-          variant="contained"
+          variant={browserLogin.available ? "outlined" : "contained"}
           color="primary"
           fullWidth
           disabled={isLoading}
@@ -169,6 +227,16 @@ const LoginPage: React.FC = () => {
           </Link>
         </Typography>
       </Box>
+      {changingServer && (
+        <ConnectionWizard
+          open
+          onCancel={() => setChangingServer(false)}
+          onComplete={() => {
+            // The API client and socket use the active server from startup
+            window.location.reload();
+          }}
+        />
+      )}
     </Box>
   );
 };

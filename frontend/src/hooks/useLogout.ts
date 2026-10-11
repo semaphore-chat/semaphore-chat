@@ -7,6 +7,7 @@ import { clearSavedConnection } from "../features/voice/voiceActions";
 import { clearTokens, getElectronRefreshToken } from "../utils/tokenService";
 import { isElectron } from "../utils/platform";
 import { clearComposerDrafts } from "./useComposerDraft";
+import type { LoginLocationState } from "../pages/LoginPage";
 
 /**
  * Encapsulates the app's logout flow: leave voice (best effort), tear down
@@ -20,7 +21,11 @@ export function useLogout() {
   const { mutateAsync: logout, isPending: logoutLoading } = useMutation(authControllerLogoutMutation());
   const { state: voiceState, actions: voiceActions } = useVoiceConnection();
 
-  const handleLogout = async () => {
+  /**
+   * @param loginState - Router state for the login page (e.g. where to
+   *   return to after signing in as someone else)
+   */
+  const handleLogout = async (loginState?: LoginLocationState) => {
     // Disconnect voice if connected
     if (voiceState.isConnected) {
       try {
@@ -44,7 +49,8 @@ export function useLogout() {
       // Unsent drafts are per browser tab, not per user: drop them so the
       // next account signed in on this tab never sees them.
       clearComposerDrafts();
-      navigate("/login");
+      if (loginState) navigate("/login", { state: loginState });
+      else navigate("/login");
     }
   };
 

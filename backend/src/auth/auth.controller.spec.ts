@@ -6,6 +6,7 @@ import { TokenBlacklistService } from './token-blacklist.service';
 import { PasswordResetService } from './password-reset.service';
 import { SessionRevocationService } from './session-revocation.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
+import { DeviceLoginGrantService } from './device-login-grant.service';
 import { DatabaseService } from '@/database/database.service';
 import { JwtService } from '@nestjs/jwt';
 import { BadRequestException, UnauthorizedException } from '@nestjs/common';
@@ -20,6 +21,7 @@ describe('AuthController', () => {
   let passwordResetService: Mocked<PasswordResetService>;
   let sessionRevocationService: Mocked<SessionRevocationService>;
   let refreshTokenGraceService: Mocked<RefreshTokenGraceService>;
+  let deviceLoginGrantService: Mocked<DeviceLoginGrantService>;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
 
   const mockUser = new UserEntity(UserFactory.build());
@@ -41,6 +43,7 @@ describe('AuthController', () => {
     passwordResetService = unitRef.get(PasswordResetService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
     refreshTokenGraceService = unitRef.get(RefreshTokenGraceService);
+    deviceLoginGrantService = unitRef.get(DeviceLoginGrantService);
   });
 
   afterEach(() => {
@@ -1187,6 +1190,174 @@ describe('AuthController', () => {
           newPassword: 'brand-new-password',
         }),
       ).rejects.toThrow(BadRequestException);
+    });
+  });
+  describe('desktop sign-in with browser', () => {
+    const claims = {
+      sub: mockUser.id,
+      sid: 'session-1',
+      jti: 'jti-1',
+      iat: 1_700_000_000,
+      iatMs: 1_700_000_000_000,
+    };
+    const dto = {
+      codeChallenge: 'c'.repeat(43),
+      codeChallengeMethod: 'S256' as const,
+    };
+
+    describe('authorizeDesktopLogin', () => {
+      it("mints a code bound to the challenge and the approver's session", async () => {
+        jwtService.decode.mockReturnValue(claims);
+        deviceLoginGrantService.createApproved.mockResolvedValue({
+          id: 'code-1',
+          expiresInSeconds: 60,
+        });
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer header-token' },
+        } as any;
+
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).resolves.toEqual({ code: 'code-1', expiresInSeconds: 60 });
+        expect(jwtService.decode).toHaveBeenCalledWith('header-token');
+        expect(deviceLoginGrantService.createApproved).toHaveBeenCalledWith(
+          dto.codeChallenge,
+          expect.objectContaining({ sub: mockUser.id, sid: 'session-1' }),
+        );
+      });
+
+      it('refuses a request authenticated by the cookie alone (cross-site)', async () => {
+        const req = {
+          user: mockUser,
+          headers: {},
+          cookies: { access_token: 'cookie-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
+      it('refuses a bearer token of another user than the one authenticated', async () => {
+        jwtService.decode.mockReturnValue({ ...claims, sub: 'someone-else' });
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer other-users-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
+      it('refuses a garbage bearer token even next to a valid cookie', async () => {
+        // decode() of something that isn't a JWT
+        jwtService.decode.mockReturnValue(null);
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer garbage' },
+          cookies: { access_token: 'valid-cookie-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(jwtService.decode).toHaveBeenCalledWith('garbage');
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
+      it('refuses a token without a session', async () => {
+        jwtService.decode.mockReturnValue({ ...claims, sid: undefined });
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer header-token' },
+        } as any;
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(UnauthorizedException);
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('redeemDesktopLogin', () => {
+      const body = { code: 'k'.repeat(43), codeVerifier: 'v'.repeat(43) };
+      const electronReq = {
+        headers: {
+          'user-agent': 'Mozilla/5.0 Electron/39',
+          'x-device-id': '6f1c2c86-1f1e-4c1a-9a51-6a6f1a3c2b11',
+        },
+        ip: '10.0.0.2',
+      } as any;
+
+      it("redeems with the redeeming device's info and returns both tokens to Electron", async () => {
+        deviceLoginGrantService.redeem.mockResolvedValue({
+          ok: true,
+          refreshToken: mockRefreshToken,
+          accessToken: mockAccessToken,
+          userId: mockUser.id,
+        });
+        const res = { cookie: jest.fn() } as any;
+
+        await expect(
+          controller.redeemDesktopLogin(electronReq, res, body),
+        ).resolves.toEqual({
+          accessToken: mockAccessToken,
+          refreshToken: mockRefreshToken,
+        });
+        expect(deviceLoginGrantService.redeem).toHaveBeenCalledWith(
+          body.code,
+          body.codeVerifier,
+          {
+            userAgent: 'Mozilla/5.0 Electron/39',
+            ipAddress: '10.0.0.2',
+            deviceId: '6f1c2c86-1f1e-4c1a-9a51-6a6f1a3c2b11',
+          },
+        );
+      });
+
+      it('keeps the refresh token out of the body for web clients', async () => {
+        deviceLoginGrantService.redeem.mockResolvedValue({
+          ok: true,
+          refreshToken: mockRefreshToken,
+          accessToken: mockAccessToken,
+          userId: mockUser.id,
+        });
+        const res = { cookie: jest.fn() } as any;
+        const req = {
+          headers: { 'user-agent': 'Mozilla/5.0' },
+          ip: '1.2.3.4',
+        } as any;
+
+        await expect(
+          controller.redeemDesktopLogin(req, res, body),
+        ).resolves.toEqual({ accessToken: mockAccessToken });
+        expect(res.cookie).toHaveBeenCalledWith(
+          'refresh_token',
+          mockRefreshToken,
+          expect.any(Object),
+        );
+      });
+
+      it('answers every failure with the same 401', async () => {
+        for (const reason of [
+          'unknown-grant',
+          'wrong-verifier',
+          'approver-revoked',
+          'user-unavailable',
+        ] as const) {
+          deviceLoginGrantService.redeem.mockResolvedValueOnce({
+            ok: false,
+            reason,
+          });
+          await expect(
+            controller.redeemDesktopLogin(
+              electronReq,
+              { cookie: jest.fn() } as any,
+              body,
+            ),
+          ).rejects.toThrow('Invalid or expired sign-in code');
+        }
+      });
     });
   });
 });

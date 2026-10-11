@@ -36,6 +36,7 @@ const SettingsPage = React.lazy(() => import("./pages/SettingsPage"));
 const CommunityPage = React.lazy(() => import("./pages/CommunityPage"));
 const NotificationsPage = React.lazy(() => import("./pages/NotificationsPage"));
 const NotFoundPage = React.lazy(() => import("./pages/NotFoundPage"));
+const DesktopLoginPage = React.lazy(() => import("./pages/DesktopLoginPage"));
 
 export const AppRoutes: React.FC = () => (
   <Routes>
@@ -51,6 +52,8 @@ export const AppRoutes: React.FC = () => (
     <Route element={<AuthGate />}>
       {/* Debug routes — outside Layout so they render on mobile too */}
       <Route path="debug/pwa" element={<PWADebugPage />} />
+      {/* Sign in with browser for the desktop app: full-page, outside Layout */}
+      <Route path="desktop-login" element={<DesktopLoginPage />} />
 
       <Route path="/" element={<Layout />}>
         <Route index element={<HomePage />} />

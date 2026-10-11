@@ -203,4 +203,16 @@ describe('useLogout', () => {
     expect(sessionStorage.getItem('semaphore:composerDraft:channel:c1')).toBeNull();
     expect(sessionStorage.getItem('unrelated')).toBe('keep');
   });
+
+  it('passes login state on, e.g. the desktop sign-in page to come back to', async () => {
+    const { result } = renderUseLogout();
+
+    await act(async () => {
+      await result.current.handleLogout({ returnTo: '/desktop-login?challenge=x' });
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith('/login', {
+      state: { returnTo: '/desktop-login?challenge=x' },
+    });
+  });
 });

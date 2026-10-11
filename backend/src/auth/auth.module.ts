@@ -12,6 +12,7 @@ import { TokenRevocationModule } from './token-revocation.module';
 import { WsAuthService } from './ws-auth.service';
 import { PasswordResetService } from './password-reset.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
+import { DeviceLoginGrantService } from './device-login-grant.service';
 import { RolesModule } from '@/roles/roles.module';
 import { DatabaseModule } from '@/database/database.module';
 import { RedisModule } from '@/redis/redis.module';
@@ -43,6 +44,7 @@ import { WsJwtAuthGuard } from './ws-jwt-auth.guard';
     JwtStrategy,
     PasswordResetService,
     RefreshTokenGraceService,
+    DeviceLoginGrantService,
     RbacGuard,
     WsAuthService,
     WsJwtAuthGuard,

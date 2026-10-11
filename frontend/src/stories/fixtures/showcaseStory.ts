@@ -436,6 +436,7 @@ function publicSettingsHandler(scenario: Scenario): HttpHandler {
       maxFileSizeBytes: 25 * 1024 * 1024,
       gifSearchEnabled: true,
       passwordResetEnabled: true,
+      desktopBrowserLogin: true,
     }));
 }
 

@@ -103,9 +103,9 @@ function mockProfileUnauthorized() {
 
 /** The login route: shows the sign-out reason AuthGate passed, if any. */
 function LoginProbe() {
-  const state = useLocation().state as { signOutReason?: string } | null;
+  const state = useLocation().state as { signOutReason?: string; returnTo?: string } | null;
   return (
-    <div data-testid="login">
+    <div data-testid="login" data-return-to={state?.returnTo ?? ''}>
       Login Page{state?.signOutReason ? ` (${state.signOutReason})` : ''}
     </div>
   );
@@ -118,6 +118,7 @@ function renderAuthGate(initialRoute = '/') {
         <Route path="/" element={<div data-testid="home">Home</div>} />
         <Route path="/community/:communityId/channel/:channelId" element={<div data-testid="channel">Channel Page</div>} />
         <Route path="/settings" element={<div data-testid="settings">Settings</div>} />
+        <Route path="/desktop-login" element={<div data-testid="desktop-login">Desktop login</div>} />
       </Route>
       <Route path="/login" element={<LoginProbe />} />
       <Route path="/onboarding" element={<div data-testid="onboarding">Onboarding Page</div>} />
@@ -288,6 +289,27 @@ describe('AuthGate', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('login')).toBeInTheDocument();
+      });
+    });
+
+    it('sends the desktop sign-in page to /login with a way back', async () => {
+      mockOnboardingOk();
+      renderAuthGate('/desktop-login?challenge=abc&state=def&port=51234');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveAttribute(
+          'data-return-to',
+          '/desktop-login?challenge=abc&state=def&port=51234',
+        );
+      });
+    });
+
+    it('gives other pages no return path', async () => {
+      mockOnboardingOk();
+      renderAuthGate('/settings');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('login')).toHaveAttribute('data-return-to', '');
       });
     });
 

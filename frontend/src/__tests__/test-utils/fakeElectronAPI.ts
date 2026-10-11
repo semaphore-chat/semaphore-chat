@@ -20,6 +20,7 @@
  */
 
 import type {
+  BrowserLoginResult,
   DesktopSource,
   ElectronAPI,
   SecureStorageStoreResult,
@@ -72,6 +73,9 @@ export function createFakeElectronAPI<O extends Partial<ElectronAPI> = Record<ne
     notifyDeepLinkReady: noop,
     onSystemResume: subscribe,
     logVoiceEvent: noop,
+    // Waits for the browser forever unless a test says otherwise
+    startBrowserLogin: () => new Promise<BrowserLoginResult>(() => {}),
+    cancelBrowserLogin: () => Promise.resolve(),
   };
   return { ...defaults, ...overrides } as CompleteElectronAPI & O;
 }

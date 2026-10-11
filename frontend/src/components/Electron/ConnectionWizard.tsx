@@ -13,16 +13,32 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { addServer } from '../../utils/serverStorage';
+import { OpenInBrowser } from '@mui/icons-material';
+import { addOrActivateServer } from '../../utils/serverStorage';
+import { clearTokens } from '../../utils/tokenService';
 import { logger } from '../../utils/logger';
+import { useElectronAPI } from '../../contexts/ElectronContext';
+import { requestBrowserLoginOnLoad } from '../../hooks/useBrowserLogin';
 
 interface ConnectionWizardProps {
   open: boolean;
+  /** Called once the server is saved and active; the app reloads to use it. */
   onComplete: () => void;
+  /**
+   * Changing the server from the login screen: the wizard can be closed
+   * without picking one. First-run setup can't.
+   */
+  onCancel?: () => void;
 }
 
-export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComplete }) => {
-  const [activeStep, setActiveStep] = useState(0);
+export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComplete, onCancel }) => {
+  const electronAPI = useElectronAPI();
+  // Changing server skips the welcome step
+  const [activeStep, setActiveStep] = useState(onCancel ? 1 : 0);
+  // Whether the server can sign the app in through the browser
+  const [browserLoginSupported, setBrowserLoginSupported] = useState(false);
+  // The server that passed the connection test, saved on confirm (commitServer)
+  const [pendingServer, setPendingServer] = useState<{ name: string; url: string } | null>(null);
   const [serverUrl, setServerUrl] = useState('');
   const [serverName, setServerName] = useState('');
   const [error, setError] = useState('');
@@ -49,9 +65,23 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
         },
       });
 
-      return response.ok;
+      if (!response.ok) return false;
+      setBrowserLoginSupported(await supportsBrowserLogin(url));
+      return true;
     } catch (error) {
       logger.error('Connection test failed:', error);
+      return false;
+    }
+  };
+
+  const supportsBrowserLogin = async (url: string): Promise<boolean> => {
+    if (!electronAPI?.startBrowserLogin) return false;
+    try {
+      const response = await fetch(`${url}/api/instance/settings/public`);
+      if (!response.ok) return false;
+      const settings = (await response.json()) as { desktopBrowserLogin?: boolean };
+      return settings.desktopBrowserLogin === true;
+    } catch {
       return false;
     }
   };
@@ -108,13 +138,10 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
         }
       }
 
-      // Save server (activeStep 1 === steps.length - 2, so save happens here)
-      try {
-        addServer(serverName || new URL(cleanUrl).hostname || 'My Server', cleanUrl);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to save server');
-        return;
-      }
+      // Saved only when the user confirms on the last step (commitServer):
+      // leaving the wizard before that (Escape when changing server) keeps
+      // the current server, its session and the app pointing at it
+      setPendingServer({ name: serverName || new URL(cleanUrl).hostname || 'My Server', url: cleanUrl });
     }
 
     setActiveStep((prevStep) => prevStep + 1);
@@ -125,7 +152,32 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
     setActiveStep((prevStep) => prevStep - 1);
   };
 
+  /**
+   * Make the tested server the active one, all at once with the reload that
+   * onComplete does: storage never names a server the running app isn't
+   * about to use.
+   */
+  const commitServer = (): boolean => {
+    if (!pendingServer) return false;
+    try {
+      addOrActivateServer(pendingServer.name, pendingServer.url);
+      // A session (refresh token) belongs to the server it came from
+      clearTokens();
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save server');
+      return false;
+    }
+  };
+
   const handleFinish = () => {
+    if (commitServer()) onComplete();
+  };
+
+  const handleSignInWithBrowser = () => {
+    if (!commitServer()) return;
+    // The login screen starts it once the app has reloaded onto this server
+    requestBrowserLoginOnLoad();
     onComplete();
   };
 
@@ -189,6 +241,11 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
             <Typography variant="h5" gutterBottom color="success.main">
               ✓ Connected Successfully!
             </Typography>
+            {error && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                {error}
+              </Alert>
+            )}
             <Alert severity="success" sx={{ mt: 2, mb: 2 }}>
               <Typography variant="body2">
                 <strong>{serverName || 'Server'}</strong>
@@ -197,7 +254,9 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
               </Typography>
             </Alert>
             <Typography variant="body2" color="text.secondary">
-              You're all set! Click finish to start using Semaphore Chat.
+              {browserLoginSupported
+                ? "You're all set! Sign in with your browser to use its password manager, or continue to sign in here."
+                : "You're all set! Click finish to start using Semaphore Chat."}
             </Typography>
           </Box>
         );
@@ -212,16 +271,14 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
       open={open}
       maxWidth="sm"
       fullWidth
-      disableEscapeKeyDown
+      disableEscapeKeyDown={!onCancel}
       onClose={(_, reason) => {
-        if (reason !== 'backdropClick') {
-          // Allow closing with finish button only
-        }
+        // First-run setup closes with the finish button only; changing
+        // server can be abandoned with Escape
+        if (onCancel && reason === 'escapeKeyDown') onCancel();
       }}
     >
-      <DialogTitle>
-        <Typography variant="h6">Connect to Server</Typography>
-      </DialogTitle>
+      <DialogTitle>{onCancel ? 'Change Server' : 'Connect to Server'}</DialogTitle>
       <DialogContent>
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
           {steps.map((label) => (
@@ -234,17 +291,36 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
         {renderStepContent()}
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-          <Button
-            disabled={activeStep === 0 || activeStep === steps.length - 1}
-            onClick={handleBack}
-          >
-            Back
-          </Button>
-          <Box>
+          {onCancel && activeStep < steps.length - 1 ? (
+            <Button onClick={onCancel}>Cancel</Button>
+          ) : (
+            <Button
+              disabled={activeStep === 0 || activeStep === steps.length - 1}
+              onClick={handleBack}
+            >
+              Back
+            </Button>
+          )}
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {activeStep === steps.length - 1 ? (
-              <Button variant="contained" onClick={handleFinish}>
-                Finish
-              </Button>
+              browserLoginSupported ? (
+                <>
+                  <Button variant="outlined" onClick={handleFinish}>
+                    Sign in with password
+                  </Button>
+                  <Button
+                    variant="contained"
+                    startIcon={<OpenInBrowser />}
+                    onClick={handleSignInWithBrowser}
+                  >
+                    Sign in with browser
+                  </Button>
+                </>
+              ) : (
+                <Button variant="contained" onClick={handleFinish}>
+                  Finish
+                </Button>
+              )
             ) : (
               <Button
                 variant="contained"

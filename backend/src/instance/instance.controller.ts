@@ -47,6 +47,7 @@ export class InstanceController {
       maxFileSizeBytes: Number(settings.maxFileSizeBytes),
       gifSearchEnabled: Boolean(this.configService.get('GIPHY_API_KEY')),
       passwordResetEnabled: this.mailerService.isEnabled,
+      desktopBrowserLogin: true,
     };
   }
 

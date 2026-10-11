@@ -19,7 +19,10 @@ import { ApiOkResponse, ApiCreatedResponse, ApiBody } from '@nestjs/swagger';
 import { LocalAuthGuard } from './local-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService, DeviceInfo } from './auth.service';
-import { TokenBlacklistService } from './token-blacklist.service';
+import {
+  AccessTokenClaims,
+  TokenBlacklistService,
+} from './token-blacklist.service';
 import { SessionRevocationService } from './session-revocation.service';
 import { PasswordResetService } from './password-reset.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
@@ -46,12 +49,16 @@ import {
   RevokeAllSessionsResponseDto,
   ForgotPasswordResponseDto,
   ResetPasswordResponseDto,
+  AuthorizeDesktopLoginResponseDto,
 } from './dto/auth-response.dto';
 import {
   LoginRequestDto,
   RefreshRequestDto,
   LogoutRequestDto,
+  AuthorizeDesktopLoginRequestDto,
+  DesktopLoginTokenRequestDto,
 } from './dto/auth-request.dto';
+import { DeviceLoginGrantService } from './device-login-grant.service';
 import {
   ForgotPasswordRequestDto,
   ResetPasswordRequestDto,
@@ -86,6 +93,7 @@ export class AuthController {
     private readonly passwordResetService: PasswordResetService,
     private readonly sessionRevocationService: SessionRevocationService,
     private readonly refreshTokenGraceService: RefreshTokenGraceService,
+    private readonly deviceLoginGrantService: DeviceLoginGrantService,
   ) {}
 
   /**
@@ -115,20 +123,104 @@ export class AuthController {
     const { refreshToken, accessToken } =
       await this.authService.issueLoginTokens(req.user, deviceInfo);
 
-    // Always set cookies for web clients (access token for browser media, refresh for sessions)
-    setAccessTokenCookie(res, accessToken);
-    this.setRefreshCookie(res, refreshToken);
+    return this.respondWithNewSession(req, res, { refreshToken, accessToken });
+  }
 
-    // Check if this is an Electron client
+  /**
+   * Answer a sign-in with its new session's tokens: cookies for web clients
+   * (access token for browser media, refresh for sessions), and the refresh
+   * token in the body for Electron, which can't use cookies.
+   */
+  private respondWithNewSession(
+    req: Request,
+    res: Response,
+    tokens: { refreshToken: string; accessToken: string },
+  ): LoginResponseDto {
+    setAccessTokenCookie(res, tokens.accessToken);
+    this.setRefreshCookie(res, tokens.refreshToken);
+
     const userAgent = req.headers['user-agent'] || '';
-    const isElectron = userAgent.includes('Electron');
-
-    // Return refresh token in body for Electron clients
-    if (isElectron) {
-      return { accessToken, refreshToken };
+    if (userAgent.includes('Electron')) {
+      return {
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+      };
     }
+    return { accessToken: tokens.accessToken };
+  }
 
-    return { accessToken };
+  /**
+   * Sign in with browser (desktop app), step 1: the user, signed in in the
+   * browser, confirmed signing in the desktop app as themselves. Mints a
+   * single-use code bound to the app's PKCE challenge; the browser hands it
+   * to the app (a loopback redirect), which redeems it at
+   * POST /auth/desktop/token.
+   *
+   * Only with the access token in the Authorization header, which a page
+   * has to read from the app's memory: never with the cookie alone, so
+   * another site can't approve a grant through a cross-site request.
+   */
+  @Throttle({ short: { limit: 2, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
+  @Post('desktop/authorize')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: AuthorizeDesktopLoginResponseDto })
+  async authorizeDesktopLogin(
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: AuthorizeDesktopLoginRequestDto,
+  ): Promise<AuthorizeDesktopLoginResponseDto> {
+    const header = req.headers.authorization;
+    const bearer = header?.startsWith('Bearer ')
+      ? header.slice('Bearer '.length)
+      : undefined;
+    if (!bearer) {
+      throw new UnauthorizedException(
+        'Approving a desktop sign-in needs the Authorization header',
+      );
+    }
+    // Verified by JwtAuthGuard already (the same token: the header comes
+    // first in extractAccessToken), so decoding is enough
+    const claims = this.jwtService.decode<AccessTokenClaims | null>(bearer);
+    if (
+      !claims ||
+      claims.sub !== req.user.id ||
+      typeof claims.sid !== 'string'
+    ) {
+      // Tokens from before sessions were tracked can't vouch for a session
+      throw new UnauthorizedException('Sign in again to approve this');
+    }
+    const grant = await this.deviceLoginGrantService.createApproved(
+      dto.codeChallenge,
+      { ...claims, sid: claims.sid },
+    );
+    return { code: grant.id, expiresInSeconds: grant.expiresInSeconds };
+  }
+
+  /**
+   * Sign in with browser (desktop app), step 2: the app redeems the code
+   * with its PKCE verifier for a session of its own (this request's device).
+   * Every failure (unknown, expired or used code, wrong verifier, the
+   * approving session ended) answers the same 401; the code is spent either
+   * way.
+   */
+  @Public()
+  @Throttle({ short: { limit: 4, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
+  @Post('desktop/token')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: LoginResponseDto })
+  async redeemDesktopLogin(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+    @Body() dto: DesktopLoginTokenRequestDto,
+  ): Promise<LoginResponseDto> {
+    const result = await this.deviceLoginGrantService.redeem(
+      dto.code,
+      dto.codeVerifier,
+      this.getDeviceInfo(req),
+    );
+    if (!result.ok) {
+      throw new UnauthorizedException('Invalid or expired sign-in code');
+    }
+    return this.respondWithNewSession(req, res, result);
   }
 
   @Public()

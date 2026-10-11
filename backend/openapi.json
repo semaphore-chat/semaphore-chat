@@ -53,6 +53,70 @@
         ]
       }
     },
+    "/api/auth/desktop/authorize": {
+      "post": {
+        "operationId": "AuthController_authorizeDesktopLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeDesktopLoginRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeDesktopLoginResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sign in with browser (desktop app), step 1: the user, signed in in the\nbrowser, confirmed signing in the desktop app as themselves. Mints a\nsingle-use code bound to the app's PKCE challenge; the browser hands it\nto the app (a loopback redirect), which redeems it at\nPOST /auth/desktop/token.\n\nOnly with the access token in the Authorization header, which a page\nhas to read from the app's memory: never with the cookie alone, so\nanother site can't approve a grant through a cross-site request.",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
+    "/api/auth/desktop/token": {
+      "post": {
+        "operationId": "AuthController_redeemDesktopLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DesktopLoginTokenRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Sign in with browser (desktop app), step 2: the app redeems the code\nwith its PKCE verifier for a session of its own (this request's device).\nEvery failure (unknown, expired or used code, wrong verifier, the\napproving session ended) answers the same 401; the code is spent either\nway.",
+        "tags": [
+          "Auth"
+        ]
+      }
+    },
     "/api/auth/refresh": {
       "post": {
         "operationId": "AuthController_refresh",
@@ -7898,6 +7962,62 @@
           "accessToken"
         ]
       },
+      "AuthorizeDesktopLoginRequestDto": {
+        "type": "object",
+        "properties": {
+          "codeChallenge": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "description": "PKCE S256 code challenge: base64url SHA-256 of the desktop app's code verifier"
+          },
+          "codeChallengeMethod": {
+            "enum": [
+              "S256"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "codeChallenge",
+          "codeChallengeMethod"
+        ]
+      },
+      "AuthorizeDesktopLoginResponseDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Single-use code for the desktop app to redeem at POST /auth/desktop/token"
+          },
+          "expiresInSeconds": {
+            "type": "number",
+            "description": "How long the code can be redeemed"
+          }
+        },
+        "required": [
+          "code",
+          "expiresInSeconds"
+        ]
+      },
+      "DesktopLoginTokenRequestDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$",
+            "description": "The code from POST /auth/desktop/authorize"
+          },
+          "codeVerifier": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9\\-._~]{43,128}$",
+            "description": "The PKCE code verifier the challenge came from"
+          }
+        },
+        "required": [
+          "code",
+          "codeVerifier"
+        ]
+      },
       "RefreshRequestDto": {
         "type": "object",
         "properties": {
@@ -13345,6 +13465,10 @@
           },
           "passwordResetEnabled": {
             "type": "boolean"
+          },
+          "desktopBrowserLogin": {
+            "type": "boolean",
+            "description": "The desktop app can sign in through the browser (POST\n/auth/desktop/authorize and /auth/desktop/token). Older servers don't\nsend it: the app hides the button for them."
           }
         },
         "required": [
@@ -13352,7 +13476,8 @@
           "registrationMode",
           "maxFileSizeBytes",
           "gifSearchEnabled",
-          "passwordResetEnabled"
+          "passwordResetEnabled",
+          "desktopBrowserLogin"
         ]
       },
       "InstanceSettingsResponseDto": {

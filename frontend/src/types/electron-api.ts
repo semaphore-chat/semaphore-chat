@@ -56,6 +56,17 @@ export type DeepLinkRoute =
 
 export type SystemResumeEvent = 'resume' | 'unlock-screen';
 
+/**
+ * How a browser sign-in ended in the main process. Mirrors
+ * `electron/browser-login.ts` (compiled separately, like the types above).
+ */
+export type BrowserLoginResult =
+  | { status: 'code'; code: string }
+  | { status: 'denied' }
+  | { status: 'cancelled' }
+  | { status: 'timeout' }
+  | { status: 'error'; message: string };
+
 /** A voice event for the desktop app's log file (electron/voiceLog.ts validates it). */
 export interface VoiceLogEntry {
   level: 'info' | 'warn' | 'error';
@@ -103,6 +114,17 @@ export interface ElectronAPI {
   onSystemResume?: (callback: (event: SystemResumeEvent) => void) => (() => void);
   /** Write a voice event to the desktop app's log file. Missing on older desktop builds. */
   logVoiceEvent?: (entry: VoiceLogEntry) => void;
+  /**
+   * Sign in with browser: open the instance's sign-in page in the system
+   * browser and resolve with the code it hands back over loopback. Missing
+   * on older desktop builds.
+   */
+  startBrowserLogin?: (request: {
+    instanceUrl: string;
+    codeChallenge: string;
+  }) => Promise<BrowserLoginResult>;
+  /** Stop waiting for the browser (the pending start resolves `cancelled`). */
+  cancelBrowserLogin?: () => Promise<void>;
   [key: string]: unknown;
 }
 

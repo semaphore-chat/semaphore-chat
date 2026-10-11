@@ -96,6 +96,7 @@ export function makeHandlers(scenario: Scenario, options: MakeHandlersOptions = 
         maxFileSizeBytes: 25 * 1024 * 1024,
         gifSearchEnabled: false,
         passwordResetEnabled: true,
+        desktopBrowserLogin: true,
       } satisfies PublicSettingsResponseDto)),
 
     http.get('/api/instance/settings', () =>
