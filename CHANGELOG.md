@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- **The app page had no clickjacking protection and no Content Security Policy** — The production frontend image declared `X-Frame-Options`, a CSP and the other security headers, but nginx dropped all of them from every location that sets its own headers, which included `index.html` and the static assets. Any site could frame the app, and the CSP never applied. Every response now carries the headers, the CSP gains `frame-ancestors 'self'` and `base-uri 'self'`, and scripts are limited to the app's own files (no inline scripts or `eval`). The policy also allows `blob:` images and `blob:` workers, which avatars, image attachments and replay previews use. (#PR)
+
 ## [0.6.0] - 2026-10-05
 
 ### ⚠️ Breaking changes / upgrade checklist
