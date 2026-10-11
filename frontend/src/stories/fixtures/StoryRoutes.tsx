@@ -28,10 +28,16 @@ const SettingsPage = React.lazy(() => import('../../pages/SettingsPage'));
 const CommunityPage = React.lazy(() => import('../../pages/CommunityPage'));
 const NotificationsPage = React.lazy(() => import('../../pages/NotificationsPage'));
 const NotFoundPage = React.lazy(() => import('../../pages/NotFoundPage'));
+const DesktopLoginPage = React.lazy(() => import('../../pages/DesktopLoginPage'));
+
+/** Stories never leave the page: the hand-back to the desktop app is a no-op. */
+const stayHere = () => {};
 
 /** The authenticated route tree, for use inside a `<MemoryRouter>` in stories. */
 export const StoryRoutes: React.FC = () => (
   <Routes>
+    {/* Sign in with browser for the desktop app: full-page, outside Layout (as in routes.tsx) */}
+    <Route path="/desktop-login" element={<DesktopLoginPage redirect={stayHere} />} />
     <Route path="/" element={<Layout />}>
       <Route index element={<HomePage />} />
       <Route path="direct-messages" element={<DirectMessagesPage />} />

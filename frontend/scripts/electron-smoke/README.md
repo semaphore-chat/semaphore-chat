@@ -49,6 +49,7 @@ if any check failed.
 | Clipboard | `electronAPI.writeClipboard` -> main's `clipboard.writeText`, read back in main |
 | desktopCapturer | `electronAPI.getDesktopSources` returns a screen with a thumbnail |
 | Notifications | `electronAPI.showNotification` doesn't fail in main |
+| Sign in with browser | signed out, the login screen's "Sign in with browser": main opens the instance's `/#/desktop-login` (caught in main, opened in Playwright's Chromium at an https origin that serves `frontend/dist` and proxies `/api`), web login, confirm, the page's https -> `http://127.0.0.1:<port>/callback` hand-back, the app signs in |
 | Deep link | a second instance launched with `semaphore://community/<id>/channel/<id>` routes the running one there |
 | Voice + screen share | join a voice channel (real LiveKit), open the `ScreenSourcePicker`, share a screen: main's `setDisplayMediaRequestHandler` grants it and the track publishes |
 | Screen share refused | Cancel in the picker sends no request; with main's `desktopCapturer.getSources` stubbed to return nothing, a picked source that is gone and a request with no sources at all are denied (`callback(null)`) without main-process errors, `getDisplayMedia` rejects, sharing stays off and works again afterwards |

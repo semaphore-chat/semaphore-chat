@@ -50,6 +50,8 @@ Download the latest release for your platform from **[GitHub Releases](https://g
 
 On first launch, Semaphore Chat will prompt you to enter your server URL (e.g. `https://semaphore-chat.example.com`). This is the address where your self-hosted Semaphore Chat instance is running.
 
+To sign in with your browser's password manager instead of typing your password, use **Sign in with browser**: see [Sign in with browser](desktop-browser-sign-in.md). **Change server** on the login screen switches to another instance.
+
 ## Auto-updates
 
 The desktop app checks for updates automatically on startup and periodically while running. When a new version is available, you'll see a notification with the option to install and restart.

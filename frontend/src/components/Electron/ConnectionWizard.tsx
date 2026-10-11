@@ -257,9 +257,7 @@ export const ConnectionWizard: React.FC<ConnectionWizardProps> = ({ open, onComp
         if (onCancel && reason === 'escapeKeyDown') onCancel();
       }}
     >
-      <DialogTitle>
-        <Typography variant="h6">{onCancel ? 'Change Server' : 'Connect to Server'}</Typography>
-      </DialogTitle>
+      <DialogTitle>{onCancel ? 'Change Server' : 'Connect to Server'}</DialogTitle>
       <DialogContent>
         <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
           {steps.map((label) => (

@@ -8,7 +8,8 @@
  */
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { _electron as electron } from 'playwright-core';
+import { join, normalize } from 'node:path';
+import { _electron as electron, chromium } from 'playwright-core';
 import type { ElectronApplication, Page } from 'playwright-core';
 
 const APP = process.env.SMOKE_APP ?? '/app/semaphore-chat';
@@ -18,6 +19,12 @@ const KEYRING = process.env.SMOKE_KEYRING !== 'false';
 const DESKTOP = KEYRING ? (process.env.SMOKE_DESKTOP ?? 'GNOME') : undefined;
 // The seeded e2e user (backend/prisma/seed-e2e.ts).
 const USER = { username: 'testuser', password: 'Test123!@#' };
+// The web build (frontend/dist), for the browser half of "Sign in with browser"
+const WEB_DIST = process.env.SMOKE_WEB_DIST ?? '/web';
+// The instance as the browser sees it: an https origin Playwright serves
+// (the web build, and /api + /socket.io proxied to SERVER_URL), so the
+// hand-back is a real https -> http://127.0.0.1 top-level navigation
+const WEB_ORIGIN = 'https://semaphore.smoke.test';
 
 // --no-sandbox: Chromium's sandbox needs the SUID chrome-sandbox helper or
 // unprivileged user namespaces, neither of which the container has (the same
@@ -191,7 +198,8 @@ async function main() {
     await win.getByRole('button', { name: /get started|next/i }).first().click({ timeout: 20_000 });
     await win.getByLabel('Server URL').fill(SERVER_URL);
     await win.getByRole('button', { name: /next|connect/i }).last().click();
-    await win.getByRole('button', { name: /finish|continue|done/i }).click({ timeout: 20_000 });
+    // With browser sign-in available the last step offers it next to the password
+    await win.getByRole('button', { name: /finish|continue|done|sign in with password/i }).click({ timeout: 20_000 });
     await shot(win, '01-after-wizard');
   });
 
@@ -473,6 +481,81 @@ async function main() {
     await win.evaluate(([c, ch]) => { location.hash = `#/community/${c}/channel/${ch}`; }, [community.id, general.id]);
     await win.getByText(text).first().waitFor({ timeout: 20_000 });
     return `landed on ${hash || '#/'}; channel history loads`;
+  });
+
+  // ---------------------------------------------------------- sign in with browser
+  await check('sign in with browser: system browser -> confirm -> loopback hand-back -> signed in', async () => {
+    assert(existsSync(join(WEB_DIST, 'index.html')), `no web build at ${WEB_DIST}`);
+    // Signed out, server still configured
+    await win.evaluate(async () => {
+      const api = (window as unknown as { electronAPI: { deleteRefreshToken(): Promise<void> } }).electronAPI;
+      await api.deleteRefreshToken();
+      localStorage.removeItem('refreshToken');
+      location.hash = '#/login';
+      location.reload();
+    }).catch(() => { /* the reload destroys the evaluation context */ });
+    await win.getByRole('button', { name: /sign in with browser/i }).waitFor({ timeout: 20_000 });
+    await shot(win, '13-login-with-browser');
+
+    // Catch the URL main opens instead of launching a browser in the container
+    await app.evaluate(({ shell }) => {
+      const g = globalThis as unknown as { __openedUrls: string[] };
+      g.__openedUrls = [];
+      shell.openExternal = (url: string) => {
+        g.__openedUrls.push(url);
+        return Promise.resolve();
+      };
+    });
+    await win.getByRole('button', { name: /sign in with browser/i }).click();
+    await win.getByText(/waiting for your browser/i).waitFor({ timeout: 10_000 });
+    let opened: string | undefined;
+    for (let i = 0; i < 50 && !opened; i++) {
+      opened = await app.evaluate(() => (globalThis as unknown as { __openedUrls: string[] }).__openedUrls[0]);
+      if (!opened) await sleep(200);
+    }
+    assert(opened, 'main never opened the browser');
+    assert(opened.startsWith(`${SERVER_URL}/#/desktop-login?`), `unexpected URL ${opened}`);
+    const browserUrl = WEB_ORIGIN + opened.slice(SERVER_URL.length);
+
+    const browser = await chromium.launch({ args: ['--no-sandbox'] });
+    try {
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
+      await context.route(`${WEB_ORIGIN}/**`, async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/socket.io/')) {
+          const response = await route.fetch({ url: `${SERVER_URL}${url.pathname}${url.search}` });
+          await route.fulfill({ response });
+          return;
+        }
+        const file = normalize(join(WEB_DIST, url.pathname === '/' ? 'index.html' : url.pathname));
+        await route.fulfill({
+          path: file.startsWith(`${WEB_DIST}/`) && existsSync(file) ? file : join(WEB_DIST, 'index.html'),
+        });
+      });
+      const page = await context.newPage();
+      await page.goto(browserUrl);
+      // Not signed in in this browser: the normal web login first
+      await page.getByLabel('Username').fill(USER.username, { timeout: 20_000 });
+      await page.getByLabel('Password').fill(USER.password);
+      await page.locator('button[type="submit"]').click();
+      await page.getByRole('heading', { name: /sign in to the desktop app/i }).waitFor({ timeout: 20_000 });
+      await page.screenshot({ path: `${OUT}/14-browser-confirm.png` }).catch(() => {});
+      await page.getByRole('button', { name: /^sign in to the desktop app$/i }).click();
+      // The page hands the code to the app's loopback listener (https -> http://127.0.0.1)
+      await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/callback\?/, { timeout: 20_000 });
+      await page.getByText(/you.re signed in/i).waitFor({ timeout: 10_000 });
+      await page.screenshot({ path: `${OUT}/15-browser-handed-back.png` }).catch(() => {});
+      results.browserLoginChromium = browser.version();
+    } finally {
+      await browser.close();
+    }
+
+    await win.waitForFunction(() => !location.hash.includes('/login'), undefined, { timeout: 20_000 });
+    await shot(win, '16-signed-in-with-browser');
+    const stored = await win.evaluate(() =>
+      (window as unknown as { electronAPI: { getRefreshToken(): Promise<string | null> } }).electronAPI.getRefreshToken());
+    assert(stored || (await win.evaluate(() => localStorage.getItem('refreshToken'))), 'no refresh token stored');
+    return `Chromium ${String(results.browserLoginChromium)} navigated ${WEB_ORIGIN} -> http://127.0.0.1; app signed in`;
   });
   await app.close();
 

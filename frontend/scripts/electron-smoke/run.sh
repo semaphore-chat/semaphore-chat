@@ -54,6 +54,8 @@ TICKET="$1"
 shift
 BUILD=false KEEP=false KEYRING=true DESKTOP=GNOME
 APP="$ROOT/frontend/release/linux-unpacked"
+# The web build served to the browser in the "sign in with browser" check
+WEB_DIST="$ROOT/frontend/dist"
 OUT="$ROOT/frontend/.electron-smoke-out"
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -169,6 +171,9 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
   docker build -q -t "$IMAGE" "$HERE" >/dev/null
 fi
 
+# A missing web build fails only the browser sign-in check (an empty mount,
+# not one docker would create as root inside the checkout)
+[[ -d "$WEB_DIST" ]] || { WEB_DIST="$OUT/no-web-build"; mkdir -p "$WEB_DIST"; }
 log "running the smoke checks against $APP (server http://$BACKEND:3000)"
 RC=0
 docker run --rm --init --name "$TICKET-electron-smoke-$$" --network "$NET" \
@@ -176,6 +181,7 @@ docker run --rm --init --name "$TICKET-electron-smoke-$$" --network "$NET" \
   --shm-size 1g -u "$(id -u):$(id -g)" -e HOME=/tmp/home \
   -e "SERVER_URL=http://$BACKEND:3000" -e "SMOKE_KEYRING=$KEYRING" -e "SMOKE_DESKTOP=$DESKTOP" \
   -v "$APP:/app:ro" -v "$HERE:/opt/smoke/src:ro" -v "$OUT:/out" \
+  -v "$WEB_DIST:/web:ro" \
   "$IMAGE" bash /opt/smoke/src/entrypoint.sh || RC=$?
 
 if [[ -f "$OUT/results.json" ]]; then

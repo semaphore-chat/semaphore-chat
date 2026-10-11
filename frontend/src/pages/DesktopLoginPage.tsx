@@ -25,11 +25,13 @@ import { logger } from "../utils/logger";
 /** Sends the browser to the app's loopback listener. A seam for tests and stories. */
 export interface DesktopLoginPageProps {
   redirect?: (url: string) => void;
+  /** Start in another state (stories). */
+  initialPhase?: DesktopLoginPhase;
 }
 
 const defaultRedirect = (url: string) => window.location.assign(url);
 
-type Phase = "confirm" | "handing-over" | "cancelled";
+export type DesktopLoginPhase = "confirm" | "handing-over" | "cancelled";
 
 function Card({ children }: { children: React.ReactNode }) {
   return (
@@ -71,12 +73,15 @@ function Card({ children }: { children: React.ReactNode }) {
  * Nothing happens without the confirm click: a link someone else sent can't
  * sign anything in on its own, and the code only ever goes to 127.0.0.1.
  */
-const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({ redirect = defaultRedirect }) => {
+const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({
+  redirect = defaultRedirect,
+  initialPhase = "confirm",
+}) => {
   const [searchParams] = useSearchParams();
   const params = useMemo(() => parseDesktopLoginParams(searchParams), [searchParams]);
   const { user, isLoading: userLoading } = useCurrentUser();
   const { handleLogout, logoutLoading } = useLogout();
-  const [phase, setPhase] = useState<Phase>("confirm");
+  const [phase, setPhase] = useState<DesktopLoginPhase>(initialPhase);
   const authorize = useMutation(authControllerAuthorizeDesktopLoginMutation());
 
   if (!params) {
@@ -161,7 +166,7 @@ const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({ redirect = defaultR
           .
         </Typography>
       )}
-      <Alert severity="warning" variant="outlined">
+      <Alert severity="warning" variant="outlined" role="note">
         Only continue if you just chose &ldquo;Sign in with browser&rdquo; in the desktop app
         yourself. Never continue from a link someone sent you.
       </Alert>

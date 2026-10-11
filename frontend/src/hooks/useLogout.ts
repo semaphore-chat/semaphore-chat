@@ -49,7 +49,8 @@ export function useLogout() {
       // Unsent drafts are per browser tab, not per user: drop them so the
       // next account signed in on this tab never sees them.
       clearComposerDrafts();
-      navigate("/login", loginState ? { state: loginState } : undefined);
+      if (loginState) navigate("/login", { state: loginState });
+      else navigate("/login");
     }
   };
 

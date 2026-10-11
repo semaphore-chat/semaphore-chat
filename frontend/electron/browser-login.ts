@@ -137,6 +137,8 @@ export async function startBrowserLogin(options: {
         'Cache-Control': 'no-store',
         'Referrer-Policy': 'no-referrer',
         'X-Frame-Options': 'DENY',
+        // One request per connection: nothing outlives the attempt
+        Connection: 'close',
       });
       res.end(body);
     };
