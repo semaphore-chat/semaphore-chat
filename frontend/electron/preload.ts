@@ -10,6 +10,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import type { DeepLinkRoute } from './deep-link-parser';
+import type { BrowserLoginResult } from './browser-login';
 
 /**
  * Update information passed from main process
@@ -237,6 +238,17 @@ const electronAPI = {
   // startup) can be flushed. See the 'deep-link:ready' handler in main.ts.
   notifyDeepLinkReady: () => {
     ipcRenderer.send('deep-link:ready');
+  },
+
+  // Sign in with browser: open the instance's sign-in page in the system
+  // browser and wait for it to hand back a code (see electron/browser-login.ts).
+  // Only the PKCE challenge goes to main; the verifier stays in the renderer.
+  startBrowserLogin: (request: { instanceUrl: string; codeChallenge: string }): Promise<BrowserLoginResult> => {
+    return ipcRenderer.invoke('browser-login:start', request);
+  },
+
+  cancelBrowserLogin: (): Promise<void> => {
+    return ipcRenderer.invoke('browser-login:cancel');
   },
 
   // Voice events into the app's log file (validated by main, see voiceLog.ts).

@@ -159,6 +159,16 @@ export function setActiveServer(serverId: string): Server {
 }
 
 /**
+ * Make `url` the active server: the saved one with that URL, or a new one.
+ */
+export function addOrActivateServer(name: string, url: string): Server {
+  const normalizedUrl = url.endsWith('/') ? url.slice(0, -1) : url;
+  const existing = getServers().find(s => s.url === normalizedUrl);
+  const server = existing ?? addServer(name, normalizedUrl);
+  return setActiveServer(server.id);
+}
+
+/**
  * Update server properties
  */
 export function updateServer(serverId: string, updates: Partial<Omit<Server, 'id'>>): Server {

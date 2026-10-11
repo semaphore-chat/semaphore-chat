@@ -231,6 +231,7 @@ const instanceHandlers = [
       registrationMode: 'OPEN',
       maxFileSizeBytes: 524288000,
       passwordResetEnabled: false,
+      desktopBrowserLogin: true,
     });
   }),
 ];

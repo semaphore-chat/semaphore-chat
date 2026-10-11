@@ -17,6 +17,14 @@ export class PublicSettingsResponseDto {
 
   @ApiProperty()
   passwordResetEnabled: boolean;
+
+  /**
+   * The desktop app can sign in through the browser (POST
+   * /auth/desktop/authorize and /auth/desktop/token). Older servers don't
+   * send it: the app hides the button for them.
+   */
+  @ApiProperty()
+  desktopBrowserLogin: boolean;
 }
 
 export class InstanceStatsResponseDto {

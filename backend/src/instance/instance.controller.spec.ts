@@ -63,6 +63,7 @@ describe('InstanceController', () => {
         maxFileSizeBytes: 524288000,
         gifSearchEnabled: false,
         passwordResetEnabled: false,
+        desktopBrowserLogin: true,
       });
     });
 

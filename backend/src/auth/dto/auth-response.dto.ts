@@ -43,3 +43,10 @@ export class ForgotPasswordResponseDto {
 export class ResetPasswordResponseDto {
   message: string;
 }
+
+export class AuthorizeDesktopLoginResponseDto {
+  /** Single-use code for the desktop app to redeem at POST /auth/desktop/token */
+  code: string;
+  /** How long the code can be redeemed */
+  expiresInSeconds: number;
+}

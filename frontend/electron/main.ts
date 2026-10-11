@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { SecureStorageAvailability, SecureStorageStoreResult } from './secure-storage.types';
 import { parseDeepLink, extractDeepLinkUrls, DEEP_LINK_PROTOCOL, type DeepLinkRoute } from './deep-link-parser';
+import { startBrowserLogin, type BrowserLoginAttempt, type BrowserLoginResult } from './browser-login';
 import { choosePasswordStore, probeSecretService } from './passwordStore';
 import log from 'electron-log/main';
 import { formatVoiceLogEntry } from './voiceLog';
@@ -810,7 +811,53 @@ function setupIpcHandlers() {
   ipcMain.on('deep-link:ready', () => {
     flushPendingDeepLinks();
   });
+
+  // Sign in with browser (see browser-login.ts). One attempt at a time: a
+  // new one cancels the last. Resolves when the browser hands back a code,
+  // or with why it didn't (cancelled, denied, timeout).
+  ipcMain.handle(
+    'browser-login:start',
+    async (event, request: unknown): Promise<BrowserLoginResult> => {
+      if (!mainWindow || event.sender !== mainWindow.webContents) {
+        return { status: 'error', message: 'Not the app window' };
+      }
+      const { instanceUrl, codeChallenge } = (request ?? {}) as Record<string, unknown>;
+      if (typeof instanceUrl !== 'string' || typeof codeChallenge !== 'string') {
+        return { status: 'error', message: 'Invalid request' };
+      }
+      activeBrowserLogin?.cancel();
+      let attempt: BrowserLoginAttempt;
+      try {
+        attempt = await startBrowserLogin({ instanceUrl, codeChallenge });
+      } catch (error) {
+        return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+      }
+      activeBrowserLogin = attempt;
+      try {
+        await shell.openExternal(attempt.url);
+      } catch (error) {
+        attempt.cancel();
+        return { status: 'error', message: `Could not open the browser: ${String(error)}` };
+      }
+      const result = await attempt.result;
+      if (activeBrowserLogin === attempt) activeBrowserLogin = null;
+      if (result.status === 'code' && mainWindow) {
+        if (!mainWindow.isVisible()) mainWindow.show();
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+      return result;
+    },
+  );
+
+  ipcMain.handle('browser-login:cancel', () => {
+    activeBrowserLogin?.cancel();
+    activeBrowserLogin = null;
+  });
 }
+
+/** The browser sign-in in progress, if any (see 'browser-login:start'). */
+let activeBrowserLogin: BrowserLoginAttempt | null = null;
 
 /**
  * Tell the renderer when the system wakes from sleep or the screen is
@@ -916,8 +963,14 @@ function createWindow() {
 
   // Handle window destroyed
   mainWindow.on('closed', () => {
+    activeBrowserLogin?.cancel();
     mainWindow = null;
   });
+
+  // A reload (e.g. after changing server) or a crashed renderer abandons a
+  // browser sign-in: nobody is left holding its PKCE verifier
+  mainWindow.webContents.on('did-start-loading', () => activeBrowserLogin?.cancel());
+  mainWindow.webContents.on('render-process-gone', () => activeBrowserLogin?.cancel());
 
   // Open target="_blank" links in the OS default browser instead of a new Electron window
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {

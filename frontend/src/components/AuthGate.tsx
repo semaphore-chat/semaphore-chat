@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type RefObject } from "react";
-import { Outlet, Navigate, useNavigate } from "react-router-dom";
+import { Outlet, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { DESKTOP_LOGIN_PATH } from "../utils/desktopLogin";
 import { Box, CircularProgress, Typography } from "@mui/material";
 import { useQuery } from "@tanstack/react-query";
 import { onboardingControllerGetStatusOptions } from "../api-client/@tanstack/react-query.gen";
@@ -82,6 +83,7 @@ export function AuthGate() {
   // Why the server signed us out, for the login page to explain
   const [signOutReason, setSignOutReason] = useState<SignOutReason | null>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   // Ends a session refresh still waiting for the server when AuthGate unmounts
   const refreshAbort = useRef<AbortController | null>(null);
   useEffect(() => () => refreshAbort.current?.abort(), []);
@@ -226,9 +228,18 @@ export function AuthGate() {
   }
 
   if (authState === AuthState.Unauthenticated) {
-    const state: LoginLocationState | undefined = signOutReason
-      ? { signOutReason }
-      : undefined;
+    // The desktop app's browser sign-in comes back here after the login
+    const returnTo =
+      location.pathname === DESKTOP_LOGIN_PATH
+        ? `${location.pathname}${location.search}`
+        : undefined;
+    const state: LoginLocationState | undefined =
+      signOutReason || returnTo
+        ? {
+            ...(signOutReason ? { signOutReason } : {}),
+            ...(returnTo ? { returnTo } : {}),
+          }
+        : undefined;
     return <Navigate to="/login" replace state={state} />;
   }
 
