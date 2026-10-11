@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState } from "react";
+import React, { createContext, useContext, useLayoutEffect, useState } from "react";
 import { Box, Button, ButtonBase, CircularProgress, Paper, Typography } from "@mui/material";
 import {
   FORM_COLUMN_WIDTH,
@@ -11,7 +11,8 @@ import {
 /*
  * The two desktop page shells (see constants/layout.ts for the widths).
  * Pages use them in the desktop layout only; phone and tablet keep their own
- * full-width markup. Both are left-aligned at the content edge, not centred.
+ * full-width markup. User pages centre them in the content area
+ * (`align="center"`); admin keeps them left-aligned next to its drawer.
  */
 
 const NARROW = `@container (max-width: ${FORM_SHELL_COLLAPSE_PX - 1}px)`;
@@ -41,28 +42,89 @@ const ShellHeader: React.FC<ShellHeaderProps> = ({ title, overline, actions }) =
     </Box>
   ) : null;
 
+/**
+ * The content width (px) of the nearest ListPageShell, measured with a
+ * ResizeObserver: null before the first measurement and outside a shell. For
+ * layouts that change their markup by width (Home's columns, Friends' side
+ * panel); pure CSS layouts can use a container query on the shell instead.
+ */
+const ShellWidthContext = createContext<number | null>(null);
+// eslint-disable-next-line react-refresh/only-export-components
+export const useShellWidth = () => useContext(ShellWidthContext);
+
+function useElementWidth(element: HTMLElement | null): number | null {
+  const [width, setWidth] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    if (!element) return;
+    const read = () => {
+      const style = getComputedStyle(element);
+      const padding = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0);
+      const outer = element.getBoundingClientRect().width;
+      // content-box width; jsdom reports 0 for everything, which reads as "unknown".
+      setWidth(outer > 0 ? Math.max(0, outer - padding) : null);
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [element]);
+  return width;
+}
+
+/** A page's title row, as the shells render it (for pages that place it themselves). */
+export const PageHeader = ShellHeader;
+
 interface ListPageShellProps extends ShellHeaderProps {
   children: React.ReactNode;
   /** Fill the content area's height (a page whose list scrolls inside itself). */
   fillHeight?: boolean;
+  /** Widest the page gets (px); PAGE_LIST_MAX_WIDTH by default. */
+  maxWidth?: number;
+  /** "start" (default): at the content edge. "center": centred in the content area. */
+  align?: "start" | "center";
 }
 
-/** List pages (notifications, friends, profile, admin): up to 960px, left-aligned. */
-export const ListPageShell: React.FC<ListPageShellProps> = ({ children, fillHeight, ...header }) => (
-  <Box
-    data-testid="list-page-shell"
-    sx={{
-      maxWidth: PAGE_LIST_MAX_WIDTH,
-      px: 3,
-      py: 3,
-      boxSizing: "content-box",
-      ...(fillHeight && { height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }),
-    }}
-  >
-    <ShellHeader {...header} />
-    {fillHeight ? <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</Box> : children}
-  </Box>
-);
+/**
+ * List pages (notifications, friends, profile, home): capped at `maxWidth`
+ * (960 by default). The shell is a size container named "page", and
+ * `useShellWidth()` gives its children its content width.
+ */
+export const ListPageShell: React.FC<ListPageShellProps> = ({
+  children,
+  fillHeight,
+  maxWidth = PAGE_LIST_MAX_WIDTH,
+  align = "start",
+  ...header
+}) => {
+  const [element, setElement] = useState<HTMLElement | null>(null);
+  const width = useElementWidth(element);
+  return (
+    <Box
+      ref={setElement}
+      data-testid="list-page-shell"
+      sx={{
+        maxWidth,
+        px: 3,
+        py: 3,
+        boxSizing: "content-box",
+        containerType: "inline-size",
+        containerName: "page",
+        ...(align === "center" && { mx: "auto" }),
+        ...(fillHeight && { height: "100%", display: "flex", flexDirection: "column", boxSizing: "border-box" }),
+      }}
+    >
+      <ShellWidthContext.Provider value={width}>
+        <ShellHeader {...header} />
+        {fillHeight ? (
+          <Box sx={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>{children}</Box>
+        ) : (
+          children
+        )}
+      </ShellWidthContext.Provider>
+    </Box>
+  );
+};
 
 export interface FormPageSection {
   id: string;
@@ -84,8 +146,10 @@ interface FormPageShellProps extends ShellHeaderProps {
    * `<FormPageTabPanel>`.
    */
   navMode?: "scroll" | "tabs";
-  /** A 960px column, for sections that are tables. */
+  /** A fluid column up to 1280px, for sections that are tables. */
   wide?: boolean;
+  /** "start" (default): at the content edge. "center": the nav and column centred as one group. */
+  align?: "start" | "center";
   children: React.ReactNode;
 }
 
@@ -123,6 +187,7 @@ export const FormPageShell: React.FC<FormPageShellProps> = ({
   navLabel = "Sections",
   navMode = "scroll",
   wide,
+  align = "start",
   children,
   ...header
 }) => {
@@ -161,15 +226,22 @@ export const FormPageShell: React.FC<FormPageShellProps> = ({
     document.getElementById(formTabId(target.id))?.focus();
   };
   const column = wide ? FORM_WIDE_COLUMN_WIDTH : FORM_COLUMN_WIDTH;
+  const centered = align === "center";
 
   return (
-    <Box data-testid="form-page-shell" sx={{ containerType: "inline-size", px: 3, pt: 3 }}>
-      <Box sx={{ maxWidth: (hasNav ? FORM_NAV_WIDTH + 32 : 0) + column }}>
+    <Box data-testid="form-page-shell" sx={{ containerType: "inline-size", containerName: "page", px: 3, pt: 3 }}>
+      <Box
+        sx={{
+          maxWidth: (hasNav ? FORM_NAV_WIDTH + 32 : 0) + column,
+          ...(centered && { mx: "auto", [NARROW]: { maxWidth: column } }),
+        }}
+      >
         <ShellHeader {...header} />
       </Box>
       <Box
         sx={{
           display: "grid",
+          ...(centered && { justifyContent: "center" }),
           gridTemplateColumns: hasNav ? `${FORM_NAV_WIDTH}px minmax(0, ${column}px)` : `minmax(0, ${column}px)`,
           columnGap: 4,
           alignItems: "start",

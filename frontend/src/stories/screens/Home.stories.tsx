@@ -1,4 +1,5 @@
 import { defineScreen } from '../fixtures/screenStory';
+import { ClickOnMount } from '../fixtures/interactions';
 import { asElectron } from '../fixtures/electron';
 import { buildScenario } from '../fixtures/builder';
 import { bigCommunityScenario } from '../fixtures/scenarios';
@@ -40,7 +41,7 @@ const quietScenario: Scenario = {
 
 /** A returning user (instance owner, so the invite card shows) with mentions, unread DMs and voice. */
 export const Busy = defineScreen(busyScenario, '/');
-Busy.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920'] };
+Busy.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920', 'desktop-2560'] };
 
 /** Long community, channel and user names: rows truncate instead of wrapping. */
 export const BusyLongNames = defineScreen(withLongNames(busyScenario), '/');
@@ -51,7 +52,7 @@ export const CaughtUp = defineScreen(
   { ...quietScenario, me: { ...quietScenario.me, role: 'USER' } },
   '/',
 );
-CaughtUp.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920'] };
+CaughtUp.meta = { viewports: ['desktop-1280', 'desktop', 'desktop-1920', 'desktop-2560'] };
 
 /** In Electron, nothing new: the desktop-app download card is gone from under the caught-up card. */
 export const CaughtUpElectron = asElectron(defineScreen(quietScenario, '/'));
@@ -81,3 +82,29 @@ export const NewUserCanCreate = defineScreen(
   ),
   '/',
 );
+
+/*
+ * Wide layouts (by the page's own width): Mentions | Unread messages side by
+ * side from 1200px, a side column for the invite and download cards from 1560px.
+ */
+const byLabel = (label: string) => () => document.querySelector<HTMLElement>(`[aria-label="${label}"]`);
+
+/** Only mentions (no unread DMs, nobody in voice): Mentions spans the main area. */
+export const MentionsOnly = defineScreen(withUnread(quietScenario, textChannels(communityA)[0].id, 12, 3), '/');
+MentionsOnly.meta = { viewports: ['desktop', 'desktop-1920'] };
+
+/** Electron (no download card): the side column holds the invite card alone. */
+export const BusyElectronWide = asElectron(defineScreen(busyScenario, '/'));
+BusyElectronWide.meta = { viewports: ['desktop-1920'] };
+
+/** Electron with the invite card dismissed: nothing for the side column, so there is none. */
+export const BusyElectronInviteDismissed = asElectron(
+  defineScreen(busyScenario, '/', { overlay: <ClickOnMount find={byLabel('Dismiss invite card')} /> }),
+);
+BusyElectronInviteDismissed.meta = { viewports: ['desktop-1920'] };
+
+/** The rail expanded at 1440: still two columns. */
+export const BusyRailExpanded = defineScreen(busyScenario, '/', {
+  overlay: <ClickOnMount find={byLabel('Expand sidebar')} />,
+});
+BusyRailExpanded.meta = { viewports: ['desktop'] };

@@ -13,7 +13,7 @@ import {
   IconButton,
   useTheme,
 } from "@mui/material";
-import { APPBAR_HEIGHT, PAGE_LIST_MAX_WIDTH } from "../../constants/layout";
+import { APPBAR_HEIGHT, PAGE_WIDE_MAX_WIDTH } from "../../constants/layout";
 import { useMobileBreakpoint, useResponsive } from "../../hooks/useResponsive";
 import {
   Menu as MenuIcon,
@@ -172,10 +172,10 @@ const AdminLayout: React.FC = () => {
             </Typography>
           </Box>
         )}
-        {/* Desktop: list-page width (left-aligned); the drawer is the section nav.
+        {/* Desktop: up to PAGE_WIDE_MAX_WIDTH (tables fill it), left-aligned next to the drawer, which is the section nav.
             height 100% keeps full-height states (403, empty) centred as before. */}
         {isDesktop ? (
-          <Box sx={{ maxWidth: PAGE_LIST_MAX_WIDTH, height: "100%" }}>
+          <Box sx={{ maxWidth: PAGE_WIDE_MAX_WIDTH, height: "100%" }}>
             <Outlet />
           </Box>
         ) : (

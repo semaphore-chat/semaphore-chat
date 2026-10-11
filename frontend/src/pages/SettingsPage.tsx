@@ -469,6 +469,7 @@ const SettingsPage: React.FC = () => {
         activeSection={activeSection}
         onSelectSection={scrollToSection}
         navLabel="Settings sections"
+        align="center"
       >
         {body}
       </FormPageShell>

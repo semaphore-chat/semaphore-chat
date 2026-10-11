@@ -28,6 +28,12 @@ import ConfirmDialog from "../Common/ConfirmDialog";
 import { invalidateMemberQueries } from "../../utils/queryInvalidation";
 import { logger } from "../../utils/logger";
 
+/** From this card width (the wide community settings column) each row shows when the member joined. */
+const MEMBERS_JOINED_MIN_PX = 800;
+
+const formatJoined = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+
 interface MemberManagementProps {
   communityId: string;
 }
@@ -150,8 +156,8 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ communityId }) => {
 
   return (
     <Box display="flex" flexDirection="column" gap={3}>
-      {/* Current Members Section */}
-      <Card>
+      {/* Current Members Section (a size container: wide tables show "Joined") */}
+      <Card sx={{ containerType: "inline-size", containerName: "members" }}>
         <CardContent>
           <Typography variant="h6" gutterBottom>
             Current Members ({members?.length || 0})
@@ -199,7 +205,22 @@ const MemberManagement: React.FC<MemberManagementProps> = ({ communityId }) => {
                       color="primary"
                     />
                   </Box>
-                  <Box display="flex" gap={1}>
+                  <Box display="flex" alignItems="center" gap={1}>
+                    {member.joinedAt && (
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        data-testid="member-joined"
+                        sx={{
+                          display: "none",
+                          mr: 2,
+                          whiteSpace: "nowrap",
+                          [`@container members (min-width: ${MEMBERS_JOINED_MIN_PX}px)`]: { display: "block" },
+                        }}
+                      >
+                        Joined {formatJoined(member.joinedAt)}
+                      </Typography>
+                    )}
                     {canManageRoles && (
                       <IconButton
                         color="primary"

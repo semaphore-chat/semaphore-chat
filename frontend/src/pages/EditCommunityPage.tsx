@@ -429,6 +429,7 @@ const EditCommunityPage: React.FC = () => {
         navLabel="Community management sections"
         navMode="tabs"
         wide={active.wide}
+        align="center"
       >
         <FormPageTabPanel sectionId={active.id}>{active.content}</FormPageTabPanel>
       </FormPageShell>

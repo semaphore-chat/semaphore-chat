@@ -2,6 +2,7 @@ import React from 'react';
 import { Box, Container, Typography } from '@mui/material';
 import { NotificationList } from '../components/Notifications/NotificationList';
 import { ListPageShell } from '../components/Common/PageShell';
+import { PAGE_FEED_MAX_WIDTH } from '../constants/layout';
 import { useResponsive } from '../hooks/useResponsive';
 
 /**
@@ -16,7 +17,7 @@ const NotificationsPage: React.FC = () => {
 
   if (isDesktop) {
     return (
-      <ListPageShell title="Notifications" fillHeight>
+      <ListPageShell title="Notifications" fillHeight maxWidth={PAGE_FEED_MAX_WIDTH} align="center">
         <NotificationList />
       </ListPageShell>
     );

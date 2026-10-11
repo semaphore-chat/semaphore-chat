@@ -3,9 +3,13 @@ import { Box, Avatar, Typography, Chip, styled } from "@mui/material";
 import { useAuthenticatedImage } from "../../hooks/useAuthenticatedImage";
 import type { UserEntity } from "../../api-client/types.gen";
 
+// A fixed ~4:1 ratio, so a wider page shows the same part of the banner instead
+// of cropping it harder; at least 200px tall (phones, as before), at most 300.
 const BannerContainer = styled(Box)(({ theme }) => ({
   position: "relative",
-  height: 200,
+  aspectRatio: "4 / 1",
+  minHeight: 200,
+  maxHeight: 300,
   width: "100%",
   backgroundColor: theme.palette.primary.dark,
   borderRadius: theme.spacing(1, 1, 0, 0),

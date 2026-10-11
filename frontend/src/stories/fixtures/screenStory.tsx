@@ -33,7 +33,7 @@ export interface StoryMeta {
    * `desktop-1280` (1280×800) and `desktop-1920` (1920×1080) are opt-in: only
    * stories that list them get them.
    */
-  viewports?: ('phone' | 'phone-short' | 'tablet' | 'desktop' | 'desktop-1280' | 'desktop-1920')[];
+  viewports?: ('phone' | 'phone-short' | 'tablet' | 'desktop' | 'desktop-1280' | 'desktop-1920' | 'desktop-2560')[];
   [key: string]: unknown;
 }
 

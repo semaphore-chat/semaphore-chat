@@ -2,7 +2,6 @@ import React, { useState, useCallback, memo } from 'react';
 import {
   Box,
   Typography,
-  Grid,
   Card,
   CardContent,
   CardActions,
@@ -41,6 +40,13 @@ import { logger } from '../../utils/logger';
 import ConfirmDialog from '../Common/ConfirmDialog';
 import EmptyState from '../Common/EmptyState';
 import ShareClipDialog from './ShareClipDialog';
+
+/** Clip cards fill the library's own width (not the viewport): ~260px or wider each. */
+const CLIP_GRID_SX = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
+  gap: 2,
+} as const;
 
 interface ClipLibraryProps {
   userId: string;
@@ -316,13 +322,11 @@ export const ClipLibrary: React.FC<ClipLibraryProps> = ({ userId, isOwnProfile }
           {isOwnProfile ? 'My Clip Library' : 'Public Clips'}
         </Typography>
         <Skeleton variant="text" width={200} sx={{ mb: 3 }} />
-        <Grid container spacing={2}>
+        <Box sx={CLIP_GRID_SX}>
           {[1, 2, 3].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 4 }} key={i}>
-              <ClipCardSkeleton />
-            </Grid>
+            <ClipCardSkeleton key={i} />
           ))}
-        </Grid>
+        </Box>
       </Box>
     );
   }
@@ -359,21 +363,20 @@ export const ClipLibrary: React.FC<ClipLibraryProps> = ({ userId, isOwnProfile }
           : `${clips.length} public clip${clips.length !== 1 ? 's' : ''}`}
       </Typography>
 
-      <Grid container spacing={2}>
+      <Box sx={CLIP_GRID_SX}>
         {clips.map((clip) => (
-          <Grid size={{ xs: 12, sm: 6, md: 4 }} key={clip.id}>
-            <ClipCard
-              clip={clip}
-              isOwnProfile={isOwnProfile}
-              isDownloading={downloadingClipId === clip.id}
-              onTogglePublic={handleTogglePublic}
-              onDownload={handleDownload}
-              onShare={handleOpenShareDialog}
-              onDelete={handleOpenDeleteDialog}
-            />
-          </Grid>
+          <ClipCard
+            key={clip.id}
+            clip={clip}
+            isOwnProfile={isOwnProfile}
+            isDownloading={downloadingClipId === clip.id}
+            onTogglePublic={handleTogglePublic}
+            onDownload={handleDownload}
+            onShare={handleOpenShareDialog}
+            onDelete={handleOpenDeleteDialog}
+          />
         ))}
-      </Grid>
+      </Box>
 
       {/* Share Dialog */}
       <ShareClipDialog

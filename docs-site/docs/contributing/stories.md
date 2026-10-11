@@ -327,8 +327,9 @@ LongNamesNarrow320.meta = { viewports: ['phone'] };
 
 Ladle reads it statically, so it has to be a top-level statement with an
 object literal (no variables, no `as const`). The names are `phone`,
-`phone-short`, `tablet` and `desktop`, plus two opt-in desktop widths,
-`desktop-1280` (1280×800) and `desktop-1920` (1920×1080): only stories that
+`phone-short`, `tablet` and `desktop`, plus three opt-in desktop widths,
+`desktop-1280` (1280×800), `desktop-1920` (1920×1080) and `desktop-2560`
+(2560×1440): only stories that
 list them are captured there, for layouts that change across the desktop range
 (line-length caps, page widths). Use it only for widths the app can't
 show at the others (a 320 px column is a phone layout; Electron windows are

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders, createUser, createFriendship } from '../test-utils';
 import AddFriendDialog from '../../components/Friends/AddFriendDialog';
+import AddFriendForm from '../../components/Friends/AddFriendForm';
 
 vi.mock('../../api-client/client.gen', async (importOriginal) => {
   const { createClient, createConfig } = await import('../../api-client/client');
@@ -279,5 +280,35 @@ describe('AddFriendDialog', () => {
     await user.click(screen.getByRole('button', { name: /cancel/i }));
 
     expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+});
+
+// The inline form on the wide Friends page shares the dialog's state hook.
+describe('AddFriendForm (inline)', () => {
+  beforeEach(() => {
+    mockSearchUsers.length = 0;
+    mockSearchUsers.push(friendUser, normalUser);
+  });
+
+  it('sends a request without a dialog and says so', async () => {
+    setupHandlers();
+    const { user } = renderWithProviders(<AddFriendForm />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    const send = screen.getByRole('button', { name: /send friend request/i });
+    expect(send).toBeDisabled();
+    await user.click(screen.getByText('Normal User').closest('li')!);
+    await user.click(send);
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent('Friend request sent!');
+    });
+  });
+
+  it('marks people you already know', async () => {
+    setupHandlers({ friends: [friendUser] });
+    renderWithProviders(<AddFriendForm />);
+    const listItem = screen.getByText('Friend User').closest('li')!;
+    await waitFor(() => {
+      expect(listItem).toHaveAttribute('aria-disabled', 'true');
+    });
   });
 });
