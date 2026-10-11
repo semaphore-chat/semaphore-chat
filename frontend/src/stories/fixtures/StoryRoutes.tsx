@@ -20,6 +20,7 @@ const AdminCommunitiesPage = React.lazy(() => import('../../pages/admin').then((
 const AdminSettingsPage = React.lazy(() => import('../../pages/admin').then((m) => ({ default: m.AdminSettingsPage })));
 const AdminRolesPage = React.lazy(() => import('../../pages/admin').then((m) => ({ default: m.AdminRolesPage })));
 const AdminStoragePage = React.lazy(() => import('../../pages/admin').then((m) => ({ default: m.AdminStoragePage })));
+const AdminInvitePage = React.lazy(() => import('../../pages/AdminInvitePage'));
 const DirectMessagesPage = React.lazy(() => import('../../pages/DirectMessagesPage'));
 const FriendsPage = React.lazy(() => import('../../pages/FriendsPage'));
 const ProfilePage = React.lazy(() => import('../../pages/ProfilePage'));
@@ -49,6 +50,7 @@ export const StoryRoutes: React.FC = () => (
         <Route index element={<AdminDashboard />} />
         <Route path="users" element={<AdminUsersPage />} />
         <Route path="communities" element={<AdminCommunitiesPage />} />
+        <Route path="invites" element={<AdminInvitePage />} />
         <Route path="roles" element={<AdminRolesPage />} />
         <Route path="storage" element={<AdminStoragePage />} />
         <Route path="settings" element={<AdminSettingsPage />} />

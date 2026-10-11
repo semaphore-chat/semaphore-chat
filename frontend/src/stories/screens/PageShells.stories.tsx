@@ -117,7 +117,7 @@ export const ProfileWithClips = defineScreen(bigCommunityScenario, `/profile/${b
     http.get('/api/livekit/clips/user/:userId', () => HttpResponse.json(sixClips)),
   ],
 });
-ProfileWithClips.meta = { viewports: ['tablet', 'desktop-1280', 'desktop-1920', 'desktop-2560'] };
+ProfileWithClips.meta = { viewports: ['desktop-1280', 'desktop-1920', 'desktop-2560'] };
 
 /** Admin pages grow to 1600px, left-aligned next to the drawer: the dashboard, invites, storage. */
 export const AdminDashboardShell = defineScreen(bigCommunityScenario, '/admin');

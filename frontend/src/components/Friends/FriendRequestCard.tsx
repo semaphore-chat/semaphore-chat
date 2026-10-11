@@ -59,6 +59,9 @@ const FriendRequestCard: React.FC<FriendRequestCardProps> = ({
 
   return (
     <ListItem
+      // Room for the actions (two buttons for a received request, one for a
+      // sent one), so a long name ends in an ellipsis instead of running under them.
+      sx={{ pr: type === "received" ? 12 : 8 }}
       secondaryAction={
         <Box sx={{ display: "flex", gap: 1 }}>
           {type === "received" && onAccept && onDecline && (
@@ -101,6 +104,7 @@ const FriendRequestCard: React.FC<FriendRequestCardProps> = ({
         <UserAvatar userId={otherUser.id} size="medium" />
       </ListItemAvatar>
       <ListItemText
+        slotProps={{ primary: { noWrap: true } }}
         primary={otherUser.displayName || otherUser.username}
         secondary={
           type === "received"
