@@ -1296,7 +1296,10 @@ describe('AuthController', () => {
           userId: mockUser.id,
         });
         const res = { cookie: jest.fn() } as any;
-        const req = { headers: { 'user-agent': 'Mozilla/5.0' }, ip: '1.2.3.4' } as any;
+        const req = {
+          headers: { 'user-agent': 'Mozilla/5.0' },
+          ip: '1.2.3.4',
+        } as any;
 
         await expect(
           controller.redeemDesktopLogin(req, res, body),
@@ -1320,7 +1323,11 @@ describe('AuthController', () => {
             reason,
           });
           await expect(
-            controller.redeemDesktopLogin(electronReq, { cookie: jest.fn() } as any, body),
+            controller.redeemDesktopLogin(
+              electronReq,
+              { cookie: jest.fn() } as any,
+              body,
+            ),
           ).rejects.toThrow('Invalid or expired sign-in code');
         }
       });

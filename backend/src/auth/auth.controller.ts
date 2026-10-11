@@ -180,7 +180,11 @@ export class AuthController {
     // Verified by JwtAuthGuard already (the same token: the header comes
     // first in extractAccessToken), so decoding is enough
     const claims = this.jwtService.decode<AccessTokenClaims | null>(bearer);
-    if (!claims || claims.sub !== req.user.id || typeof claims.sid !== 'string') {
+    if (
+      !claims ||
+      claims.sub !== req.user.id ||
+      typeof claims.sid !== 'string'
+    ) {
       // Tokens from before sessions were tracked can't vouch for a session
       throw new UnauthorizedException('Sign in again to approve this');
     }

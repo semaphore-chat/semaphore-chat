@@ -56,7 +56,11 @@ describe('Desktop sign-in with browser (e2e)', () => {
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ codeChallenge, codeChallengeMethod: 'S256' });
 
-  const redeem = (code: string, codeVerifier: string, deviceId = randomUUID()) =>
+  const redeem = (
+    code: string,
+    codeVerifier: string,
+    deviceId = randomUUID(),
+  ) =>
     request(server())
       .post('/api/auth/desktop/token')
       .set('User-Agent', desktopUa)
@@ -126,8 +130,9 @@ describe('Desktop sign-in with browser (e2e)', () => {
   it('refuses a wrong verifier and burns the code', async () => {
     const browser = await browserSignIn();
     const { verifier, challenge } = pkce();
-    const { code } = (await authorize(browser.accessToken, challenge).expect(200))
-      .body as { code: string };
+    const { code } = (
+      await authorize(browser.accessToken, challenge).expect(200)
+    ).body as { code: string };
 
     await redeem(code, pkce().verifier).expect(401);
     await redeem(code, verifier).expect(401);
@@ -136,8 +141,9 @@ describe('Desktop sign-in with browser (e2e)', () => {
   it('refuses a code whose approving browser session logged out since', async () => {
     const browser = await browserSignIn();
     const { verifier, challenge } = pkce();
-    const { code } = (await authorize(browser.accessToken, challenge).expect(200))
-      .body as { code: string };
+    const { code } = (
+      await authorize(browser.accessToken, challenge).expect(200)
+    ).body as { code: string };
 
     await request(server())
       .post('/api/auth/logout')

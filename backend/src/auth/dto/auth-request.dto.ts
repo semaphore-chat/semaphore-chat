@@ -35,7 +35,7 @@ export class LogoutRequestDto {
 export class AuthorizeDesktopLoginRequestDto {
   @ApiProperty({
     description:
-      'PKCE S256 code challenge: base64url SHA-256 of the desktop app\'s code verifier',
+      "PKCE S256 code challenge: base64url SHA-256 of the desktop app's code verifier",
   })
   @IsString()
   @Matches(/^[A-Za-z0-9_-]{43}$/)
@@ -52,7 +52,9 @@ export class DesktopLoginTokenRequestDto {
   @Matches(/^[A-Za-z0-9_-]{43}$/)
   code: string;
 
-  @ApiProperty({ description: 'The PKCE code verifier the challenge came from' })
+  @ApiProperty({
+    description: 'The PKCE code verifier the challenge came from',
+  })
   @IsString()
   @Matches(/^[A-Za-z0-9\-._~]{43,128}$/)
   codeVerifier: string;

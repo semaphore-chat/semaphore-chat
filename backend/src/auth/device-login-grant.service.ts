@@ -93,10 +93,7 @@ return value
 
 /** Why a redeem failed. The API answers all of them the same way. */
 export type RedeemFailure =
-  | 'unknown-grant'
-  | 'wrong-verifier'
-  | 'approver-revoked'
-  | 'user-unavailable';
+  'unknown-grant' | 'wrong-verifier' | 'approver-revoked' | 'user-unavailable';
 
 export type RedeemResult =
   | { ok: true; refreshToken: string; accessToken: string; userId: string }
