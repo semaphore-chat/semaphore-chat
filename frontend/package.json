@@ -73,7 +73,7 @@
     "@mui/icons-material": "^7.3.11",
     "@mui/material": "^7.3.11",
     "@semaphore-chat/shared": "workspace:*",
-    "@tanstack/react-query": "^5.104.1",
+    "@tanstack/react-query": "^5.104.3",
     "axios": "^1.20.0",
     "date-fns": "^4.4.0",
     "electron-audio-loopback": "^1.0.6",
@@ -81,11 +81,11 @@
     "electron-updater": "^6.8.9",
     "hls.js": "^1.7.3",
     "livekit-client": "2.22.3",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
     "react-router-dom": "^7.18.4",
     "socket.io-client": "^4.8.4",
-    "virtua": "^0.53.3"
+    "virtua": "^0.53.5"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
