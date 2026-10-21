@@ -56,13 +56,13 @@ const libReport = await importFromCoverageV8('@vitest/istanbul-lib-report');
 
 const frontendRoot = path.resolve(import.meta.dirname, '..');
 
-// See the Thresholds note above. Measured 2026-10-21 on the merged suite:
-// lines 75.58, statements 74.22, branches 70.10, functions 68.90.
+// See the Thresholds note above. Measured 2026-10-21 on the merged suite
+// (after #609): lines 77.93, statements 76.47, branches 72.40, functions 71.66.
 const coverageMinimums = {
-  lines: 73,
-  statements: 72,
-  branches: 68,
-  functions: 66,
+  lines: 75,
+  statements: 74,
+  branches: 70,
+  functions: 69,
 };
 const metricLabels = { lines: 'line', statements: 'statement', branches: 'branch', functions: 'function' };
 
