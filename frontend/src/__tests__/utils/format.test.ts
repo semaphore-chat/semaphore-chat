@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatFileSize, formatPlaybackTime } from '../../utils/format';
+import { formatFileSize, formatPlaybackTime, getErrorMessage } from '../../utils/format';
 
 describe('formatFileSize', () => {
   it('returns "0 Bytes" for 0', () => {
@@ -50,5 +50,29 @@ describe('formatPlaybackTime', () => {
 
   it('formats 3661 as "61:01"', () => {
     expect(formatPlaybackTime(3661)).toBe('61:01');
+  });
+});
+
+describe('getErrorMessage', () => {
+  it('reads the message from an API client error body', () => {
+    expect(getErrorMessage({ statusCode: 409, message: 'Clip is locked', error: 'Conflict' }, 'fallback')).toBe('Clip is locked');
+  });
+
+  it('joins NestJS validation message arrays', () => {
+    expect(getErrorMessage({ statusCode: 400, message: ['name is too long', 'bio is required'] }, 'fallback')).toBe(
+      'name is too long. bio is required',
+    );
+  });
+
+  it('keeps reading axios-style data.message and Error.message', () => {
+    expect(getErrorMessage({ data: { message: 'From data' } }, 'fallback')).toBe('From data');
+    expect(getErrorMessage(new Error('Boom'), 'fallback')).toBe('Boom');
+  });
+
+  it('falls back when there is no usable message', () => {
+    expect(getErrorMessage({ message: '' }, 'fallback')).toBe('fallback');
+    expect(getErrorMessage({ message: [42] }, 'fallback')).toBe('fallback');
+    expect(getErrorMessage('nope', 'fallback')).toBe('fallback');
+    expect(getErrorMessage(null, 'fallback')).toBe('fallback');
   });
 });
