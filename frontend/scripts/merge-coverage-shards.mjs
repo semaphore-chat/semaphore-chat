@@ -26,6 +26,16 @@
  * are used only when no shard loaded the file, which is exactly when the
  * unsharded run adds one. Checked against an unsharded run: identical
  * covered/total for every file and metric (525 files).
+ *
+ * Thresholds: the minimums in `coverageMinimums` apply to the merged totals.
+ * They live here, not in `test.coverage.thresholds`, because Vitest would also
+ * apply those to every shard, and one shard covers only a third of the tests.
+ * A local `pnpm run test:cov` does not enforce them; to check locally, produce
+ * a raw map with `pnpm exec vitest run --coverage --coverage.reporter=json` and
+ * run this script on `coverage/coverage-final.json`.
+ *
+ * Rule: each minimum is the measured total rounded down, minus about 2 points.
+ * Raise it when coverage goes up.
  */
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
@@ -45,6 +55,16 @@ const libCoverage = await importFromCoverageV8('@vitest/istanbul-lib-coverage');
 const libReport = await importFromCoverageV8('@vitest/istanbul-lib-report');
 
 const frontendRoot = path.resolve(import.meta.dirname, '..');
+
+// See the Thresholds note above. Measured 2026-10-21 on the merged suite:
+// lines 75.58, statements 74.22, branches 70.10, functions 68.90.
+const coverageMinimums = {
+  lines: 73,
+  statements: 72,
+  branches: 68,
+  functions: 66,
+};
+const metricLabels = { lines: 'line', statements: 'statement', branches: 'branch', functions: 'function' };
 
 async function loadCoverageOptions() {
   const loaded = await loadConfigFromFile(
@@ -113,4 +133,17 @@ for (const [name, reporterOptions] of options.reporters) {
     ...reporterOptions,
   });
   report.execute(context);
+}
+
+// The merged totals: what the table above and the badge report show.
+const summary = coverageMap.getCoverageSummary();
+const shortfalls = Object.entries(coverageMinimums)
+  .filter(([metric, minimum]) => summary[metric].pct < minimum)
+  .map(
+    ([metric, minimum]) =>
+      `Frontend ${metricLabels[metric]} coverage ${summary[metric].pct}% is below the ${minimum}% minimum`,
+  );
+if (shortfalls.length > 0) {
+  for (const message of shortfalls) console.error(message);
+  process.exitCode = 1;
 }

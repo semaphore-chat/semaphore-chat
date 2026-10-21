@@ -99,6 +99,22 @@ The shards' coverage is merged by `frontend/scripts/merge-coverage-shards.mjs`,
 not by `vitest --merge-reports --coverage`, so the totals match an unsharded
 `pnpm run test:cov`. The script explains why.
 
+### Coverage Minimums
+
+Frontend coverage excludes dev-only code that never ships: `src/__tests__/`,
+the generated `src/api-client/`, and the Ladle stories and fixtures in
+`src/stories/`. The frontend minimums live in `coverageMinimums` in
+`frontend/scripts/merge-coverage-shards.mjs`, which checks the merged totals in
+CI only (a single shard covers a third of the tests, so per-shard thresholds
+would fail). `pnpm run test:cov` therefore does not enforce them locally; to
+check locally, run
+`docker compose run --rm frontend pnpm exec vitest run --coverage --coverage.reporter=json`
+and then `node scripts/merge-coverage-shards.mjs coverage/coverage-final.json`.
+The backend minimums are Jest's
+`coverageThreshold.global` in `backend/package.json`. Each minimum is the
+current total rounded down minus about 2 points: raise it when coverage goes
+up.
+
 ### Test Infrastructure
 
 Located in `frontend/src/__tests__/test-utils/`:

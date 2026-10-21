@@ -23,7 +23,9 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json-summary'],
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/__tests__/**', 'src/api-client/**', 'src/vite-env.d.ts'],
+      // Dev-only code that never ships: tests, generated client, Ladle stories
+      // and their fixtures (used for screenshots/docs), and the Vite typings.
+      exclude: ['src/__tests__/**', 'src/api-client/**', 'src/stories/**', 'src/vite-env.d.ts'],
     },
   },
 });
