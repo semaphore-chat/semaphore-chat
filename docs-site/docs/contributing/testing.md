@@ -109,11 +109,13 @@ CI only (a single shard covers a third of the tests, so per-shard thresholds
 would fail). `pnpm run test:cov` therefore does not enforce them locally; to
 check locally, run
 `docker compose run --rm frontend pnpm exec vitest run --coverage --coverage.reporter=json`
-and then `node scripts/merge-coverage-shards.mjs coverage/coverage-final.json`.
+and then
+`docker compose run --rm frontend node scripts/merge-coverage-shards.mjs coverage/coverage-final.json`
+(in a worktree, use `scripts/test-stack.sh <ticket> run-frontend` for both commands).
 The backend minimums are Jest's
-`coverageThreshold.global` in `backend/package.json`. Each minimum is the
-current total rounded down minus about 2 points: raise it when coverage goes
-up.
+`coverageThreshold.global` in `backend/package.json`. Each minimum sits a few
+points below the current total (frontend: rounded down minus 2; backend: about
+5 points of headroom). Raise them when coverage goes up.
 
 ### Test Infrastructure
 
