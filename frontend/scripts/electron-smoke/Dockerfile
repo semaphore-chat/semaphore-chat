@@ -3,7 +3,7 @@
 # safeStorage has a real Linux keyring backend, and playwright-core for
 # Playwright's Electron driver (_electron.launch). The Playwright image already
 # has the GTK/NSS/ALSA/GBM libraries Chromium, and so Electron, needs.
-FROM mcr.microsoft.com/playwright:v1.63.0-jammy
+FROM mcr.microsoft.com/playwright:v1.64.0-jammy
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
@@ -13,7 +13,7 @@ RUN apt-get update \
 # Same version as frontend/package.json's @playwright/test (keep in sync).
 RUN mkdir -p /opt/smoke && cd /opt/smoke \
   && npm init -y >/dev/null && npm pkg set type=module \
-  && npm install --no-audit --no-fund playwright-core@1.63.0
+  && npm install --no-audit --no-fund playwright-core@1.64.0
 
 # smoke.ts is mounted at /opt/smoke/src, so it resolves playwright-core from
 # /opt/smoke/node_modules and is an ES module by /opt/smoke/package.json.

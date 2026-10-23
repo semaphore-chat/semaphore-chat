@@ -32,7 +32,7 @@ PREV="$OUT/raw/docs-preview"
 SHOTS_OUT="$OUT/raw/review/docs"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 RAW_BASE="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/"
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 PYTHON_IMAGE=python:3.12-slim
 OWNER="$(id -u):$(id -g)"
 
@@ -69,7 +69,7 @@ mkdir -p "$SHOTS_OUT"
 docker run --rm -v "$PREV/site:/site:ro" -v "$OUT/raw/review:/r" -v "$SKILL_SCRIPTS:/s:ro" \
   -e NODE_PATH=/opt/p/node_modules "$PLAYWRIGHT_IMAGE" sh -c "
   mkdir -p /opt/p && cd /opt/p && npm init -y --silent >/dev/null &&
-  npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+  npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
   node /s/docs-shots.mjs /site /r/docs ${shots[*]:-}; status=\$?
   chown -R $OWNER /r; exit \$status"
 echo "docs screenshots in $SHOTS_OUT:"

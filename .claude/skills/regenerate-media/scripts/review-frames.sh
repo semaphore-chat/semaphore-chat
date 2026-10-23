@@ -17,7 +17,7 @@ ROOT=$(git rev-parse --show-toplevel)
 OUT="$ROOT/frontend/.media-out"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 FFMPEG_IMAGE=linuxserver/ffmpeg:9.0-cli-ls82
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 OWNER="$(id -u):$(id -g)"
 
 # A 3x3 timestamped sheet filter (the text is quoted for ffmpeg's filter parser).
@@ -39,7 +39,7 @@ if [[ "$what" == hero || "$what" == all ]]; then
   rm -rf "$OUT/raw/review/hero" "$OUT"/raw/review/hero-*.png
   docker run --rm -v "$OUT:/m" -v "$SKILL_SCRIPTS:/s:ro" -e NODE_PATH=/opt/p/node_modules "$PLAYWRIGHT_IMAGE" sh -c "
     mkdir -p /opt/p && cd /opt/p && npm init -y --silent >/dev/null &&
-    npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+    npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
     node /s/hero-frames.mjs /m/video/hero.webp /m/raw/review/hero 6
     chown -R $OWNER /m/raw/review"
   # Frames are 0.5 s apart, so reading them at 2 fps gives each its hero time.

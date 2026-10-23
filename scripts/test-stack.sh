@@ -88,7 +88,7 @@ PG_DB=semaphore_test # "test" in the name: backend e2e resetDatabase() requires 
 S3_BUCKET=semaphore-dev
 # The media pipeline's images, as in docker-compose.yml's media-capture and
 # media services (keep in sync).
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 FFMPEG_IMAGE=linuxserver/ffmpeg:9.0-cli-ls82
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -449,7 +449,7 @@ run_in() {
 
 # The media-capture command of docker-compose.yml (keep in sync).
 MEDIA_CAPTURE='mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
 cd /app/frontend && bash scripts/media/capture.sh'
 
 # docker-compose.yml's `ladle` -> `media-capture` -> `media` pipeline for this

@@ -108,7 +108,7 @@ services:
   # `npm install` chokes on its `workspace:*` dependency); ux-shots.mjs picks
   # it up via NODE_PATH + `require()`.
   ux-shots:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.64.0-jammy
     profiles: ["tools"]
     working_dir: /app/frontend
     # Share `ladle`'s network namespace instead of talking to it over the
@@ -127,7 +127,7 @@ services:
       - NODE_PATH=/opt/uxshots/node_modules
     command: >
       sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
       cd /app/frontend && node scripts/ux-shots.mjs"
 
   # README / docs media (screenshots + video) generated from the Ladle
@@ -138,7 +138,7 @@ services:
   # after `media-capture` (Playwright screenshots + scene recordings) has
   # completed. See docs-site/docs/contributing/regenerating-screenshots.md.
   media-capture:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.64.0-jammy
     profiles: ["tools"]
     working_dir: /app/frontend
     # Same reason as ux-shots: talk to Ladle as "localhost" (secure context).
@@ -155,7 +155,7 @@ services:
       - NODE_PATH=/opt/uxshots/node_modules
     command: >
       sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
       cd /app/frontend && bash scripts/media/capture.sh"
 
   media:
