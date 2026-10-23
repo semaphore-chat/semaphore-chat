@@ -449,7 +449,7 @@ run_in() {
 
 # The media-capture command of docker-compose.yml (keep in sync).
 MEDIA_CAPTURE='mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
 cd /app/frontend && bash scripts/media/capture.sh'
 
 # docker-compose.yml's `ladle` -> `media-capture` -> `media` pipeline for this

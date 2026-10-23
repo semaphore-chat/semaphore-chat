@@ -127,7 +127,7 @@ services:
       - NODE_PATH=/opt/uxshots/node_modules
     command: >
       sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
       cd /app/frontend && node scripts/ux-shots.mjs"
 
   # README / docs media (screenshots + video) generated from the Ladle
@@ -155,7 +155,7 @@ services:
       - NODE_PATH=/opt/uxshots/node_modules
     command: >
       sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
       cd /app/frontend && bash scripts/media/capture.sh"
 
   media:

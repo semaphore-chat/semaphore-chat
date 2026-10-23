@@ -58,7 +58,7 @@ services:
       - ./.ui-review:/ui-review
     command: >
       sh -c "mkdir -p /opt/uxshots && cd /opt/uxshots && npm init -y --silent >/dev/null &&
-      npm install --silent --no-audit --no-fund playwright-core@1.60.0 &&
+      npm install --silent --no-audit --no-fund playwright-core@1.64.0 &&
       touch /opt/uxshots/.ready && exec sleep infinity"
 
   # Node side (frontend image: esbuild, sharp, pixelmatch): module graph,
