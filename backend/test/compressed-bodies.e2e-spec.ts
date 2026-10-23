@@ -47,6 +47,21 @@ describe('Compressed request bodies (e2e)', () => {
     },
   );
 
+  // The urlencoded parser is registered separately (replacing Nest's default),
+  // so prove it rejects compressed bodies too.
+  it.each(cases)(
+    'rejects a %s-compressed urlencoded login body with 415',
+    async (encoding, compress) => {
+      const form = new URLSearchParams(credentials).toString();
+      await request(app.getHttpServer())
+        .post('/api/auth/login')
+        .set('Content-Type', 'application/x-www-form-urlencoded')
+        .set('Content-Encoding', encoding)
+        .send(compress(Buffer.from(form)))
+        .expect(415);
+    },
+  );
+
   it('reaches the login controller for an uncompressed body', async () => {
     // The guard's 401 means parsing succeeded and the request reached auth;
     // a 415 here would mean the parser rejected an identity-encoded body.
