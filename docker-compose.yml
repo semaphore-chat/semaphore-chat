@@ -108,7 +108,7 @@ services:
   # `npm install` chokes on its `workspace:*` dependency); ux-shots.mjs picks
   # it up via NODE_PATH + `require()`.
   ux-shots:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.64.0-jammy
     profiles: ["tools"]
     working_dir: /app/frontend
     # Share `ladle`'s network namespace instead of talking to it over the
@@ -138,7 +138,7 @@ services:
   # after `media-capture` (Playwright screenshots + scene recordings) has
   # completed. See docs-site/docs/contributing/regenerating-screenshots.md.
   media-capture:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.64.0-jammy
     profiles: ["tools"]
     working_dir: /app/frontend
     # Same reason as ux-shots: talk to Ladle as "localhost" (secure context).

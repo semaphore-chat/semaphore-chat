@@ -3,7 +3,7 @@
 # safeStorage has a real Linux keyring backend, and playwright-core for
 # Playwright's Electron driver (_electron.launch). The Playwright image already
 # has the GTK/NSS/ALSA/GBM libraries Chromium, and so Electron, needs.
-FROM mcr.microsoft.com/playwright:v1.63.0-jammy
+FROM mcr.microsoft.com/playwright:v1.64.0-jammy
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \

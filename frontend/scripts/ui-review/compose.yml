@@ -48,7 +48,7 @@ services:
   # Chromium (Playwright image): render probe, screenshots (scripts/ux-shots.mjs)
   # and composites. Stays up so playwright-core is installed once per review.
   shots:
-    image: mcr.microsoft.com/playwright:v1.60.0-jammy
+    image: mcr.microsoft.com/playwright:v1.64.0-jammy
     network_mode: "service:ladle-head"
     working_dir: /app/frontend
     environment:

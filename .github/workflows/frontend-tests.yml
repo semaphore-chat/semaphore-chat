@@ -88,6 +88,9 @@ jobs:
         working-directory: ./frontend
         run: pnpm run lint
 
+      - name: Playwright images match @playwright/test
+        run: scripts/check-playwright-images.sh
+
       - name: Type check with TypeScript
         working-directory: ./frontend
         # Bare `tsc --noEmit` against the solution-style root tsconfig checks

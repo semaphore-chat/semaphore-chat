@@ -88,7 +88,7 @@ PG_DB=semaphore_test # "test" in the name: backend e2e resetDatabase() requires 
 S3_BUCKET=semaphore-dev
 # The media pipeline's images, as in docker-compose.yml's media-capture and
 # media services (keep in sync).
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 FFMPEG_IMAGE=linuxserver/ffmpeg:9.0-cli-ls82
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

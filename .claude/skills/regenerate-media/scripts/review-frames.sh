@@ -17,7 +17,7 @@ ROOT=$(git rev-parse --show-toplevel)
 OUT="$ROOT/frontend/.media-out"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 FFMPEG_IMAGE=linuxserver/ffmpeg:9.0-cli-ls82
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 OWNER="$(id -u):$(id -g)"
 
 # A 3x3 timestamped sheet filter (the text is quoted for ffmpeg's filter parser).

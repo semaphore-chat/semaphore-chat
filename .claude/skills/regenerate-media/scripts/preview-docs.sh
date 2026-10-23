@@ -32,7 +32,7 @@ PREV="$OUT/raw/docs-preview"
 SHOTS_OUT="$OUT/raw/review/docs"
 SKILL_SCRIPTS="$(cd "$(dirname "$0")" && pwd)"
 RAW_BASE="https://raw.githubusercontent.com/semaphore-chat/semaphore-chat/media/"
-PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.60.0-jammy
+PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:v1.64.0-jammy
 PYTHON_IMAGE=python:3.12-slim
 OWNER="$(id -u):$(id -g)"
 
