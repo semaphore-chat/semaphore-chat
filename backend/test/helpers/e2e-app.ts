@@ -20,6 +20,8 @@ import { Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
 import { pinClientAddress } from '@/common/http/pin-client-address';
+import { configureBodyParsers } from '@/common/http/body-parsers';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 import type { Application } from 'express';
 import * as request from 'supertest';
@@ -58,6 +60,8 @@ export async function createE2eApp(options?: {
 
   const app: E2eApp = moduleFixture.createNestApplication({
     logger: options?.logger ?? false,
+    // As in src/main.ts: LiveKit signatures cover the exact bytes received
+    rawBody: true,
   });
 
   // Mirror src/main.ts request pipeline.
@@ -68,6 +72,9 @@ export async function createE2eApp(options?: {
     );
   }
   app.use(pinClientAddress);
+  // E2eApp is the generic INestApplication; the Express adapter (and
+  // useBodyParser) is what main.ts configures, so mirror it here.
+  configureBodyParsers(app as unknown as NestExpressApplication);
   app.setGlobalPrefix('api');
   app.use(cookieParser());
   app.useGlobalPipes(new AppValidationPipe());
