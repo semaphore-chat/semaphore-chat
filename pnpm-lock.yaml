@@ -332,7 +332,7 @@ importers:
         version: 4.4.0
       electron-audio-loopback:
         specifier: ^1.0.6
-        version: 1.0.6(electron@44.7.0)
+        version: 1.0.6(electron@44.9.3)
       electron-log:
         specifier: 5.4.4
         version: 5.4.4
@@ -407,8 +407,8 @@ importers:
         specifier: ^10.1.0
         version: 10.1.0
       electron:
-        specifier: 44.7.0
-        version: 44.7.0
+        specifier: 44.9.3
+        version: 44.9.3
       electron-builder:
         specifier: ^26.17.0
         version: 26.17.0(electron-builder-squirrel-windows@26.16.1)
@@ -5751,8 +5751,8 @@ packages:
     resolution: {integrity: sha512-bO3y10YikuUwUuDUQRM4KfwNkKhnpVO7IPdbsrejwN9/AABJzzTQ4GeHwyzNSrVO+tEH3/Np255a3sVZpZDjvg==}
     engines: {node: '>=8.0.0'}
 
-  electron@44.7.0:
-    resolution: {integrity: sha512-aUq9/zLAAFYc+a9gy6cd0C3Y/N/RmovLCD8TV8LhIzNhuND6HEgsu96jJz9cbAxvckSPv+Trf2PKEjktoZgFkw==}
+  electron@44.9.3:
+    resolution: {integrity: sha512-Cv9/yMnZxNWsMlIe8T4v//NKHdUvbeyoTJoXE3BIcRxus2meeFaO9h/P3zB5d4cBXum51IgAYrT2QjpIDWKpJA==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -13721,7 +13721,7 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
 
   '@types/cacheable-request@6.0.3':
     dependencies:
@@ -13807,7 +13807,7 @@ snapshots:
 
   '@types/express-serve-static-core@5.1.1':
     dependencies:
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
       '@types/qs': 6.15.0
       '@types/range-parser': 1.2.7
       '@types/send': 1.2.1
@@ -13955,7 +13955,7 @@ snapshots:
   '@types/serve-static@2.2.0':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
 
   '@types/set-cookie-parser@2.4.10':
     dependencies:
@@ -13969,7 +13969,7 @@ snapshots:
     dependencies:
       '@types/cookiejar': 2.1.5
       '@types/methods': 1.1.4
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
       form-data: 4.0.6
 
   '@types/supertest@7.2.1':
@@ -15641,9 +15641,9 @@ snapshots:
     dependencies:
       jake: 10.9.4
 
-  electron-audio-loopback@1.0.6(electron@44.7.0):
+  electron-audio-loopback@1.0.6(electron@44.9.3):
     dependencies:
-      electron: 44.7.0
+      electron: 44.9.3
 
   electron-builder-squirrel-windows@26.16.1(dmg-builder@26.17.0):
     dependencies:
@@ -15715,11 +15715,11 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@44.7.0:
+  electron@44.9.3:
     dependencies:
       '@electron-internal/extract-zip': 1.0.5
       '@electron/get': 5.1.0
-      '@types/node': 24.19.1
+      '@types/node': 24.19.2
     transitivePeerDependencies:
       - supports-color
 

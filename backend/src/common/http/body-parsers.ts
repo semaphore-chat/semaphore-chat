@@ -17,8 +17,23 @@ export const LIVEKIT_WEBHOOK_CONTENT_TYPE = 'application/webhook+json';
  */
 export function configureBodyParsers(app: NestExpressApplication): void {
   // This replaces Nest's default JSON parser (it skips its own once a JSON
-  // parser is registered), so it must cover application/json as well
+  // parser is registered), so it must cover application/json as well.
+  // `inflate: false` rejects any compressed request body (gzip, deflate,
+  // br) with 415 instead of handing it to a decompressor: no client sends
+  // compressed request bodies, and keeping them out of Node's Brotli decoder
+  // removes the Node2Shell (CVE-2026-111497) attack surface from the request
+  // path. LiveKit's webhook body goes through this same parser.
   app.useBodyParser('json', {
     type: ['application/json', LIVEKIT_WEBHOOK_CONTENT_TYPE],
+    inflate: false,
+  });
+  // Nest also registers a urlencoded parser of its own (extended: true) at
+  // init, before this runs; registering one here with the same name makes
+  // Nest skip its default, so compressed urlencoded bodies are rejected too.
+  // No raw or text body parser is registered, so there is nothing else to
+  // configure.
+  app.useBodyParser('urlencoded', {
+    extended: true,
+    inflate: false,
   });
 }

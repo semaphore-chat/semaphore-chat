@@ -25,6 +25,9 @@ packages:
 # re-resolves, so it is subject to this gate too.
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
+  # Node2Shell (CVE-2026-111497): Electron 44.9.3 carries other security
+  # backports and must ship before the 3-day cooldown; pin the exact version.
+  - 'electron@44.9.3'
   # Every version main's lockfile already pinned that was < 3 days old when
   # this setting was added (2026-09-24). pnpm re-checks locked versions
   # against the cooldown whenever it re-resolves, so without these the image

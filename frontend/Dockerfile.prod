@@ -4,7 +4,8 @@
 # ============================================
 # Stage 1: Build React Application
 # ============================================
-FROM node:24-slim AS builder
+# Pinned at or above 24.22.1 for CVE-2026-111497 (Node2Shell); bump the patch version, never drop below.
+FROM node:24.22.1-slim AS builder
 
 RUN corepack enable && corepack prepare pnpm@10.30.0 --activate
 
