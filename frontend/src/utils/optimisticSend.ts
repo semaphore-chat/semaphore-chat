@@ -3,7 +3,7 @@
  * (hooks/useOptimisticSendMessage.ts) and messages with attachments
  * (utils/attachmentSend.ts).
  */
-import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { VoiceSessionType } from "../contexts/VoiceContext";
 import { channelMessagesQueryKey, dmMessagesQueryKey } from "./messageQueryKeys";
 import {
@@ -12,11 +12,11 @@ import {
   removeOptimisticMessage,
   replaceOptimisticMessage,
 } from "./messageCacheUpdaters";
+import type { MessagesInfiniteData } from "./messageCacheUpdaters";
 import type { Message } from "../types/message.type";
-import type { PaginatedMessagesResponseDto } from "../api-client";
 import type { MessageContext, SendMessageResult } from "../hooks/useSendMessage";
 
-export type MessagesInfiniteData = InfiniteData<PaginatedMessagesResponseDto>;
+export type { MessagesInfiniteData };
 export type MessageQueryKey =
   | ReturnType<typeof channelMessagesQueryKey>
   | ReturnType<typeof dmMessagesQueryKey>;
@@ -74,8 +74,7 @@ export function reconcileAfterSend(
   optimisticMessage: Message,
   result: SendMessageResult,
 ): void {
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const typedOld = old as MessagesInfiniteData | undefined;
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (typedOld) => {
     if (result.success && result.messageId) {
       const echoAlreadyInserted = !!findMessageInInfinite(typedOld, result.messageId);
       if (echoAlreadyInserted) {

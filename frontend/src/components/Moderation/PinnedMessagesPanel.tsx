@@ -32,7 +32,6 @@ import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import UserAvatar from "../Common/UserAvatar";
 import { AttachmentPreview } from "../Message/AttachmentPreview";
 import type { FileMetadata } from "../../types/message.type";
-import type { PinnedMessageAttachmentDto } from "../../api-client/types.gen";
 import { formatDistanceToNow } from "date-fns";
 import { logger } from "../../utils/logger";
 import { useResponsive } from "../../hooks/useResponsive";
@@ -109,7 +108,7 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
       .join(" ");
   };
 
-  const toFileMetadata = (att: PinnedMessageAttachmentDto): FileMetadata => ({
+  const toFileMetadata = (att: FileMetadata): FileMetadata => ({
     id: att.id,
     filename: att.filename,
     mimeType: att.mimeType,

@@ -50,7 +50,10 @@ function makePinnedMessage(overrides: Partial<PinnedMessageDto> = {}): PinnedMes
     pinnedBy: 'user-2',
     replyCount: 0,
     lastReplyAt: null,
-    searchText: null,
+    linkPreviews: null,
+    replyToId: null,
+    replyTo: null,
+    webhook: null,
     pendingAttachments: null,
     deletedBy: null,
     deletedByReason: null,
@@ -96,7 +99,7 @@ describe('PinnedMessagesPanel', () => {
   it('renders attachment preview for pinned message with image', async () => {
     const msg = makePinnedMessage({
       attachments: [
-        { id: 'file-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
+        { id: 'file-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);
@@ -113,7 +116,7 @@ describe('PinnedMessagesPanel', () => {
     const msg = makePinnedMessage({
       spans: [{ type: 'PLAINTEXT', text: 'Check this out', userId: null, specialKind: null, communityId: null, aliasId: null }],
       attachments: [
-        { id: 'file-1', filename: 'screenshot.png', mimeType: 'image/png', fileType: 'IMAGE', size: 2048 },
+        { id: 'file-1', filename: 'screenshot.png', mimeType: 'image/png', fileType: 'IMAGE', size: 2048, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);
@@ -130,9 +133,9 @@ describe('PinnedMessagesPanel', () => {
   it('shows "+N more" when multiple attachments exist', async () => {
     const msg = makePinnedMessage({
       attachments: [
-        { id: 'file-1', filename: 'img1.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
-        { id: 'file-2', filename: 'img2.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
-        { id: 'file-3', filename: 'img3.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
+        { id: 'file-1', filename: 'img1.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
+        { id: 'file-2', filename: 'img2.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
+        { id: 'file-3', filename: 'img3.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);

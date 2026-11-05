@@ -16,6 +16,7 @@ import {
 } from "../../api-client/@tanstack/react-query.gen";
 import type { Message as MessageType, FileMetadata, Span } from "../../types/message.type";
 import { SpanType } from "../../types/message.type";
+import type { MessagesInfiniteData } from "../../utils/messageCacheUpdaters";
 import { spansToText, parseMessageWithMentions } from "../../utils/mentionParser";
 import {
   moderationControllerPinMessageMutation,
@@ -64,8 +65,8 @@ function updateCache(
       ? dmMessagesQueryKey(msg.directMessageGroupId)
       : undefined;
   if (!queryKey) return;
-  queryClient.setQueryData(queryKey, (old: unknown) =>
-    updateMessageInInfinite(old as never, msg)
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    updateMessageInInfinite(old, msg)
   );
 }
 
@@ -85,10 +86,10 @@ function updateReactionsInCache(
       ? dmMessagesQueryKey(msg.directMessageGroupId)
       : undefined;
   if (!queryKey) return;
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const existing = findMessageInInfinite(old as never, msg.id);
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+    const existing = findMessageInInfinite(old, msg.id);
     if (!existing) return old;
-    return updateMessageInInfinite(old as never, {
+    return updateMessageInInfinite(old, {
       ...existing,
       reactions: msg.reactions,
     });
@@ -106,8 +107,8 @@ function deleteFromCache(
       ? dmMessagesQueryKey(msg.directMessageGroupId)
       : undefined;
   if (!queryKey) return;
-  queryClient.setQueryData(queryKey, (old: unknown) =>
-    deleteMessageFromInfinite(old as never, msg.id)
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    deleteMessageFromInfinite(old, msg.id)
   );
 }
 
@@ -123,22 +124,7 @@ export function useMessageActions(
   const { mutateAsync: updateMessageApi } = useMutation({
     ...messagesControllerUpdateMutation(),
     onSuccess: (updatedMessage) => {
-      // If we have original attachments metadata, enrich the response
-      let enrichedMessage = updatedMessage as MessageType;
-      if (message.attachments && Array.isArray(updatedMessage.attachments)) {
-        const attachmentMap = new Map(message.attachments.map((att: FileMetadata) => [att.id, att]));
-        enrichedMessage = {
-          ...(updatedMessage as MessageType),
-          attachments: updatedMessage.attachments
-            .map((idOrObj: string | FileMetadata) => {
-              if (typeof idOrObj === 'object' && idOrObj.id) return idOrObj;
-              if (typeof idOrObj === 'string') return attachmentMap.get(idOrObj);
-              return idOrObj;
-            })
-            .filter(Boolean) as MessageType['attachments'],
-        };
-      }
-      updateCache(queryClient, enrichedMessage);
+      updateCache(queryClient, updatedMessage);
     },
   });
 

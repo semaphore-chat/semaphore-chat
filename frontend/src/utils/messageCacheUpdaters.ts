@@ -2,8 +2,14 @@ import type { InfiniteData } from '@tanstack/react-query';
 import type { PaginatedMessagesResponseDto } from '../api-client/types.gen';
 import type { Message } from '../types/message.type';
 
-// The cached rows are `Message` (the wire shape, plus optimistic fields) while the
-// generated page type says `MessageDto`. `as never` bridges the two here.
+/**
+ * A page of the message cache. The rows are `Message`: what the server sent, or
+ * an optimistic row that hasn't reached it yet. A page from the API is one of
+ * these; the reverse needn't hold.
+ */
+export type MessagesPage = Omit<PaginatedMessagesResponseDto, 'messages'> & { messages: Message[] };
+
+export type MessagesInfiniteData = InfiniteData<MessagesPage>;
 
 // --- InfiniteData updaters (used by both channel and DM caches) ---
 
@@ -15,16 +21,16 @@ import type { Message } from '../types/message.type';
  * null/undefined as "live".
  */
 export function isDetachedFromLiveEdge(
-  data: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  data: MessagesInfiniteData | undefined,
 ): boolean {
   const first = data?.pageParams[0];
   return first != null && first !== '';
 }
 
 export function prependMessageToInfinite(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   message: Message,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   // Never insert into a detached window: pages[0] is not the live newest
   // page, so prepending here would splice the message into mid-history.
@@ -35,7 +41,7 @@ export function prependMessageToInfinite(
   return {
     ...old,
     pages: [
-      { ...firstPage, messages: [message as never, ...firstPage.messages] },
+      { ...firstPage, messages: [message, ...firstPage.messages] },
       ...old.pages.slice(1),
     ],
   };
@@ -48,9 +54,9 @@ export function prependMessageToInfinite(
  * a message whose files are still uploading — never remounts it.
  */
 export function updateMessageInInfinite(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   message: Message,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   return {
     ...old,
@@ -58,17 +64,16 @@ export function updateMessageInInfinite(
       ...page,
       messages: page.messages.map(m => {
         if (m.id !== message.id) return m;
-        const clientId = (m as unknown as Message).clientId;
-        return (clientId && !message.clientId ? { ...message, clientId } : message) as never;
+        return m.clientId && !message.clientId ? { ...message, clientId: m.clientId } : message;
       }),
     })),
   };
 }
 
 export function deleteMessageFromInfinite(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   messageId: string,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   return {
     ...old,
@@ -81,13 +86,13 @@ export function deleteMessageFromInfinite(
 
 /** Find a message across all pages of an infinite query */
 export function findMessageInInfinite(
-  data: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  data: MessagesInfiniteData | undefined,
   messageId: string,
 ): Message | undefined {
   if (!data) return undefined;
   for (const page of data.pages) {
     const found = page.messages.find(m => m.id === messageId);
-    if (found) return found as unknown as Message;
+    if (found) return found;
   }
   return undefined;
 }
@@ -128,8 +133,8 @@ export function isOptimisticMessageId(id: string): boolean {
 }
 
 /** True if a cached row is a not-yet-settled optimistic message. */
-function isOptimisticRow(message: unknown): boolean {
-  const status = (message as Message).sendStatus;
+function isOptimisticRow(message: Message): boolean {
+  const status = message.sendStatus;
   return status === 'pending' || status === 'failed';
 }
 
@@ -203,9 +208,9 @@ function isSameOptimisticContent(a: Message, b: Message): boolean {
  * reconciliation is idempotent regardless of which row got matched first.
  */
 export function prependOrReconcileOptimistic(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   message: Message,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   if (isDetachedFromLiveEdge(old)) return old;
   const firstPage = old.pages[0];
@@ -213,8 +218,8 @@ export function prependOrReconcileOptimistic(
 
   const existingIdIndex = firstPage.messages.findIndex(m => m.id === message.id);
   if (existingIdIndex >= 0) {
-    const existing = firstPage.messages[existingIdIndex] as unknown as Message;
-    const merged = { ...existing, ...message, clientId: existing.clientId } as never;
+    const existing = firstPage.messages[existingIdIndex];
+    const merged = { ...existing, ...message, clientId: existing.clientId };
     const messages = firstPage.messages.map((m, i) => (i === existingIdIndex ? merged : m));
     return {
       ...old,
@@ -225,17 +230,16 @@ export function prependOrReconcileOptimistic(
   const optimisticIndex = firstPage.messages.findIndex(
     m =>
       isOptimisticRow(m) &&
-      (m as unknown as Message).authorId === message.authorId &&
-      isSameOptimisticContent(m as unknown as Message, message),
+      m.authorId === message.authorId &&
+      isSameOptimisticContent(m, message),
   );
 
   const messages = optimisticIndex >= 0
     ? firstPage.messages.map((m, i) => {
         if (i !== optimisticIndex) return m;
-        const matched = m as unknown as Message;
-        return { ...message, clientId: matched.clientId } as never;
+        return { ...message, clientId: m.clientId };
       })
-    : [message as never, ...firstPage.messages];
+    : [message, ...firstPage.messages];
 
   return {
     ...old,
@@ -256,9 +260,8 @@ export function prependOrReconcileOptimistic(
  * lost ack (echo arrived and reconciled, but the ack itself times out)
  * would otherwise flip a persisted message back to 'failed'.
  */
-function isUnreconciledPlaceholder(message: unknown, clientId: string): boolean {
-  const msg = message as Message;
-  return msg.clientId === clientId && msg.id === clientId;
+function isUnreconciledPlaceholder(message: Message, clientId: string): boolean {
+  return message.clientId === clientId && message.id === clientId;
 }
 
 /**
@@ -270,10 +273,10 @@ function isUnreconciledPlaceholder(message: unknown, clientId: string): boolean 
  * `isUnreconciledPlaceholder`) it's already settled and must not be touched.
  */
 export function replaceOptimisticMessage(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   clientId: string,
   realMessage: Message,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   let found = false;
   const pages = old.pages.map(page => ({
@@ -281,7 +284,7 @@ export function replaceOptimisticMessage(
     messages: page.messages.map(m => {
       if (isUnreconciledPlaceholder(m, clientId)) {
         found = true;
-        return realMessage as never;
+        return realMessage;
       }
       return m;
     }),
@@ -303,9 +306,9 @@ export function replaceOptimisticMessage(
  * would delete that already-reconciled row instead of leaving it alone.
  */
 export function removeOptimisticMessage(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   clientId: string,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   return {
     ...old,
@@ -323,9 +326,9 @@ export function removeOptimisticMessage(
  * that now-settled, real message back to 'failed'.
  */
 export function markOptimisticFailed(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   clientId: string,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   return {
     ...old,
@@ -333,7 +336,7 @@ export function markOptimisticFailed(
       ...page,
       messages: page.messages.map(m =>
         isUnreconciledPlaceholder(m, clientId)
-          ? ({ ...(m as unknown as Message), sendStatus: 'failed' } as never)
+          ? { ...m, sendStatus: 'failed' as const }
           : m,
       ),
     })),
@@ -347,9 +350,9 @@ export function markOptimisticFailed(
  * the same reason as `markOptimisticFailed`.
  */
 export function markOptimisticPending(
-  old: InfiniteData<PaginatedMessagesResponseDto> | undefined,
+  old: MessagesInfiniteData | undefined,
   clientId: string,
-): InfiniteData<PaginatedMessagesResponseDto> | undefined {
+): MessagesInfiniteData | undefined {
   if (!old) return old;
   return {
     ...old,
@@ -357,7 +360,7 @@ export function markOptimisticPending(
       ...page,
       messages: page.messages.map(m =>
         isUnreconciledPlaceholder(m, clientId)
-          ? ({ ...(m as unknown as Message), sendStatus: 'pending' } as never)
+          ? { ...m, sendStatus: 'pending' as const }
           : m,
       ),
     })),

@@ -532,6 +532,14 @@ describe('Message wire contract (e2e)', () => {
         .set('Authorization', auth('member'))
         .expect(200);
       expectConforms('MessageDto', 'GET /messages/:id (pinned)', pinned.body);
+      const pins = await http()
+        .get(`/api/moderation/pins/${channelId}`)
+        .set('Authorization', auth('member'))
+        .expect(200);
+      expect(pins.body).toHaveLength(1);
+      for (const pin of pins.body as unknown[]) {
+        expectConforms('PinnedMessageDto', 'GET /moderation/pins', pin);
+      }
       await nextEvent(ServerEvents.MESSAGE_PINNED);
 
       await http()

@@ -13,6 +13,7 @@ import {
   MESSAGE_MAX_PAGES,
 } from "../utils/messageQueryKeys";
 import type { Message } from "../types/message.type";
+import type { MessageDto } from "../api-client";
 
 type PageParam =
   | { type: "around"; messageId: string }
@@ -20,7 +21,7 @@ type PageParam =
   | { type: "newer"; token: string };
 
 interface AnchoredPage {
-  messages: unknown[];
+  messages: MessageDto[];
   olderContinuationToken?: string;
   newerContinuationToken?: string;
 }
@@ -130,8 +131,7 @@ export const useAnchoredMessages = (
 
   const messages: Message[] = useMemo(
     () =>
-      (data?.pages.flatMap((page) => page.messages) as unknown as Message[]) ??
-      [],
+      data?.pages.flatMap((page) => page.messages) ?? [],
     [data],
   );
 

@@ -295,7 +295,7 @@ describe('useOptimisticSendMessage', () => {
       let messages = cacheMessages();
       expect(messages).toHaveLength(1);
       expect(messages[0].id).toBe('real-1');
-      expect((messages[0] as unknown as { replyTo?: unknown }).replyTo).toBeUndefined();
+      expect((messages[0] as unknown as { replyTo?: unknown }).replyTo).toBeNull();
 
       // The echo arrives after, carrying richer, server-resolved content
       // that the ack alone never had (e.g. a resolved replyTo object).
