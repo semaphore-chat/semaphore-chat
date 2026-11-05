@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   NotFoundException,
   OnApplicationBootstrap,
+  PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,12 +20,14 @@ import {
   EncodingOptionsPreset,
   EgressInfo,
   EgressStatus,
+  ParticipantInfo,
   VideoCodec,
   AudioCodec,
   TrackType,
 } from 'livekit-server-sdk';
 import { randomUUID } from 'crypto';
 import { EgressSession, RbacActions } from '@prisma/client';
+import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
@@ -74,6 +77,10 @@ export class LivekitReplayService implements OnApplicationBootstrap {
    */
   private readonly egressMissedOnce = new Set<string>();
 
+  /** How long a track just published may take to show in its participant. */
+  private static readonly TRACK_LOOKUP_RETRIES = 4;
+  private static readonly TRACK_LOOKUP_DELAY_MS = 500;
+
   /** Skip the heal's dead-path stop event for sessions older than this. */
   private static readonly STALE_NOTIFY_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -100,6 +107,7 @@ export class LivekitReplayService implements OnApplicationBootstrap {
     private readonly eventEmitter: EventEmitter2,
     private readonly thumbnailService: ThumbnailService,
     private readonly permissionsService: PermissionsService,
+    private readonly storageQuotaService: StorageQuotaService,
   ) {
     // Load configuration
     // segmentsPath is now loaded from StorageService which handles prefix resolution
@@ -146,28 +154,32 @@ export class LivekitReplayService implements OnApplicationBootstrap {
   /**
    * Start replay buffer egress for a user's screen share
    *
+   * The room is the authorized channel's (LiveKit rooms are named after their
+   * channel), and the tracks must be the caller's own: this records what they
+   * publish, not what others do. The client only ever asks for its screen
+   * share (useReplayBuffer).
+   *
    * Automatically stops any existing active session for the user before starting new one.
    * Queries the source track to match encoding resolution to the actual screen share quality.
    */
   async startReplayBuffer(params: {
     userId: string;
     channelId: string;
-    roomName: string;
     videoTrackId: string;
     audioTrackId?: string;
-    participantIdentity?: string;
   }) {
-    const {
-      userId,
-      channelId,
-      roomName,
-      videoTrackId,
-      audioTrackId,
-      participantIdentity,
-    } = params;
+    const { userId, channelId, videoTrackId, audioTrackId } = params;
+    const roomName = channelId;
 
     this.logger.log(
       `Starting replay buffer for user ${userId} in room ${roomName}`,
+    );
+
+    const participant = await this.findOwnTracksParticipant(
+      roomName,
+      userId,
+      videoTrackId,
+      audioTrackId,
     );
 
     // Check if user already has an active session (enforce one session per user)
@@ -209,56 +221,35 @@ export class LivekitReplayService implements OnApplicationBootstrap {
       let encodingOptions: EncodingOptions | EncodingOptionsPreset =
         EncodingOptionsPreset.H264_1080P_30;
 
-      if (participantIdentity) {
-        try {
-          const participant = await withTimeout(
-            this.roomServiceClient.getParticipant(
-              roomName,
-              participantIdentity,
-            ),
-            `getParticipant ${roomName}/${participantIdentity}`,
-          );
+      const videoTrack = participant.tracks.find(
+        (track) => track.sid === videoTrackId,
+      );
 
-          const videoTrack = participant.tracks.find(
-            (track) =>
-              track.sid === videoTrackId && track.type === TrackType.VIDEO,
-          );
+      if (videoTrack?.width && videoTrack?.height) {
+        // Calculate intelligent bitrate based on resolution
+        // Screen content needs higher bitrates than camera for sharp text/edges
+        const videoBitrate = this.calculateVideoBitrate(
+          videoTrack.width,
+          videoTrack.height,
+        );
 
-          if (videoTrack?.width && videoTrack?.height) {
-            // Calculate intelligent bitrate based on resolution
-            // Screen content needs higher bitrates than camera for sharp text/edges
-            const videoBitrate = this.calculateVideoBitrate(
-              videoTrack.width,
-              videoTrack.height,
-            );
+        // Create custom encoding options matching source track resolution
+        encodingOptions = new EncodingOptions({
+          width: videoTrack.width,
+          height: videoTrack.height,
+          framerate: 30, // Cap at 30fps for reasonable file sizes
+          videoCodec: VideoCodec.H264_HIGH,
+          videoBitrate, // Intelligent bitrate based on resolution
+          audioBitrate: 128000, // 128kbps audio
+          audioCodec: AudioCodec.AAC,
+        });
 
-            // Create custom encoding options matching source track resolution
-            encodingOptions = new EncodingOptions({
-              width: videoTrack.width,
-              height: videoTrack.height,
-              framerate: 30, // Cap at 30fps for reasonable file sizes
-              videoCodec: VideoCodec.H264_HIGH,
-              videoBitrate, // Intelligent bitrate based on resolution
-              audioBitrate: 128000, // 128kbps audio
-              audioCodec: AudioCodec.AAC,
-            });
-
-            this.logger.log(
-              `Using source track: ${videoTrack.width}x${videoTrack.height} @ ${videoBitrate / 1000}kbps`,
-            );
-          } else {
-            this.logger.warn(
-              `Track ${videoTrackId} has no resolution info, using default preset`,
-            );
-          }
-        } catch (queryError) {
-          this.logger.warn(
-            `Failed to query track resolution, using default preset: ${getErrorMessage(queryError)}`,
-          );
-        }
-      } else {
         this.logger.log(
-          'No participantIdentity provided, using default encoding preset',
+          `Using source track: ${videoTrack.width}x${videoTrack.height} @ ${videoBitrate / 1000}kbps`,
+        );
+      } else {
+        this.logger.warn(
+          `Track ${videoTrackId} has no resolution info, using default preset`,
         );
       }
 
@@ -301,7 +292,7 @@ export class LivekitReplayService implements OnApplicationBootstrap {
               `Segment readiness check failed: ${getErrorMessage(err)}`,
             ),
         );
-      }, 15_000);
+      }, 15_000).unref();
 
       return {
         sessionId: session.id,
@@ -316,6 +307,81 @@ export class LivekitReplayService implements OnApplicationBootstrap {
         'Could not start the replay recorder. Please try screen sharing again.',
       );
     }
+  }
+
+  /**
+   * The caller's LiveKit participant in this room, once it has the tracks they
+   * asked to record, as the right kinds. A client learns a track's id as it is
+   * published, so the server may take a moment to list it: asks a few times.
+   * Anything else is refused, however it was meant: tracks in other rooms and
+   * other people's tracks are not theirs to record.
+   */
+  private async findOwnTracksParticipant(
+    roomName: string,
+    userId: string,
+    videoTrackId: string,
+    audioTrackId?: string,
+  ): Promise<ParticipantInfo> {
+    const denied = () =>
+      new ForbiddenException('You can only record your own tracks');
+
+    for (let attempt = 0; ; attempt++) {
+      let participant: ParticipantInfo;
+      try {
+        participant = await withTimeout(
+          this.roomServiceClient.getParticipant(roomName, userId),
+          `getParticipant ${roomName}/${userId}`,
+        );
+      } catch (error) {
+        this.logger.warn(
+          `Refusing replay for ${userId}: not in room ${roomName}: ${getErrorMessage(error)}`,
+        );
+        throw denied();
+      }
+
+      const has = (sid: string, type: TrackType) =>
+        participant.tracks.some(
+          (track) => track.sid === sid && track.type === type,
+        );
+      if (
+        has(videoTrackId, TrackType.VIDEO) &&
+        (!audioTrackId || has(audioTrackId, TrackType.AUDIO))
+      ) {
+        return participant;
+      }
+
+      if (attempt >= LivekitReplayService.TRACK_LOOKUP_RETRIES) throw denied();
+      await new Promise((resolve) =>
+        setTimeout(resolve, LivekitReplayService.TRACK_LOOKUP_DELAY_MS),
+      );
+    }
+  }
+
+  /**
+   * Using a recording is capturing, so CAPTURE_REPLAY is checked again: a deny
+   * set (or access lost) after the recorder started applies from then on.
+   */
+  private async assertMayCapture(
+    userId: string,
+    channelId: string,
+  ): Promise<void> {
+    const allowed = await this.permissionsService.userHasChannelActions(
+      userId,
+      channelId,
+      [RbacActions.CAPTURE_REPLAY],
+    );
+    if (!allowed) {
+      throw new ForbiddenException(
+        "You don't have permission to capture replays in this channel",
+      );
+    }
+  }
+
+  /** Clips count against the capturer's quota, like any upload. */
+  private quotaExceeded() {
+    return new PayloadTooLargeException(
+      'This clip would exceed your storage quota',
+    );
   }
 
   /**
@@ -929,6 +995,8 @@ export class LivekitReplayService implements OnApplicationBootstrap {
         },
       })) ?? (await this.recoverStaleSession(userId));
 
+    await this.assertMayCapture(userId, session.channelId);
+
     // 2. Calculate how many segments we need
     // Each segment is ~10 seconds, so 6 segments per minute
     const segmentsNeeded = durationMinutes * 6;
@@ -1003,6 +1071,13 @@ export class LivekitReplayService implements OnApplicationBootstrap {
           status: 'active',
         },
       })) ?? (await this.recoverStaleSession(userId));
+
+    await this.assertMayCapture(userId, session.channelId);
+
+    // Already at the quota: don't spend ffmpeg on a clip that can't be kept
+    if (!(await this.storageQuotaService.fitsQuota(userId, 0))) {
+      throw this.quotaExceeded();
+    }
 
     // 2. Resolve relative segment path to full path
     const segmentDir = this.storageService.resolveSegmentPath(
@@ -1134,6 +1209,14 @@ export class LivekitReplayService implements OnApplicationBootstrap {
 
     // 9. Get file stats and generate checksum
     const stats = await this.storageService.getFileStats(clipPath);
+    if (!(await this.storageQuotaService.fitsQuota(userId, stats.size))) {
+      await this.storageService.deleteFile(clipPath).catch((error) => {
+        this.logger.warn(
+          `Failed to remove clip over quota: ${getErrorMessage(error)}`,
+        );
+      });
+      throw this.quotaExceeded();
+    }
     const checksum = await this.generateChecksum(clipPath);
 
     // 7. Create File record with REPLAY_CLIP resourceType
@@ -1152,6 +1235,8 @@ export class LivekitReplayService implements OnApplicationBootstrap {
         fileUserId: userId, // Clip owner (doesn't change when shared)
       },
     });
+
+    await this.storageQuotaService.incrementUserStorage(userId, stats.size);
 
     this.logger.log(`Created file record: ${file.id}`);
 
@@ -1433,6 +1518,8 @@ export class LivekitReplayService implements OnApplicationBootstrap {
       );
     }
 
+    await this.assertMayCapture(userId, session.channelId);
+
     // Resolve relative segment path to full path
     const segmentDir = this.storageService.resolveSegmentPath(
       session.segmentPath,
@@ -1480,6 +1567,12 @@ export class LivekitReplayService implements OnApplicationBootstrap {
     userId: string,
     segmentFile: string,
   ): Promise<string> {
+    const session = await this.databaseService.egressSession.findFirst({
+      where: { userId, status: 'active' },
+      select: { channelId: true },
+    });
+    if (session) await this.assertMayCapture(userId, session.channelId);
+
     return this.replaySegmentsService.getRemuxedSegmentPath(
       userId,
       segmentFile,
