@@ -1,0 +1,6702 @@
+{
+  "communities": [],
+  "dmGroups": [],
+  "friendships": [],
+  "instanceName": "Semaphore Chat",
+  "me": {
+    "avatarUrl": "avatar:me:Mike",
+    "bannerUrl": "banner:me",
+    "bio": null,
+    "displayName": "Mike",
+    "id": "me",
+    "lastSeen": null,
+    "role": "USER",
+    "status": "Reviewing UX 👀",
+    "username": "mike"
+  },
+  "membershipsByCommunity": {
+    "community-1": [
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-0",
+        "joinedAt": "2026-07-28T09:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY",
+              "UPDATE_COMMUNITY",
+              "CREATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "CREATE_ROLE",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "BAN_USER",
+              "KICK_USER"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-owner-community-1",
+            "isDefault": true,
+            "name": "Owner",
+            "position": 0
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:me:Mike",
+          "bannerUrl": "banner:me",
+          "bio": null,
+          "displayName": "Mike",
+          "id": "me",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "Reviewing UX 👀",
+          "username": "mike"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-1",
+        "joinedAt": "2026-07-30T01:12:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-287:Omar%20Rossi",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Omar Rossi",
+          "id": "user-287",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "🎧 deep work",
+          "username": "omar_rossi53"
+        },
+        "userId": "user-287"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-2",
+        "joinedAt": "2026-08-09T03:52:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-289:Diego%20Kowalski",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Diego Kowalski",
+          "id": "user-289",
+          "lastSeen": null,
+          "role": "USER",
+          "status": null,
+          "username": "diego_kowalski16"
+        },
+        "userId": "user-289"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-3",
+        "joinedAt": "2026-08-21T14:48:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-288:Priya%20Moreau",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Priya Moreau",
+          "id": "user-288",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "On mobile",
+          "username": "priya_moreau87"
+        },
+        "userId": "user-288"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-4",
+        "joinedAt": "2026-06-30T21:33:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-292:Noor%20Costa",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Noor Costa",
+          "id": "user-292",
+          "lastSeen": null,
+          "role": "USER",
+          "status": null,
+          "username": "noor_costa82"
+        },
+        "userId": "user-292"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-5",
+        "joinedAt": "2026-08-28T02:42:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-286:Kenji%20Rossi",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Kenji Rossi",
+          "id": "user-286",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "On mobile",
+          "username": "kenji_rossi59"
+        },
+        "userId": "user-286"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-6",
+        "joinedAt": "2026-09-10T14:22:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-291:Fatima%20Reyes",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Fatima Reyes",
+          "id": "user-291",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "🎧 deep work",
+          "username": "fatima_reyes97"
+        },
+        "userId": "user-291"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-7",
+        "joinedAt": "2026-09-19T17:53:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-293:Priya%20Sato",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Priya Sato",
+          "id": "user-293",
+          "lastSeen": null,
+          "role": "USER",
+          "status": null,
+          "username": "priya_sato12"
+        },
+        "userId": "user-293"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-8",
+        "joinedAt": "2026-09-16T14:48:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-294:Elena%20Singh",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Elena Singh",
+          "id": "user-294",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "brb coffee",
+          "username": "elena_singh14"
+        },
+        "userId": "user-294"
+      },
+      {
+        "communityId": "community-1",
+        "id": "membership-community-1-9",
+        "joinedAt": "2026-05-30T00:46:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-27T06:06:00.000Z",
+            "id": "role-member-community-1",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-296:Marcus%20Larsen",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Marcus Larsen",
+          "id": "user-296",
+          "lastSeen": null,
+          "role": "USER",
+          "status": null,
+          "username": "marcus_larsen77"
+        },
+        "userId": "user-296"
+      }
+    ],
+    "community-2": [
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-0",
+        "joinedAt": "2026-09-12T12:47:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY",
+              "UPDATE_COMMUNITY",
+              "CREATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "CREATE_ROLE",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "BAN_USER",
+              "KICK_USER"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-owner-community-2",
+            "isDefault": true,
+            "name": "Owner",
+            "position": 0
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:me:Mike",
+          "bannerUrl": "banner:me",
+          "bio": null,
+          "displayName": "Mike",
+          "id": "me",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "Reviewing UX 👀",
+          "username": "mike"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-1",
+        "joinedAt": "2026-09-11T03:42:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-286:Kenji%20Rossi",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Kenji Rossi",
+          "id": "user-286",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "On mobile",
+          "username": "kenji_rossi59"
+        },
+        "userId": "user-286"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-2",
+        "joinedAt": "2026-06-08T19:21:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-291:Fatima%20Reyes",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Fatima Reyes",
+          "id": "user-291",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "🎧 deep work",
+          "username": "fatima_reyes97"
+        },
+        "userId": "user-291"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-3",
+        "joinedAt": "2026-06-15T14:57:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-297:Marcus%20Chen",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Marcus Chen",
+          "id": "user-297",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "brb coffee",
+          "username": "marcus_chen94"
+        },
+        "userId": "user-297"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-4",
+        "joinedAt": "2026-07-31T08:05:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-294:Elena%20Singh",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Elena Singh",
+          "id": "user-294",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "brb coffee",
+          "username": "elena_singh14"
+        },
+        "userId": "user-294"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-5",
+        "joinedAt": "2026-09-13T12:18:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-293:Priya%20Sato",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Priya Sato",
+          "id": "user-293",
+          "lastSeen": null,
+          "role": "USER",
+          "status": null,
+          "username": "priya_sato12"
+        },
+        "userId": "user-293"
+      },
+      {
+        "communityId": "community-2",
+        "id": "membership-community-2-6",
+        "joinedAt": "2026-09-07T03:08:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "CREATE_MESSAGE",
+              "READ_MESSAGE",
+              "READ_CHANNEL",
+              "READ_COMMUNITY"
+            ],
+            "createdAt": "2026-07-14T01:34:00.000Z",
+            "id": "role-member-community-2",
+            "isDefault": true,
+            "name": "Member",
+            "position": 1
+          }
+        ],
+        "user": {
+          "avatarUrl": "avatar:user-295:Elena%20Ibrahim",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Elena Ibrahim",
+          "id": "user-295",
+          "lastSeen": null,
+          "role": "USER",
+          "status": "🎧 deep work",
+          "username": "elena_ibrahim63"
+        },
+        "userId": "user-295"
+      }
+    ]
+  },
+  "messagesByChannel": {
+    "channel-298": [
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-299",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "no worries, take your time",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:53:00.000Z",
+        "id": "msg-300",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": true,
+        "pinnedAt": "2026-09-19T18:00:00.000Z",
+        "pinnedBy": "me",
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:57:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "I think we're overcomplicating this a bit",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-301",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:01:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-302",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "quick one: does anyone have the link to the design file?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-303",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:06:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-304",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "user-294"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-305",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:17:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-306",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:21:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "this took way longer than it should have but it's done",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-307",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:27:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-308",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "same thing happened to me last week, restarting fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-309",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:34:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-310",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "user-289",
+              "user-291"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-311",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "me",
+              "user-288"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:44:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-312",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:47:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-313",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-314",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:52:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone else seeing this error or just me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-315",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "no worries, take your time",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-316",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:59:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-317",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-318",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:08:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "this took way longer than it should have but it's done",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-319",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:10:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "I think we're overcomplicating this a bit",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-320",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-321",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:17:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-322",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-323",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:23:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-324",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the new release notes are up if anyone wants to skim them",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-325",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:26:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-326",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:27:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "same thing happened to me last week, restarting fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-327",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:32:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@marcus_larsen77",
+            "type": "USER_MENTION",
+            "userId": "user-296"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-328",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "❤️",
+            "userIds": [
+              "user-291"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-329",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:36:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "I think we're overcomplicating this a bit",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-330",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "ok I see it now, my bad",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-331",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": {
+          "authorId": "me",
+          "deletedAt": null,
+          "id": "msg-310",
+          "sentAt": "2026-09-22T16:39:00.000Z",
+          "spans": [
+            {
+              "aliasId": null,
+              "communityId": null,
+              "specialKind": null,
+              "text": "np, happy to help",
+              "type": "PLAINTEXT",
+              "userId": null
+            }
+          ]
+        },
+        "replyToId": "msg-310",
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-332",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:49:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [
+          {
+            "fileType": "IMAGE",
+            "filename": "screenshot.png",
+            "hasThumbnail": false,
+            "id": "attach-screenshot-1",
+            "mimeType": "image/png",
+            "size": 245760
+          }
+        ],
+        "authorId": "user-296",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-486",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:52:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "check out this screenshot",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-333",
+        "lastReplyAt": "2026-09-22T17:49:00.000Z",
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 4,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-334",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-487",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:59:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, that's everything from me for today 🙂",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-335",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-336",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-337",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-338",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-339": [
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-340",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-341",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:09:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:54:00.000Z",
+        "id": "msg-342",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "user-288"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "ok I see it now, my bad",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-343",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:21:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@fatima_reyes97",
+            "type": "USER_MENTION",
+            "userId": "user-291"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-344",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:27:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "counterpoint: what if we just didn't",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-339",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-345",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "honestly didn't expect that to work first try",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-346": [
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-347",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:59:00.000Z",
+        "id": "msg-348",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:32:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-349",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@priya_sato12",
+            "type": "USER_MENTION",
+            "userId": "user-293"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-350",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "user-293",
+              "user-288",
+              "user-289"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone else seeing this error or just me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-351",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-346",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-352",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "gonna step away for lunch, back in ~30",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-353": [
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-354",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:26:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just circling back on this — any update?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:54:00.000Z",
+        "id": "msg-355",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-356",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:34:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-357",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@marcus_larsen77",
+            "type": "USER_MENTION",
+            "userId": "user-296"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-358",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-353",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-359",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "❤️",
+            "userIds": [
+              "me",
+              "user-293"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:45:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-360": [
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-361",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:22:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "honestly didn't expect that to work first try",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:52:00.000Z",
+        "id": "msg-362",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "me",
+              "user-287"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:28:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-363",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@priya_moreau87",
+            "type": "USER_MENTION",
+            "userId": "user-288"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-364",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:34:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-365",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:37:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just circling back on this — any update?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-360",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-366",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-367": [
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-368",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:29:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-369",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-370",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:35:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@kenji_rossi59",
+            "type": "USER_MENTION",
+            "userId": "user-286"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-371",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:52:00.000Z",
+        "id": "msg-372",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "user-293",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-287",
+        "channelId": "channel-367",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-373",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:45:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "quick one: does anyone have the link to the design file?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-374": [
+      {
+        "attachments": [],
+        "authorId": "user-289",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-375",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:59:00.000Z",
+        "id": "msg-376",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:28:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-377",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@kenji_rossi59",
+            "type": "USER_MENTION",
+            "userId": "user-286"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-378",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-379",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-374",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-380",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "me",
+              "user-293"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "no worries, take your time",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-381": [
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-382",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:26:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-383",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:32:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:51:00.000Z",
+        "id": "msg-384",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-385",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@fatima_reyes97",
+            "type": "USER_MENTION",
+            "userId": "user-291"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-292",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-386",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-288",
+        "channelId": "channel-381",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-387",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-388": [],
+    "channel-389": [],
+    "channel-390": [
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-391",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-392",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-393",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "user-293"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-394",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:41:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "gonna step away for lunch, back in ~30",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-395",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:46:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "ok I see it now, my bad",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-396",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "user-295",
+              "user-294",
+              "user-293"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:50:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-397",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-398",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-399",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-400",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "user-294",
+              "user-297"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:08:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "gonna step away for lunch, back in ~30",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-401",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:11:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-402",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:13:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-403",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:14:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-404",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-405",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:22:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "ok I see it now, my bad",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-406",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@elena_ibrahim63",
+            "type": "USER_MENTION",
+            "userId": "user-295"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:58:00.000Z",
+        "id": "msg-407",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:28:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-408",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:29:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-409",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-410",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:32:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-411",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:34:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "😂😂😂 no because that's exactly what happened to me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-412",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": {
+          "authorId": "user-295",
+          "deletedAt": null,
+          "id": "msg-401",
+          "sentAt": "2026-09-22T16:11:00.000Z",
+          "spans": [
+            {
+              "aliasId": null,
+              "communityId": null,
+              "specialKind": null,
+              "text": "wait what happened here",
+              "type": "PLAINTEXT",
+              "userId": null
+            }
+          ]
+        },
+        "replyToId": "msg-401",
+        "sentAt": "2026-09-22T16:36:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-413",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:41:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "this took way longer than it should have but it's done",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-414",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-415",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-416",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-417",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:59:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-418",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-419",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:09:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-420",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:14:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "this took way longer than it should have but it's done",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-421",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "😂😂😂 no because that's exactly what happened to me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-422",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:16:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "counterpoint: what if we just didn't",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-423",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:19:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "honestly didn't expect that to work first try",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-424",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:23:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-425",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "user-295",
+              "me",
+              "user-294"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-426",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:27:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "honestly didn't expect that to work first try",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-427",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-428",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:36:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "wait what happened here",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-429",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:37:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-390",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-430",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-431": [
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-432",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-433",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:36:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-434",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "user-286"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:37:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@mike",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:53:00.000Z",
+        "id": "msg-435",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:41:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "alright, calling it a night. night all!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-436",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:46:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone else seeing this error or just me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-431",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-437",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:49:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone around? need a second pair of eyes on something",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-438": [
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-439",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:58:00.000Z",
+        "id": "msg-440",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks!! that fixed it",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-441",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "❤️",
+            "userIds": [
+              "user-293",
+              "user-297"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:49:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@kenji_rossi59",
+            "type": "USER_MENTION",
+            "userId": "user-286"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-442",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:53:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the new release notes are up if anyone wants to skim them",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-443",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-438",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-444",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "😂😂😂 no because that's exactly what happened to me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-445": [
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-446",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:13:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "np, happy to help",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-447",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "user-297",
+              "user-294",
+              "user-295"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:16:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the new release notes are up if anyone wants to skim them",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-448",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:22:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "counterpoint: what if we just didn't",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:57:00.000Z",
+        "id": "msg-449",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@elena_singh14",
+            "type": "USER_MENTION",
+            "userId": "user-294"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-450",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:29:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "this took way longer than it should have but it's done",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-445",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-451",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-452": [
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-453",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "user-297",
+              "user-291"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "here's the doc I mentioned yesterday: https://example.com/notes",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-454",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:44:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just circling back on this — any update?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-455",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:47:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can confirm, reproduced on my end too",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:53:00.000Z",
+        "id": "msg-456",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:52:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@marcus_chen94",
+            "type": "USER_MENTION",
+            "userId": "user-297"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-286",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-457",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:57:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "just pushed the fix, can someone take a look when they get a sec",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-452",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-458",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the new release notes are up if anyone wants to skim them",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-459": [
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-460",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "gonna step away for lunch, back in ~30",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-461",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:09:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-462",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:13:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@mike",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-463",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:17:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:58:00.000Z",
+        "id": "msg-464",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:19:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone else seeing this error or just me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-459",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-465",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "user-297"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:23:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "honestly didn't expect that to work first try",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-466": [
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-467",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "```\nfunction retry(fn, attempts = 3) {\n  return fn().catch(err =>\n    attempts > 1 ? retry(fn, attempts - 1) : Promise.reject(err)\n  );\n}\n```",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-295",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-468",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:13:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "not gonna lie, kind of proud of this one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-469",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:19:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "😂😂😂 no because that's exactly what happened to me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:56:00.000Z",
+        "id": "msg-470",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "user-294"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:25:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@kenji_rossi59",
+            "type": "USER_MENTION",
+            "userId": "user-286"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-471",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "let's sync tomorrow morning instead",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-466",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-472",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:34:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-473": [
+      {
+        "attachments": [],
+        "authorId": "user-294",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-474",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "user-294",
+              "user-293"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:36:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-475",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:38:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "gonna step away for lunch, back in ~30",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-476",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:39:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@elena_ibrahim63",
+            "type": "USER_MENTION",
+            "userId": "user-295"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " could you take a look at this when you have a sec?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:55:00.000Z",
+        "id": "msg-477",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-297",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-478",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "sounds good to me 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-293",
+        "channelId": "channel-473",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-479",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:54:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "no worries, take your time",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "channel-480": [],
+    "channel-481": []
+  },
+  "messagesByDmGroup": {},
+  "notifications": [],
+  "pinnedByChannel": {
+    "channel-298": [
+      {
+        "attachments": [],
+        "author": {
+          "avatarUrl": "avatar:user-289:Diego%20Kowalski",
+          "displayName": "Diego Kowalski",
+          "id": "user-289",
+          "username": "diego_kowalski16"
+        },
+        "authorId": "user-289",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": "2026-09-22T17:53:00.000Z",
+        "id": "msg-300",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": true,
+        "pinnedAt": "2026-09-19T18:00:00.000Z",
+        "pinnedBy": "me",
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:57:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "I think we're overcomplicating this a bit",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ]
+  },
+  "rolesByCommunity": {
+    "community-1": [
+      {
+        "actions": [
+          "CREATE_MESSAGE",
+          "READ_MESSAGE",
+          "READ_CHANNEL",
+          "READ_COMMUNITY",
+          "UPDATE_COMMUNITY",
+          "CREATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "CREATE_ROLE",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "BAN_USER",
+          "KICK_USER"
+        ],
+        "createdAt": "2026-07-27T06:06:00.000Z",
+        "id": "role-owner-community-1",
+        "isDefault": true,
+        "name": "Owner",
+        "position": 0
+      },
+      {
+        "actions": [
+          "CREATE_MESSAGE",
+          "READ_MESSAGE",
+          "READ_CHANNEL",
+          "READ_COMMUNITY"
+        ],
+        "createdAt": "2026-07-27T06:06:00.000Z",
+        "id": "role-member-community-1",
+        "isDefault": true,
+        "name": "Member",
+        "position": 1
+      }
+    ],
+    "community-2": [
+      {
+        "actions": [
+          "CREATE_MESSAGE",
+          "READ_MESSAGE",
+          "READ_CHANNEL",
+          "READ_COMMUNITY",
+          "UPDATE_COMMUNITY",
+          "CREATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "CREATE_ROLE",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "BAN_USER",
+          "KICK_USER"
+        ],
+        "createdAt": "2026-07-14T01:34:00.000Z",
+        "id": "role-owner-community-2",
+        "isDefault": true,
+        "name": "Owner",
+        "position": 0
+      },
+      {
+        "actions": [
+          "CREATE_MESSAGE",
+          "READ_MESSAGE",
+          "READ_CHANNEL",
+          "READ_COMMUNITY"
+        ],
+        "createdAt": "2026-07-14T01:34:00.000Z",
+        "id": "role-member-community-2",
+        "isDefault": true,
+        "name": "Member",
+        "position": 1
+      }
+    ]
+  },
+  "seed": "empty-user",
+  "threadRepliesByParent": {
+    "msg-333": [
+      {
+        "attachments": [],
+        "authorId": "user-291",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-482",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "msg-333",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "counterpoint: what if we just didn't",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-483",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "msg-333",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we should probably talk through the plan before next week",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-484",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "msg-333",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:46:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that's a really good point actually",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "user-296",
+        "channelId": "channel-298",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "msg-485",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "msg-333",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:49:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lol this is great",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ]
+  },
+  "unreadByContextId": {
+    "dm-3": {
+      "mentionCount": 0,
+      "unreadCount": 6
+    },
+    "dm-6": {
+      "mentionCount": 1,
+      "unreadCount": 5
+    }
+  },
+  "users": [
+    {
+      "avatarUrl": "avatar:user-286:Kenji%20Rossi",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Kenji Rossi",
+      "id": "user-286",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "On mobile",
+      "username": "kenji_rossi59"
+    },
+    {
+      "avatarUrl": "avatar:user-287:Omar%20Rossi",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Omar Rossi",
+      "id": "user-287",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "🎧 deep work",
+      "username": "omar_rossi53"
+    },
+    {
+      "avatarUrl": "avatar:user-288:Priya%20Moreau",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Priya Moreau",
+      "id": "user-288",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "On mobile",
+      "username": "priya_moreau87"
+    },
+    {
+      "avatarUrl": "avatar:user-289:Diego%20Kowalski",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Diego Kowalski",
+      "id": "user-289",
+      "lastSeen": null,
+      "role": "USER",
+      "status": null,
+      "username": "diego_kowalski16"
+    },
+    {
+      "avatarUrl": "avatar:user-290:Sofia%20Kowalski",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Sofia Kowalski",
+      "id": "user-290",
+      "lastSeen": null,
+      "role": "USER",
+      "status": null,
+      "username": "sofia_kowalski37"
+    },
+    {
+      "avatarUrl": "avatar:user-291:Fatima%20Reyes",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Fatima Reyes",
+      "id": "user-291",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "🎧 deep work",
+      "username": "fatima_reyes97"
+    },
+    {
+      "avatarUrl": "avatar:user-292:Noor%20Costa",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Noor Costa",
+      "id": "user-292",
+      "lastSeen": null,
+      "role": "USER",
+      "status": null,
+      "username": "noor_costa82"
+    },
+    {
+      "avatarUrl": "avatar:user-293:Priya%20Sato",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Priya Sato",
+      "id": "user-293",
+      "lastSeen": null,
+      "role": "USER",
+      "status": null,
+      "username": "priya_sato12"
+    },
+    {
+      "avatarUrl": "avatar:user-294:Elena%20Singh",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Elena Singh",
+      "id": "user-294",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "brb coffee",
+      "username": "elena_singh14"
+    },
+    {
+      "avatarUrl": "avatar:user-295:Elena%20Ibrahim",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Elena Ibrahim",
+      "id": "user-295",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "🎧 deep work",
+      "username": "elena_ibrahim63"
+    },
+    {
+      "avatarUrl": "avatar:user-296:Marcus%20Larsen",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Marcus Larsen",
+      "id": "user-296",
+      "lastSeen": null,
+      "role": "USER",
+      "status": null,
+      "username": "marcus_larsen77"
+    },
+    {
+      "avatarUrl": "avatar:user-297:Marcus%20Chen",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Marcus Chen",
+      "id": "user-297",
+      "lastSeen": null,
+      "role": "USER",
+      "status": "brb coffee",
+      "username": "marcus_chen94"
+    }
+  ],
+  "voicePresenceByChannel": {
+    "channel-388": [
+      {
+        "avatarUrl": "avatar:user-294:Elena%20Singh",
+        "displayName": "Elena Singh",
+        "id": "user-294",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-22T17:40:00.000Z",
+        "username": "elena_singh14"
+      },
+      {
+        "avatarUrl": "avatar:user-289:Diego%20Kowalski",
+        "displayName": "Diego Kowalski",
+        "id": "user-289",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-22T17:44:00.000Z",
+        "username": "diego_kowalski16"
+      },
+      {
+        "avatarUrl": "avatar:user-287:Omar%20Rossi",
+        "displayName": "Omar Rossi",
+        "id": "user-287",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-22T17:48:00.000Z",
+        "username": "omar_rossi53"
+      }
+    ]
+  }
+}
