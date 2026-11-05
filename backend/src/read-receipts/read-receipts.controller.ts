@@ -41,7 +41,10 @@ export class ReadReceiptsController {
     @Req() req: AuthenticatedRequest,
     @Body() markAsReadDto: MarkAsReadDto,
   ): Promise<ReadReceiptDto> {
-    return this.readReceiptsService.markAsRead(req.user.id, markAsReadDto);
+    return this.readReceiptsService.markReadAndAnnounce(
+      req.user,
+      markAsReadDto,
+    );
   }
 
   /**

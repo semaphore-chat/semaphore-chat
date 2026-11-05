@@ -31,7 +31,8 @@ describe('Sending a message (e2e)', () => {
   let app: E2eApp;
   let db: DatabaseService;
   let url: string;
-  const sockets: Socket[] = [];
+  // Shared across tests: the gateway limits connection attempts per address.
+  const sockets = new Map<Who, Socket>();
 
   const names = ['owner', 'sender', 'reader', 'outsider'] as const;
   type Who = (typeof names)[number];
@@ -66,12 +67,14 @@ describe('Sending a message (e2e)', () => {
       .send({ attachments: [], ...body });
 
   async function connect(who: Who): Promise<Socket> {
+    const open = sockets.get(who);
+    if (open) return open;
     const client = io(url, {
       transports: ['websocket'],
       reconnection: false,
       auth: { token: token[who] },
     });
-    sockets.push(client);
+    sockets.set(who, client);
     await new Promise<void>((resolve, reject) => {
       client.once('connect', () => resolve());
       client.once('connect_error', reject);
@@ -206,11 +209,8 @@ describe('Sending a message (e2e)', () => {
     group = (dm.body as { id: string }).id;
   });
 
-  afterEach(() => {
-    sockets.splice(0).forEach((client) => client.close());
-  });
-
   afterAll(async () => {
+    sockets.forEach((client) => client.close());
     await app.close();
   });
 
@@ -445,6 +445,94 @@ describe('Sending a message (e2e)', () => {
         (n) => n >= 2,
       );
       expect(received).toBe(2);
+    });
+  });
+
+  describe('POST /read-receipts/mark-read', () => {
+    const markRead = (who: Who, body: Record<string, unknown>) =>
+      http()
+        .post('/api/read-receipts/mark-read')
+        .set('Authorization', auth(who))
+        .send(body);
+    const sendToGroup = async () =>
+      (
+        (
+          await restDm('reader', {
+            directMessageGroupId: group,
+            spans: spans(randomUUID()),
+          }).expect(201)
+        ).body as { id: string }
+      ).id;
+
+    it("tells the user's other sessions", async () => {
+      const lastReadMessageId = await sendToGroup();
+      const otherSession = await subscribed('sender');
+      const event = nextEvent<Record<string, unknown>>(
+        otherSession,
+        ServerEvents.READ_RECEIPT_UPDATED,
+      );
+
+      await markRead('sender', {
+        lastReadMessageId,
+        directMessageGroupId: group,
+      }).expect(200);
+
+      expect(await event).toMatchObject({
+        lastReadMessageId,
+        directMessageGroupId: group,
+      });
+    });
+
+    it('tells the DM group, with who read it', async () => {
+      const lastReadMessageId = await sendToGroup();
+      const peer = await subscribed('reader');
+      const seen = new Promise<Record<string, unknown>>((resolve) => {
+        peer.on(
+          ServerEvents.READ_RECEIPT_UPDATED,
+          (payload: Record<string, unknown>) => {
+            if (payload.userId === id.sender) resolve(payload);
+          },
+        );
+      });
+
+      await markRead('sender', {
+        lastReadMessageId,
+        directMessageGroupId: group,
+      }).expect(200);
+
+      expect(await seen).toMatchObject({
+        lastReadMessageId,
+        userId: id.sender,
+        username: 'ms-sender',
+      });
+    });
+
+    it('marks the mentions in that place read', async () => {
+      const res = await restSend('sender', {
+        channelId,
+        spans: [
+          {
+            type: 'USER_MENTION',
+            text: null,
+            userId: id.outsider,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      }).expect(201);
+      const unread = () =>
+        db.notification.count({
+          where: { userId: id.outsider, channelId, read: false },
+        });
+      await eventually(unread, (count) => count > 0);
+
+      await markRead('outsider', {
+        lastReadMessageId: (res.body as { id: string }).id,
+        channelId,
+      }).expect(200);
+
+      expect(await unread()).toBe(0);
     });
   });
 

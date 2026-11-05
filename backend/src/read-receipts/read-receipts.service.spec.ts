@@ -1,3 +1,6 @@
+import { NotificationsService } from '@/notifications/notifications.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { ServerEvents } from '@semaphore-chat/shared';
 import { TestBed } from '@suites/unit';
 import { ReadReceiptsService } from './read-receipts.service';
 import { DatabaseService } from '@/database/database.service';
@@ -23,6 +26,8 @@ const EXCLUDE_THREAD_REPLIES = { parentMessageId: null };
 describe('ReadReceiptsService', () => {
   let service: ReadReceiptsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let notifications: Mocked<NotificationsService>;
+  let websocket: Mocked<WebsocketService>;
   let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
@@ -34,6 +39,8 @@ describe('ReadReceiptsService', () => {
       .compile();
 
     service = unit;
+    notifications = unitRef.get(NotificationsService);
+    websocket = unitRef.get(WebsocketService);
     channelAccessService = unitRef.get(ChannelAccessService);
     // The fixtures below list each membership's visible channels under
     // `community.channels`; ChannelAccessService returns those ids.
@@ -54,6 +61,77 @@ describe('ReadReceiptsService', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('markReadAndAnnounce', () => {
+    const user = {
+      id: 'user-1',
+      username: 'alice',
+      displayName: 'Alice',
+      avatarUrl: 'avatar-1',
+    };
+    const lastReadAt = new Date('2024-06-01T00:00:00Z');
+    const receipt = (ids: Record<string, string | null>) => ({
+      channelId: null,
+      directMessageGroupId: null,
+      lastReadMessageId: 'msg-1',
+      lastReadAt,
+      ...ids,
+    });
+    const dto = { lastReadMessageId: 'msg-1' } as any;
+
+    it('in a channel: marks mentions read, tells only the user', async () => {
+      jest
+        .spyOn(service, 'markAsRead')
+        .mockResolvedValue(receipt({ channelId: 'ch-1' }) as any);
+
+      await service.markReadAndAnnounce(user, dto);
+
+      expect(notifications.markContextNotificationsAsRead).toHaveBeenCalledWith(
+        'user-1',
+        'ch-1',
+        null,
+      );
+      expect(websocket.sendToRoom).toHaveBeenCalledTimes(1);
+      expect(websocket.sendToRoom).toHaveBeenCalledWith(
+        'user:user-1',
+        ServerEvents.READ_RECEIPT_UPDATED,
+        {
+          channelId: 'ch-1',
+          directMessageGroupId: null,
+          lastReadMessageId: 'msg-1',
+          lastReadAt: lastReadAt.toISOString(),
+        },
+      );
+    });
+
+    it('in a DM: also tells the group who read it', async () => {
+      jest
+        .spyOn(service, 'markAsRead')
+        .mockResolvedValue(receipt({ directMessageGroupId: 'dm-1' }) as any);
+
+      await service.markReadAndAnnounce(user, dto);
+
+      expect(websocket.sendToRoom).toHaveBeenCalledWith(
+        'dm:dm-1',
+        ServerEvents.READ_RECEIPT_UPDATED,
+        expect.objectContaining({
+          userId: 'user-1',
+          username: 'alice',
+          displayName: 'Alice',
+          avatarUrl: 'avatar-1',
+        }),
+      );
+    });
+
+    it('a refused receipt announces nothing', async () => {
+      jest.spyOn(service, 'markAsRead').mockRejectedValue(new Error('no'));
+
+      await expect(
+        service.markReadAndAnnounce(user as any, dto),
+      ).rejects.toThrow('no');
+      expect(websocket.sendToRoom).not.toHaveBeenCalled();
+    });
   });
 
   describe('markAsRead', () => {

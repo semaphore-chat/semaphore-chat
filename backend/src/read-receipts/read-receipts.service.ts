@@ -8,6 +8,16 @@ import {
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { DatabaseService } from '@/database/database.service';
 import { MarkAsReadDto } from './dto/mark-as-read.dto';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { RoomName } from '@/common/utils/room-name.util';
+import { ServerEvents } from '@semaphore-chat/shared';
+import type { UserEntity } from '@/user/dto/user-response.dto';
+
+type ReadReceiptAuthor = Pick<
+  UserEntity,
+  'id' | 'username' | 'displayName' | 'avatarUrl'
+>;
 
 export interface UnreadCount {
   channelId?: string;
@@ -28,6 +38,8 @@ export class ReadReceiptsService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly notificationsService: NotificationsService,
+    private readonly websocketService: WebsocketService,
   ) {}
 
   /**
@@ -65,6 +77,51 @@ export class ReadReceiptsService {
    * Mark messages as read up to a specific message ID
    * Creates or updates a read receipt for the user
    */
+  /**
+   * A user marking something read, on any transport: the receipt, the mentions
+   * there, and telling the user's other sessions. In a DM it also tells the
+   * group, for "seen by". Channels don't get that, for privacy.
+   */
+  async markReadAndAnnounce(user: ReadReceiptAuthor, dto: MarkAsReadDto) {
+    const readReceipt = await this.markAsRead(user.id, dto);
+
+    // Keeps mentionCount consistent with the receipt after a refetch or reconnect
+    await this.notificationsService.markContextNotificationsAsRead(
+      user.id,
+      readReceipt.channelId,
+      readReceipt.directMessageGroupId,
+    );
+
+    const receiptPayload = {
+      channelId: readReceipt.channelId,
+      directMessageGroupId: readReceipt.directMessageGroupId,
+      lastReadMessageId: readReceipt.lastReadMessageId,
+      lastReadAt: readReceipt.lastReadAt.toISOString(),
+    };
+    this.websocketService.sendToRoom(
+      RoomName.user(user.id),
+      ServerEvents.READ_RECEIPT_UPDATED,
+      receiptPayload,
+    );
+
+    if (readReceipt.directMessageGroupId) {
+      this.websocketService.sendToRoom(
+        RoomName.dmGroup(readReceipt.directMessageGroupId),
+        ServerEvents.READ_RECEIPT_UPDATED,
+        {
+          ...receiptPayload,
+          // So other clients can update "seen by" without refetching
+          userId: user.id,
+          username: user.username,
+          displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
+        },
+      );
+    }
+
+    return readReceipt;
+  }
+
   async markAsRead(userId: string, markAsReadDto: MarkAsReadDto) {
     const { lastReadMessageId, channelId, directMessageGroupId } =
       markAsReadDto;
