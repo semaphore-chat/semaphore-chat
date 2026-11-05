@@ -14,6 +14,7 @@ import { FileService } from '@/file/file.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
+import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
 import { FileType, Prisma, SpanType } from '@prisma/client';
 import { groupReactions } from '@/common/utils/reactions.utils';
 
@@ -126,6 +127,12 @@ export class MessagesService {
         createMessageDto.channelId,
       );
     }
+    if (createMessageDto.authorId && !createMessageDto.webhookId) {
+      await this.assertFilesAttachable(
+        createMessageDto.authorId,
+        createMessageDto.attachments ?? [],
+      );
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, spans: rawSpans, attachments, ...data } = createMessageDto;
@@ -172,6 +179,29 @@ export class MessagesService {
     });
 
     return this.formatMessageWithReply(message);
+  }
+
+  assertFilesAttachable(userId: string, fileIds: readonly unknown[]) {
+    return assertFilesAttachable(this.databaseService, userId, fileIds);
+  }
+
+  /**
+   * Files leave with a message only when its author uploaded them. Older rows
+   * can carry someone else's file, which stays for its own message.
+   */
+  private async markAuthorFilesForDeletion(
+    tx: Prisma.TransactionClient,
+    authorId: string | null,
+    fileIds: string[],
+  ) {
+    if (fileIds.length === 0) return;
+    const files = await tx.file.findMany({
+      where: { id: { in: fileIds }, uploadedById: authorId },
+      select: { id: true },
+    });
+    for (const { id } of files) {
+      await this.fileService.markForDeletion(id, tx);
+    }
   }
 
   /**
@@ -364,10 +394,16 @@ export class MessagesService {
             const removedAttachments = originalAttachments.filter(
               (oldId) => !newAttachmentIds.includes(oldId),
             );
-            for (const fileId of removedAttachments) {
-              await this.fileService.markForDeletion(fileId, tx);
-            }
             if (removedAttachments.length > 0) {
+              const { authorId } = await tx.message.findUniqueOrThrow({
+                where: { id },
+                select: { authorId: true },
+              });
+              await this.markAuthorFilesForDeletion(
+                tx,
+                authorId,
+                removedAttachments,
+              );
               this.logger.debug(
                 `Marked ${removedAttachments.length} removed attachments for deletion`,
               );
@@ -400,9 +436,11 @@ export class MessagesService {
         });
 
         for (const reply of threadReplies) {
-          for (const attachment of reply.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
+          await this.markAuthorFilesForDeletion(
+            tx,
+            reply.authorId,
+            reply.attachments.map((attachment) => attachment.file.id),
+          );
         }
 
         // Delete all thread replies (thread subscribers cascade-delete with the parent)
@@ -419,11 +457,10 @@ export class MessagesService {
           deletedMessage.attachments &&
           deletedMessage.attachments.length > 0
         ) {
-          for (const attachment of deletedMessage.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
-          this.logger.debug(
-            `Marked ${deletedMessage.attachments.length} attachments for deletion`,
+          await this.markAuthorFilesForDeletion(
+            tx,
+            deletedMessage.authorId,
+            deletedMessage.attachments.map((attachment) => attachment.file.id),
           );
         }
 

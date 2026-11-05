@@ -349,6 +349,12 @@ export class MessagesController {
       );
     }
 
+    if (addAttachmentDto.fileId) {
+      await this.messagesService.assertFilesAttachable(req.user.id, [
+        addAttachmentDto.fileId,
+      ]);
+    }
+
     // Add the attachment and decrement pendingAttachments
     // If fileId is omitted (upload failed), just decrements counter
     const updatedMessage = await this.messagesService.addAttachment(
@@ -406,10 +412,11 @@ export class MessagesController {
     );
 
     // Adding files in an edit needs ATTACH_FILES like sending them
-    const addsFiles = (updateMessageDto.attachments ?? []).some(
+    const newFileIds = (updateMessageDto.attachments ?? []).filter(
       (fileId) => !originalFileIds.includes(fileId),
     );
-    if (addsFiles && originalMessage.channelId) {
+    await this.messagesService.assertFilesAttachable(req.user.id, newFileIds);
+    if (newFileIds.length > 0 && originalMessage.channelId) {
       await this.permissionsService.assertCanAttachFiles(
         req.user.id,
         originalMessage.channelId,

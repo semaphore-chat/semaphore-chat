@@ -8,6 +8,7 @@ import { DatabaseService } from '@/database/database.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
+import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { groupReactions } from '@/common/utils/reactions.utils';
@@ -125,6 +126,11 @@ export class ThreadsService {
         parent.channelId,
       );
     }
+    await assertFilesAttachable(
+      this.databaseService,
+      authorId,
+      attachments ?? [],
+    );
 
     // Sanitize spans to only include valid Prisma fields
     const fieldSanitizedSpans = this.sanitizeSpans(spans);

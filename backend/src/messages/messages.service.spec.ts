@@ -54,6 +54,19 @@ describe('MessagesService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    // Files in these tests were uploaded by the message's author, unless a
+    // test says otherwise.
+    mockDatabase.file.count.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.length),
+    );
+    mockDatabase.file.findMany.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id }))),
+    );
+    mockDatabase.message.findUniqueOrThrow.mockResolvedValue({
+      authorId: 'user-123',
+    });
 
     const { unit, unitRef } = await TestBed.solitary(MessagesService)
       .mock(DatabaseService)
@@ -131,6 +144,15 @@ describe('MessagesService', () => {
         await expect(
           service.create({ ...base, attachments: ['file-1'] } as any),
         ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it("rejects a file the author didn't upload", async () => {
+        mockDatabase.file.count.mockResolvedValue(0);
+
+        await expect(
+          service.create({ ...base, attachments: ['file-1'] } as any),
+        ).rejects.toThrow('You can only attach files you uploaded');
         expect(mockDatabase.message.create).not.toHaveBeenCalled();
       });
 
@@ -614,6 +636,32 @@ describe('MessagesService', () => {
       expect(updateCall.where).toEqual({ id: messageId });
       expect(updateCall.data.searchText).toBe('updated text');
       expect(updateCall.data.editedAt).toBeInstanceOf(Date);
+    });
+
+    it('only marks files the author uploaded for deletion', async () => {
+      mockDatabase.file.findMany.mockResolvedValue([{ id: 'own-file' }]);
+      mockDatabase.messageAttachment.findMany.mockResolvedValue([]);
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', { attachments: [] }, [
+        'own-file',
+        'foreign-file',
+      ]);
+
+      expect(mockDatabase.file.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['own-file', 'foreign-file'] },
+          uploadedById: 'user-123',
+        },
+        select: { id: true },
+      });
+      expect(fileService.markForDeletion).toHaveBeenCalledTimes(1);
+      expect(fileService.markForDeletion).toHaveBeenCalledWith(
+        'own-file',
+        expect.any(Object),
+      );
     });
 
     it('should mark removed attachments for deletion', async () => {
