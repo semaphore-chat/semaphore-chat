@@ -29,6 +29,7 @@ import { EmojiPickerPopover } from "../Message/EmojiPicker";
 import { useResponsive } from "../../hooks/useResponsive";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { parseMessageWithMentions } from "../../utils/mentionParser";
+import { randomUuid } from "../../utils/deviceId";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
@@ -163,7 +164,7 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
     // The same nonce until this text goes through, so sending it again after a
     // lost ack can't post it twice.
     if (nonceRef.current?.content !== trimmedContent) {
-      nonceRef.current = { content: trimmedContent, clientNonce: crypto.randomUUID() };
+      nonceRef.current = { content: trimmedContent, clientNonce: randomUuid() };
     }
 
     const result = await emitSend(socket, ClientEvents.SEND_THREAD_REPLY, {

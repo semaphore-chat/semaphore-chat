@@ -104,6 +104,28 @@ describe('ThreadMessageInput sending', () => {
     expect(third.clientNonce).not.toBe(first.clientNonce);
   });
 
+  it('sends when the browser has no crypto.randomUUID (plain HTTP)', async () => {
+    acks.push({ ok: true, messageId: 'reply-1' });
+    const own = Object.getOwnPropertyDescriptor(crypto, 'randomUUID');
+    Object.defineProperty(crypto, 'randomUUID', {
+      value: undefined,
+      configurable: true,
+    });
+    try {
+      const { user } = setup();
+
+      await send(user, 'hello');
+
+      await waitFor(() =>
+        expect(screen.getByRole('textbox')).toHaveValue(''),
+      );
+      expect(payloads()[0].clientNonce).toEqual(expect.any(String));
+    } finally {
+      if (own) Object.defineProperty(crypto, 'randomUUID', own);
+      else delete (crypto as { randomUUID?: unknown }).randomUUID;
+    }
+  });
+
   it('a reply deleted meanwhile clears the box and says so', async () => {
     acks.push({
       ok: false,

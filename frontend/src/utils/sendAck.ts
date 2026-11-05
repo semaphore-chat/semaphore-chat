@@ -6,6 +6,7 @@
  */
 import type { Socket } from "socket.io-client";
 import { ErrorCode, type SendAck } from "@semaphore-chat/shared";
+import { randomUuid } from "./deviceId";
 
 export const SEND_ACK_TIMEOUT_MS = 10000;
 
@@ -86,6 +87,6 @@ export function isDeletedWhileSending(error: Error | undefined): boolean {
  * id. A retry reuses both, which is what makes it safe.
  */
 export function newSendIdentity(prefix: string) {
-  const clientNonce = crypto.randomUUID();
+  const clientNonce = randomUuid();
   return { clientNonce, clientId: `${prefix}${clientNonce}` };
 }

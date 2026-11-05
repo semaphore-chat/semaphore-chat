@@ -124,4 +124,22 @@ describe("newSendIdentity", () => {
     expect(first.clientId).toBe(`pending-${first.clientNonce}`);
     expect(newSendIdentity("pending-").clientNonce).not.toBe(first.clientNonce);
   });
+
+  it("works without crypto.randomUUID (plain HTTP)", () => {
+    const own = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+    Object.defineProperty(crypto, "randomUUID", {
+      value: undefined,
+      configurable: true,
+    });
+    try {
+      const { clientNonce, clientId } = newSendIdentity("pending-");
+      expect(clientNonce).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+      expect(clientId).toBe(`pending-${clientNonce}`);
+    } finally {
+      if (own) Object.defineProperty(crypto, "randomUUID", own);
+      else delete (crypto as { randomUUID?: unknown }).randomUUID;
+    }
+  });
 });
