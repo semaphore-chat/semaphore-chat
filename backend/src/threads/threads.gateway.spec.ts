@@ -61,7 +61,9 @@ describe('ThreadsGateway', () => {
     databaseService = unitRef.get(DatabaseService);
     linkPreviewsService = unitRef.get(LinkPreviewsService);
 
-    threadsService.createThreadReply = jest.fn().mockResolvedValue(mockReply);
+    threadsService.sendThreadReply = jest
+      .fn()
+      .mockResolvedValue({ reply: mockReply, created: true });
     (databaseService.message as any) = {
       findUnique: jest.fn().mockResolvedValue(mockParentMessage),
     };
@@ -83,10 +85,22 @@ describe('ThreadsGateway', () => {
   });
 
   describe('handleThreadReply', () => {
+    it('does not announce a retry again', async () => {
+      threadsService.sendThreadReply = jest
+        .fn()
+        .mockResolvedValue({ reply: mockReply, created: false });
+
+      await expect(
+        gateway.handleThreadReply(basePayload as any, mockClient),
+      ).resolves.toBe(mockReply.id);
+
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
     it('creates a reply through the threads service', async () => {
       await gateway.handleThreadReply(basePayload as any, mockClient);
 
-      expect(threadsService.createThreadReply).toHaveBeenCalledWith(
+      expect(threadsService.sendThreadReply).toHaveBeenCalledWith(
         expect.objectContaining({
           parentMessageId: 'parent-msg-1',
           spans: basePayload.spans,
@@ -212,7 +226,7 @@ describe('ThreadsGateway', () => {
         mockClient,
       );
 
-      expect(threadsService.createThreadReply).toHaveBeenCalledWith(
+      expect(threadsService.sendThreadReply).toHaveBeenCalledWith(
         expect.objectContaining({
           attachments: ['att-1', 'att-2'],
           pendingAttachments: 1,

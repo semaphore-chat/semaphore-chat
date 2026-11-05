@@ -25,7 +25,8 @@ import { AddReactionDto } from './dto/add-reaction.dto';
 import { RemoveReactionDto } from './dto/remove-reaction.dto';
 import { TypingEventDto } from './dto/typing-event.dto';
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
+import { ClientEvents, SendAck, ServerEvents } from '@semaphore-chat/shared';
+import { sendSuccessAck } from '@/websocket/send-ack';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -84,13 +85,13 @@ export class MessagesGateway
   async handleMessage(
     @MessageBody() payload: CreateMessageDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+  ): Promise<string | SendAck> {
     const userId = getSocketUserId(client);
     const message = await this.messageSendService.sendToChannel(
       userId,
       payload,
     );
-    return message.id;
+    return sendSuccessAck(client, message.id);
   }
 
   @SubscribeMessage(ClientEvents.SEND_DM)
@@ -103,13 +104,13 @@ export class MessagesGateway
   async handleDirectMessageWithRBAC(
     @MessageBody() payload: CreateMessageDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+  ): Promise<string | SendAck> {
     const userId = getSocketUserId(client);
     const message = await this.messageSendService.sendToDirectMessageGroup(
       userId,
       payload,
     );
-    return message.id;
+    return sendSuccessAck(client, message.id);
   }
 
   @SubscribeMessage(ClientEvents.ADD_REACTION)

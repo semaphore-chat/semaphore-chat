@@ -62,6 +62,49 @@ describe('ThreadsService', () => {
     });
   });
 
+  describe('sendThreadReply', () => {
+    const nonce = '0b4d1f9e-3b0a-4c7e-9d55-0f6a7a1b2c3d';
+    const parent = {
+      id: 'parent-1',
+      channelId: 'channel-1',
+      directMessageGroupId: null,
+      parentMessageId: null,
+    };
+    const dto = {
+      parentMessageId: 'parent-1',
+      spans: [],
+      clientNonce: nonce,
+    } as any;
+
+    beforeEach(() => {
+      (mockDatabase as any).messageNonceTombstone = {
+        findUnique: jest.fn().mockResolvedValue(null),
+      };
+    });
+
+    it('returns the earlier reply, without creating another', async () => {
+      mockDatabase.message.findUnique
+        .mockResolvedValueOnce(parent)
+        .mockResolvedValueOnce({
+          id: 'reply-1',
+          channelId: 'channel-1',
+          directMessageGroupId: null,
+          parentMessageId: 'parent-1',
+          deletedAt: null,
+          sentAt: new Date(),
+          spans: [],
+          reactions: [],
+          attachments: [],
+        });
+
+      const { reply, created } = await service.sendThreadReply(dto, 'user-1');
+
+      expect(reply.id).toBe('reply-1');
+      expect(created).toBe(false);
+      expect(mockDatabase.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createThreadReply', () => {
     const authorId = 'author-123';
 

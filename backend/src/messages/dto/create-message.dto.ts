@@ -176,4 +176,13 @@ export class CreateMessageDto {
   @IsString()
   @IsUUID()
   replyToId?: string | null;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }

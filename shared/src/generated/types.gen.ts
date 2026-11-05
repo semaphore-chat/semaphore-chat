@@ -75,6 +75,11 @@ export type CreateMessageDto = {
     directMessageGroupId?: string | null;
     spans: Array<CreateMessageSpanDto>;
     pendingAttachments?: number | null;
+    /**
+     * The sender's id for this send (a UUID). Retrying with the same one returns
+     * the same message instead of creating another.
+     */
+    clientNonce?: string | null;
     attachments: Array<string>;
     replyToId?: string | null;
 };
@@ -165,7 +170,7 @@ export type MessageDto = {
      */
     deletedByReason?: string | null;
     /**
-     * Reserved for the sender's correlation id; not sent yet.
+     * The id the sender gave this send, if any, to recognise its own message.
      */
     clientNonce?: string | null;
     id: string;

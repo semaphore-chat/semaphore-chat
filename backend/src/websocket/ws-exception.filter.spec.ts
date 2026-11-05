@@ -130,6 +130,85 @@ describe('WsLoggingExceptionFilter', () => {
       );
     });
 
+    describe('the ack of a send', () => {
+      const ack = jest.fn();
+      const asSend = (protocol?: number, pattern = 'sendMessage') => {
+        const ws = mockHost.switchToWs() as unknown as {
+          getPattern: jest.Mock;
+        };
+        ws.getPattern.mockReturnValue(pattern);
+        mockClient.handshake = { auth: { protocol } };
+        (mockHost.getArgByIndex as jest.Mock).mockReturnValue(ack);
+        jest.spyOn(filter['logger'], 'error').mockImplementation();
+      };
+
+      beforeEach(() => ack.mockClear());
+
+      it('stays unanswered for a client that did not ask', () => {
+        asSend();
+        filter.catch(new ForbiddenException('No'), mockHost);
+        expect(ack).not.toHaveBeenCalled();
+        expect(mockClient.emit).toHaveBeenCalled();
+      });
+
+      it('stays unanswered for other events', () => {
+        asSend(2, 'addReaction');
+        filter.catch(new ForbiddenException('No'), mockHost);
+        expect(ack).not.toHaveBeenCalled();
+      });
+
+      it('carries a service error, with its wait', () => {
+        asSend(2);
+        filter.catch(
+          new ForbiddenException({
+            message: 'Wait',
+            errorCode: ErrorCode.SLOWMODE,
+            retryAfterMs: 5000,
+          }),
+          mockHost,
+        );
+        expect(ack).toHaveBeenCalledWith({
+          ok: false,
+          error: {
+            errorCode: ErrorCode.SLOWMODE,
+            message: 'Wait',
+            retryable: true,
+            retryAfterMs: 5000,
+          },
+        });
+      });
+
+      it('carries a validation failure', () => {
+        asSend(2);
+        filter.catch(new ValidationFailedException([], ['bad']), mockHost);
+        expect(ack).toHaveBeenCalledWith({
+          ok: false,
+          error: {
+            errorCode: ErrorCode.VALIDATION_FAILED,
+            message: 'Validation failed',
+            retryable: false,
+          },
+        });
+      });
+
+      it('hides an unexpected error', () => {
+        asSend(2);
+        const loggerSpy = jest
+          .spyOn(Logger.prototype, 'error')
+          .mockImplementation();
+        filter.catch(new Error('secret detail'), mockHost);
+        loggerSpy.mockRestore();
+        expect(ack).toHaveBeenCalledWith({
+          ok: false,
+          error: {
+            errorCode: ErrorCode.INTERNAL,
+            message: 'Internal server error',
+            retryable: true,
+          },
+        });
+      });
+    });
+
     it('never reveals an unexpected error', () => {
       const loggerSpy = jest
         .spyOn(Logger.prototype, 'error')

@@ -1,6 +1,8 @@
 import { ArgumentsHost, Catch, HttpException, Logger } from '@nestjs/common';
 import { BaseWsExceptionFilter, WsException } from '@nestjs/websockets';
-import { ErrorCode } from '@semaphore-chat/shared';
+import { ApiErrorFields, ErrorCode, SendAck } from '@semaphore-chat/shared';
+import type { Socket } from 'socket.io';
+import { answersFailureWithAck } from './send-ack';
 import {
   errorCodeForStatus,
   isPlainObject,
@@ -42,6 +44,46 @@ export class WsLoggingExceptionFilter extends BaseWsExceptionFilter {
       );
     }
     super.catch(exception, host);
+    this.answerAck(exception, host);
+  }
+
+  /** Fails the ack of a send, for a client that asked (see send-ack.ts). */
+  private answerAck(exception: unknown, host: ArgumentsHost) {
+    const ws = host.switchToWs();
+    const ack: unknown = host.getArgByIndex(2);
+    if (
+      typeof ack !== 'function' ||
+      !answersFailureWithAck(ws.getClient<Socket>(), ws.getPattern())
+    ) {
+      return;
+    }
+
+    const error =
+      exception instanceof WsException ? exception.getError() : null;
+    const fields = Array.isArray(error)
+      ? {
+          message: 'Validation failed',
+          errorCode: ErrorCode.VALIDATION_FAILED,
+        }
+      : isPlainObject(error)
+        ? error
+        : { message: error ?? 'Internal server error' };
+    const message = fields.message;
+    const { errorCode, retryable, retryAfterMs } = withErrorFields(
+      fields,
+      (typeof message === 'string' && CODE_FOR_MESSAGE[message]) ||
+        (error === null ? ErrorCode.INTERNAL : ErrorCode.BAD_REQUEST),
+    ) as ApiErrorFields;
+
+    (ack as (answer: SendAck) => void)({
+      ok: false,
+      error: {
+        errorCode,
+        message: Array.isArray(message) ? message.join('. ') : String(message),
+        retryable,
+        ...(retryAfterMs ? { retryAfterMs } : {}),
+      },
+    });
   }
 
   /** The last stop for every error payload, so all of them get the fields. */

@@ -77,19 +77,30 @@ describe('committed openapi.json', () => {
     });
   });
 
-  it.each(['CreateMessageDto', 'UpdateMessageDto'])(
-    '%s offers only what a client may set',
-    (dto) => {
-      expect(Object.keys(schemas[dto].properties ?? {}).sort()).toEqual([
-        'attachments',
-        'channelId',
-        'directMessageGroupId',
-        'pendingAttachments',
-        'replyToId',
-        'spans',
-      ]);
-    },
-  );
+  const clientFields = [
+    'attachments',
+    'channelId',
+    'directMessageGroupId',
+    'pendingAttachments',
+    'replyToId',
+    'spans',
+  ];
+
+  it('CreateMessageDto offers only what a client may set', () => {
+    expect(
+      Object.keys(schemas.CreateMessageDto.properties ?? {}).sort(),
+    ).toEqual([
+      ...clientFields.slice(0, 2),
+      'clientNonce',
+      ...clientFields.slice(2),
+    ]);
+  });
+
+  it('UpdateMessageDto offers only what a client may set', () => {
+    expect(
+      Object.keys(schemas.UpdateMessageDto.properties ?? {}).sort(),
+    ).toEqual(clientFields);
+  });
 
   it('CreateMessageDto requires only what the server validates as required', () => {
     expect([...(schemas.CreateMessageDto.required ?? [])].sort()).toEqual([

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### ⚠️ Breaking changes / upgrade checklist
+
+- **Database migration with a unique index on messages.** `20261105200000_message_client_nonce` adds `Message.clientNonce`, a `MessageNonceTombstone` table and a unique index on `(authorId, clientNonce)`. The column is empty for existing messages, so no conflict is possible, but building the index blocks sending while it runs. Expect a short pause on an instance with a very large message table.
+
 ## [0.8.0] - 2026-11-10
 
 A security release. An audit found authorization gaps across roles, members, invites, messages, voice and direct messages, including ways for a moderator or user manager to gain admin or owner rights. **Upgrade as soon as you can.**

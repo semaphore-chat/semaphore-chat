@@ -10,7 +10,10 @@ import { ModerationService } from '@/moderation/moderation.service';
 import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { DatabaseService } from '@/database/database.service';
 import { MessageDispatchService } from './message-dispatch.service';
+import { findSentMessage, isNonceCollision, SendTarget } from './message-nonce';
+import { toMessageDto } from './message.mapper';
 import { MessagesService } from './messages.service';
 
 /**
@@ -26,6 +29,7 @@ export class MessageSendService {
   private readonly logger = new Logger(MessageSendService.name);
 
   constructor(
+    private readonly databaseService: DatabaseService,
     private readonly messagesService: MessagesService,
     private readonly messageDispatchService: MessageDispatchService,
     private readonly moderationService: ModerationService,
@@ -45,14 +49,15 @@ export class MessageSendService {
       );
     }
 
+    const target = { channelId };
+    const sent = await this.findSent(authorId, dto, target);
+    if (sent) return sent;
+
     await this.assertNotTimedOut(channelId, authorId);
     await this.messagesService.checkSlowmode(channelId, authorId);
 
-    const message = await this.messagesService.create({
-      ...dto,
-      authorId,
-      sentAt: new Date(),
-    });
+    const { message, retried } = await this.write(authorId, dto, target);
+    if (retried) return message;
 
     this.markReadForSender(authorId, message.id, { channelId });
 
@@ -78,11 +83,12 @@ export class MessageSendService {
       );
     }
 
-    const message = await this.messagesService.create({
-      ...dto,
-      authorId,
-      sentAt: new Date(),
-    });
+    const target = { directMessageGroupId };
+    const sent = await this.findSent(authorId, dto, target);
+    if (sent) return sent;
+
+    const { message, retried } = await this.write(authorId, dto, target);
+    if (retried) return message;
 
     this.markReadForSender(authorId, message.id, { directMessageGroupId });
 
@@ -94,6 +100,42 @@ export class MessageSendService {
     });
 
     return message;
+  }
+
+  private async findSent(
+    authorId: string,
+    dto: CreateMessageDto,
+    target: SendTarget,
+  ) {
+    const sent = await findSentMessage(
+      this.databaseService,
+      authorId,
+      dto.clientNonce,
+      target,
+    );
+    return sent && toMessageDto(sent);
+  }
+
+  /** Creates the message, unless a concurrent send with its nonce just did. */
+  private async write(
+    authorId: string,
+    dto: CreateMessageDto,
+    target: SendTarget,
+  ) {
+    try {
+      const message = await this.messagesService.create({
+        ...dto,
+        authorId,
+        sentAt: new Date(),
+      });
+      return { message, retried: false };
+    } catch (error) {
+      const sent = isNonceCollision(error)
+        ? await this.findSent(authorId, dto, target)
+        : null;
+      if (!sent) throw error;
+      return { message: sent, retried: true };
+    }
   }
 
   /**

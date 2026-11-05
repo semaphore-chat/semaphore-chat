@@ -274,16 +274,25 @@
     "sendDirectMessage": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/CreateMessageDto"
+      },
+      "ack": {
+        "$ref": "./openapi.json#/components/schemas/SendAckDto"
       }
     },
     "sendMessage": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/CreateMessageDto"
+      },
+      "ack": {
+        "$ref": "./openapi.json#/components/schemas/SendAckDto"
       }
     },
     "sendThreadReply": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/SendThreadReplyDto"
+      },
+      "ack": {
+        "$ref": "./openapi.json#/components/schemas/SendAckDto"
       }
     },
     "subscribeAll": {},

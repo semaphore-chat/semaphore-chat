@@ -70,7 +70,11 @@ export class ThreadsController {
       ...body,
       parentMessageId,
     };
-    return this.threadsService.createThreadReply(dto, req.user.id);
+    const { reply } = await this.threadsService.sendThreadReply(
+      dto,
+      req.user.id,
+    );
+    return reply;
   }
 
   /**

@@ -22,7 +22,8 @@ import { RbacActions } from '@prisma/client';
 import { ThreadsService } from './threads.service';
 import { SendThreadReplyDto } from './dto/send-thread-reply.dto';
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
+import { ClientEvents, ServerEvents, SendAck } from '@semaphore-chat/shared';
+import { sendSuccessAck } from '@/websocket/send-ack';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
@@ -83,7 +84,7 @@ export class ThreadsGateway
   async handleThreadReply(
     @MessageBody() payload: SendThreadReplyDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+  ): Promise<string | SendAck> {
     const userId = getSocketUserId(client);
 
     if (!payload.parentMessageId) {
@@ -91,15 +92,18 @@ export class ThreadsGateway
     }
 
     // Create the thread reply
-    const reply = await this.threadsService.createThreadReply(
+    const { reply, created } = await this.threadsService.sendThreadReply(
       {
         parentMessageId: payload.parentMessageId,
         spans: payload.spans,
         attachments: payload.attachments,
         pendingAttachments: payload.pendingAttachments,
+        clientNonce: payload.clientNonce,
       },
       userId,
     );
+    // A retry: everyone heard about this reply the first time.
+    if (!created) return sendSuccessAck(client, reply.id);
 
     // Get the parent message to determine the room
     const parentMessage = await this.databaseService.message.findUnique({
@@ -168,6 +172,6 @@ export class ThreadsGateway
         );
     }
 
-    return reply.id;
+    return sendSuccessAck(client, reply.id);
   }
 }

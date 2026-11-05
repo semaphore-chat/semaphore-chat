@@ -1,3 +1,4 @@
+import { findSentMessage, isNonceCollision } from '@/messages/message-nonce';
 import {
   Injectable,
   Logger,
@@ -89,11 +90,58 @@ export class ThreadsService {
   }
 
   /**
+   * A reply from a client. A retry with the same clientNonce gets the reply it
+   * already created, with `created: false` so nothing is announced twice.
+   */
+  async sendThreadReply(dto: CreateThreadReplyDto, authorId: string) {
+    const target = { ...(await this.replyTarget(dto.parentMessageId)) };
+    const sent = await findSentMessage(
+      this.databaseService,
+      authorId,
+      dto.clientNonce,
+      target,
+    );
+    if (sent) return { reply: toMessageDto(sent), created: false };
+
+    try {
+      return {
+        reply: await this.createThreadReply(dto, authorId),
+        created: true,
+      };
+    } catch (error) {
+      const raced = isNonceCollision(error)
+        ? await findSentMessage(
+            this.databaseService,
+            authorId,
+            dto.clientNonce,
+            target,
+          )
+        : null;
+      if (!raced) throw error;
+      return { reply: toMessageDto(raced), created: false };
+    }
+  }
+
+  private replyTarget(parentMessageId: string) {
+    return this.getParentMessage(parentMessageId).then((parent) => ({
+      channelId: parent.channelId,
+      directMessageGroupId: parent.directMessageGroupId,
+      parentMessageId,
+    }));
+  }
+
+  /**
    * Create a thread reply message.
    * Also increments the parent's replyCount and auto-subscribes the user.
    */
   async createThreadReply(dto: CreateThreadReplyDto, authorId: string) {
-    const { parentMessageId, spans, attachments, pendingAttachments } = dto;
+    const {
+      parentMessageId,
+      spans,
+      attachments,
+      pendingAttachments,
+      clientNonce,
+    } = dto;
 
     // Validate parent message exists and isn't a thread reply itself
     const parent = await this.getParentMessage(parentMessageId);
@@ -170,6 +218,7 @@ export class ThreadsService {
               }
             : {}),
           pendingAttachments: pendingAttachments || 0,
+          clientNonce,
         },
         include: MESSAGE_INCLUDE,
       });

@@ -29,6 +29,10 @@ export enum ErrorCode {
   QUOTE_OTHER_CONTEXT = 'QUOTE_OTHER_CONTEXT',
   SLOWMODE = 'SLOWMODE',
   TIMED_OUT = 'TIMED_OUT',
+  /** This clientNonce was already used, for a message somewhere else. */
+  NONCE_CONFLICT = 'NONCE_CONFLICT',
+  /** A retry of a send whose message has since been deleted. */
+  MESSAGE_DELETED = 'MESSAGE_DELETED',
 
   // Files
   ATTACH_NOT_ALLOWED = 'ATTACH_NOT_ALLOWED',

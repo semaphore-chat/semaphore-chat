@@ -118,7 +118,7 @@ export class MessageDto {
   /** Why it was removed. Null unless the reader may see removed messages. */
   @ApiPropertyOptional({ type: String, nullable: true })
   deletedByReason?: string | null;
-  /** Reserved for the sender's correlation id; not sent yet. */
+  /** The id the sender gave this send, if any, to recognise its own message. */
   @ApiPropertyOptional({ type: String, nullable: true })
   clientNonce?: string | null;
 }

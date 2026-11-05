@@ -16,6 +16,7 @@ import {
   UpdateThreadReplyPayloadDto,
 } from '@/messages/dto/message-events.dto';
 import { RemoveReactionDto } from '@/messages/dto/remove-reaction.dto';
+import { SendAckDto } from '@/messages/dto/send-ack.dto';
 import { MarkAsReadDto } from '@/read-receipts/dto/mark-as-read.dto';
 import { ReauthenticateDto } from '@/rooms/dto/reauthenticate.dto';
 import { SendThreadReplyDto } from '@/threads/dto/send-thread-reply.dto';
@@ -152,6 +153,10 @@ export const CLIENT_EVENT_SCHEMAS = {
 /** The acknowledgement a client event answers with, where it has a schema. */
 export const CLIENT_EVENT_ACK_SCHEMAS = {
   [ClientEvents.REAUTHENTICATE]: ReauthenticateResultDto,
+  // For a client that connected with `auth.protocol: 2`; others get the plain id.
+  [ClientEvents.SEND_MESSAGE]: SendAckDto,
+  [ClientEvents.SEND_DM]: SendAckDto,
+  [ClientEvents.SEND_THREAD_REPLY]: SendAckDto,
 } satisfies Partial<Record<ClientEvents, Type<unknown>>>;
 
 export const SOCKET_EVENT_SCHEMAS: Type<unknown>[] = [

@@ -32,4 +32,13 @@ export class SendThreadReplyDto {
   @IsOptional()
   @ApiPropertyOptional({ type: 'integer' })
   pendingAttachments?: number;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }

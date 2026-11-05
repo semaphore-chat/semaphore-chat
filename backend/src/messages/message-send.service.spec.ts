@@ -1,7 +1,10 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { ServerEvents } from '@semaphore-chat/shared';
+import { DatabaseService } from '@/database/database.service';
+import { createMockDatabase } from '@/test-utils';
 import { ModerationService } from '@/moderation/moderation.service';
 import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
 import { WebsocketService } from '@/websocket/websocket.service';
@@ -16,6 +19,9 @@ describe('MessageSendService', () => {
   let moderation: Mocked<ModerationService>;
   let readReceipts: Mocked<ReadReceiptsService>;
   let websocket: Mocked<WebsocketService>;
+  let database: ReturnType<typeof createMockDatabase> & {
+    messageNonceTombstone: { findUnique: jest.Mock };
+  };
 
   const receipt = {
     channelId: 'channel-1',
@@ -28,8 +34,14 @@ describe('MessageSendService', () => {
   const flushPromises = () => new Promise((resolve) => setImmediate(resolve));
 
   beforeEach(async () => {
-    const { unit, unitRef } =
-      await TestBed.solitary(MessageSendService).compile();
+    database = createMockDatabase() as typeof database;
+    database.messageNonceTombstone = {
+      findUnique: jest.fn().mockResolvedValue(null),
+    };
+    const { unit, unitRef } = await TestBed.solitary(MessageSendService)
+      .mock(DatabaseService)
+      .final(database)
+      .compile();
     service = unit;
     messagesService = unitRef.get(MessagesService);
     dispatch = unitRef.get(MessageDispatchService);
@@ -73,6 +85,71 @@ describe('MessageSendService', () => {
           linkPreviews: true,
         },
       );
+    });
+
+    describe('a retry with a nonce', () => {
+      const clientNonce = '0b4d1f9e-3b0a-4c7e-9d55-0f6a7a1b2c3d';
+      const row = {
+        id: 'msg-old',
+        channelId: 'channel-1',
+        directMessageGroupId: null,
+        parentMessageId: null,
+        deletedAt: null,
+        sentAt: new Date(),
+        spans: [],
+        reactions: [],
+        attachments: [],
+      };
+
+      it('returns the earlier message, before slowmode, without sending', async () => {
+        database.message.findUnique.mockResolvedValue(row);
+        messagesService.checkSlowmode.mockRejectedValue(new Error('slowmode'));
+
+        const result = await service.sendToChannel('user-1', {
+          ...dto,
+          clientNonce,
+        });
+
+        expect(result.id).toBe('msg-old');
+        expect(messagesService.create).not.toHaveBeenCalled();
+        expect(dispatch.dispatch).not.toHaveBeenCalled();
+        expect(readReceipts.markAsRead).not.toHaveBeenCalled();
+      });
+
+      it('a concurrent send losing the race returns the winner, unannounced', async () => {
+        database.message.findUnique
+          .mockResolvedValueOnce(null)
+          .mockResolvedValueOnce(row);
+        messagesService.create.mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError('Unique', {
+            code: 'P2002',
+            clientVersion: 'test',
+            meta: { target: ['authorId', 'clientNonce'] },
+          }),
+        );
+
+        const result = await service.sendToChannel('user-1', {
+          ...dto,
+          clientNonce,
+        });
+
+        expect(result.id).toBe('msg-old');
+        expect(dispatch.dispatch).not.toHaveBeenCalled();
+      });
+
+      it('other unique violations still fail', async () => {
+        database.message.findUnique.mockResolvedValue(null);
+        const error = new Prisma.PrismaClientKnownRequestError('Unique', {
+          code: 'P2002',
+          clientVersion: 'test',
+          meta: { target: ['messageId', 'fileId'] },
+        });
+        messagesService.create.mockRejectedValue(error);
+
+        await expect(
+          service.sendToChannel('user-1', { ...dto, clientNonce }),
+        ).rejects.toBe(error);
+      });
     });
 
     it('marks the message read for the sender', async () => {

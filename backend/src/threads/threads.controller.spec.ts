@@ -35,7 +35,10 @@ describe('ThreadsController', () => {
       };
       const mockReply = { id: 'reply-123', authorId: userId } as any;
 
-      threadsService.createThreadReply.mockResolvedValue(mockReply);
+      threadsService.sendThreadReply.mockResolvedValue({
+        reply: mockReply,
+        created: true,
+      });
 
       const result = await controller.createReply(
         parentMessageId,
@@ -44,7 +47,7 @@ describe('ThreadsController', () => {
       );
 
       expect(result).toEqual(mockReply);
-      expect(threadsService.createThreadReply).toHaveBeenCalledWith(
+      expect(threadsService.sendThreadReply).toHaveBeenCalledWith(
         { ...body, parentMessageId },
         userId,
       );

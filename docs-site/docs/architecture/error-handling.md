@@ -42,6 +42,32 @@ A payload that fails DTO validation is the one exception to this shape: it stays
 
 `cause.data` is the payload the client sent. An unexpected error is always reported as `Internal server error` with `INTERNAL`, so details never reach clients.
 
+## Sending a message
+
+`SEND_MESSAGE`, `SEND_DM` and `SEND_THREAD_REPLY` can answer with a typed ack. A client asks for it by connecting with `auth: { token, protocol: 2 }`:
+
+```json
+{ "ok": true, "messageId": "..." }
+{ "ok": false, "error": { "errorCode": "SLOWMODE", "message": "...", "retryable": true, "retryAfterMs": 30000 } }
+```
+
+The failure arrives right away, so a client doesn't have to wait out a timeout. The `exception` event still fires too. A client without `protocol` gets the plain message id on success and only the `exception` event on failure, as it always did.
+
+### Retrying safely
+
+Any send, on a socket or over REST (`POST /messages`, `POST /messages/dm`, `POST /threads/:id/replies`), can carry a `clientNonce`: a UUID the client makes for this message. The message and its broadcast carry it back, which is how the sender recognises its own message.
+
+A client that lost an ack, or was suspended mid-send, retries with the same nonce:
+
+| The message... | The retry gets |
+|---|---|
+| was created | The same message. Nothing is sent again or announced again, and slowmode doesn't apply |
+| was deleted, by anyone | `MESSAGE_DELETED` (410). Stop retrying and drop the local copy |
+| was never created | A new send, with the usual checks |
+| exists somewhere else (same nonce, another channel) | `NONCE_CONFLICT` (409). This is a client bug |
+
+Nonces belong to the sender: two users using the same one don't interact.
+
 ## Rules for the codes
 
 **For clients:** expect codes you don't know. A newer server can send them to an older client, so handle an unknown code by `retryable` and the status, and show `message`.

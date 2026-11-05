@@ -189,6 +189,22 @@ export class MessagesService {
   }
 
   /**
+   * Keeps a deleted message's nonce, so a client still retrying that send
+   * (it never got the ack) can't bring the message back.
+   */
+  private async rememberDeletedNonces(
+    tx: Prisma.TransactionClient,
+    messages: { authorId: string | null; clientNonce: string | null }[],
+  ) {
+    const data = messages.flatMap(({ authorId, clientNonce }) =>
+      authorId && clientNonce ? [{ authorId, clientNonce }] : [],
+    );
+    if (data.length > 0) {
+      await tx.messageNonceTombstone.createMany({ data, skipDuplicates: true });
+    }
+  }
+
+  /**
    * Builds the `create()` input for a webhook-attributed plaintext message.
    * Centralizes ownership of the CreateMessageDto shape so the webhooks
    * execution flow doesn't need to hand-construct every field itself.
@@ -431,6 +447,8 @@ export class MessagesService {
           );
         }
 
+        await this.rememberDeletedNonces(tx, threadReplies);
+
         // Delete all thread replies (thread subscribers cascade-delete with the parent)
         await tx.message.deleteMany({ where: { parentMessageId: id } });
 
@@ -439,6 +457,8 @@ export class MessagesService {
           where: { id },
           include: MESSAGE_INCLUDE_WITH_REPLY,
         });
+
+        await this.rememberDeletedNonces(tx, [deletedMessage]);
 
         // Mark parent's attachments for deletion
         if (

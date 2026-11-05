@@ -116,6 +116,7 @@ function toReplyToPreview(
  */
 export function toMessageDto(row: MessageRow): MessageDto {
   return {
+    clientNonce: row.clientNonce,
     id: row.id,
     channelId: row.channelId,
     directMessageGroupId: row.directMessageGroupId,
