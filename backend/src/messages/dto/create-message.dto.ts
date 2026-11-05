@@ -11,7 +11,11 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiHideProperty,
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
 import { SpanTypeValues } from '@/common/enums/swagger-enums';
 import { ArrayMinLength } from '../../decorators/array-min-length.decorator';
 
@@ -80,28 +84,35 @@ export class CreateMessageSpanDto {
 }
 
 export class CreateMessageDto {
+  @ApiHideProperty()
   @Exclude()
   id: string;
 
   @IsOptional()
   @IsString()
   @IsUUID()
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   channelId: string | null;
 
   @IsOptional()
   @IsString()
   @IsUUID()
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   directMessageGroupId: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   authorId: string;
 
+  @ApiHideProperty()
   @Exclude()
   sentAt: Date;
 
+  @ApiHideProperty()
   @Exclude()
   editedAt: Date | null;
 
+  @ApiHideProperty()
   @Exclude()
   deletedAt: Date | null;
 
@@ -121,34 +132,42 @@ export class CreateMessageDto {
   @ApiPropertyOptional({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
 
+  @ApiHideProperty()
   @Exclude()
   searchText: string | null;
 
   // Pinning fields (excluded - set by moderation actions)
+  @ApiHideProperty()
   @Exclude()
   pinned: boolean;
 
+  @ApiHideProperty()
   @Exclude()
   pinnedAt: Date | null;
 
+  @ApiHideProperty()
   @Exclude()
   pinnedBy: string | null;
 
   // Moderation deletion fields (excluded - set by moderation actions)
+  @ApiHideProperty()
   @Exclude()
   deletedBy: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   deletedByReason: string | null;
 
   // Threading fields (excluded - set by threading system)
+  @ApiHideProperty()
   @Exclude()
   parentMessageId: string | null;
 
+  @ApiHideProperty()
   @Exclude()
-  @ApiProperty({ type: 'integer' })
   replyCount: number;
 
+  @ApiHideProperty()
   @Exclude()
   lastReplyAt: Date | null;
 
