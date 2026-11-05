@@ -1,0 +1,23 @@
+[
+{"name":"concatenates","input":{"spans":[{"type":"PLAINTEXT","text":"hello "},{"type":"USER_MENTION","text":"@alice"},{"type":"PLAINTEXT","text":" world"}],"channels":null},"expected":"hello @alice world"},
+{"name":"empty","input":{"spans":[],"channels":null},"expected":""},
+{"name":"channel names","input":{"spans":[{"type":"CHANNEL_MENTION","channelId":"c1"},{"type":"PLAINTEXT","text":" and "},{"type":"CHANNEL_MENTION","channelId":"hidden"}],"channels":{"c1":"general"}},"expected":"#general and #private-channel"},
+{"name":"channel names absent","input":{"spans":[{"type":"CHANNEL_MENTION","channelId":"c1"},{"type":"PLAINTEXT","text":" and "},{"type":"CHANNEL_MENTION","channelId":"hidden"}],"channels":null},"expected":"#private-channel and #private-channel"},
+{"name":"channel with empty name","input":{"spans":[{"type":"CHANNEL_MENTION","channelId":"c1"}],"channels":{"c1":""}},"expected":"#private-channel"},
+{"name":"channel with no id","input":{"spans":[{"type":"CHANNEL_MENTION"}],"channels":null},"expected":"#private-channel"},
+{"name":"bold","input":{"spans":[{"type":"PLAINTEXT","text":"hi","bold":true}],"channels":null},"expected":"**hi**"},
+{"name":"bold italic","input":{"spans":[{"type":"PLAINTEXT","text":"hi","bold":true,"italic":true}],"channels":null},"expected":"**_hi_**"},
+{"name":"all styles","input":{"spans":[{"type":"PLAINTEXT","text":"hi","bold":true,"italic":true,"strikethrough":true}],"channels":null},"expected":"**_~~hi~~_**"},
+{"name":"strike","input":{"spans":[{"type":"PLAINTEXT","text":"hi","strikethrough":true}],"channels":null},"expected":"~~hi~~"},
+{"name":"inline code beats styles","input":{"spans":[{"type":"PLAINTEXT","text":"x = 1","code":true,"bold":true}],"channels":null},"expected":"`x = 1`"},
+{"name":"code block","input":{"spans":[{"type":"CODE_BLOCK","text":"code"}],"channels":null},"expected":"```\ncode\n```"},
+{"name":"code block no text","input":{"spans":[{"type":"CODE_BLOCK"}],"channels":null},"expected":"```\n\n```"},
+{"name":"emoji","input":{"spans":[{"type":"EMOJI","text":":party_blob:","emojiId":"e1"}],"channels":null},"expected":":party_blob:"},
+{"name":"user mention no text","input":{"spans":[{"type":"USER_MENTION","userId":"u1"}],"channels":null},"expected":"@user"},
+{"name":"special with text","input":{"spans":[{"type":"SPECIAL_MENTION","text":"@here","specialKind":"here"}],"channels":null},"expected":"@here"},
+{"name":"community and alias","input":{"spans":[{"type":"COMMUNITY_MENTION","text":"@acme"},{"type":"COMMUNITY_MENTION"},{"type":"ALIAS_MENTION","text":"@devs"},{"type":"ALIAS_MENTION"}],"channels":null},"expected":"@acme@devs"},
+{"name":"plaintext no text","input":{"spans":[{"type":"PLAINTEXT"}],"channels":null},"expected":""},
+{"name":"unknown type renders text","input":{"spans":[{"type":"HOLOGRAM","text":"there"}],"channels":null},"expected":"there"},
+{"name":"emoji round trip","input":{"spans":[{"type":"PLAINTEXT","text":"yo "},{"type":"EMOJI","text":":party_blob:","emojiId":"e1"}],"channels":null},"expected":"yo :party_blob:"},
+{"name":"bold italic round trip","input":{"spans":[{"type":"PLAINTEXT","text":"x","bold":true,"italic":true}],"channels":null},"expected":"**_x_**"}
+]

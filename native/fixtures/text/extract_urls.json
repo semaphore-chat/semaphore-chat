@@ -1,0 +1,9 @@
+[
+{"name":"one https://a.b two","input":{"text":"one https://a.b two"},"expected":["https://a.b"]},
+{"name":"https://a.b https://a.b https://c.d","input":{"text":"https://a.b https://a.b https://c.d"},"expected":["https://a.b","https://c.d"]},
+{"name":"none","input":{"text":"none"},"expected":[]},
+{"name":"","input":{"text":""},"expected":[]},
+{"name":"https://1.a https://2.b https://3.c https://4.d https://5.e https://6.f https://7.g","input":{"text":"https://1.a https://2.b https://3.c https://4.d https://5.e https://6.f https://7.g"},"expected":["https://1.a","https://2.b","https://3.c","https://4.d","https://5.e"]},
+{"name":"https://a.b. https://a.b","input":{"text":"https://a.b. https://a.b"},"expected":["https://a.b"]},
+{"name":"http://x.y, ftp://z.w","input":{"text":"http://x.y, ftp://z.w"},"expected":["http://x.y"]}
+]

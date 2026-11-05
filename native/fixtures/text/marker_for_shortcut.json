@@ -1,0 +1,11 @@
+[
+{"name":"b","input":{"key":"b"},"expected":"**"},
+{"name":"B","input":{"key":"B"},"expected":"**"},
+{"name":"i","input":{"key":"i"},"expected":"_"},
+{"name":"I","input":{"key":"I"},"expected":"_"},
+{"name":"x","input":{"key":"x"},"expected":null},
+{"name":"","input":{"key":""},"expected":null},
+{"name":"bold","input":{"key":"bold"},"expected":null},
+{"name":"Enter","input":{"key":"Enter"},"expected":null},
+{"name":" ","input":{"key":" "},"expected":null}
+]
