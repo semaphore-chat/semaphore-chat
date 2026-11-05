@@ -1,0 +1,717 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-05T19:10:36.494457+00:00",
+ "ok": true,
+ "provisional": true,
+ "provisional_reasons": [
+  "load1 peaked at 107.3, above 16.0"
+ ],
+ "build": {
+  "version": "0.0.0",
+  "commit": "f774e536884975fbfe2626344205e12d6af2c679",
+  "stripped": false
+ },
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "xvfb",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 800,
+   "height": 480,
+   "device_scale_factor": 2
+  },
+  "renderer": {
+   "name": "lavapipe",
+   "icd": "/usr/share/vulkan/icd.d/lvp_icd.json"
+  },
+  "packages": {
+   "mesa": "1:26.2.6-1",
+   "clang": "23.1.4-1"
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 312199464,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "/cache/target/debug/rig-shot",
+    "bytes": 312199464
+   }
+  ],
+  "binary": {
+   "bytes": 312199464,
+   "stripped": false
+  },
+  "artifacts": []
+ },
+ "cold_start_ms": null,
+ "scenarios": {
+  "t10_agent_loop": {
+   "title": "T10 agent loop: 20 edit-build-render iterations of one story line",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "15.94 27.15 33.56 2/2123 7",
+    "end": "83.43 51.70 41.85 10/2751 12926",
+    "peak_load1": 107.31,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 107.3, above 16.0"
+   },
+   "errors": [],
+   "window_s": 117.122,
+   "cpu_pct_core": {
+    "avg": 194.04,
+    "p95": 243.69
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 207.1,
+    "rss": 208.4,
+    "anon": 67.9,
+    "private_working_set": null,
+    "pss_peak": 207.1
+   },
+   "aux": {
+    "smoke_run": false,
+    "verdict": "pass",
+    "bar": {
+     "iterations_required": 20,
+     "iterations_run": 20,
+     "max_iteration_ms": 60000,
+     "deterministic_pixels": "two renders of the same source, in separate processes, hash equal",
+     "edit_must_change_hash": "variant A and variant B hashes differ"
+    },
+    "story": "shell-connected",
+    "window": {
+     "width": 800,
+     "height": 480,
+     "device_scale_factor": 2
+    },
+    "edit": {
+     "file": "crates/semaphore-ui/src/lib.rs",
+     "anchor": "^(?P<indent>[ \\t]*)\\.child\\(Button::new\\(\"retry\"\\)[^\\n]*$",
+     "variants": {
+      "A": ".child(Button::new(\"retry\").primary().label(\"Reconnect now\"))",
+      "B": ".child(Button::new(\"retry\").primary().label(\"Reconnect later\"))"
+     },
+     "restored_at_end": true
+    },
+    "warm_up": {
+     "build_ms": 1304.5,
+     "counted_in_iterations": false
+    },
+    "timings_ms": {
+     "total": {
+      "min": 1856.7,
+      "median": 2115.8,
+      "max": 38491.9
+     },
+     "build": {
+      "min": 1246.2,
+      "median": 1486.7,
+      "max": 30094.1
+     },
+     "render": {
+      "min": 574.4,
+      "median": 615.2,
+      "max": 9240.9
+     }
+    },
+    "hashes_by_variant": {
+     "A": [
+      "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33"
+     ],
+     "B": [
+      "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99"
+     ]
+    },
+    "checks": {
+     "iterations_completed": true,
+     "every_iteration_under_60s": true,
+     "two_renders_identical_each_iteration": true,
+     "variant_hash_stable_across_iterations": true,
+     "edit_changes_hash": true
+    },
+    "iterations": [
+     {
+      "iteration": 1,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.2,
+      "build_ms": 1291.2,
+      "ok": true,
+      "render_ms": 741.8,
+      "render1_ms": 454.1,
+      "render2_ms": 287.7,
+      "total_ms": 2033.5,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-01-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 218.3,
+      "peak_memory_mb": {
+       "pss": 207.1,
+       "rss": 208.4,
+       "anon": 67.9
+      },
+      "loadavg": "15.94 27.15 33.56 3/2139 937"
+     },
+     {
+      "iteration": 2,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1329.2,
+      "ok": true,
+      "render_ms": 580.9,
+      "render1_ms": 292.3,
+      "render2_ms": 288.6,
+      "total_ms": 1910.5,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-02-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 242.9,
+      "peak_memory_mb": {
+       "pss": 187.6,
+       "rss": 188.9,
+       "anon": 53.7
+      },
+      "loadavg": "16.19 27.01 33.48 6/2438 1568"
+     },
+     {
+      "iteration": 3,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1246.2,
+      "ok": true,
+      "render_ms": 610.2,
+      "render1_ms": 315.2,
+      "render2_ms": 295.0,
+      "total_ms": 1856.7,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-03-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 241.8,
+      "peak_memory_mb": {
+       "pss": 187.4,
+       "rss": 188.9,
+       "anon": 53.5
+      },
+      "loadavg": "16.19 27.01 33.48 4/2488 2199"
+     },
+     {
+      "iteration": 4,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1306.8,
+      "ok": true,
+      "render_ms": 574.4,
+      "render1_ms": 287.1,
+      "render2_ms": 287.2,
+      "total_ms": 1881.5,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-04-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 244.5,
+      "peak_memory_mb": {
+       "pss": 186.9,
+       "rss": 188.3,
+       "anon": 53.4
+      },
+      "loadavg": "16.19 27.01 33.48 4/2491 2830"
+     },
+     {
+      "iteration": 5,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1291.6,
+      "ok": true,
+      "render_ms": 620.2,
+      "render1_ms": 330.8,
+      "render2_ms": 289.5,
+      "total_ms": 1912.2,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-05-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 243.7,
+      "peak_memory_mb": {
+       "pss": 187.9,
+       "rss": 189.3,
+       "anon": 53.6
+      },
+      "loadavg": "15.77 26.75 33.36 6/2427 3461"
+     },
+     {
+      "iteration": 6,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1480.4,
+      "ok": true,
+      "render_ms": 593.9,
+      "render1_ms": 293.1,
+      "render2_ms": 300.8,
+      "total_ms": 2074.8,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-06-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 220.7,
+      "peak_memory_mb": {
+       "pss": 187.4,
+       "rss": 188.7,
+       "anon": 53.7
+      },
+      "loadavg": "15.77 26.75 33.36 7/2537 4092"
+     },
+     {
+      "iteration": 7,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1368.8,
+      "ok": true,
+      "render_ms": 591.0,
+      "render1_ms": 297.6,
+      "render2_ms": 293.4,
+      "total_ms": 1960.4,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-07-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 232.6,
+      "peak_memory_mb": {
+       "pss": 187.4,
+       "rss": 188.7,
+       "anon": 53.6
+      },
+      "loadavg": "15.95 26.60 33.28 7/2471 4723"
+     },
+     {
+      "iteration": 8,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1380.3,
+      "ok": true,
+      "render_ms": 609.7,
+      "render1_ms": 319.7,
+      "render2_ms": 290.0,
+      "total_ms": 1990.5,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-08-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 229.6,
+      "peak_memory_mb": {
+       "pss": 187.0,
+       "rss": 188.3,
+       "anon": 53.3
+      },
+      "loadavg": "15.95 26.60 33.28 26/2478 5354"
+     },
+     {
+      "iteration": 9,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1353.4,
+      "ok": true,
+      "render_ms": 597.4,
+      "render1_ms": 293.7,
+      "render2_ms": 303.7,
+      "total_ms": 1951.3,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-09-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 235.7,
+      "peak_memory_mb": {
+       "pss": 187.6,
+       "rss": 189.0,
+       "anon": 53.5
+      },
+      "loadavg": "15.95 26.60 33.28 8/2741 5985"
+     },
+     {
+      "iteration": 10,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 5416.1,
+      "ok": true,
+      "render_ms": 4613.5,
+      "render1_ms": 2301.2,
+      "render2_ms": 2312.3,
+      "total_ms": 10030.3,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-10-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 59.5,
+      "peak_memory_mb": {
+       "pss": 187.3,
+       "rss": 188.7,
+       "anon": 53.5
+      },
+      "loadavg": "34.20 30.13 34.35 142/2901 6616"
+     },
+     {
+      "iteration": 11,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 29226.4,
+      "ok": true,
+      "render_ms": 9240.9,
+      "render1_ms": 3806.9,
+      "render2_ms": 5434.0,
+      "total_ms": 38491.9,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-11-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 36.5,
+      "peak_memory_mb": {
+       "pss": 184.2,
+       "rss": 184.9,
+       "anon": 51.6
+      },
+      "loadavg": "90.25 44.61 39.02 115/2964 7247"
+     },
+     {
+      "iteration": 12,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.3,
+      "build_ms": 30094.1,
+      "ok": true,
+      "render_ms": 874.6,
+      "render1_ms": 574.5,
+      "render2_ms": 300.0,
+      "total_ms": 30974.5,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-12-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 39.4,
+      "peak_memory_mb": {
+       "pss": 187.2,
+       "rss": 187.9,
+       "anon": 53.4
+      },
+      "loadavg": "107.31 53.66 42.25 4/2724 7878"
+     },
+     {
+      "iteration": 13,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 2490.8,
+      "ok": true,
+      "render_ms": 1087.9,
+      "render1_ms": 647.1,
+      "render2_ms": 440.8,
+      "total_ms": 3582.8,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-13-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 147.1,
+      "peak_memory_mb": {
+       "pss": 188.0,
+       "rss": 188.8,
+       "anon": 53.3
+      },
+      "loadavg": "101.28 53.30 42.19 5/2625 8509"
+     },
+     {
+      "iteration": 14,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1735.3,
+      "ok": true,
+      "render_ms": 622.6,
+      "render1_ms": 318.2,
+      "render2_ms": 304.5,
+      "total_ms": 2358.3,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-14-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 213.3,
+      "peak_memory_mb": {
+       "pss": 188.5,
+       "rss": 189.2,
+       "anon": 53.6
+      },
+      "loadavg": "101.28 53.30 42.19 9/2676 9140"
+     },
+     {
+      "iteration": 15,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1644.5,
+      "ok": true,
+      "render_ms": 597.9,
+      "render1_ms": 300.9,
+      "render2_ms": 297.0,
+      "total_ms": 2242.8,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-15-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 216.7,
+      "peak_memory_mb": {
+       "pss": 188.1,
+       "rss": 188.8,
+       "anon": 53.2
+      },
+      "loadavg": "94.53 52.70 42.06 6/2682 9771"
+     },
+     {
+      "iteration": 16,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.2,
+      "build_ms": 1390.9,
+      "ok": true,
+      "render_ms": 596.7,
+      "render1_ms": 302.6,
+      "render2_ms": 294.1,
+      "total_ms": 1988.2,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-16-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 239.4,
+      "peak_memory_mb": {
+       "pss": 187.0,
+       "rss": 187.7,
+       "anon": 53.4
+      },
+      "loadavg": "94.53 52.70 42.06 5/2658 10402"
+     },
+     {
+      "iteration": 17,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1492.9,
+      "ok": true,
+      "render_ms": 663.5,
+      "render1_ms": 342.7,
+      "render2_ms": 320.8,
+      "total_ms": 2156.8,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-17-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 227.2,
+      "peak_memory_mb": {
+       "pss": 187.0,
+       "rss": 189.0,
+       "anon": 53.8
+      },
+      "loadavg": "89.04 52.26 41.97 10/2714 11033"
+     },
+     {
+      "iteration": 18,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1935.1,
+      "ok": true,
+      "render_ms": 737.3,
+      "render1_ms": 325.9,
+      "render2_ms": 411.3,
+      "total_ms": 2672.9,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-18-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 190.8,
+      "peak_memory_mb": {
+       "pss": 185.9,
+       "rss": 188.0,
+       "anon": 53.5
+      },
+      "loadavg": "89.04 52.26 41.97 23/2736 11664"
+     },
+     {
+      "iteration": 19,
+      "variant": "A",
+      "label": "Reconnect now",
+      "edit_changed_source": true,
+      "edit_ms": 0.2,
+      "build_ms": 1976.0,
+      "ok": true,
+      "render_ms": 609.2,
+      "render1_ms": 311.4,
+      "render2_ms": 297.9,
+      "total_ms": 2585.7,
+      "sha256": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "sha256_second_process": "215748e09abc918f9a09dd7ab86aae76f7d5257dd553889dc69646e2c36e2f33",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-19-A.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 207.3,
+      "peak_memory_mb": {
+       "pss": 182.3,
+       "rss": 184.3,
+       "anon": 53.7
+      },
+      "loadavg": "83.43 51.70 41.85 5/2733 12295"
+     },
+     {
+      "iteration": 20,
+      "variant": "B",
+      "label": "Reconnect later",
+      "edit_changed_source": true,
+      "edit_ms": 0.1,
+      "build_ms": 1845.4,
+      "ok": true,
+      "render_ms": 620.5,
+      "render1_ms": 296.5,
+      "render2_ms": 324.0,
+      "total_ms": 2466.3,
+      "sha256": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "sha256_second_process": "d6e1e301096abd5ee13720d92e455ee39147c7fcb76c9a802d0fe70c38284e99",
+      "identical_across_processes": true,
+      "png": "results/t10/iteration-20-B.png",
+      "png_size": {
+       "width": 1600,
+       "height": 960
+      },
+      "cpu_pct_core": 193.8,
+      "peak_memory_mb": {
+       "pss": 182.7,
+       "rss": 184.9,
+       "anon": 53.6
+      },
+      "loadavg": "83.43 51.70 41.85 7/2751 12926"
+     }
+    ],
+    "screenshots_dir": "results/t10",
+    "schema_validation": {
+     "schema": "/schema/result.schema.json",
+     "valid": true,
+     "errors": []
+    }
+   }
+  }
+ },
+ "comparability_notes": [
+  "T10 measures an agent's edit-render-look loop, not client performance: the timing is build plus two lavapipe renders of one story.",
+  "rig-shot renders through GPUI's headless WGPU path with no display server; env.display is the schema's nearest allowed value (xvfb) because its enum has no headless member.",
+  "The warm-up build of the cold target directory is reported in aux.warm_up and is not an iteration.",
+  "cpu_pct_core and memory_mb cover the loop's process tree: cargo, rustc and the two rig-shot renders per iteration."
+ ]
+}
