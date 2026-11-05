@@ -6605,6 +6605,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-reconnect"
+version = "0.0.0"
+dependencies = [
+ "futures-util",
+ "livekit",
+ "log",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rig-shot"
 version = "0.0.0"
 dependencies = [
@@ -6612,6 +6623,18 @@ dependencies = [
  "gpui-kit",
  "semaphore-core",
  "semaphore-ui",
+]
+
+[[package]]
+name = "rig-sio"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "semaphore-core",
+ "semaphore-net",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -7038,8 +7061,11 @@ dependencies = [
 name = "semaphore-net"
 version = "0.0.0"
 dependencies = [
+ "async-trait",
+ "futures-util",
  "reqwest",
  "semaphore-core",
+ "serde_json",
  "tokio",
  "tokio-tungstenite 0.26.2",
 ]

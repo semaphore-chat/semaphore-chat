@@ -1,4 +1,6 @@
-//! Transport stub. T8's thin Socket.IO client and the generated REST client land here.
+//! Transport: the Socket.IO session in [`socket`], and the generated REST client later.
+
+pub mod socket;
 
 use semaphore_core::CoreError;
 

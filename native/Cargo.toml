@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "rigs/shot"]
+members = ["crates/*", "rigs/shot", "rigs/reconnect", "rigs/sio"]
 # Fallback-framework rigs keep their own lockfile so Iced's dependency tree never
 # unifies with GPUI's. Nothing lives there in Phase 0.
 exclude = ["rigs/video-iced"]
@@ -30,6 +30,8 @@ livekit = { version = "=0.10.1", features = ["rustls-tls-native-roots"] }
 anyhow = "1"
 async-trait = "0.1"
 directories = "6"
+futures-util = "0.3"
+log = "0.4"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -8,6 +8,7 @@ pub mod cache;
 pub mod client;
 pub mod lifecycle;
 pub mod platform;
+pub mod socketio;
 
 pub use cache::{CacheEntry, QueryCache, QueryKey};
 pub use client::Core;
