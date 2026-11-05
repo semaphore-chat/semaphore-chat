@@ -1,3 +1,7 @@
+import { WebsocketService } from '@/websocket/websocket.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { LinkPreviewsService } from '@/link-previews/link-previews.service';
+import { ServerEvents } from '@semaphore-chat/shared';
 import { TestBed } from '@suites/unit';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ThreadsService } from './threads.service';
@@ -9,6 +13,9 @@ import { createMockDatabase, MessageFactory } from '@/test-utils';
 describe('ThreadsService', () => {
   let service: ThreadsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let websocketService: Mocked<WebsocketService>;
+  let notificationsService: Mocked<NotificationsService>;
+  let linkPreviewsService: Mocked<LinkPreviewsService>;
   let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
@@ -21,6 +28,13 @@ describe('ThreadsService', () => {
 
     service = unit;
     channelAccessService = unitRef.get(ChannelAccessService);
+    websocketService = unitRef.get(WebsocketService);
+    notificationsService = unitRef.get(NotificationsService);
+    linkPreviewsService = unitRef.get(LinkPreviewsService);
+    notificationsService.processThreadReplyNotifications.mockResolvedValue(
+      undefined,
+    );
+    linkPreviewsService.processMessageLinkPreviews.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -82,6 +96,112 @@ describe('ThreadsService', () => {
       };
     });
 
+    describe('a new reply', () => {
+      const reply = {
+        id: 'reply-1',
+        spans: [],
+        attachments: [],
+        reactions: [],
+      } as any;
+      const counts = { replyCount: 3, lastReplyAt: new Date() };
+      const newReply = { ...dto, clientNonce: undefined };
+
+      beforeEach(() => {
+        mockDatabase.message.findUnique
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce({
+            channelId: 'channel-1',
+            directMessageGroupId: null,
+            ...counts,
+          });
+        jest.spyOn(service, 'createThreadReply').mockResolvedValue(reply);
+      });
+
+      it('announces the reply and the new count to the room', async () => {
+        await expect(
+          service.sendThreadReply(newReply, 'user-1'),
+        ).resolves.toEqual({ reply, created: true });
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'channel-1',
+          ServerEvents.NEW_THREAD_REPLY,
+          expect.objectContaining({ parentMessageId: 'parent-1' }),
+        );
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'channel-1',
+          ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+          {
+            parentMessageId: 'parent-1',
+            replyCount: 3,
+            lastReplyAt: counts.lastReplyAt.toISOString(),
+            channelId: 'channel-1',
+            directMessageGroupId: null,
+          },
+        );
+      });
+
+      it('uses the group room for a DM thread', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce({ ...parent, channelId: null })
+          .mockResolvedValueOnce({
+            channelId: null,
+            directMessageGroupId: 'dm-1',
+            ...counts,
+          });
+
+        await service.sendThreadReply(newReply, 'user-1');
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'dm:dm-1',
+          ServerEvents.NEW_THREAD_REPLY,
+          expect.any(Object),
+        );
+      });
+
+      it('skips the room for an orphaned parent, but still notifies', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce({
+            channelId: null,
+            directMessageGroupId: null,
+            ...counts,
+          });
+
+        await service.sendThreadReply(newReply, 'user-1');
+
+        expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+        expect(
+          notificationsService.processThreadReplyNotifications,
+        ).toHaveBeenCalled();
+      });
+
+      it('notifies without waiting, and survives its failure', async () => {
+        notificationsService.processThreadReplyNotifications.mockRejectedValue(
+          new Error('notification failure'),
+        );
+
+        await expect(
+          service.sendThreadReply(newReply, 'user-1'),
+        ).resolves.toMatchObject({ created: true });
+        expect(
+          notificationsService.processThreadReplyNotifications,
+        ).toHaveBeenCalledWith(reply, 'parent-1', 'user-1');
+      });
+
+      it('fails if the parent is gone by then', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce(null);
+
+        await expect(
+          service.sendThreadReply(newReply, 'user-1'),
+        ).rejects.toThrow('Parent message not found');
+      });
+    });
+
     it('returns the earlier reply, without creating another', async () => {
       mockDatabase.message.findUnique
         .mockResolvedValueOnce(parent)
@@ -102,6 +222,7 @@ describe('ThreadsService', () => {
       expect(reply.id).toBe('reply-1');
       expect(created).toBe(false);
       expect(mockDatabase.$transaction).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
   });
 

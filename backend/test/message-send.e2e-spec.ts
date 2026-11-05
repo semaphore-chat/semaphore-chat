@@ -351,6 +351,103 @@ describe('Sending a message (e2e)', () => {
     });
   });
 
+  describe('POST /threads/:id/replies', () => {
+    async function parent() {
+      const res = await restSend('sender', {
+        channelId,
+        spans: spans(randomUUID()),
+      }).expect(201);
+      return (res.body as { id: string }).id;
+    }
+    const restReply = (
+      who: Who,
+      parentMessageId: string,
+      body: Record<string, unknown> = {},
+    ) =>
+      http()
+        .post(`/api/threads/${parentMessageId}/replies`)
+        .set('Authorization', auth(who))
+        .send({ spans: spans(randomUUID()), attachments: [], ...body });
+
+    it('broadcasts the reply and the new count, like the socket', async () => {
+      const parentMessageId = await parent();
+      const reader = await subscribed('reader');
+      const newReply = nextEvent<{
+        reply: { id: string };
+        parentMessageId: string;
+      }>(reader, ServerEvents.NEW_THREAD_REPLY);
+      const count = nextEvent<{ parentMessageId: string; replyCount: number }>(
+        reader,
+        ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+      );
+
+      const res = await restReply('sender', parentMessageId).expect(201);
+
+      const heard = await newReply;
+      expect(heard.reply.id).toBe((res.body as { id: string }).id);
+      expect(heard.parentMessageId).toBe(parentMessageId);
+      expect(await count).toMatchObject({ parentMessageId, replyCount: 1 });
+    });
+
+    it('broadcasts a reply in a DM thread to the group', async () => {
+      const dm = await restDm('sender', {
+        directMessageGroupId: group,
+        spans: spans(randomUUID()),
+      }).expect(201);
+      const reader = await subscribed('reader');
+      const newReply = nextEvent<{ reply: { id: string } }>(
+        reader,
+        ServerEvents.NEW_THREAD_REPLY,
+      );
+
+      const res = await restReply(
+        'sender',
+        (dm.body as { id: string }).id,
+      ).expect(201);
+
+      expect((await newReply).reply.id).toBe((res.body as { id: string }).id);
+    });
+
+    it('notifies the thread subscribers', async () => {
+      const parentMessageId = await parent();
+      await http()
+        .post(`/api/threads/${parentMessageId}/subscribe`)
+        .set('Authorization', auth('reader'))
+        .expect((res) => expect(res.status).toBeLessThan(300));
+
+      await restReply('sender', parentMessageId).expect(201);
+
+      const notes = await eventually(
+        () =>
+          db.notification.count({
+            where: { userId: id.reader, parentMessageId },
+          }),
+        (count) => count > 0,
+      );
+      expect(notes).toBeGreaterThan(0);
+    });
+
+    it('a retry with the same nonce announces nothing', async () => {
+      const parentMessageId = await parent();
+      const reader = await subscribed('reader');
+      const heard: unknown[] = [];
+      reader.on(ServerEvents.NEW_THREAD_REPLY, (p: unknown) => heard.push(p));
+      const clientNonce = randomUUID();
+      const body = { spans: spans(randomUUID()), clientNonce };
+
+      await restReply('sender', parentMessageId, body).expect(201);
+      await restReply('sender', parentMessageId, body).expect(201);
+      // A later reply proves the retry's broadcast, if any, had time to arrive.
+      await restReply('sender', parentMessageId).expect(201);
+
+      const received = await eventually(
+        () => Promise.resolve(heard.length),
+        (n) => n >= 2,
+      );
+      expect(received).toBe(2);
+    });
+  });
+
   describe('sockets', () => {
     it('SEND_MESSAGE still acks the id and broadcasts', async () => {
       const reader = await subscribed('reader');

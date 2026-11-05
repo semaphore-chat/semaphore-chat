@@ -22,17 +22,11 @@ import { RbacActions } from '@prisma/client';
 import { ThreadsService } from './threads.service';
 import { SendThreadReplyDto } from './dto/send-thread-reply.dto';
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents, SendAck } from '@semaphore-chat/shared';
+import { ClientEvents, SendAck } from '@semaphore-chat/shared';
 import { sendSuccessAck } from '@/websocket/send-ack';
-import { WebsocketService } from '@/websocket/websocket.service';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
-import { NotificationsService } from '@/notifications/notifications.service';
 import { getSocketUserId } from '@/common/utils/socket.utils';
-import { DatabaseService } from '@/database/database.service';
-import { RoomName } from '@/common/utils/room-name.util';
-import { LinkPreviewsService } from '@/link-previews/link-previews.service';
-import { toWireMessage } from '@/common/utils/message-wire.utils';
 
 @UseFilters(WsLoggingExceptionFilter)
 @WebSocketGateway({
@@ -53,13 +47,7 @@ export class ThreadsGateway
 
   private readonly logger = new Logger(ThreadsGateway.name);
 
-  constructor(
-    private readonly threadsService: ThreadsService,
-    private readonly websocketService: WebsocketService,
-    private readonly notificationsService: NotificationsService,
-    private readonly databaseService: DatabaseService,
-    private readonly linkPreviewsService: LinkPreviewsService,
-  ) {}
+  constructor(private readonly threadsService: ThreadsService) {}
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   afterInit(_server: Server) {
@@ -92,7 +80,7 @@ export class ThreadsGateway
     }
 
     // Create the thread reply
-    const { reply, created } = await this.threadsService.sendThreadReply(
+    const { reply } = await this.threadsService.sendThreadReply(
       {
         parentMessageId: payload.parentMessageId,
         spans: payload.spans,
@@ -102,75 +90,6 @@ export class ThreadsGateway
       },
       userId,
     );
-    // A retry: everyone heard about this reply the first time.
-    if (!created) return sendSuccessAck(client, reply.id);
-
-    // Get the parent message to determine the room
-    const parentMessage = await this.databaseService.message.findUnique({
-      where: { id: payload.parentMessageId },
-      select: {
-        channelId: true,
-        directMessageGroupId: true,
-        replyCount: true,
-        lastReplyAt: true,
-      },
-    });
-
-    if (!parentMessage) {
-      throw new WsException('Parent message not found');
-    }
-
-    const roomId = parentMessage.directMessageGroupId
-      ? RoomName.dmGroup(parentMessage.directMessageGroupId)
-      : parentMessage.channelId;
-
-    if (roomId) {
-      // Emit the new thread reply to the room
-      this.websocketService.sendToRoom(roomId, ServerEvents.NEW_THREAD_REPLY, {
-        reply: toWireMessage(reply),
-        parentMessageId: payload.parentMessageId,
-      });
-
-      // Also emit the updated reply count for the parent message badge
-      this.websocketService.sendToRoom(
-        roomId,
-        ServerEvents.THREAD_REPLY_COUNT_UPDATED,
-        {
-          parentMessageId: payload.parentMessageId,
-          replyCount: parentMessage.replyCount,
-          lastReplyAt: parentMessage.lastReplyAt?.toISOString() ?? null,
-          channelId: parentMessage.channelId ?? null,
-          directMessageGroupId: parentMessage.directMessageGroupId ?? null,
-        },
-      );
-    }
-
-    // Process notifications for thread subscribers (async, non-blocking)
-    this.notificationsService
-      .processThreadReplyNotifications(reply, payload.parentMessageId, userId)
-      .catch((error) =>
-        this.logger.error(
-          'Failed to process notifications for thread reply',
-          error,
-        ),
-      );
-
-    // Process link previews for thread reply (async, non-blocking)
-    if (roomId) {
-      this.linkPreviewsService
-        .processMessageLinkPreviews(
-          reply.id,
-          reply.spans,
-          roomId,
-          ServerEvents.UPDATE_MESSAGE,
-        )
-        .catch((error) =>
-          this.logger.error(
-            'Failed to process link previews for thread reply',
-            error,
-          ),
-        );
-    }
 
     return sendSuccessAck(client, reply.id);
   }

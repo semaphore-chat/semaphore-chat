@@ -6,6 +6,13 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { LinkPreviewsService } from '@/link-previews/link-previews.service';
+import { RoomName } from '@/common/utils/room-name.util';
+import { toWireMessage } from '@/common/utils/message-wire.utils';
+import { ServerEvents } from '@semaphore-chat/shared';
+import type { MessageDto } from '@/messages/dto/message-response.dto';
 import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
@@ -29,6 +36,9 @@ export class ThreadsService {
     private readonly databaseService: DatabaseService,
     private readonly permissionsService: PermissionsService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly websocketService: WebsocketService,
+    private readonly notificationsService: NotificationsService,
+    private readonly linkPreviewsService: LinkPreviewsService,
   ) {}
 
   /**
@@ -90,8 +100,9 @@ export class ThreadsService {
   }
 
   /**
-   * A reply from a client. A retry with the same clientNonce gets the reply it
-   * already created, with `created: false` so nothing is announced twice.
+   * A reply from a client, on any transport: the write and its announcement. A
+   * retry with the same clientNonce gets the reply it already created, and
+   * nothing is announced twice.
    */
   async sendThreadReply(dto: CreateThreadReplyDto, authorId: string) {
     const target = { ...(await this.replyTarget(dto.parentMessageId)) };
@@ -104,10 +115,9 @@ export class ThreadsService {
     if (sent) return { reply: toMessageDto(sent), created: false };
 
     try {
-      return {
-        reply: await this.createThreadReply(dto, authorId),
-        created: true,
-      };
+      const reply = await this.createThreadReply(dto, authorId);
+      await this.announceReply(reply, dto.parentMessageId, authorId);
+      return { reply, created: true };
     } catch (error) {
       const raced = isNonceCollision(error)
         ? await findSentMessage(
@@ -119,6 +129,76 @@ export class ThreadsService {
         : null;
       if (!raced) throw error;
       return { reply: toMessageDto(raced), created: false };
+    }
+  }
+
+  /** Tells the room, then queues what can happen after the response. */
+  private async announceReply(
+    reply: MessageDto,
+    parentMessageId: string,
+    authorId: string,
+  ) {
+    const parentMessage = await this.databaseService.message.findUnique({
+      where: { id: parentMessageId },
+      select: {
+        channelId: true,
+        directMessageGroupId: true,
+        replyCount: true,
+        lastReplyAt: true,
+      },
+    });
+
+    if (!parentMessage) {
+      throw new NotFoundException('Parent message not found');
+    }
+
+    const roomId = parentMessage.directMessageGroupId
+      ? RoomName.dmGroup(parentMessage.directMessageGroupId)
+      : parentMessage.channelId;
+
+    if (roomId) {
+      this.websocketService.sendToRoom(roomId, ServerEvents.NEW_THREAD_REPLY, {
+        reply: toWireMessage(reply),
+        parentMessageId,
+      });
+
+      // The parent's badge
+      this.websocketService.sendToRoom(
+        roomId,
+        ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+        {
+          parentMessageId,
+          replyCount: parentMessage.replyCount,
+          lastReplyAt: parentMessage.lastReplyAt?.toISOString() ?? null,
+          channelId: parentMessage.channelId ?? null,
+          directMessageGroupId: parentMessage.directMessageGroupId ?? null,
+        },
+      );
+    }
+
+    this.notificationsService
+      .processThreadReplyNotifications(reply, parentMessageId, authorId)
+      .catch((error) =>
+        this.logger.error(
+          'Failed to process notifications for thread reply',
+          error,
+        ),
+      );
+
+    if (roomId) {
+      this.linkPreviewsService
+        .processMessageLinkPreviews(
+          reply.id,
+          reply.spans,
+          roomId,
+          ServerEvents.UPDATE_MESSAGE,
+        )
+        .catch((error) =>
+          this.logger.error(
+            'Failed to process link previews for thread reply',
+            error,
+          ),
+        );
     }
   }
 
