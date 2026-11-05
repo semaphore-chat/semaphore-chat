@@ -2,13 +2,32 @@
 
 Updated at each phase. No go/no-go verdict exists yet.
 
+## Decision rule
+
+Accepted from the design, with the T5 and T9/T10 decisions above folded in:
+
+- **Go:** T1-T8 and T11 pass, T5 at the bar in the table below. T9 and T10 must also pass for a
+  clean go.
+- **Re-decide with Mike:** T9 or T10 fails. Neither stops the project automatically, but either
+  forces a new decision and a revised estimate.
+- **Patch:** only T1 fails, profiling blames conversion or upload, and Iced's shader arm uses at
+  least 30% less CPU or holds 60 fps. Budget: 3 agent-days.
+- **Switch to Iced:** the patch misses, or GPUI-caused Hyprland freezes persist. Iced must first
+  pass T2-T5.
+- **Neither:** T7, T8 or T11 failures question Rust itself and go to Mike.
+
 ## Status
+
+Phase 1 was launched from this branch after Phase 0. Results land here as those branches report.
 
 | Test | Status |
 |---|---|
 | T1 video | Investigated separately by two agents, outside this workspace, for now |
-| T2-T9, T11 | Not started |
-| T10 agent loop | Harness works; the 20-run test is not done |
+| T2, T3 | Phase 1, on `spike/t2-t3` |
+| T7, T8 | Phase 1, on `spike/t7-t8` |
+| T10 agent loop | Harness works; the 20-run test is Phase 1, on `spike/t10-runner` |
+| `gpui-pre` audit | Phase 1, on `spike/gpui-audit` |
+| T4-T6, T9, T11 | Not started |
 | Windows | CI job written, **never run**: pushing the branch is waiting on Mike |
 
 ## Test bars: what differs from the original brief
@@ -23,13 +42,13 @@ listed keep the brief's bar unchanged.
 | T1 | No separate limit for the 1080p60 share | Under 150% of one core | **Added** | New bar |
 | T1 | One machine | Also rerun on 4 pinned cores, because a 32-thread host flatters | **Added** | New bar |
 | T1, T2 | No run count | Minimum three runs; report median and worst | **Added** | Stricter |
-| T5 | No explicit pass bar. The research report had: new messages announced, composer editable, no panic over 1 hour | Decision rule says "navigable without panic" | **Changed** | **Possibly weaker than research: confirm which applies** |
+| T5 | No explicit pass bar | New messages announced, composer editable, no panic over 1 hour (the research report's bar) | **Decided** | Replaces the design's weaker "navigable without panic", which is not enough |
 | T7 | Everyone audible | Same, measured by per-publisher tone detection | Defined | None |
 | T8 | 1,000 disconnects | Same, plus a suspend/resume case | **Added** | Stricter |
 | T9 | Under half a day each | Under 4 agent hours, tokens recorded | Defined | A human half-day doesn't map onto agents |
 | T9 | 4 consecutive releases | 3 replayed (0.8.0, 0.8.1, 0.9.0, from a port down to 0.7.3) plus the next live one | **Changed** | Replayed bumps were already fixed upstream, so less pressure than a surprise |
 | T9 | (Research report also required gpui-agent patches to re-apply) | Not in the brief; dropped unless gpui-agent is adopted | **Changed** | Weaker, if adopted later |
-| T9, T10 | Pass/fail like the others | Failure raises the estimate but does not block go | **Changed** | **Weaker: these two can no longer stop the project** |
+| T9, T10 | Pass/fail like the others | Not automatic stops, but a failure of either forces a re-decision with Mike and a revised estimate. A clean go still requires both to pass | **Decided** | Replaces the design's "raises the estimate only". The plan relies on agents doing the bulk of the work and on staying current with weekly kit releases |
 | T1 patch path | "Patch the renderer" | Only if T1 alone fails, profiling blames conversion or upload, Iced's shader arm uses at least 30% less CPU or holds 60 fps; budget 3 agent-days | **Added** | New gate |
 | Switch to Iced | "Move to Iced" | Iced must first pass T2-T5 | **Added** | Stricter |
 
@@ -58,10 +77,9 @@ From `frontend/src` and `docs-site/docs/architecture/voice-video-quality.md`.
 Viewers use adaptive stream and dynacast. T1's 9x720p full-layer case is therefore the worst
 case: real tiles usually get a lower layer.
 
-**Mismatch to settle:** the baseline's `d_video_grid` uses a screen share of **1080p30 at
-4 Mbps**, while T1 and the web client's default are **1080p60 at about 9 Mbps**. Until one
-moves, Electron's and native's video numbers are not like for like, and the native side would
-be carrying about twice the frame rate and bitrate.
+**Decided:** the baseline's `d_video_grid` screen share changes from 1080p30 at 4 Mbps to
+**1080p60 at about 9 Mbps**, matching T1 and the web client's default. The coordinator is telling
+the baseline agent. Any Electron video result from before that change isn't comparable with native.
 
 ### UDP ports T1 needs: about 80, so 200 to be safe
 
