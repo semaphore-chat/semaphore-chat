@@ -4,6 +4,7 @@
  * Pass these as generics to Socket<ServerToClientEvents, ClientToServerEvents>.
  */
 
+import type { SendAck } from '../errors';
 import { ClientEvents } from '../events/client-events.enum';
 import type { CreateMessageDto } from '../generated';
 import {
@@ -36,13 +37,13 @@ export type ClientToServerEvents = {
   // Messaging: Channels
   [ClientEvents.SEND_MESSAGE]: (
     data: CreateMessageDto & { channelId: string },
-    callback?: (messageId: string) => void
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Messaging: Direct Messages
   [ClientEvents.SEND_DM]: (
     data: CreateMessageDto & { directMessageGroupId: string },
-    callback?: (messageId: string) => void
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Message Reactions
@@ -64,7 +65,7 @@ export type ClientToServerEvents = {
       attachments?: string[];
       pendingAttachments?: number;
     },
-    callback?: (replyId: string) => void
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Presence & Typing

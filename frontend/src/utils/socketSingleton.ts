@@ -1,4 +1,5 @@
 import { io, Socket } from "socket.io-client";
+import { SOCKET_PROTOCOL_SEND_ACK } from "@semaphore-chat/shared";
 import type {
   ServerToClientEvents,
   ClientToServerEvents,
@@ -52,7 +53,8 @@ export function getSocketSingleton(): Socket<
 
   socketInstance = io(url, {
     transports: ["websocket"],
-    auth: (cb) => cb({ token: `Bearer ${getAccessToken()}` }),
+    auth: (cb) =>
+      cb({ token: `Bearer ${getAccessToken()}`, protocol: SOCKET_PROTOCOL_SEND_ACK }),
     reconnection: true,
     reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,

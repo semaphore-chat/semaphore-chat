@@ -30,6 +30,7 @@
  * reload loses them: the message stays with the files that made it, and the
  * server keeps counting the missing ones as pending.
  */
+import { isDeletedWhileSending, newSendIdentity } from "./sendAck";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   messagesControllerAddAttachment,
@@ -245,8 +246,8 @@ export async function sendMessageWithAttachments({
 }: SendMessageWithAttachmentsOptions): Promise<SendMessageResult> {
   const { queryClient } = runtime;
   const queryKey = messagesQueryKeyFor(runtime.contextType, runtime.contextId);
-  const clientId = `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`;
-  const wirePayload: NewMessagePayload = { ...payload, attachments: [], pendingAttachments: files.length };
+  const { clientNonce, clientId } = newSendIdentity(OPTIMISTIC_ID_PREFIX);
+  const wirePayload: NewMessagePayload = { ...payload, clientNonce, attachments: [], pendingAttachments: files.length };
   register(runtime, clientId, files, flattenText(payload.spans).trim() !== "");
 
   // Same scope guard as useOptimisticSendMessage: no optimistic row in a
@@ -278,6 +279,8 @@ export async function sendMessageWithAttachments({
   if (!detached) reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
   if (result.success && result.messageId) {
     startAttachmentUploads(clientId, result.messageId);
+  } else if (isDeletedWhileSending(result.error)) {
+    forget(clientId);
   } else if (detached) {
     // No row to show the failure on: say so, and drop the files.
     runtime.notifyError?.(describeError(result.error, "Failed to send message"));

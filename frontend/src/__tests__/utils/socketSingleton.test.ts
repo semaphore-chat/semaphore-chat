@@ -80,12 +80,12 @@ describe('socketSingleton', () => {
       // Auth function uses Socket.IO callback pattern: auth(cb) => cb(data)
       let authData: { token: string } | undefined;
       options.auth((data) => { authData = data; });
-      expect(authData).toEqual({ token: 'Bearer initial-token' });
+      expect(authData).toEqual({ token: 'Bearer initial-token', protocol: 2 });
 
       // Simulate token refresh — auth function picks up new token
       mockGetAccessToken.mockReturnValue('refreshed-token');
       options.auth((data) => { authData = data; });
-      expect(authData).toEqual({ token: 'Bearer refreshed-token' });
+      expect(authData).toEqual({ token: 'Bearer refreshed-token', protocol: 2 });
     });
 
     it('returns existing connected socket without creating a new one', () => {

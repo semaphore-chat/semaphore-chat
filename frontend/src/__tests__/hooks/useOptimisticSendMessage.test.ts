@@ -180,7 +180,8 @@ describe('useOptimisticSendMessage', () => {
       expect(cacheMessages()[0].sendStatus).toBe('pending');
 
       // Step 2: WS echo arrives first — reconciles the optimistic row in place
-      // (content-matches the pending row's spans, per the correlation rule).
+      // (it carries the pending row's nonce).
+      const { clientNonce } = cacheMessages()[0];
       await act(async () => {
         await handleNewMessage(
           {
@@ -188,6 +189,7 @@ describe('useOptimisticSendMessage', () => {
               id: 'real-1',
               channelId: 'ch-1',
               authorId: 'me',
+              clientNonce,
               spans: payload().spans,
             }) as never,
           },
@@ -324,6 +326,77 @@ describe('useOptimisticSendMessage', () => {
   });
 
   describe('concurrency guard (fix round 1, Important 3)', () => {
+    it('a retry sends the same nonce as the first attempt', async () => {
+      mockSocket.emit.mockImplementation((_event, _p, ackFn) => {
+        (ackFn as (answer: unknown) => void)({
+          ok: false,
+          error: { errorCode: 'INTERNAL', message: 'x', retryable: true },
+        });
+      });
+      const { result } = renderHook(
+        () => useOptimisticSendMessage(VoiceSessionType.Channel, 'ch-1'),
+        { wrapper: createTestWrapper({ queryClient, socket: mockSocket }) },
+      );
+      await act(async () => {
+        await result.current.sendMessage(payload());
+      });
+      const [failed] = cacheMessages();
+      expect(failed.clientId).toBe(`pending-${failed.clientNonce}`);
+
+      const retry = renderHook(() => useOptimisticMessageRetry(failed), {
+        wrapper: createTestWrapper({ queryClient, socket: mockSocket }),
+      });
+      await act(async () => {
+        await retry.result.current.retry();
+      });
+
+      const nonces = mockSocket.emit.mock.calls.map(
+        (call) => (call[1] as { clientNonce: string }).clientNonce,
+      );
+      expect(nonces).toEqual([failed.clientNonce, failed.clientNonce]);
+    });
+
+    it('a refused send fails at once, with the reason, and pending clears on retry', async () => {
+      mockSocket.emit.mockImplementation((_event, _p, ackFn) => {
+        (ackFn as (answer: unknown) => void)({
+          ok: false,
+          error: { errorCode: 'SLOWMODE', message: 'Slowmode is on', retryable: true },
+        });
+      });
+      const { result } = renderHook(
+        () => useOptimisticSendMessage(VoiceSessionType.Channel, 'ch-1'),
+        { wrapper: createTestWrapper({ queryClient, socket: mockSocket }) },
+      );
+
+      await act(async () => {
+        await result.current.sendMessage(payload());
+      });
+
+      expect(cacheMessages()[0]).toMatchObject({
+        sendStatus: 'failed',
+        sendError: 'Slowmode is on',
+      });
+    });
+
+    it('a send whose message was deleted meanwhile drops the row', async () => {
+      mockSocket.emit.mockImplementation((_event, _p, ackFn) => {
+        (ackFn as (answer: unknown) => void)({
+          ok: false,
+          error: { errorCode: 'MESSAGE_DELETED', message: 'Gone', retryable: false },
+        });
+      });
+      const { result } = renderHook(
+        () => useOptimisticSendMessage(VoiceSessionType.Channel, 'ch-1'),
+        { wrapper: createTestWrapper({ queryClient, socket: mockSocket }) },
+      );
+
+      await act(async () => {
+        await result.current.sendMessage(payload());
+      });
+
+      expect(cacheMessages()).toHaveLength(0);
+    });
+
     it('a second concurrent retry for the same clientId no-ops instead of firing a duplicate send', async () => {
       const failed = createMessage({
         id: 'pending-xyz',

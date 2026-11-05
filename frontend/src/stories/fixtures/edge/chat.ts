@@ -1001,6 +1001,8 @@ export interface OptimisticSpec {
   text: string;
   /** 'sent': acked by the server (real id), its files still uploading. */
   status: 'pending' | 'failed' | 'sent';
+  /** Why a 'failed' send failed, as the server said. */
+  sendError?: string;
   replyTo?: Message;
   /** Files the message is uploading. */
   uploads?: UploadSpec[];
@@ -1096,7 +1098,7 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
         if (prependMessageToInfinite(current, msg) === current) return;
         queryClient.setQueryData(key, (old: unknown) => {
           const next = prependMessageToInfinite(old as never, msg);
-          return spec.status === 'failed' ? markOptimisticFailed(next, clientId) : next;
+          return spec.status === 'failed' ? markOptimisticFailed(next, clientId, spec.sendError) : next;
         });
       });
       return true;

@@ -223,40 +223,40 @@ describe('findMessageInInfinite', () => {
 describe('prependOrReconcileOptimistic', () => {
   const plaintextSpans = (text: string) => [{ type: 'PLAINTEXT' as never, text }];
 
-  it('reconciles in place when a content-matching pending row from the same author exists (echo-first)', () => {
+  it('reconciles in place when a pending row from the same author has the nonce (echo-first)', () => {
     const optimistic = createMessage({
       id: 'pending-abc',
       authorId: 'user-1',
-      clientId: 'pending-abc',
+      clientId: 'pending-abc', clientNonce: 'nonce-abc',
       sendStatus: 'pending',
       spans: plaintextSpans('hello'),
     });
     const other = createMessage({ id: 'other-1', authorId: 'user-2' });
     const data = createInfiniteData([optimistic, other]);
 
-    const real = createMessage({ id: 'real-1', authorId: 'user-1', spans: plaintextSpans('hello') });
+    const real = createMessage({ id: 'real-1', authorId: 'user-1', clientNonce: 'nonce-abc', spans: plaintextSpans('hello') });
     const result = prependOrReconcileOptimistic(data, real);
 
     expect(result!.pages[0].messages).toHaveLength(2);
     // Real message swapped in at the SAME position the optimistic row held
     // (preserves chronological order relative to `other`).
-    expect(result!.pages[0].messages[0]).toMatchObject({ id: 'real-1', clientId: 'pending-abc' });
+    expect(result!.pages[0].messages[0]).toMatchObject({ id: 'real-1', clientId: 'pending-abc', clientNonce: 'nonce-abc' });
     expect(result!.pages[0].messages[1]).toMatchObject({ id: 'other-1' });
     // No lingering optimistic row anywhere.
     expect(result!.pages[0].messages.some(m => m.id === 'pending-abc')).toBe(false);
   });
 
-  it('reconciles a failed row too when content matches (late echo after a timed-out ack)', () => {
+  it('reconciles a failed row too (late echo after a timed-out ack)', () => {
     const optimistic = createMessage({
       id: 'pending-abc',
       authorId: 'user-1',
-      clientId: 'pending-abc',
+      clientId: 'pending-abc', clientNonce: 'nonce-abc',
       sendStatus: 'failed',
       spans: plaintextSpans('hello'),
     });
     const data = createInfiniteData([optimistic]);
 
-    const real = createMessage({ id: 'real-1', authorId: 'user-1', spans: plaintextSpans('hello') });
+    const real = createMessage({ id: 'real-1', authorId: 'user-1', clientNonce: 'nonce-abc', spans: plaintextSpans('hello') });
     const result = prependOrReconcileOptimistic(data, real);
 
     expect(result!.pages[0].messages).toHaveLength(1);
@@ -279,12 +279,12 @@ describe('prependOrReconcileOptimistic', () => {
     const optimistic = createMessage({
       id: 'pending-abc',
       authorId: 'user-2',
-      clientId: 'pending-abc',
+      clientId: 'pending-abc', clientNonce: 'nonce-abc',
       sendStatus: 'pending',
     });
     const data = createInfiniteData([optimistic]);
 
-    const real = createMessage({ id: 'real-1', authorId: 'user-1' });
+    const real = createMessage({ id: 'real-1', authorId: 'user-1', clientNonce: 'nonce-abc' });
     const result = prependOrReconcileOptimistic(data, real);
 
     expect(result!.pages[0].messages).toHaveLength(2);
@@ -306,7 +306,7 @@ describe('prependOrReconcileOptimistic', () => {
     // arrives carrying server-resolved enrichment (e.g. a resolved replyTo).
     const promoted = createMessage({
       id: 'real-1',
-      clientId: 'pending-abc',
+      clientId: 'pending-abc', clientNonce: 'nonce-abc',
       authorId: 'user-1',
       spans: plaintextSpans('hello'),
       replyToId: 'parent-1',
@@ -326,7 +326,7 @@ describe('prependOrReconcileOptimistic', () => {
     // Enrichment from the echo landed on the row...
     expect(result!.pages[0].messages[0]).toMatchObject({ id: 'real-1', replyTo: { id: 'parent-1' } });
     // ...and clientId (needed for stable row keying) survived the merge.
-    expect(result!.pages[0].messages[0]).toMatchObject({ clientId: 'pending-abc' });
+    expect(result!.pages[0].messages[0]).toMatchObject({ clientId: 'pending-abc', clientNonce: 'nonce-abc' });
   });
 
   it('does not insert into a detached window', () => {
@@ -335,67 +335,98 @@ describe('prependOrReconcileOptimistic', () => {
     expect(result).toBe(data);
   });
 
-  describe('multi-pending disambiguation (fix round 1, Critical 1)', () => {
-    it('two captionless sends with files: the echo reconciles the row with the same number of files', () => {
+  it('two sends with identical text: each echo reconciles its own row', () => {
+    const first = createMessage({
+      id: 'pending-a', authorId: 'user-1', clientId: 'pending-a', clientNonce: 'nonce-a',
+      sendStatus: 'pending', spans: plaintextSpans('same'),
+    });
+    const second = createMessage({
+      id: 'pending-b', authorId: 'user-1', clientId: 'pending-b', clientNonce: 'nonce-b',
+      sendStatus: 'pending', spans: plaintextSpans('same'),
+    });
+    const data = createInfiniteData([second, first]);
+
+    const echo = createMessage({ id: 'real-a', authorId: 'user-1', clientNonce: 'nonce-a', spans: plaintextSpans('same') });
+    const messages = prependOrReconcileOptimistic(data, echo)!.pages[0].messages;
+
+    expect(messages.find(m => m.id === 'real-a')).toMatchObject({ clientId: 'pending-a' });
+    expect(messages.find(m => m.id === 'pending-b')).toMatchObject({ sendStatus: 'pending' });
+  });
+
+  it('an echo without a nonce (an older server) never matches by content', () => {
+    const optimistic = createMessage({
+      id: 'pending-abc', authorId: 'user-1', clientId: 'pending-abc', clientNonce: 'nonce-abc',
+      sendStatus: 'pending', spans: plaintextSpans('hello'),
+    });
+    const data = createInfiniteData([optimistic]);
+
+    const echo = createMessage({ id: 'real-1', authorId: 'user-1', spans: plaintextSpans('hello') });
+    const messages = prependOrReconcileOptimistic(data, echo)!.pages[0].messages;
+
+    expect(messages.map(m => m.id)).toEqual(['real-1', 'pending-abc']);
+  });
+
+  describe('multi-pending disambiguation', () => {
+    it('two captionless sends with files: the echo reconciles its own row', () => {
       const twoFiles = createMessage({
-        id: 'pending-a', authorId: 'user-1', clientId: 'pending-a', sendStatus: 'failed',
+        id: 'pending-a', authorId: 'user-1', clientId: 'pending-a', clientNonce: 'nonce-a', sendStatus: 'failed',
         spans: plaintextSpans(''), pendingAttachments: 2,
       });
       const oneFile = createMessage({
-        id: 'pending-b', authorId: 'user-1', clientId: 'pending-b', sendStatus: 'pending',
+        id: 'pending-b', authorId: 'user-1', clientId: 'pending-b', clientNonce: 'nonce-b', sendStatus: 'pending',
         spans: plaintextSpans(''), pendingAttachments: 1,
       });
       const data = createInfiniteData([oneFile, twoFiles]);
 
-      const echo = createMessage({ id: 'real-b', authorId: 'user-1', spans: plaintextSpans(''), pendingAttachments: 1 });
+      const echo = createMessage({ id: 'real-b', authorId: 'user-1', clientNonce: 'nonce-b', spans: plaintextSpans(''), pendingAttachments: 1 });
       const messages = prependOrReconcileOptimistic(data, echo)!.pages[0].messages;
 
       expect(messages).toHaveLength(2);
-      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b' });
+      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b', clientNonce: 'nonce-b' });
       expect(messages.find(m => m.id === 'pending-a')).toMatchObject({ sendStatus: 'failed' });
     });
 
-    it('failed-A + pending-B: an echo matching B\'s content reconciles B, leaves A (failed) UNTOUCHED', () => {
+    it('failed-A + pending-B: B\'s echo reconciles B, leaves A (failed) UNTOUCHED', () => {
       const failedA = createMessage({
         id: 'pending-a',
         authorId: 'user-1',
-        clientId: 'pending-a',
+        clientId: 'pending-a', clientNonce: 'nonce-a',
         sendStatus: 'failed',
         spans: plaintextSpans('message A'),
       });
       const pendingB = createMessage({
         id: 'pending-b',
         authorId: 'user-1',
-        clientId: 'pending-b',
+        clientId: 'pending-b', clientNonce: 'nonce-b',
         sendStatus: 'pending',
         spans: plaintextSpans('message B'),
       });
       const data = createInfiniteData([pendingB, failedA]);
 
-      const echoForB = createMessage({ id: 'real-b', authorId: 'user-1', spans: plaintextSpans('message B') });
+      const echoForB = createMessage({ id: 'real-b', authorId: 'user-1', clientNonce: 'nonce-b', spans: plaintextSpans('message B') });
       const result = prependOrReconcileOptimistic(data, echoForB);
 
       const messages = result!.pages[0].messages;
       expect(messages).toHaveLength(2);
       // B reconciled to the real message...
-      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b' });
+      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b', clientNonce: 'nonce-b' });
       // ...A's failed bubble is completely untouched (still 'failed', still its own row, retry UI intact).
       const stillFailedA = messages.find(m => (m as unknown as { clientId?: string }).clientId === 'pending-a');
       expect(stillFailedA).toMatchObject({ id: 'pending-a', sendStatus: 'failed' });
     });
 
-    it('failed-A + pending-B: a LATE echo matching A\'s content replaces the failed row (prevents double-post via retry) and does not touch B', () => {
+    it('failed-A + pending-B: a LATE echo for A replaces the failed row (prevents double-post via retry) and does not touch B', () => {
       const failedA = createMessage({
         id: 'pending-a',
         authorId: 'user-1',
-        clientId: 'pending-a',
+        clientId: 'pending-a', clientNonce: 'nonce-a',
         sendStatus: 'failed',
         spans: plaintextSpans('message A'),
       });
       const pendingB = createMessage({
         id: 'pending-b',
         authorId: 'user-1',
-        clientId: 'pending-b',
+        clientId: 'pending-b', clientNonce: 'nonce-b',
         sendStatus: 'pending',
         spans: plaintextSpans('message B'),
       });
@@ -403,7 +434,7 @@ describe('prependOrReconcileOptimistic', () => {
 
       // The server actually received A before the client gave up and marked
       // it 'failed' — its echo arrives late, after the timeout.
-      const echoForA = createMessage({ id: 'real-a', authorId: 'user-1', spans: plaintextSpans('message A') });
+      const echoForA = createMessage({ id: 'real-a', authorId: 'user-1', clientNonce: 'nonce-a', spans: plaintextSpans('message A') });
       const result = prependOrReconcileOptimistic(data, echoForA);
 
       const messages = result!.pages[0].messages;
@@ -412,49 +443,49 @@ describe('prependOrReconcileOptimistic', () => {
       // on A can no longer fire (the failed row, and its Retry affordance,
       // are gone), so the user can't accidentally double-post it.
       expect(messages.some(m => m.id === 'pending-a')).toBe(false);
-      expect(messages.find(m => m.id === 'real-a')).toMatchObject({ clientId: 'pending-a' });
-      // B (a different pending row, different content) is completely untouched.
+      expect(messages.find(m => m.id === 'real-a')).toMatchObject({ clientId: 'pending-a', clientNonce: 'nonce-a' });
+      // B (a different pending row) is completely untouched.
       const untouchedB = messages.find(m => (m as unknown as { clientId?: string }).clientId === 'pending-b');
       expect(untouchedB).toMatchObject({ id: 'pending-b', sendStatus: 'pending' });
     });
 
-    it('two PENDING rows, same author, different content: echo only reconciles the content match', () => {
+    it('two PENDING rows, same author: the echo reconciles its own row', () => {
       const pendingA = createMessage({
         id: 'pending-a',
         authorId: 'user-1',
-        clientId: 'pending-a',
+        clientId: 'pending-a', clientNonce: 'nonce-a',
         sendStatus: 'pending',
         spans: plaintextSpans('first'),
       });
       const pendingB = createMessage({
         id: 'pending-b',
         authorId: 'user-1',
-        clientId: 'pending-b',
+        clientId: 'pending-b', clientNonce: 'nonce-b',
         sendStatus: 'pending',
         spans: plaintextSpans('second'),
       });
       const data = createInfiniteData([pendingA, pendingB]);
 
-      const echoForSecond = createMessage({ id: 'real-b', authorId: 'user-1', spans: plaintextSpans('second') });
+      const echoForSecond = createMessage({ id: 'real-b', authorId: 'user-1', clientNonce: 'nonce-b', spans: plaintextSpans('second') });
       const result = prependOrReconcileOptimistic(data, echoForSecond);
 
       const messages = result!.pages[0].messages;
       expect(messages).toHaveLength(2);
-      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b' });
+      expect(messages.find(m => m.id === 'real-b')).toMatchObject({ clientId: 'pending-b', clientNonce: 'nonce-b' });
       expect(messages.find(m => m.id === 'pending-a')).toMatchObject({ sendStatus: 'pending' });
     });
 
-    it('same author, no content match at all: falls through to plain insert, both optimistic rows untouched', () => {
+    it('same author, no nonce match: falls through to plain insert, both optimistic rows untouched', () => {
       const pendingA = createMessage({
         id: 'pending-a',
         authorId: 'user-1',
-        clientId: 'pending-a',
+        clientId: 'pending-a', clientNonce: 'nonce-a',
         sendStatus: 'pending',
         spans: plaintextSpans('first'),
       });
       const data = createInfiniteData([pendingA]);
 
-      const unrelatedEcho = createMessage({ id: 'real-x', authorId: 'user-1', spans: plaintextSpans('totally different') });
+      const unrelatedEcho = createMessage({ id: 'real-x', authorId: 'user-1', clientNonce: 'nonce-x', spans: plaintextSpans('totally different') });
       const result = prependOrReconcileOptimistic(data, unrelatedEcho);
 
       const messages = result!.pages[0].messages;

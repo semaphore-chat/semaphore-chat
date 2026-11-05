@@ -31,6 +31,8 @@ export interface Message extends Omit<WireMessage, 'spans' | 'replyTo'> {
   spans: Span[];
   replyTo: (Omit<ReplyToPreviewDto, 'spans'> & { spans: Span[] }) | null;
   sendStatus?: SendStatus;
+  /** Why the send failed, for the sender to read. Cache-local, like the others. */
+  sendError?: string;
   clientId?: string;
 }
 

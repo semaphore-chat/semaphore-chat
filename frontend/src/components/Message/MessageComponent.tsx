@@ -592,7 +592,7 @@ function MessageComponentInner({
                 onClick={handleOpenThread}
               />
             )}
-            {isFailed && <OptimisticMessageActions message={message} />}
+            {isFailed && <OptimisticMessageActions message={message} communityId={communityId} />}
           </>
         )}
       </div>

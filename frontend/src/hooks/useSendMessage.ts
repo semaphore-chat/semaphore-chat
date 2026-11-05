@@ -5,6 +5,7 @@ import { logger } from "../utils/logger";
 import { SocketContext } from "../utils/SocketContext";
 import { ClientEvents } from '@semaphore-chat/shared';
 import type { Message } from "../types/message.type";
+import { emitSend, type SendResult } from "../utils/sendAck";
 
 // What a send starts from: what the message says, plus what an optimistic row
 // shows until the server answers. sendStatus/clientId are cache-local fields
@@ -15,6 +16,7 @@ export type NewMessagePayload = Pick<Message, "authorId" | "spans" | "attachment
   directMessageGroupId?: string | null;
   pendingAttachments?: number | null;
   replyToId?: string | null;
+  clientNonce?: string | null;
 };
 
 export type MessageContext = VoiceSessionType;
@@ -29,14 +31,8 @@ export class SocketNotConnectedError extends Error {
   }
 }
 
-/**
- * Result of sending a message
- */
-export interface SendMessageResult {
-  success: boolean;
-  messageId?: string;
-  error?: Error;
-}
+/** Result of sending a message. */
+export type SendMessageResult = SendResult;
 
 /**
  * Wait for socket reconnection with a timeout.
@@ -80,46 +76,20 @@ export function useSendMessage(
         }
 
         const doSend = () => {
-          let settled = false;
-
-          // Add a timeout in case server doesn't respond
-          const timeoutId = setTimeout(() => {
-            if (settled) return;
-            settled = true;
-            resolve({
-              success: false,
-              error: new Error("Message send timed out. Please try again."),
-            });
-          }, 10000); // 10 second timeout
-
-          const ack = (messageId: string) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timeoutId);
-            if (callback) {
-              callback(messageId);
-            }
-            resolve({ success: true, messageId });
-          };
-
-          // Emit with acknowledgment callback. The context type determines the
-          // event and implies which context id the payload carries (callers
-          // build the payload for the same context they pass as contextType),
-          // hence the narrowing assertions.
+          // The context type determines the event and implies which context id
+          // the payload carries (callers build the payload for the same context
+          // they pass as contextType).
           const wirePayload = { ...payload, attachments: payload.attachments.map((file) => file.id) };
-          if (contextType === VoiceSessionType.Channel) {
-            socket.emit(
-              ClientEvents.SEND_MESSAGE,
-              wirePayload as typeof wirePayload & { channelId: string },
-              ack,
-            );
-          } else {
-            socket.emit(
-              ClientEvents.SEND_DM,
-              wirePayload as typeof wirePayload & { directMessageGroupId: string },
-              ack,
-            );
-          }
+          void emitSend(
+            socket,
+            contextType === VoiceSessionType.Channel
+              ? ClientEvents.SEND_MESSAGE
+              : ClientEvents.SEND_DM,
+            wirePayload,
+          ).then((result) => {
+            if (result.success && result.messageId) callback?.(result.messageId);
+            resolve(result);
+          });
         };
 
         if (!socket.connected) {
