@@ -1217,11 +1217,14 @@ describe('Authorization of voice, DMs, users and push (e2e)', () => {
       const present = await presence.getChannelPresence(voiceChannelId);
       expect(present.find((u) => u.id === user.id)?.isServerMuted).toBe(true);
 
-      // Lifted, even with the user out of the room right now
-      jest
+      // Lifted without asking LiveKit to unmute: it refuses that, and the user
+      // may be out of the room by now
+      const muteTracks = jest
         .spyOn(livekit, 'muteParticipant')
-        .mockRejectedValueOnce(new LivekitException('gone', 404));
+        .mockRejectedValue(new LivekitException('refused', 500));
+      muteTracks.mockClear();
       await mute(user, false);
+      expect(muteTracks).not.toHaveBeenCalled();
       const after = await channelToken(user);
       expect(after.video?.canPublishSources ?? []).toEqual([]);
       await presence.leaveVoiceChannel(voiceChannelId, user.id);

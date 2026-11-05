@@ -40,7 +40,6 @@ import {
   ShareClipResponseDto,
 } from './dto/clip-library.dto';
 import { TokenResponseDto } from './dto/token-response.dto';
-import { LivekitException } from './exceptions/livekit.exception';
 import {
   ConnectionInfoResponseDto,
   LivekitHealthResponseDto,
@@ -183,18 +182,15 @@ export class LivekitController {
     @Param('channelId') channelId: string,
     @Body() dto: MuteParticipantDto,
   ): Promise<{ success: boolean }> {
-    try {
+    // Lifting a mute never touches tracks: LiveKit won't turn someone's mic back
+    // on for them, and they may have left since (a mute outlives the call). It
+    // gives the microphone back; the user unmutes when they want to.
+    if (dto.mute) {
       await this.livekitService.muteParticipant(
         channelId,
         dto.participantIdentity,
-        dto.mute,
+        true,
       );
-    } catch (error) {
-      // A mute outlives the call, so it can be lifted from someone who has
-      // since left. Muting someone who isn't there stays a 404.
-      const absent =
-        error instanceof LivekitException && error.getStatus() === 404;
-      if (dto.mute || !absent) throw error;
     }
 
     // Muting the track alone doesn't hold: the client can unmute it, or

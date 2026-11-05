@@ -429,8 +429,7 @@ describe('LivekitController', () => {
       expect(result).toEqual({ success: true });
     });
 
-    it('should pass mute=false for unmute and update server mute state', async () => {
-      service.muteParticipant.mockResolvedValue(undefined);
+    it('should lift a mute without touching tracks, giving the microphone back', async () => {
       voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
 
       await controller.muteParticipant('channel-123', {
@@ -438,10 +437,16 @@ describe('LivekitController', () => {
         mute: false,
       });
 
-      expect(service.muteParticipant).toHaveBeenCalledWith(
+      expect(service.muteParticipant).not.toHaveBeenCalled();
+      expect(voicePresenceService.setServerMuted).toHaveBeenCalledWith(
         'channel-123',
         'user-456',
         false,
+      );
+      expect(service.updatePublishPermissions).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+        FULL_PUBLISH_GRANT,
       );
       expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledWith(
         'channel-123',
