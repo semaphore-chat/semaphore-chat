@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { normalizeOpenApiDocument } from './common/openapi/normalize-openapi';
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -16,7 +17,9 @@ async function generate() {
     .addCookieAuth('refresh_token', { type: 'apiKey' }, 'refresh_token')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = normalizeOpenApiDocument(
+    SwaggerModule.createDocument(app, config),
+  );
 
   // __dirname is dist/src/ when compiled, so go up two levels to project root
   writeFileSync(
