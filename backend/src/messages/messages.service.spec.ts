@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { PermissionsService } from '@/roles/permissions.service';
-import { SpanType, FileType } from '@prisma/client';
+import { Prisma, SpanType, FileType } from '@prisma/client';
 import { createMockDatabase, MessageFactory } from '@/test-utils';
 
 /** Helper to build a message with included relations in the shape returned by Prisma */
@@ -787,10 +787,52 @@ describe('MessagesService', () => {
         where: { id: 'parent-1', replyCount: { gt: 0 } },
         data: { replyCount: { decrement: 1 } },
       });
-      expect(mockDatabase.message.update).toHaveBeenCalledWith({
+      expect(mockDatabase.message.updateMany).toHaveBeenCalledWith({
         where: { id: 'parent-1' },
         data: { lastReplyAt: sentAt },
       });
+    });
+
+    it("takes the parent's row lock before reading the latest reply", async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.findFirst.mockResolvedValue({ sentAt: new Date() });
+
+      await service.remove('reply-1');
+
+      // The decrement locks the parent row, so a reply that arrives meanwhile
+      // commits before the read: its sentAt is the latest, not a stale one.
+      const decrement = mockDatabase.message.updateMany.mock
+        .invocationCallOrder[0] as number;
+      const latestRead = mockDatabase.message.findFirst.mock
+        .invocationCallOrder[0] as number;
+      expect(decrement).toBeLessThan(latestRead);
+    });
+
+    it('does not fail the delete when the parent was deleted meanwhile', async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+      mockDatabase.message.updateMany.mockResolvedValue({ count: 0 });
+      mockDatabase.message.findFirst.mockResolvedValue(null);
+
+      await expect(service.remove('reply-1')).resolves.toBeDefined();
+      expect(mockDatabase.message.update).not.toHaveBeenCalled();
     });
 
     it('recounts nothing for an ordinary message', async () => {

@@ -188,22 +188,32 @@ export class MessagesService {
     }
   }
 
-  /** After a reply is deleted: one fewer, and the latest is whichever is left. */
+  /**
+   * After a reply is deleted: one fewer, and the latest is whichever is left.
+   *
+   * The decrement goes first because it takes the parent's row lock. A reply
+   * that arrives meanwhile increments the count and sets lastReplyAt while
+   * holding that lock, so it has committed by the read below and counts as the
+   * latest. Reading first would let such a reply land between the read and the
+   * lock, and this write would then put back a lastReplyAt older than it.
+   */
   private async recountReplies(
     tx: Prisma.TransactionClient,
     parentMessageId: string,
   ) {
-    const latest = await tx.message.findFirst({
-      where: { parentMessageId },
-      orderBy: { sentAt: 'desc' },
-      select: { sentAt: true },
-    });
     // Never below zero: older rows can have a count that's already wrong.
     await tx.message.updateMany({
       where: { id: parentMessageId, replyCount: { gt: 0 } },
       data: { replyCount: { decrement: 1 } },
     });
-    await tx.message.update({
+    const latest = await tx.message.findFirst({
+      where: { parentMessageId },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    });
+    // updateMany, not update: a parent deleted meanwhile is no row to update,
+    // not a P2025 that would undo this delete.
+    await tx.message.updateMany({
       where: { id: parentMessageId },
       data: { lastReplyAt: latest?.sentAt ?? null },
     });
