@@ -1,4 +1,5 @@
 import { Message } from '@semaphore-chat/shared';
+import { blankRemovedMessage } from './removed-message.utils';
 
 /**
  * TODO(any-cleanup): Casts an enriched Prisma message object (from
@@ -32,9 +33,17 @@ import { Message } from '@semaphore-chat/shared';
  * The parameter is constrained to values that are at least plausibly a
  * message (has `id`, `spans`, `sentAt`) rather than `unknown`, so this
  * can't silently launder an unrelated object into a `Message`.
+ *
+ * A broadcast has one payload for its whole room, so a removed message always
+ * goes out blank here, whoever is in the room.
  */
 export function toWireMessage<
-  T extends { id: string; spans: unknown[]; sentAt: Date },
+  T extends {
+    id: string;
+    spans: unknown[];
+    sentAt: Date;
+    deletedAt?: Date | null;
+  },
 >(message: T): Message {
-  return message as unknown as Message;
+  return blankRemovedMessage(message) as unknown as Message;
 }

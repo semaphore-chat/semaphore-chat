@@ -1,6 +1,7 @@
 import { Injectable, Logger, ForbiddenException } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { IFileAccessStrategy } from './file-access-strategy.interface';
 
 /**
@@ -17,6 +18,7 @@ export class ReplayClipAccessStrategy implements IFileAccessStrategy {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async checkAccess(
@@ -52,6 +54,7 @@ export class ReplayClipAccessStrategy implements IFileAccessStrategy {
         id: true,
         channelId: true,
         directMessageGroupId: true,
+        deletedAt: true,
       },
     });
 
@@ -65,6 +68,20 @@ export class ReplayClipAccessStrategy implements IFileAccessStrategy {
     // Check if user has access to any of these messages
     for (const message of messagesWithFile) {
       try {
+        // A removed message grants access only to those who may still see it
+        if (
+          message.deletedAt &&
+          !(
+            message.channelId &&
+            (await this.permissionsService.canSeeRemovedMessages(
+              userId,
+              message.channelId,
+            ))
+          )
+        ) {
+          continue;
+        }
+
         if (message.channelId) {
           const hasAccess = await this.checkChannelAccess(
             userId,

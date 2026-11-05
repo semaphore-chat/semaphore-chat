@@ -8,6 +8,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Logger,
   Query,
@@ -46,6 +47,7 @@ import {
   PaginatedMessagesResponseDto,
 } from './dto/message-response.dto';
 import { groupReactions } from '@/common/utils/reactions.utils';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import { RoomName } from '@/common/utils/room-name.util';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -56,6 +58,7 @@ import { LinkPreviewJobData } from '@/jobs/jobs.types';
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
 

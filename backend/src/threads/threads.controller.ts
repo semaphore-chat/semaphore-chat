@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Req,
   DefaultValuePipe,
@@ -15,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
 import { ThreadsService } from './threads.service';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
@@ -39,6 +41,7 @@ import {
  */
 @Controller('threads')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class ThreadsController {
   constructor(private readonly threadsService: ThreadsService) {}
 

@@ -1,3 +1,4 @@
+import { PermissionsService } from '@/roles/permissions.service';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { ConfigService } from '@nestjs/config';
@@ -26,6 +27,7 @@ describe('NotificationsService', () => {
   let configService: Mocked<ConfigService>;
   let notificationsGateway: Mocked<NotificationsGateway>;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -42,6 +44,7 @@ describe('NotificationsService', () => {
     configService = unitRef.get(ConfigService);
     notificationsGateway = unitRef.get(NotificationsGateway);
     channelAccessService = unitRef.get(ChannelAccessService);
+    permissionsService = unitRef.get(PermissionsService);
 
     // Default mock behaviors
     pushNotificationsService.isEnabled.mockReturnValue(false);
@@ -1210,6 +1213,59 @@ describe('NotificationsService', () => {
         take: 50,
         skip: 0,
         include: expect.any(Object),
+      });
+    });
+
+    describe('the preview of a message removed by a moderator', () => {
+      const withMessage = (deletedAt: Date | null) => [
+        {
+          id: 'n1',
+          message: {
+            id: 'm1',
+            channelId: 'c1',
+            directMessageGroupId: null,
+            spans: [{ text: 'original' }],
+            deletedAt,
+          },
+        },
+      ];
+      const list = () =>
+        service.getUserNotifications('user-1', { limit: 50, offset: 0 });
+
+      it('is blank for a reader who may not see removed messages', async () => {
+        mockDatabase.notification.findMany.mockResolvedValue(
+          withMessage(new Date()),
+        );
+        permissionsService.canSeeRemovedMessages.mockResolvedValue(false);
+
+        const [row] = await list();
+
+        expect(row.message?.spans).toEqual([]);
+        expect(permissionsService.canSeeRemovedMessages).toHaveBeenCalledWith(
+          'user-1',
+          'c1',
+        );
+      });
+
+      it('is kept for a reader who may', async () => {
+        mockDatabase.notification.findMany.mockResolvedValue(
+          withMessage(new Date()),
+        );
+        permissionsService.canSeeRemovedMessages.mockResolvedValue(true);
+
+        const [row] = await list();
+
+        expect(row.message?.spans).toEqual([{ text: 'original' }]);
+      });
+
+      it('is untouched for a live message, with no permission check and no added field', async () => {
+        mockDatabase.notification.findMany.mockResolvedValue(withMessage(null));
+
+        const [row] = await list();
+
+        expect(row.message?.spans).toEqual([{ text: 'original' }]);
+        expect(row.message).not.toHaveProperty('deletedAt');
+        expect(permissionsService.canSeeRemovedMessages).not.toHaveBeenCalled();
       });
     });
 

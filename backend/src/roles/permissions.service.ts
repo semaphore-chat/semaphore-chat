@@ -432,6 +432,19 @@ export class PermissionsService {
    * Channel check for code paths without a guard (e.g. attachments added to
    * an existing message). Applies the instance OWNER bypass like RbacGuard.
    */
+  /**
+   * Whether a reader may see what a moderator removed from this channel: those
+   * who can remove messages there.
+   */
+  async canSeeRemovedMessages(
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    return this.userHasChannelActions(userId, channelId, [
+      RbacActions.DELETE_ANY_MESSAGE,
+    ]);
+  }
+
   async userHasChannelActions(
     userId: string,
     channelId: string,

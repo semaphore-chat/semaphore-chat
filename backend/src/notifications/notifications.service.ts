@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import {
   Message,
@@ -66,6 +67,7 @@ export class NotificationsService {
     private readonly presenceService: PresenceService,
     private readonly configService: ConfigService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   /**
@@ -733,7 +735,7 @@ export class NotificationsService {
     // called directly (bypassing the pipe).
     const cappedLimit = Math.min(limit, 100);
 
-    return this.databaseService.notification.findMany({
+    const notifications = await this.databaseService.notification.findMany({
       where: {
         userId,
         ...(unreadOnly && { read: false }),
@@ -756,6 +758,7 @@ export class NotificationsService {
             spans: true,
             channelId: true,
             directMessageGroupId: true,
+            deletedAt: true,
           },
         },
         channel: {
@@ -765,6 +768,32 @@ export class NotificationsService {
         },
       },
     });
+
+    // The preview of a since-removed message follows the same visibility rule
+    const canSeeRemoved = new Map<string, boolean>();
+    return Promise.all(
+      notifications.map(async (notification) => {
+        if (!notification.message) return notification;
+        const { deletedAt, ...message } = notification.message;
+        if (!deletedAt) return { ...notification, message };
+
+        let allowed = false;
+        if (message.channelId) {
+          const known = canSeeRemoved.get(message.channelId);
+          allowed =
+            known ??
+            (await this.permissionsService.canSeeRemovedMessages(
+              userId,
+              message.channelId,
+            ));
+          canSeeRemoved.set(message.channelId, allowed);
+        }
+        return {
+          ...notification,
+          message: allowed ? message : { ...message, spans: [] },
+        };
+      }),
+    );
   }
 
   /**
