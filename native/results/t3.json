@@ -1,0 +1,333 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-05T20:01:07.664490+00:00",
+ "ok": true,
+ "provisional": false,
+ "provisional_reasons": [],
+ "build": {
+  "version": "0.0.0-rig-list",
+  "commit": "533b2295c42bd5fd184db3c5595e7d3aa996c715",
+  "stripped": true
+ },
+ "history_messages": 100000,
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "wayland",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 1920,
+   "height": 1080,
+   "device_scale_factor": 1
+  },
+  "renderer": {
+   "name": "wgpu-vulkan",
+   "device": "NVIDIA RTX 4090, driver 615.78.08",
+   "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+   "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 39420184,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "rig-list",
+    "bytes": 39420184
+   }
+  ],
+  "binary": {
+   "bytes": 39420184,
+   "stripped": true
+  },
+  "artifacts": []
+ },
+ "scenarios": {
+  "t3_select_wayland_gpu": {
+   "title": "Drag selection in a real window, real text shaping, Wayland, RTX 4090",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "21.94 20.43 26.34 2/2027 111",
+    "end": "19.80 20.02 26.14 5/2043 214",
+    "peak_load1": 19.8,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "logic result: selected text does not depend on load or renderer"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 22.97,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 327.5,
+    "rss": 381.0,
+    "anon": 232.7,
+    "swap": 0.0,
+    "private_working_set": null
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "note": "Clipboard does not match here because headless sway has no seat. The X11 scenario covers a real clipboard.",
+    "run": {
+     "scenario": "select_real_window",
+     "messages_selected": 146,
+     "anchor": {
+      "id": 50000,
+      "byte": 3
+     },
+     "cursor": {
+      "id": 50145,
+      "byte": 1391
+     },
+     "copied_bytes": 65057,
+     "text_exact_match": true,
+     "clipboard_exact_match": false,
+     "clipboard_bytes": 0,
+     "while_unmounted_exact_match": true,
+     "after_remount_exact_match": true,
+     "painted_selected_rows_while_away": 0,
+     "max_rows_painted_during_drag": 14,
+     "drag_ms": 6250,
+     "copy_ms": 0.03,
+     "shot_row": 50004,
+     "cpu_pct_core_avg": 22.97,
+     "memory_mb": {
+      "pss": 327.5,
+      "rss": 381.0,
+      "anon": 232.7,
+      "swap": 0.0
+     },
+     "load": {
+      "start": "21.94 20.43 26.34 2/2027 111",
+      "end": "19.80 20.02 26.14 5/2043 214"
+     }
+    }
+   }
+  },
+  "t3_select_x11_lavapipe": {
+   "title": "The same drag under Xvfb on lavapipe, with a real X11 clipboard",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "22.63 20.54 26.11 3/2093 51",
+    "end": "22.65 20.60 26.04 2/2261 193",
+    "peak_load1": 22.65,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "logic result: selected text does not depend on load or renderer"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 647.4,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 494.5,
+    "rss": 504.5,
+    "anon": 309.3,
+    "swap": 0.0,
+    "private_working_set": null
+   },
+   "aux": {
+    "renderer": {
+     "name": "lavapipe",
+     "icd": "/usr/share/vulkan/icd.d/lvp_icd.json"
+    },
+    "note": "Same endpoints and bytes as Wayland on the GPU, so the result is renderer-independent.",
+    "run": {
+     "scenario": "select_real_window",
+     "messages_selected": 146,
+     "anchor": {
+      "id": 50000,
+      "byte": 3
+     },
+     "cursor": {
+      "id": 50145,
+      "byte": 1391
+     },
+     "copied_bytes": 65057,
+     "text_exact_match": true,
+     "clipboard_exact_match": true,
+     "clipboard_bytes": 65057,
+     "while_unmounted_exact_match": true,
+     "after_remount_exact_match": true,
+     "painted_selected_rows_while_away": 0,
+     "max_rows_painted_during_drag": 14,
+     "drag_ms": 6345,
+     "copy_ms": 0.05,
+     "shot_row": 50004,
+     "cpu_pct_core_avg": 647.4,
+     "memory_mb": {
+      "pss": 494.5,
+      "rss": 504.5,
+      "anon": 309.3,
+      "swap": 0.0
+     },
+     "load": {
+      "start": "22.63 20.54 26.11 3/2093 51",
+      "end": "22.65 20.60 26.04 2/2261 193"
+     }
+    }
+   }
+  }
+ },
+ "t3": {
+  "verdict": "pass with the prototype; fail with the kit's selection in a message list",
+  "bars": {
+   "copy_returns_full_text_in_order": {
+    "verdict": "pass",
+    "evidence": {
+     "messages_selected": 398,
+     "screens_spanned": 66.19999694824219,
+     "text_exact_match": true,
+     "clipboard_exact_match_test_platform": true,
+     "clipboard_exact_match_x11": true
+    }
+   },
+   "survives_unmount_and_remount": {
+    "verdict": "pass",
+    "evidence": true
+   },
+   "inline_emoji_and_links": {
+    "verdict": "pass",
+    "evidence": {
+     "inline_emoji": 349,
+     "links": 283
+    }
+   }
+  },
+  "arms": {
+   "A_kit_selectable_text_per_row": [
+    {
+     "scenario": "one SelectableText per row, retained handles",
+     "on_screen_drag": {
+      "has_selection": true,
+      "lines": 13
+     },
+     "unmount_and_back": [
+      {
+       "stage": "scrolled away",
+       "has_selection": false,
+       "lines": 0
+      },
+      {
+       "stage": "scrolled back",
+       "has_selection": false,
+       "lines": 0,
+       "same_text": false
+      }
+     ],
+     "autoscroll_trace": [
+      {
+       "tick": 0,
+       "top_item": 60001,
+       "has_selection": true,
+       "lines": 11
+      },
+      {
+       "tick": 18,
+       "top_item": 60003,
+       "has_selection": false,
+       "lines": 0
+      }
+     ],
+     "cleared_during_autoscroll_at": {
+      "tick": 18,
+      "top_item": 60003
+     },
+     "during_end": {
+      "has_selection": false,
+      "lines": 0
+     },
+     "after_release": {
+      "has_selection": false,
+      "lines": 0
+     },
+     "anchor_item": 60002,
+     "top_item_at_end": 60003
+    }
+   ],
+   "B_kit_one_textview_document": [
+    {
+     "prepend_via_set_text": {
+      "has_selection_after": false,
+      "top_item_before": 1000,
+      "top_item_after": 0,
+      "anchor_kept": false
+     },
+     "scenario": "transcript as one TextView::scrollable document",
+     "messages": 3000,
+     "blocks": 3000,
+     "autoscroll_ticks": 1031,
+     "blocks_scrolled": 300,
+     "has_selection": true,
+     "selected_bytes": 141836,
+     "whole_messages_checked": 283,
+     "missing": 0,
+     "missing_sample": [],
+     "out_of_order": 0,
+     "inline_emoji_seen": 31,
+     "scrolled_away": {
+      "has_selection": true,
+      "same_text": true
+     },
+     "scrolled_back": {
+      "has_selection": true,
+      "same_text": true
+     }
+    }
+   ],
+   "C_prototype": [
+    {
+     "scenario": "link click vs drag from a link",
+     "click_opens": true,
+     "drag_selects_without_opening": true
+    },
+    {
+     "scenario": "drag with auto-scroll, unmount, remount, prepend",
+     "messages_selected": 398,
+     "rows_on_screen": 6,
+     "screens_spanned": 66.19999694824219,
+     "autoscroll_ticks": 1215,
+     "copied_bytes": 195857,
+     "text_exact_match": true,
+     "clipboard_exact_match": true,
+     "inline_emoji_in_text": 349,
+     "links_in_text": 283,
+     "highlight_quads_after_remount": 8,
+     "survives_unmount": true
+    },
+    {
+     "scenario": "drag down, back up past the anchor",
+     "anchor_stable": true,
+     "text_exact_match": true
+    },
+    {
+     "scenario": "upward drag past the anchor",
+     "messages_selected": 205,
+     "text_exact_match": true
+    }
+   ]
+  },
+  "prototype_code": {
+   "file": "rigs/list/src/selection.rs and the row and drag parts of rigs/list/src/view.rs"
+  }
+ },
+ "comparability_notes": [
+  "Selection logic only. CPU and memory here are from the scripted drag, for the schema, and are not a bar.",
+  "Arms A, B and C ran through gpui_kit::test with real hit testing, a virtual clock and the test text system.",
+  "Word and line multi-click, select-all, keyboard extension and accessibility are not in the prototype."
+ ]
+}

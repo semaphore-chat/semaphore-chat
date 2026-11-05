@@ -23,11 +23,12 @@ Phase 1 was launched from this branch after Phase 0. Results land here as those 
 | Test | Status |
 |---|---|
 | T1 video | Investigated separately by two agents, outside this workspace, for now |
-| T2, T3 | Phase 1, on `spike/t2-t3` |
-| T7, T8 | Phase 1, on `spike/t7-t8` |
-| T10 agent loop | Harness works; the 20-run test is Phase 1, on `spike/t10-runner` |
-| `gpui-pre` audit | Phase 1, on `spike/gpui-audit` |
-| T4-T6, T9, T11 | Not started |
+| T2 message list | **Provisional.** Fling timing needs the real desktop. No-jump and memory pass, each with a stated condition |
+| T3 selection | **Pass with a prototype, fail with the kit's selection** in a message list |
+| T7, T8 | Phase 1, on `spike/t7-t8`, not reported yet |
+| T10 agent loop | Harness passes on a one-screen crate (`results/t10.json`, provisional: load peaked at 107). Rerun on the slice's real UI crate is U14 |
+| `gpui-pre` audit | **Reviewed:** no behavioural change found. See "Supply chain" |
+| T4-T6, T9, T11 | Not started, or reported separately |
 | Windows | CI job written, **never run**: pushing the branch is waiting on Mike |
 
 ## Test bars: what differs from the original brief
@@ -144,6 +145,93 @@ only if T1 needs a patch or the snapshots stall. Keep a vendored mirror for rele
   vulnerability and all with no safe upgrade: `instant`, `paste`, `ttf-parser`, `rustybuzz`,
   `zvariant`, `zbus_names`, `zvariant_derive`. `rustybuzz` and `ttf-parser` matter most: they
   parse untrusted fonts and shape every line of text.
+
+## T2 and T3: message list and selection
+
+Rig: `rigs/list`. Raw results: `results/t2.json`, `results/t3.json`. Bars unchanged.
+
+### T2: 100k mixed-height messages
+
+Three 50 s runs on an RTX 4090 under headless sway. Each run flings up through unmeasured rows for
+30 s, flings down for 10 s, then jumps to the middle and flings up for 10 s.
+
+| Bar | Measured | Status |
+|---|---|---|
+| Presented frame p99 at or under 16.7 ms | Median of runs 19.5-19.9 ms by phase, worst 22.5 ms. Mean 61.8 fps | **Provisional**: load1 peaked at 25-40, timer-driven compositor |
+| No jump on prepend | 0.0 px: 5,000 rows mid-history, 50 at the top row, and during a live scroll (931 row-frames) | **Pass**, final |
+| No jump on late image load | 0.0 px with the size known up front; **360 px** when an image in view has no known size | **Pass only with known sizes**: `File` has no width or height today |
+| Under 500 MB | **Bounded cache alone: 642 MB** PSS plus swap in a 120 s soak. With `MALLOC_MMAP_THRESHOLD_=262144` too: **370 MB** | **Pass only with both**, final |
+
+- **Timing:** an interval between present-call returns is about 16.1 ms plus the change in CPU
+  cost since the previous frame, so cost jitter alone raises p99. Few intervals pass 1.5 vsyncs:
+  0-10 per phase, out of 615-1,854 frames. CPU cost p99 is 5-9 ms, and images don't change it
+  (19.7 ms p99 and 7 ms cost without them). The kit's TextView arm, with frames under 1 ms, gets
+  16.4 ms in the same setup, so the harness can meet the bar. Whether real rows can meet it at
+  this measuring point is open. T1 measures the same point.
+- **Memory:** the cache held 126 MB and evicted 127 images in both soaks, so it works; glibc keeps
+  the freed decodes in its arenas. The host swapped during both soaks, which first looked like
+  the app releasing 400 MB, so samples now include swap.
+- **Not covered:** CJK and colour-emoji fallback (DejaVu only), thumbnails (full-size decodes),
+  hover toolbars and reactions, Windows.
+- **Other numbers:** 4 pinned cores p99 19.8-23.9 ms. Lavapipe p99 24-25 ms, 964% of a core, 587 MB,
+  for shape only. Still list 0.8% of a core; 6-15% with an animated emoji in view, because the
+  whole window redraws at 60 fps for 12.5 fps of animation.
+
+**Needs Mike's Hyprland desktop.** The window has to stay visible for about 50 s, three times:
+
+```bash
+native/scripts/in-image.sh cargo build --release -p rig-list
+docker run --rm -v semaphore-native-target-$(printf '%s' "$PWD" | sha256sum | cut -c1-8):/t:ro alpine cat /t/release/rig-list > /tmp/rig-list
+chmod +x /tmp/rig-list
+for i in 1 2 3; do MALLOC_MMAP_THRESHOLD_=262144 /tmp/rig-list fling --out /tmp/t2-run$i.json; done
+```
+
+Run it from the checkout root, so the volume hash matches.
+
+### T3: selection across virtual rows
+
+| Arm | Copy across rows | Unmount and back | Verdict |
+|---|---|---|---|
+| A: `SelectableText` per row, as `examples/text_selection` does with TextView | Only while the anchor is on screen | **Selection cleared**, including at the tick the anchor scrolls off | Fail. `endpoint_departed` in `text_selection.rs` clears it by design |
+| B: one `TextView::scrollable` document | Exact order, 283 messages, emoji included | Survives | Selection works, but it isn't a message list: **2.2 GB** at 100k with no images, and a prepend via `set_text` clears the selection and resets the scroll to the top |
+| C: prototype, endpoints are a message id and a byte | **Byte-exact**: 398 messages over 66 screens, 195,857 bytes, up, down and past the anchor | Survives, highlight returns, survives a prepend | **Pass**, final |
+
+Arm C is about 400 lines: `selection.rs` and the row and drag parts of `view.rs`. Inline emoji copy as
+`:name:` (349 in that selection) and links as their text (283). A click opens a link and a drag
+from one selects. A real window gives the same result with real shaping: 146 messages, 65,057
+bytes, identical on Wayland with the GPU and X11 with lavapipe. Clipboard: exact on X11. Under
+headless sway it came back empty because there is no seat, so **the Wayland clipboard still needs
+the real desktop**.
+
+**Not in the prototype:** word and line multi-click, select-all, keyboard extension, accessibility,
+RTL, and sharing a selection with kit `TextView`s elsewhere in the window.
+
+### Kit gaps
+
+| Gap | Size |
+|---|---|
+| Selection across virtual rows: arm C plus what it lacks | 4-6 agent-days |
+| Image width and height: schema, upload probe, backfill, API, client | About 1 agent-day |
+| Scrollbar has no height hints, [#3513](https://github.com/longbridge/gpui-kit/issues/3513): the thumb sits near the top at row 50,000 of 100,000 | 1-2 agent-days |
+| `MessageScroller` keeps its `ListState` private, so a drag can't `scroll_by` | A small upstream PR, or about 180 Apache-2.0 lines to copy |
+| Bounded image cache and `mallopt` at startup | Half a day; the cache is 80 lines here |
+| Animated emoji redraw the window at 60 fps | Half a day to schedule by frame delay |
+
+Other open kit issues that apply: [#3798](https://github.com/longbridge/gpui-kit/issues/3798) (highlight
+past short rows, and the prototype paints the same way), [#3669](https://github.com/longbridge/gpui-kit/issues/3669)
+(selection geometry is private), [#3476](https://github.com/longbridge/gpui-kit/issues/3476) (a drag on an
+overlay selects text beneath; a hover toolbar needs handling) and
+[#3295](https://github.com/longbridge/gpui-kit/issues/3295) (`reveal_range` can panic in a virtual TextView,
+arm B only). These come from reading the tracker, not from reproducing them.
+
+### Working on it
+
+The first render looked right. A release rebuild takes 15-20 s, and the build, run and screenshot
+loop under a minute. The kit's tests were the best documentation. Friction: `use gpui_kit::*`
+imports the `test` attribute, so `#[gpui_kit::test]` hits the recursion limit until `#[test]` is
+imported explicitly. Three harness mistakes cost the most time, and each looked like a result:
+GPUI's inactive-window limit (about 30 fps, because headless sway has no seat), a warmup that waited
+for frames a still window never draws, and swap read as a memory release.
 
 ## Phase 0 verification
 
