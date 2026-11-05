@@ -479,19 +479,25 @@ describe('Message wire contract (e2e)', () => {
     });
 
     it('a shared clip: NEW_MESSAGE from the clip listener', async () => {
-      const upload = await http()
-        .post('/api/file-upload')
-        .set('Authorization', auth('author'))
-        .field('resourceType', 'USER_AVATAR')
-        .field('resourceId', id.author)
-        .attach('file', PNG, { filename: 'clip.png', contentType: 'image/png' })
-        .expect(201);
+      const clip = await app.get(DatabaseService).file.create({
+        data: {
+          filename: 'clip.mp4',
+          mimeType: 'video/mp4',
+          fileType: 'VIDEO',
+          size: 1,
+          checksum: 'e2e',
+          uploadedById: id.author,
+          resourceType: 'REPLAY_CLIP',
+          fileUserId: id.author,
+          storagePath: 'e2e/clip.mp4',
+        },
+      });
 
       const { messageId } = await app
         .get(ClipMessageListener)
         .handleClipMessageCreate({
           authorId: id.author,
-          fileId: (upload.body as { id: string }).id,
+          fileId: clip.id,
           durationSeconds: 30,
           sizeMB: 1,
           destination: 'channel',
