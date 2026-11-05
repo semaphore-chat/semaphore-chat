@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
 export class LoginRequestDto {
@@ -47,6 +48,15 @@ export class AuthorizeDesktopLoginRequestDto {
   @ApiProperty({ enum: ['S256'] })
   @IsIn(['S256'])
   codeChallengeMethod: 'S256';
+
+  @ApiProperty({
+    description:
+      "The account's password: approving a new device needs more than a session.",
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  password: string;
 }
 
 export class DesktopLoginTokenRequestDto {

@@ -390,7 +390,11 @@ describe('Auth client-type contract (e2e)', () => {
       const authorized = await request(server())
         .post('/api/auth/desktop/authorize')
         .set('Authorization', `Bearer ${accessToken}`)
-        .send({ codeChallenge: challenge, codeChallengeMethod: 'S256' })
+        .send({
+          codeChallenge: challenge,
+          codeChallengeMethod: 'S256',
+          password: creds.password,
+        })
         .expect(200);
       return { code: (authorized.body as { code: string }).code, verifier };
     }

@@ -1,3 +1,4 @@
+import { ForbiddenException } from '@nestjs/common';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { AuthController } from './auth.controller';
@@ -1356,9 +1357,32 @@ describe('AuthController', () => {
     const dto = {
       codeChallenge: 'c'.repeat(43),
       codeChallengeMethod: 'S256' as const,
+      password: 'the-password',
     };
 
     describe('authorizeDesktopLogin', () => {
+      beforeEach(() => {
+        authService.checkPassword.mockResolvedValue(true);
+      });
+
+      it('refuses a wrong password, with a 403 clients do not refresh on', async () => {
+        jwtService.decode.mockReturnValue(claims);
+        authService.checkPassword.mockResolvedValue(false);
+        const req = {
+          user: mockUser,
+          headers: { authorization: 'Bearer header-token' },
+        } as any;
+
+        await expect(
+          controller.authorizeDesktopLogin(req, dto),
+        ).rejects.toThrow(ForbiddenException);
+        expect(authService.checkPassword).toHaveBeenCalledWith(
+          mockUser.id,
+          'the-password',
+        );
+        expect(deviceLoginGrantService.createApproved).not.toHaveBeenCalled();
+      });
+
       it("mints a code bound to the challenge and the approver's session", async () => {
         jwtService.decode.mockReturnValue(claims);
         deviceLoginGrantService.createApproved.mockResolvedValue({

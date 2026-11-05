@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Paper,
   Stack,
+  TextField,
   Typography,
 } from "@mui/material";
 import { DesktopWindowsOutlined } from "@mui/icons-material";
@@ -27,6 +28,8 @@ export interface DesktopLoginPageProps {
   redirect?: (url: string) => void;
   /** Start in another state (stories). */
   initialPhase?: DesktopLoginPhase;
+  /** Start with the password filled in (stories). */
+  initialPassword?: string;
 }
 
 /**
@@ -75,17 +78,20 @@ function Card({ children }: { children: React.ReactNode }) {
  * the app's loopback listener with it.
  *
  * Nothing happens without the confirm click: a link someone else sent can't
- * sign anything in on its own, and the code only ever goes to 127.0.0.1.
+ * sign anything in on its own, and the code only ever goes to 127.0.0.1. The
+ * account password is asked for again: a session alone can't approve a device.
  */
 const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({
   redirect = defaultRedirect,
   initialPhase = "confirm",
+  initialPassword = "",
 }) => {
   const [searchParams] = useSearchParams();
   const params = useMemo(() => parseDesktopLoginParams(searchParams), [searchParams]);
   const { user, isLoading: userLoading } = useCurrentUser();
   const { handleLogout, logoutLoading } = useLogout();
   const [phase, setPhase] = useState<DesktopLoginPhase>(initialPhase);
+  const [password, setPassword] = useState(initialPassword);
   const authorize = useMutation(authControllerAuthorizeDesktopLoginMutation());
 
   if (!params) {
@@ -105,7 +111,7 @@ const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({
   const approve = async () => {
     try {
       const { code } = await authorize.mutateAsync({
-        body: { codeChallenge: params.challenge, codeChallengeMethod: "S256" },
+        body: { codeChallenge: params.challenge, codeChallengeMethod: "S256", password },
       });
       setPhase("handing-over");
       redirect(desktopCallbackUrl(params, code));
@@ -150,6 +156,8 @@ const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({
   }
 
   const who = user ? user.displayName || user.username : null;
+  const wrongPassword =
+    (authorize.error as { statusCode?: number } | null)?.statusCode === 403;
 
   return (
     <Card>
@@ -174,16 +182,47 @@ const DesktopLoginPage: React.FC<DesktopLoginPageProps> = ({
         Only continue if you just chose &ldquo;Sign in with browser&rdquo; in the desktop app
         yourself. Never continue from a link someone sent you.
       </Alert>
+      <Box
+        component="form"
+        onSubmit={(event: React.FormEvent) => {
+          event.preventDefault();
+          if (password && !authorize.isPending && user) void approve();
+        }}
+      >
+        {/* For password managers: which account the password belongs to */}
+        <input
+          type="text"
+          name="username"
+          autoComplete="username"
+          value={user?.username ?? ""}
+          readOnly
+          hidden
+        />
+        <TextField
+          label="Your password"
+          type="password"
+          name="password"
+          autoComplete="current-password"
+          fullWidth
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          disabled={authorize.isPending}
+        />
+        {/* Two inputs and no submit button: Enter wouldn't submit without it */}
+        <button type="submit" hidden />
+      </Box>
       {authorize.isError && (
         <Alert severity="error" role="alert">
-          Couldn&apos;t approve the sign-in. Try again, or start over from the desktop app.
+          {wrongPassword
+            ? "That password isn't right. Try again."
+            : "Couldn't approve the sign-in. Try again, or start over from the desktop app."}
         </Alert>
       )}
       <Button
         variant="contained"
         size="large"
         onClick={() => void approve()}
-        disabled={authorize.isPending || userLoading || !user}
+        disabled={authorize.isPending || userLoading || !user || !password}
       >
         {authorize.isPending ? (
           <CircularProgress size={24} color="inherit" aria-label="Signing in" />
