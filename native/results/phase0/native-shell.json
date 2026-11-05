@@ -1,0 +1,86 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-05T19:05:00.626247+00:00",
+ "ok": true,
+ "provisional": true,
+ "provisional_reasons": [
+  "load1 peaked at 25.3, above 16.0"
+ ],
+ "build": {
+  "version": "0.0.0-phase0",
+  "commit": "e30204d8aad62ae6dee1e9dafec53bf06f8d91af",
+  "stripped": true
+ },
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "xvfb",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 1920,
+   "height": 1080,
+   "device_scale_factor": 1
+  },
+  "renderer": {
+   "name": "lavapipe",
+   "icd": "/usr/share/vulkan/icd.d/lvp_icd.json"
+  },
+  "packages": {
+   "mesa": "1:26.2.6-1",
+   "clang": "23.1.4-1"
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 66187584,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "semaphore-app",
+    "bytes": 66187584
+   }
+  ],
+  "binary": {
+   "bytes": 66187584,
+   "stripped": true
+  },
+  "artifacts": []
+ },
+ "cold_start_ms": null,
+ "scenarios": {
+  "phase0_shell_idle": {
+   "title": "Shell window idle, signed in to nothing (Phase 0 format check)",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "25.28 41.64 38.88 1/1987 8",
+    "end": "17.75 38.25 37.84 91/2457 183",
+    "peak_load1": 25.28,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 25.3, above 16.0"
+   },
+   "errors": [],
+   "window_s": 30,
+   "cpu_pct_core": {
+    "avg": 1.1,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 158.2,
+    "rss": 168.0,
+    "anon": 58.3,
+    "private_working_set": null,
+    "pss_peak": 158.2
+   }
+  }
+ },
+ "comparability_notes": [
+  "Phase 0 format check, not a measurement of the client: a placeholder window, no sign-in, no message list, no voice.",
+  "Not comparable with the baseline's a_idle, which is why the scenario has its own name.",
+  "Lavapipe under Xvfb: RSS and PSS include software-Vulkan mappings, and CPU includes software rasterizing."
+ ]
+}

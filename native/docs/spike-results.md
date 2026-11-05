@@ -71,11 +71,14 @@ Measured with 10 publishers and 1 subscriber, using `lk` (the Go SDK) against
 | ICE range | Connected | UDP ports in use | Port errors in the server log |
 |---|---|---|---|
 | 200 ports | 11 of 11 | 80 at peak, 74 settled | 0 |
-| 20 ports | **3 of 11** | 20 (exhausted) | RESULT_20_PORT_ERRORS |
+| 20 ports | **3 of 11** | 20 (exhausted) | **0** |
 
 Each peer holds about 8 ports while connecting and about 6 afterwards. That's far above the 2
 per peer the design assumed, and I didn't investigate why. The Rust SDK may differ, so T1
 should re-measure with its real client.
+
+**Exhaustion is silent:** the 4th peer onward simply never connects, and the server logs
+nothing about ports. A rig that sees missing participants should check the range first.
 
 - `scripts/lk-stack.sh` defaults to 200 ports, the same size the baseline harness uses.
 - `docker-compose.voice-e2e.yml` and its host overlay stay at 20 ports. That's fine for their
@@ -126,10 +129,43 @@ only if T1 needs a patch or the snapshots stall. Keep a vendored mirror for rele
 
 ## Phase 0 verification
 
-RESULT_VERIFY
+`native/scripts/verify.sh` on commit `e30204d8`, in image `semaphore-native-build:2bc850bf4d1c`
+(clang 23.1.4, rustc 1.99.1, Mesa 26.2.6, cargo-deny 0.20.2). All 14 steps exited 0.
+
+| Step | Result |
+|---|---|
+| `cargo build --workspace` | Pass |
+| `cargo test -p semaphore-core` | 13 passed |
+| `cargo fmt --check`, `cargo clippy -D warnings` | Pass |
+| `cargo deny check` | advisories, bans, licenses, sources ok (7 advisories ignored by ID, listed above) |
+| Core boundary | 18 dependencies, none UI, desktop-only or C-building |
+| Guards reject bad input | Rejected a GPL dependency, `ring`, a UI crate, a media crate and an invalid result; accepted our AGPL crate |
+| Core `cargo check` on Android and iOS | Pass, with no NDK or Xcode in the image |
+| T10 screenshot on lavapipe | `results/phase0/shots/shell-connected.png`, looked at by eye |
+| Release binary joins a real LiveKit room | Connected and left; the server log shows the session |
+| Result JSON | `results/phase0/native-shell.json` validates against `semaphore-native-baseline-result-v1` (schema file sha256 `494befa287c0fe42...`, from the baseline agent's uncommitted worktree) |
+
+**T10 early numbers, which are not T10's verdict:** identical PNG hash in separate processes
+and across container runs. Three edit-rebuild-render loops took 12.0 s, 6.5 s and 6.1 s on this
+32-thread host, with only a `touch` as the edit. The bar is under 60 s, and the 20-run test is
+Phase 1 work.
+
+**Shell numbers, for shape only:** 66.2 MB stripped, PSS 158 MB, RSS 168 MB, anon 58 MB, about
+1% of a core, under Xvfb on lavapipe. The run is marked `provisional` because other agents had
+load1 at 53 on this machine. Don't quote these as client numbers.
+
+**Not run, because the branch isn't pushed:** every job in
+`.github/workflows/native-spike.yml`.
+
+- The `windows-link` job has never run. libwebrtc plus GPUI on MSVC remains unproven.
+- The `core-mobile` job runs outside the image, on a stock runner. Its commands passed in the
+  image only, so that form is unproven too.
+- The `checks` job's two result steps will fail until `result.schema.json` reaches this branch.
 
 ## Known limits of Phase 0
 
+- The probe connects to a room but publishes and subscribes to nothing: it proves libwebrtc
+  links and signalling and ICE work, not media flow.
 - `semaphore-core` is a stub of the right shape: 13 tests cover its cache and lifecycle, and
   nothing real calls it yet.
 - The core mobile check proves core alone. `semaphore-net` and `semaphore-media-livekit` still
