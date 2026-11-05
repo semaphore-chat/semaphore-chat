@@ -115,12 +115,64 @@ nothing about ports. A rig that sees missing participants should check the range
   (checked `gpui-pre`, `gpui-pre-platform`, `gpui-kit`). Anyone with that token can publish.
 - **What it isn't:** a fork, by its own policy. gpui-kit's `CONTRIBUTING.md` says snapshots
   must not carry behavioural patches. Each manifest records its source: 0.3.11 says
-  `zed-rev = f816e1f9263e3a8ef63c4baaa02e1441ce1c6038`. **Nobody has checked that claim** by
-  diffing a snapshot against that Zed commit.
+  `zed-rev = f816e1f9263e3a8ef63c4baaa02e1441ce1c6038`. That claim is now checked: see the audit
+  verdict below.
 - **Protection today:** the exact pin and `Cargo.lock`'s checksums stop a new publish reaching
   us unless we choose to bump. crates.io keeps yanked versions available to existing lockfiles.
 - **Exposure:** every bump is unreviewed third-party code, the bump itself is on someone else's
   schedule, and if the account goes quiet, snapshots stop.
+
+### Audit verdict: `gpui-pre` 0.3.11 against Zed
+
+**Accept.** None of the 14 unexpected differences changes runtime behaviour beyond what its comment
+says, and none adds network, process or file access to anything we ship. Raw data:
+`results/gpui-pre-audit.md`, `results/gpui-pre-reqwest-audit.md`.
+
+| Diff | Files | What it is | Verdict |
+|---|---|---|---|
+| `gpui-pre` | `src/action.rs` | The `actions!` derive says `$crate::Action` instead of `gpui::Action` | Harmless |
+| `gpui-pre-apple` | `build.rs` | Reads gpui's sources from `vendor/gpui`, not `../gpui` | Harmless. macOS and iOS only: `cargo tree` finds no path to this crate from the app on Linux or Windows |
+| `gpui-pre-apple` | 5 files under `vendor/gpui/src` | Copies for that build script. The audit's network, process and unsafe flags are keyword hits in gpui's own code | Harmless. Byte-identical to Zed per the audit; I also `cmp`'d each against `gpui-pre`'s own file |
+| `gpui-pre-macros` | `Cargo.toml` | Adds `proc-macro-crate` 3.5.0 | **Note 1** |
+| `gpui-pre-macros` | `src/gpui_macros.rs` | Wraps all 19 macro entry points in `rewrite()`. Lines are only added; existing bodies move, unchanged, into inner functions | Harmless |
+| `gpui-pre-macros` | `src/gpui_pre_facade_paths.rs` | The rewriter: `gpui::` and `gpui_platform::` become `gpui_kit::` and `gpui_kit::platform::` | **Note 2** |
+| `gpui-pre-reqwest` | Whole crate, no Zed commit claimed | Every source file is byte-identical to `zed-industries/reqwest@68a26f46`. That fork adds one thing to reqwest: a per-request redirect policy, +96/-6 lines, with no TLS, proxy or unsafe changes | Harmless. **Note 3** |
+| `gpui-pre-wgpu` | `wgpu_atlas.rs`, `wgpu_context.rs`, `wgpu_renderer.rs` | Adapts to crates.io wgpu 30.0.1: drops `default_queue`, `has_srgb_suffix()` becomes `is_srgb()` | Harmless. **Note 4** |
+
+**The macro rewriter (I read all 87 lines).** It maps tokens, recursing into groups, and adds only
+`crate`, `platform` and the name Cargo reports for `gpui-kit`, which comes from our own manifest. It
+has no file, network or process calls of its own, and generated code gets nothing beyond the renamed
+paths. It's cruder than it needs to be, and neither flaw affects the shipped client:
+
+- **It checks only what follows an identifier.** `foo::gpui::bar` would become `foo::gpui_kit::bar`.
+- **It rewrites string literals containing `::gpui::`, in anything a macro re-emits.** Only
+  attribute macros re-emit caller code, so a literal in a `#[gpui::test]` body would change silently.
+  Don't test GPUI paths through string literals.
+
+**Notes**
+
+1. **`proc-macro-crate` spawns a process at compile time.** `workspace_manifest_path` runs
+   `$CARGO locate-project`. Our build already runs Cargo, and nothing of this reaches the binary.
+2. **The rewriter can't make a macro leave gpui's own paths.** A crate that doesn't depend on `gpui-kit`
+   keeps `gpui::` unchanged, which is why the T1 rig, on bare `gpui-pre`, still built.
+3. **`cargo deny` is blind to this crate.** An advisory filed against `reqwest` won't match the name
+   `gpui-pre-reqwest`, and the fork doesn't track upstream fixes. It isn't linked into `semaphore-app`
+   on Linux or Windows; workspace builds reach it through `gpui-kit-assets`. Check this on each bump.
+4. **We don't run the wgpu Zed runs.** Zed's source at this commit targets a different wgpu API, so
+   Zed's own testing says less about this renderer than the name suggests (my inference; I didn't
+   inspect Zed's wgpu pin).
+
+**What this doesn't establish.**
+
+- It shows the snapshot matches Zed, not that Zed's code is safe.
+- The byte comparison is the audit script's. I read its output and spot-checked locally, but didn't
+  rerun it against Zed.
+- **Crates outside the audit, still unreviewed:** `gpui-kit`, `gpui-component`, `gpui-base` and
+  `gpui-kit-assets` (the same publisher), and `zed-font-kit` and `zed-xim` (Linux). All of them
+  link into the app. Extend the audit to them at the go decision.
+
+Vendoring removes the two patched crates' checksums from `Cargo.lock`, so `third_party/series`
+carries them, and `audit-gpui-pre.sh` needs the unpatched lock (see `third_party/README.md`).
 
 ### What vendoring or mirroring would take, at the go decision
 

@@ -1,0 +1,77 @@
+--- a/gpui-pre-wgpu/src/gpui_wgpu.rs
++++ b/gpui-pre-wgpu/src/gpui_wgpu.rs
+@@ -1,3 +1,4 @@
++pub mod telemetry;
+ mod cosmic_text_system;
+ mod wgpu_atlas;
+ mod wgpu_context;
+--- a/gpui-pre-wgpu/src/telemetry.rs
++++ b/gpui-pre-wgpu/src/telemetry.rs
+@@ -0,0 +1,22 @@
++//! RIG ONLY, not part of the proposed patch: counters the rig reads.
++use parking_lot::Mutex;
++use std::sync::{Arc, OnceLock, atomic::{AtomicI64, AtomicU64, Ordering::Relaxed}};
++use std::time::Instant;
++
++static TEXTURES_CREATED: AtomicU64 = AtomicU64::new(0);
++static ATLAS_LIVE_BYTES: AtomicI64 = AtomicI64::new(0);
++static PRESENTS: Mutex<Vec<Instant>> = Mutex::new(Vec::new());
++static DEVICE: OnceLock<Arc<wgpu::Device>> = OnceLock::new();
++
++pub fn note_texture_created(n: u64) { TEXTURES_CREATED.fetch_add(n, Relaxed); }
++pub fn note_atlas_alloc(bytes: i64) { ATLAS_LIVE_BYTES.fetch_add(bytes, Relaxed); }
++pub fn note_present() { PRESENTS.lock().push(Instant::now()); }
++pub fn set_device(device: Arc<wgpu::Device>) { let _ = DEVICE.set(device); }
++pub fn textures_created() -> u64 { TEXTURES_CREATED.load(Relaxed) }
++pub fn atlas_live_bytes() -> i64 { ATLAS_LIVE_BYTES.load(Relaxed) }
++pub fn take_presents() -> Vec<Instant> { std::mem::take(&mut *PRESENTS.lock()) }
++/// (allocated, reserved) bytes from wgpu's allocator.
++pub fn allocator() -> Option<(u64, u64)> {
++    let report = DEVICE.get()?.generate_allocator_report()?;
++    Some((report.total_allocated_bytes, report.total_reserved_bytes))
++}
+--- a/gpui-pre-wgpu/src/wgpu_atlas.rs
++++ b/gpui-pre-wgpu/src/wgpu_atlas.rs
+@@ -56,6 +56,7 @@
+         };
+         let y = plane("video_y", width, height, wgpu::TextureFormat::R8Unorm);
+         let uv = plane("video_uv", width.div_ceil(2), height.div_ceil(2), wgpu::TextureFormat::Rg8Unorm);
++        crate::telemetry::note_texture_created(2);
+         Arc::new(WgpuVideoTexture {
+             generation: self.next_generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+             size: (width, height),
+@@ -147,6 +148,7 @@
+         color_texture_format: wgpu::TextureFormat,
+     ) -> Self {
+         let max_texture_size = device.limits().max_texture_dimension_2d;
++        crate::telemetry::set_device(device.clone());
+         let video = Arc::new(WgpuVideoStore {
+             device: device.clone(),
+             queue: queue.clone(),
+@@ -256,6 +258,7 @@
+             texture.allocator.deallocate(tile.tile_id.into());
+             texture.decrement_ref_count();
+             if texture.is_unreferenced() {
++                crate::telemetry::note_atlas_alloc(-(texture.texture.width() as i64 * texture.texture.height() as i64 * texture.bytes_per_pixel() as i64));
+                 self.pending_uploads
+                     .retain(|upload| upload.id != texture.id);
+                 self.storage[id.kind]
+@@ -311,6 +314,8 @@
+             AtlasTextureKind::Subpixel | AtlasTextureKind::Polychrome => self.color_texture_format,
+         };
+ 
++        crate::telemetry::note_texture_created(1);
++        crate::telemetry::note_atlas_alloc(size.width.0 as i64 * size.height.0 as i64 * if matches!(kind, AtlasTextureKind::Monochrome) { 1 } else { 4 });
+         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+             label: Some("atlas"),
+             size: wgpu::Extent3d {
+--- a/gpui-pre-wgpu/src/wgpu_renderer.rs
++++ b/gpui-pre-wgpu/src/wgpu_renderer.rs
+@@ -1244,6 +1244,7 @@
+         }
+ 
+         core.resources.queue.present(frame);
++        crate::telemetry::note_present();
+         true
+     }
+ }

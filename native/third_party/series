@@ -1,0 +1,4 @@
+# What vendor.sh builds. One crate per line. `-` means vendored unpatched.
+# crate        version  sha256 of the .crate (from the unpatched Cargo.lock)                patch
+gpui-pre       0.3.11   9303c771abf2acff2a96d706f69d9a82088c4770173a07cce88f0002431d887d    patches/gpui-pre.patch
+gpui-pre-wgpu  0.3.11   211cf352de1a0b0c9bea3f105df5572ce1d2c899389b924a888e5af36b50f93d    patches/gpui-pre-wgpu.patch
