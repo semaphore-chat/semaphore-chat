@@ -41,6 +41,7 @@ function renderWithTheme(ui: React.ReactElement) {
 
 function makeMetadata(overrides: Partial<FileMetadata> = {}): FileMetadata {
   return {
+    hasThumbnail: false,
     id: 'file-1',
     filename: 'test-file.txt',
     mimeType: 'text/plain',

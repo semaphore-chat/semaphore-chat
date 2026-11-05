@@ -134,15 +134,7 @@ export class ThreadsGateway
         {
           parentMessageId: payload.parentMessageId,
           replyCount: parentMessage.replyCount,
-          // Cast, not converted: this hands the raw Date straight through
-          // to WebsocketService.sendToRoom() unchanged — no per-call-site
-          // conversion needed. The payload's declared wire type is the
-          // post-serialization `string | null` shape; WebsocketService now
-          // normalizes every payload to that JSON wire form (Date -> ISO
-          // string) right before `.emit()`, so this cast is purely a
-          // static-type relabeling and the runtime already matches it.
-          // See toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-          lastReplyAt: parentMessage.lastReplyAt as unknown as string | null,
+          lastReplyAt: parentMessage.lastReplyAt?.toISOString() ?? null,
           channelId: parentMessage.channelId ?? null,
           directMessageGroupId: parentMessage.directMessageGroupId ?? null,
         },

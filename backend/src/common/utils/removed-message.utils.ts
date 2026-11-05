@@ -4,6 +4,18 @@ export interface RemovableMessage {
   channelId?: string | null;
 }
 
+const BLANK_FIELDS = {
+  spans: [],
+  attachments: [],
+  reactions: [],
+  linkPreviews: null,
+  pendingAttachments: 0,
+  replyToId: null,
+  replyTo: null,
+  deletedBy: null,
+  deletedByReason: null,
+};
+
 /**
  * The form of a removed message for readers who may not see its content: it
  * keeps its identity, author and timestamps, and nothing it said. Rows stay
@@ -11,19 +23,11 @@ export interface RemovableMessage {
  */
 export function blankRemovedMessage<T extends RemovableMessage>(message: T): T {
   if (!message.deletedAt) return message;
-  return {
-    ...message,
-    spans: [],
-    attachments: [],
-    reactions: [],
-    linkPreviews: null,
-    pendingAttachments: 0,
-    replyToId: null,
-    replyTo: null,
-    searchText: null,
-    deletedBy: null,
-    deletedByReason: null,
-  };
+  const blanked = { ...message } as Record<string, unknown>;
+  for (const [field, blank] of Object.entries(BLANK_FIELDS)) {
+    if (field in blanked) blanked[field] = blank;
+  }
+  return blanked as T;
 }
 
 /**

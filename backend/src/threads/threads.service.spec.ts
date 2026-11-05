@@ -168,7 +168,12 @@ describe('ThreadsService', () => {
 
       const result = await service.createThreadReply(dto, authorId);
 
-      expect(result).toMatchObject(reply);
+      expect(result).toMatchObject({
+        id: reply.id,
+        authorId,
+        parentMessageId,
+        sentAt: reply.sentAt.toISOString(),
+      });
       expect(result).toHaveProperty('spans');
       expect(result).toHaveProperty('reactions');
       expect(result).toHaveProperty('attachments');
@@ -208,7 +213,12 @@ describe('ThreadsService', () => {
         authorId,
       );
 
-      expect(result).toMatchObject(reply);
+      expect(result).toMatchObject({
+        id: reply.id,
+        authorId,
+        parentMessageId,
+        sentAt: reply.sentAt.toISOString(),
+      });
     });
 
     it('should auto-subscribe the replier to the thread', async () => {

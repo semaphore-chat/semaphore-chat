@@ -109,8 +109,8 @@ jobs:
           JWT_REFRESH_SECRET: generate-openapi-spec-refresh
         run: |
           pnpm run generate:openapi
-          if ! git diff --exit-code openapi.json; then
-            echo "::error file=backend/openapi.json::backend/openapi.json is out of date. Run 'pnpm run generate:openapi' in backend/ and commit the regenerated file."
+          if ! git diff --exit-code openapi.json socket-events.json; then
+            echo "::error file=backend/openapi.json::backend/openapi.json or socket-events.json is out of date. Run 'pnpm run generate:openapi' in backend/ and commit the regenerated files."
             exit 1
           fi
 

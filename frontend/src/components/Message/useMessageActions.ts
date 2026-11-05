@@ -72,10 +72,8 @@ function updateCache(
 /**
  * Update only the reactions field on a cached message.
  *
- * Reaction endpoints return a raw MessageDto (attachments as plain IDs),
- * not an EnrichedMessageDto. Replacing the whole cached message would
- * overwrite enriched attachment metadata and crash components that
- * depend on it (e.g. DownloadLink accessing metadata.mimeType).
+ * Reaction endpoints answer with a MessageReactionsDto: the message's location
+ * and reactions only, so the rest of the cached message stays as it is.
  */
 function updateReactionsInCache(
   queryClient: ReturnType<typeof useQueryClient>,

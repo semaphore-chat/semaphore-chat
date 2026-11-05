@@ -55,6 +55,12 @@ const NOTIFICATION_INCLUDE = {
   },
 } as const;
 
+/** What notifying about a thread reply needs from it. */
+type ThreadReplyTarget = Pick<
+  Message,
+  'id' | 'channelId' | 'directMessageGroupId' | 'authorId'
+>;
+
 @Injectable()
 export class NotificationsService {
   private readonly logger = new Logger(NotificationsService.name);
@@ -1052,7 +1058,7 @@ export class NotificationsService {
    * Notifies all thread subscribers (excluding the reply author).
    */
   async processThreadReplyNotifications(
-    reply: Message,
+    reply: ThreadReplyTarget,
     parentMessageId: string,
     authorId: string,
   ): Promise<void> {
@@ -1120,7 +1126,7 @@ export class NotificationsService {
    */
   private async createNotificationIfAllowedForThread(
     userId: string,
-    reply: Message,
+    reply: ThreadReplyTarget,
     parentMessageId: string,
   ): Promise<Notification | null> {
     // Check if user should be notified based on settings

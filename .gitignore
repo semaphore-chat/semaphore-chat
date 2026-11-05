@@ -109,3 +109,6 @@ docs-site/site/
 
 # UI review tool (frontend/scripts/ui-review/): work dir + temporary base worktree
 /.ui-review/
+
+# Recorded by message-wire-contract.e2e-spec.ts; the copy the frontend replays lives in frontend/src/__tests__/fixtures
+backend/test/fixtures/

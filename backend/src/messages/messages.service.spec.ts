@@ -1307,7 +1307,7 @@ describe('MessagesService', () => {
 
       const result = await service.addAttachment(messageId, fileId);
 
-      expect(result).toBe(message);
+      expect(result.id).toBe(messageId);
       expect(mockDatabase.messageAttachment.createMany).toHaveBeenCalledWith({
         data: [{ messageId, fileId, position: 1 }],
         skipDuplicates: true,
@@ -1320,91 +1320,6 @@ describe('MessagesService', () => {
         }),
       });
       expect(mockDatabase.message.update).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('enrichMessageWithFileMetadata', () => {
-    it('should format message with included file metadata', async () => {
-      const file1 = {
-        id: 'file-1',
-        filename: 'test.jpg',
-        mimeType: 'image/jpeg',
-        fileType: FileType.IMAGE,
-        size: 1024,
-        thumbnailPath: null,
-      };
-      const file2 = {
-        id: 'file-2',
-        filename: 'doc.pdf',
-        mimeType: 'application/pdf',
-        fileType: FileType.DOCUMENT,
-        size: 2048,
-        thumbnailPath: null,
-      };
-      const message = buildMessageWithIncludes({}, [file1, file2]);
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      // toFileMetadata strips thumbnailPath and adds hasThumbnail
-      expect(result.attachments).toEqual([
-        {
-          id: file1.id,
-          filename: file1.filename,
-          mimeType: file1.mimeType,
-          fileType: file1.fileType,
-          size: file1.size,
-          hasThumbnail: false,
-        },
-        {
-          id: file2.id,
-          filename: file2.filename,
-          mimeType: file2.mimeType,
-          fileType: file2.fileType,
-          size: file2.size,
-          hasThumbnail: false,
-        },
-      ]);
-      // No file.findMany needed - data comes from includes
-      expect(mockDatabase.file.findMany).not.toHaveBeenCalled();
-    });
-
-    it('should return empty attachments when message has no files', async () => {
-      const message = buildMessageWithIncludes({});
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      expect(result.attachments).toEqual([]);
-      expect(mockDatabase.file.findMany).not.toHaveBeenCalled();
-    });
-
-    it('should set hasThumbnail to true when file has thumbnailPath', async () => {
-      const videoFile = {
-        id: 'vid-1',
-        filename: 'video.mp4',
-        mimeType: 'video/mp4',
-        fileType: FileType.VIDEO,
-        size: 5000,
-        thumbnailPath: '/uploads/thumbnails/vid-1.jpg',
-      };
-      const imageFile = {
-        id: 'img-1',
-        filename: 'photo.jpg',
-        mimeType: 'image/jpeg',
-        fileType: FileType.IMAGE,
-        size: 2000,
-        thumbnailPath: null,
-      };
-      const message = buildMessageWithIncludes({}, [videoFile, imageFile]);
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      expect(result.attachments).toHaveLength(2);
-      expect(
-        (result.attachments[0] as { hasThumbnail: boolean }).hasThumbnail,
-      ).toBe(true);
-      expect(
-        (result.attachments[1] as { hasThumbnail: boolean }).hasThumbnail,
-      ).toBe(false);
     });
   });
 

@@ -5,7 +5,7 @@
  */
 
 import { ClientEvents } from '../events/client-events.enum';
-import { Span, FileMetadata } from '../types/message.types';
+import type { CreateMessageDto } from '../generated';
 import {
   ServerEventPayloads,
   ReauthenticateResult,
@@ -35,21 +35,13 @@ export type ClientToServerEvents = {
 
   // Messaging: Channels
   [ClientEvents.SEND_MESSAGE]: (
-    data: {
-      channelId: string;
-      spans: Span[];
-      attachments: FileMetadata[];
-    },
+    data: CreateMessageDto & { channelId: string },
     callback?: (messageId: string) => void
   ) => void;
 
   // Messaging: Direct Messages
   [ClientEvents.SEND_DM]: (
-    data: {
-      directMessageGroupId: string;
-      spans: Span[];
-      attachments: FileMetadata[];
-    },
+    data: CreateMessageDto & { directMessageGroupId: string },
     callback?: (messageId: string) => void
   ) => void;
 
@@ -68,7 +60,7 @@ export type ClientToServerEvents = {
   [ClientEvents.SEND_THREAD_REPLY]: (
     data: {
       parentMessageId: string;
-      spans: Span[];
+      spans: CreateMessageDto['spans'];
       attachments?: string[];
       pendingAttachments?: number;
     },

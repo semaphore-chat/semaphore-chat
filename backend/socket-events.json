@@ -1,0 +1,92 @@
+{
+  "description": "Socket.IO events and the OpenAPI component each payload follows. Readers must ignore unknown events and unknown fields, and treat an unknown enum value as a fallback.",
+  "server": {
+    "deleteMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DeleteMessagePayloadDto"
+      }
+    },
+    "deleteThreadReply": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DeleteThreadReplyPayloadDto"
+      }
+    },
+    "messagePinned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/MessagePinnedPayloadDto"
+      }
+    },
+    "messageUnpinned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/MessageUnpinnedPayloadDto"
+      }
+    },
+    "newDirectMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NewMessagePayloadDto"
+      }
+    },
+    "newMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NewMessagePayloadDto"
+      }
+    },
+    "newThreadReply": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NewThreadReplyPayloadDto"
+      }
+    },
+    "reactionAdded": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReactionAddedPayloadDto"
+      }
+    },
+    "reactionRemoved": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReactionRemovedPayloadDto"
+      }
+    },
+    "threadReplyCountUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ThreadReplyCountUpdatedPayloadDto"
+      }
+    },
+    "updateMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UpdateMessagePayloadDto"
+      }
+    },
+    "updateThreadReply": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UpdateThreadReplyPayloadDto"
+      }
+    }
+  },
+  "client": {
+    "addReaction": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/AddReactionDto"
+      }
+    },
+    "removeReaction": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RemoveReactionDto"
+      }
+    },
+    "sendDirectMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CreateMessageDto"
+      }
+    },
+    "sendMessage": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CreateMessageDto"
+      }
+    },
+    "sendThreadReply": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/SendThreadReplyDto"
+      }
+    }
+  }
+}

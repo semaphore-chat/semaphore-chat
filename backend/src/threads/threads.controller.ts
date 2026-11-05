@@ -33,10 +33,10 @@ import {
 
 import { AuthenticatedRequest } from '@/types';
 import {
-  ThreadReplyDto,
   ThreadRepliesResponseDto,
   ThreadMetadataDto,
 } from './dto/thread-response.dto';
+import { MessageDto } from '@/messages/dto/message-response.dto';
 
 /**
  * Controller for thread operations.
@@ -60,12 +60,12 @@ export class ThreadsController {
     idKey: 'parentMessageId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiCreatedResponse({ type: ThreadReplyDto })
+  @ApiCreatedResponse({ type: MessageDto })
   async createReply(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Body() body: CreateThreadReplyBodyDto,
     @Req() req: AuthenticatedRequest,
-  ): Promise<ThreadReplyDto> {
+  ): Promise<MessageDto> {
     const dto: CreateThreadReplyDto = {
       ...body,
       parentMessageId,

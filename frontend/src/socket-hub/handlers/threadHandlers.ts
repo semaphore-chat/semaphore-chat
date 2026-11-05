@@ -6,7 +6,7 @@ import type {
   ServerEvents,
 } from '@semaphore-chat/shared';
 import { threadsControllerGetRepliesQueryKey } from '../../api-client/@tanstack/react-query.gen';
-import type { ThreadRepliesResponseDto, EnrichedThreadReplyDto } from '../../api-client';
+import type { ThreadRepliesResponseDto } from '../../api-client';
 import type { SocketEventHandler } from './types';
 
 function getRepliesQueryKey(parentMessageId: string) {
@@ -27,7 +27,7 @@ export const handleNewThreadReply: SocketEventHandler<typeof ServerEvents.NEW_TH
     if (old.replies.some((r) => r.id === payload.reply.id)) return old;
     return {
       ...old,
-      replies: [...old.replies, payload.reply as unknown as EnrichedThreadReplyDto],
+      replies: [...old.replies, payload.reply],
     };
   });
 };
@@ -43,7 +43,7 @@ export const handleUpdateThreadReply: SocketEventHandler<typeof ServerEvents.UPD
     return {
       ...old,
       replies: old.replies.map((r) =>
-        r.id === payload.reply.id ? (payload.reply as unknown as EnrichedThreadReplyDto) : r,
+        r.id === payload.reply.id ? payload.reply : r,
       ),
     };
   });

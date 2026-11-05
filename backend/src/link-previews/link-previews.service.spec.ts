@@ -3,7 +3,7 @@ import type { Mocked } from '@suites/doubles.jest';
 import { LinkPreviewsService } from './link-previews.service';
 import { DatabaseService } from '@/database/database.service';
 import { WebsocketService } from '@/websocket/websocket.service';
-import { createMockDatabase } from '@/test-utils';
+import { createMockDatabase, MessageFactory } from '@/test-utils';
 import * as linkPreviewUtils from './link-preview.utils';
 import { ServerEvents } from '@semaphore-chat/shared';
 
@@ -233,6 +233,7 @@ describe('LinkPreviewsService', () => {
 
       // Second findUnique: re-read with includes for broadcast
       const updatedMessage = {
+        ...MessageFactory.build(),
         id: messageId,
         channelId: 'ch-1',
         authorId: 'user-1',
@@ -297,6 +298,7 @@ describe('LinkPreviewsService', () => {
       });
       mockDatabase.message.update.mockResolvedValue({});
       mockDatabase.message.findUnique.mockResolvedValueOnce({
+        ...MessageFactory.build(),
         id: messageId,
         linkPreviews: [successPreview],
         spans: [],
@@ -334,6 +336,7 @@ describe('LinkPreviewsService', () => {
       mockDatabase.message.update.mockResolvedValue({});
 
       const updatedMessage = {
+        ...MessageFactory.build(),
         id: messageId,
         linkPreviews: [preview],
         spans: [],

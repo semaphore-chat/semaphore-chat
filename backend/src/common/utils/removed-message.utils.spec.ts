@@ -13,7 +13,6 @@ describe('removed-message utils', () => {
     deletedAt: new Date('2026-01-01'),
     deletedBy: 'moderator',
     deletedByReason: 'reason',
-    searchText: 'text',
     spans: ['text'],
     attachments: ['file'],
     reactions: ['reaction'],
@@ -28,6 +27,16 @@ describe('removed-message utils', () => {
       expect(blankRemovedMessage(live)).toBe(live);
     });
 
+    it('only blanks the fields the row has', () => {
+      expect(
+        blankRemovedMessage({
+          id: 'removed',
+          deletedAt: removed.deletedAt,
+          reactions: ['reaction'],
+        }),
+      ).toEqual({ id: 'removed', deletedAt: removed.deletedAt, reactions: [] });
+    });
+
     it('keeps identity and timestamps, and drops everything it said', () => {
       expect(blankRemovedMessage(removed)).toEqual({
         id: 'removed',
@@ -37,7 +46,6 @@ describe('removed-message utils', () => {
         deletedAt: removed.deletedAt,
         deletedBy: null,
         deletedByReason: null,
-        searchText: null,
         spans: [],
         attachments: [],
         reactions: [],

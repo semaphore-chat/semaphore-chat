@@ -12,29 +12,9 @@ import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
 import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { ChannelAccessService } from '@/roles/channel-access.service';
-import { groupReactions } from '@/common/utils/reactions.utils';
 import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
-import { Message, $Enums, FileType } from '@prisma/client';
-
-/** Prisma select shape for file metadata sent to clients */
-const FILE_METADATA_SELECT = {
-  id: true,
-  filename: true,
-  mimeType: true,
-  fileType: true,
-  size: true,
-  thumbnailPath: true,
-} as const;
-
-/** Standard includes for loading a message with its relations */
-const MESSAGE_INCLUDE = {
-  spans: { orderBy: { position: 'asc' as const } },
-  reactions: true,
-  attachments: {
-    include: { file: { select: FILE_METADATA_SELECT } },
-    orderBy: { position: 'asc' as const },
-  },
-} as const;
+import { MESSAGE_INCLUDE, toMessageDto } from '@/messages/message.mapper';
+import { Message, $Enums } from '@prisma/client';
 
 /**
  * Service for managing message threads.
@@ -225,7 +205,7 @@ export class ThreadsService {
       `Created thread reply ${result.id} for parent ${parentMessageId}`,
     );
 
-    return this.formatMessage(result);
+    return toMessageDto(result);
   }
 
   /**
@@ -298,9 +278,7 @@ export class ThreadsService {
       );
 
     // Transform replies: group reactions and convert attachments to file metadata
-    const repliesWithMetadata = replies.map((reply) =>
-      this.formatMessage(reply),
-    );
+    const repliesWithMetadata = replies.map(toMessageDto);
 
     return { replies: repliesWithMetadata, continuationToken: nextToken };
   }
@@ -432,55 +410,5 @@ export class ThreadsService {
         replyCount: { decrement: 1 },
       },
     });
-  }
-
-  /**
-   * Format a message with included relations into the shape expected by clients.
-   * Converts MessageReaction[] to { emoji, userIds[] }[] and
-   * MessageAttachment[] to file metadata objects.
-   */
-  private formatMessage<
-    T extends {
-      spans?: {
-        position: number;
-        type: string;
-        text: string | null;
-        userId: string | null;
-        specialKind: string | null;
-        communityId: string | null;
-        aliasId: string | null;
-        bold: boolean | null;
-        italic: boolean | null;
-        strikethrough: boolean | null;
-        code: boolean | null;
-      }[];
-      reactions?: { emoji: string; userId: string }[];
-      attachments?: {
-        file: {
-          id: string;
-          filename: string;
-          mimeType: string;
-          fileType: FileType;
-          size: number;
-          thumbnailPath: string | null;
-        };
-      }[];
-    },
-  >(message: T) {
-    return {
-      ...message,
-      spans: message.spans ?? [],
-      reactions: message.reactions ? groupReactions(message.reactions) : [],
-      attachments: message.attachments
-        ? message.attachments.map((a) => ({
-            id: a.file.id,
-            filename: a.file.filename,
-            mimeType: a.file.mimeType,
-            fileType: a.file.fileType,
-            size: a.file.size,
-            hasThumbnail: !!a.file.thumbnailPath,
-          }))
-        : [],
-    };
   }
 }

@@ -6,11 +6,16 @@ import { SocketContext } from "../utils/SocketContext";
 import { ClientEvents } from '@semaphore-chat/shared';
 import type { Message } from "../types/message.type";
 
-// Omit id for new message payloads. sendStatus/clientId are cache-local
-// fields added for optimistic sending (see types/message.type.ts) — they
-// must never be part of an outgoing socket payload, so they're excluded
-// here too, not just left optional.
-export type NewMessagePayload = Omit<Message, "id" | "sendStatus" | "clientId">;
+// What a send starts from: what the message says, plus what an optimistic row
+// shows until the server answers. sendStatus/clientId are cache-local fields
+// (see types/message.type.ts) and must never be part of an outgoing socket
+// payload, so they aren't here.
+export type NewMessagePayload = Pick<Message, "authorId" | "spans" | "attachments" | "reactions" | "sentAt"> & {
+  channelId?: string | null;
+  directMessageGroupId?: string | null;
+  pendingAttachments?: number | null;
+  replyToId?: string | null;
+};
 
 export type MessageContext = VoiceSessionType;
 
@@ -101,16 +106,17 @@ export function useSendMessage(
           // event and implies which context id the payload carries (callers
           // build the payload for the same context they pass as contextType),
           // hence the narrowing assertions.
+          const wirePayload = { ...payload, attachments: payload.attachments.map((file) => file.id) };
           if (contextType === VoiceSessionType.Channel) {
             socket.emit(
               ClientEvents.SEND_MESSAGE,
-              payload as NewMessagePayload & { channelId: string },
+              wirePayload as typeof wirePayload & { channelId: string },
               ack,
             );
           } else {
             socket.emit(
               ClientEvents.SEND_DM,
-              payload as NewMessagePayload & { directMessageGroupId: string },
+              wirePayload as typeof wirePayload & { directMessageGroupId: string },
               ack,
             );
           }

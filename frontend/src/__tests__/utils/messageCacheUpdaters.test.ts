@@ -135,7 +135,7 @@ describe('updateMessageInInfinite', () => {
     const data = createInfiniteData([promoted]);
 
     // A server payload (e.g. an attachment landing) never carries a clientId.
-    const withFile = createMessage({ id: 'msg-1', attachments: [{ id: 'file-1', filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1 }] });
+    const withFile = createMessage({ id: 'msg-1', attachments: [{ id: 'file-1', filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1, hasThumbnail: false }] });
     const result = updateMessageInInfinite(data, withFile);
 
     expect(result!.pages[0].messages[0]).toMatchObject({ id: 'msg-1', clientId: 'pending-1' });

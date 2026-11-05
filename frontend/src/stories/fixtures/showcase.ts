@@ -434,7 +434,7 @@ const devMessages: Message[] = [
   devPriyaImage,
   msg(dev, U.diego, at('13:44'), 'These are so good. The illustration style matches onboarding perfectly', {
     replyToId: devPriyaImage.id,
-    replyTo: { id: devPriyaImage.id, authorId: U.priya.id, spans: devPriyaImage.spans, sentAt: devPriyaImage.sentAt },
+    replyTo: { id: devPriyaImage.id, authorId: U.priya.id, spans: devPriyaImage.spans, sentAt: devPriyaImage.sentAt, deletedAt: null },
   }),
   msg(dev, U.marcus, at('13:58'), [text('Reconnect fix is up for review 👉 https://github.com/lumen-studio/lumen/pull/482')], {
     linkPreviews: [prPreview],

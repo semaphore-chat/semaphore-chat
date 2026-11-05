@@ -115,6 +115,7 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
     mimeType: att.mimeType,
     fileType: att.fileType,
     size: att.size,
+    hasThumbnail: false,
   });
 
   if (error) {

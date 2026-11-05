@@ -101,10 +101,9 @@ describe('MessagesController', () => {
         authorId: mockUser.id,
       });
 
-      const enrichedMessage = { ...mockMessage, attachments: [] };
+      const enrichedMessage = mockMessage;
 
       service.create.mockResolvedValue(mockMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.create(mockRequest, createDto);
 
@@ -114,9 +113,6 @@ describe('MessagesController', () => {
           authorId: mockUser.id,
           sentAt: expect.any(Date),
         }),
-      );
-      expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
-        mockMessage,
       );
       expect(result).toEqual(enrichedMessage);
     });
@@ -146,9 +142,6 @@ describe('MessagesController', () => {
 
       const mockMessage = {};
       service.create.mockResolvedValue(mockMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue({
-        attachments: [],
-      });
 
       await controller.create(mockRequest, createDto);
 
@@ -329,7 +322,11 @@ describe('MessagesController', () => {
         },
       );
       expect(result).toEqual({
-        ...mockMessage,
+        id: mockMessage.id,
+        channelId: mockMessage.channelId,
+        directMessageGroupId: mockMessage.directMessageGroupId,
+        parentMessageId: null,
+        deletedAt: null,
         reactions: [{ emoji: '👍', userIds: [mockUser.id] }],
       });
     });
@@ -418,7 +415,11 @@ describe('MessagesController', () => {
         },
       );
       expect(result).toEqual({
-        ...mockMessage,
+        id: mockMessage.id,
+        channelId: mockMessage.channelId,
+        directMessageGroupId: mockMessage.directMessageGroupId,
+        parentMessageId: null,
+        deletedAt: null,
         reactions: [],
       });
     });
@@ -467,7 +468,6 @@ describe('MessagesController', () => {
         MessageFactory.build({ id: 'msg-1', channelId: 'channel-1' }) as any,
       );
       service.addAttachment.mockResolvedValue({} as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue({});
 
       await controller.addAttachment('msg-1', {}, authorReq);
 
@@ -491,13 +491,10 @@ describe('MessagesController', () => {
         pendingAttachments: 0,
       } as any);
 
-      const enrichedMessage = { ...updatedMessage, fileMetadata: {} };
+      const enrichedMessage = updatedMessage;
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.addAttachment.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        enrichedMessage as any,
-      );
 
       const result = await controller.addAttachment(
         messageId,
@@ -511,9 +508,6 @@ describe('MessagesController', () => {
         'channel-123',
       );
       expect(service.addAttachment).toHaveBeenCalledWith(messageId, 'file-abc');
-      expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
-        updatedMessage,
-      );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'channel-123',
         ServerEvents.UPDATE_MESSAGE,
@@ -535,9 +529,6 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.addAttachment.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(
-        updatedMessage as any,
-      );
 
       await controller.addAttachment(messageId, addAttachmentDto, authorReq);
 
@@ -549,17 +540,13 @@ describe('MessagesController', () => {
     it('should return a single message by ID with enriched attachments', async () => {
       const messageId = 'msg-123';
       const mockMessage = MessageFactory.build({ id: messageId });
-      const enrichedMessage = { ...mockMessage, attachments: [] };
+      const enrichedMessage = mockMessage;
 
       service.findOne.mockResolvedValue(mockMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.findOne(messageId);
 
       expect(service.findOne).toHaveBeenCalledWith(messageId);
-      expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
-        mockMessage,
-      );
       expect(result).toEqual(enrichedMessage);
     });
   });
@@ -617,11 +604,10 @@ describe('MessagesController', () => {
         id: messageId,
       });
 
-      const enrichedMessage = { ...updatedMessage, attachments: [] };
+      const enrichedMessage = updatedMessage;
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       const result = await controller.update(messageId, updateDto, authorReq);
 
@@ -630,9 +616,6 @@ describe('MessagesController', () => {
         'old-file',
       ]);
       expect(permissionsService.assertCanAttachFiles).not.toHaveBeenCalled();
-      expect(service.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
-        updatedMessage,
-      );
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'channel-123',
         ServerEvents.UPDATE_MESSAGE,
@@ -674,11 +657,9 @@ describe('MessagesController', () => {
         attachments: [],
       } as any);
       const updatedMessage = MessageFactory.build({ id: messageId });
-      const enrichedMessage = { ...updatedMessage, attachments: [] };
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       await controller.update(messageId, updateDto, authorReq);
 
@@ -698,10 +679,6 @@ describe('MessagesController', () => {
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue({
-        ...updatedMessage,
-        attachments: [],
-      });
 
       await controller.update(messageId, updateDto, authorReq);
       await controller.update(messageId, updateDto, authorReq);
@@ -723,11 +700,10 @@ describe('MessagesController', () => {
         attachments: [],
       } as any);
       const updatedMessage = MessageFactory.build({ id: messageId });
-      const enrichedMessage = { ...updatedMessage, attachments: [] };
+      const enrichedMessage = updatedMessage;
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
       (linkPreviewsQueue.add as jest.Mock).mockRejectedValue(
         new Error('redis boom'),
       );
@@ -757,11 +733,10 @@ describe('MessagesController', () => {
       } as any);
 
       const updatedMessage = MessageFactory.build();
-      const enrichedMessage = { ...updatedMessage, attachments: [] };
+      const enrichedMessage = updatedMessage;
 
       service.findOne.mockResolvedValue(originalMessage as any);
       service.update.mockResolvedValue(updatedMessage as any);
-      service.enrichMessageWithFileMetadata.mockReturnValue(enrichedMessage);
 
       await controller.update(messageId, updateDto, authorReq);
 

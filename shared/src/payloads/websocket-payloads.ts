@@ -4,7 +4,19 @@
  * Shared payload type definitions for all WebSocket events.
  */
 
-import { Message, Reaction } from '../types/message.types';
+import type {
+  DeleteMessagePayloadDto,
+  DeleteThreadReplyPayloadDto,
+  MessagePinnedPayloadDto,
+  MessageUnpinnedPayloadDto,
+  NewMessagePayloadDto,
+  NewThreadReplyPayloadDto,
+  ReactionAddedPayloadDto,
+  ReactionRemovedPayloadDto,
+  ThreadReplyCountUpdatedPayloadDto,
+  UpdateMessagePayloadDto,
+  UpdateThreadReplyPayloadDto,
+} from '../generated';
 import { Channel } from '../types/channel.types';
 import { NewNotificationPayload, NotificationReadPayload } from '../types/notification.types';
 import { ServerEvents } from '../events/server-events.enum';
@@ -95,40 +107,19 @@ export interface ErrorPayload {
 // Message Payloads
 // =============================================================================
 
-export interface NewMessagePayload {
-  message: Message;
-}
+export type NewMessagePayload = NewMessagePayloadDto;
 
-export interface UpdateMessagePayload {
-  message: Message;
-}
+export type UpdateMessagePayload = UpdateMessagePayloadDto;
 
-export interface DeleteMessagePayload {
-  messageId: string;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-}
+export type DeleteMessagePayload = DeleteMessagePayloadDto;
 
 // =============================================================================
 // Reaction Payloads
 // =============================================================================
 
-export interface ReactionAddedPayload {
-  messageId: string;
-  reaction: Reaction;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-  parentMessageId?: string | null;
-}
+export type ReactionAddedPayload = ReactionAddedPayloadDto;
 
-export interface ReactionRemovedPayload {
-  messageId: string;
-  emoji: string;
-  reactions: Reaction[];
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-  parentMessageId?: string | null;
-}
+export type ReactionRemovedPayload = ReactionRemovedPayloadDto;
 
 // =============================================================================
 // Read Receipt Payloads
@@ -275,41 +266,17 @@ export interface TimeoutRemovedPayload {
   reason?: string;
 }
 
-export interface MessagePinnedPayload {
-  messageId: string;
-  channelId: string;
-  pinnedBy: string;
-  pinnedAt: string;
-}
+export type MessagePinnedPayload = MessagePinnedPayloadDto;
 
-export interface MessageUnpinnedPayload {
-  messageId: string;
-  channelId: string;
-  unpinnedBy: string;
-}
+export type MessageUnpinnedPayload = MessageUnpinnedPayloadDto;
 
-export interface NewThreadReplyPayload {
-  reply: Message;
-  parentMessageId: string;
-}
+export type NewThreadReplyPayload = NewThreadReplyPayloadDto;
 
-export interface UpdateThreadReplyPayload {
-  reply: Message;
-  parentMessageId: string;
-}
+export type UpdateThreadReplyPayload = UpdateThreadReplyPayloadDto;
 
-export interface DeleteThreadReplyPayload {
-  replyId: string;
-  parentMessageId: string;
-}
+export type DeleteThreadReplyPayload = DeleteThreadReplyPayloadDto;
 
-export interface ThreadReplyCountUpdatedPayload {
-  parentMessageId: string;
-  replyCount: number;
-  lastReplyAt: string | null;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-}
+export type ThreadReplyCountUpdatedPayload = ThreadReplyCountUpdatedPayloadDto;
 
 // =============================================================================
 // Community Membership Payloads

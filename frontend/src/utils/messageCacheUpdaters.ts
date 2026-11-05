@@ -2,9 +2,8 @@ import type { InfiniteData } from '@tanstack/react-query';
 import type { PaginatedMessagesResponseDto } from '../api-client/types.gen';
 import type { Message } from '../types/message.type';
 
-// `Message` (from @semaphore-chat/shared) and `EnrichedMessageDto` (generated API types) are
-// structurally identical but TypeScript treats them as distinct. `as never` is the
-// minimal assertion to bridge between WebSocket payloads and the TQ cache type.
+// The cached rows are `Message` (the wire shape, plus optimistic fields) while the
+// generated page type says `MessageDto`. `as never` bridges the two here.
 
 // --- InfiniteData updaters (used by both channel and DM caches) ---
 

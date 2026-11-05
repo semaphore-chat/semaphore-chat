@@ -15,6 +15,7 @@ on:
     paths:
       - 'frontend/**'
       - 'shared/**'
+      - 'backend/openapi.json'
       - 'patches/**'
       - '.github/workflows/frontend-tests.yml'
 
@@ -49,6 +50,7 @@ jobs:
             frontend:
               - 'frontend/**'
               - 'shared/**'
+      - 'backend/openapi.json'
               - 'patches/**'
               - '.github/workflows/frontend-tests.yml'
 
@@ -83,6 +85,16 @@ jobs:
       - name: Generate API client
         working-directory: ./frontend
         run: pnpm exec openapi-ts
+
+      # shared/src/generated is committed: the backend compiles against it too.
+      - name: Check shared wire types are up to date
+        working-directory: ./frontend
+        run: |
+          pnpm exec openapi-ts -f openapi-ts.shared.config.ts
+          if ! git diff --exit-code ../shared/src/generated; then
+            echo "::error file=shared/src/generated/types.gen.ts::shared/src/generated is out of date. Run 'pnpm exec openapi-ts -f openapi-ts.shared.config.ts' in frontend/ and commit the regenerated files."
+            exit 1
+          fi
 
       - name: Run ESLint
         working-directory: ./frontend

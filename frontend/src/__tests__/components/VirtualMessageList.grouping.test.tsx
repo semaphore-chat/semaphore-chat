@@ -88,7 +88,7 @@ describe('VirtualMessageList grouping and day separators', () => {
       authorId: 'u2',
       sentAt: at(22, 0, 25),
       replyToId: 'a1',
-      replyTo: { id: 'a1', authorId: 'u1', spans: [], sentAt: at(21, 23, 50) },
+      replyTo: { id: 'a1', authorId: 'u1', spans: [], sentAt: at(21, 23, 50), deletedAt: null },
     }),
   ];
 

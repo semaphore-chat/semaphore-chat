@@ -27,7 +27,7 @@ import {
   directMessagesControllerFindUserDmGroupsQueryKey,
   threadsControllerGetRepliesQueryKey,
 } from '../../api-client/@tanstack/react-query.gen';
-import type { ThreadRepliesResponseDto, EnrichedThreadReplyDto } from '../../api-client';
+import type { ThreadRepliesResponseDto } from '../../api-client';
 import {
   prependOrReconcileOptimistic,
   updateMessageInInfinite,
@@ -200,7 +200,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
           } else {
             updatedReactions.push(reaction);
           }
-          return { ...r, reactions: updatedReactions } as EnrichedThreadReplyDto;
+          return { ...r, reactions: updatedReactions };
         }),
       };
     });
@@ -238,7 +238,7 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
         ...old,
         replies: old.replies.map((r) => {
           if (r.id !== messageId) return r;
-          return { ...r, reactions } as EnrichedThreadReplyDto;
+          return { ...r, reactions };
         }),
       };
     });

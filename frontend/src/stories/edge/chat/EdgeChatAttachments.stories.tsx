@@ -127,8 +127,8 @@ export const UploadAllDone = uploadStory([
     text: 'here are the recordings from last night',
     status: 'sent',
     attachments: [
-      { id: sizedImageId('upload-done', 1200, 900), filename: 'IMG_4031.png', mimeType: 'image/png', fileType: 'IMAGE', size: 3_400_000 },
-      { id: 'edge-chat-upload-done-pdf', filename: 'timeline.pdf', mimeType: 'application/pdf', fileType: 'DOCUMENT', size: 820_000 },
+      { id: sizedImageId('upload-done', 1200, 900), filename: 'IMG_4031.png', mimeType: 'image/png', fileType: 'IMAGE', size: 3_400_000, hasThumbnail: false },
+      { id: 'edge-chat-upload-done-pdf', filename: 'timeline.pdf', mimeType: 'application/pdf', fileType: 'DOCUMENT', size: 820_000, hasThumbnail: false },
     ],
   },
 ]);

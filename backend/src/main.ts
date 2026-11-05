@@ -8,7 +8,7 @@ import helmet from 'helmet';
 import { TimingInterceptor } from './timing/timing.interceptor';
 import { RedisIoAdapter } from './adapters/redis-io.adapter';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
-import { normalizeOpenApiDocument } from './common/openapi/normalize-openapi';
+import { createOpenApiDocument } from './common/openapi/create-document';
 import { configureBodyParsers } from './common/http/body-parsers';
 import { pinClientAddress } from './common/http/pin-client-address';
 import { buildCorsOptions } from './common/http/cors-options';
@@ -115,9 +115,7 @@ async function bootstrap() {
       .addBearerAuth()
       .addCookieAuth('refresh_token', { type: 'apiKey' }, 'refresh_token')
       .build();
-    const document = normalizeOpenApiDocument(
-      SwaggerModule.createDocument(app, swaggerConfig),
-    );
+    const document = createOpenApiDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document);
   }
 

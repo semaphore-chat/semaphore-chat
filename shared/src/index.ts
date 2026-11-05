@@ -1,3 +1,4 @@
+export type * from './generated';
 export * from './events';
 export * from './types';
 export * from './payloads';

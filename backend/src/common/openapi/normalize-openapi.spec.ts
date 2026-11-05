@@ -127,8 +127,7 @@ describe('committed openapi.json', () => {
 
   it.each([
     ['InviteResponseDto', 'createdBy', 'InviteCreatorDto'],
-    ['EnrichedMessageDto', 'replyTo', 'ReplyToPreviewDto'],
-    ['EnrichedMessageDto', 'webhook', 'WebhookInfoDto'],
+    ['MessageDto', 'replyTo', 'ReplyToPreviewDto'],
     ['MessageDto', 'webhook', 'WebhookInfoDto'],
     ['CommunityBanDto', 'user', 'ModerationUserDto'],
     ['CommunityBanDto', 'moderator', 'ModerationUserDto'],

@@ -192,6 +192,7 @@ function buildChannelMessages(
         authorId: target.authorId,
         spans: target.spans,
         sentAt: target.sentAt,
+        deletedAt: null,
       },
     };
   }

@@ -117,7 +117,7 @@ describe('ThreadsGateway', () => {
         expect.objectContaining({
           parentMessageId: 'parent-msg-1',
           replyCount: 3,
-          lastReplyAt: mockParentMessage.lastReplyAt,
+          lastReplyAt: mockParentMessage.lastReplyAt.toISOString(),
           channelId: 'ch-1',
           directMessageGroupId: null,
         }),

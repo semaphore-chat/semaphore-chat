@@ -174,7 +174,7 @@ describe('getMessageLoneGifUrl', () => {
     const message = createMessage({
       spans: [{ type: SpanType.PLAINTEXT, text: giphyUrl }],
       attachments: [
-        { id: 'file-1', filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE', size: 10 },
+        { id: 'file-1', filename: 'a.png', mimeType: 'image/png', fileType: 'IMAGE', size: 10, hasThumbnail: false },
       ],
     });
     expect(getMessageLoneGifUrl(message)).toBeNull();
