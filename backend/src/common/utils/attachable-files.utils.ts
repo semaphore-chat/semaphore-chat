@@ -1,5 +1,6 @@
 import { ForbiddenException } from '@nestjs/common';
 import { ResourceType } from '@prisma/client';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 /** Avatars, banners, emoji and the like belong to their owner, not a message. */
 const ATTACHABLE_RESOURCE_TYPES = [
@@ -35,7 +36,10 @@ export async function assertOwnFiles(
 ): Promise<void> {
   if (fileIds.length === 0) return;
 
-  const denied = new ForbiddenException(message);
+  const denied = new ForbiddenException(message, {
+    description: 'Forbidden',
+    errorCode: ErrorCode.FILE_NOT_OWNED,
+  });
   // `attachments` is only validated as an array.
   if (fileIds.some((fileId) => typeof fileId !== 'string')) throw denied;
 

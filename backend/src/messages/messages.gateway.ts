@@ -5,7 +5,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { RbacGuard } from '@/auth/rbac.guard';
-import { HttpException, Logger, UseFilters, UseGuards } from '@nestjs/common';
+import { Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -15,7 +15,6 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  WsException,
 } from '@nestjs/websockets';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { RbacActions } from '@prisma/client';
@@ -87,8 +86,9 @@ export class MessagesGateway
     @ConnectedSocket() client: Socket,
   ): Promise<string> {
     const userId = getSocketUserId(client);
-    const message = await this.reportingFailures(() =>
-      this.messageSendService.sendToChannel(userId, payload),
+    const message = await this.messageSendService.sendToChannel(
+      userId,
+      payload,
     );
     return message.id;
   }
@@ -105,22 +105,11 @@ export class MessagesGateway
     @ConnectedSocket() client: Socket,
   ): Promise<string> {
     const userId = getSocketUserId(client);
-    const message = await this.reportingFailures(() =>
-      this.messageSendService.sendToDirectMessageGroup(userId, payload),
+    const message = await this.messageSendService.sendToDirectMessageGroup(
+      userId,
+      payload,
     );
     return message.id;
-  }
-
-  /** A WsException carries its message to the client; an HttpException doesn't. */
-  private async reportingFailures<T>(send: () => Promise<T>): Promise<T> {
-    try {
-      return await send();
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw new WsException(error.message);
-      }
-      throw error;
-    }
   }
 
   @SubscribeMessage(ClientEvents.ADD_REACTION)

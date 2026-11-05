@@ -5,8 +5,6 @@ import { ReactionsService } from './reactions.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { MessageSendService } from './message-send.service';
-import { ForbiddenException } from '@nestjs/common';
-import { WsException } from '@nestjs/websockets';
 import type { Mocked } from '@suites/doubles.jest';
 
 describe('MessagesGateway', () => {
@@ -103,18 +101,7 @@ describe('MessagesGateway', () => {
       );
     });
 
-    it('reports a rejected send with its message', async () => {
-      messageSendService[sendMethod].mockRejectedValue(
-        new ForbiddenException('Slowmode is enabled'),
-      );
-
-      const send = gateway[handler](payload, client);
-
-      await expect(send).rejects.toThrow(WsException);
-      await expect(send).rejects.toThrow('Slowmode is enabled');
-    });
-
-    it('leaves an unexpected error alone', async () => {
+    it('lets a failed send reach the exception filter', async () => {
       const error = new Error('database down');
       messageSendService[sendMethod].mockRejectedValue(error);
 

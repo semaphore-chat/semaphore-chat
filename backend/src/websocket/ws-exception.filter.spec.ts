@@ -1,5 +1,11 @@
 import { WsLoggingExceptionFilter } from './ws-exception.filter';
-import { ArgumentsHost, BadRequestException, Logger } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  ForbiddenException,
+  Logger,
+} from '@nestjs/common';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { WsException } from '@nestjs/websockets';
 import { ValidationFailedException } from '@/common/pipes/app-validation.pipe';
 
@@ -85,20 +91,59 @@ describe('WsLoggingExceptionFilter', () => {
       );
     });
 
-    it('still reports other HTTP exceptions as an internal error', () => {
-      // Also silences BaseWsExceptionFilter's own (static) logger.
-      const loggerSpy = jest
-        .spyOn(Logger.prototype, 'error')
-        .mockImplementation();
+    it('reports an HTTP exception with its message and a code', () => {
+      jest.spyOn(filter['logger'], 'error').mockImplementation();
 
       filter.catch(new BadRequestException('nope'), mockHost);
-      loggerSpy.mockRestore();
 
       expect(mockClient.emit).toHaveBeenCalledWith(
         'exception',
         expect.objectContaining({
           status: 'error',
+          message: 'nope',
+          errorCode: ErrorCode.BAD_REQUEST,
+          retryable: false,
+        }),
+      );
+    });
+
+    it('keeps a specific code and retryAfterMs from an HTTP exception', () => {
+      jest.spyOn(filter['logger'], 'error').mockImplementation();
+
+      filter.catch(
+        new ForbiddenException({
+          message: 'Wait',
+          errorCode: ErrorCode.SLOWMODE,
+          retryAfterMs: 5000,
+        }),
+        mockHost,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'exception',
+        expect.objectContaining({
+          message: 'Wait',
+          errorCode: ErrorCode.SLOWMODE,
+          retryable: true,
+          retryAfterMs: 5000,
+        }),
+      );
+    });
+
+    it('never reveals an unexpected error', () => {
+      const loggerSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation();
+
+      filter.catch(new Error('secret detail'), mockHost);
+      loggerSpy.mockRestore();
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'exception',
+        expect.objectContaining({
           message: 'Internal server error',
+          errorCode: ErrorCode.INTERNAL,
+          retryable: true,
         }),
       );
     });

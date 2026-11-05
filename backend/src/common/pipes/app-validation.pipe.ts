@@ -1,5 +1,6 @@
 import { BadRequestException, ValidationPipe } from '@nestjs/common';
 import type { ValidationError } from 'class-validator';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 /**
  * A DTO that failed validation. Over HTTP it is the same 400 as the stock
@@ -12,7 +13,10 @@ export class ValidationFailedException extends BadRequestException {
     readonly validationErrors: ValidationError[],
     messages: string[],
   ) {
-    super(messages);
+    super(messages, {
+      description: 'Bad Request',
+      errorCode: ErrorCode.VALIDATION_FAILED,
+    });
   }
 }
 

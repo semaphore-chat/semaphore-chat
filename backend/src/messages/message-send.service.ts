@@ -4,7 +4,7 @@ import {
   Injectable,
   Logger,
 } from '@nestjs/common';
-import { ServerEvents } from '@semaphore-chat/shared';
+import { ErrorCode, ServerEvents } from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ModerationService } from '@/moderation/moderation.service';
 import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
@@ -38,6 +38,10 @@ export class MessageSendService {
     if (!channelId) {
       throw new BadRequestException(
         'channelId is required for channel messages',
+        {
+          description: 'Bad Request',
+          errorCode: ErrorCode.MESSAGE_TARGET_INVALID,
+        },
       );
     }
 
@@ -67,6 +71,10 @@ export class MessageSendService {
     if (!directMessageGroupId) {
       throw new BadRequestException(
         'directMessageGroupId is required for direct messages',
+        {
+          description: 'Bad Request',
+          errorCode: ErrorCode.MESSAGE_TARGET_INVALID,
+        },
       );
     }
 
@@ -99,9 +107,13 @@ export class MessageSendService {
       await this.moderationService.isUserTimedOut(communityId, userId);
     if (isTimedOut) {
       const remainingMs = expiresAt ? expiresAt.getTime() - Date.now() : 0;
-      throw new ForbiddenException(
-        `You are timed out in this community. Time remaining: ${Math.ceil(remainingMs / 1000)} seconds`,
-      );
+      throw new ForbiddenException({
+        statusCode: 403,
+        message: `You are timed out in this community. Time remaining: ${Math.ceil(remainingMs / 1000)} seconds`,
+        error: 'Forbidden',
+        errorCode: ErrorCode.TIMED_OUT,
+        retryAfterMs: Math.max(remainingMs, 0),
+      });
     }
   }
 

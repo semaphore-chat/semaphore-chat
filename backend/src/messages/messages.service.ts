@@ -18,6 +18,7 @@ import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span
 import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
 import { Prisma, SpanType } from '@prisma/client';
 import { MESSAGE_INCLUDE_WITH_REPLY, toMessageDto } from './message.mapper';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 @Injectable()
 export class MessagesService {
@@ -50,6 +51,10 @@ export class MessagesService {
     ) {
       throw new BadRequestException(
         'Must provide exactly one of channelId or directMessageGroupId',
+        {
+          description: 'Bad Request',
+          errorCode: ErrorCode.MESSAGE_TARGET_INVALID,
+        },
       );
     }
 
@@ -69,7 +74,10 @@ export class MessagesService {
         select: { channelId: true, directMessageGroupId: true },
       });
       if (!replyTarget) {
-        throw new NotFoundException('Quoted message not found');
+        throw new NotFoundException('Quoted message not found', {
+          description: 'Not Found',
+          errorCode: ErrorCode.QUOTE_NOT_FOUND,
+        });
       }
       const sameContext =
         (createMessageDto.channelId &&
@@ -80,6 +88,10 @@ export class MessagesService {
       if (!sameContext) {
         throw new ForbiddenException(
           'Cannot quote a message from a different channel',
+          {
+            description: 'Forbidden',
+            errorCode: ErrorCode.QUOTE_OTHER_CONTEXT,
+          },
         );
       }
     }
@@ -259,9 +271,13 @@ export class MessagesService {
     );
 
     if (remainingSeconds > 0) {
-      throw new ForbiddenException(
-        `Slowmode is enabled. Please wait ${remainingSeconds} seconds before sending another message.`,
-      );
+      throw new ForbiddenException({
+        statusCode: 403,
+        message: `Slowmode is enabled. Please wait ${remainingSeconds} seconds before sending another message.`,
+        error: 'Forbidden',
+        errorCode: ErrorCode.SLOWMODE,
+        retryAfterMs: remainingSeconds * 1000,
+      });
     }
   }
 

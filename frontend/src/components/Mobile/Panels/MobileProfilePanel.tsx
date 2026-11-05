@@ -169,7 +169,8 @@ const OtherUserProfile: React.FC<{ userId: string }> = ({ userId }) => {
     ...userControllerGetUserByIdOptions({ path: { id: userId } }),
     retry: (failureCount, err) => {
       if (isNotFoundError(err)) return false;
-      if (typeof defaultRetry === 'function') return defaultRetry(failureCount, err);
+      // The default policy is typed for Error; the client rejects with the parsed body.
+      if (typeof defaultRetry === 'function') return defaultRetry(failureCount, err as unknown as Error);
       if (typeof defaultRetry === 'number') return failureCount < defaultRetry;
       return defaultRetry;
     },

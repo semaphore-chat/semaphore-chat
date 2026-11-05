@@ -11,7 +11,8 @@ import { InviteModule } from './invite/invite.module';
 import { CommunityModule } from './community/community.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { EventEmitterModule } from '@nestjs/event-emitter';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ApiExceptionFilter } from './common/filters/api-exception.filter';
 import { ChannelMentionRedactionInterceptor } from './roles/channel-mention-redaction.interceptor';
 import { ThrottlerModule, ThrottlerModuleOptions } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
@@ -141,6 +142,10 @@ import { JobsModule } from './jobs/jobs.module';
   ],
   controllers: [AppController],
   providers: [
+    {
+      provide: APP_FILTER,
+      useClass: ApiExceptionFilter,
+    },
     AppService,
     {
       // Per-reader #channel mention redaction on every REST response
