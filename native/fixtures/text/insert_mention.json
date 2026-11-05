@@ -1,0 +1,13 @@
+[
+{"name":"hello @ali@10","input":{"text":"hello @ali","cursor":10,"mention":{"type":"user","username":"alice"}},"expected":{"newText":"hello @alice ","newCursorPosition":13}},
+{"name":"hello world@6","input":{"text":"hello world","cursor":6,"mention":{"type":"user","username":"alice"}},"expected":{"newText":"hello @alice world","newCursorPosition":13}},
+{"name":"hello @@7","input":{"text":"hello @","cursor":7,"mention":{"type":"special","specialKind":"here"}},"expected":{"newText":"hello @here ","newCursorPosition":12}},
+{"name":"go #ge@6","input":{"text":"go #ge","cursor":6,"mention":{"type":"channel","channelName":"general"}},"expected":{"newText":"go #general ","newCursorPosition":12}},
+{"name":"go #@4","input":{"text":"go #","cursor":4,"mention":{"type":"channel","channelName":"dev-talk"}},"expected":{"newText":"go #dev-talk ","newCursorPosition":13}},
+{"name":"hi @de there@6","input":{"text":"hi @de there","cursor":6,"mention":{"type":"alias","aliasName":"devs"}},"expected":{"newText":"hi @devs  there","newCursorPosition":9}},
+{"name":"@0","input":{"text":"","cursor":0,"mention":{"type":"user","username":"bob"}},"expected":{"newText":"@bob ","newCursorPosition":5}},
+{"name":"abc@3","input":{"text":"abc","cursor":3,"mention":{"type":"channel","channelName":"x"}},"expected":{"newText":"abc#x ","newCursorPosition":6}},
+{"name":"abc@0","input":{"text":"abc","cursor":0,"mention":{"type":"special","specialKind":"channel"}},"expected":{"newText":"@channel abc","newCursorPosition":9}},
+{"name":"x @al y@5","input":{"text":"x @al y","cursor":5,"mention":{"type":"user","username":"alice"}},"expected":{"newText":"x @alice  y","newCursorPosition":9}},
+{"name":"@a @b@5","input":{"text":"@a @b","cursor":5,"mention":{"type":"alias","aliasName":"grp"}},"expected":{"newText":"@a @grp ","newCursorPosition":8}}
+]

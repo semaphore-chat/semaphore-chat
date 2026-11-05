@@ -1,0 +1,18 @@
+[
+{"name":"abc 1..2 **","input":{"text":"abc","start":1,"end":2,"marker":"**"},"expected":{"newText":"a**b**c","selectionStart":3,"selectionEnd":4}},
+{"name":"ab 1..1 **","input":{"text":"ab","start":1,"end":1,"marker":"**"},"expected":{"newText":"a****b","selectionStart":3,"selectionEnd":3}},
+{"name":"a**b**c 3..4 **","input":{"text":"a**b**c","start":3,"end":4,"marker":"**"},"expected":{"newText":"abc","selectionStart":1,"selectionEnd":2}},
+{"name":"a**b**c 1..6 **","input":{"text":"a**b**c","start":1,"end":6,"marker":"**"},"expected":{"newText":"abc","selectionStart":1,"selectionEnd":2}},
+{"name":"abc 0..3 _","input":{"text":"abc","start":0,"end":3,"marker":"_"},"expected":{"newText":"_abc_","selectionStart":1,"selectionEnd":4}},
+{"name":"_abc_ 1..4 _","input":{"text":"_abc_","start":1,"end":4,"marker":"_"},"expected":{"newText":"abc","selectionStart":0,"selectionEnd":3}},
+{"name":"_abc_ 0..5 _","input":{"text":"_abc_","start":0,"end":5,"marker":"_"},"expected":{"newText":"abc","selectionStart":0,"selectionEnd":3}},
+{"name":" 0..0 _","input":{"text":"","start":0,"end":0,"marker":"_"},"expected":{"newText":"__","selectionStart":1,"selectionEnd":1}},
+{"name":"a****b 3..3 **","input":{"text":"a****b","start":3,"end":3,"marker":"**"},"expected":{"newText":"ab","selectionStart":1,"selectionEnd":1}},
+{"name":"**** 0..4 **","input":{"text":"****","start":0,"end":4,"marker":"**"},"expected":{"newText":"","selectionStart":0,"selectionEnd":0}},
+{"name":"** 0..2 **","input":{"text":"**","start":0,"end":2,"marker":"**"},"expected":{"newText":"******","selectionStart":2,"selectionEnd":4}},
+{"name":"x _y_ z 3..4 _","input":{"text":"x _y_ z","start":3,"end":4,"marker":"_"},"expected":{"newText":"x y z","selectionStart":2,"selectionEnd":3}},
+{"name":"hello world 6..11 **","input":{"text":"hello world","start":6,"end":11,"marker":"**"},"expected":{"newText":"hello **world**","selectionStart":8,"selectionEnd":13}},
+{"name":"a**b 1..4 **","input":{"text":"a**b","start":1,"end":4,"marker":"**"},"expected":{"newText":"a****b**","selectionStart":3,"selectionEnd":6}},
+{"name":"**a 0..3 **","input":{"text":"**a","start":0,"end":3,"marker":"**"},"expected":{"newText":"****a**","selectionStart":2,"selectionEnd":5}},
+{"name":"abc 3..3 _","input":{"text":"abc","start":3,"end":3,"marker":"_"},"expected":{"newText":"abc__","selectionStart":4,"selectionEnd":4}}
+]

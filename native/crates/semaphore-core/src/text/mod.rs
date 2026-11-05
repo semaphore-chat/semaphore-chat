@@ -1,8 +1,28 @@
-//! Message text: spans to a display string, a selected range back to copied text, and a draft
-//! to outgoing spans. A small working version so stories render; unit U6 owns this file and adds
-//! auto-linking and the rules from `mentionParser` and `MessageSpan`, proved by exported vectors.
+//! Message text: spans to a display string, a draft to outgoing spans, composer mentions and
+//! shortcuts, and auto-linking. Ported from `mentionParser.ts`, `richTextShortcuts.ts` and
+//! `MessageSpan.tsx`, and proved against vectors the web client exported to `fixtures/text`
+//! (`vectors.rs`). Pure: no UI, no OS.
 
-use crate::model::{MessageDraft, SegKind, TextSeg, TextStyle};
+mod compose;
+mod js;
+mod link;
+mod mention;
+mod shortcuts;
+#[cfg(test)]
+mod vectors;
+
+pub use compose::{
+    ChannelNames, FoundKind, MentionMatch, NamedRef, Resolvers, UserRef, code_regions,
+    find_mentions, parse_message, spans_to_text,
+};
+pub use link::{LinkPart, MAX_URLS_PER_MESSAGE, extract_urls, link_parts};
+pub use mention::{
+    CurrentMention, MentionTarget, Trigger, get_current_mention, insert_mention,
+    resolve_mention_text,
+};
+pub use shortcuts::{WrapResult, marker_for_shortcut, wrap_selection};
+
+use crate::model::{DraftMention, MentionKind, MessageDraft, SegKind, TextSeg, TextStyle};
 
 /// The placeholder an emoji occupies in a display string: one em wide, no glyph.
 pub const EMOJI_PLACEHOLDER: char = '\u{2003}';
@@ -28,6 +48,22 @@ pub fn layout_spans(spans: &[SpanInput]) -> (String, Vec<TextSeg>) {
     let mut segs = Vec::new();
     for span in spans {
         let text = span.text.as_deref().unwrap_or_default();
+        if links_text(span) {
+            // Plain text auto-links; mentions, emoji and code never do (as in `MessageSpan`).
+            for part in link_parts(text) {
+                display.push_str(&part.text);
+                segs.push(TextSeg {
+                    end: display.len() as u32,
+                    kind: if part.link {
+                        SegKind::Link { url: part.text }
+                    } else {
+                        SegKind::Text
+                    },
+                    style: span.style,
+                });
+            }
+            continue;
+        }
         let kind = match span.kind.as_str() {
             "USER_MENTION" => span
                 .user_id
@@ -73,13 +109,64 @@ pub fn layout_spans(spans: &[SpanInput]) -> (String, Vec<TextSeg>) {
     (display, segs)
 }
 
-/// A draft to outgoing spans. Plain text only so far; mentions arrive with U6.
+/// Whether `MessageSpan` auto-links this span: its `PLAINTEXT` and default arm, minus inline code.
+fn links_text(span: &SpanInput) -> bool {
+    !span.style.code
+        && !matches!(
+            span.kind.as_str(),
+            "USER_MENTION"
+                | "SPECIAL_MENTION"
+                | "COMMUNITY_MENTION"
+                | "ALIAS_MENTION"
+                | "CHANNEL_MENTION"
+                | "EMOJI"
+                | "CODE_BLOCK"
+        )
+}
+
+/// A draft to outgoing spans. The mentions the composer inserted (by byte range) become mention
+/// spans; the text between them is parsed for formatting and code, with no names to resolve. A
+/// range that is out of order, overlaps the one before or isn't on a character boundary is
+/// ignored, so a stale draft still sends its text.
 pub fn draft_to_spans(draft: &MessageDraft) -> Vec<SpanInput> {
-    vec![SpanInput {
-        kind: "PLAINTEXT".into(),
-        text: Some(draft.text.clone()),
-        ..SpanInput::default()
-    }]
+    let text = &draft.text;
+    let mut mentions: Vec<&DraftMention> = draft.mentions.iter().collect();
+    mentions.sort_by_key(|m| m.start);
+    let none = Resolvers::default();
+    let mut spans = Vec::new();
+    let mut last = 0;
+    for m in mentions {
+        let (start, end) = (m.start as usize, m.end as usize);
+        if start < last
+            || end <= start
+            || !text.is_char_boundary(start)
+            || !text.get(..end).is_some()
+            || !text.is_char_boundary(end)
+        {
+            continue;
+        }
+        spans.extend(parse_message(&text[last..start], &none));
+        let id = Some(m.id.clone());
+        let label = Some(text[start..end].to_owned());
+        let (kind, label) = match m.kind {
+            MentionKind::User => ("USER_MENTION", label),
+            MentionKind::Special => ("SPECIAL_MENTION", label),
+            MentionKind::Alias => ("ALIAS_MENTION", label),
+            MentionKind::Channel => ("CHANNEL_MENTION", None),
+        };
+        spans.push(SpanInput {
+            kind: kind.into(),
+            text: label,
+            user_id: id.clone().filter(|_| m.kind == MentionKind::User),
+            special_kind: id.clone().filter(|_| m.kind == MentionKind::Special),
+            alias_id: id.clone().filter(|_| m.kind == MentionKind::Alias),
+            channel_id: id.filter(|_| m.kind == MentionKind::Channel),
+            ..SpanInput::default()
+        });
+        last = end;
+    }
+    spans.extend(parse_message(&text[last..], &none));
+    spans
 }
 
 #[cfg(test)]
@@ -109,6 +196,70 @@ mod tests {
     fn a_mention_with_no_target_falls_back_to_text() {
         let (_, segs) = layout_spans(&[text("USER_MENTION", "@ghost")]);
         assert_eq!(segs[0].kind, SegKind::Text);
+    }
+
+    #[test]
+    fn plain_text_auto_links_but_code_and_mentions_do_not() {
+        let (display, segs) = layout_spans(&[text("PLAINTEXT", "go https://a.b/c. ok")]);
+        assert_eq!(display, "go https://a.b/c. ok");
+        assert_eq!(segs.iter().map(|s| s.end).collect::<Vec<_>>(), [3, 16, 20]);
+        assert_eq!(
+            segs[1].kind,
+            SegKind::Link {
+                url: "https://a.b/c".into()
+            }
+        );
+
+        let mut code = text("PLAINTEXT", "https://a.b");
+        code.style.code = true;
+        let (_, segs) = layout_spans(&[code, text("USER_MENTION", "@https://a.b")]);
+        assert!(segs.iter().all(|s| s.kind == SegKind::Text));
+    }
+
+    #[test]
+    fn a_draft_becomes_spans_with_its_mentions() {
+        let draft = MessageDraft {
+            text: "hi @ava **you** #gen".into(),
+            mentions: vec![
+                DraftMention {
+                    start: 3,
+                    end: 7,
+                    kind: MentionKind::User,
+                    id: "u1".into(),
+                },
+                DraftMention {
+                    start: 16,
+                    end: 20,
+                    kind: MentionKind::Channel,
+                    id: "c1".into(),
+                },
+                // Overlaps the first: ignored.
+                DraftMention {
+                    start: 5,
+                    end: 9,
+                    kind: MentionKind::User,
+                    id: "u2".into(),
+                },
+            ],
+            ..MessageDraft::default()
+        };
+        let spans = draft_to_spans(&draft);
+        let kinds: Vec<_> = spans.iter().map(|s| s.kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            [
+                "PLAINTEXT",
+                "USER_MENTION",
+                "PLAINTEXT",
+                "PLAINTEXT",
+                "PLAINTEXT",
+                "CHANNEL_MENTION"
+            ]
+        );
+        assert_eq!(spans[1].user_id.as_deref(), Some("u1"));
+        assert!(spans[3].style.bold);
+        assert_eq!(spans[5].channel_id.as_deref(), Some("c1"));
+        assert_eq!(spans[5].text, None);
     }
 
     #[test]
