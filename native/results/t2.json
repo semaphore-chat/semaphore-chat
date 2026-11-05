@@ -1,0 +1,2581 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-05T20:01:07.663774+00:00",
+ "ok": true,
+ "provisional": true,
+ "provisional_reasons": [
+  "load1 peaked at 40.0, above 16.0, from other agents' work",
+  "headless sway: frame callbacks come from a timer, with no KMS or scanout, so this is not a real display's cadence"
+ ],
+ "build": {
+  "version": "0.0.0-rig-list",
+  "commit": "533b2295c42bd5fd184db3c5595e7d3aa996c715",
+  "stripped": true
+ },
+ "history_messages": 100000,
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "wayland",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 1920,
+   "height": 1080,
+   "device_scale_factor": 1
+  },
+  "renderer": {
+   "name": "wgpu-vulkan",
+   "device": "NVIDIA RTX 4090, driver 615.78.08",
+   "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+   "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 39420184,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "rig-list",
+    "bytes": 39420184
+   }
+  ],
+  "binary": {
+   "bytes": 39420184,
+   "stripped": true
+  },
+  "artifacts": []
+ },
+ "scenarios": {
+  "t2_fling_gpu_run1": {
+   "title": "100k mixed messages, fling, RTX 4090, run 1",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "38.64 37.08 35.25 2/2092 111",
+    "end": "33.19 35.27 34.70 51/2280 126",
+    "peak_load1": 38.64,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 38.6, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 14.12,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 464.2,
+    "rss": 515.5,
+    "anon": 367.5,
+    "private_working_set": null,
+    "pss_peak": 464.2
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1854,
+      "present_interval_ms": {
+       "p50": 16.16,
+       "p95": 17.85,
+       "p99": 19.55,
+       "max": 23.89
+      },
+      "fps_mean": 61.78,
+      "missed_vsyncs": 0,
+      "over_16_7": 291,
+      "over_20": 11,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        23.89,
+        12.26
+       ],
+       [
+        22.11,
+        9.56
+       ],
+       [
+        21.6,
+        9.75
+       ],
+       [
+        21.59,
+        6.73
+       ],
+       [
+        20.7,
+        7.91
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.41,
+       "p99": 6.37,
+       "max": 12.26
+      }
+     },
+     "fling_down": {
+      "frames": 617,
+      "present_interval_ms": {
+       "p50": 16.19,
+       "p95": 19.59,
+       "p99": 21.12,
+       "max": 23.04
+      },
+      "fps_mean": 61.59,
+      "missed_vsyncs": 0,
+      "over_16_7": 180,
+      "over_20": 19,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        23.04,
+        8.77
+       ],
+       [
+        22.61,
+        5.39
+       ],
+       [
+        22.14,
+        7.0
+       ],
+       [
+        21.36,
+        5.36
+       ],
+       [
+        21.25,
+        4.82
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.11,
+       "p99": 6.88,
+       "max": 8.77
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 615,
+      "present_interval_ms": {
+       "p50": 16.2,
+       "p95": 20.06,
+       "p99": 22.3,
+       "max": 26.0
+      },
+      "fps_mean": 61.44,
+      "missed_vsyncs": 3,
+      "over_16_7": 239,
+      "over_20": 32,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        26.0,
+        11.45
+       ],
+       [
+        24.89,
+        10.69
+       ],
+       [
+        24.35,
+        9.48
+       ],
+       [
+        23.1,
+        8.4
+       ],
+       [
+        22.57,
+        5.89
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.27,
+       "p99": 9.18,
+       "max": 11.45
+      }
+     }
+    },
+    "distance_px": [
+     78928.23506630534,
+     26464.53625495376,
+     26442.375730328982
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     248.5,
+     264.5,
+     266.7,
+     266.8,
+     275.6,
+     275.6,
+     279.6,
+     283.9,
+     287.1,
+     302.8,
+     302.8,
+     327.6,
+     331.8,
+     334.8,
+     341.9,
+     356.8,
+     367.3,
+     378.9,
+     382.0,
+     398.2,
+     406.4,
+     416.0,
+     416.9,
+     426.4,
+     434.5,
+     438.7,
+     448.5,
+     448.5,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2,
+     464.2
+    ]
+   }
+  },
+  "t2_fling_gpu_run2": {
+   "title": "100k mixed messages, fling, RTX 4090, run 2",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "35.65 35.75 34.85 58/2270 109",
+    "end": "25.12 33.32 34.10 2/1939 124",
+    "peak_load1": 40.01,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 40.0, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 19.7,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 462.1,
+    "rss": 514.2,
+    "anon": 365.4,
+    "private_working_set": null,
+    "pss_peak": 462.1
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1838,
+      "present_interval_ms": {
+       "p50": 16.33,
+       "p95": 20.04,
+       "p99": 22.48,
+       "max": 37.17
+      },
+      "fps_mean": 61.28,
+      "missed_vsyncs": 10,
+      "over_16_7": 593,
+      "over_20": 97,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        37.17,
+        21.11
+       ],
+       [
+        27.15,
+        16.45
+       ],
+       [
+        26.97,
+        14.19
+       ],
+       [
+        26.6,
+        13.72
+       ],
+       [
+        26.0,
+        12.28
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.29,
+       "p99": 9.09,
+       "max": 21.11
+      }
+     },
+     "fling_down": {
+      "frames": 615,
+      "present_interval_ms": {
+       "p50": 16.28,
+       "p95": 18.45,
+       "p99": 19.93,
+       "max": 23.28
+      },
+      "fps_mean": 61.43,
+      "missed_vsyncs": 0,
+      "over_16_7": 119,
+      "over_20": 6,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        23.28,
+        8.56
+       ],
+       [
+        21.2,
+        7.13
+       ],
+       [
+        20.63,
+        7.01
+       ],
+       [
+        20.11,
+        5.1
+       ],
+       [
+        20.04,
+        2.68
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.01,
+       "p99": 6.59,
+       "max": 8.56
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 616,
+      "present_interval_ms": {
+       "p50": 16.26,
+       "p95": 18.43,
+       "p99": 19.51,
+       "max": 20.59
+      },
+      "fps_mean": 61.5,
+      "missed_vsyncs": 0,
+      "over_16_7": 122,
+      "over_20": 4,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        20.59,
+        6.51
+       ],
+       [
+        20.47,
+        5.67
+       ],
+       [
+        20.18,
+        8.42
+       ],
+       [
+        20.02,
+        5.85
+       ],
+       [
+        19.84,
+        6.09
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.03,
+       "p99": 6.42,
+       "max": 8.42
+      }
+     }
+    },
+    "distance_px": [
+     78931.19007810563,
+     26448.736223630243,
+     26454.790297978714
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     247.4,
+     263.7,
+     265.8,
+     265.9,
+     274.7,
+     274.7,
+     278.8,
+     283.1,
+     286.3,
+     301.9,
+     302.0,
+     328.7,
+     330.6,
+     333.5,
+     343.0,
+     355.5,
+     366.1,
+     377.6,
+     380.8,
+     397.0,
+     405.2,
+     414.8,
+     414.8,
+     424.3,
+     436.6,
+     436.6,
+     446.4,
+     446.4,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1,
+     462.1
+    ]
+   }
+  },
+  "t2_fling_gpu_run3": {
+   "title": "100k mixed messages, fling, RTX 4090, run 3",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "25.12 33.32 34.10 1/1929 109",
+    "end": "15.67 29.49 32.76 4/1977 124",
+    "peak_load1": 25.12,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 25.1, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 16.4,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 463.6,
+    "rss": 515.0,
+    "anon": 366.1,
+    "private_working_set": null,
+    "pss_peak": 463.6
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1856,
+      "present_interval_ms": {
+       "p50": 16.14,
+       "p95": 17.79,
+       "p99": 19.54,
+       "max": 27.62
+      },
+      "fps_mean": 61.86,
+      "missed_vsyncs": 1,
+      "over_16_7": 296,
+      "over_20": 13,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        27.62,
+        13.24
+       ],
+       [
+        23.19,
+        7.82
+       ],
+       [
+        22.44,
+        7.11
+       ],
+       [
+        22.38,
+        7.73
+       ],
+       [
+        21.96,
+        6.38
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.31,
+       "p99": 6.47,
+       "max": 13.24
+      }
+     },
+     "fling_down": {
+      "frames": 618,
+      "present_interval_ms": {
+       "p50": 16.15,
+       "p95": 17.5,
+       "p99": 18.59,
+       "max": 20.52
+      },
+      "fps_mean": 61.78,
+      "missed_vsyncs": 0,
+      "over_16_7": 96,
+      "over_20": 2,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        20.52,
+        5.98
+       ],
+       [
+        20.34,
+        7.95
+       ],
+       [
+        19.88,
+        7.09
+       ],
+       [
+        19.72,
+        4.33
+       ],
+       [
+        19.21,
+        3.58
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.45,
+       "p99": 5.26,
+       "max": 7.95
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 617,
+      "present_interval_ms": {
+       "p50": 16.18,
+       "p95": 18.44,
+       "p99": 19.68,
+       "max": 21.07
+      },
+      "fps_mean": 61.65,
+      "missed_vsyncs": 0,
+      "over_16_7": 109,
+      "over_20": 4,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        21.07,
+        7.0
+       ],
+       [
+        20.46,
+        7.07
+       ],
+       [
+        20.23,
+        7.9
+       ],
+       [
+        20.13,
+        5.32
+       ],
+       [
+        19.93,
+        7.49
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.33,
+       "p99": 7.03,
+       "max": 7.9
+      }
+     }
+    },
+    "distance_px": [
+     78940.11407261652,
+     26441.888392178324,
+     26447.427851873243
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     248.5,
+     264.1,
+     266.3,
+     266.3,
+     275.1,
+     275.1,
+     279.1,
+     283.5,
+     286.6,
+     302.3,
+     302.3,
+     327.1,
+     331.4,
+     334.2,
+     341.4,
+     356.2,
+     366.8,
+     378.3,
+     381.5,
+     397.7,
+     405.9,
+     415.5,
+     416.4,
+     425.8,
+     433.9,
+     438.1,
+     447.9,
+     447.9,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6,
+     463.6
+    ]
+   }
+  },
+  "t2_fling_gpu_soak120": {
+   "title": "120 s of fling up, for the memory plateau",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "11.25 25.93 31.35 1/1940 110",
+    "end": "15.90 23.05 29.58 8/2009 125",
+    "peak_load1": 25.35,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 25.4, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 15.99,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 436.2,
+    "rss": 437.4,
+    "anon": 397.8,
+    "private_working_set": null,
+    "pss_peak": 579.1
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 7399,
+      "present_interval_ms": {
+       "p50": 16.15,
+       "p95": 18.92,
+       "p99": 21.55,
+       "max": 87.6
+      },
+      "fps_mean": 61.66,
+      "missed_vsyncs": 27,
+      "over_16_7": 1555,
+      "over_20": 168,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        87.6,
+        65.92
+       ],
+       [
+        51.08,
+        36.32
+       ],
+       [
+        39.84,
+        9.08
+       ],
+       [
+        35.58,
+        12.22
+       ],
+       [
+        34.79,
+        21.89
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.98,
+       "p99": 8.83,
+       "max": 65.92
+      }
+     },
+     "fling_down": {
+      "frames": 310,
+      "present_interval_ms": {
+       "p50": 16.15,
+       "p95": 16.73,
+       "p99": 17.24,
+       "max": 17.38
+      },
+      "fps_mean": 61.91,
+      "missed_vsyncs": 0,
+      "over_16_7": 17,
+      "over_20": 0,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        17.38,
+        2.67
+       ],
+       [
+        17.34,
+        1.03
+       ],
+       [
+        17.33,
+        1.99
+       ],
+       [
+        17.24,
+        1.85
+       ],
+       [
+        16.99,
+        1.9
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.13,
+       "p99": 2.25,
+       "max": 2.67
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 310,
+      "present_interval_ms": {
+       "p50": 16.16,
+       "p95": 16.7,
+       "p99": 16.82,
+       "max": 16.97
+      },
+      "fps_mean": 61.86,
+      "missed_vsyncs": 0,
+      "over_16_7": 16,
+      "over_20": 0,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        16.97,
+        1.71
+       ],
+       [
+        16.85,
+        2.24
+       ],
+       [
+        16.83,
+        1.71
+       ],
+       [
+        16.82,
+        1.65
+       ],
+       [
+        16.82,
+        2.2
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.09,
+       "p99": 2.2,
+       "max": 2.25
+      }
+     }
+    },
+    "distance_px": [
+     311603.6856234011,
+     13228.602445733406,
+     13229.43114088663
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     247.7,
+     263.5,
+     265.8,
+     265.8,
+     274.6,
+     274.6,
+     278.7,
+     283.0,
+     286.2,
+     301.8,
+     301.8,
+     327.8,
+     329.7,
+     332.7,
+     342.2,
+     354.7,
+     365.2,
+     376.8,
+     380.0,
+     396.1,
+     404.4,
+     414.0,
+     414.9,
+     424.3,
+     436.6,
+     436.6,
+     446.4,
+     446.4,
+     462.1,
+     462.1,
+     462.1,
+     482.8,
+     482.8,
+     497.8,
+     497.8,
+     507.2,
+     507.1,
+     507.1,
+     516.5,
+     516.5,
+     530.0,
+     535.4,
+     540.5,
+     540.5,
+     540.5,
+     540.5,
+     534.8,
+     534.8,
+     534.8,
+     534.8,
+     535.0,
+     539.7,
+     529.6,
+     531.8,
+     531.8,
+     561.3,
+     577.8,
+     577.8,
+     579.1,
+     579.1,
+     579.0,
+     575.2,
+     544.2,
+     552.8,
+     544.1,
+     547.6,
+     561.9,
+     501.1,
+     247.4,
+     190.6,
+     203.8,
+     210.0,
+     211.1,
+     221.6,
+     221.6,
+     242.3,
+     242.3,
+     266.7,
+     277.7,
+     286.3,
+     289.5,
+     289.6,
+     323.4,
+     323.6,
+     342.8,
+     352.1,
+     352.1,
+     379.8,
+     384.1,
+     381.1,
+     359.1,
+     359.2,
+     383.5,
+     376.3,
+     376.3,
+     377.0,
+     377.0,
+     389.6,
+     382.9,
+     371.1,
+     371.1,
+     383.3,
+     388.3,
+     388.3,
+     388.3,
+     382.2,
+     382.2,
+     399.5,
+     408.8,
+     421.9,
+     423.8,
+     423.8,
+     423.8,
+     425.3,
+     427.0,
+     413.9,
+     435.8,
+     435.8,
+     435.9,
+     435.9,
+     435.9,
+     435.9,
+     435.9,
+     435.9,
+     435.9,
+     436.0,
+     436.0,
+     436.0,
+     436.0
+    ],
+    "pss_plus_swap_peak_mb": 641.7
+   }
+  },
+  "t2_fling_gpu_soak120_mmap_threshold": {
+   "title": "The same soak with MALLOC_MMAP_THRESHOLD_=262144",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "15.90 23.05 29.58 3/2071 109",
+    "end": "13.66 21.55 28.31 1/1932 124",
+    "peak_load1": 32.55,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 32.5, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 13.92,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 177.5,
+    "rss": 178.3,
+    "anon": 153.8,
+    "private_working_set": null,
+    "pss_peak": 370.0
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 7405,
+      "present_interval_ms": {
+       "p50": 16.13,
+       "p95": 18.69,
+       "p99": 21.92,
+       "max": 95.94
+      },
+      "fps_mean": 61.71,
+      "missed_vsyncs": 32,
+      "over_16_7": 1283,
+      "over_20": 181,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        95.94,
+        83.34
+       ],
+       [
+        85.93,
+        72.27
+       ],
+       [
+        76.0,
+        61.36
+       ],
+       [
+        39.96,
+        25.95
+       ],
+       [
+        36.06,
+        18.61
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.35,
+       "p99": 9.54,
+       "max": 83.34
+      }
+     },
+     "fling_down": {
+      "frames": 309,
+      "present_interval_ms": {
+       "p50": 16.28,
+       "p95": 18.05,
+       "p99": 19.23,
+       "max": 21.13
+      },
+      "fps_mean": 61.62,
+      "missed_vsyncs": 0,
+      "over_16_7": 55,
+      "over_20": 2,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        21.13,
+        9.78
+       ],
+       [
+        20.05,
+        7.81
+       ],
+       [
+        19.77,
+        6.5
+       ],
+       [
+        19.23,
+        6.03
+       ],
+       [
+        19.1,
+        3.46
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.67,
+       "p99": 7.5,
+       "max": 9.78
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 308,
+      "present_interval_ms": {
+       "p50": 16.21,
+       "p95": 18.14,
+       "p99": 19.72,
+       "max": 20.27
+      },
+      "fps_mean": 61.63,
+      "missed_vsyncs": 0,
+      "over_16_7": 50,
+      "over_20": 3,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        20.27,
+        5.3
+       ],
+       [
+        20.18,
+        9.12
+       ],
+       [
+        20.09,
+        9.2
+       ],
+       [
+        19.72,
+        5.87
+       ],
+       [
+        19.48,
+        5.52
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.06,
+       "p99": 6.44,
+       "max": 9.2
+      }
+     }
+    },
+    "distance_px": [
+     311781.84788533836,
+     13233.7730324668,
+     13224.839071972234
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     247.9,
+     257.4,
+     258.7,
+     258.7,
+     263.4,
+     263.4,
+     265.5,
+     267.9,
+     269.6,
+     277.7,
+     277.7,
+     293.3,
+     294.3,
+     295.9,
+     302.4,
+     310.1,
+     316.7,
+     316.7,
+     324.2,
+     335.8,
+     340.1,
+     345.1,
+     346.0,
+     353.2,
+     359.5,
+     359.5,
+     351.9,
+     349.8,
+     359.1,
+     359.2,
+     359.6,
+     370.0,
+     365.3,
+     133.5,
+     58.8,
+     51.0,
+     48.9,
+     49.0,
+     55.9,
+     63.8,
+     68.0,
+     73.7,
+     80.3,
+     80.9,
+     80.9,
+     81.0,
+     87.1,
+     87.1,
+     91.0,
+     92.4,
+     94.2,
+     98.8,
+     104.5,
+     108.4,
+     109.7,
+     130.2,
+     136.5,
+     136.6,
+     138.1,
+     138.1,
+     140.8,
+     150.6,
+     151.0,
+     156.0,
+     159.9,
+     160.1,
+     160.7,
+     160.8,
+     160.8,
+     162.2,
+     163.7,
+     165.8,
+     165.7,
+     166.6,
+     170.0,
+     171.4,
+     170.5,
+     175.5,
+     175.5,
+     176.2,
+     174.0,
+     174.0,
+     174.2,
+     174.3,
+     172.4,
+     175.1,
+     171.1,
+     177.0,
+     179.3,
+     176.6,
+     179.1,
+     173.8,
+     177.0,
+     175.4,
+     175.4,
+     177.2,
+     174.0,
+     175.3,
+     181.6,
+     174.7,
+     174.7,
+     177.1,
+     177.6,
+     177.5,
+     177.5,
+     177.5,
+     174.5,
+     181.9,
+     177.1,
+     180.3,
+     175.5,
+     175.5,
+     175.5,
+     177.0,
+     178.7,
+     173.5,
+     178.0,
+     176.3,
+     176.3,
+     177.1,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.2,
+     177.5
+    ],
+    "pss_plus_swap_peak_mb": 370.0
+   }
+  },
+  "t2_fling_gpu_no_images": {
+   "title": "As run 1, images drawn as their reserved boxes",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "15.67 29.49 32.76 1/1923 108",
+    "end": "11.53 26.23 31.48 2/1948 123",
+    "peak_load1": 15.67,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": null
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 18.54,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 250.7,
+    "rss": 303.5,
+    "anon": 155.0,
+    "private_working_set": null,
+    "pss_peak": 250.7
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1852,
+      "present_interval_ms": {
+       "p50": 16.18,
+       "p95": 18.13,
+       "p99": 19.67,
+       "max": 25.56
+      },
+      "fps_mean": 61.71,
+      "missed_vsyncs": 1,
+      "over_16_7": 309,
+      "over_20": 12,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        25.56,
+        10.57
+       ],
+       [
+        22.07,
+        7.6
+       ],
+       [
+        21.72,
+        8.23
+       ],
+       [
+        21.6,
+        9.15
+       ],
+       [
+        21.18,
+        5.77
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.52,
+       "p99": 7.05,
+       "max": 10.57
+      }
+     },
+     "fling_down": {
+      "frames": 618,
+      "present_interval_ms": {
+       "p50": 16.19,
+       "p95": 17.84,
+       "p99": 19.22,
+       "max": 20.06
+      },
+      "fps_mean": 61.74,
+      "missed_vsyncs": 0,
+      "over_16_7": 93,
+      "over_20": 2,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        20.06,
+        5.91
+       ],
+       [
+        20.02,
+        6.88
+       ],
+       [
+        19.62,
+        7.9
+       ],
+       [
+        19.53,
+        7.11
+       ],
+       [
+        19.51,
+        7.34
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.94,
+       "p99": 6.54,
+       "max": 8.33
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 617,
+      "present_interval_ms": {
+       "p50": 16.24,
+       "p95": 18.19,
+       "p99": 19.84,
+       "max": 21.11
+      },
+      "fps_mean": 61.61,
+      "missed_vsyncs": 0,
+      "over_16_7": 95,
+      "over_20": 4,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        21.11,
+        5.57
+       ],
+       [
+        20.42,
+        7.8
+       ],
+       [
+        20.33,
+        6.57
+       ],
+       [
+        20.08,
+        5.09
+       ],
+       [
+        19.87,
+        5.86
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.24,
+       "p99": 6.68,
+       "max": 7.92
+      }
+     }
+    },
+    "distance_px": [
+     78965.36127607561,
+     26449.65799380372,
+     26448.506483417415
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     247.5,
+     249.9,
+     249.9,
+     249.9,
+     250.0,
+     250.0,
+     250.0,
+     250.0,
+     250.0,
+     250.0,
+     250.1,
+     250.1,
+     250.1,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.2,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.3,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.6,
+     250.7,
+     250.7,
+     250.7
+    ]
+   }
+  },
+  "t2_fling_gpu_global_image_cache": {
+   "title": "As run 1, with GPUI's default never-evicting image cache",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "13.37 21.36 28.21 2/1932 110",
+    "end": "10.71 19.39 27.18 4/1995 125",
+    "peak_load1": 13.37,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": null
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 17.66,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 462.8,
+    "rss": 515.1,
+    "anon": 365.4,
+    "private_working_set": null,
+    "pss_peak": 462.8
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1845,
+      "present_interval_ms": {
+       "p50": 16.24,
+       "p95": 18.69,
+       "p99": 20.3,
+       "max": 23.55
+      },
+      "fps_mean": 61.48,
+      "missed_vsyncs": 0,
+      "over_16_7": 415,
+      "over_20": 27,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        23.55,
+        11.0
+       ],
+       [
+        23.52,
+        8.65
+       ],
+       [
+        23.14,
+        10.35
+       ],
+       [
+        22.56,
+        8.13
+       ],
+       [
+        22.41,
+        7.57
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.95,
+       "p99": 7.35,
+       "max": 11.0
+      }
+     },
+     "fling_down": {
+      "frames": 618,
+      "present_interval_ms": {
+       "p50": 16.17,
+       "p95": 17.07,
+       "p99": 18.3,
+       "max": 20.31
+      },
+      "fps_mean": 61.72,
+      "missed_vsyncs": 0,
+      "over_16_7": 60,
+      "over_20": 1,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        20.31,
+        6.4
+       ],
+       [
+        19.07,
+        6.44
+       ],
+       [
+        19.04,
+        3.8
+       ],
+       [
+        18.74,
+        3.43
+       ],
+       [
+        18.56,
+        4.5
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.25,
+       "p99": 4.77,
+       "max": 8.41
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 616,
+      "present_interval_ms": {
+       "p50": 16.21,
+       "p95": 17.73,
+       "p99": 19.41,
+       "max": 21.33
+      },
+      "fps_mean": 61.57,
+      "missed_vsyncs": 0,
+      "over_16_7": 89,
+      "over_20": 2,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        21.33,
+        6.34
+       ],
+       [
+        20.67,
+        6.47
+       ],
+       [
+        19.92,
+        5.7
+       ],
+       [
+        19.74,
+        4.45
+       ],
+       [
+        19.68,
+        4.54
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 1.47,
+       "p99": 6.34,
+       "max": 7.28
+      }
+     }
+    },
+    "distance_px": [
+     78974.98730668992,
+     26438.94739290043,
+     26446.689757911143
+    ],
+    "textview_open_ms": null,
+    "image_cache": "global",
+    "pss_series_mb": [
+     247.8,
+     263.3,
+     265.5,
+     265.5,
+     274.3,
+     274.3,
+     278.4,
+     282.7,
+     285.9,
+     301.5,
+     301.5,
+     328.7,
+     330.6,
+     333.4,
+     342.9,
+     355.4,
+     366.0,
+     377.5,
+     380.7,
+     396.9,
+     405.1,
+     414.7,
+     415.6,
+     425.0,
+     437.4,
+     437.4,
+     447.1,
+     447.1,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8,
+     462.8
+    ]
+   }
+  },
+  "t2_fling_gpu_4cores": {
+   "title": "As run 1, pinned to 4 cores",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "9.92 17.81 26.23 1/2009 80",
+    "end": "25.18 20.05 26.51 54/2407 95",
+    "peak_load1": 25.18,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 25.2, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 17.32,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 410.9,
+    "rss": 464.1,
+    "anon": 315.4,
+    "private_working_set": null,
+    "pss_peak": 410.9
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1857,
+      "present_interval_ms": {
+       "p50": 16.14,
+       "p95": 18.27,
+       "p99": 19.79,
+       "max": 25.66
+      },
+      "fps_mean": 61.9,
+      "missed_vsyncs": 1,
+      "over_16_7": 330,
+      "over_20": 13,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        25.66,
+        12.41
+       ],
+       [
+        23.61,
+        9.12
+       ],
+       [
+        21.96,
+        6.91
+       ],
+       [
+        21.94,
+        6.71
+       ],
+       [
+        21.93,
+        9.99
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.72,
+       "p99": 7.04,
+       "max": 12.41
+      }
+     },
+     "fling_down": {
+      "frames": 616,
+      "present_interval_ms": {
+       "p50": 16.2,
+       "p95": 20.17,
+       "p99": 23.86,
+       "max": 35.96
+      },
+      "fps_mean": 61.52,
+      "missed_vsyncs": 5,
+      "over_16_7": 213,
+      "over_20": 36,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        35.96,
+        18.1
+       ],
+       [
+        25.57,
+        10.29
+       ],
+       [
+        25.41,
+        11.0
+       ],
+       [
+        25.12,
+        11.14
+       ],
+       [
+        24.84,
+        9.9
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 2.62,
+       "p99": 9.83,
+       "max": 18.1
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 615,
+      "present_interval_ms": {
+       "p50": 16.23,
+       "p95": 20.37,
+       "p99": 22.78,
+       "max": 25.81
+      },
+      "fps_mean": 61.47,
+      "missed_vsyncs": 3,
+      "over_16_7": 238,
+      "over_20": 43,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        25.81,
+        9.8
+       ],
+       [
+        25.34,
+        4.48
+       ],
+       [
+        24.51,
+        8.33
+       ],
+       [
+        23.46,
+        8.72
+       ],
+       [
+        23.02,
+        7.69
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 3.48,
+       "p99": 9.35,
+       "max": 11.81
+      }
+     }
+    },
+    "distance_px": [
+     78920.91219956272,
+     26445.088247187126,
+     26451.414120473462
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     247.3,
+     262.8,
+     265.0,
+     265.1,
+     273.5,
+     273.5,
+     277.3,
+     278.3,
+     279.8,
+     292.5,
+     292.5,
+     316.4,
+     316.4,
+     316.6,
+     323.3,
+     335.8,
+     339.6,
+     351.1,
+     351.2,
+     364.5,
+     368.0,
+     377.4,
+     377.4,
+     386.8,
+     394.7,
+     394.7,
+     399.4,
+     399.4,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9,
+     410.9
+    ]
+   }
+  },
+  "t2_fling_gpu_textview_arm": {
+   "title": "Arm B: one TextView document of 100k messages, no images",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "10.71 19.39 27.18 1/1979 109",
+    "end": "9.92 17.81 26.23 2/2089 116",
+    "peak_load1": 10.71,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": null
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 103.06,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 1509.3,
+    "rss": 1561.3,
+    "anon": 1413.9,
+    "private_working_set": null,
+    "pss_peak": 2156.4
+   },
+   "aux": {
+    "renderer": {
+     "name": "wgpu-vulkan",
+     "device": "NVIDIA RTX 4090, driver 615.78.08",
+     "compositor": "sway, wlroots headless backend, Vulkan renderer, 60 Hz timer",
+     "shared_with": "other agents' CPU load during these runs; the GPU was otherwise idle"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1864,
+      "present_interval_ms": {
+       "p50": 16.08,
+       "p95": 16.32,
+       "p99": 16.43,
+       "max": 17.56
+      },
+      "fps_mean": 62.13,
+      "missed_vsyncs": 0,
+      "over_16_7": 5,
+      "over_20": 0,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        17.56,
+        0.46
+       ],
+       [
+        17.31,
+        0.2
+       ],
+       [
+        17.21,
+        0.24
+       ],
+       [
+        17.07,
+        0.43
+       ],
+       [
+        16.76,
+        0.92
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 0.3,
+       "p99": 0.6,
+       "max": 0.92
+      }
+     },
+     "fling_down": {
+      "frames": 622,
+      "present_interval_ms": {
+       "p50": 16.07,
+       "p95": 16.3,
+       "p99": 16.45,
+       "max": 17.39
+      },
+      "fps_mean": 62.14,
+      "missed_vsyncs": 0,
+      "over_16_7": 1,
+      "over_20": 0,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        17.39,
+        0.4
+       ],
+       [
+        16.62,
+        0.57
+       ],
+       [
+        16.54,
+        0.51
+       ],
+       [
+        16.5,
+        0.53
+       ],
+       [
+        16.5,
+        0.54
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 0.28,
+       "p99": 0.54,
+       "max": 0.65
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 620,
+      "present_interval_ms": {
+       "p50": 16.12,
+       "p95": 16.32,
+       "p99": 16.45,
+       "max": 17.49
+      },
+      "fps_mean": 61.98,
+      "missed_vsyncs": 0,
+      "over_16_7": 2,
+      "over_20": 0,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        17.49,
+        0.4
+       ],
+       [
+        17.15,
+        0.31
+       ],
+       [
+        16.55,
+        0.46
+       ],
+       [
+        16.52,
+        0.64
+       ],
+       [
+        16.49,
+        0.6
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 0.35,
+       "p99": 0.58,
+       "max": 0.64
+      }
+     }
+    },
+    "distance_px": [
+     78980.00117921474,
+     26445.1681039396,
+     26439.2757077327
+    ],
+    "textview_open_ms": 333.6,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     404.7,
+     496.0,
+     592.9,
+     611.6,
+     619.7,
+     626.0,
+     631.7,
+     638.6,
+     642.5,
+     646.3,
+     649.7,
+     653.1,
+     656.4,
+     659.7,
+     662.8,
+     665.7,
+     668.4,
+     672.8,
+     675.0,
+     677.4,
+     679.7,
+     681.9,
+     684.2,
+     686.4,
+     690.6,
+     692.6,
+     694.4,
+     696.1,
+     698.0,
+     841.6,
+     841.7,
+     905.7,
+     1045.2,
+     1700.8,
+     2156.4,
+     2156.4,
+     2156.4,
+     2156.4,
+     2156.4,
+     1359.3,
+     1417.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3,
+     1509.3
+    ]
+   }
+  },
+  "t2_fling_lavapipe": {
+   "title": "Software rendering, for shape only",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "19.80 20.02 26.14 4/2042 52",
+    "end": "22.63 20.54 26.11 1/2157 193",
+    "peak_load1": 22.63,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 22.6, above 16.0"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 964.47,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 586.5,
+    "rss": 589.2,
+    "anon": 332.0,
+    "private_working_set": null,
+    "pss_peak": 586.5
+   },
+   "aux": {
+    "renderer": {
+     "name": "lavapipe",
+     "icd": "/usr/share/vulkan/icd.d/lvp_icd.json"
+    },
+    "phases": {
+     "fling_up": {
+      "frames": 1246,
+      "present_interval_ms": {
+       "p50": 16.0,
+       "p95": 20.24,
+       "p99": 24.01,
+       "max": 35.42
+      },
+      "fps_mean": 62.23,
+      "missed_vsyncs": 13,
+      "over_16_7": 366,
+      "over_20": 66,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        35.42,
+        30.82
+       ],
+       [
+        33.31,
+        24.98
+       ],
+       [
+        27.4,
+        17.96
+       ],
+       [
+        26.94,
+        16.58
+       ],
+       [
+        25.93,
+        16.04
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 6.04,
+       "p99": 17.24,
+       "max": 30.82
+      }
+     },
+     "fling_down": {
+      "frames": 310,
+      "present_interval_ms": {
+       "p50": 16.13,
+       "p95": 20.58,
+       "p99": 25.0,
+       "max": 31.4
+      },
+      "fps_mean": 61.99,
+      "missed_vsyncs": 4,
+      "over_16_7": 105,
+      "over_20": 19,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        31.4,
+        21.55
+       ],
+       [
+        27.81,
+        22.8
+       ],
+       [
+        27.33,
+        20.24
+       ],
+       [
+        25.0,
+        14.64
+       ],
+       [
+        23.95,
+        11.95
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 13.01,
+       "p99": 20.24,
+       "max": 22.8
+      }
+     },
+     "jump_mid_fling_up": {
+      "frames": 311,
+      "present_interval_ms": {
+       "p50": 15.93,
+       "p95": 21.76,
+       "p99": 24.13,
+       "max": 27.83
+      },
+      "fps_mean": 62.06,
+      "missed_vsyncs": 5,
+      "over_16_7": 112,
+      "over_20": 28,
+      "slowest_interval_and_frame_cost_ms": [
+       [
+        27.83,
+        24.23
+       ],
+       [
+        24.78,
+        15.59
+       ],
+       [
+        24.71,
+        14.39
+       ],
+       [
+        24.13,
+        15.74
+       ],
+       [
+        23.89,
+        13.34
+       ]
+      ],
+      "frame_cost_ms": {
+       "p50": 12.94,
+       "p99": 18.35,
+       "max": 24.23
+      }
+     }
+    },
+    "distance_px": [
+     52647.19620930971,
+     13358.709458637932,
+     13225.69528761246
+    ],
+    "textview_open_ms": null,
+    "image_cache": "lru",
+    "pss_series_mb": [
+     245.9,
+     330.0,
+     336.2,
+     336.8,
+     351.4,
+     358.4,
+     362.9,
+     362.9,
+     377.9,
+     394.5,
+     404.4,
+     426.9,
+     452.9,
+     457.0,
+     476.8,
+     491.6,
+     517.1,
+     517.1,
+     541.2,
+     550.7,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5,
+     586.5
+    ]
+   }
+  },
+  "t2_visual_jump": {
+   "title": "Row movement on prepend and late image load, measured from painted row tops",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "27.31 21.26 26.72 1/2029 109",
+    "end": "21.94 20.43 26.34 1/2034 123",
+    "peak_load1": 27.31,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "logic result: pixel positions don't depend on load"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 26.26,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 325.2,
+    "rss": 378.5,
+    "anon": 229.9,
+    "swap": 0.0,
+    "private_working_set": null
+   },
+   "aux": {
+    "results": {
+     "prepend_5000_mid_history": {
+      "rows_compared": 8,
+      "max_shift_px": 0.0
+     },
+     "prepend_50_at_top_row": {
+      "rows_compared": 9,
+      "max_shift_px": 0.0
+     },
+     "prepend_during_live_scroll": {
+      "row_frames_compared": 931,
+      "max_error_px": 0.0
+     },
+     "late_image_reserved": {
+      "above_viewport": {
+       "image_id": 75013,
+       "rows_compared": 8,
+       "max_shift_px": 0.0
+      },
+      "in_viewport": {
+       "image_id": 76022,
+       "rows_compared": 4,
+       "max_shift_px": 0.0
+      },
+      "top_partial_row": {
+       "image_id": 77005,
+       "rows_compared": 8,
+       "max_shift_px": 0.0
+      }
+     },
+     "late_image_unreserved": {
+      "above_viewport": {
+       "image_id": 75013,
+       "rows_compared": 8,
+       "max_shift_px": 0.0
+      },
+      "in_viewport": {
+       "image_id": 76022,
+       "rows_compared": 4,
+       "max_shift_px": 360.0
+      },
+      "top_partial_row": {
+       "image_id": 77005,
+       "rows_compared": 8,
+       "max_shift_px": 360.0
+      }
+     },
+     "load": {
+      "start": "27.31 21.26 26.72 1/2029 109",
+      "end": "21.94 20.43 26.34 1/2034 123"
+     },
+     "memory_mb": {
+      "pss": 325.2,
+      "rss": 378.5,
+      "anon": 229.9,
+      "swap": 0.0
+     },
+     "cpu_pct_core_avg": 26.26
+    }
+   }
+  },
+  "t2_idle": {
+   "title": "CPU sitting still, without and with animated emoji on screen",
+   "ok": true,
+   "provisional": true,
+   "load": {
+    "start": "27.01 20.51 26.63 47/2412 108",
+    "end": "27.31 21.26 26.72 3/2047 122",
+    "peak_load1": 27.01,
+    "threshold_load1": 16.0,
+    "provisional": true,
+    "reason": "load1 peaked at 27.0, above 16.0"
+   },
+   "errors": [],
+   "window_s": 10,
+   "cpu_pct_core": {
+    "avg": 15.0,
+    "p95": null
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 259.6,
+    "rss": 313.0,
+    "anon": 164.5,
+    "swap": 0.0,
+    "private_working_set": null
+   },
+   "aux": {
+    "readings": {
+     "no_animation": {
+      "row": 60060,
+      "cpu_pct_core": 0.8,
+      "frames_per_s": 3.4
+     },
+     "animated_emoji_on_screen": {
+      "row": 50004,
+      "cpu_pct_core": 15.0,
+      "frames_per_s": 61.3
+     }
+    }
+   }
+  }
+ },
+ "t2": {
+  "verdict": "provisional",
+  "bars": {
+   "fling_p99_le_16_7_ms": {
+    "verdict": "provisional",
+    "bar": 16.7,
+    "median_of_runs_worst_phase": 19.93,
+    "worst": 22.48,
+    "why": "Measured above the bar on a loaded host under a timer-driven compositor. Needs the real desktop."
+   },
+   "no_visual_jump": {
+    "verdict": "pass",
+    "scope": "Prepend always; late image load only when the message carries the image's size",
+    "max_shift_px": {
+     "prepend_mid_history_px": 0.0,
+     "prepend_at_top_row_px": 0.0,
+     "prepend_during_live_scroll_px": 0.0,
+     "late_image_with_known_size_px": 0.0
+    },
+    "without_known_size_px": {
+     "above_viewport": 0.0,
+     "in_viewport": 360.0,
+     "top_partial_row": 360.0
+    }
+   },
+   "under_500_mb": {
+    "verdict": "pass",
+    "bar": 500,
+    "scope": "Needs both a bounded image cache and the allocator setting. Fails without the allocator setting.",
+    "pss_plus_swap_peak_mb_bounded_cache_default_allocator": 641.7,
+    "pss_plus_swap_peak_mb_bounded_cache_mmap_threshold": 370.0,
+    "pss_peak_mb_50s_runs": [
+     464.2,
+     462.1,
+     463.6
+    ],
+    "cause": "glibc keeps freed decoded images in its arenas. The cache held 126 MB and evicted 127 images in both soaks."
+   }
+  },
+  "summary": {
+   "fling_up": {
+    "present_p99_ms": {
+     "median": 19.55,
+     "worst": 22.48,
+     "runs": [
+      19.55,
+      22.48,
+      19.54
+     ]
+    },
+    "cpu_frame_cost_p99_ms": {
+     "median": 6.47,
+     "worst": 9.09
+    },
+    "missed_vsyncs": {
+     "median": 1,
+     "worst": 10
+    },
+    "fps_mean_median": 61.78
+   },
+   "fling_down": {
+    "present_p99_ms": {
+     "median": 19.93,
+     "worst": 21.12,
+     "runs": [
+      21.12,
+      19.93,
+      18.59
+     ]
+    },
+    "cpu_frame_cost_p99_ms": {
+     "median": 6.59,
+     "worst": 6.88
+    },
+    "missed_vsyncs": {
+     "median": 0,
+     "worst": 0
+    },
+    "fps_mean_median": 61.59
+   },
+   "jump_mid_fling_up": {
+    "present_p99_ms": {
+     "median": 19.68,
+     "worst": 22.3,
+     "runs": [
+      22.3,
+      19.51,
+      19.68
+     ]
+    },
+    "cpu_frame_cost_p99_ms": {
+     "median": 7.03,
+     "worst": 9.18
+    },
+    "missed_vsyncs": {
+     "median": 0,
+     "worst": 3
+    },
+    "fps_mean_median": 61.5
+   }
+  }
+ },
+ "comparability_notes": [
+  "A test rig, not the client: no network, no real sign-in, DejaVu fonts only (no CJK or colour-emoji fallback, which cost more to shape).",
+  "Present time is when GPUI's present call returned, the same point the T1 rigs measure, not when a display showed the frame.",
+  "Input is injected in-process through Window::dispatch_event, once per frame.",
+  "Inactive-window throttling is off: headless sway has no seat, so the window would otherwise be held to about 30 fps.",
+  "An interval between present-call returns is about 16.1 ms plus the change in CPU cost from the previous frame, so cost jitter raises p99 even when no vsync is missed. missed_vsyncs is the count of intervals over 1.5 times the median.",
+  "Images are full-size decodes of generated PNGs, at most 1280x1400, 300 distinct files.",
+  "The host swapped during the soaks, so their later PSS readings are low and frames stalled while pages came back. Use PSS plus swap."
+ ]
+}
