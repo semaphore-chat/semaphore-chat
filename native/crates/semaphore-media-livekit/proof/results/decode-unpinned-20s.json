@@ -1,0 +1,1290 @@
+[
+  {
+    "round": 0,
+    "condition": "all_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 103.5,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        88.3
+      ],
+      [
+        "semaphore-media",
+        7.9
+      ],
+      [
+        "worker_thread ",
+        2.4
+      ],
+      [
+        "network_thread ",
+        2.1
+      ],
+      [
+        "AudioEncoderQue",
+        1.9
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      29.9,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 23.57,
+    "loadavg": "9.25 12.98 16.60 9/2142 79"
+  },
+  {
+    "round": 0,
+    "condition": "tiles_medium_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 50.8,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        41.9
+      ],
+      [
+        "semaphore-media",
+        3.8
+      ],
+      [
+        "worker_thread ",
+        1.6
+      ],
+      [
+        "AudioEncoderQue",
+        1.5
+      ],
+      [
+        "network_thread ",
+        1.3
+      ]
+    ],
+    "camera_fps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 59.9,
+    "screen_height": 1080,
+    "inbound_mbps": 12.87,
+    "loadavg": "6.90 12.13 16.23 3/2262 79"
+  },
+  {
+    "round": 0,
+    "condition": "tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 31.9,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        25.8
+      ],
+      [
+        "semaphore-media",
+        2.6
+      ],
+      [
+        "worker_thread ",
+        1.2
+      ],
+      [
+        "AudioEncoderQue",
+        1.0
+      ],
+      [
+        "network_thread ",
+        0.9
+      ]
+    ],
+    "camera_fps": [
+      14.9,
+      15.0,
+      14.9,
+      15.0,
+      14.9,
+      14.9,
+      14.9,
+      14.9,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 59.8,
+    "screen_height": 1080,
+    "inbound_mbps": 9.92,
+    "loadavg": "5.23 11.31 15.85 10/2320 79"
+  },
+  {
+    "round": 0,
+    "condition": "4_tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 28.7,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        23.4
+      ],
+      [
+        "semaphore-media",
+        2.2
+      ],
+      [
+        "AudioEncoderQue",
+        1.0
+      ],
+      [
+        "worker_thread ",
+        0.9
+      ],
+      [
+        "network_thread ",
+        0.8
+      ]
+    ],
+    "camera_fps": [
+      14.9,
+      15.0,
+      14.9,
+      14.9,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 9.35,
+    "loadavg": "4.67 10.68 15.52 2/2317 79"
+  },
+  {
+    "round": 0,
+    "condition": "tiles_high_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 67.4,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        56.3
+      ],
+      [
+        "semaphore-media",
+        5.4
+      ],
+      [
+        "AudioEncoderQue",
+        1.9
+      ],
+      [
+        "worker_thread ",
+        1.7
+      ],
+      [
+        "network_thread ",
+        1.3
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 15.29,
+    "loadavg": "4.34 10.12 15.20 9/2139 79"
+  },
+  {
+    "round": 0,
+    "condition": "tiles_medium_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 41.4,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        30.4
+      ],
+      [
+        "AudioEncoderQue",
+        3.7
+      ],
+      [
+        "semaphore-media",
+        2.9
+      ],
+      [
+        "worker_thread ",
+        2.1
+      ],
+      [
+        "network_thread ",
+        1.5
+      ],
+      [
+        "IncomingVideoSt",
+        0.7
+      ]
+    ],
+    "camera_fps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 4.04,
+    "loadavg": "3.29 9.31 14.77 5/2145 79"
+  },
+  {
+    "round": 0,
+    "condition": "tiles_low_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 16.5,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        8.8
+      ],
+      [
+        "AudioEncoderQue",
+        2.5
+      ],
+      [
+        "worker_thread ",
+        1.6
+      ],
+      [
+        "semaphore-media",
+        1.4
+      ],
+      [
+        "network_thread ",
+        1.0
+      ],
+      [
+        "IncomingVideoSt",
+        0.6
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 1.38,
+    "loadavg": "2.65 8.68 14.41 4/2122 79"
+  },
+  {
+    "round": 0,
+    "condition": "all_off_screen",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 2.3,
+    "by_thread": [
+      [
+        "AudioEncoderQue",
+        1.2
+      ]
+    ],
+    "camera_fps": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 0.0,
+    "loadavg": "2.02 8.04 14.05 2/2310 79"
+  },
+  {
+    "round": 1,
+    "condition": "all_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 99.1,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        84.2
+      ],
+      [
+        "semaphore-media",
+        8.2
+      ],
+      [
+        "worker_thread ",
+        2.4
+      ],
+      [
+        "network_thread ",
+        1.9
+      ],
+      [
+        "AudioEncoderQue",
+        1.8
+      ],
+      [
+        "IncomingVideoSt",
+        0.6
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 59.8,
+    "screen_height": 1080,
+    "inbound_mbps": 23.31,
+    "loadavg": "3.74 7.97 13.87 4/2153 79"
+  },
+  {
+    "round": 1,
+    "condition": "tiles_medium_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 46.7,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        38.4
+      ],
+      [
+        "semaphore-media",
+        3.6
+      ],
+      [
+        "worker_thread ",
+        1.5
+      ],
+      [
+        "AudioEncoderQue",
+        1.5
+      ],
+      [
+        "network_thread ",
+        1.2
+      ]
+    ],
+    "camera_fps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 12.83,
+    "loadavg": "5.57 8.08 13.75 9/2146 79"
+  },
+  {
+    "round": 1,
+    "condition": "tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 36.3,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        29.3
+      ],
+      [
+        "semaphore-media",
+        2.8
+      ],
+      [
+        "AudioEncoderQue",
+        1.4
+      ],
+      [
+        "worker_thread ",
+        1.3
+      ],
+      [
+        "network_thread ",
+        1.1
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      14.9,
+      14.9,
+      15.0,
+      14.9,
+      15.0,
+      15.0,
+      15.0,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 9.94,
+    "loadavg": "5.52 7.89 13.54 3/2123 79"
+  },
+  {
+    "round": 1,
+    "condition": "4_tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 36.6,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        30.0
+      ],
+      [
+        "semaphore-media",
+        2.6
+      ],
+      [
+        "AudioEncoderQue",
+        1.6
+      ],
+      [
+        "worker_thread ",
+        1.1
+      ],
+      [
+        "network_thread ",
+        0.9
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      15.0,
+      14.9,
+      15.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 9.38,
+    "loadavg": "3.76 7.25 13.14 1/2102 79"
+  },
+  {
+    "round": 1,
+    "condition": "tiles_high_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 67.4,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        56.4
+      ],
+      [
+        "semaphore-media",
+        5.4
+      ],
+      [
+        "AudioEncoderQue",
+        1.8
+      ],
+      [
+        "worker_thread ",
+        1.7
+      ],
+      [
+        "network_thread ",
+        1.4
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      29.9,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 15.32,
+    "loadavg": "3.21 6.84 12.85 9/2147 79"
+  },
+  {
+    "round": 1,
+    "condition": "tiles_medium_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 38.2,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        27.9
+      ],
+      [
+        "AudioEncoderQue",
+        3.1
+      ],
+      [
+        "semaphore-media",
+        2.8
+      ],
+      [
+        "worker_thread ",
+        1.9
+      ],
+      [
+        "network_thread ",
+        1.4
+      ],
+      [
+        "IncomingVideoSt",
+        0.5
+      ]
+    ],
+    "camera_fps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      19.9,
+      20.0
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 4.01,
+    "loadavg": "2.66 6.42 12.55 3/2145 79"
+  },
+  {
+    "round": 1,
+    "condition": "tiles_low_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 5.8,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        3.0
+      ],
+      [
+        "worker_thread ",
+        0.7
+      ],
+      [
+        "AudioEncoderQue",
+        0.7
+      ],
+      [
+        "semaphore-media",
+        0.5
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      15.0,
+      15.0,
+      14.9,
+      15.0,
+      14.9,
+      15.0,
+      15.0,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 1.37,
+    "loadavg": "2.42 6.06 12.27 35/2187 79"
+  },
+  {
+    "round": 1,
+    "condition": "all_off_screen",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 1.9,
+    "by_thread": [
+      [
+        "AudioEncoderQue",
+        0.9
+      ]
+    ],
+    "camera_fps": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 0.0,
+    "loadavg": "3.16 5.98 12.08 2/2303 79"
+  },
+  {
+    "round": 2,
+    "condition": "all_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 100.1,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        85.0
+      ],
+      [
+        "semaphore-media",
+        8.1
+      ],
+      [
+        "worker_thread ",
+        2.4
+      ],
+      [
+        "network_thread ",
+        2.0
+      ],
+      [
+        "AudioEncoderQue",
+        1.9
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 59.8,
+    "screen_height": 1080,
+    "inbound_mbps": 23.29,
+    "loadavg": "5.64 6.28 11.98 4/2354 79"
+  },
+  {
+    "round": 2,
+    "condition": "tiles_medium_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 42.8,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        35.0
+      ],
+      [
+        "semaphore-media",
+        3.3
+      ],
+      [
+        "worker_thread ",
+        1.4
+      ],
+      [
+        "AudioEncoderQue",
+        1.3
+      ],
+      [
+        "network_thread ",
+        1.1
+      ],
+      [
+        "IncomingVideoSt",
+        0.5
+      ]
+    ],
+    "camera_fps": [
+      19.9,
+      19.9,
+      20.0,
+      20.0,
+      19.9,
+      20.0,
+      19.9,
+      20.0,
+      20.0
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 12.92,
+    "loadavg": "5.11 6.12 11.78 3/2356 79"
+  },
+  {
+    "round": 2,
+    "condition": "tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 500,
+    "cpu_percent_of_core": 33.4,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        26.9
+      ],
+      [
+        "semaphore-media",
+        2.6
+      ],
+      [
+        "worker_thread ",
+        1.2
+      ],
+      [
+        "AudioEncoderQue",
+        1.1
+      ],
+      [
+        "network_thread ",
+        1.0
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 10.12,
+    "loadavg": "5.95 6.30 11.69 1/2121 79"
+  },
+  {
+    "round": 2,
+    "condition": "4_tiles_low_share_high",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 40.9,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        33.5
+      ],
+      [
+        "semaphore-media",
+        2.9
+      ],
+      [
+        "AudioEncoderQue",
+        1.7
+      ],
+      [
+        "worker_thread ",
+        1.2
+      ],
+      [
+        "network_thread ",
+        1.0
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      15.0,
+      14.9,
+      14.9,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 60.0,
+    "screen_height": 1080,
+    "inbound_mbps": 9.34,
+    "loadavg": "5.35 6.11 11.48 3/2386 79"
+  },
+  {
+    "round": 2,
+    "condition": "tiles_high_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 63.8,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        53.4
+      ],
+      [
+        "semaphore-media",
+        5.1
+      ],
+      [
+        "AudioEncoderQue",
+        1.7
+      ],
+      [
+        "worker_thread ",
+        1.7
+      ],
+      [
+        "network_thread ",
+        1.4
+      ]
+    ],
+    "camera_fps": [
+      30.0,
+      30.0,
+      30.0,
+      29.9,
+      30.0,
+      30.0,
+      30.0,
+      30.0,
+      30.0
+    ],
+    "camera_heights": [
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720,
+      720
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 15.31,
+    "loadavg": "5.09 6.00 11.30 7/2343 79"
+  },
+  {
+    "round": 2,
+    "condition": "tiles_medium_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 13.6,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        10.0
+      ],
+      [
+        "semaphore-media",
+        1.1
+      ],
+      [
+        "AudioEncoderQue",
+        0.8
+      ],
+      [
+        "worker_thread ",
+        0.7
+      ],
+      [
+        "network_thread ",
+        0.5
+      ]
+    ],
+    "camera_fps": [
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      20.0,
+      19.9,
+      20.0,
+      20.0,
+      19.9
+    ],
+    "camera_heights": [
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360,
+      360
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 4.03,
+    "loadavg": "6.15 6.21 11.23 2/2334 79"
+  },
+  {
+    "round": 2,
+    "condition": "tiles_low_no_share",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 7.1,
+    "by_thread": [
+      [
+        "VideoDecoderQue",
+        3.5
+      ],
+      [
+        "AudioEncoderQue",
+        1.4
+      ],
+      [
+        "worker_thread ",
+        0.7
+      ],
+      [
+        "semaphore-media",
+        0.7
+      ]
+    ],
+    "camera_fps": [
+      15.0,
+      14.9,
+      15.0,
+      14.9,
+      15.0,
+      14.9,
+      15.0,
+      15.0,
+      15.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 1.37,
+    "loadavg": "5.96 6.14 11.05 12/2159 79"
+  },
+  {
+    "round": 2,
+    "condition": "all_off_screen",
+    "settled": true,
+    "settle_ms": 1000,
+    "cpu_percent_of_core": 3.7,
+    "by_thread": [
+      [
+        "AudioEncoderQue",
+        2.0
+      ],
+      [
+        "semaphore-media",
+        0.6
+      ]
+    ],
+    "camera_fps": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "camera_heights": [
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180,
+      180
+    ],
+    "screen_fps": 0.0,
+    "screen_height": 1080,
+    "inbound_mbps": 0.0,
+    "loadavg": "4.43 5.77 10.79 4/1852 79"
+  }
+]

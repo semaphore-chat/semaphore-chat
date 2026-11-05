@@ -1,0 +1,54 @@
+{
+ "joined with real devices": {
+  "ok": true,
+  "after_ms": 2003
+ },
+ "device list has the mic and speakers, no monitors": {
+  "ok": true,
+  "after_ms": 300
+ },
+ "far end hears our real mic": {
+  "ok": true,
+  "after_ms": 100
+ },
+ "our real speakers play the far end": {
+  "ok": true,
+  "after_ms": 509
+ },
+ "the output buffer is a conversation's, not two seconds": {
+  "ok": true,
+  "after_ms": 0
+ },
+ "a plugged-in device shows up": {
+  "ok": true,
+  "after_ms": 400
+ },
+ "output follows the default device": {
+  "ok": true,
+  "after_ms": 513
+ },
+ "and has left the old one": {
+  "ok": true,
+  "after_ms": 0
+ },
+ "a new mic shows up": {
+  "ok": true,
+  "after_ms": 200
+ },
+ "input follows the default device": {
+  "ok": true,
+  "after_ms": 2306
+ },
+ "unplugging falls back to the speakers": {
+  "ok": true,
+  "after_ms": 517
+ },
+ "unplugging the mic falls back too": {
+  "ok": true,
+  "after_ms": 401
+ },
+ "the call never dropped": {
+  "ok": true,
+  "after_ms": 0
+ }
+}

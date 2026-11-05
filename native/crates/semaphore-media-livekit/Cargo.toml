@@ -8,6 +8,25 @@ publish.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+# PulseAudio's protocol, spoken directly: PipeWire's pulse socket gives us real device names and
+# hot-plug that ALSA's PCM list doesn't. Falls back to ALSA/WASAPI through the same API.
+cpal = { version = "=0.18.2", features = ["pulseaudio"] }
+futures-util = { version = "0.3", default-features = false }
 livekit.workspace = true
+log = "0.4"
+rtrb = "0.3"
 semaphore-core.workspace = true
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+serde_json.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time", "macros"] }
+
+[dev-dependencies]
+anyhow.workspace = true
+base64 = "0.22"
+gpui-kit = { workspace = true, features = ["test-support"] }
+hmac = "0.12"
+semaphore-ui = { workspace = true, features = ["stories"] }
+sha2 = "0.10"
+
+[[example]]
+name = "voice_rig"
+path = "examples/voice_rig.rs"

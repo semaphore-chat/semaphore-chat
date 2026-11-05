@@ -8,6 +8,8 @@ publish.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+# Only to build RenderImage frames for the RGBA video fallback.
+image = { version = "0.25", default-features = false }
 semaphore-core.workspace = true
 
 [features]

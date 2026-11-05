@@ -1,0 +1,129 @@
+{
+ "scenario": "netkill",
+ "outage_s": 20.0,
+ "runs": [
+  {
+   "run": 1,
+   "scenario": "netkill",
+   "room": "u11-netkill-1-cf3545",
+   "started_at": 1793920532259,
+   "fault_at": 1793920536266,
+   "mid_fault_b_hears_a": 3.0,
+   "mid_fault_a_status": null,
+   "healed_at": 1793920556758,
+   "worst_recover_ms": 855,
+   "recover_ms": {
+    "a<-b": 776,
+    "a<-c": 776,
+    "b<-a": 803,
+    "c<-a": 855
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "video_back_ms": 4003,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a"
+   ],
+   "ok": true
+  },
+  {
+   "run": 2,
+   "scenario": "netkill",
+   "room": "u11-netkill-2-206b46",
+   "started_at": 1793920566761,
+   "fault_at": 1793920570563,
+   "mid_fault_b_hears_a": 3.0,
+   "mid_fault_a_status": null,
+   "healed_at": 1793920590795,
+   "worst_recover_ms": 972,
+   "recover_ms": {
+    "a<-b": 958,
+    "a<-c": 958,
+    "b<-a": 961,
+    "c<-a": 972
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "video_back_ms": 4002,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a"
+   ],
+   "ok": true
+  },
+  {
+   "run": 3,
+   "scenario": "netkill",
+   "room": "u11-netkill-3-f07e55",
+   "started_at": 1793920595745,
+   "fault_at": 1793920599346,
+   "mid_fault_b_hears_a": 3.0,
+   "mid_fault_a_status": null,
+   "healed_at": 1793920619554,
+   "worst_recover_ms": 1202,
+   "recover_ms": {
+    "a<-b": 1202,
+    "a<-c": 1202,
+    "b<-a": 1179,
+    "c<-a": 1192
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "video_back_ms": 4206,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a"
+   ],
+   "ok": true
+  }
+ ]
+}
