@@ -1,5 +1,6 @@
 import {
   extractUrls,
+  fetchLinkMetadata,
   parseOpenGraphTags,
   sanitizePreview,
   isPublicUrl,
@@ -353,6 +354,49 @@ describe('link-preview.utils', () => {
       expect(await isPublicUrl('edge-case.net')).toBe(true);
     });
 
+    it.each([
+      ['CGNAT', '100.64.0.1'],
+      ['top of CGNAT', '100.127.255.254'],
+      ['benchmarking', '198.18.0.1'],
+      ['IETF assignments', '192.0.0.1'],
+      ['documentation', '203.0.113.7'],
+      ['multicast', '224.0.0.1'],
+      ['reserved', '240.0.0.1'],
+      ['broadcast', '255.255.255.255'],
+      ['unique local, fc00::/7 low half', 'fc01::1'],
+      ['unique local, fc00::/7 end', 'fdff::1'],
+      ['link-local, fe80::/10 end', 'febf::1'],
+      ['site-local', 'fec0::1'],
+      ['IPv6 multicast', 'ff02::1'],
+      ['IPv4-mapped private', '::ffff:10.0.0.1'],
+      ['IPv4-mapped CGNAT', '::ffff:100.64.0.1'],
+      ['IPv4-mapped in hex', '::ffff:7f00:1'],
+      ['IPv4-compatible', '::7f00:1'],
+      ['NAT64', '64:ff9b::a00:1'],
+      ['6to4', '2002:a00:1::1'],
+      ['Teredo', '2001:0:a00:1::1'],
+    ])('should block %s (%s)', async (_what, address) => {
+      mockLookup.mockResolvedValue([{ address, family: 0 }]);
+      expect(await isPublicUrl('rebound.example')).toBe(false);
+    });
+
+    it.each(['[::1]', '[fd00::1]', '[::ffff:7f00:1]', '127.0.0.1'])(
+      'should block the IP literal %s without asking DNS',
+      async (hostname) => {
+        mockLookup.mockClear();
+        expect(await isPublicUrl(hostname)).toBe(false);
+        expect(mockLookup).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should allow a public IPv6 literal and a public IPv6 answer', async () => {
+      expect(await isPublicUrl('[2606:4700:4700::1111]')).toBe(true);
+      mockLookup.mockResolvedValue([
+        { address: '2606:4700:4700::1111', family: 6 },
+      ]);
+      expect(await isPublicUrl('one.example')).toBe(true);
+    });
+
     it('should not block 172.32.x.x (outside private range)', async () => {
       mockLookup.mockResolvedValue([{ address: '172.32.0.1', family: 4 }]);
       expect(await isPublicUrl('edge-case.net')).toBe(true);
@@ -458,6 +502,30 @@ describe('link-preview.utils', () => {
       const oembed = { provider_name: 'oEmbed Provider' };
       const merged = mergeOEmbedData(og, oembed);
       expect(merged.siteName).toBe('OG Site');
+    });
+  });
+
+  describe('fetchLinkMetadata redirects', () => {
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it.each([
+      'http://[fc01::1]/',
+      'http://[fe90::1]/',
+      'http://[::ffff:7f00:1]/',
+      'http://100.64.0.1/',
+      'http://169.254.169.254/latest/meta-data/',
+    ])('should not follow a redirect to %s', async (location) => {
+      mockLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }]);
+      const fetchSpy = jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValue(
+          new Response(null, { status: 302, headers: { location } }),
+        );
+
+      expect(await fetchLinkMetadata('https://example.com/r')).toBeNull();
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

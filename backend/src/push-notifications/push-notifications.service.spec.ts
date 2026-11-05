@@ -14,6 +14,13 @@ jest.mock('web-push', () => ({
   generateVAPIDKeys: jest.fn(),
 }));
 
+// Endpoint hosts resolve as public here; the rules are tested in
+// public-address and e2e (test/security-users.e2e-spec.ts)
+jest.mock('@/common/utils/public-address.util', () => ({
+  ...jest.requireActual('@/common/utils/public-address.util'),
+  isPublicUrl: () => Promise.resolve(true),
+}));
+
 describe('PushNotificationsService', () => {
   let service: PushNotificationsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;

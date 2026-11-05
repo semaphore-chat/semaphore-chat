@@ -116,11 +116,12 @@ export class LinkPreviewsService {
   ): Promise<void> {
     const existing = await this.databaseService.message.findUnique({
       where: { id: messageId },
-      select: { linkPreviews: true },
+      select: { linkPreviews: true, deletedAt: true },
     });
 
-    // Only update + broadcast if there were previews to clear
-    if (!existing?.linkPreviews) return;
+    // Only update + broadcast if there were previews to clear. A message
+    // removed since the job was queued stays out of the room.
+    if (!existing?.linkPreviews || existing.deletedAt) return;
 
     await this.databaseService.message.update({
       where: { id: messageId },
@@ -146,7 +147,8 @@ export class LinkPreviewsService {
       include: MESSAGE_INCLUDE,
     });
 
-    if (!msg) return;
+    // Removed between the job's checks and this read: never broadcast its text
+    if (!msg || msg.deletedAt) return;
 
     const { replyToMessage, ...rest } = msg;
 
