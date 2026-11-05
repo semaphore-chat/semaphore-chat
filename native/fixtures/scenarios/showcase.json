@@ -1,0 +1,6601 @@
+{
+  "communities": [
+    {
+      "avatar": "sc-community-couch",
+      "banner": "sc-community-banner-couch",
+      "channels": [
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "cc-general",
+          "isPrivate": false,
+          "name": "general",
+          "position": 0,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "cc-clips",
+          "isPrivate": false,
+          "name": "clips",
+          "position": 1,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "cc-lfg",
+          "isPrivate": false,
+          "name": "lfg",
+          "position": 2,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "cc-memes",
+          "isPrivate": false,
+          "name": "memes",
+          "position": 3,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "vc-squad",
+          "isPrivate": false,
+          "name": "Squad Up",
+          "position": 4,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        },
+        {
+          "communityId": "c-couch",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "vc-afk",
+          "isPrivate": false,
+          "name": "AFK",
+          "position": 5,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        }
+      ],
+      "createdAt": "2025-08-18T13:00:00.000Z",
+      "description": "Friday nights, mostly Deep Rift.",
+      "id": "c-couch",
+      "memberIds": [
+        "u-samira",
+        "me",
+        "u-marcus",
+        "u-aiko",
+        "u-grace",
+        "u-priya",
+        "u-kwame",
+        "u-tomas",
+        "u-chloe",
+        "u-noah",
+        "u-zara",
+        "u-diego"
+      ],
+      "name": "Couch Co-op",
+      "ownerId": "u-samira"
+    },
+    {
+      "avatar": "sc-community-lumen",
+      "banner": "sc-community-banner-lumen",
+      "channels": [
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "ch-announcements",
+          "isPrivate": false,
+          "name": "announcements",
+          "position": 0,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "ch-general",
+          "isPrivate": false,
+          "name": "general",
+          "position": 1,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "ch-dev",
+          "isPrivate": false,
+          "name": "dev",
+          "position": 2,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "ch-design",
+          "isPrivate": false,
+          "name": "design",
+          "position": 3,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "ch-random",
+          "isPrivate": false,
+          "name": "random",
+          "position": 4,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "vc-lounge",
+          "isPrivate": false,
+          "name": "Lounge",
+          "position": 5,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        },
+        {
+          "communityId": "c-lumen",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "vc-standup",
+          "isPrivate": false,
+          "name": "Standup",
+          "position": 6,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        }
+      ],
+      "createdAt": "2025-08-18T13:00:00.000Z",
+      "description": "A small product team building in the open.",
+      "id": "c-lumen",
+      "memberIds": [
+        "me",
+        "u-priya",
+        "u-marcus",
+        "u-aiko",
+        "u-samira",
+        "u-diego",
+        "u-grace",
+        "u-tomas",
+        "u-zara",
+        "u-kwame",
+        "u-chloe",
+        "u-noah",
+        "u-mateo"
+      ],
+      "name": "Lumen Studio",
+      "ownerId": "me"
+    },
+    {
+      "avatar": "sc-community-trail",
+      "banner": "sc-community-banner-trail",
+      "channels": [
+        {
+          "communityId": "c-trail",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "tr-general",
+          "isPrivate": false,
+          "name": "general",
+          "position": 0,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-trail",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "tr-trips",
+          "isPrivate": false,
+          "name": "trip-planning",
+          "position": 1,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-trail",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "tr-photos",
+          "isPrivate": false,
+          "name": "photos",
+          "position": 2,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-trail",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "tr-campfire",
+          "isPrivate": false,
+          "name": "Campfire",
+          "position": 3,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        }
+      ],
+      "createdAt": "2025-08-18T13:00:00.000Z",
+      "description": "Weekend hikes, gear talk and trail photos.",
+      "id": "c-trail",
+      "memberIds": [
+        "u-tomas",
+        "me",
+        "u-grace",
+        "u-noah",
+        "u-zara",
+        "u-mateo",
+        "u-chloe"
+      ],
+      "name": "Trailheads",
+      "ownerId": "u-tomas"
+    },
+    {
+      "avatar": "sc-community-synth",
+      "banner": "sc-community-banner-synth",
+      "channels": [
+        {
+          "communityId": "c-synth",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "sy-general",
+          "isPrivate": false,
+          "name": "general",
+          "position": 0,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-synth",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "sy-patches",
+          "isPrivate": false,
+          "name": "patches",
+          "position": 1,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "TEXT"
+        },
+        {
+          "communityId": "c-synth",
+          "createdAt": "2026-03-06T13:00:00.000Z",
+          "id": "sy-jam",
+          "isPrivate": false,
+          "name": "Jam Room",
+          "position": 2,
+          "preset": "NORMAL",
+          "slowmodeSeconds": 0,
+          "type": "VOICE"
+        }
+      ],
+      "createdAt": "2025-08-18T13:00:00.000Z",
+      "description": "Patches, gear and Friday night jams.",
+      "id": "c-synth",
+      "memberIds": [
+        "u-kwame",
+        "me",
+        "u-diego",
+        "u-aiko",
+        "u-mateo"
+      ],
+      "name": "Synth Club",
+      "ownerId": "u-kwame"
+    }
+  ],
+  "dmGroups": [
+    {
+      "createdAt": "2026-07-24T14:00:00.000Z",
+      "id": "dm-priya",
+      "isGroup": false,
+      "lastMessage": {
+        "authorId": "u-priya",
+        "id": "sc-dm-pri-never",
+        "sentAt": "2026-09-23T00:59:00.000Z",
+        "spans": [
+          {
+            "text": "dropbear is never living that down",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "members": [
+        {
+          "id": "dmm-dm-priya-me",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-me",
+            "displayName": "alexk",
+            "id": "me",
+            "username": "alexk"
+          },
+          "userId": "me"
+        },
+        {
+          "id": "dmm-dm-priya-u-priya",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-priya",
+            "displayName": "pri",
+            "id": "u-priya",
+            "username": "pri"
+          },
+          "userId": "u-priya"
+        }
+      ],
+      "name": null
+    },
+    {
+      "createdAt": "2026-07-24T14:00:00.000Z",
+      "id": "dm-launch",
+      "isGroup": true,
+      "lastMessage": {
+        "authorId": "u-samira",
+        "id": "sc-dm-launch-signoff",
+        "sentAt": "2026-09-22T19:12:00.000Z",
+        "spans": [
+          {
+            "text": "@alexk",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "text": " can you sign off on the changelog before Thursday?",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "members": [
+        {
+          "id": "dmm-dm-launch-me",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-me",
+            "displayName": "alexk",
+            "id": "me",
+            "username": "alexk"
+          },
+          "userId": "me"
+        },
+        {
+          "id": "dmm-dm-launch-u-samira",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-samira",
+            "displayName": "Samira",
+            "id": "u-samira",
+            "username": "samira"
+          },
+          "userId": "u-samira"
+        },
+        {
+          "id": "dmm-dm-launch-u-aiko",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-aiko",
+            "displayName": "aiko",
+            "id": "u-aiko",
+            "username": "aiko"
+          },
+          "userId": "u-aiko"
+        },
+        {
+          "id": "dmm-dm-launch-u-diego",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-diego",
+            "displayName": "Diego",
+            "id": "u-diego",
+            "username": "diego"
+          },
+          "userId": "u-diego"
+        }
+      ],
+      "name": "Launch crew 🚀"
+    },
+    {
+      "createdAt": "2026-07-24T14:00:00.000Z",
+      "id": "dm-marcus",
+      "isGroup": false,
+      "lastMessage": {
+        "authorId": "me",
+        "id": "sc-msg-76",
+        "sentAt": "2026-09-22T15:05:00.000Z",
+        "spans": [
+          {
+            "text": "👍 I’ll bring coffee",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "members": [
+        {
+          "id": "dmm-dm-marcus-me",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-me",
+            "displayName": "alexk",
+            "id": "me",
+            "username": "alexk"
+          },
+          "userId": "me"
+        },
+        {
+          "id": "dmm-dm-marcus-u-marcus",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-marcus",
+            "displayName": "dropbear",
+            "id": "u-marcus",
+            "username": "dropbear"
+          },
+          "userId": "u-marcus"
+        }
+      ],
+      "name": null
+    },
+    {
+      "createdAt": "2026-07-24T14:00:00.000Z",
+      "id": "dm-grace",
+      "isGroup": false,
+      "lastMessage": {
+        "authorId": "u-grace",
+        "id": "sc-msg-78",
+        "sentAt": "2026-09-21T20:52:00.000Z",
+        "spans": [
+          {
+            "text": "anytime, it was quiet 😴",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "members": [
+        {
+          "id": "dmm-dm-grace-me",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-me",
+            "displayName": "alexk",
+            "id": "me",
+            "username": "alexk"
+          },
+          "userId": "me"
+        },
+        {
+          "id": "dmm-dm-grace-u-grace",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-grace",
+            "displayName": "gracie",
+            "id": "u-grace",
+            "username": "gracie"
+          },
+          "userId": "u-grace"
+        }
+      ],
+      "name": null
+    },
+    {
+      "createdAt": "2026-07-24T14:00:00.000Z",
+      "id": "dm-kwame",
+      "isGroup": false,
+      "lastMessage": {
+        "authorId": "u-kwame",
+        "id": "sc-msg-79",
+        "sentAt": "2026-09-20T14:15:00.000Z",
+        "spans": [
+          {
+            "text": "new episode drops Friday, want to be a guest? 🎙️",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "members": [
+        {
+          "id": "dmm-dm-kwame-me",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-me",
+            "displayName": "alexk",
+            "id": "me",
+            "username": "alexk"
+          },
+          "userId": "me"
+        },
+        {
+          "id": "dmm-dm-kwame-u-kwame",
+          "joinedAt": "2026-07-24T14:00:00.000Z",
+          "user": {
+            "avatarUrl": "sc-avatar-u-kwame",
+            "displayName": "kwam3",
+            "id": "u-kwame",
+            "username": "kwam3"
+          },
+          "userId": "u-kwame"
+        }
+      ],
+      "name": null
+    }
+  ],
+  "friendships": [
+    {
+      "createdAt": "2026-08-23T14:00:00.000Z",
+      "id": "sc-friend-u-priya",
+      "status": "ACCEPTED",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "bannerUrl": null,
+        "bio": "Product designer. Illustrations, type, and too many color palettes.",
+        "displayName": "pri",
+        "id": "u-priya",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": "downloading 40gb update",
+        "username": "pri"
+      },
+      "userBId": "u-priya"
+    },
+    {
+      "createdAt": "2026-08-22T14:00:00.000Z",
+      "id": "sc-friend-u-marcus",
+      "status": "ACCEPTED",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-marcus",
+        "bannerUrl": null,
+        "bio": "Backend & infra. Will talk your ear off about backoff strategies.",
+        "displayName": "dropbear",
+        "id": "u-marcus",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": "back at 9",
+        "username": "dropbear"
+      },
+      "userBId": "u-marcus"
+    },
+    {
+      "createdAt": "2026-08-21T14:00:00.000Z",
+      "id": "sc-friend-u-aiko",
+      "status": "ACCEPTED",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-aiko",
+        "bannerUrl": null,
+        "bio": null,
+        "displayName": "aiko",
+        "id": "u-aiko",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": null,
+        "username": "aiko"
+      },
+      "userBId": "u-aiko"
+    },
+    {
+      "createdAt": "2026-08-20T14:00:00.000Z",
+      "id": "sc-friend-u-grace",
+      "status": "ACCEPTED",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-grace",
+        "bannerUrl": null,
+        "bio": null,
+        "displayName": "gracie",
+        "id": "u-grace",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": "work tomorrow 😐",
+        "username": "gracie"
+      },
+      "userBId": "u-grace"
+    },
+    {
+      "createdAt": "2026-08-19T14:00:00.000Z",
+      "id": "sc-friend-u-kwame",
+      "status": "ACCEPTED",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-kwame",
+        "bannerUrl": null,
+        "bio": null,
+        "displayName": "kwam3",
+        "id": "u-kwame",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": null,
+        "username": "kwam3"
+      },
+      "userBId": "u-kwame"
+    },
+    {
+      "createdAt": "2026-08-18T14:00:00.000Z",
+      "id": "sc-friend-u-chloe",
+      "status": "PENDING",
+      "userA": {
+        "avatarUrl": "sc-avatar-u-chloe",
+        "bannerUrl": null,
+        "bio": null,
+        "displayName": "chlo",
+        "id": "u-chloe",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": null,
+        "username": "chlo"
+      },
+      "userAId": "u-chloe",
+      "userB": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userBId": "me"
+    }
+  ],
+  "instanceName": "Semaphore Chat",
+  "me": {
+    "avatarUrl": "sc-avatar-me",
+    "bannerUrl": "sc-banner-me",
+    "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+    "displayName": "alexk",
+    "id": "me",
+    "lastSeen": "2026-09-23T01:04:00Z",
+    "role": "OWNER",
+    "status": null,
+    "username": "alexk"
+  },
+  "membershipsByCommunity": {
+    "c-couch": [
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-0",
+        "joinedAt": "2025-08-18T13:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "UPDATE_COMMUNITY",
+              "DELETE_COMMUNITY",
+              "READ_COMMUNITY",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "READ_CHANNEL",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "MANAGE_CHANNEL_PERMISSIONS",
+              "MANAGE_WEBHOOKS",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "DELETE_MEMBER",
+              "READ_MEMBER",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "DELETE_MESSAGE",
+              "READ_MESSAGE",
+              "CREATE_ROLE",
+              "UPDATE_ROLE",
+              "DELETE_ROLE",
+              "READ_ROLE",
+              "CREATE_INVITE",
+              "DELETE_INVITE",
+              "CREATE_ALIAS_GROUP",
+              "UPDATE_ALIAS_GROUP",
+              "DELETE_ALIAS_GROUP",
+              "READ_ALIAS_GROUP",
+              "CREATE_ALIAS_GROUP_MEMBER",
+              "DELETE_ALIAS_GROUP_MEMBER",
+              "READ_ALIAS_GROUP_MEMBER",
+              "UPDATE_ALIAS_GROUP_MEMBER",
+              "MANAGE_EMOJIS",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "UNBAN_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "VIEW_MODERATION_LOGS",
+              "MUTE_PARTICIPANT",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-community-admin-c-couch",
+            "isDefault": true,
+            "name": "Community Admin",
+            "position": 10
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-samira",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Samira",
+          "id": "u-samira",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "samira"
+        },
+        "userId": "u-samira"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-1",
+        "joinedAt": "2025-09-30T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-me",
+          "bannerUrl": "sc-banner-me",
+          "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+          "displayName": "alexk",
+          "id": "me",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "OWNER",
+          "status": null,
+          "username": "alexk"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-2",
+        "joinedAt": "2025-10-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "MUTE_PARTICIPANT",
+              "KICK_USER",
+              "CREATE_INVITE"
+            ],
+            "createdAt": "2025-11-16T13:00:00.000Z",
+            "id": "role-mods-c-couch",
+            "isDefault": false,
+            "name": "mods",
+            "position": 30
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-marcus",
+          "bannerUrl": null,
+          "bio": "Backend & infra. Will talk your ear off about backoff strategies.",
+          "displayName": "dropbear",
+          "id": "u-marcus",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "back at 9",
+          "username": "dropbear"
+        },
+        "userId": "u-marcus"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-3",
+        "joinedAt": "2025-11-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-aiko",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "aiko",
+          "id": "u-aiko",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "aiko"
+        },
+        "userId": "u-aiko"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-4",
+        "joinedAt": "2025-12-08T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "MUTE_PARTICIPANT",
+              "KICK_USER",
+              "CREATE_INVITE"
+            ],
+            "createdAt": "2025-11-16T13:00:00.000Z",
+            "id": "role-mods-c-couch",
+            "isDefault": false,
+            "name": "mods",
+            "position": 30
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-grace",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "gracie",
+          "id": "u-grace",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "work tomorrow 😐",
+          "username": "gracie"
+        },
+        "userId": "u-grace"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-5",
+        "joinedAt": "2025-12-31T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-priya",
+          "bannerUrl": null,
+          "bio": "Product designer. Illustrations, type, and too many color palettes.",
+          "displayName": "pri",
+          "id": "u-priya",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "downloading 40gb update",
+          "username": "pri"
+        },
+        "userId": "u-priya"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-6",
+        "joinedAt": "2026-01-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-kwame",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "kwam3",
+          "id": "u-kwame",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "kwam3"
+        },
+        "userId": "u-kwame"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-7",
+        "joinedAt": "2026-02-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-tomas",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "tomatillo",
+          "id": "u-tomas",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "tomatillo"
+        },
+        "userId": "u-tomas"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-8",
+        "joinedAt": "2026-03-10T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-chloe",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "chlo",
+          "id": "u-chloe",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "chlo"
+        },
+        "userId": "u-chloe"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-9",
+        "joinedAt": "2026-04-02T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-noah",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "noahbody",
+          "id": "u-noah",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "noahbody"
+        },
+        "userId": "u-noah"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-10",
+        "joinedAt": "2026-04-25T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-zara",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "zara",
+          "id": "u-zara",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "zara"
+        },
+        "userId": "u-zara"
+      },
+      {
+        "communityId": "c-couch",
+        "id": "sc-membership-c-couch-11",
+        "joinedAt": "2026-05-18T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-couch",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-diego",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Diego",
+          "id": "u-diego",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "diego"
+        },
+        "userId": "u-diego"
+      }
+    ],
+    "c-lumen": [
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-0",
+        "joinedAt": "2025-08-18T13:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "UPDATE_COMMUNITY",
+              "DELETE_COMMUNITY",
+              "READ_COMMUNITY",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "READ_CHANNEL",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "MANAGE_CHANNEL_PERMISSIONS",
+              "MANAGE_WEBHOOKS",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "DELETE_MEMBER",
+              "READ_MEMBER",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "DELETE_MESSAGE",
+              "READ_MESSAGE",
+              "CREATE_ROLE",
+              "UPDATE_ROLE",
+              "DELETE_ROLE",
+              "READ_ROLE",
+              "CREATE_INVITE",
+              "DELETE_INVITE",
+              "CREATE_ALIAS_GROUP",
+              "UPDATE_ALIAS_GROUP",
+              "DELETE_ALIAS_GROUP",
+              "READ_ALIAS_GROUP",
+              "CREATE_ALIAS_GROUP_MEMBER",
+              "DELETE_ALIAS_GROUP_MEMBER",
+              "READ_ALIAS_GROUP_MEMBER",
+              "UPDATE_ALIAS_GROUP_MEMBER",
+              "MANAGE_EMOJIS",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "UNBAN_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "VIEW_MODERATION_LOGS",
+              "MUTE_PARTICIPANT",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-community-admin-c-lumen",
+            "isDefault": true,
+            "name": "Community Admin",
+            "position": 10
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-me",
+          "bannerUrl": "sc-banner-me",
+          "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+          "displayName": "alexk",
+          "id": "me",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "OWNER",
+          "status": null,
+          "username": "alexk"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-1",
+        "joinedAt": "2025-09-30T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND",
+              "MANAGE_EMOJIS",
+              "CREATE_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2026-06-18T13:00:00.000Z",
+            "id": "role-designer-c-lumen",
+            "isDefault": false,
+            "name": "Designer",
+            "position": 40
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-priya",
+          "bannerUrl": null,
+          "bio": "Product designer. Illustrations, type, and too many color palettes.",
+          "displayName": "pri",
+          "id": "u-priya",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "downloading 40gb update",
+          "username": "pri"
+        },
+        "userId": "u-priya"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-2",
+        "joinedAt": "2025-10-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "READ_ROLE",
+              "CREATE_MESSAGE",
+              "DELETE_MESSAGE",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "JOIN_CHANNEL",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "MUTE_PARTICIPANT",
+              "READ_SOUNDBOARD_SOUND",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-moderator-c-lumen",
+            "isDefault": true,
+            "name": "Moderator",
+            "position": 20
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-marcus",
+          "bannerUrl": null,
+          "bio": "Backend & infra. Will talk your ear off about backoff strategies.",
+          "displayName": "dropbear",
+          "id": "u-marcus",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "back at 9",
+          "username": "dropbear"
+        },
+        "userId": "u-marcus"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-3",
+        "joinedAt": "2025-11-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-aiko",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "aiko",
+          "id": "u-aiko",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "aiko"
+        },
+        "userId": "u-aiko"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-4",
+        "joinedAt": "2025-12-08T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "CREATE_INVITE"
+            ],
+            "createdAt": "2026-05-03T13:00:00.000Z",
+            "id": "role-release-manager-c-lumen",
+            "isDefault": false,
+            "name": "Release Manager",
+            "position": 30
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-samira",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Samira",
+          "id": "u-samira",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "samira"
+        },
+        "userId": "u-samira"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-5",
+        "joinedAt": "2025-12-31T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND",
+              "MANAGE_EMOJIS",
+              "CREATE_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2026-06-18T13:00:00.000Z",
+            "id": "role-designer-c-lumen",
+            "isDefault": false,
+            "name": "Designer",
+            "position": 40
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-diego",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Diego",
+          "id": "u-diego",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "diego"
+        },
+        "userId": "u-diego"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-6",
+        "joinedAt": "2026-01-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "READ_ROLE",
+              "CREATE_MESSAGE",
+              "DELETE_MESSAGE",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "JOIN_CHANNEL",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "MUTE_PARTICIPANT",
+              "READ_SOUNDBOARD_SOUND",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-moderator-c-lumen",
+            "isDefault": true,
+            "name": "Moderator",
+            "position": 20
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-grace",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "gracie",
+          "id": "u-grace",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "work tomorrow 😐",
+          "username": "gracie"
+        },
+        "userId": "u-grace"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-7",
+        "joinedAt": "2026-02-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-tomas",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "tomatillo",
+          "id": "u-tomas",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "tomatillo"
+        },
+        "userId": "u-tomas"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-8",
+        "joinedAt": "2026-03-10T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-zara",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "zara",
+          "id": "u-zara",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "zara"
+        },
+        "userId": "u-zara"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-9",
+        "joinedAt": "2026-04-02T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-kwame",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "kwam3",
+          "id": "u-kwame",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "kwam3"
+        },
+        "userId": "u-kwame"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-10",
+        "joinedAt": "2026-04-25T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-chloe",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "chlo",
+          "id": "u-chloe",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "chlo"
+        },
+        "userId": "u-chloe"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-11",
+        "joinedAt": "2026-05-18T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-noah",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "noahbody",
+          "id": "u-noah",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "noahbody"
+        },
+        "userId": "u-noah"
+      },
+      {
+        "communityId": "c-lumen",
+        "id": "sc-membership-c-lumen-12",
+        "joinedAt": "2026-06-10T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-lumen",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-mateo",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "mateo",
+          "id": "u-mateo",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "mateo"
+        },
+        "userId": "u-mateo"
+      }
+    ],
+    "c-synth": [
+      {
+        "communityId": "c-synth",
+        "id": "sc-membership-c-synth-0",
+        "joinedAt": "2025-08-18T13:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "UPDATE_COMMUNITY",
+              "DELETE_COMMUNITY",
+              "READ_COMMUNITY",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "READ_CHANNEL",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "MANAGE_CHANNEL_PERMISSIONS",
+              "MANAGE_WEBHOOKS",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "DELETE_MEMBER",
+              "READ_MEMBER",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "DELETE_MESSAGE",
+              "READ_MESSAGE",
+              "CREATE_ROLE",
+              "UPDATE_ROLE",
+              "DELETE_ROLE",
+              "READ_ROLE",
+              "CREATE_INVITE",
+              "DELETE_INVITE",
+              "CREATE_ALIAS_GROUP",
+              "UPDATE_ALIAS_GROUP",
+              "DELETE_ALIAS_GROUP",
+              "READ_ALIAS_GROUP",
+              "CREATE_ALIAS_GROUP_MEMBER",
+              "DELETE_ALIAS_GROUP_MEMBER",
+              "READ_ALIAS_GROUP_MEMBER",
+              "UPDATE_ALIAS_GROUP_MEMBER",
+              "MANAGE_EMOJIS",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "UNBAN_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "VIEW_MODERATION_LOGS",
+              "MUTE_PARTICIPANT",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-community-admin-c-synth",
+            "isDefault": true,
+            "name": "Community Admin",
+            "position": 10
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-kwame",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "kwam3",
+          "id": "u-kwame",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "kwam3"
+        },
+        "userId": "u-kwame"
+      },
+      {
+        "communityId": "c-synth",
+        "id": "sc-membership-c-synth-1",
+        "joinedAt": "2025-09-30T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-synth",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-me",
+          "bannerUrl": "sc-banner-me",
+          "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+          "displayName": "alexk",
+          "id": "me",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "OWNER",
+          "status": null,
+          "username": "alexk"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "c-synth",
+        "id": "sc-membership-c-synth-2",
+        "joinedAt": "2025-10-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-synth",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-diego",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "Diego",
+          "id": "u-diego",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "diego"
+        },
+        "userId": "u-diego"
+      },
+      {
+        "communityId": "c-synth",
+        "id": "sc-membership-c-synth-3",
+        "joinedAt": "2025-11-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-synth",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-aiko",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "aiko",
+          "id": "u-aiko",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "aiko"
+        },
+        "userId": "u-aiko"
+      },
+      {
+        "communityId": "c-synth",
+        "id": "sc-membership-c-synth-4",
+        "joinedAt": "2025-12-08T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-synth",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-mateo",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "mateo",
+          "id": "u-mateo",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "mateo"
+        },
+        "userId": "u-mateo"
+      }
+    ],
+    "c-trail": [
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-0",
+        "joinedAt": "2025-08-18T13:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "UPDATE_COMMUNITY",
+              "DELETE_COMMUNITY",
+              "READ_COMMUNITY",
+              "CREATE_CHANNEL",
+              "UPDATE_CHANNEL",
+              "DELETE_CHANNEL",
+              "READ_CHANNEL",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "MANAGE_CHANNEL_PERMISSIONS",
+              "MANAGE_WEBHOOKS",
+              "CREATE_MEMBER",
+              "UPDATE_MEMBER",
+              "DELETE_MEMBER",
+              "READ_MEMBER",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "DELETE_MESSAGE",
+              "READ_MESSAGE",
+              "CREATE_ROLE",
+              "UPDATE_ROLE",
+              "DELETE_ROLE",
+              "READ_ROLE",
+              "CREATE_INVITE",
+              "DELETE_INVITE",
+              "CREATE_ALIAS_GROUP",
+              "UPDATE_ALIAS_GROUP",
+              "DELETE_ALIAS_GROUP",
+              "READ_ALIAS_GROUP",
+              "CREATE_ALIAS_GROUP_MEMBER",
+              "DELETE_ALIAS_GROUP_MEMBER",
+              "READ_ALIAS_GROUP_MEMBER",
+              "UPDATE_ALIAS_GROUP_MEMBER",
+              "MANAGE_EMOJIS",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "CAPTURE_REPLAY",
+              "KICK_USER",
+              "TIMEOUT_USER",
+              "UNBAN_USER",
+              "PIN_MESSAGE",
+              "UNPIN_MESSAGE",
+              "DELETE_ANY_MESSAGE",
+              "VIEW_BAN_LIST",
+              "VIEW_MODERATION_LOGS",
+              "MUTE_PARTICIPANT",
+              "CREATE_SOUNDBOARD_SOUND",
+              "DELETE_SOUNDBOARD_SOUND",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-community-admin-c-trail",
+            "isDefault": true,
+            "name": "Community Admin",
+            "position": 10
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-tomas",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "tomatillo",
+          "id": "u-tomas",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "tomatillo"
+        },
+        "userId": "u-tomas"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-1",
+        "joinedAt": "2025-09-30T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-me",
+          "bannerUrl": "sc-banner-me",
+          "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+          "displayName": "alexk",
+          "id": "me",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "OWNER",
+          "status": null,
+          "username": "alexk"
+        },
+        "userId": "me"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-2",
+        "joinedAt": "2025-10-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-grace",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "gracie",
+          "id": "u-grace",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": "work tomorrow 😐",
+          "username": "gracie"
+        },
+        "userId": "u-grace"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-3",
+        "joinedAt": "2025-11-15T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-noah",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "noahbody",
+          "id": "u-noah",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "noahbody"
+        },
+        "userId": "u-noah"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-4",
+        "joinedAt": "2025-12-08T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-zara",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "zara",
+          "id": "u-zara",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "zara"
+        },
+        "userId": "u-zara"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-5",
+        "joinedAt": "2025-12-31T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-mateo",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "mateo",
+          "id": "u-mateo",
+          "lastSeen": "2026-09-22T21:40:00.000Z",
+          "role": "USER",
+          "status": null,
+          "username": "mateo"
+        },
+        "userId": "u-mateo"
+      },
+      {
+        "communityId": "c-trail",
+        "id": "sc-membership-c-trail-6",
+        "joinedAt": "2026-01-23T14:00:00.000Z",
+        "roles": [
+          {
+            "actions": [
+              "READ_COMMUNITY",
+              "READ_CHANNEL",
+              "READ_MEMBER",
+              "READ_MESSAGE",
+              "CREATE_MESSAGE",
+              "ATTACH_FILES",
+              "JOIN_CHANNEL",
+              "SPEAK",
+              "VIDEO",
+              "SCREEN_SHARE",
+              "CREATE_REACTION",
+              "DELETE_REACTION",
+              "READ_ALIAS_GROUP",
+              "READ_ALIAS_GROUP_MEMBER",
+              "CAPTURE_REPLAY",
+              "READ_SOUNDBOARD_SOUND"
+            ],
+            "createdAt": "2025-08-18T13:00:00.000Z",
+            "id": "role-member-c-trail",
+            "isDefault": true,
+            "name": "Member",
+            "position": 100
+          }
+        ],
+        "user": {
+          "avatarUrl": "sc-avatar-u-chloe",
+          "bannerUrl": null,
+          "bio": null,
+          "displayName": "chlo",
+          "id": "u-chloe",
+          "lastSeen": "2026-09-23T01:04:00Z",
+          "role": "USER",
+          "status": null,
+          "username": "chlo"
+        },
+        "userId": "u-chloe"
+      }
+    ]
+  },
+  "messagesByChannel": {
+    "cc-clips": [
+      {
+        "attachments": [],
+        "authorId": "u-tomas",
+        "channelId": "cc-clips",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-20",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "u-marcus",
+              "u-chloe"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T02:47:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "from last night https://clips.deeprift.gg/c/k2f9q",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-chloe",
+        "channelId": "cc-clips",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-21",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "https://clips.deeprift.gg/c/p77xm",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-chloe",
+        "channelId": "cc-clips",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-22",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the ending",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "cc-general": [
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-1",
+        "lastReplyAt": null,
+        "linkPreviews": [
+          {
+            "description": "The full patch notes for Deep Rift 6.2.",
+            "imageUrl": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22840%22%20height%3D%22220%22%20viewBox%3D%220%200%20840%20220%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22dr%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231B1530%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233A1F4F%22%2F%3E%3C%2FlinearGradient%3E%3CradialGradient%20id%3D%22drl%22%20cx%3D%220.78%22%20cy%3D%220.35%22%20r%3D%220.5%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23FFD35C%22%20stop-opacity%3D%220.35%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%23FFD35C%22%20stop-opacity%3D%220%22%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22840%22%20height%3D%22220%22%20fill%3D%22url(%23dr)%22%2F%3E%3Crect%20width%3D%22840%22%20height%3D%22220%22%20fill%3D%22url(%23drl)%22%2F%3E%3Cpath%20d%3D%22M0%20180%20C120%20160%20220%20190%20340%20172%20C470%20152%20560%20186%20700%20168%20C760%20160%20800%20170%20840%20164%20L840%20220%20L0%20220%20Z%22%20fill%3D%22%232A2145%22%2F%3E%3Cpath%20d%3D%22M70%2024%20L80%2040%20L70%2056%20L60%2040%20Z%22%20fill%3D%22%235EEAD4%22%2F%3E%3Cpath%20d%3D%22M150%20138.8%20L157%20150%20L150%20161.2%20L143%20150%20Z%22%20fill%3D%22%235EEAD4%22%2F%3E%3Cpath%20d%3D%22M560%2023.2%20L568%2036%20L560%2048.8%20L552%2036%20Z%22%20fill%3D%22%235EEAD4%22%2F%3E%3Cpath%20d%3D%22M720%20155.6%20L729%20170%20L720%20184.4%20L711%20170%20Z%22%20fill%3D%22%235EEAD4%22%2F%3E%3Cpath%20d%3D%22M800%2050.4%20L806%2060%20L800%2069.6%20L794%2060%20Z%22%20fill%3D%22%235EEAD4%22%2F%3E%3Ctext%20x%3D%2248%22%20y%3D%22102%22%20font-family%3D%22Roboto%2C%20'Segoe%20UI'%2C%20Helvetica%2C%20Arial%2C%20'Liberation%20Sans'%2C%20sans-serif%22%20font-size%3D%2254%22%20font-weight%3D%22800%22%20letter-spacing%3D%226%22%20fill%3D%22%23F3F0FF%22%3EDEEP%20RIFT%3C%2Ftext%3E%3Crect%20x%3D%2250%22%20y%3D%22122%22%20width%3D%22148%22%20height%3D%2240%22%20rx%3D%2220%22%20fill%3D%22%23FF8A3D%22%2F%3E%3Ctext%20x%3D%22124%22%20y%3D%22150%22%20font-family%3D%22Roboto%2C%20'Segoe%20UI'%2C%20Helvetica%2C%20Arial%2C%20'Liberation%20Sans'%2C%20sans-serif%22%20font-size%3D%2222%22%20font-weight%3D%22700%22%20text-anchor%3D%22middle%22%20fill%3D%22%231B1530%22%3EPATCH%206.2%3C%2Ftext%3E%3Ctext%20x%3D%22216%22%20y%3D%22150%22%20font-family%3D%22Roboto%2C%20'Segoe%20UI'%2C%20Helvetica%2C%20Arial%2C%20'Liberation%20Sans'%2C%20sans-serif%22%20font-size%3D%2221%22%20fill%3D%22%23B9B2CC%22%3Edriller%20changes%20%C2%B7%20new%20biome%3C%2Ftext%3E%3Cg%20transform%3D%22translate(660%20190)%20rotate(0)%20scale(1.35)%22%3E%3Crect%20x%3D%22-15%22%20y%3D%22-24%22%20width%3D%2212%22%20height%3D%2224%22%20rx%3D%225%22%20fill%3D%22%232D2446%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Crect%20x%3D%223%22%20y%3D%22-24%22%20width%3D%2212%22%20height%3D%2224%22%20rx%3D%225%22%20fill%3D%22%232D2446%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Crect%20x%3D%22-31%22%20y%3D%22-58%22%20width%3D%2211%22%20height%3D%2230%22%20rx%3D%225%22%20fill%3D%22%23FF8A3D%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Crect%20x%3D%22-23%22%20y%3D%22-64%22%20width%3D%2246%22%20height%3D%2244%22%20rx%3D%2212%22%20fill%3D%22%23FF8A3D%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Crect%20x%3D%22-21.5%22%20y%3D%22-36%22%20width%3D%2243%22%20height%3D%226%22%20fill%3D%22%232D2446%22%2F%3E%3Cg%20transform%3D%22translate(25%20-56)%20rotate(-150)%22%3E%3Crect%20x%3D%22-5.5%22%20y%3D%22-2%22%20width%3D%2211%22%20height%3D%2230%22%20rx%3D%225%22%20fill%3D%22%23FF8A3D%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Ccircle%20cx%3D%220%22%20cy%3D%2230%22%20r%3D%227%22%20fill%3D%22%23F2C9A0%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3C%2Fg%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-84%22%20r%3D%2221%22%20fill%3D%22%23F2C9A0%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Cpath%20d%3D%22M-24%20-88%20A24%2024%200%200%201%2024%20-88%20Z%22%20fill%3D%22%23FFD35C%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Crect%20x%3D%22-28%22%20y%3D%22-90%22%20width%3D%2256%22%20height%3D%227%22%20rx%3D%223%22%20fill%3D%22%23FFD35C%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Ccircle%20cx%3D%220%22%20cy%3D%22-101%22%20r%3D%226.5%22%20fill%3D%22%23FFF6C9%22%20stroke%3D%22%2315131F%22%20stroke-width%3D%223.2%22%2F%3E%3Ccircle%20cx%3D%22-8%22%20cy%3D%22-78%22%20r%3D%222.8%22%20fill%3D%22%2315131F%22%2F%3E%3Ccircle%20cx%3D%228%22%20cy%3D%22-78%22%20r%3D%222.8%22%20fill%3D%22%2315131F%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E",
+            "siteName": "Deep Rift",
+            "title": "Deep Rift 6.2: driller changes, new cave biome, bug fixes",
+            "url": "https://deeprift.gg/patch/6-2"
+          }
+        ],
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "patch notes are up deeprift.gg/patch/6-2",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-2",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "they finally nerfed the fire thing",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-3",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "good",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-4",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that was my whole build",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-5",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "we know",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-6",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:09:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "reinstalled and lost all my binds again. putting them here so i stop doing this",
+            "type": "PLAINTEXT",
+            "userId": null
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "dig     mouse4\nping    mouse5\nflare   f\nemote   v",
+            "type": "CODE_BLOCK",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-7",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:10:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "why is emote on v",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-8",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "u-aiko",
+              "u-grace"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:10:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "priorities",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-cc-friday",
+        "lastReplyAt": "2026-09-23T00:20:00.000Z",
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 5,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:14:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "are we doing friday or not",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-10",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:16:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@dropbear",
+            "type": "USER_MENTION",
+            "userId": "u-marcus"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " you still have my headset btw",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-11",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:21:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "yeah i'll bring it friday",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [
+          {
+            "fileType": "IMAGE",
+            "filename": "deep-rift-pit.png",
+            "hasThumbnail": false,
+            "id": "sc-img-pit",
+            "mimeType": "image/png",
+            "size": 356812
+          }
+        ],
+        "authorId": "u-grace",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-cc-pit",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:22:00.000Z",
+        "spans": [],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-cc-pit-caption",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😂",
+            "userIds": [
+              "u-aiko",
+              "u-priya",
+              "u-kwame",
+              "u-samira"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:22:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "found this from last time",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-cc-pit-gif",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:23:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "https://media.gifs.example/deep-rift-pit-fall.gif",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "cc-lfg": [
+      {
+        "attachments": [],
+        "authorId": "u-noah",
+        "channelId": "cc-lfg",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-23",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T23:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "need one more, starting in 10",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-zara",
+        "channelId": "cc-lfg",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-24",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T23:42:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "me",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "cc-lfg",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-25",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anyone up for a couple runs tonight",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "cc-memes": [
+      {
+        "attachments": [],
+        "authorId": "u-zara",
+        "channelId": "cc-memes",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-26",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T22:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "https://media.gifs.example/nod-yes.gif",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "ch-announcements": [
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": "ch-announcements",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-51",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": true,
+        "pinnedAt": "2026-09-21T13:31:00.000Z",
+        "pinnedBy": "u-samira",
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "u-marcus",
+              "u-priya",
+              "u-aiko",
+              "u-grace",
+              "u-tomas",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T13:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "bold": true,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Lumen 2.3.2 is out 🎉",
+            "type": "PLAINTEXT",
+            "userId": null
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " Faster uploads, fixed notification sounds on Android, and a much nicer settings page. Full notes are on the blog.",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "ch-design": [
+      {
+        "attachments": [
+          {
+            "fileType": "IMAGE",
+            "filename": "palette-v2.png",
+            "hasThumbnail": false,
+            "id": "sc-img-palette",
+            "mimeType": "image/png",
+            "size": 96512
+          }
+        ],
+        "authorId": "u-priya",
+        "channelId": "ch-design",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-48",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎨",
+            "userIds": [
+              "u-diego",
+              "u-chloe"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Palette exploration for the 2.4 marketing page — thoughts?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-diego",
+        "channelId": "ch-design",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-49",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "The coral + violet combo is 🔥 maybe a touch less saturation on the green?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": "ch-design",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-design-accent",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@alexk",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " can we use the violet as the default accent in the app too?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "ch-dev": [
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-28",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Afternoon all 👋 on-call handoff done, pager has been quiet",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [
+          {
+            "fileType": "IMAGE",
+            "filename": "empty-state-v3.png",
+            "hasThumbnail": false,
+            "id": "sc-img-empty-state",
+            "mimeType": "image/png",
+            "size": 184320
+          }
+        ],
+        "authorId": "u-priya",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-dev-empty-states",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😍",
+            "userIds": [
+              "u-aiko",
+              "u-samira",
+              "u-tomas",
+              "u-grace"
+            ]
+          },
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "u-marcus",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "New empty states are ready for review ✨ here's the channel one",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-diego",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-29",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": {
+          "authorId": "u-priya",
+          "deletedAt": null,
+          "id": "sc-dev-empty-states",
+          "sentAt": "2026-09-22T17:40:00.000Z",
+          "spans": [
+            {
+              "aliasId": null,
+              "communityId": null,
+              "specialKind": null,
+              "text": "New empty states are ready for review ✨ here's the channel one",
+              "type": "PLAINTEXT",
+              "userId": null
+            }
+          ]
+        },
+        "replyToId": "sc-dev-empty-states",
+        "sentAt": "2026-09-22T17:44:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "These are so good. The illustration style matches onboarding perfectly",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-30",
+        "lastReplyAt": null,
+        "linkPreviews": [
+          {
+            "description": "Reconnects now back off exponentially with jitter, so a flaky network no longer stampedes the gateway.",
+            "imageUrl": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22840%22%20height%3D%22156%22%20viewBox%3D%220%200%20840%20156%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22p%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%231E1B33%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%232C1F4A%22%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%3Crect%20width%3D%22840%22%20height%3D%22156%22%20fill%3D%22url(%23p)%22%2F%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%233DD68C%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2242%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M50%2052%20V100%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%22110%22%20r%3D%2210%22%2F%3E%3Ccircle%20cx%3D%2298%22%20cy%3D%22110%22%20r%3D%2210%22%2F%3E%3Cpath%20d%3D%22M98%20100%20V66%20C98%2054%2092%2048%2080%2048%20H68%22%2F%3E%3Cpath%20d%3D%22M77%2039%20L68%2048%20L77%2057%22%2F%3E%3C%2Fg%3E%3Ctext%20x%3D%22136%22%20y%3D%2264%22%20font-family%3D%22Roboto%2C%20'Segoe%20UI'%2C%20Helvetica%2C%20Arial%2C%20'Liberation%20Sans'%2C%20sans-serif%22%20font-size%3D%2232%22%20font-weight%3D%22700%22%20fill%3D%22%23F3F0FF%22%3Elumen-studio%2Flumen%3C%2Ftext%3E%3Ctext%20x%3D%22136%22%20y%3D%22106%22%20font-family%3D%22Roboto%2C%20'Segoe%20UI'%2C%20Helvetica%2C%20Arial%2C%20'Liberation%20Sans'%2C%20sans-serif%22%20font-size%3D%2225%22%20fill%3D%22%23A9A3C4%22%3E%23482%20%C2%B7%206%20files%20changed%20%C2%B7%20%3Ctspan%20fill%3D%22%233DD68C%22%3E%2B128%3C%2Ftspan%3E%20%3Ctspan%20fill%3D%22%23FF7A7A%22%3E%E2%88%9241%3C%2Ftspan%3E%3C%2Ftext%3E%3Csvg%20x%3D%22732%22%20y%3D%2230%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2280%22%20height%3D%2280%22%20viewBox%3D%220%200%20128%20128%22%3E%3Cdefs%3E%3ClinearGradient%20id%3D%22bgprauthor%22%20x1%3D%220%22%20y1%3D%220%22%20x2%3D%221%22%20y2%3D%221%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23C9F2E3%22%2F%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%236FD6B0%22%2F%3E%3C%2FlinearGradient%3E%3CclipPath%20id%3D%22cprauthor%22%3E%3Ccircle%20cx%3D%2264%22%20cy%3D%2264%22%20r%3D%2264%22%2F%3E%3C%2FclipPath%3E%3C%2Fdefs%3E%3Cg%20clip-path%3D%22url(%23cprauthor)%22%3E%3Crect%20width%3D%22128%22%20height%3D%22128%22%20fill%3D%22url(%23bgprauthor)%22%2F%3E%3Cg%20transform%3D%22translate(64%2070)%20scale(1.16)%20translate(-64%20-64)%22%3E%3Cpath%20d%3D%22M55%2076%20L55%2096%20L73%2096%20L73%2076%20Z%22%20fill%3D%22%236B4028%22%2F%3E%3Cpath%20d%3D%22M55%2076%20L55%2090%20C60%2093%2068%2093%2073%2090%20L73%2076%20Z%22%20fill%3D%22%23000%22%20opacity%3D%220.12%22%2F%3E%3Cpath%20d%3D%22M16%20130%20C18%20106%2036%2095%2064%2095%20C92%2095%20110%20106%20112%20130%20Z%22%20fill%3D%22%231F6FEB%22%2F%3E%3Cpath%20d%3D%22M55%2095%20L64%20106%20L73%2095%20Z%22%20fill%3D%22%236B4028%22%2F%3E%3Cellipse%20cx%3D%2242.5%22%20cy%3D%2263%22%20rx%3D%224.5%22%20ry%3D%226.5%22%20fill%3D%22%236B4028%22%2F%3E%3Cellipse%20cx%3D%2285.5%22%20cy%3D%2263%22%20rx%3D%224.5%22%20ry%3D%226.5%22%20fill%3D%22%236B4028%22%2F%3E%3Cellipse%20cx%3D%2264%22%20cy%3D%2260%22%20rx%3D%2221.5%22%20ry%3D%2225%22%20fill%3D%22%236B4028%22%2F%3E%3Cpath%20d%3D%22M43%2062%20C44%2084%2055%2092%2064%2092%20C73%2092%2084%2084%2085%2062%20C81%2073%2074%2078%2064%2078%20C54%2078%2047%2073%2043%2062%20Z%22%20fill%3D%22%231F1A1C%22%2F%3E%3Cpath%20d%3D%22M43%2056%20C42%2040%2052%2033%2064%2033%20C77%2033%2087%2040%2085%2056%20C80%2046%2072%2042%2064%2042%20C56%2042%2048%2046%2043%2056%20Z%22%20fill%3D%22%231F1A1C%22%20opacity%3D%220.9%22%2F%3E%3Cpath%20d%3D%22M50%2053.5%20Q55%2051%2059.5%2053%22%20stroke%3D%22%231F1A1C%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Cpath%20d%3D%22M68.5%2053%20Q73%2051%2078%2053.5%22%20stroke%3D%22%231F1A1C%22%20stroke-width%3D%222%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3Ccircle%20cx%3D%2255%22%20cy%3D%2262%22%20r%3D%222.5%22%20fill%3D%22%232A2230%22%2F%3E%3Ccircle%20cx%3D%2273%22%20cy%3D%2262%22%20r%3D%222.5%22%20fill%3D%22%232A2230%22%2F%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2270%22%20r%3D%224%22%20fill%3D%22%23FF7A7A%22%20opacity%3D%220.22%22%2F%3E%3Ccircle%20cx%3D%2278%22%20cy%3D%2270%22%20r%3D%224%22%20fill%3D%22%23FF7A7A%22%20opacity%3D%220.22%22%2F%3E%3Cpath%20d%3D%22M57%2073%20Q64%2079.5%2071%2073%22%20stroke%3D%22%238A3B30%22%20stroke-width%3D%222.3%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22%2F%3E%3C%2Fg%3E%3C%2Fg%3E%3C%2Fsvg%3E%3Crect%20x%3D%220%22%20y%3D%22146%22%20width%3D%22620%22%20height%3D%2210%22%20fill%3D%22%233178C6%22%2F%3E%3Crect%20x%3D%22620%22%20y%3D%22146%22%20width%3D%22130%22%20height%3D%2210%22%20fill%3D%22%237C5CFF%22%2F%3E%3Crect%20x%3D%22750%22%20y%3D%22146%22%20width%3D%2290%22%20height%3D%2210%22%20fill%3D%22%23F1E05A%22%2F%3E%3C%2Fsvg%3E",
+            "siteName": "GitHub",
+            "title": "Retry socket reconnects with jittered backoff · Pull Request #482",
+            "url": "https://github.com/lumen-studio/lumen/pull/482"
+          }
+        ],
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Reconnect fix is up for review 👉 https://github.com/lumen-studio/lumen/pull/482",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-31",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:01:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Nice! Does it cover the laptop-sleeps-mid-call case?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-32",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🔥",
+            "userIds": [
+              "u-aiko",
+              "u-grace",
+              "me"
+            ]
+          },
+          {
+            "emoji": "🙌",
+            "userIds": [
+              "u-samira"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Yep, that was the main one. Backoff looks like this:",
+            "type": "PLAINTEXT",
+            "userId": null
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "const delay = Math.min(30_000, 500 * 2 ** attempt);\nawait sleep(delay / 2 + Math.random() * (delay / 2));",
+            "type": "CODE_BLOCK",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-dev-release-thread",
+        "lastReplyAt": "2026-09-22T18:41:00.000Z",
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 5,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Should the reconnect fix go out in Thursday's release, or wait for the mobile pass?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-34",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:43:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@dropbear",
+            "type": "USER_MENTION",
+            "userId": "u-marcus"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " approved ✅ merging as soon as CI is green",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-dev-ci-green",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "💚",
+            "userIds": [
+              "u-marcus",
+              "u-samira",
+              "u-priya"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:47:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "CI is green on all three runners 🟢",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "ch-general": [
+      {
+        "attachments": [],
+        "authorId": "u-chloe",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-41",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🙌",
+            "userIds": [
+              "u-priya",
+              "u-diego",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T13:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Morning! The new docs site search is live, let me know if anything looks off 🔍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-42",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T14:03:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Episode 12 of the team podcast is recorded 🎙️ we talk about the redesign and why we moved to self-hosting",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-zara",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-43",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:47:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Lunch spot recommendations near the office? The taco place closed 😢",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-tomas",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-44",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🍜",
+            "userIds": [
+              "u-zara",
+              "u-grace",
+              "u-aiko"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:49:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "The ramen place on 5th. Trust me.",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [
+          {
+            "fileType": "IMAGE",
+            "filename": "lake-sunset.jpg",
+            "hasThumbnail": false,
+            "id": "sc-img-sunset",
+            "mimeType": "image/png",
+            "size": 412004
+          }
+        ],
+        "authorId": "u-tomas",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-45",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "😍",
+            "userIds": [
+              "u-priya",
+              "u-zara",
+              "u-chloe"
+            ]
+          },
+          {
+            "emoji": "🌅",
+            "userIds": [
+              "u-grace",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "View from the lake this weekend, couldn't resist sharing",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-46",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:18:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Okay that is unreal. Where is this?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-tomas",
+        "channelId": "ch-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-47",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T17:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Lake Placid! Trail notes are in Trailheads if anyone wants to go",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "ch-random": [
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "ch-random",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-52",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "hot take: dark mode is the only mode",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-chloe",
+        "channelId": "ch-random",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-53",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T16:04:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "counterpoint: the light theme with the teal accent is gorgeous",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "sy-general": [
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": "sy-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-55",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T13:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Jam night Friday, bring patches!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "sy-jam": [],
+    "sy-patches": [],
+    "tr-campfire": [],
+    "tr-general": [
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": "tr-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-trail-ridge",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T14:10:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Who is in for the ridge loop on Saturday? 🥾",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "tr-photos": [],
+    "tr-trips": [],
+    "vc-afk": [],
+    "vc-lounge": [],
+    "vc-squad": [],
+    "vc-standup": []
+  },
+  "messagesByDmGroup": {
+    "dm-grace": [
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-grace",
+        "editedAt": null,
+        "id": "sc-msg-77",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:40:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "thanks for covering on-call last night!",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-grace",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-grace",
+        "editedAt": null,
+        "id": "sc-msg-78",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:52:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "anytime, it was quiet 😴",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "dm-kwame": [
+      {
+        "attachments": [],
+        "authorId": "u-kwame",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-kwame",
+        "editedAt": null,
+        "id": "sc-msg-79",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-20T14:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "new episode drops Friday, want to be a guest? 🎙️",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "dm-launch": [
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-66",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Launch is Thursday 🚀 who's taking what?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-diego",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-67",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:55:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Blog post and landing page copy. Aiko has QA and the store screenshots",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-68",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T21:10:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Launch checklist is in the release doc, shout if I missed anything",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-69",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T21:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Looks complete to me 👌",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-diego",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-70",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T21:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Blog post draft is ready too, I'll share it in the morning ✍️",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-msg-71",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:55:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Status check for Thursday: ✅ QA plan ✅ release notes ⏳ changelog sign-off",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-diego",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-dm-launch-copy",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "u-samira",
+              "u-aiko"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T19:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Landing page copy is final, preview link is in the doc",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-dm-launch-screens",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🙌",
+            "userIds": [
+              "u-samira",
+              "u-diego"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T19:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Store screenshots updated for 2.4 📸",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-launch",
+        "editedAt": null,
+        "id": "sc-dm-launch-signoff",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T19:12:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "@alexk",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " can you sign off on the changelog before Thursday?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "dm-marcus": [
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-marcus",
+        "editedAt": null,
+        "id": "sc-dm-marcus-pairing",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:02:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "pairing tomorrow at 10 still good?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-marcus",
+        "editedAt": null,
+        "id": "sc-msg-76",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T15:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "👍 I’ll bring coffee",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "dm-priya": [
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-56",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:05:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "first pass at the empty states, still rough but you get the idea",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-57",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "love the direction, the channel one especially",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-58",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:31:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "that one took the longest 😅",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-59",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:32:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can you share them in #dev tomorrow so the team can weigh in?",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-60",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T20:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "will do 👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-dm-priya-copy",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T19:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "the onboarding copy is up in the doc, no rush",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-msg-62",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T19:48:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "looks good, two small comments",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-dm-pri-pit",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "did you see gracie posted the pit screenshot",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-dm-pri-lmao",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:58:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "lmao",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": null,
+        "deletedAt": null,
+        "directMessageGroupId": "dm-priya",
+        "editedAt": null,
+        "id": "sc-dm-pri-never",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:59:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "dropbear is never living that down",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ]
+  },
+  "notifications": [
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "username": "pri"
+      },
+      "authorId": "u-priya",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-23T00:59:00.000Z",
+      "directMessageGroupId": "dm-priya",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-pri-never",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-priya",
+        "id": "sc-dm-pri-never",
+        "spans": [
+          {
+            "text": "dropbear is never living that down",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-pri-never",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "username": "pri"
+      },
+      "authorId": "u-priya",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-23T00:58:00.000Z",
+      "directMessageGroupId": "dm-priya",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-pri-lmao",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-priya",
+        "id": "sc-dm-pri-lmao",
+        "spans": [
+          {
+            "text": "lmao",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-pri-lmao",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "username": "pri"
+      },
+      "authorId": "u-priya",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-23T00:58:00.000Z",
+      "directMessageGroupId": "dm-priya",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-pri-pit",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-priya",
+        "id": "sc-dm-pri-pit",
+        "spans": [
+          {
+            "text": "did you see gracie posted the pit screenshot",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-pri-pit",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-samira",
+        "displayName": "Samira",
+        "id": "u-samira",
+        "username": "samira"
+      },
+      "authorId": "u-samira",
+      "channelId": "cc-general",
+      "communityId": "c-couch",
+      "createdAt": "2026-09-23T00:19:00.000Z",
+      "directMessageGroupId": null,
+      "dismissed": false,
+      "id": "sc-notif-sc-thread-ok-9",
+      "message": {
+        "channelId": "cc-general",
+        "directMessageGroupId": null,
+        "id": "sc-thread-ok-9",
+        "spans": [
+          {
+            "text": "ok 9. hop in voice a bit before",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-thread-ok-9",
+      "parentMessageId": "sc-cc-friday",
+      "read": true,
+      "type": "THREAD_REPLY",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "username": "pri"
+      },
+      "authorId": "u-priya",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-22T19:20:00.000Z",
+      "directMessageGroupId": "dm-priya",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-priya-copy",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-priya",
+        "id": "sc-dm-priya-copy",
+        "spans": [
+          {
+            "text": "the onboarding copy is up in the doc, no rush",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-priya-copy",
+      "parentMessageId": null,
+      "read": true,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-samira",
+        "displayName": "Samira",
+        "id": "u-samira",
+        "username": "samira"
+      },
+      "authorId": "u-samira",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-22T19:12:00.000Z",
+      "directMessageGroupId": "dm-launch",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-launch-signoff",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-launch",
+        "id": "sc-dm-launch-signoff",
+        "spans": [
+          {
+            "text": "@alexk",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "text": " can you sign off on the changelog before Thursday?",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-launch-signoff",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-aiko",
+        "displayName": "aiko",
+        "id": "u-aiko",
+        "username": "aiko"
+      },
+      "authorId": "u-aiko",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-22T19:05:00.000Z",
+      "directMessageGroupId": "dm-launch",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-launch-screens",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-launch",
+        "id": "sc-dm-launch-screens",
+        "spans": [
+          {
+            "text": "Store screenshots updated for 2.4 📸",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-launch-screens",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-diego",
+        "displayName": "Diego",
+        "id": "u-diego",
+        "username": "diego"
+      },
+      "authorId": "u-diego",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-22T19:02:00.000Z",
+      "directMessageGroupId": "dm-launch",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-launch-copy",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-launch",
+        "id": "sc-dm-launch-copy",
+        "spans": [
+          {
+            "text": "Landing page copy is final, preview link is in the doc",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-launch-copy",
+      "parentMessageId": null,
+      "read": false,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "username": "pri"
+      },
+      "authorId": "u-priya",
+      "channelId": "ch-design",
+      "communityId": "c-lumen",
+      "createdAt": "2026-09-22T15:20:00.000Z",
+      "directMessageGroupId": null,
+      "dismissed": false,
+      "id": "sc-notif-sc-design-accent",
+      "message": {
+        "channelId": "ch-design",
+        "directMessageGroupId": null,
+        "id": "sc-design-accent",
+        "spans": [
+          {
+            "text": "@alexk",
+            "type": "USER_MENTION",
+            "userId": "me"
+          },
+          {
+            "text": " can we use the violet as the default accent in the app too?",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-design-accent",
+      "parentMessageId": null,
+      "read": false,
+      "type": "USER_MENTION",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-marcus",
+        "displayName": "dropbear",
+        "id": "u-marcus",
+        "username": "dropbear"
+      },
+      "authorId": "u-marcus",
+      "channelId": null,
+      "communityId": null,
+      "createdAt": "2026-09-22T15:02:00.000Z",
+      "directMessageGroupId": "dm-marcus",
+      "dismissed": false,
+      "id": "sc-notif-sc-dm-marcus-pairing",
+      "message": {
+        "channelId": null,
+        "directMessageGroupId": "dm-marcus",
+        "id": "sc-dm-marcus-pairing",
+        "spans": [
+          {
+            "text": "pairing tomorrow at 10 still good?",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-dm-marcus-pairing",
+      "parentMessageId": null,
+      "read": true,
+      "type": "DIRECT_MESSAGE",
+      "userId": "me"
+    },
+    {
+      "author": {
+        "avatarUrl": "sc-avatar-u-grace",
+        "displayName": "gracie",
+        "id": "u-grace",
+        "username": "gracie"
+      },
+      "authorId": "u-grace",
+      "channelId": "tr-general",
+      "communityId": "c-trail",
+      "createdAt": "2026-09-22T14:10:00.000Z",
+      "directMessageGroupId": null,
+      "dismissed": false,
+      "id": "sc-notif-sc-trail-ridge",
+      "message": {
+        "channelId": "tr-general",
+        "directMessageGroupId": null,
+        "id": "sc-trail-ridge",
+        "spans": [
+          {
+            "text": "Who is in for the ridge loop on Saturday? 🥾",
+            "type": "PLAINTEXT"
+          }
+        ]
+      },
+      "messageId": "sc-trail-ridge",
+      "parentMessageId": null,
+      "read": true,
+      "type": "CHANNEL_MESSAGE",
+      "userId": "me"
+    }
+  ],
+  "pinnedByChannel": {
+    "ch-announcements": [
+      {
+        "attachments": [],
+        "author": {
+          "avatarUrl": "sc-avatar-u-samira",
+          "displayName": "Samira",
+          "id": "u-samira",
+          "username": "samira"
+        },
+        "authorId": "u-samira",
+        "channelId": "ch-announcements",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-51",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": true,
+        "pinnedAt": "2026-09-21T13:31:00.000Z",
+        "pinnedBy": "u-samira",
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "u-marcus",
+              "u-priya",
+              "u-aiko",
+              "u-grace",
+              "u-tomas",
+              "me"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-21T13:30:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "bold": true,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Lumen 2.3.2 is out 🎉",
+            "type": "PLAINTEXT",
+            "userId": null
+          },
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": " Faster uploads, fixed notification sounds on Android, and a much nicer settings page. Full notes are on the blog.",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ]
+  },
+  "rolesByCommunity": {
+    "c-couch": [
+      {
+        "actions": [
+          "UPDATE_COMMUNITY",
+          "DELETE_COMMUNITY",
+          "READ_COMMUNITY",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "READ_CHANNEL",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "MANAGE_CHANNEL_PERMISSIONS",
+          "MANAGE_WEBHOOKS",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "DELETE_MEMBER",
+          "READ_MEMBER",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "DELETE_MESSAGE",
+          "READ_MESSAGE",
+          "CREATE_ROLE",
+          "UPDATE_ROLE",
+          "DELETE_ROLE",
+          "READ_ROLE",
+          "CREATE_INVITE",
+          "DELETE_INVITE",
+          "CREATE_ALIAS_GROUP",
+          "UPDATE_ALIAS_GROUP",
+          "DELETE_ALIAS_GROUP",
+          "READ_ALIAS_GROUP",
+          "CREATE_ALIAS_GROUP_MEMBER",
+          "DELETE_ALIAS_GROUP_MEMBER",
+          "READ_ALIAS_GROUP_MEMBER",
+          "UPDATE_ALIAS_GROUP_MEMBER",
+          "MANAGE_EMOJIS",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "UNBAN_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "VIEW_MODERATION_LOGS",
+          "MUTE_PARTICIPANT",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-community-admin-c-couch",
+        "isDefault": true,
+        "name": "Community Admin",
+        "position": 10
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "READ_ROLE",
+          "CREATE_MESSAGE",
+          "DELETE_MESSAGE",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "JOIN_CHANNEL",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "MUTE_PARTICIPANT",
+          "READ_SOUNDBOARD_SOUND",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-moderator-c-couch",
+        "isDefault": true,
+        "name": "Moderator",
+        "position": 20
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "MUTE_PARTICIPANT",
+          "KICK_USER",
+          "CREATE_INVITE"
+        ],
+        "createdAt": "2025-11-16T13:00:00.000Z",
+        "id": "role-mods-c-couch",
+        "isDefault": false,
+        "name": "mods",
+        "position": 30
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-member-c-couch",
+        "isDefault": true,
+        "name": "Member",
+        "position": 100
+      }
+    ],
+    "c-lumen": [
+      {
+        "actions": [
+          "UPDATE_COMMUNITY",
+          "DELETE_COMMUNITY",
+          "READ_COMMUNITY",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "READ_CHANNEL",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "MANAGE_CHANNEL_PERMISSIONS",
+          "MANAGE_WEBHOOKS",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "DELETE_MEMBER",
+          "READ_MEMBER",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "DELETE_MESSAGE",
+          "READ_MESSAGE",
+          "CREATE_ROLE",
+          "UPDATE_ROLE",
+          "DELETE_ROLE",
+          "READ_ROLE",
+          "CREATE_INVITE",
+          "DELETE_INVITE",
+          "CREATE_ALIAS_GROUP",
+          "UPDATE_ALIAS_GROUP",
+          "DELETE_ALIAS_GROUP",
+          "READ_ALIAS_GROUP",
+          "CREATE_ALIAS_GROUP_MEMBER",
+          "DELETE_ALIAS_GROUP_MEMBER",
+          "READ_ALIAS_GROUP_MEMBER",
+          "UPDATE_ALIAS_GROUP_MEMBER",
+          "MANAGE_EMOJIS",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "UNBAN_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "VIEW_MODERATION_LOGS",
+          "MUTE_PARTICIPANT",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-community-admin-c-lumen",
+        "isDefault": true,
+        "name": "Community Admin",
+        "position": 10
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "READ_ROLE",
+          "CREATE_MESSAGE",
+          "DELETE_MESSAGE",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "JOIN_CHANNEL",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "MUTE_PARTICIPANT",
+          "READ_SOUNDBOARD_SOUND",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-moderator-c-lumen",
+        "isDefault": true,
+        "name": "Moderator",
+        "position": 20
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "CREATE_INVITE"
+        ],
+        "createdAt": "2026-05-03T13:00:00.000Z",
+        "id": "role-release-manager-c-lumen",
+        "isDefault": false,
+        "name": "Release Manager",
+        "position": 30
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND",
+          "MANAGE_EMOJIS",
+          "CREATE_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2026-06-18T13:00:00.000Z",
+        "id": "role-designer-c-lumen",
+        "isDefault": false,
+        "name": "Designer",
+        "position": 40
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-member-c-lumen",
+        "isDefault": true,
+        "name": "Member",
+        "position": 100
+      }
+    ],
+    "c-synth": [
+      {
+        "actions": [
+          "UPDATE_COMMUNITY",
+          "DELETE_COMMUNITY",
+          "READ_COMMUNITY",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "READ_CHANNEL",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "MANAGE_CHANNEL_PERMISSIONS",
+          "MANAGE_WEBHOOKS",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "DELETE_MEMBER",
+          "READ_MEMBER",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "DELETE_MESSAGE",
+          "READ_MESSAGE",
+          "CREATE_ROLE",
+          "UPDATE_ROLE",
+          "DELETE_ROLE",
+          "READ_ROLE",
+          "CREATE_INVITE",
+          "DELETE_INVITE",
+          "CREATE_ALIAS_GROUP",
+          "UPDATE_ALIAS_GROUP",
+          "DELETE_ALIAS_GROUP",
+          "READ_ALIAS_GROUP",
+          "CREATE_ALIAS_GROUP_MEMBER",
+          "DELETE_ALIAS_GROUP_MEMBER",
+          "READ_ALIAS_GROUP_MEMBER",
+          "UPDATE_ALIAS_GROUP_MEMBER",
+          "MANAGE_EMOJIS",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "UNBAN_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "VIEW_MODERATION_LOGS",
+          "MUTE_PARTICIPANT",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-community-admin-c-synth",
+        "isDefault": true,
+        "name": "Community Admin",
+        "position": 10
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "READ_ROLE",
+          "CREATE_MESSAGE",
+          "DELETE_MESSAGE",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "JOIN_CHANNEL",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "MUTE_PARTICIPANT",
+          "READ_SOUNDBOARD_SOUND",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-moderator-c-synth",
+        "isDefault": true,
+        "name": "Moderator",
+        "position": 20
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-member-c-synth",
+        "isDefault": true,
+        "name": "Member",
+        "position": 100
+      }
+    ],
+    "c-trail": [
+      {
+        "actions": [
+          "UPDATE_COMMUNITY",
+          "DELETE_COMMUNITY",
+          "READ_COMMUNITY",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "DELETE_CHANNEL",
+          "READ_CHANNEL",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "MANAGE_CHANNEL_PERMISSIONS",
+          "MANAGE_WEBHOOKS",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "DELETE_MEMBER",
+          "READ_MEMBER",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "DELETE_MESSAGE",
+          "READ_MESSAGE",
+          "CREATE_ROLE",
+          "UPDATE_ROLE",
+          "DELETE_ROLE",
+          "READ_ROLE",
+          "CREATE_INVITE",
+          "DELETE_INVITE",
+          "CREATE_ALIAS_GROUP",
+          "UPDATE_ALIAS_GROUP",
+          "DELETE_ALIAS_GROUP",
+          "READ_ALIAS_GROUP",
+          "CREATE_ALIAS_GROUP_MEMBER",
+          "DELETE_ALIAS_GROUP_MEMBER",
+          "READ_ALIAS_GROUP_MEMBER",
+          "UPDATE_ALIAS_GROUP_MEMBER",
+          "MANAGE_EMOJIS",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "UNBAN_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "VIEW_MODERATION_LOGS",
+          "MUTE_PARTICIPANT",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-community-admin-c-trail",
+        "isDefault": true,
+        "name": "Community Admin",
+        "position": 10
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "READ_ROLE",
+          "CREATE_MESSAGE",
+          "DELETE_MESSAGE",
+          "CREATE_CHANNEL",
+          "UPDATE_CHANNEL",
+          "JOIN_CHANNEL",
+          "CREATE_MEMBER",
+          "UPDATE_MEMBER",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "KICK_USER",
+          "TIMEOUT_USER",
+          "PIN_MESSAGE",
+          "UNPIN_MESSAGE",
+          "DELETE_ANY_MESSAGE",
+          "VIEW_BAN_LIST",
+          "MUTE_PARTICIPANT",
+          "READ_SOUNDBOARD_SOUND",
+          "CREATE_SOUNDBOARD_SOUND",
+          "DELETE_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-moderator-c-trail",
+        "isDefault": true,
+        "name": "Moderator",
+        "position": 20
+      },
+      {
+        "actions": [
+          "READ_COMMUNITY",
+          "READ_CHANNEL",
+          "READ_MEMBER",
+          "READ_MESSAGE",
+          "CREATE_MESSAGE",
+          "ATTACH_FILES",
+          "JOIN_CHANNEL",
+          "SPEAK",
+          "VIDEO",
+          "SCREEN_SHARE",
+          "CREATE_REACTION",
+          "DELETE_REACTION",
+          "READ_ALIAS_GROUP",
+          "READ_ALIAS_GROUP_MEMBER",
+          "CAPTURE_REPLAY",
+          "READ_SOUNDBOARD_SOUND"
+        ],
+        "createdAt": "2025-08-18T13:00:00.000Z",
+        "id": "role-member-c-trail",
+        "isDefault": true,
+        "name": "Member",
+        "position": 100
+      }
+    ]
+  },
+  "seed": "showcase",
+  "threadRepliesByParent": {
+    "sc-cc-friday": [
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-15",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-cc-friday",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:15:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "can't til 9",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-16",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-cc-friday",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:17:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "9 works",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-17",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-cc-friday",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:17:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "same",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-thread-ok-9",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-cc-friday",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:19:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "ok 9. hop in voice a bit before",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "cc-general",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-19",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-cc-friday",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-23T00:20:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "👍",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ],
+    "sc-dev-release-thread": [
+      {
+        "attachments": [],
+        "authorId": "u-marcus",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-36",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-dev-release-thread",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:24:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Thursday. The mobile pass can land in 2.4.1",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-priya",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-37",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-dev-release-thread",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "u-samira",
+              "u-marcus"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:26:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "+1, the empty states don't depend on it either",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-aiko",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-38",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-dev-release-thread",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:29:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "I'll do a final QA pass on iOS and Android tonight 📱",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "u-samira",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-39",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-dev-release-thread",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:33:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Perfect. Drafting the changelog now, I'll tag the release Thursday morning",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      },
+      {
+        "attachments": [],
+        "authorId": "me",
+        "channelId": "ch-dev",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "sc-msg-40",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": "sc-dev-release-thread",
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [
+          {
+            "emoji": "🚀",
+            "userIds": [
+              "u-samira",
+              "u-marcus",
+              "u-priya",
+              "u-aiko"
+            ]
+          }
+        ],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:41:00.000Z",
+        "spans": [
+          {
+            "aliasId": null,
+            "communityId": null,
+            "specialKind": null,
+            "text": "Ship it 🚀",
+            "type": "PLAINTEXT",
+            "userId": null
+          }
+        ],
+        "webhook": null
+      }
+    ]
+  },
+  "unreadByContextId": {
+    "cc-clips": {
+      "mentionCount": 0,
+      "unreadCount": 2
+    },
+    "cc-lfg": {
+      "mentionCount": 0,
+      "unreadCount": 1
+    },
+    "ch-announcements": {
+      "mentionCount": 0,
+      "unreadCount": 1
+    },
+    "ch-design": {
+      "mentionCount": 1,
+      "unreadCount": 3
+    },
+    "ch-general": {
+      "mentionCount": 0,
+      "unreadCount": 4
+    },
+    "dm-launch": {
+      "mentionCount": 1,
+      "unreadCount": 3
+    },
+    "dm-priya": {
+      "mentionCount": 0,
+      "unreadCount": 3
+    },
+    "tr-general": {
+      "mentionCount": 0,
+      "unreadCount": 1
+    }
+  },
+  "users": [
+    {
+      "avatarUrl": "sc-avatar-u-priya",
+      "bannerUrl": null,
+      "bio": "Product designer. Illustrations, type, and too many color palettes.",
+      "displayName": "pri",
+      "id": "u-priya",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": "downloading 40gb update",
+      "username": "pri"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-marcus",
+      "bannerUrl": null,
+      "bio": "Backend & infra. Will talk your ear off about backoff strategies.",
+      "displayName": "dropbear",
+      "id": "u-marcus",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": "back at 9",
+      "username": "dropbear"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-aiko",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "aiko",
+      "id": "u-aiko",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": null,
+      "username": "aiko"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-samira",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Samira",
+      "id": "u-samira",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": null,
+      "username": "samira"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-diego",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "Diego",
+      "id": "u-diego",
+      "lastSeen": "2026-09-22T21:40:00.000Z",
+      "role": "USER",
+      "status": null,
+      "username": "diego"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-grace",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "gracie",
+      "id": "u-grace",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": "work tomorrow 😐",
+      "username": "gracie"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-tomas",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "tomatillo",
+      "id": "u-tomas",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": null,
+      "username": "tomatillo"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-zara",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "zara",
+      "id": "u-zara",
+      "lastSeen": "2026-09-22T21:40:00.000Z",
+      "role": "USER",
+      "status": null,
+      "username": "zara"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-kwame",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "kwam3",
+      "id": "u-kwame",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": null,
+      "username": "kwam3"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-chloe",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "chlo",
+      "id": "u-chloe",
+      "lastSeen": "2026-09-23T01:04:00Z",
+      "role": "USER",
+      "status": null,
+      "username": "chlo"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-noah",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "noahbody",
+      "id": "u-noah",
+      "lastSeen": "2026-09-22T21:40:00.000Z",
+      "role": "USER",
+      "status": null,
+      "username": "noahbody"
+    },
+    {
+      "avatarUrl": "sc-avatar-u-mateo",
+      "bannerUrl": null,
+      "bio": null,
+      "displayName": "mateo",
+      "id": "u-mateo",
+      "lastSeen": "2026-09-22T21:40:00.000Z",
+      "role": "USER",
+      "status": null,
+      "username": "mateo"
+    }
+  ],
+  "voicePresenceByChannel": {
+    "vc-afk": [
+      {
+        "avatarUrl": "sc-avatar-u-kwame",
+        "displayName": "kwam3",
+        "id": "u-kwame",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-23T00:48:00.000Z",
+        "username": "kwam3"
+      }
+    ],
+    "vc-squad": [
+      {
+        "avatarUrl": "sc-avatar-u-marcus",
+        "displayName": "dropbear",
+        "id": "u-marcus",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-23T01:00:00.000Z",
+        "username": "dropbear"
+      },
+      {
+        "avatarUrl": "sc-avatar-u-priya",
+        "displayName": "pri",
+        "id": "u-priya",
+        "isDeafened": false,
+        "isServerMuted": false,
+        "joinedAt": "2026-09-23T01:01:00.000Z",
+        "username": "pri"
+      }
+    ]
+  }
+}
