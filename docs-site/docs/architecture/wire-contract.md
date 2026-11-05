@@ -53,10 +53,7 @@ Declared in `socket-events.json`, but not exercised end to end:
 
 | Event | Why |
 |---|---|
-| `updateThreadReply`, `deleteThreadReply`, `dmVoiceUserUpdated` | No server code emits them yet |
 | `replayBufferStopped`, `replayBufferFailed`, `egressSegmentsReady` | They need a running LiveKit egress. The compiler checks their emit sites against the generated types |
-
-These aren't in `socket-events.json` at all: `ack` and `error` (nothing emits them), and the client events `voice_channel_join`, `voice_channel_leave` and `voice_state_update` (no client sends them and no gateway handles them).
 
 ---
 

@@ -4,7 +4,6 @@ import { AddReactionDto } from '@/messages/dto/add-reaction.dto';
 import { CreateMessageDto } from '@/messages/dto/create-message.dto';
 import {
   DeleteMessagePayloadDto,
-  DeleteThreadReplyPayloadDto,
   MessagePinnedPayloadDto,
   MessageUnpinnedPayloadDto,
   NewMessagePayloadDto,
@@ -13,7 +12,6 @@ import {
   ReactionRemovedPayloadDto,
   ThreadReplyCountUpdatedPayloadDto,
   UpdateMessagePayloadDto,
-  UpdateThreadReplyPayloadDto,
 } from '@/messages/dto/message-events.dto';
 import { RemoveReactionDto } from '@/messages/dto/remove-reaction.dto';
 import { SendAckDto } from '@/messages/dto/send-ack.dto';
@@ -21,7 +19,6 @@ import { MarkAsReadDto } from '@/read-receipts/dto/mark-as-read.dto';
 import { ReauthenticateDto } from '@/rooms/dto/reauthenticate.dto';
 import { SendThreadReplyDto } from '@/threads/dto/send-thread-reply.dto';
 import { TypingEventDto } from '@/messages/dto/typing-event.dto';
-import { VoiceChannelEventDto } from '@/voice-presence/dto/voice-channel-event.dto';
 import {
   ChannelCreatedPayloadDto,
   ChannelDeletedPayloadDto,
@@ -33,7 +30,6 @@ import {
   DmVoiceCallStartedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
-  DmVoiceUserUpdatedPayloadDto,
   EgressSegmentsReadyPayloadDto,
   MemberAddedToCommunityPayloadDto,
   NewNotificationPayloadDto,
@@ -62,28 +58,15 @@ import {
   VoiceChannelUserUpdatedPayloadDto,
 } from './dto/socket-events.dto';
 
+// SUBSCRIBE_ALL takes no payload.
+type PayloadClientEvent = Exclude<ClientEvents, ClientEvents.SUBSCRIBE_ALL>;
+
 /**
  * Which schema each socket event's payload follows. The classes join the OpenAPI
  * components (createOpenApiDocument), and buildSocketEventIndex() publishes this
  * map as socket-events.json, so a generated client gets one type per shape and
  * only has to read event names from here.
  */
-type UnindexedServerEvent = Exclude<
-  ServerEvents,
-  // In the enum, but nothing emits them. Their shapes are the send pipeline's.
-  ServerEvents.ACK | ServerEvents.ERROR
->;
-
-type PayloadClientEvent = Exclude<
-  ClientEvents,
-  // SUBSCRIBE_ALL takes no payload. The voice events are in the enum, but no
-  // client sends them and no gateway handles them: voice goes through REST.
-  | ClientEvents.SUBSCRIBE_ALL
-  | ClientEvents.VOICE_CHANNEL_JOIN
-  | ClientEvents.VOICE_CHANNEL_LEAVE
-  | ClientEvents.VOICE_STATE_UPDATE
->;
-
 export const SERVER_EVENT_SCHEMAS = {
   [ServerEvents.NEW_MESSAGE]: NewMessagePayloadDto,
   [ServerEvents.NEW_DM]: NewMessagePayloadDto,
@@ -92,8 +75,6 @@ export const SERVER_EVENT_SCHEMAS = {
   [ServerEvents.REACTION_ADDED]: ReactionAddedPayloadDto,
   [ServerEvents.REACTION_REMOVED]: ReactionRemovedPayloadDto,
   [ServerEvents.NEW_THREAD_REPLY]: NewThreadReplyPayloadDto,
-  [ServerEvents.UPDATE_THREAD_REPLY]: UpdateThreadReplyPayloadDto,
-  [ServerEvents.DELETE_THREAD_REPLY]: DeleteThreadReplyPayloadDto,
   [ServerEvents.THREAD_REPLY_COUNT_UPDATED]: ThreadReplyCountUpdatedPayloadDto,
   [ServerEvents.MESSAGE_PINNED]: MessagePinnedPayloadDto,
   [ServerEvents.MESSAGE_UNPINNED]: MessageUnpinnedPayloadDto,
@@ -111,7 +92,6 @@ export const SERVER_EVENT_SCHEMAS = {
   [ServerEvents.DM_VOICE_CALL_STARTED]: DmVoiceCallStartedPayloadDto,
   [ServerEvents.DM_VOICE_USER_JOINED]: DmVoiceUserJoinedPayloadDto,
   [ServerEvents.DM_VOICE_USER_LEFT]: DmVoiceUserLeftPayloadDto,
-  [ServerEvents.DM_VOICE_USER_UPDATED]: DmVoiceUserUpdatedPayloadDto,
   [ServerEvents.REPLAY_BUFFER_STOPPED]: ReplayBufferStoppedPayloadDto,
   [ServerEvents.REPLAY_BUFFER_FAILED]: ReplayBufferFailedPayloadDto,
   [ServerEvents.EGRESS_SEGMENTS_READY]: EgressSegmentsReadyPayloadDto,
@@ -134,7 +114,7 @@ export const SERVER_EVENT_SCHEMAS = {
   [ServerEvents.ROLE_ASSIGNED]: RoleAssignedPayloadDto,
   [ServerEvents.ROLE_UNASSIGNED]: RoleUnassignedPayloadDto,
   [ServerEvents.USER_PROFILE_UPDATED]: UserProfileUpdatedPayloadDto,
-} satisfies Record<UnindexedServerEvent, Type<unknown>>;
+} satisfies Record<ServerEvents, Type<unknown>>;
 
 export const CLIENT_EVENT_SCHEMAS = {
   [ClientEvents.SEND_MESSAGE]: CreateMessageDto,
@@ -147,7 +127,6 @@ export const CLIENT_EVENT_SCHEMAS = {
   [ClientEvents.MARK_AS_READ]: MarkAsReadDto,
   [ClientEvents.TYPING_START]: TypingEventDto,
   [ClientEvents.TYPING_STOP]: TypingEventDto,
-  [ClientEvents.VOICE_PRESENCE_REFRESH]: VoiceChannelEventDto,
 } satisfies Record<PayloadClientEvent, Type<unknown>>;
 
 /** The acknowledgement a client event answers with, where it has a schema. */

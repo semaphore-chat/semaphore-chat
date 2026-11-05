@@ -79,14 +79,4 @@ export type ClientToServerEvents = {
   }) => void;
 
   // Voice Channels
-  [ClientEvents.VOICE_CHANNEL_JOIN]: (data: { channelId: string }) => void;
-  [ClientEvents.VOICE_CHANNEL_LEAVE]: (data: { channelId: string }) => void;
-  [ClientEvents.VOICE_STATE_UPDATE]: (data: {
-    channelId: string;
-    isVideoEnabled?: boolean;
-    isScreenSharing?: boolean;
-    isMuted?: boolean;
-    isDeafened?: boolean;
-  }) => void;
-  [ClientEvents.VOICE_PRESENCE_REFRESH]: (data: { channelId: string }) => void;
 };

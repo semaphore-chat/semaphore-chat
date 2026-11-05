@@ -41,11 +41,6 @@
         "$ref": "./openapi.json#/components/schemas/DeleteMessagePayloadDto"
       }
     },
-    "deleteThreadReply": {
-      "payload": {
-        "$ref": "./openapi.json#/components/schemas/DeleteThreadReplyPayloadDto"
-      }
-    },
     "dmVoiceCallStarted": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DmVoiceCallStartedPayloadDto"
@@ -59,11 +54,6 @@
     "dmVoiceUserLeft": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DmVoiceUserLeftPayloadDto"
-      }
-    },
-    "dmVoiceUserUpdated": {
-      "payload": {
-        "$ref": "./openapi.json#/components/schemas/DmVoiceUserUpdatedPayloadDto"
       }
     },
     "egressSegmentsReady": {
@@ -186,11 +176,6 @@
         "$ref": "./openapi.json#/components/schemas/UpdateMessagePayloadDto"
       }
     },
-    "updateThreadReply": {
-      "payload": {
-        "$ref": "./openapi.json#/components/schemas/UpdateThreadReplyPayloadDto"
-      }
-    },
     "userBanned": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/UserBannedPayloadDto"
@@ -304,11 +289,6 @@
     "typingStop": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/TypingEventDto"
-      }
-    },
-    "voice_presence_refresh": {
-      "payload": {
-        "$ref": "./openapi.json#/components/schemas/VoiceChannelEventDto"
       }
     }
   }

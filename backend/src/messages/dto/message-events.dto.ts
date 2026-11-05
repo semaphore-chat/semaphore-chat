@@ -39,16 +39,6 @@ export class NewThreadReplyPayloadDto {
   parentMessageId: string;
 }
 
-export class UpdateThreadReplyPayloadDto {
-  reply: MessageDto;
-  parentMessageId: string;
-}
-
-export class DeleteThreadReplyPayloadDto {
-  replyId: string;
-  parentMessageId: string;
-}
-
 export class ThreadReplyCountUpdatedPayloadDto {
   parentMessageId: string;
   @ApiProperty({ type: 'integer' })

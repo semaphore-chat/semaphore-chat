@@ -143,27 +143,3 @@ export const handleDmVoiceUserLeft: SocketEventHandler<typeof ServerEvents.DM_VO
     invalidateVoiceQueries(queryClient);
   }
 };
-
-export const handleDmVoiceUserUpdated: SocketEventHandler<typeof ServerEvents.DM_VOICE_USER_UPDATED> = (
-  data,
-  queryClient: QueryClient,
-) => {
-  const queryKey = dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: data.dmGroupId } });
-  const existing = queryClient.getQueryData<DmVoicePresenceResponseDto>(queryKey);
-
-  if (existing) {
-    const user = toPresenceUserDto(data.user);
-    queryClient.setQueryData<DmVoicePresenceResponseDto>(queryKey, (draft) => {
-      if (!draft) return draft;
-      const index = draft.users.findIndex((u) => u.id === user.id);
-      if (index !== -1) {
-        const newUsers = [...draft.users];
-        newUsers[index] = user;
-        return { ...draft, users: newUsers };
-      }
-      return draft;
-    });
-  } else {
-    invalidateVoiceQueries(queryClient);
-  }
-};

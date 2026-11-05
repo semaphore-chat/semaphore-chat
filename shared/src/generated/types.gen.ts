@@ -268,16 +268,6 @@ export type NewThreadReplyPayloadDto = {
     parentMessageId: string;
 };
 
-export type UpdateThreadReplyPayloadDto = {
-    reply: MessageDto;
-    parentMessageId: string;
-};
-
-export type DeleteThreadReplyPayloadDto = {
-    replyId: string;
-    parentMessageId: string;
-};
-
 export type ThreadReplyCountUpdatedPayloadDto = {
     replyCount: number;
     lastReplyAt: string | null;
@@ -425,12 +415,6 @@ export type DmVoiceUserJoinedPayloadDto = {
 };
 
 export type DmVoiceUserLeftPayloadDto = {
-    dmGroupId: string;
-    userId: string;
-    user: VoicePresenceUserDto;
-};
-
-export type DmVoiceUserUpdatedPayloadDto = {
     dmGroupId: string;
     userId: string;
     user: VoicePresenceUserDto;

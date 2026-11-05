@@ -559,10 +559,6 @@ describe('Socket event contract (e2e)', () => {
         ServerEvents.MESSAGE_UNPINNED,
       ]);
       const notDriven = new Set<string>([
-        // Declared, but no server code emits them
-        ServerEvents.UPDATE_THREAD_REPLY,
-        ServerEvents.DELETE_THREAD_REPLY,
-        ServerEvents.DM_VOICE_USER_UPDATED,
         // Need a running LiveKit egress: the compiler checks these against the
         // generated types instead
         ServerEvents.REPLAY_BUFFER_STOPPED,

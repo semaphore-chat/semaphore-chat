@@ -13,11 +13,9 @@ import type {
   CommunityDeletedPayloadDto,
   CommunityUpdatedPayloadDto,
   DeleteMessagePayloadDto,
-  DeleteThreadReplyPayloadDto,
   DmVoiceCallStartedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
-  DmVoiceUserUpdatedPayloadDto,
   EgressSegmentsReadyPayloadDto,
   MemberAddedToCommunityPayloadDto,
   MessagePinnedPayloadDto,
@@ -40,7 +38,6 @@ import type {
   TimeoutRemovedPayloadDto,
   TokenExpiringPayloadDto,
   UpdateMessagePayloadDto,
-  UpdateThreadReplyPayloadDto,
   UserBannedPayloadDto,
   UserKickedPayloadDto,
   UserPresencePayloadDto,
@@ -87,17 +84,6 @@ export type ReauthenticateResult = ReauthenticateResultDto;
 // =============================================================================
 // Acknowledgment & Error Payloads
 // =============================================================================
-
-export interface AckPayload {
-  id: string;
-  [key: string]: unknown;
-}
-
-export interface ErrorPayload {
-  message: string;
-  code?: string | number;
-  [key: string]: unknown;
-}
 
 // =============================================================================
 // Message Payloads
@@ -153,7 +139,6 @@ export type DmVoiceUserJoinedPayload = DmVoiceUserJoinedPayloadDto;
 
 export type DmVoiceUserLeftPayload = DmVoiceUserLeftPayloadDto;
 
-export type DmVoiceUserUpdatedPayload = DmVoiceUserUpdatedPayloadDto;
 
 // =============================================================================
 // Replay Buffer (Screen Recording) Payloads
@@ -187,9 +172,7 @@ export type MessageUnpinnedPayload = MessageUnpinnedPayloadDto;
 
 export type NewThreadReplyPayload = NewThreadReplyPayloadDto;
 
-export type UpdateThreadReplyPayload = UpdateThreadReplyPayloadDto;
 
-export type DeleteThreadReplyPayload = DeleteThreadReplyPayloadDto;
 
 export type ThreadReplyCountUpdatedPayload = ThreadReplyCountUpdatedPayloadDto;
 
@@ -288,7 +271,6 @@ export type ServerEventPayloads = {
   [ServerEvents.DM_VOICE_CALL_STARTED]: DmVoiceCallStartedPayload;
   [ServerEvents.DM_VOICE_USER_JOINED]: DmVoiceUserJoinedPayload;
   [ServerEvents.DM_VOICE_USER_LEFT]: DmVoiceUserLeftPayload;
-  [ServerEvents.DM_VOICE_USER_UPDATED]: DmVoiceUserUpdatedPayload;
 
   // Replay Buffer (Screen Recording)
   [ServerEvents.REPLAY_BUFFER_STOPPED]: ReplayBufferStoppedPayload;
@@ -305,8 +287,6 @@ export type ServerEventPayloads = {
   [ServerEvents.MESSAGE_PINNED]: MessagePinnedPayload;
   [ServerEvents.MESSAGE_UNPINNED]: MessageUnpinnedPayload;
   [ServerEvents.NEW_THREAD_REPLY]: NewThreadReplyPayload;
-  [ServerEvents.UPDATE_THREAD_REPLY]: UpdateThreadReplyPayload;
-  [ServerEvents.DELETE_THREAD_REPLY]: DeleteThreadReplyPayload;
   [ServerEvents.THREAD_REPLY_COUNT_UPDATED]: ThreadReplyCountUpdatedPayload;
 
   // Community Membership
@@ -336,8 +316,6 @@ export type ServerEventPayloads = {
   [ServerEvents.EGRESS_SEGMENTS_READY]: EgressSegmentsReadyPayload;
 
   // Acknowledgments & Errors
-  [ServerEvents.ACK]: AckPayload;
-  [ServerEvents.ERROR]: ErrorPayload;
 };
 
 export type ServerEventHandler<E extends keyof ServerEventPayloads> = (
