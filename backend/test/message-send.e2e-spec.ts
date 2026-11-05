@@ -389,6 +389,17 @@ describe('Sending a message (e2e)', () => {
       expect(await count).toMatchObject({ parentMessageId, replyCount: 1 });
     });
 
+    it('rejects a body that fails the DTO rules', async () => {
+      const parentMessageId = await parent();
+
+      await restReply('sender', parentMessageId, { clientNonce: '' }).expect(
+        400,
+      );
+      await restReply('sender', parentMessageId, { attachments: 'abc' }).expect(
+        400,
+      );
+    });
+
     it('broadcasts a reply in a DM thread to the group', async () => {
       const dm = await restDm('sender', {
         directMessageGroupId: group,

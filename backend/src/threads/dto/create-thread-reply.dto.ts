@@ -46,8 +46,10 @@ export class CreateThreadReplyDto {
 }
 
 /**
- * The REST body: the parent comes from the route. A real class, because the
- * validation pipe skips a body typed `Omit<...>` (no runtime type).
+ * The REST body of `POST /threads/:parentMessageId/replies`: the parent message
+ * comes from the path. A class, not `Omit<CreateThreadReplyDto, ...>`: the
+ * ValidationPipe validates against the parameter's metatype, and a mapped type
+ * erases it, which let an empty nonce and a non-array `attachments` through.
  */
 export class CreateThreadReplyBodyDto extends OmitType(CreateThreadReplyDto, [
   'parentMessageId',
