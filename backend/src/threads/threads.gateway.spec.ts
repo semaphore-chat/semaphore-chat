@@ -41,9 +41,7 @@ describe('ThreadsGateway', () => {
     gateway = unit;
     threadsService = unitRef.get(ThreadsService);
 
-    threadsService.sendThreadReply = jest
-      .fn()
-      .mockResolvedValue(mockReply);
+    threadsService.sendThreadReply = jest.fn().mockResolvedValue(mockReply);
   });
 
   afterEach(() => {

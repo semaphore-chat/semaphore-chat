@@ -55,11 +55,9 @@ describe('findSentMessage', () => {
   it('reads the message before the tombstone', async () => {
     await find();
 
-    const messageRead =
-      db.message.findUnique.mock.invocationCallOrder[0] as number;
-    const tombstoneRead = (
-      db.messageNonceTombstone.findUnique.mock.invocationCallOrder[0] as number
-    );
+    const messageRead = db.message.findUnique.mock.invocationCallOrder[0];
+    const tombstoneRead =
+      db.messageNonceTombstone.findUnique.mock.invocationCallOrder[0];
     expect(messageRead).toBeLessThan(tombstoneRead);
   });
 

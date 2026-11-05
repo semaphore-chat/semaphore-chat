@@ -807,10 +807,10 @@ describe('MessagesService', () => {
 
       // The decrement locks the parent row, so a reply that arrives meanwhile
       // commits before the read: its sentAt is the latest, not a stale one.
-      const decrement = mockDatabase.message.updateMany.mock
-        .invocationCallOrder[0] as number;
-      const latestRead = mockDatabase.message.findFirst.mock
-        .invocationCallOrder[0] as number;
+      const decrement =
+        mockDatabase.message.updateMany.mock.invocationCallOrder[0];
+      const latestRead =
+        mockDatabase.message.findFirst.mock.invocationCallOrder[0];
       expect(decrement).toBeLessThan(latestRead);
     });
 

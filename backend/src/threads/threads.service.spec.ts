@@ -182,9 +182,9 @@ describe('ThreadsService', () => {
           new Error('notification failure'),
         );
 
-        await expect(
-          service.sendThreadReply(newReply, 'user-1'),
-        ).resolves.toBe(reply);
+        await expect(service.sendThreadReply(newReply, 'user-1')).resolves.toBe(
+          reply,
+        );
         expect(
           notificationsService.processThreadReplyNotifications,
         ).toHaveBeenCalledWith(reply, 'parent-1', 'user-1');

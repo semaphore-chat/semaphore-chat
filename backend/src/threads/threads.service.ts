@@ -528,5 +528,4 @@ export class ThreadsService {
       isSubscribed,
     };
   }
-
 }
