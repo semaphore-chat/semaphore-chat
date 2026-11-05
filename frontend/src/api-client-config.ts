@@ -7,6 +7,7 @@ import {
   notifyAuthFailure,
 } from './utils/tokenService';
 import { DEVICE_ID_HEADER, getDeviceId } from './utils/deviceId';
+import { clientTypeHeaders } from './utils/clientType';
 
 const PUBLIC_ROUTE_PREFIXES = ['/login', '/register', '/join', '/onboarding'];
 
@@ -92,6 +93,9 @@ export function configureApiClient() {
     // Auth endpoints (sign-in starts a session) learn which install this is
     if (new URL(request.url, window.location.origin).pathname.startsWith('/api/auth/')) {
       request.headers.set(DEVICE_ID_HEADER, getDeviceId());
+      for (const [name, value] of Object.entries(clientTypeHeaders())) {
+        request.headers.set(name, value);
+      }
     }
     return request;
   });

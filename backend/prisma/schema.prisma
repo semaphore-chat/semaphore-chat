@@ -387,6 +387,10 @@ model RefreshToken {
   // The client install's random id (X-Device-Id): a new sign-in replaces
   // the sessions with the same one. Null for clients that don't send one.
   deviceId   String?
+  // What the client said it is (X-Client-Type: web, electron, desktop-native,
+  // mobile-native). Null for sessions from before it was stored. Metadata for
+  // showing sessions and later device features: nothing about security reads it.
+  clientType String?
 
   // Token family for reuse detection (RFC 9700 best practice)
   // All tokens from a single login share a familyId. On rotation the old

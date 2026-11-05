@@ -141,6 +141,60 @@ describe('AuthController', () => {
       expect(mockRes.cookie).toHaveBeenCalled();
     });
 
+    it('gives a native client the refresh token in the body and no cookies', async () => {
+      const req = {
+        ...mockReq,
+        headers: {
+          'user-agent': 'SemaphoreChat-Desktop/0.1',
+          'x-client-type': 'desktop-native',
+          'x-device-id': '3f2504e0-4f89-41d3-9a0c-0305e82c3301',
+          'x-device-name': 'Work%20laptop',
+        },
+      };
+
+      await expect(controller.login(req, mockRes)).resolves.toEqual({
+        accessToken: mockAccessToken,
+        refreshToken: mockRefreshToken,
+      });
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+      expect(authService.issueLoginTokens).toHaveBeenCalledWith(
+        mockUser,
+        expect.objectContaining({
+          clientType: 'desktop-native',
+          deviceName: 'Work laptop',
+        }),
+      );
+    });
+
+    it('refuses a native client without a device id before issuing anything', async () => {
+      const req = {
+        ...mockReq,
+        headers: {
+          'user-agent': 'SemaphoreChat-Desktop/0.1',
+          'x-client-type': 'mobile-native',
+        },
+      };
+
+      await expect(controller.login(req, mockRes)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(authService.issueLoginTokens).not.toHaveBeenCalled();
+    });
+
+    it('ignores a device name from a web client', async () => {
+      const req = {
+        ...mockReq,
+        headers: { 'user-agent': 'Mozilla/5.0', 'x-device-name': 'Forged' },
+      };
+
+      await controller.login(req, mockRes);
+
+      expect(authService.issueLoginTokens).toHaveBeenCalledWith(
+        mockUser,
+        expect.objectContaining({ clientType: 'web', deviceName: undefined }),
+      );
+    });
+
     it('should set refresh token cookie with correct options', async () => {
       await controller.login(mockReq, mockRes);
 
@@ -198,6 +252,7 @@ describe('AuthController', () => {
       userAgent: null,
       ipAddress: null,
       deviceId: null as string | null,
+      clientType: null as string | null,
     };
 
     const refreshIssuedAt = 1_700_000_000;
@@ -352,6 +407,79 @@ describe('AuthController', () => {
       });
     });
 
+    it('never answers a cookie with a body token, whatever the headers say', async () => {
+      const req = {
+        ...mockReq,
+        cookies: { refresh_token: mockRefreshToken },
+        headers: {
+          'user-agent': 'Electron/25.0.0',
+          'x-client-type': 'desktop-native',
+        },
+      };
+
+      await expect(controller.refresh(req, mockRes)).resolves.toEqual({
+        accessToken: mockAccessToken,
+      });
+      expect(mockRes.cookie).toHaveBeenCalledWith(
+        'refresh_token',
+        newRefreshToken,
+        expect.any(Object),
+      );
+    });
+
+    it('takes a body token from any client, and answers in the body', async () => {
+      const req = {
+        ...mockReq,
+        headers: { 'user-agent': 'SemaphoreChat-Desktop/0.1' },
+        body: { refreshToken: mockRefreshToken },
+      };
+
+      await expect(controller.refresh(req, mockRes)).resolves.toEqual({
+        accessToken: mockAccessToken,
+        refreshToken: newRefreshToken,
+      });
+    });
+
+    it('sets no cookies for a native client', async () => {
+      const req = {
+        ...mockReq,
+        headers: {
+          'user-agent': 'SemaphoreChat-Desktop/0.1',
+          'x-client-type': 'desktop-native',
+        },
+        body: { refreshToken: mockRefreshToken },
+      };
+
+      await controller.refresh(req, mockRes);
+
+      expect(mockRes.cookie).not.toHaveBeenCalled();
+    });
+
+    it("keeps a native session's type and name through a rotation", async () => {
+      jest.spyOn(authService, 'consumeRefreshToken').mockResolvedValue({
+        ...mockTokenRecord,
+        clientType: 'mobile-native',
+        deviceName: "Zoë's iPhone",
+      });
+      const req = {
+        ...mockReq,
+        headers: { 'user-agent': 'SemaphoreChat-Mobile/0.1' },
+        body: { refreshToken: mockRefreshToken },
+      };
+
+      await controller.refresh(req, mockRes);
+
+      expect(authService.generateRefreshToken).toHaveBeenCalledWith(
+        mockUser.id,
+        expect.objectContaining({
+          clientType: 'mobile-native',
+          deviceName: "Zoë's iPhone",
+        }),
+        expect.anything(),
+        'family-123',
+      );
+    });
+
     it('should throw UnauthorizedException when no refresh token provided', async () => {
       const req = { ...mockReq };
 
@@ -435,7 +563,7 @@ describe('AuthController', () => {
       );
     });
 
-    it('should prefer cookie over body for web clients', async () => {
+    it('acts on the body token when a cookie comes with it', async () => {
       const req = {
         ...mockReq,
         cookies: { refresh_token: mockRefreshToken },
@@ -443,11 +571,12 @@ describe('AuthController', () => {
         headers: { 'user-agent': 'Mozilla/5.0' },
       };
 
-      await controller.refresh(req, mockRes);
+      await expect(controller.refresh(req, mockRes)).resolves.toEqual({
+        accessToken: mockAccessToken,
+        refreshToken: newRefreshToken,
+      });
 
-      expect(authService.verifyRefreshToken).toHaveBeenCalledWith(
-        mockRefreshToken,
-      );
+      expect(authService.verifyRefreshToken).toHaveBeenCalledWith('body-token');
     });
 
     describe('a token presented again after it was rotated', () => {
@@ -483,6 +612,8 @@ describe('AuthController', () => {
           const result = await controller.refresh(
             {
               ...req,
+              cookies: {},
+              body: { refreshToken: mockRefreshToken },
               ip: '203.0.113.1',
               headers: { 'user-agent': 'Electron/25.0.0' },
             },
@@ -497,7 +628,10 @@ describe('AuthController', () => {
           expect(authService.findGraceSuccessor).toHaveBeenCalledWith(
             consumedRecord,
             mockRefreshToken,
-            { userAgent: 'Electron/25.0.0', ipAddress: '203.0.113.1' },
+            expect.objectContaining({
+              userAgent: 'Electron/25.0.0',
+              ipAddress: '203.0.113.1',
+            }),
             dbNow,
             mockDatabase,
           );
@@ -518,6 +652,24 @@ describe('AuthController', () => {
           expect(authService.consumeRefreshToken).not.toHaveBeenCalled();
           expect(authService.generateRefreshToken).not.toHaveBeenCalled();
           expect(authService.revokeReusedSession).not.toHaveBeenCalled();
+        });
+
+        it('answers a cookie with its successor in a cookie only, whatever the headers say', async () => {
+          const result = await controller.refresh(
+            {
+              ...req,
+              ip: '203.0.113.1',
+              headers: { 'user-agent': 'Electron/25.0.0' },
+            },
+            mockRes,
+          );
+
+          expect(result).toEqual({ accessToken: mockAccessToken });
+          expect(mockRes.cookie).toHaveBeenCalledWith(
+            'refresh_token',
+            'successor-token',
+            expect.any(Object),
+          );
         });
 
         it('signs the access token before the transaction commits', async () => {
@@ -793,6 +945,7 @@ describe('AuthController', () => {
       userAgent: null,
       ipAddress: null,
       deviceId: null as string | null,
+      clientType: null as string | null,
     };
 
     beforeEach(() => {
@@ -1311,8 +1464,25 @@ describe('AuthController', () => {
             userAgent: 'Mozilla/5.0 Electron/39',
             ipAddress: '10.0.0.2',
             deviceId: '6f1c2c86-1f1e-4c1a-9a51-6a6f1a3c2b11',
+            clientType: 'electron',
           },
         );
+      });
+
+      it("refuses a native client without a device id, and doesn't spend the code", async () => {
+        const res = { cookie: jest.fn() } as any;
+        const req = {
+          headers: {
+            'user-agent': 'SemaphoreChat-Desktop/0.1',
+            'x-client-type': 'desktop-native',
+          },
+          ip: '10.0.0.2',
+        } as any;
+
+        await expect(
+          controller.redeemDesktopLogin(req, res, body),
+        ).rejects.toThrow(BadRequestException);
+        expect(deviceLoginGrantService.redeem).not.toHaveBeenCalled();
       });
 
       it('keeps the refresh token out of the body for web clients', async () => {

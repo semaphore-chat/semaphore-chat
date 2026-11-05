@@ -6,6 +6,7 @@ import {
   Param,
   Body,
   UseGuards,
+  BadRequestException,
   HttpStatus,
   HttpCode,
   Req,
@@ -15,7 +16,13 @@ import {
   Logger,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiCreatedResponse, ApiBody } from '@nestjs/swagger';
+import {
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiBody,
+  ApiCookieAuth,
+  ApiSecurity,
+} from '@nestjs/swagger';
 import { LocalAuthGuard } from './local-auth.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { AuthService, DeviceInfo } from './auth.service';
@@ -28,6 +35,20 @@ import { PasswordResetService } from './password-reset.service';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
 import { RefreshThrottlerGuard } from './refresh-throttler.guard';
 import { DEVICE_ID_HEADER, parseDeviceId } from './device-id.util';
+import {
+  CLIENT_TYPE_HEADER,
+  ClientType,
+  DEVICE_NAME_HEADER,
+  SignInClient,
+  hasNativeClientIdentity,
+  isNativeClientType,
+  parseClientType,
+  parseDeviceName,
+  presentedRefreshToken,
+  refreshingClientType,
+  resolveSignInClient,
+} from './client-type.util';
+import { ApiClientHeaders } from './client-headers.decorator';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { DatabaseService } from '@/database/database.service';
@@ -99,12 +120,38 @@ export class AuthController {
   /**
    * Extract device info from request headers
    */
-  private getDeviceInfo(req: Request): DeviceInfo {
+  private getDeviceInfo(req: Request, clientType?: ClientType): DeviceInfo {
     const userAgent = req.headers['user-agent'] || '';
     // req.ip respects the TRUST_PROXY setting configured in main.ts
     const ipAddress = req.ip || req.socket?.remoteAddress || '';
     const deviceId = parseDeviceId(req.headers[DEVICE_ID_HEADER]);
-    return { userAgent, ipAddress, deviceId };
+    return {
+      userAgent,
+      ipAddress,
+      deviceId,
+      clientType,
+      // A browser's or the Electron app's name comes from its user agent
+      deviceName: isNativeClientType(clientType)
+        ? parseDeviceName(req.headers[DEVICE_NAME_HEADER])
+        : undefined,
+    };
+  }
+
+  /**
+   * How to answer a sign-in. Run before anything is spent (a grant's code):
+   * a native client that can't identify itself gets to try again.
+   */
+  private signInClient(req: Request): SignInClient {
+    const client = resolveSignInClient(req.headers);
+    if (
+      isNativeClientType(client.clientType) &&
+      !hasNativeClientIdentity(req.headers)
+    ) {
+      throw new BadRequestException(
+        'Native clients must send X-Device-Id and a User-Agent',
+      );
+    }
+    return client;
   }
 
   @Public()
@@ -112,35 +159,42 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ApiClientHeaders()
   @ApiBody({ type: LoginRequestDto })
   @ApiOkResponse({ type: LoginResponseDto })
   async login(
     @Req() req: AuthenticatedRequest,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    const deviceInfo = this.getDeviceInfo(req);
+    const client = this.signInClient(req);
+    const deviceInfo = this.getDeviceInfo(req, client.clientType);
     // Refused if a password reset committed since the password was checked
     const { refreshToken, accessToken } =
       await this.authService.issueLoginTokens(req.user, deviceInfo);
 
-    return this.respondWithNewSession(req, res, { refreshToken, accessToken });
+    return this.respondWithNewSession(res, client, {
+      refreshToken,
+      accessToken,
+    });
   }
 
   /**
    * Answer a sign-in with its new session's tokens: cookies for web clients
-   * (access token for browser media, refresh for sessions), and the refresh
-   * token in the body for Electron, which can't use cookies.
+   * (access token for browser media, refresh for sessions), the refresh token
+   * in the body for clients that store it themselves. A native client has no
+   * use for cookies, and gets none.
    */
   private respondWithNewSession(
-    req: Request,
     res: Response,
+    client: SignInClient,
     tokens: { refreshToken: string; accessToken: string },
   ): LoginResponseDto {
-    setAccessTokenCookie(res, tokens.accessToken);
-    this.setRefreshCookie(res, tokens.refreshToken);
+    if (!isNativeClientType(client.clientType)) {
+      setAccessTokenCookie(res, tokens.accessToken);
+      this.setRefreshCookie(res, tokens.refreshToken);
+    }
 
-    const userAgent = req.headers['user-agent'] || '';
-    if (userAgent.includes('Electron')) {
+    if (client.tokenDelivery === 'body') {
       return {
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
@@ -206,21 +260,23 @@ export class AuthController {
   @Throttle({ short: { limit: 4, ttl: 1000 }, long: { limit: 10, ttl: 60000 } })
   @Post('desktop/token')
   @HttpCode(HttpStatus.OK)
+  @ApiClientHeaders()
   @ApiOkResponse({ type: LoginResponseDto })
   async redeemDesktopLogin(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
     @Body() dto: DesktopLoginTokenRequestDto,
   ): Promise<LoginResponseDto> {
+    const client = this.signInClient(req);
     const result = await this.deviceLoginGrantService.redeem(
       dto.code,
       dto.codeVerifier,
-      this.getDeviceInfo(req),
+      this.getDeviceInfo(req, client.clientType),
     );
     if (!result.ok) {
       throw new UnauthorizedException('Invalid or expired sign-in code');
     }
-    return this.respondWithNewSession(req, res, result);
+    return this.respondWithNewSession(res, client, result);
   }
 
   @Public()
@@ -229,25 +285,20 @@ export class AuthController {
   @UseGuards(RefreshThrottlerGuard)
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiBody({ type: RefreshRequestDto })
+  @ApiClientHeaders()
+  // Optional: the token can come in the body instead
+  @ApiSecurity({})
+  @ApiCookieAuth('refresh_token')
+  @ApiBody({ type: RefreshRequestDto, required: false })
   @ApiOkResponse({ type: LoginResponseDto })
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<LoginResponseDto> {
-    // Check if this is an Electron client
-    const userAgent = req.headers['user-agent'] || '';
-    const isElectron = userAgent.includes('Electron');
-
-    // Get refresh token from cookie or body (for Electron)
-    let refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
-      string | undefined;
-
-    // For Electron, also check the request body
-    const body = req.body as { refreshToken?: string } | undefined;
-    if (!refreshToken && isElectron && body?.refreshToken) {
-      refreshToken = body.refreshToken;
-    }
+    // How the token arrived decides how the next one leaves, and nothing else
+    // does: a page can't read the httpOnly cookie, so it can't present a token
+    // in the body, and a cookie never gets a token back that a page could read
+    const { via, token: refreshToken } = presentedRefreshToken(req);
 
     if (!refreshToken) {
       throw new UnauthorizedException('No refresh token provided');
@@ -260,7 +311,10 @@ export class AuthController {
     if (user.banned) {
       throw new UnauthorizedException('Account has been banned');
     }
-    const deviceInfo = this.getDeviceInfo(req);
+    const deviceInfo = this.getDeviceInfo(
+      req,
+      refreshingClientType(via, req.headers),
+    );
 
     // Check the token against its stored hash (bcrypt) before the
     // transaction: a token row's hash never changes, and concurrent
@@ -392,9 +446,20 @@ export class AuthController {
         // waiting behind it take the grace path, which hashes nothing.
         const next = await this.authService.generateRefreshToken(
           user.id,
-          // A session keeps the install it was signed in on; one from before
-          // clients sent device ids adopts the presenting client's
-          { ...deviceInfo, deviceId: consumed.deviceId ?? deviceInfo.deviceId },
+          // A session keeps the install it was signed in on and its type; one
+          // from before clients sent them adopts the presenting client's. A
+          // native client's name stays unless it sends a new one.
+          {
+            ...deviceInfo,
+            deviceId: consumed.deviceId ?? deviceInfo.deviceId,
+            clientType:
+              parseClientType(consumed.clientType) ?? deviceInfo.clientType,
+            deviceName:
+              deviceInfo.deviceName ??
+              (isNativeClientType(parseClientType(consumed.clientType))
+                ? (consumed.deviceName ?? undefined)
+                : undefined),
+          },
           tx,
           consumed.familyId ?? undefined,
         );
@@ -448,15 +513,20 @@ export class AuthController {
     }
     const { refreshToken: token, accessToken: newAccessToken } = outcome;
 
-    // Always set cookies for web clients
-    setAccessTokenCookie(res, newAccessToken);
-    this.setRefreshCookie(res, token);
-
-    // Return new refresh token in body for Electron clients
-    if (isElectron) {
+    if (via === 'body') {
+      // A native client has no use for cookies. Electron builds in the field
+      // always got them, so they keep getting them.
+      if (
+        !isNativeClientType(parseClientType(req.headers[CLIENT_TYPE_HEADER]))
+      ) {
+        setAccessTokenCookie(res, newAccessToken);
+        this.setRefreshCookie(res, token);
+      }
       return { accessToken: newAccessToken, refreshToken: token };
     }
 
+    setAccessTokenCookie(res, newAccessToken);
+    this.setRefreshCookie(res, token);
     return { accessToken: newAccessToken };
   }
 
@@ -501,6 +571,9 @@ export class AuthController {
 
   @Throttle({ short: { limit: 2, ttl: 1000 }, long: { limit: 5, ttl: 60000 } })
   @Post('logout')
+  // Optional: the token can come in the body instead
+  @ApiSecurity({})
+  @ApiCookieAuth('refresh_token')
   @ApiBody({ type: LogoutRequestDto, required: false })
   @ApiCreatedResponse({ type: LogoutResponseDto })
   async logout(
@@ -622,22 +695,40 @@ export class AuthController {
   }
 
   /**
-   * Get current token ID from request (for marking current session)
+   * Get current token ID from request (for marking current session): the
+   * refresh cookie's or, for a client that stores its own refresh token and
+   * doesn't send it here, its session's, from the access token's `sid`.
    */
-  private async getCurrentTokenId(req: Request): Promise<string | undefined> {
+  private async getCurrentTokenId(
+    req: AuthenticatedRequest,
+  ): Promise<string | undefined> {
     const refreshToken = req.cookies[this.REFRESH_TOKEN_COOKIE_NAME] as
       string | undefined;
 
-    if (!refreshToken) {
-      return undefined;
+    if (refreshToken) {
+      try {
+        const [, jti] = await this.authService.verifyRefreshToken(refreshToken);
+        return jti;
+      } catch {
+        // An old cookie alongside a good bearer token: fall through to it
+      }
     }
 
-    try {
-      const [, jti] = await this.authService.verifyRefreshToken(refreshToken);
-      return jti;
-    } catch {
+    const header = req.headers.authorization;
+    if (!header?.startsWith('Bearer ')) return undefined;
+    // Verified by JwtAuthGuard already (the header comes first in
+    // extractAccessToken), so decoding is enough
+    const claims = this.jwtService.decode<AccessTokenClaims | null>(
+      header.slice('Bearer '.length),
+    );
+    if (
+      !claims ||
+      claims.sub !== req.user.id ||
+      typeof claims.sid !== 'string'
+    ) {
       return undefined;
     }
+    return this.authService.findLiveTokenIdOfSession(req.user.id, claims.sid);
   }
 
   /**

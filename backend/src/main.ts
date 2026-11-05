@@ -10,6 +10,7 @@ import { RedisIoAdapter } from './adapters/redis-io.adapter';
 import { AppValidationPipe } from './common/pipes/app-validation.pipe';
 import { configureBodyParsers } from './common/http/body-parsers';
 import { pinClientAddress } from './common/http/pin-client-address';
+import { buildCorsOptions } from './common/http/cors-options';
 
 const KNOWN_WEAK_SECRETS = [
   'some long elaborate secret that you really need to change',
@@ -97,12 +98,7 @@ async function bootstrap() {
       crossOriginEmbedderPolicy: false, // Can break embedded media
     }),
   );
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN?.split(',')
-      .map((s) => s.trim())
-      .filter(Boolean) || ['http://localhost:5173'],
-    credentials: true,
-  });
+  app.enableCors(buildCorsOptions());
   app.useGlobalPipes(new AppValidationPipe());
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
@@ -116,6 +112,7 @@ async function bootstrap() {
       .setDescription('Semaphore Chat Application API')
       .setVersion('1.0')
       .addBearerAuth()
+      .addCookieAuth('refresh_token', { type: 'apiKey' }, 'refresh_token')
       .build();
     const document = SwaggerModule.createDocument(app, swaggerConfig);
     SwaggerModule.setup('api-docs', app, document);

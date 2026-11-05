@@ -25,7 +25,43 @@
     "/api/auth/login": {
       "post": {
         "operationId": "AuthController_login",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -88,7 +124,43 @@
     "/api/auth/desktop/token": {
       "post": {
         "operationId": "AuthController_redeemDesktopLogin",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -120,9 +192,45 @@
     "/api/auth/refresh": {
       "post": {
         "operationId": "AuthController_refresh",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -143,6 +251,12 @@
             }
           }
         },
+        "security": [
+          {
+            "refresh_token": []
+          },
+          {}
+        ],
         "tags": [
           "Auth"
         ]
@@ -238,6 +352,12 @@
             }
           }
         },
+        "security": [
+          {
+            "refresh_token": []
+          },
+          {}
+        ],
         "tags": [
           "Auth"
         ]
@@ -7930,6 +8050,11 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "type": "http"
+      },
+      "refresh_token": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
       }
     },
     "schemas": {
@@ -7951,10 +8076,11 @@
       "LoginResponseDto": {
         "type": "object",
         "properties": {
-          "accessToken": {
-            "type": "string"
-          },
           "refreshToken": {
+            "type": "string",
+            "description": "Only for a client that gets body delivery (see the X-Client-Type header) or presented its refresh token in the body. Web clients get an httpOnly refresh_token cookie instead. A native client that gets no refreshToken is talking to a server too old for it."
+          },
+          "accessToken": {
             "type": "string"
           }
         },
@@ -8022,7 +8148,8 @@
         "type": "object",
         "properties": {
           "refreshToken": {
-            "type": "string"
+            "type": "string",
+            "description": "The refresh token, for a client that stores its own. Takes precedence over the refresh_token cookie; if it is invalid the request fails, without trying the cookie. The answer has the new refresh token in its body only when the token was presented here."
           }
         }
       },
@@ -8083,7 +8210,7 @@
         "properties": {
           "refreshToken": {
             "type": "string",
-            "description": "Refresh token (required for Electron clients that cannot use cookies)"
+            "description": "Refresh token, for a client that stores its own instead of using the refresh_token cookie"
           }
         }
       },

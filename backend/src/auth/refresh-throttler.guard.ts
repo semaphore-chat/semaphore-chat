@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { presentedRefreshToken } from './client-type.util';
 import {
   InjectThrottlerOptions,
   InjectThrottlerStorage,
@@ -75,23 +76,13 @@ export class RefreshThrottlerGuard extends ThrottlerGuard {
 
   /**
    * The id (jti) of the refresh token the request presents, where the
-   * controller reads it (the cookie, or the body for Electron), if its
-   * signature and expiry check out.
+   * controller reads it (presentedRefreshToken), if its signature and expiry
+   * check out.
    */
   private async presentedTokenId(
     req: Record<string, unknown>,
   ): Promise<string | undefined> {
-    const cookies = req.cookies as Record<string, string> | undefined;
-    const headers = req.headers as Record<string, string> | undefined;
-    const body = req.body as { refreshToken?: unknown } | undefined;
-    let token = cookies?.refresh_token;
-    if (
-      !token &&
-      headers?.['user-agent']?.includes('Electron') &&
-      typeof body?.refreshToken === 'string'
-    ) {
-      token = body.refreshToken;
-    }
+    const { token } = presentedRefreshToken(req);
     if (!token) return undefined;
     try {
       const { jti } = await this.jwtService.verifyAsync<{ jti?: unknown }>(

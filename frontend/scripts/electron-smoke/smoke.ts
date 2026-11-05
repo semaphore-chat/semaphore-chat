@@ -7,6 +7,10 @@
  * syntax (enums, parameter properties, namespaces).
  */
 import { spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { createServer, type IncomingHttpHeaders } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { networkInterfaces } from 'node:os';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, normalize } from 'node:path';
 import { _electron as electron, chromium } from 'playwright-core';
@@ -212,10 +216,55 @@ async function main() {
     secureStorageWarning = win.getByText(/secure credential storage is unavailable/i).first()
       .waitFor({ timeout: 20_000 }).then(() => true, () => false);
     await win.getByLabel('Password').fill(USER.password);
+    const loginRequest = win.waitForRequest(
+      (r) => r.method() === 'POST' && r.url().endsWith('/api/auth/login'),
+      { timeout: 20_000 },
+    );
     await win.locator('button[type="submit"]').click();
     await win.waitForFunction(() => !location.hash.includes('/login'), undefined, { timeout: 20_000 });
     await shot(win, '02-after-login');
+    const headers = await (await loginRequest).allHeaders();
+    assert(headers['x-client-type'] === 'electron', `X-Client-Type = ${headers['x-client-type']}`);
     return win.url().replace(/^.*#/, '#');
+  });
+
+  // What a server's body-delivery check sees from the packaged app, on the
+  // wire (isBrowserPageRequest in backend/src/auth/client-type.util.ts): it
+  // must not read as a web page. On 127.0.0.1, which like HTTPS gets fetch
+  // metadata, and on this container's address, which like plain HTTP doesn't.
+  await check('requests from the app do not read as a web page', async () => {
+    const seen = new Map<string, IncomingHttpHeaders>();
+    const server = createServer((req, res) => {
+      res.setHeader('Access-Control-Allow-Origin', req.headers.origin ?? '*');
+      res.setHeader('Access-Control-Allow-Headers', 'x-client-type,content-type');
+      if (req.method === 'POST') seen.set(req.headers.host ?? '', req.headers);
+      res.end('{}');
+    }).listen(0, '0.0.0.0');
+    await once(server, 'listening');
+    const { port } = server.address() as AddressInfo;
+    const lan = Object.values(networkInterfaces()).flat()
+      .find((address) => address?.family === 'IPv4' && !address.internal)?.address;
+    const hosts = ['127.0.0.1', ...(lan ? [lan] : [])].map((host) => `${host}:${port}`);
+    const report: string[] = [];
+    for (const host of hosts) {
+      await win.evaluate(async (url) => {
+        await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Client-Type': 'electron' },
+          body: '{}',
+        });
+      }, `http://${host}/probe`);
+      const headers = seen.get(host);
+      assert(headers, `no request reached ${host}`);
+      const { origin } = headers;
+      const site = headers['sec-fetch-site'];
+      assert(!/^https?:/i.test(origin ?? ''), `Origin = ${origin}`);
+      assert(site !== 'same-origin' && site !== 'same-site', `Sec-Fetch-Site = ${site}`);
+      report.push(`${host === hosts[0] ? 'loopback' : 'plain HTTP'}: Origin ${origin}, Sec-Fetch-Site ${site}`);
+    }
+    server.close();
+    server.closeAllConnections();
+    return report.join('; ');
   });
 
   await check('community + text channel render', async () => {

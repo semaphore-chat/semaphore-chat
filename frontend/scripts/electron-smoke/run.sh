@@ -132,8 +132,8 @@ backend_container() {
 BACKEND_ID="$(backend_container)"
 if [[ -z "$BACKEND_ID" ]]; then
   log "starting the backend (migrate, seed the e2e users, nest start)"
-  # CORS_ORIGIN=null: the packaged app is a file:// page, whose requests carry
-  # `Origin: null`.
+  # CORS_ORIGIN=null: left over, not needed by the current packaged app, whose
+  # requests carry no Origin and get no preflight (smoke.ts checks the headers).
   "${STACK[@]}" run \
     -e CORS_ORIGIN=null \
     -e "LIVEKIT_URL=ws://$LIVEKIT:7880" -e "LIVEKIT_INTERNAL_URL=http://$LIVEKIT:7880" \
