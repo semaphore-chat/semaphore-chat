@@ -1,14 +1,17 @@
-//! Query cache: the TanStack Query analog. It lives here rather than on GPUI entities
-//! so a future mobile UI reads the same state; a UI only holds a projection of it.
+//! Query cache: the TanStack Query analog. It lives here rather than on GPUI entities so a future
+//! mobile UI reads the same state; a UI only holds a projection of it.
 //!
-//! Unit U5 replaces JSON text with typed entries, because a direct update would otherwise reparse
-//! on every event. Message rows don't live here at all, but in `store`. A UI never reads this
-//! type directly, so that change doesn't reach the frozen API in `model` and `commands`.
+//! Entries are typed wire responses, so a direct update changes a field instead of reparsing JSON.
+//! Message rows don't live here at all, but in [`crate::store`]. A UI never reads this type: it
+//! reads the view models in [`crate::model`] through `Core`.
 
+use semaphore_wire::types as wire;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-/// Hierarchical key, like a TanStack Query key: `["channels", "<id>", "messages"]`.
+/// Hierarchical key, like a TanStack Query key. The first segment is the web client's query `_id`,
+/// the camelCase `operationId`, so the rules in [`crate::events`] read like its handlers: a key
+/// for one operation is its prefix, the way `[{ _id }]` matches on the web.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct QueryKey {
     pub segments: Vec<String>,
@@ -24,12 +27,58 @@ impl QueryKey {
     pub fn starts_with(&self, prefix: &QueryKey) -> bool {
         self.segments.starts_with(&prefix.segments)
     }
+
+    /// The operation this key caches: its first segment.
+    pub fn op(&self) -> &str {
+        self.segments.first().map_or("", String::as_str)
+    }
 }
 
-/// A cached response, kept as JSON text so it crosses an FFI boundary unchanged.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The query `_id`s core caches, and their keys.
+pub mod keys {
+    use super::QueryKey;
+
+    pub const PROFILE: &str = "userControllerGetProfile";
+    pub const USER: &str = "userControllerGetUserById";
+    pub const COMMUNITIES: &str = "communityControllerFindAllMine";
+    pub const CHANNELS: &str = "channelsControllerFindAllForCommunity";
+    pub const CAPABILITIES: &str = "channelPermissionsControllerGetMyCommunityChannelPermissions";
+    pub const UNREAD: &str = "readReceiptsControllerGetUnreadCounts";
+    pub const VOICE_PRESENCE: &str = "voicePresenceControllerGetChannelPresence";
+    pub const MEMBER_SEARCH: &str = "membershipControllerSearchCommunityMembers";
+    pub const MENTIONABLE: &str = "channelsControllerGetMentionableChannels";
+    pub const EMOJIS: &str = "customEmojiControllerListCommunityEmojis";
+    pub const CHANNEL_MESSAGES: &str = "messagesControllerFindAllForChannel";
+    pub const DM_MESSAGES: &str = "messagesControllerFindAllForGroup";
+    pub const THREAD_REPLIES: &str = "threadsControllerGetReplies";
+
+    pub fn scoped(op: &str, id: &str) -> QueryKey {
+        QueryKey::new(&[op, id])
+    }
+
+    pub fn op(op: &str) -> QueryKey {
+        QueryKey::new(&[op])
+    }
+}
+
+/// A cached response.
+#[derive(Debug, Clone)]
+pub enum CacheValue {
+    Profile(wire::UserEntity),
+    User(wire::UserEntity),
+    Communities(Vec<wire::CommunityResponseDto>),
+    Channels(Vec<wire::ChannelDto>),
+    Capabilities(wire::CommunityChannelCapabilitiesDto),
+    UnreadCounts(Vec<wire::UnreadCountDto>),
+    VoicePresence(wire::ChannelVoicePresenceResponseDto),
+    MemberSearch(Vec<wire::MembershipResponseDto>),
+    MentionableChannels(Vec<wire::ChannelDto>),
+    Emojis(Vec<wire::CustomEmojiDto>),
+}
+
+#[derive(Debug, Clone)]
 pub struct CacheEntry {
-    pub json: String,
+    pub value: CacheValue,
     pub fetched_at_ms: u64,
     pub stale: bool,
 }
@@ -39,10 +88,63 @@ pub struct QueryCache {
     entries: BTreeMap<QueryKey, CacheEntry>,
 }
 
+/// One typed read, for one variant.
+macro_rules! typed_read {
+    ($name:ident, $name_mut:ident, $variant:ident, $ty:ty) => {
+        pub fn $name(&self, key: &QueryKey) -> Option<&$ty> {
+            match self.entries.get(key).map(|entry| &entry.value) {
+                Some(CacheValue::$variant(value)) => Some(value),
+                _ => None,
+            }
+        }
+
+        pub fn $name_mut(&mut self, key: &QueryKey) -> Option<&mut $ty> {
+            match self.entries.get_mut(key).map(|entry| &mut entry.value) {
+                Some(CacheValue::$variant(value)) => Some(value),
+                _ => None,
+            }
+        }
+    };
+}
+
 impl QueryCache {
-    pub fn set(&mut self, key: QueryKey, json: String, fetched_at_ms: u64) {
+    typed_read!(user, user_mut, User, wire::UserEntity);
+    typed_read!(profile, profile_mut, Profile, wire::UserEntity);
+    typed_read!(
+        communities,
+        communities_mut,
+        Communities,
+        Vec<wire::CommunityResponseDto>
+    );
+    typed_read!(channels, channels_mut, Channels, Vec<wire::ChannelDto>);
+    typed_read!(
+        unread_counts,
+        unread_counts_mut,
+        UnreadCounts,
+        Vec<wire::UnreadCountDto>
+    );
+    typed_read!(
+        voice_presence,
+        voice_presence_mut,
+        VoicePresence,
+        wire::ChannelVoicePresenceResponseDto
+    );
+    typed_read!(
+        member_search,
+        member_search_mut,
+        MemberSearch,
+        Vec<wire::MembershipResponseDto>
+    );
+    typed_read!(
+        mentionable_channels,
+        mentionable_channels_mut,
+        MentionableChannels,
+        Vec<wire::ChannelDto>
+    );
+
+    pub fn set(&mut self, key: QueryKey, value: CacheValue, fetched_at_ms: u64) {
         let entry = CacheEntry {
-            json,
+            value,
             fetched_at_ms,
             stale: false,
         };
@@ -70,11 +172,28 @@ impl QueryCache {
         self.invalidate_prefix(&QueryKey { segments: vec![] })
     }
 
+    /// Drops matching entries.
+    pub fn remove_prefix(&mut self, prefix: &QueryKey) {
+        self.entries.retain(|key, _| !key.starts_with(prefix));
+    }
+
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
     pub fn stale_keys(&self) -> Vec<QueryKey> {
         self.entries
             .iter()
             .filter(|(_, entry)| entry.stale)
             .map(|(key, _)| key.clone())
+            .collect()
+    }
+
+    pub fn keys_with_op(&self, op: &str) -> Vec<QueryKey> {
+        self.entries
+            .keys()
+            .filter(|key| key.op() == op)
+            .cloned()
             .collect()
     }
 }
@@ -83,20 +202,30 @@ impl QueryCache {
 mod tests {
     use super::*;
 
+    fn unread(count: i64) -> CacheValue {
+        CacheValue::UnreadCounts(vec![wire::UnreadCountDto {
+            channel_id: Some("a".into()),
+            direct_message_group_id: None,
+            last_read_at: None,
+            last_read_message_id: None,
+            mention_count: 0,
+            unread_count: count,
+        }])
+    }
+
     #[test]
     fn invalidating_a_prefix_keeps_data_and_leaves_other_keys_fresh() {
         let mut cache = QueryCache::default();
         let messages = QueryKey::new(&["channels", "a", "messages"]);
         let other = QueryKey::new(&["channels", "b", "messages"]);
-        cache.set(messages.clone(), "[1]".into(), 10);
-        cache.set(other.clone(), "[2]".into(), 10);
+        cache.set(messages.clone(), unread(1), 10);
+        cache.set(other.clone(), unread(2), 10);
 
         let marked = cache.invalidate_prefix(&QueryKey::new(&["channels", "a"]));
 
         assert_eq!(marked, vec![messages.clone()]);
-        let entry = cache.get(&messages).unwrap();
-        assert!(entry.stale);
-        assert_eq!(entry.json, "[1]");
+        assert!(cache.get(&messages).unwrap().stale);
+        assert_eq!(cache.unread_counts(&messages).unwrap()[0].unread_count, 1);
         assert!(!cache.get(&other).unwrap().stale);
     }
 
@@ -111,9 +240,20 @@ mod tests {
     fn a_fresh_set_clears_stale() {
         let mut cache = QueryCache::default();
         let key = QueryKey::new(&["me"]);
-        cache.set(key.clone(), "1".into(), 1);
+        cache.set(key.clone(), unread(1), 1);
         assert_eq!(cache.invalidate_all(), vec![key.clone()]);
-        cache.set(key.clone(), "2".into(), 2);
+        cache.set(key.clone(), unread(2), 2);
         assert!(cache.stale_keys().is_empty());
+    }
+
+    #[test]
+    fn a_direct_update_changes_the_typed_value_in_place() {
+        let mut cache = QueryCache::default();
+        let key = keys::op(keys::UNREAD);
+        cache.set(key.clone(), unread(1), 1);
+        cache.unread_counts_mut(&key).unwrap()[0].unread_count += 1;
+        assert_eq!(cache.unread_counts(&key).unwrap()[0].unread_count, 2);
+        // Asking for the wrong type of a key finds nothing rather than panicking.
+        assert!(cache.channels(&key).is_none());
     }
 }

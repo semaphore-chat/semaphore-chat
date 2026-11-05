@@ -25,7 +25,7 @@ pub struct ResyncPlan {
     pub reconnect_socket: bool,
     /// The token expires within the refresh margin, or already has.
     pub refresh_token: bool,
-    /// Refetch these. The server has no event sequence numbers, so anything cached
-    /// before a gap may have missed events.
+    /// Refetch these. Empty from `resume()` and `network_changed()`: whether there was a gap
+    /// isn't known until the transport reports `Resumed` or `Connected`. See [`crate::resync`].
     pub stale_queries: Vec<QueryKey>,
 }

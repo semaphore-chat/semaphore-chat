@@ -73,6 +73,9 @@ boundary_fixture() { # <name> <dependency line> [<path crate name>]
   local dir="$TMP/$1"
   mkdir -p "$dir/crates"
   cp -r "$NATIVE_DIR/crates/semaphore-core" "$dir/crates/semaphore-core"
+  # Core's API speaks wire types, so the fixture needs that crate too. It's checked as well, which
+  # doesn't change what these cases prove: the bad dependency is added to core.
+  cp -r "$NATIVE_DIR/crates/semaphore-wire" "$dir/crates/semaphore-wire"
   cat >"$dir/Cargo.toml" <<'EOF'
 [workspace]
 resolver = "3"
@@ -83,6 +86,7 @@ edition = "2024"
 license = "AGPL-3.0-only"
 publish = false
 [workspace.dependencies]
+semaphore-wire = { path = "crates/semaphore-wire" }
 async-trait = "0.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

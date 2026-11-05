@@ -22,6 +22,6 @@ pub mod store;
 pub mod text;
 
 pub use cache::{CacheEntry, QueryCache, QueryKey};
-pub use client::Core;
+pub use client::{Core, Services};
 pub use lifecycle::{ConnectionState, NetworkState, ResyncPlan};
 pub use platform::{CoreError, CoreEvent, EventSink};
