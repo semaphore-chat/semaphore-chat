@@ -2756,6 +2756,37 @@
         ]
       }
     },
+    "/api/messages/dm": {
+      "post": {
+        "operationId": "MessagesController_createDirectMessage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMessageDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Messages"
+        ]
+      }
+    },
     "/api/messages/group/{groupId}": {
       "get": {
         "operationId": "MessagesController_findAllForGroup",

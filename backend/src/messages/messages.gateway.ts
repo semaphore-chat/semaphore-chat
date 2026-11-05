@@ -5,7 +5,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { RbacGuard } from '@/auth/rbac.guard';
-import { Logger, UseFilters, UseGuards } from '@nestjs/common';
+import { HttpException, Logger, UseFilters, UseGuards } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -30,12 +30,10 @@ import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
-import { ModerationService } from '@/moderation/moderation.service';
-import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
 import { getSocketUserId } from '@/common/utils/socket.utils';
 import { groupReactions } from '@/common/utils/reactions.utils';
 import { RoomName } from '@/common/utils/room-name.util';
-import { MessageDispatchService } from './message-dispatch.service';
+import { MessageSendService } from './message-send.service';
 import { toWirePayload } from '@/websocket/websocket-wire.util';
 
 @UseFilters(WsLoggingExceptionFilter)
@@ -61,9 +59,7 @@ export class MessagesGateway
     private readonly messagesService: MessagesService,
     private readonly reactionsService: ReactionsService,
     private readonly websocketService: WebsocketService,
-    private readonly messageDispatchService: MessageDispatchService,
-    private readonly moderationService: ModerationService,
-    private readonly readReceiptsService: ReadReceiptsService,
+    private readonly messageSendService: MessageSendService,
   ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -91,73 +87,9 @@ export class MessagesGateway
     @ConnectedSocket() client: Socket,
   ): Promise<string> {
     const userId = getSocketUserId(client);
-
-    if (!payload.channelId) {
-      throw new WsException('channelId is required for channel messages');
-    }
-
-    // Check if user is timed out in this community
-    const communityId = await this.moderationService.getCommunityIdFromChannel(
-      payload.channelId,
+    const message = await this.reportingFailures(() =>
+      this.messageSendService.sendToChannel(userId, payload),
     );
-    const timeoutStatus = await this.moderationService.isUserTimedOut(
-      communityId,
-      userId,
-    );
-    if (timeoutStatus.isTimedOut) {
-      const remainingMs = timeoutStatus.expiresAt
-        ? timeoutStatus.expiresAt.getTime() - Date.now()
-        : 0;
-      const remainingSeconds = Math.ceil(remainingMs / 1000);
-      throw new WsException(
-        `You are timed out in this community. Time remaining: ${remainingSeconds} seconds`,
-      );
-    }
-
-    // Check slowmode
-    try {
-      await this.messagesService.checkSlowmode(payload.channelId, userId);
-    } catch (error) {
-      throw new WsException(
-        error instanceof Error ? error.message : 'Slowmode check failed',
-      );
-    }
-
-    const message = await this.messagesService.create({
-      ...payload,
-      authorId: userId,
-      sentAt: new Date(),
-    });
-
-    // Auto-mark the sender's own message as read
-    this.readReceiptsService
-      .markAsRead(userId, {
-        lastReadMessageId: message.id,
-        channelId: payload.channelId,
-      })
-      .then((receipt) => {
-        this.websocketService.sendToRoom(
-          RoomName.user(userId),
-          ServerEvents.READ_RECEIPT_UPDATED,
-          {
-            channelId: receipt.channelId,
-            directMessageGroupId: receipt.directMessageGroupId,
-            lastReadMessageId: receipt.lastReadMessageId,
-            lastReadAt: receipt.lastReadAt.toISOString(),
-          },
-        );
-      })
-      .catch((error) =>
-        this.logger.error('Failed to auto-mark message as read', error),
-      );
-
-    await this.messageDispatchService.dispatch(message, {
-      room: payload.channelId,
-      event: ServerEvents.NEW_MESSAGE,
-      notifications: true,
-      linkPreviews: true,
-    });
-
     return message.id;
   }
 
@@ -173,49 +105,22 @@ export class MessagesGateway
     @ConnectedSocket() client: Socket,
   ): Promise<string> {
     const userId = getSocketUserId(client);
-
-    if (!payload.directMessageGroupId) {
-      throw new WsException(
-        'directMessageGroupId is required for direct messages',
-      );
-    }
-
-    const message = await this.messagesService.create({
-      ...payload,
-      authorId: userId,
-      sentAt: new Date(),
-    });
-
-    // Auto-mark the sender's own message as read
-    this.readReceiptsService
-      .markAsRead(userId, {
-        lastReadMessageId: message.id,
-        directMessageGroupId: payload.directMessageGroupId,
-      })
-      .then((receipt) => {
-        this.websocketService.sendToRoom(
-          RoomName.user(userId),
-          ServerEvents.READ_RECEIPT_UPDATED,
-          {
-            channelId: receipt.channelId,
-            directMessageGroupId: receipt.directMessageGroupId,
-            lastReadMessageId: receipt.lastReadMessageId,
-            lastReadAt: receipt.lastReadAt.toISOString(),
-          },
-        );
-      })
-      .catch((error) =>
-        this.logger.error('Failed to auto-mark DM as read', error),
-      );
-
-    await this.messageDispatchService.dispatch(message, {
-      room: RoomName.dmGroup(payload.directMessageGroupId),
-      event: ServerEvents.NEW_DM,
-      notifications: true,
-      linkPreviews: true,
-    });
-
+    const message = await this.reportingFailures(() =>
+      this.messageSendService.sendToDirectMessageGroup(userId, payload),
+    );
     return message.id;
+  }
+
+  /** A WsException carries its message to the client; an HttpException doesn't. */
+  private async reportingFailures<T>(send: () => Promise<T>): Promise<T> {
+    try {
+      return await send();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw new WsException(error.message);
+      }
+      throw error;
+    }
   }
 
   @SubscribeMessage(ClientEvents.ADD_REACTION)

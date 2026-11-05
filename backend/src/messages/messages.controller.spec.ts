@@ -4,10 +4,10 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessagesController } from './messages.controller';
 import { MessagesService } from './messages.service';
+import { MessageSendService } from './message-send.service';
 import { ReactionsService } from './reactions.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { MessageFactory, UserFactory } from '@/test-utils';
-import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { AddReactionDto } from './dto/add-reaction.dto';
 import { RemoveReactionDto } from './dto/remove-reaction.dto';
@@ -20,6 +20,7 @@ import { ForbiddenException } from '@nestjs/common';
 describe('MessagesController', () => {
   let controller: MessagesController;
   let service: Mocked<MessagesService>;
+  let messageSendService: Mocked<MessageSendService>;
   let reactionsService: Mocked<ReactionsService>;
   let websocketService: Mocked<WebsocketService>;
   let linkPreviewsQueue: Mocked<Queue>;
@@ -37,6 +38,7 @@ describe('MessagesController', () => {
 
     controller = unit;
     service = unitRef.get(MessagesService);
+    messageSendService = unitRef.get(MessageSendService);
     reactionsService = unitRef.get(ReactionsService);
     websocketService = unitRef.get(WebsocketService);
     linkPreviewsQueue = unitRef.get(getQueueToken(LINK_PREVIEWS_QUEUE));
@@ -52,101 +54,20 @@ describe('MessagesController', () => {
     expect(controller).toBeDefined();
   });
 
-  describe('create', () => {
-    it('requires a channel', async () => {
-      await expect(
-        controller.create(mockRequest, {
-          directMessageGroupId: 'group-123',
-          spans: [],
-          attachments: [],
-        } as any),
-      ).rejects.toThrow('channelId is required');
-      expect(service.create).not.toHaveBeenCalled();
-    });
+  describe.each([
+    ['create', 'sendToChannel'],
+    ['createDirectMessage', 'sendToDirectMessageGroup'],
+  ] as const)('%s', (handler, sendMethod) => {
+    it('sends as the request user and returns the message', async () => {
+      const dto = { spans: [], attachments: [] } as any;
+      const sent = { id: 'msg-1', attachments: [] } as any;
+      messageSendService[sendMethod].mockResolvedValue(sent);
 
-    it('should create a message with author ID and timestamp', async () => {
-      const createDto: CreateMessageDto = {
-        channelId: 'channel-123',
-        directMessageGroupId: null,
-        spans: [
-          {
-            type: 'TEXT' as any,
-            text: 'Hello world',
-            userId: null,
-            specialKind: null,
-            communityId: null,
-            aliasId: null,
-          },
-        ],
-        attachments: [],
-        pendingAttachments: 0,
-        authorId: '',
-        sentAt: new Date(),
-        editedAt: null,
-        deletedAt: null,
-        id: '',
-        searchText: null,
-        pinned: false,
-        pinnedAt: null,
-        pinnedBy: null,
-        deletedBy: null,
-        deletedByReason: null,
-        parentMessageId: null,
-        replyCount: 0,
-        lastReplyAt: null,
-      };
-
-      const mockMessage = MessageFactory.build({
-        channelId: createDto.channelId,
-        authorId: mockUser.id,
-      });
-
-      const enrichedMessage = mockMessage;
-
-      service.create.mockResolvedValue(mockMessage as any);
-
-      const result = await controller.create(mockRequest, createDto);
-
-      expect(service.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channelId: createDto.channelId,
-          authorId: mockUser.id,
-          sentAt: expect.any(Date),
-        }),
+      await expect(controller[handler](mockRequest, dto)).resolves.toBe(sent);
+      expect(messageSendService[sendMethod]).toHaveBeenCalledWith(
+        mockUser.id,
+        dto,
       );
-      expect(result).toEqual(enrichedMessage);
-    });
-
-    it('should set sentAt timestamp when creating message', async () => {
-      const createDto: CreateMessageDto = {
-        channelId: 'channel-123',
-        directMessageGroupId: null,
-        spans: [],
-        attachments: [],
-        pendingAttachments: 0,
-        authorId: '',
-        sentAt: new Date(),
-        editedAt: null,
-        deletedAt: null,
-        id: '',
-        searchText: null,
-        pinned: false,
-        pinnedAt: null,
-        pinnedBy: null,
-        deletedBy: null,
-        deletedByReason: null,
-        parentMessageId: null,
-        replyCount: 0,
-        lastReplyAt: null,
-      };
-
-      const mockMessage = {};
-      service.create.mockResolvedValue(mockMessage as any);
-
-      await controller.create(mockRequest, createDto);
-
-      const call = (service.create as jest.Mock).mock.calls[0]?.[0];
-      expect(call.sentAt).toBeInstanceOf(Date);
     });
   });
 

@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   Controller,
   Get,
   Post,
@@ -19,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
+import { MessageSendService } from './message-send.service';
 import { ReactionsService } from './reactions.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
@@ -66,6 +66,7 @@ export class MessagesController {
 
   constructor(
     private readonly messagesService: MessagesService,
+    private readonly messageSendService: MessageSendService,
     private readonly reactionsService: ReactionsService,
     private readonly websocketService: WebsocketService,
     private readonly permissionsService: PermissionsService,
@@ -82,22 +83,30 @@ export class MessagesController {
     idKey: 'channelId',
     source: ResourceIdSource.BODY,
   })
-  async create(
+  create(
     @Req() req: AuthenticatedRequest,
     @Body() createMessageDto: CreateMessageDto,
   ): Promise<MessageDto> {
-    // RBAC here checks the channel. Without one, the guard falls back to the
-    // instance-level check, which says nothing about where this message goes.
-    if (!createMessageDto.channelId) {
-      throw new BadRequestException('channelId is required');
-    }
+    return this.messageSendService.sendToChannel(req.user.id, createMessageDto);
+  }
 
-    const message = await this.messagesService.create({
-      ...createMessageDto,
-      authorId: req.user.id,
-      sentAt: new Date(),
-    });
-    return message;
+  @Post('dm')
+  @HttpCode(201)
+  @ApiCreatedResponse({ type: MessageDto })
+  @RequiredActions(RbacActions.CREATE_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.DM_GROUP,
+    idKey: 'directMessageGroupId',
+    source: ResourceIdSource.BODY,
+  })
+  createDirectMessage(
+    @Req() req: AuthenticatedRequest,
+    @Body() createMessageDto: CreateMessageDto,
+  ): Promise<MessageDto> {
+    return this.messageSendService.sendToDirectMessageGroup(
+      req.user.id,
+      createMessageDto,
+    );
   }
 
   @Get('/group/:groupId')
