@@ -6605,6 +6605,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-list"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "gpui-kit",
+ "image",
+ "serde_json",
+]
+
+[[package]]
 name = "rig-shot"
 version = "0.0.0"
 dependencies = [

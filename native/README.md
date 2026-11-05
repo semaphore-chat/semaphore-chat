@@ -15,6 +15,7 @@ the long-lived `spike/native-gpui` branch. Status, test bars and decisions are i
 | `crates/semaphore-ui` | GPUI views | core, gpui-kit |
 | `crates/semaphore-app` | The desktop binary | all of the above |
 | `rigs/shot` | T10: render a story to a PNG with no display | core, ui |
+| `rigs/list` | T2, T3: 100k mixed-height messages, drag selection across virtual rows | gpui-kit only |
 | `rigs/video-iced` (not created yet) | Excluded from the workspace, with its own lockfile | |
 
 ## Rules
@@ -43,6 +44,11 @@ native/scripts/in-image.sh cargo build --workspace
 native/scripts/in-image.sh scripts/shot.sh shell-connected 800 480 results/shots
 native/scripts/lk-stack.sh up                             # LiveKit on semaphore-test, prints its URL
 native/scripts/lk-stack.sh down
+native/scripts/in-image.sh cargo test -p rig-list         # T3 arms, in-process
+native/scripts/in-image.sh cargo build --release -p rig-list
+native/scripts/run-list.sh gpu /tmp/out fling             # T2 in a real window on headless sway
+native/scripts/run-list.sh gpu /tmp/out jump
+native/scripts/run-list.sh lavapipe /tmp/out select
 ```
 
 `cargo build --workspace` turns on gpui-kit's `test-support` for every crate, because `rig-shot`
@@ -52,4 +58,4 @@ needs it. For size or performance numbers, build with `-p semaphore-app` in rele
 `RESULT_SCHEMA_HOST` until that file reaches this branch.
 
 Named volumes to clean up after the spike: `semaphore-native-cargo` and
-`semaphore-native-target-*`.
+`semaphore-native-target-*`, `semaphore-native-list-images`.
