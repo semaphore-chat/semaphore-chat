@@ -2,7 +2,8 @@
 //! so it takes the same path as compositor input after the platform layer: real hit testing, real
 //! text shaping, and the real renderer.
 //!
-//!   rig-list fling  --out x.json [--arm rows|textview] [--image-cache lru|global] [--messages N] [--up-secs S]
+//!   rig-list fling  --out x.json [--arm rows|textview|real] [--image-cache lru|global] [--messages N] [--up-secs S]
+//!   rig-list idle-real --out x.json
 //!   rig-list jump   --out x.json
 //!   rig-list select --out x.json [--shot-wait-file PATH]
 //!   rig-list idle   --out x.json
@@ -18,6 +19,7 @@ use rig_list::lru::LruImageCache;
 use rig_list::selection::Selection;
 use rig_list::textdoc::{EmojiPlugin, message_markdown};
 use rig_list::view::{MessageListView, Shared};
+use semaphore_ui::messages::{self, ListData, ListOptions, ListStatus, MessageList, synth};
 use serde_json::{Value, json};
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
@@ -220,6 +222,40 @@ impl Fling {
     }
 }
 
+/// The real arm's root: the slice's list, with a frame hook around it.
+struct RealRoot {
+    list: Entity<MessageList>,
+    after_present: Rc<dyn Fn(&mut App)>,
+}
+
+impl Render for RealRoot {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let hook = self.after_present.clone();
+        cx.defer(move |cx| hook(cx));
+        div().size_full().child(self.list.clone())
+    }
+}
+
+fn open_real_list(
+    messages: usize,
+    image_dir: PathBuf,
+    cx: &mut Context<RealRoot>,
+) -> Entity<MessageList> {
+    cx.new(|cx| {
+        MessageList::new(
+            ListData {
+                me_id: "me".into(),
+                rows: synth::rows(0, messages),
+                replies: Default::default(),
+                status: ListStatus::Ready,
+            },
+            Rc::new(synth::SynthMedia::new(Some(image_dir))),
+            ListOptions::default(),
+            cx,
+        )
+    })
+}
+
 /// Arm B's root.
 struct DocumentRoot {
     state: Entity<TextViewState>,
@@ -246,7 +282,7 @@ impl Render for DocumentRoot {
 }
 
 fn window_options() -> WindowOptions {
-    WindowOptions {
+    messages::with_list_frame_policy(WindowOptions {
         window_bounds: Some(WindowBounds::Windowed(Bounds {
             origin: Default::default(),
             size: size(px(1920.), px(1080.)),
@@ -259,7 +295,7 @@ fn window_options() -> WindowOptions {
         low_power_frame_interval: None,
         thermal_frame_interval: None,
         ..Default::default()
-    }
+    })
 }
 
 fn write_json(path: &PathBuf, value: &Value) {
@@ -296,6 +332,7 @@ fn run_fling(args: Args, cx: &mut App) {
     enum Root {
         Rows(Entity<MessageListView>),
         Document(Entity<DocumentRoot>),
+        Real(Entity<RealRoot>),
     }
     let mut parse_ms = None;
     let mut cache_stats: Rc<dyn Fn(&App) -> Value> = Rc::new(|_| Value::Null);
@@ -319,6 +356,26 @@ fn run_fling(args: Args, cx: &mut App) {
         parse_ms = Some(round2(parse_started.elapsed().as_secs_f64() * 1000.0));
         any_handle = handle;
         root = Root::Document(entity);
+    } else if args.arm == "real" {
+        // No `MALLOC_MMAP_THRESHOLD_` here: `messages::init` sets it in-process.
+        messages::init(cx);
+        ensure_images(&args.image_dir).expect("generating images");
+        let image_dir = args.image_dir.clone();
+        let messages = args.messages;
+        let (handle, entity) = gpui_kit::open_window(window_options(), cx, move |_, cx| {
+            cx.new(|cx| RealRoot {
+                list: open_real_list(messages, image_dir, cx),
+                after_present,
+            })
+        })
+        .expect("opening the window");
+        let list = entity.read(cx).list.clone();
+        cache_stats = Rc::new(move |cx| {
+            let (held, small, evicted) = list.read(cx).image_cache_stats(cx);
+            json!({ "evicted": evicted, "held_mb": (held / (1024 * 1024)) as u64, "small_mb": (small / (1024 * 1024)) as u64 })
+        });
+        any_handle = handle;
+        root = Root::Real(entity);
     } else {
         ensure_images(&args.image_dir).expect("generating images");
         let shared = Shared::new(
@@ -398,6 +455,7 @@ fn run_fling(args: Args, cx: &mut App) {
                         Rc::new(move |cx: &mut App| match &*root {
                             Root::Rows(view) => view.update(cx, |_, cx| cx.notify()),
                             Root::Document(view) => view.update(cx, |_, cx| cx.notify()),
+                            Root::Real(view) => view.update(cx, |_, cx| cx.notify()),
                         })
                     },
                     jump_mid: {
@@ -409,6 +467,10 @@ fn run_fling(args: Args, cx: &mut App) {
                             }),
                             Root::Document(view) => view.update(cx, |view, cx| {
                                 view.state.read(cx).list_state().scroll_to(ListOffset { item_ix: id as usize, offset_in_item: px(0.) });
+                                cx.notify();
+                            }),
+                            Root::Real(view) => view.update(cx, |view, cx| {
+                                view.list.read(cx).scroll_to_seq(id, 0.);
                                 cx.notify();
                             }),
                         })
@@ -1007,6 +1069,72 @@ fn run_idle(args: Args, cx: &mut App) {
     .detach();
 }
 
+/// The real list holding still: CPU and frames with nothing moving, then with an animated emoji on
+/// screen. `idle` on the prototype read 6-15% of a core at 60 fps for the second.
+fn run_idle_real(args: Args, cx: &mut App) {
+    let load_start = loadavg();
+    messages::init(cx);
+    ensure_images(&args.image_dir).expect("generating images");
+    let frames = Rc::new(Cell::new(0u64));
+    let counter = frames.clone();
+    let image_dir = args.image_dir.clone();
+    let count = args.messages;
+    let out = args.out.clone();
+    let (_, root) = gpui_kit::open_window(window_options(), cx, move |_, cx| {
+        cx.new(|cx| RealRoot {
+            list: open_real_list(count, image_dir, cx),
+            after_present: Rc::new(move |_| counter.set(counter.get() + 1)),
+        })
+    })
+    .expect("opening the window");
+    let list = root.read(cx).list.clone();
+    let frames = Frames(frames);
+    cx.spawn(async move |cx| {
+        let animated = |seq: i64| {
+            synth::row(seq).segs.iter().any(|seg| {
+                matches!(&seg.kind, semaphore_core::model::SegKind::Emoji { emoji_id, .. }
+                    if emoji_id.strip_prefix("emoji-").and_then(|n| n.parse::<u16>().ok())
+                        .is_some_and(|n| n >= synth::ANIMATED_FROM))
+            })
+        };
+        let row_with_animation = (50_000i64..).find(|seq| animated(*seq)).expect("an animated emoji");
+        let row_without_animation = (60_000i64..)
+            .find(|start| (*start..*start + 25).all(|seq| !animated(seq)))
+            .expect("a stretch with no animated emoji");
+        let mut readings = serde_json::Map::new();
+        for (name, row) in [("no_animation", row_without_animation), ("animated_emoji_on_screen", row_with_animation)] {
+            root.update(cx, |root, cx| {
+                root.list.read(cx).scroll_to_seq(row, 0.);
+                cx.notify();
+            });
+            for _ in 0..30 {
+                root.update(cx, |_, cx| cx.notify());
+                frames.wait(1, cx).await;
+            }
+            // Let image decodes and the scrollbar's fade finish: they'd count as motion.
+            cx.background_executor().timer(Duration::from_secs(3)).await;
+            let (cpu_before, frames_before) = (cpu_seconds(), frames.0.get());
+            let paints_before = list.read_with(cx, |list, _| list.animated_paints());
+            let window = Instant::now();
+            // A measurement window: the point is to do nothing for this long.
+            cx.background_executor().timer(Duration::from_secs(10)).await;
+            let seconds = window.elapsed().as_secs_f64();
+            readings.insert(
+                name.into(),
+                json!({
+                    "row": row,
+                    "cpu_pct_core": round2((cpu_seconds() - cpu_before) / seconds * 100.0),
+                    "frames_per_s": round2((frames.0.get() - frames_before) as f64 / seconds),
+                    "animated_paints_per_s": round2((list.read_with(cx, |list, _| list.animated_paints()) - paints_before) as f64 / seconds),
+                }),
+            );
+        }
+        write_json(&out, &json!({ "scenario": "idle-real", "readings": readings, "memory_mb": memory_mb(), "load": { "start": load_start, "end": loadavg() } }));
+        cx.update(|cx| cx.quit());
+    })
+    .detach();
+}
+
 fn main() -> Result<()> {
     let args = parse_args()?;
     gpui_kit::application().run(move |cx| {
@@ -1017,6 +1145,7 @@ fn main() -> Result<()> {
             "jump" => run_jump(args, cx),
             "select" => run_select(args, cx),
             "idle" => run_idle(args, cx),
+            "idle-real" => run_idle_real(args, cx),
             other => {
                 eprintln!("unknown mode {other}");
                 cx.quit();

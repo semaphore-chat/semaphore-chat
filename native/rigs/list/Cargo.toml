@@ -17,6 +17,8 @@ path = "src/main.rs"
 anyhow.workspace = true
 gpui-kit.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "gif"] }
+semaphore-core.workspace = true
+semaphore-ui = { workspace = true, features = ["stories"] }
 serde_json.workspace = true
 
 [dev-dependencies]
