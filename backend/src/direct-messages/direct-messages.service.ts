@@ -1,3 +1,4 @@
+import { SpanColumns, toSpanDto } from '@/messages/message.mapper';
 import {
   Injectable,
   Logger,
@@ -8,10 +9,36 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from '@/database/database.service';
 import { CreateDmGroupDto } from './dto/create-dm-group.dto';
 import { AddMembersDto } from './dto/add-members.dto';
-import { DmGroupResponseDto } from './dto/dm-group-response.dto';
+import {
+  DmGroupLastMessageDto,
+  DmGroupMemberDto,
+  DmGroupResponseDto,
+} from './dto/dm-group-response.dto';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { isBlockedWithAny } from '@/common/utils/user-block.utils';
-import { SpanDto } from '@/messages/dto/message-response.dto';
+
+function toDmMember(member: DmGroupMemberDto): DmGroupMemberDto {
+  return {
+    id: member.id,
+    userId: member.userId,
+    joinedAt: member.joinedAt,
+    user: member.user,
+  };
+}
+
+function toDmLastMessage(message: {
+  id: string;
+  authorId: string | null;
+  spans: SpanColumns[];
+  sentAt: Date;
+}): DmGroupLastMessageDto {
+  return {
+    id: message.id,
+    authorId: message.authorId,
+    spans: message.spans.map(toSpanDto),
+    sentAt: message.sentAt,
+  };
+}
 
 @Injectable()
 export class DirectMessagesService {
@@ -102,8 +129,8 @@ export class DirectMessagesService {
         name: group.name,
         isGroup: group.isGroup,
         createdAt: group.createdAt,
-        members: membersByGroupId.get(group.id) || [],
-        lastMessage,
+        members: (membersByGroupId.get(group.id) || []).map(toDmMember),
+        lastMessage: lastMessage ? toDmLastMessage(lastMessage) : null,
       };
     });
 
@@ -395,7 +422,7 @@ export class DirectMessagesService {
       // Prisma relation (MessageSpan[]), not the shared `Span[]` DTO shape —
       // SpanDto already models Prisma's nullable-column convention (see
       // DmGroupLastMessageDto, which this feeds directly).
-      spans: SpanDto[];
+      spans: SpanColumns[];
       sentAt: Date;
     }[];
   }): DmGroupResponseDto {
@@ -404,8 +431,10 @@ export class DirectMessagesService {
       name: dmGroup.name,
       isGroup: dmGroup.isGroup,
       createdAt: dmGroup.createdAt,
-      members: dmGroup.members,
-      lastMessage: dmGroup.messages[0] || null,
+      members: dmGroup.members.map(toDmMember),
+      lastMessage: dmGroup.messages[0]
+        ? toDmLastMessage(dmGroup.messages[0])
+        : null,
     };
   }
 }

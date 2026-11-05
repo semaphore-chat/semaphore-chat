@@ -149,7 +149,7 @@ export function useNotificationSideEffects(options: UseNotificationSideEffectsOp
       await showNotification({
         title,
         body,
-        icon: payload.author?.avatarUrl,
+        icon: payload.author?.avatarUrl ?? undefined,
         tag: payload.notificationId,
         data: {
           notificationId: payload.notificationId,

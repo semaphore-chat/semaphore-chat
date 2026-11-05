@@ -22,7 +22,6 @@ function invalidateVoiceQueries(queryClient: QueryClient) {
 function toPresenceUserDto(user: VoicePresenceUser): VoicePresenceUserDto {
   return {
     ...user,
-    joinedAt: user.joinedAt instanceof Date ? user.joinedAt.toISOString() : user.joinedAt,
     isDeafened: user.isDeafened ?? false,
     isServerMuted: user.isServerMuted ?? false,
   };

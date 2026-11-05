@@ -143,11 +143,7 @@ export class MessagesGateway
             channelId: receipt.channelId,
             directMessageGroupId: receipt.directMessageGroupId,
             lastReadMessageId: receipt.lastReadMessageId,
-            // Cast, not converted: WebsocketService.sendToRoom() normalizes
-            // every payload to JSON wire form (Date -> ISO string) right
-            // before `.emit()`, so the runtime already matches this cast.
-            // See toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-            lastReadAt: receipt.lastReadAt as unknown as string,
+            lastReadAt: receipt.lastReadAt.toISOString(),
           },
         );
       })
@@ -204,11 +200,7 @@ export class MessagesGateway
             channelId: receipt.channelId,
             directMessageGroupId: receipt.directMessageGroupId,
             lastReadMessageId: receipt.lastReadMessageId,
-            // Cast, not converted: WebsocketService.sendToRoom() normalizes
-            // every payload to JSON wire form (Date -> ISO string) right
-            // before `.emit()`, so the runtime already matches this cast.
-            // See toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-            lastReadAt: receipt.lastReadAt as unknown as string,
+            lastReadAt: receipt.lastReadAt.toISOString(),
           },
         );
       })

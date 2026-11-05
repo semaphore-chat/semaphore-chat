@@ -61,7 +61,7 @@ describe('ReadReceiptsGateway', () => {
         channelId: 'ch-1',
         directMessageGroupId: null,
         lastReadMessageId: 'msg-5',
-        lastReadAt: '2024-06-01T00:00:00Z',
+        lastReadAt: new Date('2024-06-01T00:00:00Z'),
       });
       notificationsService.markContextNotificationsAsRead = jest
         .fn()
@@ -114,7 +114,7 @@ describe('ReadReceiptsGateway', () => {
         channelId: null,
         directMessageGroupId: 'dm-1',
         lastReadMessageId: 'msg-10',
-        lastReadAt: '2024-06-01T00:00:00Z',
+        lastReadAt: new Date('2024-06-01T00:00:00Z'),
       });
 
       await gateway.handleMarkAsRead(dmPayload, makeClient());
@@ -174,7 +174,7 @@ describe('ReadReceiptsGateway', () => {
         channelId: null,
         directMessageGroupId: 'dm-1',
         lastReadMessageId: 'msg-10',
-        lastReadAt: '2024-06-01T00:00:00Z',
+        lastReadAt: new Date('2024-06-01T00:00:00Z'),
       });
 
       await gateway.handleMarkAsRead(dmPayload, makeClient());

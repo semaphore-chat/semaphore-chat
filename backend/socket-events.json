@@ -1,6 +1,41 @@
 {
   "description": "Socket.IO events and the OpenAPI component each payload follows. Readers must ignore unknown events and unknown fields, and treat an unknown enum value as a fallback.",
   "server": {
+    "channelCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelCreatedPayloadDto"
+      }
+    },
+    "channelDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelDeletedPayloadDto"
+      }
+    },
+    "channelPermissionsUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelPermissionsUpdatedPayloadDto"
+      }
+    },
+    "channelsReordered": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelsReorderedPayloadDto"
+      }
+    },
+    "channelUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ChannelUpdatedPayloadDto"
+      }
+    },
+    "communityDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityDeletedPayloadDto"
+      }
+    },
+    "communityUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/CommunityUpdatedPayloadDto"
+      }
+    },
     "deleteMessage": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DeleteMessagePayloadDto"
@@ -9,6 +44,36 @@
     "deleteThreadReply": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DeleteThreadReplyPayloadDto"
+      }
+    },
+    "dmVoiceCallStarted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceCallStartedPayloadDto"
+      }
+    },
+    "dmVoiceUserJoined": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceUserJoinedPayloadDto"
+      }
+    },
+    "dmVoiceUserLeft": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceUserLeftPayloadDto"
+      }
+    },
+    "dmVoiceUserUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DmVoiceUserUpdatedPayloadDto"
+      }
+    },
+    "egressSegmentsReady": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/EgressSegmentsReadyPayloadDto"
+      }
+    },
+    "memberAddedToCommunity": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/MemberAddedToCommunityPayloadDto"
       }
     },
     "messagePinned": {
@@ -31,9 +96,19 @@
         "$ref": "./openapi.json#/components/schemas/NewMessagePayloadDto"
       }
     },
+    "newNotification": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NewNotificationPayloadDto"
+      }
+    },
     "newThreadReply": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/NewThreadReplyPayloadDto"
+      }
+    },
+    "notificationRead": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/NotificationReadPayloadDto"
       }
     },
     "reactionAdded": {
@@ -46,9 +121,64 @@
         "$ref": "./openapi.json#/components/schemas/ReactionRemovedPayloadDto"
       }
     },
+    "readReceiptUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReadReceiptUpdatedPayloadDto"
+      }
+    },
+    "replayBufferFailed": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReplayBufferFailedPayloadDto"
+      }
+    },
+    "replayBufferStopped": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReplayBufferStoppedPayloadDto"
+      }
+    },
+    "roleAssigned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RoleAssignedPayloadDto"
+      }
+    },
+    "roleCreated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RoleCreatedPayloadDto"
+      }
+    },
+    "roleDeleted": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RoleDeletedPayloadDto"
+      }
+    },
+    "roleUnassigned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RoleUnassignedPayloadDto"
+      }
+    },
+    "roleUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/RoleUpdatedPayloadDto"
+      }
+    },
+    "sessionTerminated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/SessionTerminatedPayloadDto"
+      }
+    },
     "threadReplyCountUpdated": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/ThreadReplyCountUpdatedPayloadDto"
+      }
+    },
+    "timeoutRemoved": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/TimeoutRemovedPayloadDto"
+      }
+    },
+    "tokenExpiring": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/TokenExpiringPayloadDto"
       }
     },
     "updateMessage": {
@@ -60,12 +190,80 @@
       "payload": {
         "$ref": "./openapi.json#/components/schemas/UpdateThreadReplyPayloadDto"
       }
+    },
+    "userBanned": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserBannedPayloadDto"
+      }
+    },
+    "userKicked": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserKickedPayloadDto"
+      }
+    },
+    "userOffline": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserPresencePayloadDto"
+      }
+    },
+    "userOnline": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserPresencePayloadDto"
+      }
+    },
+    "userProfileUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserProfileUpdatedPayloadDto"
+      }
+    },
+    "userTimedOut": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserTimedOutPayloadDto"
+      }
+    },
+    "userTyping": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/UserTypingPayloadDto"
+      }
+    },
+    "voiceChannelUserJoined": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/VoiceChannelUserJoinedPayloadDto"
+      }
+    },
+    "voiceChannelUserLeft": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/VoiceChannelUserLeftPayloadDto"
+      }
+    },
+    "voiceChannelUserUpdated": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/VoiceChannelUserUpdatedPayloadDto"
+      }
     }
   },
   "client": {
     "addReaction": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/AddReactionDto"
+      }
+    },
+    "markAsRead": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/MarkAsReadDto"
+      }
+    },
+    "presenceOnline": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/PresenceOnlineDto"
+      }
+    },
+    "reauthenticate": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/ReauthenticateDto"
+      },
+      "ack": {
+        "$ref": "./openapi.json#/components/schemas/ReauthenticateResultDto"
       }
     },
     "removeReaction": {
@@ -86,6 +284,22 @@
     "sendThreadReply": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/SendThreadReplyDto"
+      }
+    },
+    "subscribeAll": {},
+    "typingStart": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/TypingEventDto"
+      }
+    },
+    "typingStop": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/TypingEventDto"
+      }
+    },
+    "voice_presence_refresh": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/VoiceChannelEventDto"
       }
     }
   }

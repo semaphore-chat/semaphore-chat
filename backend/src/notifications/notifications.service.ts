@@ -1,3 +1,4 @@
+import { toSpanDto } from '@/messages/message.mapper';
 import {
   Injectable,
   Logger,
@@ -826,7 +827,8 @@ export class NotificationsService {
     return Promise.all(
       notifications.map(async (notification) => {
         if (!notification.message) return notification;
-        const { deletedAt, ...message } = notification.message;
+        const { deletedAt, ...row } = notification.message;
+        const message = { ...row, spans: row.spans.map(toSpanDto) };
         if (!deletedAt) return { ...notification, message };
 
         let allowed = false;

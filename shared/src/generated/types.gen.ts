@@ -4,6 +4,41 @@ export type ClientOptions = {
     baseUrl: string;
 };
 
+export const ChannelType = { TEXT: 'TEXT', VOICE: 'VOICE' } as const;
+
+export type ChannelType = typeof ChannelType[keyof typeof ChannelType];
+
+/**
+ * Display label for the permission preset (enforcement uses overwrites).
+ */
+export const ChannelPreset = {
+    NORMAL: 'NORMAL',
+    READ_ONLY: 'READ_ONLY',
+    ANNOUNCEMENT: 'ANNOUNCEMENT',
+    MODS_ONLY: 'MODS_ONLY',
+    CUSTOM: 'CUSTOM'
+} as const;
+
+/**
+ * Display label for the permission preset (enforcement uses overwrites).
+ */
+export type ChannelPreset = typeof ChannelPreset[keyof typeof ChannelPreset];
+
+export type ChannelDto = {
+    type: ChannelType;
+    position: number;
+    slowmodeSeconds: number;
+    /**
+     * Display label for the permission preset (enforcement uses overwrites).
+     */
+    preset: ChannelPreset;
+    id: string;
+    name: string;
+    communityId: string;
+    createdAt: string;
+    isPrivate: boolean;
+};
+
 export const SpanType = {
     PLAINTEXT: 'PLAINTEXT',
     USER_MENTION: 'USER_MENTION',
@@ -158,6 +193,40 @@ export type MessageReactionsDto = {
     reactions: Array<ReactionDto>;
 };
 
+export type VoicePresenceUserDto = {
+    id: string;
+    username: string;
+    displayName?: string;
+    avatarUrl?: string;
+    joinedAt: string;
+    isDeafened: boolean;
+    isServerMuted: boolean;
+};
+
+export const NotificationType = {
+    USER_MENTION: 'USER_MENTION',
+    SPECIAL_MENTION: 'SPECIAL_MENTION',
+    DIRECT_MESSAGE: 'DIRECT_MESSAGE',
+    CHANNEL_MESSAGE: 'CHANNEL_MESSAGE',
+    THREAD_REPLY: 'THREAD_REPLY'
+} as const;
+
+export type NotificationType = typeof NotificationType[keyof typeof NotificationType];
+
+export type NotificationAuthorDto = {
+    id: string;
+    username: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+};
+
+export type NotificationMessageDto = {
+    spans: Array<SpanDto>;
+    id: string;
+    channelId: string | null;
+    directMessageGroupId: string | null;
+};
+
 export type NewMessagePayloadDto = {
     message: MessageDto;
 };
@@ -223,4 +292,292 @@ export type MessageUnpinnedPayloadDto = {
     messageId: string;
     channelId: string;
     unpinnedBy: string;
+};
+
+export type TokenExpiringPayloadDto = {
+    /**
+     * When the socket's current access token expires.
+     */
+    expiresAt: string;
+};
+
+/**
+ * Why the server ended the session, right before it disconnects the socket.
+ * TOKEN_EXPIRED: a refreshed token is enough to reconnect. LOGGED_OUT,
+ * SESSION_REVOKED, PASSWORD_CHANGED: refreshing fails unless the client holds
+ * another valid session. ACCOUNT_BANNED, ACCOUNT_DELETED: the account can no
+ * longer sign in.
+ */
+export const SessionTerminatedReason = {
+    TOKEN_EXPIRED: 'TOKEN_EXPIRED',
+    LOGGED_OUT: 'LOGGED_OUT',
+    SESSION_REVOKED: 'SESSION_REVOKED',
+    PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+    ACCOUNT_BANNED: 'ACCOUNT_BANNED',
+    ACCOUNT_DELETED: 'ACCOUNT_DELETED'
+} as const;
+
+/**
+ * Why the server ended the session, right before it disconnects the socket.
+ * TOKEN_EXPIRED: a refreshed token is enough to reconnect. LOGGED_OUT,
+ * SESSION_REVOKED, PASSWORD_CHANGED: refreshing fails unless the client holds
+ * another valid session. ACCOUNT_BANNED, ACCOUNT_DELETED: the account can no
+ * longer sign in.
+ */
+export type SessionTerminatedReason = typeof SessionTerminatedReason[keyof typeof SessionTerminatedReason];
+
+export type SessionTerminatedPayloadDto = {
+    /**
+     * Why the server ended the session, right before it disconnects the socket.
+     * TOKEN_EXPIRED: a refreshed token is enough to reconnect. LOGGED_OUT,
+     * SESSION_REVOKED, PASSWORD_CHANGED: refreshing fails unless the client holds
+     * another valid session. ACCOUNT_BANNED, ACCOUNT_DELETED: the account can no
+     * longer sign in.
+     */
+    reason: SessionTerminatedReason;
+};
+
+export type ReadReceiptUpdatedPayloadDto = {
+    lastReadAt: string;
+    /**
+     * The reader's details are set on the DM room broadcast, not on self-sync.
+     */
+    userId?: string;
+    username?: string;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    channelId: string | null;
+    directMessageGroupId: string | null;
+    lastReadMessageId: string;
+};
+
+export type NewNotificationPayloadDto = {
+    type: NotificationType;
+    author: NotificationAuthorDto | null;
+    message: NotificationMessageDto | null;
+    createdAt: string;
+    notificationId: string;
+    messageId: string | null;
+    channelId: string | null;
+    communityId: string | null;
+    channelName: string | null;
+    directMessageGroupId: string | null;
+    authorId: string;
+    read: boolean;
+};
+
+export type NotificationReadPayloadDto = {
+    notificationId: string;
+};
+
+export type UserPresencePayloadDto = {
+    username?: string;
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    userId: string;
+};
+
+export type UserTypingPayloadDto = {
+    channelId?: string;
+    directMessageGroupId?: string;
+    userId: string;
+    isTyping: boolean;
+};
+
+export type VoiceChannelUserJoinedPayloadDto = {
+    channelId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type VoiceChannelUserLeftPayloadDto = {
+    channelId: string;
+    userId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type VoiceChannelUserUpdatedPayloadDto = {
+    channelId: string;
+    userId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type DmVoiceCallStarterDto = {
+    displayName?: string | null;
+    avatarUrl?: string | null;
+    id: string;
+    username: string;
+};
+
+export type DmVoiceCallStartedPayloadDto = {
+    dmGroupId: string;
+    startedBy: string;
+    starter: DmVoiceCallStarterDto;
+};
+
+export type DmVoiceUserJoinedPayloadDto = {
+    dmGroupId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type DmVoiceUserLeftPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type DmVoiceUserUpdatedPayloadDto = {
+    dmGroupId: string;
+    userId: string;
+    user: VoicePresenceUserDto;
+};
+
+export type ReplayBufferStoppedPayloadDto = {
+    sessionId: string;
+    egressId: string;
+    channelId: string;
+};
+
+export type ReplayBufferFailedPayloadDto = {
+    sessionId: string;
+    egressId: string;
+    channelId: string;
+    error: string;
+};
+
+export type EgressSegmentsReadyPayloadDto = {
+    sessionId: string;
+    channelId: string;
+};
+
+export type ChannelsReorderedPayloadDto = {
+    communityId: string;
+    channels: Array<ChannelDto>;
+};
+
+export type ChannelCreatedPayloadDto = {
+    communityId: string;
+    channel: ChannelDto;
+};
+
+export type ChannelUpdatedPayloadDto = {
+    communityId: string;
+    channel: ChannelDto;
+};
+
+export type ChannelDeletedPayloadDto = {
+    communityId: string;
+    channelId: string;
+};
+
+export type ChannelPermissionsUpdatedPayloadDto = {
+    communityId: string;
+    channelId: string;
+};
+
+export type UserBannedPayloadDto = {
+    reason?: string;
+    expiresAt?: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type UserKickedPayloadDto = {
+    reason?: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type UserTimedOutPayloadDto = {
+    reason?: string;
+    durationSeconds: number;
+    expiresAt: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type TimeoutRemovedPayloadDto = {
+    reason?: string;
+    communityId: string;
+    userId: string;
+    moderatorId: string;
+};
+
+export type MemberAddedToCommunityPayloadDto = {
+    communityId: string;
+    userId: string;
+};
+
+export type CommunityUpdatedPayloadDto = {
+    communityId: string;
+    name: string;
+    description: string | null;
+    avatar: string | null;
+    banner: string | null;
+};
+
+export type CommunityDeletedPayloadDto = {
+    communityId: string;
+};
+
+export type RoleCreatedPayloadDto = {
+    communityId: string;
+    roleId: string;
+    roleName: string;
+};
+
+export type RoleUpdatedPayloadDto = {
+    communityId: string;
+    roleId: string;
+    roleName: string;
+};
+
+export type RoleDeletedPayloadDto = {
+    communityId: string;
+    roleId: string;
+};
+
+export type RoleAssignedPayloadDto = {
+    communityId: string;
+    userId: string;
+    roleId: string;
+    roleName: string;
+};
+
+export type RoleUnassignedPayloadDto = {
+    communityId: string;
+    userId: string;
+    roleId: string;
+};
+
+export type UserProfileUpdatedPayloadDto = {
+    userId: string;
+    displayName: string | null;
+    avatarUrl: string | null;
+    bannerUrl: string | null;
+    bio: string | null;
+};
+
+/**
+ * Set when not ok.
+ */
+export const ReauthenticateError = { AUTH_FAILED: 'AUTH_FAILED' } as const;
+
+/**
+ * Set when not ok.
+ */
+export type ReauthenticateError = typeof ReauthenticateError[keyof typeof ReauthenticateError];
+
+export type ReauthenticateResultDto = {
+    /**
+     * Set when ok: when the new access token expires.
+     */
+    expiresAt?: string;
+    /**
+     * Set when not ok.
+     */
+    error?: ReauthenticateError;
+    ok: boolean;
 };

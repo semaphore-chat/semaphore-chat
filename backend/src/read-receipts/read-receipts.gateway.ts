@@ -94,13 +94,7 @@ export class ReadReceiptsGateway
         channelId: readReceipt.channelId,
         directMessageGroupId: readReceipt.directMessageGroupId,
         lastReadMessageId: readReceipt.lastReadMessageId,
-        // Cast, not converted: the wire type's declared shape is the
-        // post-serialization ISO string, but this hands the raw Date
-        // straight through — WebsocketService.sendToRoom() normalizes
-        // every payload to JSON wire form (Date -> ISO string) right
-        // before `.emit()`, so the runtime already matches this cast. See
-        // toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-        lastReadAt: readReceipt.lastReadAt as unknown as string,
+        lastReadAt: readReceipt.lastReadAt.toISOString(),
       };
 
       // Emit to all of the user's connected sessions (including this one)

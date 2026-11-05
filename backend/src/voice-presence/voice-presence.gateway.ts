@@ -20,13 +20,7 @@ import {
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
-import { IsString, IsNotEmpty } from 'class-validator';
-
-class VoiceChannelEventDto {
-  @IsString()
-  @IsNotEmpty()
-  channelId: string;
-}
+import { VoiceChannelEventDto } from './dto/voice-channel-event.dto';
 
 /**
  * Voice Presence WebSocket Gateway

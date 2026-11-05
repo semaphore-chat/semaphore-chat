@@ -63,9 +63,9 @@ export class NotificationsController {
 
     // Return response matching frontend NotificationListResponse interface
     return {
-      notifications: notifications.map((n) => ({
-        ...n,
-        communityId: n.channel?.communityId ?? null,
+      notifications: notifications.map(({ channel, ...notification }) => ({
+        ...notification,
+        communityId: channel?.communityId ?? null,
       })),
       total: notifications.length,
       unreadCount,

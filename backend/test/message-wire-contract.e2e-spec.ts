@@ -26,11 +26,7 @@ import {
   resetDatabase,
   seedInstanceInvite,
 } from './helpers/e2e-app';
-import {
-  declaredServerEvents,
-  schemaErrors,
-  serverEventComponent,
-} from './helpers/wire-schema';
+import { schemaErrors, serverEventComponent } from './helpers/wire-schema';
 
 /**
  * Real responses and real socket payloads, validated against backend/openapi.json
@@ -82,11 +78,20 @@ describe('Message wire contract (e2e)', () => {
     });
   }
 
-  /** The events socket-events.json declares; presence and the like aren't ours. */
-  const messageEvents = () => {
-    const declared = new Set(declaredServerEvents());
-    return events.filter((e) => declared.has(e.event));
-  };
+  /** The message events; the others are in socket-events-contract.e2e-spec.ts. */
+  const MESSAGE_EVENTS = new Set<string>([
+    ServerEvents.NEW_MESSAGE,
+    ServerEvents.NEW_DM,
+    ServerEvents.UPDATE_MESSAGE,
+    ServerEvents.DELETE_MESSAGE,
+    ServerEvents.REACTION_ADDED,
+    ServerEvents.REACTION_REMOVED,
+    ServerEvents.NEW_THREAD_REPLY,
+    ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+    ServerEvents.MESSAGE_PINNED,
+    ServerEvents.MESSAGE_UNPINNED,
+  ]);
+  const messageEvents = () => events.filter((e) => MESSAGE_EVENTS.has(e.event));
 
   async function nextEvent<E extends keyof ServerEventPayloads>(
     event: E,
@@ -690,16 +695,9 @@ describe('Message wire contract (e2e)', () => {
       expect(problems).toEqual([]);
     });
 
-    it('drove every declared event the server emits', () => {
-      // Declared in shared, but no server code emits them: edits use UPDATE_MESSAGE
-      const neverEmitted = new Set<string>([
-        ServerEvents.UPDATE_THREAD_REPLY,
-        ServerEvents.DELETE_THREAD_REPLY,
-      ]);
+    it('drove every message event the server emits', () => {
       const seen = new Set(events.map((e) => e.event));
-      const missing = declaredServerEvents().filter(
-        (event) => !neverEmitted.has(event) && !seen.has(event),
-      );
+      const missing = [...MESSAGE_EVENTS].filter((event) => !seen.has(event));
 
       expect(missing).toEqual([]);
     });

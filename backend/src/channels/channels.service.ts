@@ -10,7 +10,13 @@ import { CreateChannelDto } from './dto/create-channel.dto';
 import { UpdateChannelDto } from './dto/update-channel.dto';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
-import { ChannelType, InstanceRole, Prisma, RbacActions } from '@prisma/client';
+import {
+  ChannelPreset,
+  ChannelType,
+  InstanceRole,
+  Prisma,
+  RbacActions,
+} from '@prisma/client';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { Channel as SharedChannel, ServerEvents } from '@semaphore-chat/shared';
 import { isPrismaError } from '@/common/utils/prisma.utils';
@@ -23,20 +29,7 @@ import { PermissionsService } from '@/roles/permissions.service';
 export class ChannelsService {
   private readonly logger = new Logger(ChannelsService.name);
 
-  /**
-   * Converts a Prisma Channel row into the shared wire-DTO shape.
-   * Prisma's `ChannelType` enum and the shared `ChannelType` enum have
-   * identical string values (TEXT/VOICE) but are structurally distinct TS
-   * types, so `type` is a pure relabeling cast — no value change at all.
-   * `createdAt` is cast rather than converted: the shared type's declared
-   * wire shape is a post-serialization ISO string, and this hands the raw
-   * Date straight through — WebsocketService.sendToRoom()/sendToAll() now
-   * JSON-roundtrip every payload (Date -> ISO string, same conversion
-   * socket.io's own same-node encoder performs) immediately before
-   * `.emit()`, so this cast is purely a static-type relabeling and the
-   * runtime already matches it. See toWirePayload in
-   * `@/websocket/websocket-wire.util`. Fixes #440.
-   */
+  /** A channel row as it goes out on the socket. */
   private toSharedChannel(channel: {
     id: string;
     name: string;
@@ -46,11 +39,19 @@ export class ChannelsService {
     createdAt: Date;
     position: number;
     slowmodeSeconds: number;
+    preset: ChannelPreset;
   }): SharedChannel {
     return {
-      ...channel,
-      type: channel.type as unknown as SharedChannel['type'],
-      createdAt: channel.createdAt as unknown as string,
+      id: channel.id,
+      name: channel.name,
+      communityId: channel.communityId,
+      type: channel.type,
+      // channel-visibility: copies the field to the wire, decides nothing
+      isPrivate: channel.isPrivate,
+      createdAt: channel.createdAt.toISOString(),
+      position: channel.position,
+      slowmodeSeconds: channel.slowmodeSeconds,
+      preset: channel.preset,
     };
   }
 

@@ -55,14 +55,18 @@ type MessageRow = Prisma.MessageGetPayload<{
   }> | null;
 };
 
-type SpanRow = MessageRow['spans'][number];
+/** The columns of a span a client gets, whichever query loaded it. */
+export type SpanColumns = Omit<
+  MessageRow['spans'][number],
+  'id' | 'messageId' | 'position'
+>;
 type FileRow = MessageRow['attachments'][number]['file'];
 
 const toIso = (date: Date | null): string | null =>
   date ? date.toISOString() : null;
 
 /** The fields of a span every reader may get, for a quote preview. */
-function toPreviewSpan(span: SpanRow): SpanDto {
+function toPreviewSpan(span: SpanColumns): SpanDto {
   return {
     type: span.type,
     text: span.text,
@@ -78,7 +82,7 @@ function toPreviewSpan(span: SpanRow): SpanDto {
   };
 }
 
-function toSpanDto(span: SpanRow): SpanDto {
+export function toSpanDto(span: SpanColumns): SpanDto {
   return { ...toPreviewSpan(span), channelId: span.channelId };
 }
 

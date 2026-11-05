@@ -13,9 +13,10 @@ export default defineConfig({
       operations: { include: ['GET /no-operations'] },
       schemas: {
         include: [
+          '/PayloadDto$/',
           '/^(MessageDto|MessageReactionsDto|SpanDto|ReactionDto|AttachmentDto|LinkPreviewDto|ReplyToPreviewDto|WebhookInfoDto|SpanType|FileType)$/',
           '/^(CreateMessageDto|CreateMessageSpanDto)$/',
-          '/^(NewMessage|UpdateMessage|DeleteMessage|ReactionAdded|ReactionRemoved|NewThreadReply|UpdateThreadReply|DeleteThreadReply|ThreadReplyCountUpdated|MessagePinned|MessageUnpinned)PayloadDto$/',
+          '/^(ChannelDto|ChannelType|ChannelPreset|NotificationAuthorDto|NotificationMessageDto|NotificationType|VoicePresenceUserDto|DmVoiceCallStarterDto|ReauthenticateResultDto|ReauthenticateError|SessionTerminatedReason)$/',
         ],
       },
     },
