@@ -112,12 +112,12 @@ export class ThreadsService {
       dto.clientNonce,
       target,
     );
-    if (sent) return { reply: toMessageDto(sent), created: false };
+    if (sent) return toMessageDto(sent);
 
     try {
       const reply = await this.createThreadReply(dto, authorId);
       await this.announceReply(reply, dto.parentMessageId, authorId);
-      return { reply, created: true };
+      return reply;
     } catch (error) {
       const raced = isNonceCollision(error)
         ? await findSentMessage(
@@ -128,7 +128,7 @@ export class ThreadsService {
           )
         : null;
       if (!raced) throw error;
-      return { reply: toMessageDto(raced), created: false };
+      return toMessageDto(raced);
     }
   }
 
@@ -529,15 +529,4 @@ export class ThreadsService {
     };
   }
 
-  /**
-   * Decrement reply count when a thread reply is deleted.
-   */
-  async decrementReplyCount(parentMessageId: string): Promise<void> {
-    await this.databaseService.message.update({
-      where: { id: parentMessageId },
-      data: {
-        replyCount: { decrement: 1 },
-      },
-    });
-  }
 }

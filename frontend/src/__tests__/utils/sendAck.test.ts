@@ -12,7 +12,7 @@ import {
 } from "../../utils/sendAck";
 
 const failure = (errorCode: string, message = "from the server") =>
-  new SendFailedError(errorCode, message, false);
+  new SendFailedError(errorCode, message);
 
 describe("readSendAck", () => {
   it("reads the plain id an older server acks", () => {
@@ -26,7 +26,7 @@ describe("readSendAck", () => {
     });
   });
 
-  it("reads a typed failure, with its details", () => {
+  it("reads a typed failure, with its code and message", () => {
     const { success, error } = readSendAck({
       ok: false,
       error: {
@@ -42,8 +42,6 @@ describe("readSendAck", () => {
     expect(error).toMatchObject({
       errorCode: ErrorCode.SLOWMODE,
       message: "Wait",
-      retryable: true,
-      retryAfterMs: 5000,
     });
   });
 });

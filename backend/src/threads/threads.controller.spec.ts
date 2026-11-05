@@ -35,10 +35,7 @@ describe('ThreadsController', () => {
       };
       const mockReply = { id: 'reply-123', authorId: userId } as any;
 
-      threadsService.sendThreadReply.mockResolvedValue({
-        reply: mockReply,
-        created: true,
-      });
+      threadsService.sendThreadReply.mockResolvedValue(mockReply);
 
       const result = await controller.createReply(
         parentMessageId,

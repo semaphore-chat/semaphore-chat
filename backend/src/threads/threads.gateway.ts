@@ -80,7 +80,7 @@ export class ThreadsGateway
     }
 
     // Create the thread reply
-    const { reply } = await this.threadsService.sendThreadReply(
+    const reply = await this.threadsService.sendThreadReply(
       {
         parentMessageId: payload.parentMessageId,
         spans: payload.spans,

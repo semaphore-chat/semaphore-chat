@@ -17,12 +17,7 @@ export interface SendResult {
 
 /** A send the server refused. `message` is the server's, for people to read. */
 export class SendFailedError extends Error {
-  constructor(
-    readonly errorCode: ErrorCode | string,
-    message: string,
-    readonly retryable: boolean,
-    readonly retryAfterMs?: number,
-  ) {
+  constructor(readonly errorCode: ErrorCode | string, message: string) {
     super(message);
     this.name = "SendFailedError";
   }
@@ -31,11 +26,8 @@ export class SendFailedError extends Error {
 export function readSendAck(ack: string | SendAck): SendResult {
   if (typeof ack === "string") return { success: true, messageId: ack };
   if (ack.ok) return { success: true, messageId: ack.messageId };
-  const { errorCode, message, retryable, retryAfterMs } = ack.error;
-  return {
-    success: false,
-    error: new SendFailedError(errorCode, message, retryable, retryAfterMs),
-  };
+  const { errorCode, message } = ack.error;
+  return { success: false, error: new SendFailedError(errorCode, message) };
 }
 
 /** Emits a send and resolves with its outcome. Never rejects. */

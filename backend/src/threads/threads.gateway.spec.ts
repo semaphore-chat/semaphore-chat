@@ -43,7 +43,7 @@ describe('ThreadsGateway', () => {
 
     threadsService.sendThreadReply = jest
       .fn()
-      .mockResolvedValue({ reply: mockReply, created: true });
+      .mockResolvedValue(mockReply);
   });
 
   afterEach(() => {

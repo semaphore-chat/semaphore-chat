@@ -120,7 +120,7 @@ describe('ThreadsService', () => {
       it('announces the reply and the new count to the room', async () => {
         await expect(
           service.sendThreadReply(newReply, 'user-1'),
-        ).resolves.toEqual({ reply, created: true });
+        ).resolves.toEqual(reply);
 
         expect(websocketService.sendToRoom).toHaveBeenCalledWith(
           'channel-1',
@@ -184,7 +184,7 @@ describe('ThreadsService', () => {
 
         await expect(
           service.sendThreadReply(newReply, 'user-1'),
-        ).resolves.toMatchObject({ created: true });
+        ).resolves.toBe(reply);
         expect(
           notificationsService.processThreadReplyNotifications,
         ).toHaveBeenCalledWith(reply, 'parent-1', 'user-1');
@@ -217,10 +217,9 @@ describe('ThreadsService', () => {
           attachments: [],
         });
 
-      const { reply, created } = await service.sendThreadReply(dto, 'user-1');
+      const reply = await service.sendThreadReply(dto, 'user-1');
 
       expect(reply.id).toBe('reply-1');
-      expect(created).toBe(false);
       expect(mockDatabase.$transaction).not.toHaveBeenCalled();
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
@@ -867,20 +866,6 @@ describe('ThreadsService', () => {
       await expect(service.getThreadMetadata('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
-    });
-  });
-
-  describe('decrementReplyCount', () => {
-    it('should decrement parent reply count', async () => {
-      const parentMessageId = 'parent-msg-123';
-      mockDatabase.message.update.mockResolvedValue({});
-
-      await service.decrementReplyCount(parentMessageId);
-
-      expect(mockDatabase.message.update).toHaveBeenCalledWith({
-        where: { id: parentMessageId },
-        data: { replyCount: { decrement: 1 } },
-      });
     });
   });
 });
