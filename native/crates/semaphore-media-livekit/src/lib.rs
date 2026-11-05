@@ -40,3 +40,16 @@ impl MediaEngine for LiveKitEngine {
         }
     }
 }
+
+/// Joins a room and leaves it, blocking until done. Used by the app's `--probe-media` mode.
+pub fn probe_connection(url: String, token: String) -> Result<(), CoreError> {
+    let runtime = tokio::runtime::Runtime::new().map_err(|error| CoreError::Failed {
+        message: error.to_string(),
+    })?;
+    runtime.block_on(async {
+        let engine = LiveKitEngine::default();
+        engine.connect(url, token).await?;
+        engine.disconnect().await;
+        Ok(())
+    })
+}

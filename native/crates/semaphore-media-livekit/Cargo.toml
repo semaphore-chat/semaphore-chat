@@ -10,4 +10,4 @@ publish.workspace = true
 async-trait.workspace = true
 livekit.workspace = true
 semaphore-core.workspace = true
-tokio.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread"] }

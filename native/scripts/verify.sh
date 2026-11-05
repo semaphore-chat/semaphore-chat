@@ -45,6 +45,7 @@ step "core: cargo check Android" "$IN_IMAGE" cargo check --locked -p semaphore-c
 step "core: cargo check iOS" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-apple-ios
 step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
 step "cargo build --release -p semaphore-app" "$IN_IMAGE" cargo build --locked --release -p semaphore-app
+step "release binary joins a real LiveKit room" "$NATIVE_DIR/scripts/media-probe.sh"
 step "emit result JSON" "$IN_IMAGE" python3 scripts/emit-result.py \
   /cache/target/release/semaphore-app results/phase0/native-shell.json
 step "validate result JSON" "$IN_IMAGE" python3 scripts/validate-result.py results/phase0/native-shell.json
