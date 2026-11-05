@@ -1,6 +1,6 @@
 [package]
 name = "semaphore-design"
-description = "Generated design tokens and icon names, from the web client's theme. No GPUI."
+description = "Generated design tokens and icons, from the web client's theme. No GPUI."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
