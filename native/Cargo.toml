@@ -33,7 +33,9 @@ livekit = { version = "=0.10.1", features = ["rustls-tls-native-roots"] }
 anyhow = "1"
 async-trait = "0.1"
 directories = "6"
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-webpki-roots"] }
+# 0.13 because that is what progenitor-client 0.15 needs. No TLS here: semaphore-api
+# sends JSON over whatever client it is given, and semaphore-net picks the backend.
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"

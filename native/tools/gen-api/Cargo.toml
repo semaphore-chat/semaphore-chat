@@ -1,0 +1,19 @@
+[package]
+name = "gen-api"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+# Outside the workspace (native/Cargo.toml excludes tools/), with its own lockfile: the
+# generator pulls in progenitor and syn, which nothing we ship needs.
+[workspace]
+
+[dependencies]
+anyhow = "1"
+openapiv3 = "2"
+prettyplease = "0.2"
+progenitor = "0.15.1"
+quote = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+syn = { version = "2", features = ["full", "printing"] }
