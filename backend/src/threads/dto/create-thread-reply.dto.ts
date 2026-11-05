@@ -7,7 +7,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
@@ -32,6 +32,7 @@ export class CreateThreadReplyDto {
   @IsInt()
   @Min(0)
   @IsOptional()
+  @ApiPropertyOptional({ type: 'integer' })
   pendingAttachments?: number;
 }
 

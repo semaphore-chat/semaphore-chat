@@ -8,10 +8,13 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
+import { ApiPropertyOptional } from '@nestjs/swagger';
+
 export class CreateInviteDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @ApiPropertyOptional({ type: 'integer' })
   maxUses?: number;
 
   @IsOptional()

@@ -24,23 +24,31 @@ import {
 } from '@/common/enums/swagger-enums';
 
 export class ChannelOverwriteDto {
-  @ApiProperty({ enum: OverwriteTargetValues })
+  @ApiProperty({ enum: OverwriteTargetValues, enumName: 'OverwriteTarget' })
   targetType: OverwriteTarget;
 
   @ApiProperty({ type: String, nullable: true })
   roleId: string | null;
 
-  @ApiProperty({ enum: RbacActionsValues, isArray: true })
+  @ApiProperty({
+    enum: RbacActionsValues,
+    enumName: 'RbacAction',
+    isArray: true,
+  })
   allow: RbacActions[];
 
-  @ApiProperty({ enum: RbacActionsValues, isArray: true })
+  @ApiProperty({
+    enum: RbacActionsValues,
+    enumName: 'RbacAction',
+    isArray: true,
+  })
   deny: RbacActions[];
 }
 
 export class ChannelOverwritesDto {
   channelId: string;
 
-  @ApiProperty({ enum: ChannelPresetValues })
+  @ApiProperty({ enum: ChannelPresetValues, enumName: 'ChannelPreset' })
   preset: ChannelPreset;
 
   @ApiProperty({ type: [ChannelOverwriteDto] })
@@ -50,15 +58,16 @@ export class ChannelOverwritesDto {
 /** One channel in the management listing (shown even if not viewable). */
 export class ManagedChannelDto extends ChannelOverwritesDto {
   name: string;
-  @ApiProperty({ enum: ChannelTypeValues })
+  @ApiProperty({ enum: ChannelTypeValues, enumName: 'ChannelType' })
   type: ChannelType;
   isPrivate: boolean;
+  @ApiProperty({ type: 'integer' })
   position: number;
 }
 
 export class ReplaceOverwriteInputDto {
   /** EVERYONE or ROLE. MEMBER overwrites exist in the data model only. */
-  @ApiProperty({ enum: OverwriteTargetValues })
+  @ApiProperty({ enum: OverwriteTargetValues, enumName: 'OverwriteTarget' })
   @IsEnum(OverwriteTarget)
   targetType: OverwriteTarget;
 
@@ -67,13 +76,21 @@ export class ReplaceOverwriteInputDto {
   @IsUUID()
   roleId?: string | null;
 
-  @ApiProperty({ enum: RbacActionsValues, isArray: true })
+  @ApiProperty({
+    enum: RbacActionsValues,
+    enumName: 'RbacAction',
+    isArray: true,
+  })
   @IsArray()
   @ArrayUnique()
   @IsIn(RbacActionsValues, { each: true })
   allow: RbacActions[];
 
-  @ApiProperty({ enum: RbacActionsValues, isArray: true })
+  @ApiProperty({
+    enum: RbacActionsValues,
+    enumName: 'RbacAction',
+    isArray: true,
+  })
   @IsArray()
   @ArrayUnique()
   @IsIn(RbacActionsValues, { each: true })
@@ -81,7 +98,7 @@ export class ReplaceOverwriteInputDto {
 }
 
 export class ReplaceChannelOverwritesDto {
-  @ApiProperty({ enum: ChannelPresetValues })
+  @ApiProperty({ enum: ChannelPresetValues, enumName: 'ChannelPreset' })
   @IsEnum(ChannelPreset)
   preset: ChannelPreset;
 

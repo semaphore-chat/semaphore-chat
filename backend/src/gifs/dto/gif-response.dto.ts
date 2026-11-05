@@ -20,10 +20,10 @@ export class GifResultDto {
   @ApiProperty()
   previewUrl: string;
 
-  @ApiProperty()
+  @ApiProperty({ type: 'integer' })
   width: number;
 
-  @ApiProperty()
+  @ApiProperty({ type: 'integer' })
   height: number;
 }
 

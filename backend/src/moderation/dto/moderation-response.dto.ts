@@ -17,7 +17,7 @@ export { SuccessMessageDto } from '@/common/dto/common-response.dto';
 export class ModerationUserDto {
   id: string;
   username: string;
-  @ApiProperty({ enum: InstanceRoleValues })
+  @ApiProperty({ enum: InstanceRoleValues, enumName: 'InstanceRole' })
   role: InstanceRole;
   avatarUrl: string | null;
   bannerUrl: string | null;
@@ -38,8 +38,9 @@ export class PinnedMessageAttachmentDto {
   id: string;
   filename: string;
   mimeType: string;
-  @ApiProperty({ enum: FileTypeValues })
+  @ApiProperty({ enum: FileTypeValues, enumName: 'FileType' })
   fileType: FileType;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
 }
 
@@ -56,9 +57,11 @@ export class PinnedMessageDto {
   pinned: boolean;
   pinnedAt: Date | null;
   pinnedBy: string | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   searchText: string | null;
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   deletedBy: string | null;
   deletedByReason: string | null;
@@ -101,7 +104,7 @@ export class ModerationLogDto {
   communityId: string;
   moderatorId: string | null;
   targetUserId: string | null;
-  @ApiProperty({ enum: ModerationActionValues })
+  @ApiProperty({ enum: ModerationActionValues, enumName: 'ModerationAction' })
   action: ModerationAction;
   reason: string | null;
   @ApiProperty({ type: 'object', nullable: true, additionalProperties: true })
@@ -120,5 +123,6 @@ export class TimeoutStatusResponseDto {
 
 export class ModerationLogsResponseDto {
   logs: ModerationLogDto[];
+  @ApiProperty({ type: 'integer' })
   total: number;
 }

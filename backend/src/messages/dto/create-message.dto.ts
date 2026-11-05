@@ -21,7 +21,7 @@ import { ArrayMinLength } from '../../decorators/array-min-length.decorator';
  * fields: everything else about a span is the server's.
  */
 export class CreateMessageSpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
+  @ApiProperty({ enum: SpanTypeValues, enumName: 'SpanType' })
   @IsEnum($Enums.SpanType)
   type: $Enums.SpanType;
 
@@ -118,6 +118,7 @@ export class CreateMessageDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
 
   @Exclude()
@@ -145,6 +146,7 @@ export class CreateMessageDto {
   parentMessageId: string | null;
 
   @Exclude()
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
 
   @Exclude()

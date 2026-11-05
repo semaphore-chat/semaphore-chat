@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class ReadReceiptDto {
   id: string;
   userId: string;
@@ -10,7 +12,9 @@ export class ReadReceiptDto {
 export class UnreadCountDto {
   channelId?: string;
   directMessageGroupId?: string;
+  @ApiProperty({ type: 'integer' })
   unreadCount: number;
+  @ApiProperty({ type: 'integer' })
   mentionCount: number;
   lastReadMessageId?: string;
   lastReadAt?: Date;

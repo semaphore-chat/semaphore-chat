@@ -3,7 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SpanTypeValues, FileTypeValues } from '@/common/enums/swagger-enums';
 
 export class SpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
+  @ApiProperty({ enum: SpanTypeValues, enumName: 'SpanType' })
   type: SpanType;
   text: string | null;
   userId: string | null;
@@ -34,8 +34,9 @@ export class EnrichedAttachment {
   id: string;
   filename: string;
   mimeType: string;
-  @ApiProperty({ enum: FileTypeValues })
+  @ApiProperty({ enum: FileTypeValues, enumName: 'FileType' })
   fileType: FileType;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
   hasThumbnail: boolean;
 }
@@ -79,10 +80,12 @@ export class EnrichedMessageDto {
   authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   reactions: ReactionDto[];
   @ApiPropertyOptional({ type: [LinkPreviewDto] })
   linkPreviews?: LinkPreviewDto[] | Prisma.JsonValue | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   pinned: boolean;
@@ -106,10 +109,12 @@ export class MessageDto {
   authorId: string | null;
   spans: SpanDto[];
   attachments: string[];
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   reactions: ReactionDto[];
   @ApiPropertyOptional({ type: [LinkPreviewDto] })
   linkPreviews?: LinkPreviewDto[] | Prisma.JsonValue | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   pinned: boolean;

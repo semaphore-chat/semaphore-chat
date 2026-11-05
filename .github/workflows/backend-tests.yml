@@ -92,6 +92,28 @@ jobs:
         working-directory: ./backend
         run: pnpm run type-check
 
+      # The committed spec is generated from the controller/DTO decorators.
+      # Fail when a code change forgot to regenerate it, so the frontend client
+      # and strict external generators never drift from the API. Generating the
+      # spec builds the app but does not connect to a database.
+      - name: Check OpenAPI spec is up to date
+        working-directory: ./backend
+        env:
+          # generate:openapi only assembles the Nest app for its decorator
+          # metadata: these values satisfy env validation and the JWT strategy,
+          # and nothing connects to a database or Redis.
+          NODE_ENV: development
+          DATABASE_URL: postgresql://spec:spec@127.0.0.1:1/spec
+          REDIS_HOST: 127.0.0.1
+          JWT_SECRET: generate-openapi-spec
+          JWT_REFRESH_SECRET: generate-openapi-spec-refresh
+        run: |
+          pnpm run generate:openapi
+          if ! git diff --exit-code openapi.json; then
+            echo "::error file=backend/openapi.json::backend/openapi.json is out of date. Run 'pnpm run generate:openapi' in backend/ and commit the regenerated file."
+            exit 1
+          fi
+
       # Still runs when tsc fails, so one run reports both kinds of errors
       # (as the separate jobs did) — but not if setup itself failed.
       - name: Run ESLint

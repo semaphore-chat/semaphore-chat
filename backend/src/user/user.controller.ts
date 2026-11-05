@@ -122,6 +122,7 @@ export class UserController {
     type: RbacResourceType.INSTANCE,
   })
   @ApiOkResponse({ type: UserListResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllUsers(
     @Query('limit', ParseIntPipe) limit?: number,
     @Query('continuationToken') continuationToken?: string,

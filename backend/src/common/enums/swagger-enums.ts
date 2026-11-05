@@ -153,3 +153,13 @@ export const RegistrationModeValues = [
   'INVITE_ONLY',
   'CLOSED',
 ] as const;
+
+/** Per-channel notification level (also used by notification settings). */
+export const NotificationLevelValues = ['all', 'mentions', 'none'] as const;
+
+/** Notification sound choices for the settings endpoint. */
+export const NotificationSoundTypeValues = [
+  'default',
+  'mention',
+  'dm',
+] as const;

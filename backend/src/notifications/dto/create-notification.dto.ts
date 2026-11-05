@@ -7,7 +7,7 @@ export class CreateNotificationDto {
   @IsUUID()
   userId: string;
 
-  @ApiProperty({ enum: NotificationTypeValues })
+  @ApiProperty({ enum: NotificationTypeValues, enumName: 'NotificationType' })
   @IsNotEmpty()
   @IsEnum(NotificationType)
   type: NotificationType;

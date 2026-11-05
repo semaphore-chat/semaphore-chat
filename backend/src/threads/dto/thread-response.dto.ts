@@ -1,4 +1,5 @@
 import {
+  ApiProperty,
   ApiPropertyOptional,
   ApiExtraModels,
   getSchemaPath,
@@ -16,6 +17,7 @@ export class ThreadReplyDto {
   authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   reactions: ReactionDto[];
   sentAt: Date;
@@ -24,6 +26,7 @@ export class ThreadReplyDto {
   pinned: boolean;
   pinnedAt: Date | null;
   pinnedBy: string | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   parentMessageId: string | null;
@@ -39,6 +42,7 @@ export class EnrichedThreadReplyDto {
   authorId: string | null;
   spans: SpanDto[];
   attachments: EnrichedAttachment[];
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   reactions: ReactionDto[];
   sentAt: Date;
@@ -47,6 +51,7 @@ export class EnrichedThreadReplyDto {
   pinned: boolean;
   pinnedAt: Date | null;
   pinnedBy: string | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   parentMessageId: string | null;
@@ -58,6 +63,7 @@ export class EnrichedThreadReplyDto {
 export class FileMetadataEntryDto {
   filename: string;
   mimeType: string;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
 }
 
@@ -75,6 +81,7 @@ export class ThreadRepliesResponseDto {
 
 export class ThreadMetadataDto {
   parentMessageId: string;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
   lastReplyAt: Date | null;
   isSubscribed: boolean;

@@ -14,7 +14,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { ThreadsService } from './threads.service';
 import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import {
@@ -84,6 +84,7 @@ export class ThreadsController {
     source: ResourceIdSource.PARAM,
   })
   @ApiOkResponse({ type: ThreadRepliesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   async getReplies(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,

@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class VapidPublicKeyResponseDto {
   publicKey: string | null;
   enabled: boolean;
@@ -5,6 +7,7 @@ export class VapidPublicKeyResponseDto {
 
 export class PushStatusResponseDto {
   enabled: boolean;
+  @ApiProperty({ type: 'integer' })
   subscriptionCount: number;
 }
 
@@ -19,7 +22,9 @@ export class PushSubscriptionInfoDto {
 
 export class TestPushResponseDto {
   success: boolean;
+  @ApiProperty({ type: 'integer' })
   sent: number;
+  @ApiProperty({ type: 'integer' })
   failed: number;
   message: string;
 }

@@ -7,7 +7,7 @@ export class FriendshipDto {
   id: string;
   userAId: string;
   userBId: string;
-  @ApiProperty({ enum: FriendshipStatusValues })
+  @ApiProperty({ enum: FriendshipStatusValues, enumName: 'FriendshipStatus' })
   status: FriendshipStatus;
   createdAt: Date;
 }
@@ -16,7 +16,7 @@ export class FriendshipWithUsersDto {
   id: string;
   userAId: string;
   userBId: string;
-  @ApiProperty({ enum: FriendshipStatusValues })
+  @ApiProperty({ enum: FriendshipStatusValues, enumName: 'FriendshipStatus' })
   status: FriendshipStatus;
   createdAt: Date;
   userA: UserEntity;
@@ -29,10 +29,18 @@ export class PendingRequestsDto {
 }
 
 export class FriendshipStatusDto {
-  @ApiProperty({ enum: FriendshipStatusValues, nullable: true })
+  @ApiProperty({
+    enum: FriendshipStatusValues,
+    enumName: 'FriendshipStatus',
+    nullable: true,
+  })
   status: FriendshipStatus | null;
   friendshipId: string | null;
-  @ApiProperty({ enum: ['sent', 'received'], nullable: true })
+  @ApiProperty({
+    enum: ['sent', 'received'],
+    enumName: 'FriendshipDirection',
+    nullable: true,
+  })
   direction: 'sent' | 'received' | null;
 }
 

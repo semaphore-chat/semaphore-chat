@@ -14,9 +14,15 @@ import {
   Req,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiCreatedResponse,
+  ApiOkResponse,
+} from '@nestjs/swagger';
 import { FileUploadService } from './file-upload.service';
 import { CreateFileUploadDto } from './dto/create-file-upload.dto';
+import { UploadFileBodyDto } from './dto/upload-file-body.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MimeTypeAwareSizeValidator } from './validators/mime-type-aware-size.validator';
@@ -32,6 +38,8 @@ export class FileUploadController {
 
   @Post()
   @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ type: UploadFileBodyDto })
   @ApiCreatedResponse({ type: FileUploadResponseDto })
   uploadFile(
     @UploadedFile(

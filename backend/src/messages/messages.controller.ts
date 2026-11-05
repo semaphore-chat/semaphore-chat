@@ -107,7 +107,13 @@ export class MessagesController {
     idKey: 'groupId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    enum: ['older', 'newer'],
+    enumName: 'MessagePageDirection',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllForGroup(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -132,7 +138,13 @@ export class MessagesController {
     idKey: 'channelId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    enum: ['older', 'newer'],
+    enumName: 'MessagePageDirection',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllForChannel(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -151,6 +163,7 @@ export class MessagesController {
 
   @Get('/channel/:channelId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
@@ -172,6 +185,7 @@ export class MessagesController {
 
   @Get('/group/:groupId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.DM_GROUP,
@@ -193,6 +207,7 @@ export class MessagesController {
 
   @Get('search/channel/:channelId')
   @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
@@ -210,6 +225,7 @@ export class MessagesController {
 
   @Get('search/group/:groupId')
   @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.DM_GROUP,
@@ -227,6 +243,7 @@ export class MessagesController {
 
   @Get('search/community/:communityId')
   @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,

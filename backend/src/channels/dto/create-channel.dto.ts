@@ -11,7 +11,7 @@ import {
   Max,
   MaxLength,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ChannelTypeValues } from '@/common/enums/swagger-enums';
 
 export class CreateChannelDto {
@@ -29,17 +29,19 @@ export class CreateChannelDto {
   @IsUUID()
   communityId: string;
 
-  @ApiProperty({ enum: ChannelTypeValues })
+  @ApiProperty({ enum: ChannelTypeValues, enumName: 'ChannelType' })
   @IsEnum($Enums.ChannelType)
   type: $Enums.ChannelType;
 
   @IsNumber()
   @IsOptional()
+  @ApiPropertyOptional({ type: 'integer' })
   position?: number;
 
   @IsNumber()
   @IsOptional()
   @Min(0)
   @Max(21600) // Max 6 hours
+  @ApiPropertyOptional({ type: 'integer' })
   slowmodeSeconds?: number;
 }
