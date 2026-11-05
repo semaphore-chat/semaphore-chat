@@ -1,0 +1,94 @@
+# Scripted steps on real scenarios: emit, click, type, wait idle, shot.
+
+# A live theme change, an unread arriving, a click through to it.
+story shell-connected 1440 900 dark-blue-balanced
+wait idle
+emit unread help-desk 9 2
+emit unread resources 4 0
+wait idle
+shot steps-1-unread-arrives
+expect label "help-desk, 2 mentions"
+click channel-channel-61
+wait idle
+expect label "help-desk"
+expect no-label "help-desk, 2 mentions"
+shot steps-2-clicked-help-desk
+emit message help-desk liam_nilsson13 "a message that arrived while looking"
+wait idle
+shot steps-3-message-arrives
+emit connection disconnected
+wait idle
+shot steps-4-reconnecting
+emit connection connected
+wait idle
+emit join-voice Hangout
+theme light-rose-vibrant
+wait idle
+shot steps-5-voice-in-vibrant-light
+click rail-toggle
+wait idle
+click community-community-2
+wait idle
+shot steps-6-other-community-expanded
+
+# Typing into the real editor, and a dialog through a click.
+story auth-sign-in 1440 900 dark-teal-minimal
+click auth-username
+type "mike"
+wait idle
+shot steps-7-typed-username
+click auth-password
+type "hunter2"
+wait idle
+shot steps-8-typed-password
+story kit-gallery 1440 1100 dark-blue-balanced
+click open-dialog
+wait idle
+shot steps-9-dialog-open
+press escape
+wait idle
+shot steps-10-dialog-closed
+
+# The narrow panes.
+story shell-connected 390 844 dark-blue-balanced
+click phone-rail
+wait idle
+shot steps-11-phone-rail-open
+click community-community-2
+wait idle
+expect no-label "help-desk, unread"
+shot steps-12-phone-other-community
+click members-toggle
+wait idle
+expect label "Chidi Novak, online, brb coffee"
+shot steps-13-phone-members
+click members-scrim 20 400
+wait idle
+expect no-label "Chidi Novak, online, brb coffee"
+
+# Accessibility: names on everything, and the keyboard.
+story shell-connected 1440 900 dark-blue-balanced
+expect label "Direct Messages"
+expect label "Notifications, 3 unread"
+expect label "Nightowl Collective"
+expect label "Search messages"
+expect label "Members"
+audit
+story auth-sign-in-password-only 1440 900 dark-teal-minimal
+audit
+press tab
+press tab
+expect focused "Username"
+type "typed after two tabs"
+press tab
+expect focused "Password"
+wait idle
+shot steps-14-keyboard
+story kit-gallery 1440 1100 dark-blue-balanced
+audit
+
+# The resizable column: from 280 to its 320 limit, however far the pointer goes.
+story shell-connected 1440 900 dark-blue-balanced
+drag 360 400 700 400
+wait idle
+shot steps-15-sidebar-resized

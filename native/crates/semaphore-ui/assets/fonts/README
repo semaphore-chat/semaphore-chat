@@ -1,0 +1,2 @@
+Roboto, Latin subset, weights 400/500/600/700: the files @fontsource/roboto (used by the web client) ships as woff2,
+decompressed to TTF with fontTools because GPUI needs TTF. SIL Open Font License 1.1: see LICENSE.

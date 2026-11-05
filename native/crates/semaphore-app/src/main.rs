@@ -1,11 +1,16 @@
 // No console window on Windows release builds.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+use gpui_kit::component::Root;
 use gpui_kit::*;
 use semaphore_core::{Core, CoreEvent, EventSink};
 use semaphore_platform_desktop::SystemClock;
 use semaphore_ui::Shell;
+use semaphore_ui::kit::UiAssets;
+use semaphore_ui::nav::Route;
+use semaphore_ui::shell::CoreSource;
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::sync::Arc;
 
 struct LogEvents;
@@ -49,12 +54,22 @@ fn main() -> ExitCode {
     let core = Arc::new(Core::new(Arc::new(SystemClock), Arc::new(LogEvents)));
     let connection = core.connection();
 
-    gpui_kit::application().run(move |cx| {
-        gpui_kit::init(cx);
-        gpui_kit::open_window(WindowOptions::default(), cx, |_, cx| {
-            cx.new(|_| Shell { connection })
-        })
-        .expect("failed to open the main window");
-    });
+    gpui_kit::application()
+        .with_assets(UiAssets)
+        .run(move |cx| {
+            gpui_kit::init(cx);
+            semaphore_ui::theme::init(cx);
+            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
+                // U13 wires the real content, the auth flow and the events. This is the shell alone.
+                let content =
+                    Rc::new(|_: &_, _: &mut Window, _: &mut App| div().into_any_element());
+                let shell = cx.new(|cx| {
+                    let source = Rc::new(CoreSource(core.clone()));
+                    Shell::new(source, Route::Home, content, connection, cx)
+                });
+                cx.new(|cx| Root::new(shell, window, cx))
+            })
+            .expect("failed to open the main window");
+        });
     ExitCode::SUCCESS
 }
