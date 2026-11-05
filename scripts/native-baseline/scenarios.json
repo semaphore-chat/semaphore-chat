@@ -49,7 +49,7 @@
       "local_mic": "Chromium fake device (--use-fake-device-for-media-stream)"
     },
     "d_video_grid": {
-      "title": "Receiving 9x 720p cameras and 1x 1080p screen share",
+      "title": "Receiving 9x 720p30 cameras and 1x 1080p60 screen share",
       "channel": "voice-video",
       "settle_s": 20,
       "window_s": 60,
@@ -57,12 +57,13 @@
         "audio": 0,
         "camera": 9,
         "screen": 1,
-        "camera_spec": { "width": 1280, "height": 720, "fps": 30, "max_bitrate": 1700000, "codec": "vp8", "simulcast": false },
-        "screen_spec": { "width": 1920, "height": 1080, "fps": 30, "max_bitrate": 4000000, "codec": "vp8", "simulcast": false }
+        "camera_spec": { "width": 1280, "height": 720, "fps": 30, "max_bitrate": 1700000, "codec": "vp8", "simulcast": false, "noise_blocks_per_frame": 24 },
+        "screen_spec": { "width": 1920, "height": 1080, "fps": 60, "max_bitrate": 9000000, "codec": "vp8", "simulcast": false, "noise_blocks_per_frame": 85 }
       },
       "min_fps_ratio": 0.8,
-      "expected_self_load": 16,
-      "note": "One layer per stream: adaptiveStream would otherwise pick a layer to fit each tile, and 'receiving 720p' would not hold. Fails validation, with no metrics, unless every stream is received at exact size and at least min_fps_ratio of the rate."
+      "bitrate_ratio": [0.8, 1.2],
+      "expected_self_load": 6,
+      "note": "The web client's actual defaults at their top layer (VP8, 720p30 at 1.7 Mbps; 1080p60 at about 9 Mbps), matching the native test. One layer per stream gives the same decode work, and adaptiveStream can't then pick a layer to fit each tile. Fails validation, with no metrics, unless every stream is received at exact size, at min_fps_ratio of its rate and within bitrate_ratio of its bitrate. noise_blocks_per_frame is what makes the synthetic content fill its bitrate. LiveKit needs at least 200 ICE ports: with 20, only 3 of 11 peers connect and the server logs no port errors."
     },
     "e_idle_growth": {
       "title": "30-minute idle growth",

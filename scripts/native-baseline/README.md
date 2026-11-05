@@ -8,7 +8,7 @@ harnesses emit.
 ## Run it
 
 ```bash
-# Package this checkout and run everything (about 45 minutes, 30 of them scenario e)
+# Package this checkout and run everything (about 50 minutes, 30 of them scenario e, plus packaging)
 scripts/native-baseline/run.sh --build
 
 # Again without rebuilding, matching the native list test's history size
@@ -43,7 +43,7 @@ the schema, and 3 if it does but a scenario failed validation.
 | `a_noinstrument` | The same with no debug port and no driver: the cost of the instrumentation |
 | `b_scroll` | 60 s of wheel input, 10 notches per second, upward through the history |
 | `c_voice_audio` | In a call: fake microphone out, 3 remote audio publishers in |
-| `d_video_grid` | 9x 720p30 cameras and 1x 1080p30 screen share, all watched |
+| `d_video_grid` | 9x 720p30 cameras at 1.7 Mbps and 1x 1080p60 screen share at about 9 Mbps, VP8, all watched |
 | `e_idle_growth` | 30 minutes idle, PSS slope in MiB per hour |
 | `probe_angle_lavapipe` | Best effort: idle with ANGLE forced onto lavapipe. Reported separately; can't fail the run |
 
@@ -55,8 +55,8 @@ and null `cpu_pct_core` and `memory_mb`. Its figures are under
 scenario that carries metrics.
 
 `d_video_grid` validates what the app really received, from WebRTC `getStats`:
-every stream at exact resolution, decoded at 80% or more of its frame rate, VP8,
-and each publisher capturing at 80% or more. `stream_specs` has requested and
+every stream at exact resolution, decoded at 80% or more of its frame rate, within
+20% of its bitrate, VP8, and each publisher capturing at 80% or more. `stream_specs` has requested and
 measured values side by side. Nothing downgrades a stream to make this pass.
 
 ### A busy machine makes a run provisional
@@ -78,9 +78,13 @@ number, and **take baseline numbers only from a run where it is false.**
 ### Synthetic publishers
 
 `publishers/publish.ts` is one `@livekit/rtc-node` process, with tokens signed
-with the test LiveKit key. Frames are precomputed and deterministic. Publishers
-send one layer per stream: the app's `adaptiveStream` would otherwise pick a
-layer to fit each tile, and "receiving 720p" would not hold. Video is opt-in in
+with the test LiveKit key. Frames are precomputed and deterministic, with
+`noise_blocks_per_frame` calibrated so each stream fills its bitrate. The specs are
+the web client's actual defaults and match the native test. Publishers send one
+layer per stream, at the top layer's bitrate: the decode work is the same, and the
+app's `adaptiveStream` can't pick a smaller layer to fit a tile. LiveKit gets 200
+ICE ports: with 20, only 3 of the 11 peers connect, and the server logs no port
+errors. Video is opt-in in
 the app (`autoSubscribe: false`), so the driver clicks every "Watch ..." tile.
 
 ### Seed data
@@ -116,7 +120,7 @@ details of the run.
 This needs Mike at the machine: it's the one run that says something true about
 CPU with a real GPU. It uses a throwaway profile (`--user-data-dir` under `--out`)
 and `--password-store=basic`, so it touches neither your Semaphore profile nor
-your keyring. It opens a real window and takes about 45 minutes, or about 12
+your keyring. It opens a real window and takes about 50 minutes, or about 20
 without scenario e.
 
 **Close first:** Semaphore itself, every Chromium-based browser and Electron app
@@ -131,7 +135,7 @@ scripts/native-baseline/run.sh --host --out /tmp/baseline-host \
   --steps disk,cold,a_idle,a_noinstrument,b_scroll,c_voice_audio,d_video_grid,e_idle_growth
 ```
 
-Skip `e_idle_growth` for the 12-minute version. Without Xvfb the differences are:
+Skip `e_idle_growth` for the 20-minute version. Without Xvfb the differences are:
 
 - Window size is whatever Hyprland gives it; `env.window` records it.
 - Wheel input goes over CDP, with the driver attached (`xdotool` can't reach

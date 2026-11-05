@@ -133,6 +133,8 @@ fi
 tool python3 /opt/baseline/src/disk.py analyze /app "${ASSET_ARGS[@]}" >"$OUT/disk.json"
 
 # ------------------------------------------------------------ services
+# LiveKit gets 200 ICE ports below: with 20, only 3 of scenario d's 11 peers
+# connect, and the server logs no port errors.
 "$ROOT/scripts/test-net.sh" >/dev/null
 "${STACK[@]}" up
 LIVEKIT="$TICKET-livekit"
@@ -281,7 +283,7 @@ sys.path.insert(0, "/opt/baseline/src")
 import baseline
 raw = open("/proc/loadavg").read().strip()
 load = baseline.load_report(raw, raw, [], os.cpu_count(), 0.25)
-json.dump({"title": "Receiving 9x 720p cameras and 1x 1080p screen share", "ok": False, "best_effort": False,
+json.dump({"title": "Receiving 9x 720p30 cameras and 1x 1080p60 screen share", "ok": False, "best_effort": False,
            "errors": ["synthetic publishers did not start; see publishers-d_video_grid.log"],
            "window_s": None, "cpu_pct_core": None, "memory_mb": None, "load": load, "provisional": load["provisional"]},
           open("/out/scenario-d_video_grid.json", "w"), indent=1)'

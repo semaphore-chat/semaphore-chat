@@ -19,18 +19,23 @@ with open(os.path.join(HERE, 'scenarios.json'), encoding='utf-8') as fh:
 D = SCENARIOS['d_video_grid']
 
 
-def stream(sid, width, height, frames, ts, codec='video/VP8'):
-    return {'id': sid, 'width': width, 'height': height, 'frames_decoded': frames, 'frames_dropped': 0,
-            'bytes': frames * 1000, 'codec': codec, 'decoder': 'libvpx', 'ts': ts}
+CAMERA_BPS = D['publishers']['camera_spec']['max_bitrate']
+SCREEN_BPS = D['publishers']['screen_spec']['max_bitrate']
 
 
-def grid(width=1280, height=720, cam_frames=1800, screen=(1920, 1080), screen_frames=1800, ts=60000):
-    video = [stream(f'cam{i}', width, height, cam_frames, ts) for i in range(9)]
-    video.append(stream('screen', screen[0], screen[1], screen_frames, ts))
+def stream(sid, width, height, frames, ts, codec='video/VP8', bps=0):
+    return {'id': sid, 'width': width, 'height': height, 'frames_received': frames, 'frames_decoded': frames,
+            'frames_dropped': 0, 'bytes': bps * ts // 8000, 'codec': codec, 'decoder': 'libvpx', 'ts': ts}
+
+
+def grid(width=1280, height=720, cam_frames=1800, screen=(1920, 1080), screen_frames=3600, ts=60000,
+         cam_bps=CAMERA_BPS, screen_bps=SCREEN_BPS):
+    video = [stream(f'cam{i}', width, height, cam_frames, ts, bps=cam_bps) for i in range(9)]
+    video.append(stream('screen', screen[0], screen[1], screen_frames, ts, bps=screen_bps))
     return {'video': video}
 
 
-def report(cam_fps=30, screen_fps=30, streams=None):
+def report(cam_fps=30, screen_fps=60, streams=None):
     specs = D['publishers']
     rows = [{'kind': 'camera', 'requested': specs['camera_spec'], 'captured_fps': cam_fps} for _ in range(9)]
     rows.append({'kind': 'screen', 'requested': specs['screen_spec'], 'captured_fps': screen_fps})
@@ -56,6 +61,19 @@ class VideoValidationTest(unittest.TestCase):
     def test_decoding_under_the_rate_fails(self):
         _, errors = baseline.validate_video(D, BEFORE, grid(cam_frames=900), report())
         self.assertEqual(sum('decoded at 15.0 fps' in e for e in errors), 9)
+
+    def test_scenario_is_the_agreed_spec(self):
+        pubs = D['publishers']
+        self.assertEqual((pubs['camera'], pubs['camera_spec']['fps'], pubs['camera_spec']['max_bitrate']), (9, 30, 1700000))
+        self.assertEqual((pubs['screen'], pubs['screen_spec']['fps'], pubs['screen_spec']['max_bitrate']), (1, 60, 9000000))
+
+    def test_light_stream_fails_even_at_exact_size_and_rate(self):
+        _, errors = baseline.validate_video(D, BEFORE, grid(cam_bps=800000), report())
+        self.assertEqual(sum('received at 800000 bps' in e for e in errors), 9)
+
+    def test_screen_at_half_its_rate_fails(self):
+        _, errors = baseline.validate_video(D, BEFORE, grid(screen_frames=1800), report())
+        self.assertTrue(any('decoded at 30.0 fps' in e for e in errors))
 
     def test_missing_stream_fails(self):
         after = grid()

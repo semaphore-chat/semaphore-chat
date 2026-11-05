@@ -70,6 +70,7 @@ def validate_video(spec, before, after, publisher_report):
     wanted += [('camera', pubs['camera_spec'])] * pubs.get('camera', 0)
     wanted += [('screen', pubs['screen_spec'])] * pubs.get('screen', 0)
     ratio = spec.get('min_fps_ratio', 0.8)
+    low_rate, high_rate = spec.get('bitrate_ratio', (0, float('inf')))
 
     remaining = list(measured)
     for kind, want in wanted:
@@ -82,6 +83,11 @@ def validate_video(spec, before, after, publisher_report):
         if match['fps'] is None or match['fps'] < want['fps'] * ratio:
             errors.append(f'{kind} {want["width"]}x{want["height"]} decoded at {match["fps"]} fps, '
                           f'under {ratio:.0%} of {want["fps"]}')
+        # Decode work follows bitrate: a light stream isn't the same load at any resolution.
+        if match['bitrate_bps'] is None or not (
+                want['max_bitrate'] * low_rate <= match['bitrate_bps'] <= want['max_bitrate'] * high_rate):
+            errors.append(f'{kind} {want["width"]}x{want["height"]} received at {match["bitrate_bps"]} bps, '
+                          f'outside {low_rate:.0%}-{high_rate:.0%} of {want["max_bitrate"]}')
         if match['codec'] and want['codec'] not in match['codec'].lower():
             errors.append(f'{kind} received as {match["codec"]}, wanted {want["codec"]}')
     for extra in remaining:

@@ -17,7 +17,7 @@ import {
   TrackSource, VideoBufferType, VideoCodec, VideoFrame, VideoSource, dispose,
 } from '@livekit/rtc-node';
 
-interface VideoSpec { width: number; height: number; fps: number; max_bitrate: number; codec: string; simulcast: boolean }
+interface VideoSpec { width: number; height: number; fps: number; max_bitrate: number; codec: string; simulcast: boolean; noise_blocks_per_frame: number }
 interface Publishers { audio: number; camera: number; screen: number; camera_spec?: VideoSpec; screen_spec?: VideoSpec }
 interface StreamReport { identity: string; kind: string; requested: VideoSpec | null; frames: number; started_ms: number; captured_fps: number }
 
@@ -82,16 +82,22 @@ async function join(identity: string, name: string): Promise<Room> {
 }
 
 /**
- * A dark frame with a moving lit band and per-frame noise blocks, so VP8 has
- * real work per frame. Noise is kept to 1/512 of the 16x16 blocks. Each block
- * costs about 256 bytes, and a 720p frame at 1.7 Mbps and 30 fps has about 7 kB:
- * much more noise and the encoder drops frames to stay within the bitrate.
+ * A dark frame with a moving lit band and noise blocks in new places each frame,
+ * so VP8 has real work per frame. noiseBlocks is calibrated per stream to fill
+ * its bitrate: each 16x16 block costs a few hundred bytes, and the encoder drops
+ * frames if they exceed the budget (a 720p frame at 1.7 Mbps and 30 fps has 7 kB).
  */
-function makeFrames(width: number, height: number, count: number): Uint8Array[] {
+function makeFrames(width: number, height: number, count: number, noiseBlocks: number): Uint8Array[] {
   const frames: Uint8Array[] = [];
   const ySize = width * height;
   const chroma = (width >> 1) * (height >> 1);
+  const columns = Math.floor(width / 16);
+  const rows = Math.floor(height / 16);
   let rng = 0x2f6e2b1;
+  const next = () => {
+    rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
+    return rng >>> 8;
+  };
   for (let n = 0; n < count; n += 1) {
     const buf = new Uint8Array(ySize + 2 * chroma);
     const band = Math.floor((n / count) * width);
@@ -102,15 +108,12 @@ function makeFrames(width: number, height: number, count: number): Uint8Array[] 
         buf[row + x] = (lit ? 150 : 40) + ((x >> 3) ^ (y >> 3)) % 48;
       }
     }
-    for (let by = 0; by + 16 <= height; by += 16) {
-      for (let bx = 0; bx + 16 <= width; bx += 16) {
-        rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
-        if ((rng >>> 23) !== 0) continue;
-        for (let y = by; y < by + 16; y += 1) {
-          for (let x = bx; x < bx + 16; x += 1) {
-            rng = (Math.imul(rng, 1664525) + 1013904223) >>> 0;
-            buf[y * width + x] = rng >>> 24;
-          }
+    for (let block = 0; block < noiseBlocks; block += 1) {
+      const bx = (next() % columns) * 16;
+      const by = (next() % rows) * 16;
+      for (let y = by; y < by + 16; y += 1) {
+        for (let x = bx; x < bx + 16; x += 1) {
+          buf[y * width + x] = next() & 0xff;
         }
       }
     }
@@ -125,7 +128,7 @@ function framesFor(spec: VideoSpec): Uint8Array[] {
   const key = `${spec.width}x${spec.height}`;
   let set = frameSets.get(key);
   if (!set) {
-    set = makeFrames(spec.width, spec.height, spec.fps * 2);
+    set = makeFrames(spec.width, spec.height, spec.fps * 2, spec.noise_blocks_per_frame);
     frameSets.set(key, set);
   }
   return set;
