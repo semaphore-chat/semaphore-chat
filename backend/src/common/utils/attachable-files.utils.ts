@@ -22,21 +22,20 @@ interface AttachableFilesDb {
 }
 
 /**
- * A message may only carry files its author uploaded. An attachment shows the
- * file's metadata to everyone who can read the message, and removing it can
- * delete the file. A missing file gets the same error, so this can't be used
- * to test whether an id exists.
+ * Pointing something at a file only works for files the user uploaded, of the
+ * type that thing uses. A missing file gets the same error, so this can't be
+ * used to test whether an id exists.
  */
-export async function assertFilesAttachable(
+export async function assertOwnFiles(
   db: AttachableFilesDb,
   userId: string,
   fileIds: readonly unknown[],
+  resourceTypes: ResourceType[],
+  message: string,
 ): Promise<void> {
   if (fileIds.length === 0) return;
 
-  const denied = new ForbiddenException(
-    'You can only attach files you uploaded',
-  );
+  const denied = new ForbiddenException(message);
   // `attachments` is only validated as an array.
   if (fileIds.some((fileId) => typeof fileId !== 'string')) throw denied;
 
@@ -46,8 +45,27 @@ export async function assertFilesAttachable(
       id: { in: unique },
       uploadedById: userId,
       deletedAt: null,
-      resourceType: { in: ATTACHABLE_RESOURCE_TYPES },
+      resourceType: { in: resourceTypes },
     },
   });
   if (attachable !== unique.length) throw denied;
+}
+
+/**
+ * A message may only carry files its author uploaded. An attachment shows the
+ * file's metadata to everyone who can read the message, and removing it can
+ * delete the file.
+ */
+export function assertFilesAttachable(
+  db: AttachableFilesDb,
+  userId: string,
+  fileIds: readonly unknown[],
+): Promise<void> {
+  return assertOwnFiles(
+    db,
+    userId,
+    fileIds,
+    ATTACHABLE_RESOURCE_TYPES,
+    'You can only attach files you uploaded',
+  );
 }

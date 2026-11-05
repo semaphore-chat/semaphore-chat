@@ -5,7 +5,14 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { InstanceInvite, InstanceRole, User, Prisma } from '@prisma/client';
+import {
+  InstanceInvite,
+  InstanceRole,
+  User,
+  Prisma,
+  ResourceType,
+} from '@prisma/client';
+import { assertOwnFiles } from '@/common/utils/attachable-files.utils';
 import { AdminUserEntity } from './dto/admin-user-response.dto';
 import * as bcrypt from 'bcrypt';
 import { DatabaseService } from '../database/database.service';
@@ -293,6 +300,22 @@ export class UserService {
     const user = await this.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // Clients may resend the current value, so only a change is checked.
+    for (const [fileId, current, resourceType] of [
+      [updateProfileDto.avatar, user.avatarUrl, ResourceType.USER_AVATAR],
+      [updateProfileDto.banner, user.bannerUrl, ResourceType.USER_BANNER],
+    ] as const) {
+      if (fileId && fileId !== current) {
+        await assertOwnFiles(
+          this.databaseService,
+          userId,
+          [fileId],
+          [resourceType],
+          'You can only use images you uploaded',
+        );
+      }
     }
 
     const updateData: Prisma.UserUpdateInput = {};

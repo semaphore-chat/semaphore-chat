@@ -3,6 +3,7 @@ import { FileUploadService } from './file-upload.service';
 import { FileUploadController } from './file-upload.controller';
 import { MulterModule } from '@nestjs/platform-express';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { RolesModule } from '@/roles/roles.module';
 import { DatabaseModule } from '@/database/database.module';
 import { StorageModule } from '@/storage/storage.module';
 import { StorageQuotaModule } from '@/storage-quota/storage-quota.module';
@@ -27,6 +28,7 @@ import { ThumbnailBackfillService } from '@/file/thumbnail-backfill.service';
     }),
     ConfigModule,
     DatabaseModule,
+    RolesModule,
     StorageModule,
     StorageQuotaModule,
     LivekitModule,

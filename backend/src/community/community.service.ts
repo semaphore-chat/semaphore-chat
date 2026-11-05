@@ -12,6 +12,8 @@ import { CommunityRolesService } from '@/roles/community-roles.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { isPrismaError } from '@/common/utils/prisma.utils';
+import { assertOwnFiles } from '@/common/utils/attachable-files.utils';
+import { Prisma, ResourceType } from '@prisma/client';
 import {
   EpochBump,
   PermissionsCacheService,
@@ -28,6 +30,13 @@ export class CommunityService {
     private readonly permissionsCacheService: PermissionsCacheService,
   ) {}
   async create(createCommunityDto: CreateCommunityDto, creatorId: string) {
+    await this.assertImagesUsable(
+      this.databaseService,
+      creatorId,
+      createCommunityDto,
+      { avatar: null, banner: null },
+    );
+
     // Epoch bumps from the tx-nested role mutations below are collected here
     // and executed only after the transaction commits — bumping while the
     // transaction is still open would let a concurrent reader cache
@@ -113,7 +122,54 @@ export class CommunityService {
     return community;
   }
 
-  async update(id: string, updateCommunityDto: UpdateCommunityDto) {
+  /** A community can only use images uploaded by whoever is setting them. */
+  private async assertImagesUsable(
+    db: Prisma.TransactionClient | DatabaseService,
+    userId: string,
+    next: { avatar?: string | null; banner?: string | null },
+    current: { avatar: string | null; banner: string | null },
+  ) {
+    for (const [fileId, existing, resourceType] of [
+      [next.avatar, current.avatar, ResourceType.COMMUNITY_AVATAR],
+      [next.banner, current.banner, ResourceType.COMMUNITY_BANNER],
+    ] as const) {
+      if (fileId && fileId !== existing) {
+        await assertOwnFiles(
+          db,
+          userId,
+          [fileId],
+          [resourceType],
+          'You can only use images you uploaded',
+        );
+      }
+    }
+  }
+
+  /**
+   * Replacing an image deletes the old one, but only if it really is this
+   * community's image: older rows can point at a file that belongs elsewhere.
+   */
+  private async markImageForDeletion(
+    tx: Prisma.TransactionClient,
+    fileId: string,
+    resourceType: ResourceType,
+    communityId: string,
+  ) {
+    await tx.file.updateMany({
+      where: {
+        id: fileId,
+        resourceType,
+        OR: [{ fileCommunityId: communityId }, { fileCommunityId: null }],
+      },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async update(
+    id: string,
+    updateCommunityDto: UpdateCommunityDto,
+    userId: string,
+  ) {
     const updated = await this.databaseService.$transaction(async (tx) => {
       const currentCommunity = await tx.community.findUnique({
         where: { id },
@@ -123,16 +179,25 @@ export class CommunityService {
         throw new NotFoundException('Community not found');
       }
 
+      await this.assertImagesUsable(
+        tx,
+        userId,
+        updateCommunityDto,
+        currentCommunity,
+      );
+
       // Mark old avatar for deletion if being replaced
       if (
         updateCommunityDto.avatar &&
         currentCommunity.avatar &&
         updateCommunityDto.avatar !== currentCommunity.avatar
       ) {
-        await tx.file.update({
-          where: { id: currentCommunity.avatar },
-          data: { deletedAt: new Date() },
-        });
+        await this.markImageForDeletion(
+          tx,
+          currentCommunity.avatar,
+          ResourceType.COMMUNITY_AVATAR,
+          id,
+        );
       }
 
       // Mark old banner for deletion if being replaced
@@ -141,10 +206,12 @@ export class CommunityService {
         currentCommunity.banner &&
         updateCommunityDto.banner !== currentCommunity.banner
       ) {
-        await tx.file.update({
-          where: { id: currentCommunity.banner },
-          data: { deletedAt: new Date() },
-        });
+        await this.markImageForDeletion(
+          tx,
+          currentCommunity.banner,
+          ResourceType.COMMUNITY_BANNER,
+          id,
+        );
       }
 
       return tx.community.update({

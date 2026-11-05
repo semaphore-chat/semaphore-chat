@@ -35,6 +35,10 @@ describe('UserService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    mockDatabase.file.count.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.length),
+    );
 
     const { unit, unitRef } = await TestBed.solitary(UserService)
       .mock(DatabaseService)
@@ -707,6 +711,17 @@ describe('UserService', () => {
         where: { id: user.id },
         data: { displayName: 'New Display Name' },
       });
+    });
+
+    it("rejects an image the user didn't upload", async () => {
+      const user = UserFactory.build({ avatarUrl: null });
+      mockDatabase.user.findUnique.mockResolvedValue(user);
+      mockDatabase.file.count.mockResolvedValue(0);
+
+      await expect(
+        service.updateProfile(user.id, { avatar: 'foreign' }),
+      ).rejects.toThrow('You can only use images you uploaded');
+      expect(mockDatabase.user.update).not.toHaveBeenCalled();
     });
 
     it('should update user avatar', async () => {

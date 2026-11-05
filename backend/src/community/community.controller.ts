@@ -87,8 +87,9 @@ export class CommunityController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCommunityDto: UpdateCommunityDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<CommunityResponseDto> {
-    return this.communityService.update(id, updateCommunityDto);
+    return this.communityService.update(id, updateCommunityDto, req.user.id);
   }
 
   @Delete(':id')
