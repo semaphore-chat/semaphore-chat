@@ -1,0 +1,13 @@
+[package]
+name = "semaphore-media-livekit"
+description = "Implements core's MediaEngine with the LiveKit Rust SDK."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+async-trait.workspace = true
+livekit.workspace = true
+semaphore-core.workspace = true
+tokio.workspace = true

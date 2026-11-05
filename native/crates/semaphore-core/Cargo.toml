@@ -1,0 +1,16 @@
+[package]
+name = "semaphore-core"
+description = "UI-free, OS-free client core. Must stay checkable on iOS and Android with no C toolchain."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Rule, enforced by scripts/check-core-boundary.py: no UI crate, no desktop-only crate,
+# nothing that compiles C or links a native library. OS services and media are traits
+# in src/platform.rs, implemented in other crates.
+[dependencies]
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

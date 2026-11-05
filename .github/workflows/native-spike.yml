@@ -1,0 +1,79 @@
+name: Native Spike
+
+# Checks for the native client spike on its long-lived branch. Not a required check, and
+# nothing here runs on main or on PRs. The workflow file only takes effect once the branch
+# is pushed, so as of Phase 0 NO JOB HERE HAS RUN, the Windows one included.
+on:
+  push:
+    branches: [spike/native-gpui]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-spike.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: native-spike-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Build, policy and headless render (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      # Same pinned image and the same script as local runs.
+      - name: Verify
+        run: native/scripts/verify.sh
+        env:
+          RESULT_SCHEMA_HOST: ${{ github.workspace }}/scripts/native-baseline/result.schema.json
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-results
+          path: native/results/
+
+  core-mobile:
+    name: semaphore-core on Android and iOS
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+      # Deliberately outside the image and with no NDK or Xcode: rustup's targets alone must
+      # be enough. If core gains a C build this fails, as the boundary check does.
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Check Android
+        run: cargo check --locked -p semaphore-core --target aarch64-linux-android
+      - name: Check iOS
+        run: cargo check --locked -p semaphore-core --target aarch64-apple-ios
+
+  windows-link:
+    name: Link the desktop app (Windows)
+    # UNTESTED until the branch is pushed. libwebrtc plus GPUI has never been linked on MSVC.
+    # Hosted runners have no GPU, so this proves build and link only, nothing about rendering.
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: native
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup toolchain install
+      - name: Build
+        run: cargo build --locked --release -p semaphore-app
+      - name: Report the binary size
+        shell: bash
+        run: ls -l target/release/semaphore-app.exe
+      - uses: actions/upload-artifact@v7
+        with:
+          name: semaphore-app-windows
+          path: native/target/release/semaphore-app.exe
+          if-no-files-found: error

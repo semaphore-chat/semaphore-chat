@@ -1,0 +1,17 @@
+[package]
+name = "rig-shot"
+description = "T10 harness: render one story through GPUI's real offscreen renderer to a PNG."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "rig-shot"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+gpui-kit = { workspace = true, features = ["test-support"] }
+semaphore-core.workspace = true
+semaphore-ui.workspace = true

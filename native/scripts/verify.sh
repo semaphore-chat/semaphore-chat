@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+# Phase 0's definition of done, with real exit codes. Run from anywhere:
+#
+#   RESULT_SCHEMA_HOST=/path/to/result.schema.json native/scripts/verify.sh
+#
+# RESULT_SCHEMA_HOST defaults to scripts/native-baseline/result.schema.json in this checkout.
+# Every step runs even if an earlier one fails, and the summary lists all of them.
+set -uo pipefail
+
+NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$NATIVE_DIR/.." && pwd)"
+IN_IMAGE="$NATIVE_DIR/scripts/in-image.sh"
+SCHEMA="${RESULT_SCHEMA_HOST:-$ROOT/scripts/native-baseline/result.schema.json}"
+COMMIT="$(git -C "$ROOT" rev-parse HEAD)"
+
+if [ -f "$SCHEMA" ]; then
+  export NATIVE_DOCKER_ARGS="-v $SCHEMA:/schema/result.schema.json:ro -e RESULT_SCHEMA=/schema/result.schema.json -e GIT_COMMIT=$COMMIT"
+else
+  echo "verify: no schema at $SCHEMA, so the two result steps will fail" >&2
+  export NATIVE_DOCKER_ARGS="-e GIT_COMMIT=$COMMIT"
+fi
+
+names=()
+codes=()
+step() { # <name> <command...>
+  local name="$1"; shift
+  echo
+  echo "=== $name"
+  echo "\$ $*"
+  "$@"
+  local rc=$?
+  echo "--- $name: exit $rc"
+  names+=("$name")
+  codes+=("$rc")
+}
+
+step "cargo build --workspace" "$IN_IMAGE" cargo build --locked --workspace
+step "cargo test -p semaphore-core" "$IN_IMAGE" cargo test --locked -p semaphore-core
+step "cargo fmt --check" "$IN_IMAGE" cargo fmt --all --check
+step "cargo clippy" "$IN_IMAGE" cargo clippy --locked --workspace -- -D warnings
+step "cargo deny check" "$IN_IMAGE" cargo deny check
+step "core boundary" "$IN_IMAGE" python3 scripts/check-core-boundary.py
+step "guards reject bad input" "$IN_IMAGE" scripts/test-policy.sh
+step "core: cargo check Android" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-linux-android
+step "core: cargo check iOS" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-apple-ios
+step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
+step "cargo build --release -p semaphore-app" "$IN_IMAGE" cargo build --locked --release -p semaphore-app
+step "emit result JSON" "$IN_IMAGE" python3 scripts/emit-result.py \
+  /cache/target/release/semaphore-app results/phase0/native-shell.json
+step "validate result JSON" "$IN_IMAGE" python3 scripts/validate-result.py results/phase0/native-shell.json
+
+echo
+echo "=== summary"
+failed=0
+for i in "${!names[@]}"; do
+  printf '%-44s exit %s\n' "${names[$i]}" "${codes[$i]}"
+  [ "${codes[$i]}" = 0 ] || failed=1
+done
+exit "$failed"

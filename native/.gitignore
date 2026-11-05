@@ -1,0 +1,2 @@
+# Local builds use a Docker volume; only a direct cargo run (CI on Windows) makes this.
+/target/

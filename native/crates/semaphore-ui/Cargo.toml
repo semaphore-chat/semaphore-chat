@@ -1,0 +1,11 @@
+[package]
+name = "semaphore-ui"
+description = "GPUI views over semaphore-core."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+gpui-kit.workspace = true
+semaphore-core.workspace = true

@@ -1,0 +1,13 @@
+[package]
+name = "semaphore-net"
+description = "HTTP and WebSocket transport. Pulls in ring through rustls, so unlike core it needs a C toolchain per target."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
+semaphore-core.workspace = true
+tokio = { workspace = true, features = ["net"] }

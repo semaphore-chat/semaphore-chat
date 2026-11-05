@@ -1,0 +1,10 @@
+# libwebrtc needs clang 21+ and lld, and the default link on Arch fails without the
+# explicit glib libraries. Linux only, so the mobile and Windows targets are untouched.
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = [
+    "-C", "link-arg=-fuse-ld=lld",
+    "-C", "link-arg=-lgio-2.0",
+    "-C", "link-arg=-lgobject-2.0",
+    "-C", "link-arg=-lglib-2.0",
+]
