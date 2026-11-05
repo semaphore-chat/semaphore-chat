@@ -2,12 +2,24 @@
 //!
 //! The public API stays binding-friendly so UniFFI or similar can expose it to SwiftUI
 //! and Compose later: owned records and enums, no lifetimes or generics, callback traits
-//! for anything pushed out. Phase 0 is a deliberately thin stub of that shape.
+//! for anything pushed out. A UI reads the records in [`model`] and calls [`Core`]; generated
+//! wire types and `serde_json` values stay behind that line.
 
+pub mod backend;
 pub mod cache;
 pub mod client;
+pub mod commands;
+pub mod events;
 pub mod lifecycle;
+pub mod model;
 pub mod platform;
+pub mod realtime;
+pub mod resync;
+#[cfg(feature = "fixtures")]
+pub mod scenario;
+pub mod send;
+pub mod store;
+pub mod text;
 
 pub use cache::{CacheEntry, QueryCache, QueryKey};
 pub use client::Core;

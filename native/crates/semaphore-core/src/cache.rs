@@ -1,5 +1,9 @@
 //! Query cache: the TanStack Query analog. It lives here rather than on GPUI entities
 //! so a future mobile UI reads the same state; a UI only holds a projection of it.
+//!
+//! Unit U5 replaces JSON text with typed entries, because a direct update would otherwise reparse
+//! on every event. Message rows don't live here at all, but in `store`. A UI never reads this
+//! type directly, so that change doesn't reach the frozen API in `model` and `commands`.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;

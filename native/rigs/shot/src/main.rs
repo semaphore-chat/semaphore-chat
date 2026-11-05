@@ -1,6 +1,10 @@
 //! Renders one story to a PNG, with no display server.
 //!
 //!   rig-shot <story> <width> <height> <out.png>
+//!   rig-shot --list
+//!
+//! Stories come from `semaphore_ui::stories`. Run it from `native/`, where it finds
+//! `fixtures/scenarios`. Steps such as click and type arrive with unit U8.
 //!
 //! Linux only for real pixels: GPUI has a headless WGPU renderer there and none on Windows.
 
@@ -8,22 +12,27 @@ use anyhow::{Context as _, Result, bail};
 use gpui_kit::assets::Assets;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
-use semaphore_core::ConnectionState;
-use semaphore_ui::Shell;
+use semaphore_ui::stories::{self, StoryEnv, StoryRoot};
 use std::sync::Arc;
 
 fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "--list") {
+        for story in stories::all() {
+            println!("{}", story.name);
+        }
+        return Ok(());
+    }
     let [story, width, height, out] = args.as_slice() else {
-        bail!("usage: rig-shot <story> <width> <height> <out.png>");
+        bail!("usage: rig-shot <story> <width> <height> <out.png> | rig-shot --list");
     };
     let width: f32 = width.parse().context("width")?;
     let height: f32 = height.parse().context("height")?;
-
-    let connection = match story.as_str() {
-        "shell-connected" => ConnectionState::Connected,
-        "shell-offline" => ConnectionState::Offline,
-        other => bail!("unknown story {other}; have shell-connected, shell-offline"),
+    let Some(story) = stories::find(story) else {
+        bail!("unknown story {story}; rig-shot --list shows them");
+    };
+    let env = StoryEnv {
+        scenarios_dir: "fixtures/scenarios".into(),
     };
 
     let mut cx = HeadlessAppContext::with_platform(
@@ -46,7 +55,10 @@ fn main() -> Result<()> {
                     ..Default::default()
                 },
                 cx,
-                |_, cx| cx.new(|_| Shell { connection }),
+                |window, cx| {
+                    let view = (story.build)(&env, window, cx);
+                    cx.new(|_| StoryRoot { view })
+                },
             )
         })
         .context("opening the offscreen window")?;

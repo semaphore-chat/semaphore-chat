@@ -9,3 +9,7 @@ publish.workspace = true
 [dependencies]
 gpui-kit.workspace = true
 semaphore-core.workspace = true
+
+[features]
+# The story registry and scenario fixtures. The app never turns this on.
+stories = ["semaphore-core/fixtures"]

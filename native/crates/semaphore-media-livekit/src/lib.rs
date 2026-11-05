@@ -53,3 +53,22 @@ pub fn probe_connection(url: String, token: String) -> Result<(), CoreError> {
         Ok(())
     })
 }
+
+/// One NV12 frame, borrowed from the caller. The media crate converts LiveKit's I420 to this off
+/// the UI thread.
+pub struct VideoFrameRef<'a> {
+    pub width: u32,
+    pub height: u32,
+    pub y: &'a [u8],
+    pub y_stride: u32,
+    pub uv: &'a [u8],
+    pub uv_stride: u32,
+}
+
+/// Where decoded video goes, called from a media thread. This crate can't see GPUI, so the app
+/// implements it: over `VideoUploader` where the renderer has one, otherwise as an RGBA image.
+/// Core never sees frames, so a mobile build can render with its own LiveKit SDK.
+pub trait VideoSink: Send + Sync {
+    fn on_frame(&self, track_sid: &str, frame: &VideoFrameRef<'_>);
+    fn on_track_ended(&self, track_sid: &str);
+}

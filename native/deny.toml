@@ -28,7 +28,12 @@ allow = [
     "Zlib",
 ]
 exceptions = [
+    { crate = "semaphore-api", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-core", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-design", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-fake-server", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-ffi", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-wire", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-net", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-media-livekit", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-platform-desktop", allow = ["AGPL-3.0-only"] },

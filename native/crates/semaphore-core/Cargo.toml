@@ -6,6 +6,11 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[features]
+# `scenario`: turns the exported Ladle scenarios into view models, for stories.
+fixtures = []
+
+# Keep [dependencies] last: scripts/test-policy.sh appends a dependency line to this file.
 # Rule, enforced by scripts/check-core-boundary.py: no UI crate, no desktop-only crate,
 # nothing that compiles C or links a native library. OS services and media are traits
 # in src/platform.rs, implemented in other crates.

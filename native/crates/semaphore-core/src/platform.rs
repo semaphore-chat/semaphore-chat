@@ -5,6 +5,7 @@
 
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
+use crate::model::{Conversation, ListOp, ViewKey};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -18,8 +19,21 @@ pub enum CoreError {
 /// Pushed out of core to whatever UI is attached.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CoreEvent {
-    ConnectionChanged { state: ConnectionState },
-    QueriesInvalidated { keys: Vec<QueryKey> },
+    ConnectionChanged {
+        state: ConnectionState,
+    },
+    QueriesInvalidated {
+        keys: Vec<QueryKey>,
+    },
+    /// Read this part of the UI again from core.
+    ViewChanged {
+        view: ViewKey,
+    },
+    /// Apply these to the conversation's list, in order.
+    MessagesChanged {
+        conversation: Conversation,
+        ops: Vec<ListOp>,
+    },
 }
 
 pub trait EventSink: Send + Sync {

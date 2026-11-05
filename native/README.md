@@ -8,15 +8,25 @@ the long-lived `spike/native-gpui` branch. Status, test bars and decisions are i
 
 | Path | What | May depend on |
 |---|---|---|
-| `crates/semaphore-core` | Query cache, lifecycle, OS-service traits | Pure Rust only, no C build |
-| `crates/semaphore-net` | HTTP, WebSocket, TLS | core |
-| `crates/semaphore-media-livekit` | Core's `MediaEngine` on LiveKit | core |
+| `crates/semaphore-wire` | Generated types from `contract/` | Pure Rust only |
+| `crates/semaphore-core` | Query cache, message store, lifecycle, view models, OS-service traits | wire; pure Rust only, no C build |
+| `crates/semaphore-api` | Generated REST client, hand-written upload | wire, reqwest with no TLS |
+| `crates/semaphore-net` | HTTP, WebSocket, TLS; implements core's `Backend` and `Realtime` | core, api |
+| `crates/semaphore-media-livekit` | Core's `MediaEngine` on LiveKit; `VideoSink` | core |
 | `crates/semaphore-platform-desktop` | Desktop OS services | core |
-| `crates/semaphore-ui` | GPUI views | core, gpui-kit |
+| `crates/semaphore-design` | Generated tokens and icons | Nothing |
+| `crates/semaphore-ui` | GPUI views, one directory per feature | core, design, gpui-kit |
 | `crates/semaphore-app` | The desktop binary | all of the above |
-| `rigs/shot` | T10: render a story to a PNG with no display | core, ui |
-| `rigs/list` | T2, T3: 100k mixed-height messages, drag selection across virtual rows | gpui-kit only |
+| `crates/semaphore-fake-server` | Dev only: a fake backend. The app never links it | wire |
+| `crates/semaphore-ffi` | Dev only: proves core stays UniFFI-friendly | core |
+| `contract/` | The pinned API contract generators read. `PIN` says where it came from | |
+| `third_party/` | GPUI with the video surface patch. See its README | |
+| `tools/`, `fixtures/` | Generators and exporters, not in the workspace; their committed output | |
+| `rigs/shot` | Render a story to a PNG with no display | core, ui |
+| `rigs/list` | T2/T3: 100k message list and selection | gpui-kit |
 | `rigs/video-iced` (not created yet) | Excluded from the workspace, with its own lockfile | |
+
+The slice's work units and their specs are in [docs/slice-units](docs/slice-units/README.md).
 
 ## Rules
 
@@ -32,8 +42,9 @@ the long-lived `spike/native-gpui` branch. Status, test bars and decisions are i
 - **No GPL in anything we ship.** `deny.toml` allows licenses by name; our own crates are the
   only AGPL allowed, each listed. A new crate needs a line there. Zed's `livekit_client`, `ui`,
   `markdown`, `audio` and similar crates are GPL-3.0: reference only, never copied.
-- **Never add Zed's git `gpui`.** gpui-kit pins `gpui-pre`, and a second GPUI won't unify. A
-  renderer fork goes through `[patch.crates-io]`.
+- **Never add Zed's git `gpui`.** gpui-kit pins `gpui-pre`, and a second GPUI won't unify. Our
+  renderer patch goes through `[patch.crates-io]`, from `third_party/`.
+- **Generators read `contract/`, not `backend/`.** Update it with `scripts/pin-contract.sh <ref>`.
 - **Test bars don't move silently.** Any change goes in the table in `docs/spike-results.md`.
 
 ## Commands

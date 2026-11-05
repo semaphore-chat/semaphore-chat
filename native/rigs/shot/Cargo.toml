@@ -14,4 +14,4 @@ path = "src/main.rs"
 anyhow.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
 semaphore-core.workspace = true
-semaphore-ui.workspace = true
+semaphore-ui = { workspace = true, features = ["stories"] }

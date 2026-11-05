@@ -6,7 +6,7 @@
 #   bash native/scripts/t10-run.sh                 # the T10 run: 20 iterations
 #   bash native/scripts/t10-run.sh --iterations 2  # smoke test; its JSON says smoke_run
 #
-# The edited file (crates/semaphore-ui/src/lib.rs) is restored when the loop ends.
+# The edited file (crates/semaphore-ui/src/shell/mod.rs) is restored when the loop ends.
 # RESULT_SCHEMA_HOST optionally points at the baseline schema, as in verify.sh.
 set -uo pipefail
 

@@ -36,7 +36,7 @@ MAX_ITERATION_MS = 60_000
 STORY = "shell-connected"
 WIDTH, HEIGHT = 800, 480
 LAVAPIPE_ICD = "/usr/share/vulkan/icd.d/lvp_icd.json"
-EDIT_FILE = Path("crates/semaphore-ui/src/lib.rs")
+EDIT_FILE = Path("crates/semaphore-ui/src/shell/mod.rs")
 # The one line the loop owns. Matched by shape, so it still finds itself after a variant
 # has replaced the pristine text.
 EDIT_LINE = re.compile(r'^(?P<indent>[ \t]*)\.child\(Button::new\("retry"\)[^\n]*$', re.M)

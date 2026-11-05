@@ -2859,8 +2859,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre"
 version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9303c771abf2acff2a96d706f69d9a82088c4770173a07cce88f0002431d887d"
 dependencies = [
  "accesskit",
  "anyhow",
@@ -3301,8 +3299,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-wgpu"
 version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "211cf352de1a0b0c9bea3f105df5572ce1d2c899389b924a888e5af36b50f93d"
 dependencies = [
  "anyhow",
  "bytemuck",
@@ -7013,6 +7009,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ab42ca02749e120097e328d91d415325bdf43b1c72c4c8badf37375fe40a813"
 
 [[package]]
+name = "semaphore-api"
+version = "0.0.0"
+
+[[package]]
 name = "semaphore-app"
 version = "0.0.0"
 dependencies = [
@@ -7032,6 +7032,21 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "semaphore-design"
+version = "0.0.0"
+
+[[package]]
+name = "semaphore-fake-server"
+version = "0.0.0"
+
+[[package]]
+name = "semaphore-ffi"
+version = "0.0.0"
+dependencies = [
+ "semaphore-core",
 ]
 
 [[package]]
@@ -7069,6 +7084,10 @@ dependencies = [
  "gpui-kit",
  "semaphore-core",
 ]
+
+[[package]]
+name = "semaphore-wire"
+version = "0.0.0"
 
 [[package]]
 name = "semver"

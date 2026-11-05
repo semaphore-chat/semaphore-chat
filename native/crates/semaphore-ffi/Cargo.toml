@@ -1,0 +1,10 @@
+[package]
+name = "semaphore-ffi"
+description = "Proves semaphore-core stays binding-friendly: a UniFFI surface that must keep compiling."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+semaphore-core.workspace = true
