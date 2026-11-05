@@ -52,6 +52,36 @@ describe('findSentMessage', () => {
     );
   });
 
+  it('reads the message before the tombstone', async () => {
+    await find();
+
+    const messageRead =
+      db.message.findUnique.mock.invocationCallOrder[0] as number;
+    const tombstoneRead = (
+      db.messageNonceTombstone.findUnique.mock.invocationCallOrder[0] as number
+    );
+    expect(messageRead).toBeLessThan(tombstoneRead);
+  });
+
+  it('refuses a retry whose send was deleted between the two reads', async () => {
+    // The delete commits right after the first read: whatever that read was,
+    // the next one sees the row gone. Reading the message first is what makes
+    // the later tombstone read catch it; the other order finds neither and
+    // lets the caller create the message again.
+    let committed = false;
+    const read = <T>(before: T, after: T) => {
+      const value = committed ? after : before;
+      committed = true;
+      return Promise.resolve(value);
+    };
+    db.message.findUnique.mockImplementation(() => read(row, null));
+    db.messageNonceTombstone.findUnique.mockImplementation(() =>
+      read(null, { authorId: 'user-1', clientNonce: nonce }),
+    );
+
+    await expect(find()).rejects.toThrow(GoneException);
+  });
+
   it('finds nothing for a new nonce', async () => {
     db.message.findUnique.mockResolvedValue(null);
     await expect(find()).resolves.toBeNull();

@@ -54,15 +54,20 @@ export async function findSentMessage(
       errorCode: ErrorCode.MESSAGE_DELETED,
     });
 
+  // Read the message first. A delete removes the row and writes the tombstone
+  // in one transaction, so a delete that commits between these two reads is
+  // seen by the second one. The other order misses it: it saw no tombstone,
+  // then found the row already gone, and the caller created the message again.
+  const message = await db.message.findUnique({
+    where: { authorId_clientNonce: { authorId, clientNonce } },
+    include: MESSAGE_INCLUDE_WITH_REPLY,
+  });
+
   const tombstone = await db.messageNonceTombstone.findUnique({
     where: { authorId_clientNonce: { authorId, clientNonce } },
   });
   if (tombstone) throw gone();
 
-  const message = await db.message.findUnique({
-    where: { authorId_clientNonce: { authorId, clientNonce } },
-    include: MESSAGE_INCLUDE_WITH_REPLY,
-  });
   if (!message) return null;
 
   if (
