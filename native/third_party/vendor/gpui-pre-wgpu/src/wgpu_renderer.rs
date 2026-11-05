@@ -90,7 +90,7 @@ struct SurfaceParams {
     pad: [f32; 3],
 }
 
-/// PATCH(video): one per live surface; rebuilt only when the surface's textures are replaced.
+/// One per live surface; rebuilt only when the surface's textures are replaced.
 struct SurfaceBinding {
     generation: u64,
     params: wgpu::Buffer,
@@ -1381,7 +1381,7 @@ impl WgpuRendererCore {
                 bind_group_layouts,
                 atlas_sampler,
                 atlas_texture_bind_groups: FxHashMap::default(),
-            surface_bindings: FxHashMap::default(),
+                surface_bindings: FxHashMap::default(),
                 globals_buffer,
                 globals_bind_group,
                 path_globals_bind_group,
@@ -1647,8 +1647,6 @@ impl WgpuRendererCore {
                             &mut pass,
                         )?;
                     }
-                    // Surfaces are macOS-only for video playback and are not
-                    // implemented by the WGPU renderer.
                     PrimitiveBatch::Surfaces(range) => {
                         let resources = self.resources();
                         pass.set_pipeline(&resources.pipelines.surfaces);
@@ -1782,7 +1780,7 @@ impl WgpuRendererCore {
         }
     }
 
-    /// PATCH(video): one uniform buffer + bind group per surface in the scene.
+    /// One uniform buffer + bind group per surface in the scene.
     fn prepare_surface_bindings(&mut self, scene: &Scene) {
         let store = self.atlas.video_store().clone();
         let surfaces = &scene.surfaces;

@@ -56,8 +56,10 @@ inside `cache.rs`, which U5 replaces with typed entries.
 - **`spike/t7-t8` is not merged.** Expect conflicts in `Cargo.toml`, `Cargo.lock`, `deny.toml`, and
   in `core/src/lib.rs` and `net/src/lib.rs`. `RealtimeEvent` mirrors its `SocketEvent`, and
   `semaphore-net` adapts it to `Realtime`.
-- **Windows tiles use the RGBA fallback:** see `ui/src/voice/mod.rs`. `third_party/README.md` has the
-  steps for swapping in the D3D11 patch.
+- **Windows now has a surface path:** `Window::video_uploader()` returns `Some` there too, through the
+  vendored D3D11 patch, so tiles take the same path on both. It has compiled but never run on Windows
+  (the CI job waits on a push). `third_party/README.md` has the API. U11 removes the fallback comment
+  in `ui/src/voice/mod.rs`.
 
 ## The ledger
 

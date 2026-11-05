@@ -171,7 +171,7 @@ paths. It's cruder than it needs to be, and neither flaw affects the shipped cli
   `gpui-kit-assets` (the same publisher), and `zed-font-kit` and `zed-xim` (Linux). All of them
   link into the app. Extend the audit to them at the go decision.
 
-Vendoring removes the two patched crates' checksums from `Cargo.lock`, so `third_party/series`
+Vendoring removes the patched crates' checksums from `Cargo.lock`, so `third_party/series`
 carries them, and `audit-gpui-pre.sh` needs the unpatched lock (see `third_party/README.md`).
 
 ### What vendoring or mirroring would take, at the go decision

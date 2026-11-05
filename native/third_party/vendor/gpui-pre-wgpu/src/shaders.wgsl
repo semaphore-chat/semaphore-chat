@@ -1327,7 +1327,7 @@ struct SurfaceParams {
 @group(1) @binding(2) var t_cb_cr: texture_2d<f32>;
 @group(1) @binding(3) var s_surface: sampler;
 
-// PATCH(video): BT.601 limited range, the matrix libyuv's I420ToARGB uses, so arms compare.
+// BT.601 limited range, what WebRTC's I420 and libyuv's I420ToARGB use.
 const ycbcr_to_RGB = mat4x4<f32>(
     vec4<f32>( 1.1644f,  1.1644f,  1.1644f, 0.0),
     vec4<f32>( 0.0000f, -0.3918f,  2.0172f, 0.0),
@@ -1364,7 +1364,7 @@ fn fs_surface(input: SurfaceVarying) -> @location(0) vec4<f32> {
         textureSampleLevel(t_cb_cr, s_surface, input.texture_position, 0.0).rg,
         1.0);
 
-    // PATCH(video): rounded corners and opacity through the same SDF sprites use.
+    // Rounded corners and opacity through the same SDF sprites use.
     let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
     return blend_color(ycbcr_to_RGB * y_cb_cr, surface_locals.opacity * saturate(0.5 - distance));
 }

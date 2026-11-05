@@ -24,7 +24,7 @@ while read -r crate version sha patch_file; do
   mkdir -p "$WORK/out/$crate"
   tar xzf "$archive" --strip-components=1 -C "$WORK/out/$crate"
   if [ "$patch_file" != "-" ]; then
-    (cd "$WORK/out" && patch -s -p1 --no-backup-if-mismatch < "$HERE/$patch_file")
+    patch -s -p1 --no-backup-if-mismatch -d "$WORK/out/$crate" < "$HERE/$patch_file"
   fi
 done < "$SERIES"
 

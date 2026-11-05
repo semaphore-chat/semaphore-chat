@@ -5398,13 +5398,13 @@ impl Window {
         });
     }
 
-    /// PATCH(video): the off-thread uploader for video surfaces, when the renderer has one.
+    /// The off-thread uploader for video surfaces, when the renderer has one.
     pub fn video_uploader(&self) -> Option<Arc<dyn crate::VideoUploader>> {
         self.sprite_atlas.video_uploader()
     }
 
-    /// PATCH(video): paint a video surface at the current z-index. Clipped by the content
-    /// mask and rounded by `corner_radii` like an image.
+    /// Paint a video surface at the current z-index. Clipped by the content mask and rounded
+    /// by `corner_radii` like an image. Draws nothing until a frame has been uploaded.
     #[cfg(not(any(target_os = "macos", target_os = "ios")))]
     pub fn paint_video_surface(
         &mut self,

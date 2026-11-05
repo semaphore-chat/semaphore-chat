@@ -1795,7 +1795,7 @@ impl From<RenderImageParams> for AtlasKey {
 
 #[expect(missing_docs)]
 pub trait PlatformAtlas {
-    /// PATCH(video): off-thread uploader for in-place video surfaces, when the renderer has one.
+    /// Off-thread uploader for in-place video surfaces, when the renderer has one.
     fn video_uploader(&self) -> Option<Arc<dyn VideoUploader>> {
         None
     }
@@ -1814,7 +1814,7 @@ pub trait PlatformAtlas {
     }
 }
 
-/// PATCH(video): identifies one in-place updated video surface.
+/// Identifies one in-place updated video surface.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct VideoSurfaceId(pub u64);
 
@@ -1826,7 +1826,7 @@ impl VideoSurfaceId {
     }
 }
 
-/// PATCH(video): one NV12 frame borrowed from the caller.
+/// One NV12 frame borrowed from the caller.
 pub struct Nv12Frame<'a> {
     /// Luma width in pixels.
     pub width: u32,
@@ -1836,15 +1836,16 @@ pub struct Nv12Frame<'a> {
     pub y: &'a [u8],
     /// Bytes per luma row.
     pub y_stride: u32,
-    /// Interleaved CbCr plane, half size in each dimension.
+    /// Interleaved CbCr plane, half size in each dimension (rounded up).
     pub uv: &'a [u8],
     /// Bytes per CbCr row.
     pub uv_stride: u32,
 }
 
-/// PATCH(video): uploads frames into a surface's textures in place. Callable from any thread.
+/// Uploads frames into a surface's textures in place. Callable from any thread.
 pub trait VideoUploader: Send + Sync {
     /// Creates the textures on first use or on a size change, then overwrites them.
+    /// Where the renderer cannot touch the GPU off-thread, the latest frame waits for the next draw.
     fn upload(&self, id: VideoSurfaceId, frame: &Nv12Frame<'_>);
     /// Frees the textures.
     fn remove(&self, id: VideoSurfaceId);

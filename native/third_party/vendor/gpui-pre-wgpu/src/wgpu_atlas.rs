@@ -23,12 +23,16 @@ fn etagere_point_to_device(point: etagere::Point) -> Point<DevicePixels> {
 
 pub struct WgpuAtlas(Mutex<AtlasState<WgpuAtlasTextures>>, Arc<WgpuVideoStore>);
 
-/// PATCH(video): NV12 textures, written in place, keyed by surface.
+/// NV12 textures, written in place, keyed by surface.
 pub struct WgpuVideoStore {
+    state: Mutex<WgpuVideoState>,
+    next_generation: std::sync::atomic::AtomicU64,
+}
+
+struct WgpuVideoState {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
-    surfaces: Mutex<collections::FxHashMap<gpui::VideoSurfaceId, Arc<WgpuVideoTexture>>>,
-    next_generation: std::sync::atomic::AtomicU64,
+    surfaces: collections::FxHashMap<gpui::VideoSurfaceId, Arc<WgpuVideoTexture>>,
 }
 
 pub struct WgpuVideoTexture {
@@ -41,9 +45,20 @@ pub struct WgpuVideoTexture {
 }
 
 impl WgpuVideoStore {
-    fn create(&self, width: u32, height: u32) -> Arc<WgpuVideoTexture> {
+    fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
+        Self {
+            state: Mutex::new(WgpuVideoState {
+                device,
+                queue,
+                surfaces: Default::default(),
+            }),
+            next_generation: Default::default(),
+        }
+    }
+
+    fn create(&self, device: &wgpu::Device, width: u32, height: u32) -> Arc<WgpuVideoTexture> {
         let plane = |label, width, height, format| {
-            self.device.create_texture(&wgpu::TextureDescriptor {
+            device.create_texture(&wgpu::TextureDescriptor {
                 label: Some(label),
                 size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
                 mip_level_count: 1,
@@ -67,11 +82,19 @@ impl WgpuVideoStore {
     }
 
     pub fn get(&self, id: gpui::VideoSurfaceId) -> Option<Arc<WgpuVideoTexture>> {
-        self.surfaces.lock().get(&id).cloned()
+        self.state.lock().surfaces.get(&id).cloned()
     }
 
-    fn write(&self, texture: &wgpu::Texture, width: u32, height: u32, stride: u32, data: &[u8]) {
-        self.queue.write_texture(
+    /// Textures died with the old device. The next upload to each surface recreates them.
+    fn handle_device_lost(&self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
+        let mut state = self.state.lock();
+        state.device = device;
+        state.queue = queue;
+        state.surfaces.clear();
+    }
+
+    fn write(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, stride: u32, data: &[u8]) {
+        queue.write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture,
                 mip_level: 0,
@@ -91,20 +114,23 @@ impl WgpuVideoStore {
 
 impl gpui::VideoUploader for WgpuVideoStore {
     fn upload(&self, id: gpui::VideoSurfaceId, frame: &gpui::Nv12Frame<'_>) {
-        let texture = {
-            let mut surfaces = self.surfaces.lock();
-            match surfaces.get(&id) {
+        let (texture, queue) = {
+            let mut guard = self.state.lock();
+            let state = &mut *guard;
+            let texture = match state.surfaces.get(&id) {
                 Some(t) if t.size == (frame.width, frame.height) => t.clone(),
                 _ => {
-                    let t = self.create(frame.width, frame.height);
-                    surfaces.insert(id, t.clone());
+                    let t = self.create(&state.device, frame.width, frame.height);
+                    state.surfaces.insert(id, t.clone());
                     t
                 }
-            }
+            };
+            (texture, state.queue.clone())
         };
         // No lock is held across the staging copy.
-        self.write(&texture.y, frame.width, frame.height, frame.y_stride, frame.y);
-        self.write(
+        Self::write(&queue, &texture.y, frame.width, frame.height, frame.y_stride, frame.y);
+        Self::write(
+            &queue,
             &texture.uv,
             frame.width.div_ceil(2),
             frame.height.div_ceil(2),
@@ -114,7 +140,7 @@ impl gpui::VideoUploader for WgpuVideoStore {
     }
 
     fn remove(&self, id: gpui::VideoSurfaceId) {
-        self.surfaces.lock().remove(&id);
+        self.state.lock().surfaces.remove(&id);
     }
 }
 
@@ -147,12 +173,7 @@ impl WgpuAtlas {
         color_texture_format: wgpu::TextureFormat,
     ) -> Self {
         let max_texture_size = device.limits().max_texture_dimension_2d;
-        let video = Arc::new(WgpuVideoStore {
-            device: device.clone(),
-            queue: queue.clone(),
-            surfaces: Mutex::default(),
-            next_generation: Default::default(),
-        });
+        let video = Arc::new(WgpuVideoStore::new(device.clone(), queue.clone()));
         WgpuAtlas(Mutex::new(AtlasState::new(WgpuAtlasTextures {
             device,
             queue,
@@ -206,6 +227,7 @@ impl WgpuAtlas {
     /// Handles device lost by clearing all textures and cached tiles.
     /// The atlas will lazily recreate textures as needed on subsequent frames.
     pub fn handle_device_lost(&self, context: &WgpuContext) {
+        self.1.handle_device_lost(context.device.clone(), context.queue.clone());
         self.0.lock().clear(|textures| {
             textures.device = context.device.clone();
             textures.queue = context.queue.clone();

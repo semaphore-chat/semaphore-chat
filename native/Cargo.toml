@@ -44,6 +44,7 @@ tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
 [patch.crates-io]
 gpui-pre = { path = "third_party/vendor/gpui-pre" }
 gpui-pre-wgpu = { path = "third_party/vendor/gpui-pre-wgpu" }
+gpui-pre-windows = { path = "third_party/vendor/gpui-pre-windows" }
 
 [profile.dev]
 debug = "line-tables-only"
