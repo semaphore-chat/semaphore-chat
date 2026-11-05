@@ -770,6 +770,40 @@ describe('MessagesService', () => {
   });
 
   describe('remove', () => {
+    it('recounts the thread when a reply is deleted', async () => {
+      const sentAt = new Date('2026-01-01T00:00:00Z');
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.findFirst.mockResolvedValue({ sentAt });
+
+      await service.remove('reply-1');
+
+      expect(mockDatabase.message.updateMany).toHaveBeenCalledWith({
+        where: { id: 'parent-1', replyCount: { gt: 0 } },
+        data: { replyCount: { decrement: 1 } },
+      });
+      expect(mockDatabase.message.update).toHaveBeenCalledWith({
+        where: { id: 'parent-1' },
+        data: { lastReplyAt: sentAt },
+      });
+    });
+
+    it('recounts nothing for an ordinary message', async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-1' }),
+      );
+
+      await service.remove('msg-1');
+
+      expect(mockDatabase.message.updateMany).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
       // Default: no thread replies
       mockDatabase.message.findMany.mockResolvedValue([]);

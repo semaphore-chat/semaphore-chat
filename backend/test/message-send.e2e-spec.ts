@@ -536,6 +536,98 @@ describe('Sending a message (e2e)', () => {
     });
   });
 
+  describe('deleting a thread reply', () => {
+    async function threadWithReplies(count: number) {
+      const parent = await restSend('sender', {
+        channelId,
+        spans: spans(randomUUID()),
+      }).expect(201);
+      const parentMessageId = (parent.body as { id: string }).id;
+      const replies: string[] = [];
+      for (let i = 0; i < count; i++) {
+        const reply = await http()
+          .post(`/api/threads/${parentMessageId}/replies`)
+          .set('Authorization', auth('sender'))
+          .send({ spans: spans(randomUUID()), attachments: [] })
+          .expect(201);
+        replies.push((reply.body as { id: string }).id);
+      }
+      return { parentMessageId, replies };
+    }
+    const deleteMessage = (messageId: string) =>
+      http()
+        .delete(`/api/messages/${messageId}`)
+        .set('Authorization', auth('sender'))
+        .expect(204);
+    const parentRow = (parentMessageId: string) =>
+      db.message.findUniqueOrThrow({ where: { id: parentMessageId } });
+
+    it('lowers the count, and the badge goes with it', async () => {
+      const { parentMessageId, replies } = await threadWithReplies(2);
+      const reader = await subscribed('reader');
+      const count = nextEvent<{ parentMessageId: string; replyCount: number }>(
+        reader,
+        ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+      );
+
+      await deleteMessage(replies[1]);
+
+      expect((await parentRow(parentMessageId)).replyCount).toBe(1);
+      expect(await count).toMatchObject({ parentMessageId, replyCount: 1 });
+    });
+
+    it('moves lastReplyAt back to the newest reply left', async () => {
+      const { parentMessageId, replies } = await threadWithReplies(2);
+      const first = await db.message.findUniqueOrThrow({
+        where: { id: replies[0] },
+      });
+
+      await deleteMessage(replies[1]);
+
+      expect((await parentRow(parentMessageId)).lastReplyAt).toEqual(
+        first.sentAt,
+      );
+    });
+
+    it('the last reply leaves zero and no lastReplyAt', async () => {
+      const { parentMessageId, replies } = await threadWithReplies(1);
+
+      await deleteMessage(replies[0]);
+
+      expect(await parentRow(parentMessageId)).toMatchObject({
+        replyCount: 0,
+        lastReplyAt: null,
+      });
+    });
+
+    it('never goes below zero, on a count already wrong', async () => {
+      const { parentMessageId, replies } = await threadWithReplies(1);
+      await db.message.update({
+        where: { id: parentMessageId },
+        data: { replyCount: 0 },
+      });
+
+      await deleteMessage(replies[0]);
+
+      expect((await parentRow(parentMessageId)).replyCount).toBe(0);
+    });
+
+    it('deleting an ordinary message sends no count', async () => {
+      const reader = await subscribed('reader');
+      const heard: unknown[] = [];
+      reader.on(ServerEvents.THREAD_REPLY_COUNT_UPDATED, (p: unknown) =>
+        heard.push(p),
+      );
+      const deleted = nextEvent<unknown>(reader, ServerEvents.DELETE_MESSAGE);
+      const { parentMessageId } = await threadWithReplies(0);
+
+      await deleteMessage(parentMessageId);
+
+      await deleted;
+      expect(heard).toEqual([]);
+    });
+  });
+
   describe('sockets', () => {
     it('SEND_MESSAGE still acks the id and broadcasts', async () => {
       const reader = await subscribed('reader');

@@ -500,6 +500,25 @@ export class MessagesController {
         channelId: messageToDelete.channelId,
         directMessageGroupId: messageToDelete.directMessageGroupId,
       });
+
+      if (messageToDelete.parentMessageId) {
+        const counts = await this.messagesService.findThreadCounts(
+          messageToDelete.parentMessageId,
+        );
+        if (counts) {
+          this.websocketService.sendToRoom(
+            roomId,
+            ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+            {
+              parentMessageId: messageToDelete.parentMessageId,
+              replyCount: counts.replyCount,
+              lastReplyAt: counts.lastReplyAt?.toISOString() ?? null,
+              channelId: counts.channelId,
+              directMessageGroupId: counts.directMessageGroupId,
+            },
+          );
+        }
+      }
     }
   }
 }

@@ -188,6 +188,40 @@ export class MessagesService {
     }
   }
 
+  /** After a reply is deleted: one fewer, and the latest is whichever is left. */
+  private async recountReplies(
+    tx: Prisma.TransactionClient,
+    parentMessageId: string,
+  ) {
+    const latest = await tx.message.findFirst({
+      where: { parentMessageId },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    });
+    // Never below zero: older rows can have a count that's already wrong.
+    await tx.message.updateMany({
+      where: { id: parentMessageId, replyCount: { gt: 0 } },
+      data: { replyCount: { decrement: 1 } },
+    });
+    await tx.message.update({
+      where: { id: parentMessageId },
+      data: { lastReplyAt: latest?.sentAt ?? null },
+    });
+  }
+
+  /** What a thread's badge shows. */
+  findThreadCounts(parentMessageId: string) {
+    return this.databaseService.message.findUnique({
+      where: { id: parentMessageId },
+      select: {
+        channelId: true,
+        directMessageGroupId: true,
+        replyCount: true,
+        lastReplyAt: true,
+      },
+    });
+  }
+
   /**
    * Keeps a deleted message's nonce, so a client still retrying that send
    * (it never got the ack) can't bring the message back.
@@ -459,6 +493,10 @@ export class MessagesService {
         });
 
         await this.rememberDeletedNonces(tx, [deletedMessage]);
+
+        if (deletedMessage.parentMessageId) {
+          await this.recountReplies(tx, deletedMessage.parentMessageId);
+        }
 
         // Mark parent's attachments for deletion
         if (
