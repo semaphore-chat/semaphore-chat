@@ -21,7 +21,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until, timeout};
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config};
 
 pub const SUBSCRIBE_ALL: &str = "subscribeAll";
 pub const PRESENCE_ONLINE: &str = "presenceOnline";
@@ -62,6 +62,8 @@ pub struct SocketConfig {
     pub connect_timeout: Duration,
     pub presence_interval: Duration,
     pub reauthenticate_timeout: Duration,
+    /// How long a socket that survived a suspend gets to answer before it is replaced.
+    pub resume_probe_timeout: Duration,
     pub token_refresh_jitter: Duration,
 }
 
@@ -76,6 +78,7 @@ impl SocketConfig {
             connect_timeout: Duration::from_secs(20),
             presence_interval: Duration::from_secs(30),
             reauthenticate_timeout: Duration::from_secs(10),
+            resume_probe_timeout: Duration::from_secs(5),
             token_refresh_jitter: Duration::from_secs(30),
         }
     }
@@ -97,6 +100,9 @@ pub enum SocketEvent {
         name: String,
         payload: Value,
     },
+    /// After `resume()`: the socket survived the suspend and answered, so it was kept. There is
+    /// no `Connected` for it, and nothing that reached this socket was lost.
+    Resumed,
     Reauthenticated {
         result: Value,
     },
@@ -162,6 +168,8 @@ impl SocketClient {
             server_disconnects: 0,
             session_end_reason: None,
             refresh_at: None,
+            last_ping: Instant::now(),
+            resume_probe: None,
         };
         tokio::spawn(actor.run());
         (Self { commands, idle }, event_rx)
@@ -187,8 +195,10 @@ impl SocketClient {
         let _ = self.commands.send(Command::Suspend);
     }
 
-    /// The OS woke us. Any socket we still hold is suspect, so it is replaced at once, with no
-    /// backoff. `refresh` comes from core's `ResyncPlan`.
+    /// The OS woke us. A socket we still hold may be dead or alive, and replacing a live one
+    /// would throw away whatever the kernel has buffered for it, so it is asked first: it stays
+    /// on [`SocketEvent::Resumed`], and is replaced at once, with no backoff, if it doesn't
+    /// answer. With no socket, this connects. `refresh` comes from core's `ResyncPlan`.
     pub fn resume(&self, refresh: bool) {
         let _ = self.commands.send(Command::Resume { refresh });
     }
@@ -272,6 +282,15 @@ struct Actor {
     server_disconnects: u32,
     session_end_reason: Option<String>,
     refresh_at: Option<Instant>,
+    last_ping: Instant,
+    resume_probe: Option<ResumeProbe>,
+}
+
+/// An ack-requested `presenceOnline` sent to a socket that survived a suspend. TCP keeps order, so
+/// by the time its ack arrives, everything buffered ahead of it has been delivered.
+struct ResumeProbe {
+    ack_id: u64,
+    deadline: Instant,
 }
 
 impl Actor {
@@ -381,7 +400,10 @@ impl Actor {
     async fn open_inner(&mut self) -> Result<(Ws, u64, u64, String), ConnectFailure> {
         let other = |error: String| ConnectFailure::Other(error);
         let url = socketio::websocket_url(&self.config.base_url);
-        let (mut ws, _) = connect_async(url.as_str())
+        // Nagle off, as `ws` does for socket.io-client. subscribeAll and presenceOnline are two
+        // small writes in a row, so with it on, presenceOnline waits for the ack of the first,
+        // which the server delays by up to 40 ms because subscribeAll gets no reply.
+        let (mut ws, _) = connect_async_with_config(url.as_str(), None, true)
             .await
             .map_err(|error| other(format!("websocket error: {error}")))?;
         let open = match next_frame(&mut ws).await {
@@ -428,20 +450,26 @@ impl Actor {
             let _ = ack.send(Err(EmitError::ConnectionLost));
         }
         self.refresh_at = None;
+        // A socket found dead on resume is replaced at once: we just woke, nothing is failing.
+        let resuming = self.resume_probe.take().is_some();
         match ended {
             Ended::Transport(reason) => {
                 self.emit_event(SocketEvent::Disconnected {
                     reason: reason.into(),
                 });
-                let delay = self.next_backoff();
-                self.wait(delay).await;
+                if !resuming {
+                    let delay = self.next_backoff();
+                    self.wait(delay).await;
+                }
             }
             Ended::Restart => {
                 self.emit_event(SocketEvent::Disconnected {
                     reason: "transport close".into(),
                 });
-                let delay = self.next_backoff();
-                self.wait(delay).await;
+                if !resuming {
+                    let delay = self.next_backoff();
+                    self.wait(delay).await;
+                }
             }
             Ended::ClientLeft => {
                 self.emit_event(SocketEvent::Disconnected {
@@ -527,34 +555,21 @@ impl Actor {
                 return Ended::Transport("transport error");
             }
         }
-        let mut last_ping = Instant::now();
+        self.last_ping = Instant::now();
         let mut presence_at = Instant::now() + self.config.presence_interval;
         loop {
             // Far enough away never to fire when nothing is scheduled.
             let refresh_at = self
                 .refresh_at
                 .unwrap_or_else(|| Instant::now() + Duration::from_secs(86_400));
+            let probe_deadline = self
+                .resume_probe
+                .as_ref()
+                .map_or_else(|| Instant::now() + Duration::from_secs(86_400), |probe| probe.deadline);
             tokio::select! {
-                _ = sleep_until(last_ping + liveness) => return Ended::Transport("ping timeout"),
-                _ = sleep_until(presence_at) => {
-                    presence_at = Instant::now() + self.config.presence_interval;
-                    if send_text(&mut ws, self.presence_frame()).await.is_err() {
-                        return Ended::Transport("transport error");
-                    }
-                }
-                _ = sleep_until(refresh_at), if self.refresh_at.is_some() => {
-                    self.refresh_at = None;
-                    self.start_refresh();
-                }
-                command = self.command_rx.recv() => {
-                    let Some(command) = command else {
-                        self.want = Want::Stopped;
-                        return Ended::ClientLeft;
-                    };
-                    if let Some(ended) = self.handle_live_command(&mut ws, command).await {
-                        return ended;
-                    }
-                }
+                // Biased, frames first: after a freeze every timer is already due, and what is
+                // buffered on the socket has to be read before any of them can end the connection.
+                biased;
                 frame = ws.next() => {
                     let text = match frame {
                         None | Some(Err(_)) => return Ended::Transport("transport close"),
@@ -565,7 +580,7 @@ impl Actor {
                     };
                     match socketio::parse_frame(text.as_str()) {
                         Ok(Frame::Ping) => {
-                            last_ping = Instant::now();
+                            self.last_ping = Instant::now();
                             if send_text(&mut ws, PONG.to_owned()).await.is_err() {
                                 return Ended::Transport("transport error");
                             }
@@ -573,6 +588,11 @@ impl Actor {
                         Ok(Frame::ServerDisconnect) => return Ended::Server,
                         Ok(Frame::EngineClose) => return Ended::Transport("transport close"),
                         Ok(Frame::Event { name, payload, .. }) => self.on_event(name, payload),
+                        Ok(Frame::Ack { id, .. }) if self.resume_probe.as_ref().is_some_and(|probe| probe.ack_id == id) => {
+                            self.resume_probe = None;
+                            self.last_ping = Instant::now();
+                            self.emit_event(SocketEvent::Resumed);
+                        }
                         Ok(Frame::Ack { id, args }) => {
                             if let Some(ack) = self.pending.remove(&id) {
                                 let _ = ack.send(Ok(args));
@@ -583,6 +603,27 @@ impl Actor {
                         Err(error) => self.emit_event(SocketEvent::ConnectError { message: format!("bad frame: {error}") }),
                     }
                 }
+                command = self.command_rx.recv() => {
+                    let Some(command) = command else {
+                        self.want = Want::Stopped;
+                        return Ended::ClientLeft;
+                    };
+                    if let Some(ended) = self.handle_live_command(&mut ws, command).await {
+                        return ended;
+                    }
+                }
+                _ = sleep_until(self.last_ping + liveness) => return Ended::Transport("ping timeout"),
+                _ = sleep_until(presence_at) => {
+                    presence_at = Instant::now() + self.config.presence_interval;
+                    if send_text(&mut ws, self.presence_frame()).await.is_err() {
+                        return Ended::Transport("transport error");
+                    }
+                }
+                _ = sleep_until(refresh_at), if self.refresh_at.is_some() => {
+                    self.refresh_at = None;
+                    self.start_refresh();
+                }
+                _ = sleep_until(probe_deadline), if self.resume_probe.is_some() => return Ended::Restart,
             }
         }
     }
@@ -658,8 +699,20 @@ impl Actor {
                 Some(Ended::ClientLeft)
             }
             Command::Resume { refresh } => {
-                self.resume(refresh).await;
-                Some(Ended::ClientLeft)
+                if refresh {
+                    self.start_refresh();
+                }
+                self.next_ack_id += 1;
+                let ack_id = self.next_ack_id;
+                self.resume_probe = Some(ResumeProbe {
+                    ack_id,
+                    deadline: Instant::now() + self.config.resume_probe_timeout,
+                });
+                // The ping clock didn't run usefully while we were away: the probe decides now.
+                self.last_ping = Instant::now();
+                let idle = self.idle.load(Ordering::Relaxed);
+                let frame = socketio::encode_event(PRESENCE_ONLINE, &json!({ "idle": idle }), Some(ack_id));
+                send_text(ws, frame).await.err().map(|_| Ended::Transport("transport error"))
             }
             Command::TokenRefreshed(token) => {
                 self.next_ack_id += 1;
@@ -910,6 +963,75 @@ mod tests {
 
         let (_second, auth) = accept(&listener, 25_000).await;
         assert_eq!(auth, r#"40{"token":"Bearer fresh"}"#);
+    }
+
+    #[tokio::test]
+    async fn resume_keeps_a_socket_that_answers() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, mut events) = client_for(&listener, Duration::from_secs(3600)).await;
+        let (mut ws, _) = accept(&listener, 25_000).await;
+        next_text(&mut ws).await;
+        next_text(&mut ws).await;
+        assert!(matches!(events.recv().await, Some(SocketEvent::Connected { .. })));
+
+        client.resume(false);
+
+        assert_eq!(next_text(&mut ws).await, r#"421["presenceOnline",{"idle":false}]"#);
+        ws.send(Message::text(r#"42["buffered",1]"#)).await.unwrap();
+        ws.send(Message::text(r#"431["ACK"]"#)).await.unwrap();
+        assert_eq!(
+            events.recv().await,
+            Some(SocketEvent::Event { name: "buffered".into(), payload: json!(1) })
+        );
+        assert_eq!(events.recv().await, Some(SocketEvent::Resumed));
+        // Still the same connection.
+        ws.send(Message::text(r#"42["after",2]"#)).await.unwrap();
+        assert_eq!(
+            events.recv().await,
+            Some(SocketEvent::Event { name: "after".into(), payload: json!(2) })
+        );
+    }
+
+    #[tokio::test]
+    async fn resume_replaces_a_socket_that_does_not_answer_without_backoff() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut config = SocketConfig::new(format!("http://{}", listener.local_addr().unwrap()));
+        // Long enough that a backoff would fail the timeout below.
+        config.reconnect_delay = Duration::from_secs(60);
+        config.resume_probe_timeout = Duration::from_millis(50);
+        let tokens = Arc::new(FixedToken(std::sync::Mutex::new("first".into())));
+        let (client, mut events) = SocketClient::start(config, tokens);
+        client.connect();
+        let (mut ws, _) = accept(&listener, 25_000).await;
+        next_text(&mut ws).await;
+        next_text(&mut ws).await;
+
+        client.resume(false);
+
+        // The old socket stays open and silent. A new connection arrives anyway.
+        let (_second, _) = timeout(Duration::from_secs(5), accept(&listener, 25_000)).await.unwrap();
+        let mut seen = Vec::new();
+        while seen.len() < 3 {
+            seen.push(events.recv().await.unwrap());
+        }
+        assert!(matches!(seen[1], SocketEvent::Disconnected { .. }));
+        assert!(matches!(seen[2], SocketEvent::Connected { .. }));
+    }
+
+    #[tokio::test]
+    async fn resume_with_no_socket_connects() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, _events) = client_for(&listener, Duration::from_secs(3600)).await;
+        let (mut ws, _) = accept(&listener, 25_000).await;
+        next_text(&mut ws).await;
+        next_text(&mut ws).await;
+
+        client.suspend();
+        assert_eq!(next_text(&mut ws).await, "41");
+        client.resume(false);
+
+        let (_second, auth) = timeout(Duration::from_secs(5), accept(&listener, 25_000)).await.unwrap();
+        assert_eq!(auth, r#"40{"token":"Bearer first"}"#);
     }
 
     #[test]

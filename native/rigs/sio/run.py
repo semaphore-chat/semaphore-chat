@@ -771,13 +771,18 @@ def suspend(args):
         thaw_only(clients)
         clients["rust"].send(cmd="resume")  # A real client's wake-up handler. The web has none.
 
+    def tc_in(client, *args):
+        # The reference image has no tc, so a helper from the build image joins the client's
+        # namespace. It needs NET_ADMIN of its own and creates no network.
+        sh("docker", "run", "--rm", "--network", f"container:{client.name}", "--cap-add", "NET_ADMIN", build_image(), "tc", "qdisc", *args)
+
     def stall(clients):
         for client in clients.values():
-            sh("docker", "exec", "-u", "0", client.name, "tc", "qdisc", "add", "dev", "eth0", "root", "netem", "loss", "100%")
+            tc_in(client, "add", "dev", "eth0", "root", "netem", "loss", "100%")
 
     def unstall(clients):
         for client in clients.values():
-            sh("docker", "exec", "-u", "0", client.name, "tc", "qdisc", "del", "dev", "eth0", "root")
+            tc_in(client, "del", "dev", "eth0", "root")
 
     cases = [
         ("suspend-graceful", graceful, graceful_back, 30),

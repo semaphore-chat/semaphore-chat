@@ -156,6 +156,10 @@ fn start_session(command: &Value, out: &mpsc::UnboundedSender<Value>) -> Session
                 SocketEvent::Event { name, payload } => {
                     json!({"k":"ev","t":t,"conn":conn,"e":name,"p":payload})
                 }
+                SocketEvent::Resumed => {
+                    core_events.socket_connected();
+                    json!({"k":"resumed","t":t,"conn":conn})
+                }
                 SocketEvent::Reauthenticated { result } => {
                     json!({"k":"reauthenticated","t":t,"result":result})
                 }
