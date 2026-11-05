@@ -5,6 +5,7 @@ import {
   type PresetId,
 } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
+import { MessagesService } from '@/messages/messages.service';
 import {
   createE2eApp,
   resetDatabase,
@@ -345,14 +346,13 @@ describe('Channel permissions phase 2 (e2e)', () => {
           members: { create: [{ userId: id.owner }, { userId: id.member }] },
         },
       });
-      const res = await as('owner')
-        .post('/api/messages', {
-          directMessageGroupId: dm.id,
-          spans: [mention(generalId, '#p2-general')],
-          attachments: [],
-        })
-        .expect(201);
-      const spans = await spansOf((res.body as { id: string }).id);
+      const message = await app.get(MessagesService).create({
+        authorId: id.owner,
+        directMessageGroupId: dm.id,
+        spans: [mention(generalId, '#p2-general')],
+        attachments: [],
+      } as never);
+      const spans = await spansOf(message.id);
       expect(spans[0]).toMatchObject({ type: 'PLAINTEXT', channelId: null });
     });
 

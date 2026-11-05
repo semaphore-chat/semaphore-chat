@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -80,6 +81,12 @@ export class MessagesController {
     @Req() req: AuthenticatedRequest,
     @Body() createMessageDto: CreateMessageDto,
   ): Promise<EnrichedMessageDto> {
+    // RBAC here checks the channel. Without one, the guard falls back to the
+    // instance-level check, which says nothing about where this message goes.
+    if (!createMessageDto.channelId) {
+      throw new BadRequestException('channelId is required');
+    }
+
     const message = await this.messagesService.create({
       ...createMessageDto,
       authorId: req.user.id,

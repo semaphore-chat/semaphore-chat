@@ -3,7 +3,11 @@ import type { Mocked } from '@suites/doubles.jest';
 import { MessagesService } from './messages.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { SpanType, FileType } from '@prisma/client';
@@ -67,6 +71,34 @@ describe('MessagesService', () => {
   });
 
   describe('create', () => {
+    describe('target', () => {
+      const base = { authorId: 'user-123', spans: [], attachments: [] };
+
+      it.each([
+        ['both', { channelId: 'channel-1', directMessageGroupId: 'group-1' }],
+        ['neither', {}],
+        ['only nulls', { channelId: null, directMessageGroupId: null }],
+      ])('rejects %s before writing anything', async (_label, target) => {
+        await expect(
+          service.create({ ...base, ...target } as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a channel', { channelId: 'channel-1', directMessageGroupId: null }],
+        ['a DM group', { channelId: null, directMessageGroupId: 'group-1' }],
+      ])('accepts %s', async (_label, target) => {
+        mockDatabase.message.create.mockResolvedValue(
+          buildMessageWithIncludes({ ...base, ...target }),
+        );
+
+        await service.create({ ...base, ...target } as any);
+
+        expect(mockDatabase.message.create).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('ATTACH_FILES', () => {
       const base = {
         channelId: 'channel-123',
@@ -506,6 +538,32 @@ describe('MessagesService', () => {
   });
 
   describe('update', () => {
+    it('writes only what an edit may change', async () => {
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', {
+        channelId: 'other-channel',
+        directMessageGroupId: 'other-group',
+        replyToId: 'other-message',
+        pendingAttachments: 9,
+        spans: [
+          {
+            type: SpanType.PLAINTEXT,
+            text: 'Edited',
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      } as any);
+
+      const { data } = mockDatabase.message.update.mock.calls[0][0];
+      expect(Object.keys(data).sort()).toEqual(['editedAt', 'searchText']);
+    });
+
     it('should update a message and set editedAt', async () => {
       const messageId = 'msg-123';
       const updateDto = {
