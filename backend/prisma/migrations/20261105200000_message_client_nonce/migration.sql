@@ -1,3 +1,9 @@
+-- Add the nullable column and the tombstone table only. The unique index over
+-- "Message" is built in 20261105200100_message_client_nonce_index with
+-- CREATE INDEX CONCURRENTLY, so sending and reading stay available while it
+-- builds; this migration takes its locks briefly and holds none on the table
+-- afterwards.
+
 -- AlterTable
 ALTER TABLE "Message" ADD COLUMN     "clientNonce" TEXT;
 
@@ -9,10 +15,6 @@ CREATE TABLE "MessageNonceTombstone" (
 
     CONSTRAINT "MessageNonceTombstone_pkey" PRIMARY KEY ("authorId","clientNonce")
 );
-
--- CreateIndex: blocks writes to "Message" while it builds, so a very large
--- instance should expect a short pause in sending during the upgrade.
-CREATE UNIQUE INDEX "Message_authorId_clientNonce_key" ON "Message"("authorId", "clientNonce");
 
 -- AddForeignKey
 ALTER TABLE "MessageNonceTombstone" ADD CONSTRAINT "MessageNonceTombstone_authorId_fkey" FOREIGN KEY ("authorId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### ⚠️ Breaking changes / upgrade checklist
 
-- **Database migration with a unique index on messages.** `20261105200000_message_client_nonce` adds `Message.clientNonce`, a `MessageNonceTombstone` table and a unique index on `(authorId, clientNonce)`. The column is empty for existing messages, so no conflict is possible, but building the index blocks sending while it runs. Expect a short pause on an instance with a very large message table.
+- **Two database migrations for message nonces.** `20261105200000_message_client_nonce` adds the nullable `Message.clientNonce` column and the `MessageNonceTombstone` table; `20261105200100_message_client_nonce_index` then builds the unique index on `(authorId, clientNonce)` with `CREATE INDEX CONCURRENTLY` as its only statement. The column is empty for existing messages, so no conflict is possible, and neither migration blocks sending or reading while it runs. Concurrent builds are slower and can fail on their own (a cancelled deploy, a server restart): that leaves an invalid index and marks the migration failed, which blocks the next deploy. Drop the index (`DROP INDEX CONCURRENTLY IF EXISTS "Message_authorId_clientNonce_key";`), mark the migration rolled back (`pnpm exec prisma migrate resolve --rolled-back 20261105200100_message_client_nonce_index`), then deploy again.
 
 ## [0.8.0] - 2026-11-10
 
