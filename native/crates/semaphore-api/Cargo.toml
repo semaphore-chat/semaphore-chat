@@ -5,3 +5,20 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish.workspace = true
+
+# The generated client carries a doc example per operation, against a server that is not
+# there; they are not meant to run.
+[lib]
+doctest = false
+
+[dependencies]
+progenitor-client = "0.15.1"
+# No TLS feature here: the client sends JSON over whatever reqwest client the caller
+# supplies. `semaphore-net` picks the TLS backend.
+reqwest = { workspace = true, features = ["multipart"] }
+semaphore-wire.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread"] }
