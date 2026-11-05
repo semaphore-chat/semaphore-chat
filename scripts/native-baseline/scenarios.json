@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "description": "Client-neutral definitions. A native client replays these against the same backend and LiveKit and reports the same result fields.",
+  "window": { "width": 1920, "height": 1080, "device_scale_factor": 1 },
+  "landing": "Launched on a signed-in profile, routed to Test Community #general.",
+  "interactive": "The #general composer accepts input and at least one message is rendered.",
+  "history": {
+    "default_messages": 5000,
+    "prng_seed": 20261105,
+    "mix": { "image_attachment": 0.04, "code_block": 0.05, "reply": 0.05, "link_preview": 0.05, "mention": 0.10, "formatted": 0.10, "long_text": 0.06, "plain": 0.55 },
+    "reactions_on": 0.15,
+    "image_pool": { "count": 8, "width": 800, "height": 600 },
+    "note": "Each message starts with #<seq>, oldest = 0, so a client can report how far it scrolled."
+  },
+  "load": {
+    "low_load_per_cpu": 0.25,
+    "note": "A scenario is provisional if the 1-minute load, at either end or at any sample in its window, exceeds low_load_per_cpu x CPUs plus its own expected_self_load. CPU, cold-start and frame numbers from a provisional run don't stand as the baseline."
+  },
+  "scenarios": {
+    "a_idle": {
+      "title": "Logged in, idle",
+      "settle_s": 120,
+      "window_s": 60,
+      "readings_at_s": [25, 120],
+      "note": "readings_at_s are seconds after interactive; the 25 s reading is the one comparable with the native spike's."
+    },
+    "a_noinstrument": {
+      "title": "Idle with no debug port or driver: the instrumentation delta",
+      "settle_s": 120,
+      "window_s": 60,
+      "readings_at_s": [25, 120],
+      "note": "No interactive signal without a driver, so readings_at_s count from launch."
+    },
+    "b_scroll": {
+      "title": "Scroll a channel with large mixed history, upward",
+      "settle_s": 15,
+      "window_s": 60,
+      "expected_self_load": 2,
+      "wheel": { "notches_per_s": 10, "direction": "up", "x11": "xdotool click 4" },
+      "min_messages_scrolled": 200
+    },
+    "c_voice_audio": {
+      "title": "In a voice call, audio only",
+      "channel": "voice-chat",
+      "settle_s": 20,
+      "window_s": 60,
+      "publishers": { "audio": 3, "camera": 0, "screen": 0 },
+      "expected_self_load": 2,
+      "local_mic": "Chromium fake device (--use-fake-device-for-media-stream)"
+    },
+    "d_video_grid": {
+      "title": "Receiving 9x 720p cameras and 1x 1080p screen share",
+      "channel": "voice-video",
+      "settle_s": 20,
+      "window_s": 60,
+      "publishers": {
+        "audio": 0,
+        "camera": 9,
+        "screen": 1,
+        "camera_spec": { "width": 1280, "height": 720, "fps": 30, "max_bitrate": 1700000, "codec": "vp8", "simulcast": false },
+        "screen_spec": { "width": 1920, "height": 1080, "fps": 30, "max_bitrate": 4000000, "codec": "vp8", "simulcast": false }
+      },
+      "min_fps_ratio": 0.8,
+      "expected_self_load": 16,
+      "note": "One layer per stream: adaptiveStream would otherwise pick a layer to fit each tile, and 'receiving 720p' would not hold. Fails validation, with no metrics, unless every stream is received at exact size and at least min_fps_ratio of the rate."
+    },
+    "e_idle_growth": {
+      "title": "30-minute idle growth",
+      "settle_s": 0,
+      "window_s": 1800,
+      "mem_interval_s": 30,
+      "note": "pss_slope_mb_per_hour fits the whole window; pss_slope_after_10min_mb_per_hour skips start-up settling."
+    },
+    "probe_angle_lavapipe": {
+      "title": "Best-effort: idle with ANGLE forced to Mesa lavapipe (the native spike's rasterizer)",
+      "settle_s": 30,
+      "window_s": 60,
+      "extra_args": ["--use-gl=angle", "--use-angle=vulkan", "--enable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE", "--ignore-gpu-blocklist"],
+      "extra_env": { "VK_ICD_FILENAMES": "/usr/share/vulkan/icd.d/lvp_icd.json" },
+      "best_effort": true
+    }
+  },
+  "cold_start": {
+    "runs": 10,
+    "variants": {
+      "warm_cache": "Process cold, app files in the page cache",
+      "evicted_cache": "App files dropped from the page cache first (posix_fadvise DONTNEED; system libraries stay cached)"
+    }
+  }
+}
