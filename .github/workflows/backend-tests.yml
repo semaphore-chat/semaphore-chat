@@ -377,7 +377,7 @@ jobs:
 
       - name: Run E2E tests
         working-directory: ./backend
-        run: pnpm run test:e2e
+        run: pnpm run test:e2e --reporters=default --reporters=github-actions
         env:
           DATABASE_URL: postgresql://semaphore:semaphore@localhost:5432/test
           REDIS_HOST: localhost
