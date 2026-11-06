@@ -7209,7 +7209,9 @@ name = "semaphore-ui"
 version = "0.0.0"
 dependencies = [
  "gpui-kit",
+ "image",
  "semaphore-core",
+ "semaphore-design",
 ]
 
 [[package]]

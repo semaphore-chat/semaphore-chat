@@ -8,8 +8,14 @@ publish.workspace = true
 
 [dependencies]
 gpui-kit.workspace = true
+# Only for building fixture images in memory: `RenderImage` is made of `image::Frame`s.
+image = { version = "0.25", default-features = false, optional = true }
 semaphore-core.workspace = true
+semaphore-design.workspace = true
+
+[dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
 
 [features]
 # The story registry and scenario fixtures. The app never turns this on.
-stories = ["semaphore-core/fixtures"]
+stories = ["semaphore-core/fixtures", "dep:image"]
