@@ -370,6 +370,22 @@ export class PermissionsService {
   }
 
   /**
+   * Moderation's rule: the actor holds a role and strictly outranks the
+   * target. A user with no roles ranks below everyone.
+   */
+  async outranks(
+    actorId: string,
+    targetId: string,
+    communityId: string,
+  ): Promise<boolean> {
+    const [actor, target] = await Promise.all([
+      this.getRank(actorId, communityId),
+      this.getRank(targetId, communityId),
+    ]);
+    return actor.best !== Number.MAX_SAFE_INTEGER && actor.best < target.best;
+  }
+
+  /**
    * Every other community member holding a role ranked at or above
    * `position`, with ALL their community roles (their real role set).
    */

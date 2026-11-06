@@ -1,6 +1,7 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { CommunityRolesService } from './community-roles.service';
+import { PermissionsService } from './permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import {
   PermissionsCacheService,
@@ -36,6 +37,10 @@ describe('CommunityRolesService', () => {
 
     service = unit;
     permissionsCacheService = unitRef.get(PermissionsCacheService);
+    // Rank is covered end to end in test/role-hierarchy.e2e-spec.ts
+    unitRef
+      .get(PermissionsService)
+      .getRank.mockResolvedValue({ best: 10, isTop: true });
   });
 
   afterEach(() => {

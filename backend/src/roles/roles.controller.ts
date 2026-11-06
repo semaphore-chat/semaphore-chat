@@ -157,8 +157,13 @@ export class RolesController {
   async reorderRoles(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Body() dto: ReorderRolesDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<RoleDto[]> {
-    return this.communityRolesService.reorderRoles(communityId, dto.roleIds);
+    return this.communityRolesService.reorderRolesAsActor(
+      req.user,
+      communityId,
+      dto.roleIds,
+    );
   }
 
   @Post('community/:communityId/reset-defaults')
@@ -173,8 +178,12 @@ export class RolesController {
   @ApiOkResponse({ type: CommunityRolesResponseDto })
   async resetDefaultCommunityRoles(
     @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<CommunityRolesResponseDto> {
-    return this.communityRolesService.resetDefaultCommunityRoles(communityId);
+    return this.communityRolesService.resetDefaultsAsActor(
+      req.user,
+      communityId,
+    );
   }
 
   @Post('community/:communityId')
@@ -236,8 +245,13 @@ export class RolesController {
   async deleteRole(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.communityRolesService.deleteRole(roleId, communityId);
+    return this.communityRolesService.deleteRoleAsActor(
+      req.user,
+      roleId,
+      communityId,
+    );
   }
 
   // ===== USER-ROLE ASSIGNMENT ENDPOINTS =====
@@ -254,8 +268,10 @@ export class RolesController {
   async assignRoleToUser(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Body() assignRoleDto: AssignRoleDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.communityRolesService.assignUserToCommunityRole(
+    return this.communityRolesService.assignRoleAsActor(
+      req.user,
       assignRoleDto.userId,
       communityId,
       assignRoleDto.roleId,
@@ -275,8 +291,10 @@ export class RolesController {
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('roleId', ParseUUIDPipe) roleId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.communityRolesService.removeUserFromCommunityRole(
+    return this.communityRolesService.removeRoleAsActor(
+      req.user,
       userId,
       communityId,
       roleId,
@@ -321,10 +339,12 @@ export class RolesController {
   @RbacResource({ type: RbacResourceType.INSTANCE })
   async createInstanceRole(
     @Body() createRoleDto: CreateRoleDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<RoleDto> {
     return this.instanceRolesService.createInstanceRole(
       createRoleDto.name,
       createRoleDto.actions,
+      req.user,
     );
   }
 
@@ -338,8 +358,13 @@ export class RolesController {
   async updateInstanceRole(
     @Param('roleId', ParseUUIDPipe) roleId: string,
     @Body() updateRoleDto: UpdateRoleDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<RoleDto> {
-    return this.instanceRolesService.updateInstanceRole(roleId, updateRoleDto);
+    return this.instanceRolesService.updateInstanceRole(
+      roleId,
+      updateRoleDto,
+      req.user,
+    );
   }
 
   /**
@@ -367,8 +392,10 @@ export class RolesController {
   async assignInstanceRole(
     @Param('roleId', ParseUUIDPipe) roleId: string,
     @Body() dto: AssignInstanceRoleDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.instanceRolesService.assignUserToInstanceRole(
+    return this.instanceRolesService.assignRoleAsActor(
+      req.user,
       dto.userId,
       roleId,
     );
@@ -385,8 +412,13 @@ export class RolesController {
   async removeInstanceRole(
     @Param('roleId', ParseUUIDPipe) roleId: string,
     @Param('userId', ParseUUIDPipe) userId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.instanceRolesService.removeUserFromInstanceRole(userId, roleId);
+    return this.instanceRolesService.removeRoleAsActor(
+      req.user,
+      userId,
+      roleId,
+    );
   }
 
   /**

@@ -10,9 +10,10 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
   OnModuleInit,
 } from '@nestjs/common';
-import { RbacActions, Prisma } from '@prisma/client';
+import { InstanceRole, RbacActions, Prisma } from '@prisma/client';
 import { UserRolesResponseDto, RoleDto } from './dto/user-roles-response.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import {
@@ -77,6 +78,73 @@ export class InstanceRolesService implements OnModuleInit {
       resourceType: 'INSTANCE',
       roles,
     };
+  }
+
+  // ===== WHO MAY CHANGE INSTANCE ROLES =====
+
+  /**
+   * Instance-wide authority: the instance owner, or someone holding every
+   * instance admin action. Default roles carry actions outside that set
+   * (Community Creator's, User Manager's UNBAN_USER), so an Instance Admin
+   * couldn't otherwise hand out roles that are theirs to manage.
+   */
+  async hasFullInstanceAuthority(actor: {
+    id: string;
+    role: string;
+  }): Promise<boolean> {
+    if (actor.role === InstanceRole.OWNER) return true;
+    const held = await this.heldInstanceActions(actor.id);
+    return getInstanceAdminActions().every((a) => held.has(a));
+  }
+
+  private async heldInstanceActions(userId: string): Promise<Set<RbacActions>> {
+    const { roles } = await this.getUserInstanceRoles(userId);
+    return new Set(roles.flatMap((r) => r.actions));
+  }
+
+  /** Below full authority, you can only work with actions you hold yourself. */
+  private async assertMayHandle(
+    actor: { id: string; role: string },
+    actions: RbacActions[],
+  ): Promise<void> {
+    if (await this.hasFullInstanceAuthority(actor)) return;
+    const held = await this.heldInstanceActions(actor.id);
+    const missing = actions.filter((a) => !held.has(a));
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `Cannot grant permissions you do not have: ${missing.join(', ')}`,
+      );
+    }
+  }
+
+  /** Assignment on behalf of a user. */
+  async assignRoleAsActor(
+    actor: { id: string; role: string },
+    userId: string,
+    roleId: string,
+  ): Promise<void> {
+    const role = await this.databaseService.role.findUnique({
+      where: { id: roleId },
+      select: { communityId: true, actions: true },
+    });
+    if (role && !role.communityId) {
+      await this.assertMayHandle(actor, role.actions);
+    }
+    await this.assignUserToInstanceRole(userId, roleId);
+  }
+
+  /** Removal on behalf of a user: it takes the standing to have granted it. */
+  async removeRoleAsActor(
+    actor: { id: string; role: string },
+    userId: string,
+    roleId: string,
+  ): Promise<void> {
+    const role = await this.databaseService.role.findUnique({
+      where: { id: roleId },
+      select: { actions: true },
+    });
+    if (role) await this.assertMayHandle(actor, role.actions);
+    await this.removeUserFromInstanceRole(userId, roleId);
   }
 
   // ===== INSTANCE ROLE MANAGEMENT =====
@@ -160,6 +228,7 @@ export class InstanceRolesService implements OnModuleInit {
   async createInstanceRole(
     name: string,
     actions: RbacActions[],
+    actor?: { id: string; role: string },
   ): Promise<RoleDto> {
     // Validate that all actions are valid instance-level actions
     const validActions = getInstanceAdminActions();
@@ -170,6 +239,8 @@ export class InstanceRolesService implements OnModuleInit {
         `Actions not valid for instance roles: ${invalidActions.join(', ')}`,
       );
     }
+
+    if (actor) await this.assertMayHandle(actor, actions);
 
     // Check if role with this name already exists
     const existingRole = await this.databaseService.role.findFirst({
@@ -209,6 +280,7 @@ export class InstanceRolesService implements OnModuleInit {
   async updateInstanceRole(
     roleId: string,
     dto: UpdateRoleDto,
+    actor?: { id: string; role: string },
   ): Promise<RoleDto> {
     const role = await this.databaseService.role.findUnique({
       where: { id: roleId },
@@ -239,6 +311,14 @@ export class InstanceRolesService implements OnModuleInit {
           `Actions not valid for instance roles: ${invalidActions.join(', ')}`,
         );
       }
+    }
+
+    // Editing a role takes the standing to hold what it has and what it gets
+    if (actor) {
+      await this.assertMayHandle(actor, [
+        ...role.actions,
+        ...(dto.actions ?? []),
+      ]);
     }
 
     // Check for name conflicts if renaming (scoped to instance roles only)
@@ -338,7 +418,8 @@ export class InstanceRolesService implements OnModuleInit {
       where: { id: roleId },
     });
 
-    if (!role) {
+    // A community role's actions must never apply instance-wide
+    if (!role || role.communityId) {
       throw new NotFoundException('Role not found');
     }
 
