@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-05
+
+A security release. An audit found authorization gaps across roles, members, invites, messages, voice and direct messages, including ways for a moderator or user manager to gain admin or owner rights. **Upgrade as soon as you can.**
+
+### ⚠️ Breaking changes / upgrade checklist
+
+Check these before upgrading. Each one is covered in full under **Upgrade notes** below. There are no new environment variables.
+
+- **One database migration**, which adds a nullable `RefreshToken.clientType` column. Existing rows and sessions are unchanged.
+- **Role changes now follow a rank rule.** Below the owner, people can only act on roles and members ranked below their own highest role, and can only grant actions they hold. Some delegations your community relies on may now be refused.
+- **Custom roles need `CAPTURE_REPLAY` to capture replays**, now also when using an existing recording, so roles without it lose the feature.
+- **Approving a desktop sign-in now asks for the account password**, and other sessions are told about it.
+- **User search is narrower.** Without `READ_USER`, it finds people you share a community with, or an exact username.
+- **Blocks now stop direct messages**, and instance owners no longer get call access to DMs they aren't in.
+- **Editing a message now takes what sending one takes.** Authors can't edit or add attachments after being removed, banned or timed out, in a channel where they can no longer post (such as one later switched to announcements), or in a DM they left or are blocked in. Deleting your own message still works.
+- **Server mutes follow the rank rule.** Moderators can only mute or unmute people ranked below them, and never an instance owner. The voice menu may still offer the action, in which case the click does nothing.
+- **Requests the API used to accept are now refused**, such as a message with both or neither of a channel and a DM group, attachments that aren't the author's own, and malformed message spans. Third-party clients and bots may need changes.
+
+### Security
+
+- **Role and permission escalation** — Moderators and holders of user or role management rights could give themselves higher roles, strip or edit roles above their own, or grant actions they didn't hold, up to Community Admin, Instance Admin and owner. Changes now require a higher rank and only grant what the actor holds. Only an owner can grant or remove the owner role, and the last owner can't be demoted. Roles can't be assigned to non-members or banned users, or across community and instance scope.
+- **Managing other accounts** — Resetting a password, banning, unbanning or deleting a user is now refused, below full Instance Admin, when the target holds any instance permission the actor lacks. Otherwise a password reset could be used to become an admin.
+- **Removing members and lifting timeouts or bans** — `DELETE_MEMBER` now follows the same rank rule and audit log entry as a kick, on community and private channel routes. Moderators can't lift their own timeout or ban, or one set by a higher rank. Removal and leaving now end voice access and remove the user from alias groups.
+- **Messages and attachments** — Messages must have exactly one target, and edits are limited to content. Losing access to a channel or DM now also ends editing your old messages there, and a message a moderator removed can't be edited. Attachments must be the author's own files. Spans are validated and can't set their own IDs or positions, and the thread reply body is now validated at all. Moderator-removed messages are now hidden on every read path, including notifications, socket events and attachment downloads, from readers who can't moderate them.
+- **File uploads** — Uploads and image updates now check ownership of the resource they attach to.
+- **Invites** — Creating an invite now requires `CREATE_INVITE` in each target community, or instance-wide authority. The unauthenticated invite lookup returns only what the join screen shows, and only for a code that can still be used.
+- **Channels** — Reordering is limited to channels of the authorized community. Making a private channel public is refused over members ranked at or above the actor.
+- **Direct messages** — The 1:1 lookup could return a group someone had left, exposing another group's last message; it now needs exactly those two members. Blocks stop new DMs and group additions. DM mentions and thread notifications are limited to current members.
+- **Voice and replays** — Replays are limited to the authorized channel's room and the caller's own tracks. Someone who has lost access is removed from the room when they join, and leaving a DM group ends their part in its call. Token names come from the account, not the request. A server mute now holds across rejoins until it is lifted, and setting or lifting one requires outranking the target. Instance owners can't get a channel token for a DM room. Clips count against the storage quota.
+- **Server-side requests** — The link preview address blocklist now covers all IANA special-purpose ranges, including IPv4-embedding IPv6 forms. Push endpoints must be https on the default port at a public host name, also checked at connection time.
+- **Account sessions** — Approving a desktop sign-in requires the password, so a session alone, or script running in the page, can't approve a device. Banning a user, resetting a password or signing out everywhere else now deletes the user's push subscriptions. The device you signed out the others from subscribes again by itself.
+- **User data** — User search was the whole directory with an uncapped limit, and its community filter revealed membership of communities the caller wasn't in. Signup no longer reports taken usernames or emails before checking the invite.
+- **Resource limits** — Page sizes are capped: moderation logs and the admin community list at 100, member and user search at 50.
+
+### Added
+
+- `GET /push/subscriptions` and `DELETE /push/subscriptions/:id`, to list and revoke your own push subscriptions.
+- A documented client contract for sign-in and refresh: the `X-Client-Type`, `X-Device-Id` and `X-Device-Name` headers. See `docs-site/docs/architecture/auth-clients.md`. Sessions store the client type.
+
+### Changed
+
+- Refresh now answers according to how the token was presented: a cookie gets cookies, and a body token gets a body token. An invalid body token gets a 401 with no fallback to the cookie. Electron builds from before the header are still recognised.
+- Lifting a server mute gives the microphone back, and the user unmutes themselves.
+- The invite dialogs only pre-select communities you can invite to, so Invite Managers can still create invites.
+- Smaller desktop app: the AppImage goes from 152 to 122 MiB, the .deb from 115 to 97 MiB and the .rpm from 101 to 87 MiB, because renderer packages already bundled by Vite are no longer packaged again.
+
+### Fixed
+
+- Lifting a server mute could answer 500 and leave the user muted.
+- Clearing a channel no longer broadcasts a message that was removed.
+- Malformed message spans now get a 400 rather than a 500.
+
+### Upgrade notes
+
+- **Back up your database, then migrate as usual.** The migration only adds a nullable column. It applies on backend start, or through the Helm migration job, as before.
+- **Review your roles.** Check that custom roles which should capture replays have `CAPTURE_REPLAY`, and that your role order reflects who may manage whom, since rank now decides it.
+- **Check for past misuse.** The audit gaps were present in earlier releases, so changes made through them remain in your data after you upgrade. Look through your admins and role holders, and run the read-only check `scripts/security/0.8.0-data-check.sql` with `psql -f`. A clean result means no evidence was found, not proof that nothing happened. Role changes have no audit log, so a member who gave themselves a role can't be detected this way.
+- **Storage use for clips.** Existing clips are not counted against quotas until an admin recalculates a user's storage. Deleting an older clip before then can under-report usage until that recalculation.
+- **Third-party clients and bots** should check their message, span and attachment requests against the new validation.
+
 ## [0.7.0] - 2026-10-23
 
 ### ⚠️ Breaking changes / upgrade checklist
