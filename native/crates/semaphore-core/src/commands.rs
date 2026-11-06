@@ -10,7 +10,8 @@ use crate::client::{Core, Effect, State, user_view};
 use crate::model::{
     ChannelKind, ChannelPermissions, ChannelRow, CommunityRow, Conversation, DisplayRole,
     EmojiView, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
-    ParticipantView, RailCounts, SessionState, UserView, ViewKey, VoiceStatus, VoiceView,
+    ParticipantView, RailCounts, SessionState, UserView, VideoDemand, ViewKey, VoiceStatus,
+    VoiceView,
 };
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
@@ -247,6 +248,15 @@ impl State {
                 self.query_changed(&key);
             }
         }
+    }
+}
+
+fn voice_token_request(me: &UserView, channel_id: &str) -> wire::CreateTokenDto {
+    wire::CreateTokenDto {
+        identity: me.id.clone(),
+        name: Some(me.username.clone()),
+        room_id: channel_id.to_owned(),
+        ttl: None,
     }
 }
 
@@ -517,6 +527,12 @@ impl Core {
             .services()
             .ok_or_else(|| unavailable("signing out"))?
             .clone();
+        // Before the session goes: leaving tells the server, and a call mustn't outlive a sign-out.
+        if self.read(|state| state.voice.channel_id.is_some())
+            && let Err(error) = self.leave_voice().await
+        {
+            log::warn!("leaving voice on sign-out: {error}");
+        }
         services.realtime.disconnect();
         let body = wire::LogoutRequestDto {
             refresh_token: None,
@@ -537,6 +553,7 @@ impl Core {
             state.me = None;
             state.session = SessionState::SignedOut;
             state.voice = VoiceView::default();
+            state.media = None;
             state.had_connection = false;
             state.token_expires_at_ms = None;
             state.view_changed(ViewKey::Session);
@@ -885,27 +902,29 @@ impl Core {
         let me = self
             .read(|state| state.me.clone())
             .ok_or_else(|| unavailable("voice while signed out"))?;
-        self.write(|state, _| {
+        let (muted, deafened) = self.write(|state, _| {
             state.voice.status = VoiceStatus::Connecting;
             state.voice.channel_id = Some(channel_id.clone());
+            state.voice.reconnect_attempt = None;
+            state.voice.error = None;
+            state.media = None;
             state.view_changed(ViewKey::Voice);
             state.ensure_query(keys::scoped(keys::VOICE_PRESENCE, &channel_id));
+            (state.voice.muted, state.voice.deafened)
         });
+        // The engine remembers these across calls, and what this call starts with is what's shown.
+        // Deafen first: undeafening restores a mute this then overrides.
+        media.set_deafened(deafened);
+        media.set_muted(muted);
         let joined = async {
             let info = services
                 .backend
                 .livekit_controller_get_connection_info()
                 .await
                 .map_err(failed)?;
-            let body = wire::CreateTokenDto {
-                identity: me.id.clone(),
-                name: Some(me.username.clone()),
-                room_id: channel_id.clone(),
-                ttl: None,
-            };
             let token = services
                 .backend
-                .livekit_controller_generate_token(body)
+                .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
                 .await
                 .map_err(failed)?;
             let url = token.url.or(info.url).ok_or_else(|| CoreError::Failed {
@@ -925,6 +944,7 @@ impl Core {
                 state.voice.status = VoiceStatus::Connected;
             } else {
                 state.voice = VoiceView::default();
+                state.media = None;
             }
             state.view_changed(ViewKey::Voice);
         });
@@ -936,6 +956,7 @@ impl Core {
         let channel_id = self.write(|state, _| {
             let channel_id = state.voice.channel_id.take();
             state.voice = VoiceView::default();
+            state.media = None;
             state.view_changed(ViewKey::Voice);
             channel_id
         });
@@ -955,17 +976,30 @@ impl Core {
     pub async fn set_muted(&self, muted: bool) -> Result<(), CoreError> {
         self.write(|state, _| {
             state.voice.muted = muted;
+            // Shown now, not when the engine's report comes back.
+            if let Some(media) = &mut state.media {
+                media.muted = muted;
+            }
             state.view_changed(ViewKey::Voice);
         });
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.set_muted(muted);
+        }
         Ok(())
     }
 
     pub async fn set_deafened(&self, deafened: bool) -> Result<(), CoreError> {
         let channel_id = self.write(|state, _| {
             state.voice.deafened = deafened;
+            if let Some(media) = &mut state.media {
+                media.deafened = deafened;
+            }
             state.view_changed(ViewKey::Voice);
             state.voice.channel_id.clone()
         });
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.set_deafened(deafened);
+        }
         if let (Some(channel_id), Some(services)) = (channel_id, self.services()) {
             let body = wire::UpdateDeafenStateDto {
                 is_deafened: deafened,
@@ -977,6 +1011,112 @@ impl Core {
                 .map_err(failed)?;
         }
         Ok(())
+    }
+
+    /// Which video tiles are on screen. Goes straight to the media engine, which chooses layers.
+    pub fn set_video_demands(&self, demands: Vec<VideoDemand>) {
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.set_video_demands(demands);
+        }
+    }
+
+    /// A new token for the call in progress, for the engine to rejoin with. The one it connected with
+    /// may have expired by then.
+    pub async fn voice_token(&self) -> Result<String, CoreError> {
+        let services = self.services().ok_or_else(|| unavailable("voice"))?;
+        let (me, channel_id) =
+            self.read(|state| (state.me.clone(), state.voice.channel_id.clone()));
+        let (Some(me), Some(channel_id)) = (me, channel_id) else {
+            return Err(unavailable("a voice token outside a call"));
+        };
+        let token = services
+            .backend
+            .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
+            .await
+            .map_err(failed)?;
+        Ok(token.token)
+    }
+
+    /// Keeps this client on the channel's roster. The server forgets it 90 s after the last one, so a
+    /// host calls this about every 30 s, as the web's heartbeat does. Does nothing unless connected:
+    /// a dead room must not keep claiming to be there. A failure is logged, for the next to retry, and
+    /// a refresh after expiry re-registers, so nothing else is needed after a rejoin.
+    pub async fn refresh_voice_presence(&self) {
+        let channel_id = self.read(|state| {
+            state
+                .voice
+                .channel_id
+                .clone()
+                .filter(|_| state.voice.status == VoiceStatus::Connected)
+        });
+        let (Some(channel_id), Some(services)) = (channel_id, self.services()) else {
+            return;
+        };
+        if let Err(error) = services
+            .backend
+            .voice_presence_controller_refresh_presence(channel_id)
+            .await
+        {
+            log::warn!("refreshing voice presence failed: {error}");
+        }
+    }
+
+    /// The media engine hands what it sees here, whenever it changes. Not part of a UI's surface.
+    pub fn ingest_media(&self, media: VoiceView) {
+        self.write(|state, _| {
+            // Too late for a call that's over.
+            if state.voice.status == VoiceStatus::Disconnected
+                || state.media.as_ref() == Some(&media)
+            {
+                return;
+            }
+            let was_live = state.media.as_ref().is_some_and(|last| {
+                matches!(
+                    last.status,
+                    VoiceStatus::Connected | VoiceStatus::Reconnecting
+                )
+            });
+            let in_call = matches!(
+                state.voice.status,
+                VoiceStatus::Connected | VoiceStatus::Reconnecting
+            );
+            match media.status {
+                // Only after the engine has said it was in the call. A report from before it joined
+                // can arrive after `connect` returned, and says nothing about this call.
+                VoiceStatus::Disconnected if in_call && was_live => {
+                    let channel_id = state.voice.channel_id.take();
+                    state.voice = VoiceView {
+                        error: media.error,
+                        ..VoiceView::default()
+                    };
+                    state.media = None;
+                    if let Some(channel_id) = channel_id {
+                        state.push_effect(Effect::LeavePresence(channel_id));
+                    }
+                    state.view_changed(ViewKey::Voice);
+                    return;
+                }
+                VoiceStatus::Connected | VoiceStatus::Reconnecting if in_call => {
+                    state.voice.status = media.status;
+                }
+                _ => {}
+            }
+            state.media = Some(media);
+            state.view_changed(ViewKey::Voice);
+        });
+    }
+
+    pub(crate) async fn leave_presence(&self, channel_id: String) {
+        let Some(services) = self.services() else {
+            return;
+        };
+        if let Err(error) = services
+            .backend
+            .voice_presence_controller_leave_presence(channel_id)
+            .await
+        {
+            log::warn!("leaving voice presence failed: {error}");
+        }
     }
 
     /// The transport hands every event here. Not part of a UI's surface.
@@ -1218,21 +1358,32 @@ impl Core {
         })
     }
 
-    /// Who's in the room comes from voice presence. Who's speaking, and tracks, are the media
-    /// crate's to report, and have no way in yet.
+    /// Who's in the room comes from voice presence, so a name and an avatar are there from the start.
+    /// Who's speaking, tracks and quality come from the media engine. Either can say someone is muted
+    /// or deafened: presence knows a server mute, the engine a muted track. Someone the engine sees
+    /// before presence does is listed too.
     pub fn voice(&self) -> VoiceView {
         self.read(|state| {
             let mut voice = state.voice.clone();
-            if let Some(channel_id) = &voice.channel_id {
-                let key = keys::scoped(keys::VOICE_PRESENCE, channel_id);
-                let users = state
-                    .cache
-                    .voice_presence(&key)
-                    .map(|presence| presence.users.as_slice());
-                voice.participants = users
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|user| ParticipantView {
+            let Some(channel_id) = &voice.channel_id else {
+                return voice;
+            };
+            let empty = Vec::new();
+            let seen = state
+                .media
+                .as_ref()
+                .map_or(&empty, |media| &media.participants);
+            let key = keys::scoped(keys::VOICE_PRESENCE, channel_id);
+            let users = state
+                .cache
+                .voice_presence(&key)
+                .map(|presence| presence.users.as_slice())
+                .unwrap_or_default();
+            let mut participants: Vec<ParticipantView> = users
+                .iter()
+                .map(|user| {
+                    let media = seen.iter().find(|media| media.identity == user.id);
+                    ParticipantView {
                         identity: user.id.clone(),
                         user: UserView {
                             id: user.id.clone(),
@@ -1241,13 +1392,26 @@ impl Core {
                             avatar_file_id: user.avatar_url.clone(),
                         },
                         is_self: user.id == state.me_id(),
-                        speaking: false,
-                        muted: user.is_server_muted,
-                        deafened: user.is_deafened,
-                        camera: None,
-                        screen_share: None,
-                    })
-                    .collect();
+                        speaking: media.is_some_and(|media| media.speaking),
+                        muted: user.is_server_muted || media.is_some_and(|media| media.muted),
+                        deafened: user.is_deafened || media.is_some_and(|media| media.deafened),
+                        camera: media.and_then(|media| media.camera.clone()),
+                        screen_share: media.and_then(|media| media.screen_share.clone()),
+                        quality: media.map(|media| media.quality).unwrap_or_default(),
+                    }
+                })
+                .collect();
+            participants.extend(
+                seen.iter()
+                    .filter(|media| !users.iter().any(|user| user.id == media.identity))
+                    .cloned(),
+            );
+            voice.participants = participants;
+            if let Some(media) = &state.media {
+                voice.muted = media.muted;
+                voice.deafened = media.deafened;
+                voice.reconnect_attempt = media.reconnect_attempt;
+                voice.error = media.error.clone();
             }
             voice
         })

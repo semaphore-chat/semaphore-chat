@@ -61,6 +61,54 @@ inside `cache.rs`, which U5 replaces with typed entries.
   (the CI job waits on a push). `third_party/README.md` has the API. U11 removes the fallback comment
   in `ui/src/voice/mod.rs`.
 
+## U13 must do
+
+Core and the media crate provide these, but nothing calls them until the app does:
+
+- **The voice heartbeat.** Call `Core::refresh_voice_presence` about every 30 s for as long as the
+  app lives. The server's presence TTL is 90 s, so without it a user drops off the voice roster about
+  90 s into every call, while their audio keeps working. It does nothing outside a connected call, so
+  a plain timer is enough.
+- **`TokenSource`.** Implement it over `Core::voice_token` and pass it to
+  `LiveKitEngine::set_token_source`. Without one, the engine's rejoin loop reuses the first token and
+  gives up after 20 failed attempts.
+- **Report the engine to core.** Forward `LiveKitEngine::subscribe()` to `Core::ingest_media`, sending
+  `snapshot.voice`. Without it `Core::voice()` has no tracks or speaking, and a call the engine ends
+  still reads as connected.
+- **`CoreSource`'s new reads** (`ui/src/shell/source.rs`): `members` from `Core::members`, mapping
+  `MemberView` to `MemberRow` and showing `MemberList::truncated`; `rail_counts` from
+  `Core::rail_counts`. They return empty today. `Core::members` returns `None` while loading, which is
+  `Load::Loading`. Listen for `ViewKey::Members` and `ViewKey::Rail`.
+- **`TileDemand` to `VideoDemand`.** `VoiceController::set_video_demands` takes the UI's `TileDemand`.
+  Convert it and call `Core::set_video_demands`, or replace it with `core::model::VideoDemand`.
+- **The `QualityLevel` mapping.** `VoiceStageModel` reads quality from its own map. Fill it from
+  `ParticipantView::quality`, and `reconnect_attempt` from `VoiceView::reconnect_attempt`.
+- **Wire up the rest of the row and list:** `MessageRow::reply_to` to `ListData::replies`, a
+  `LoadNewer` event from `Core::at_live_edge` and `Core::load_newer`, a "jump to present" through
+  `Core::jump_to_present`, a reply click through `Core::open_conversation_at`,
+  `MessageListEvent::DiscardFailed` to `Core::discard_failed_send`, `MediaSource::emoji` from
+  `Core::custom_emojis`, and `ChannelRow::{slowmode_seconds, permissions}` to the composer. A `None`
+  in `permissions` fails open.
+- **`HttpBackend`** needs the new `Backend` methods, if `semaphore-net` merges after these additions:
+  `membership_controller_find_all_for_community`, `presence_controller_get_bulk_presence`,
+  `notifications_controller_get_unread_count`, `messages_controller_find_around_for_group`.
+
+Some UI comments still say core lacks these (`shell/source.rs`, `voice/model.rs`, `messages/view.rs`).
+Drop each as its gap closes.
+
+## Follow-ups, not cut
+
+Later in the order, not out of scope:
+
+- **A DM list read.** Core has DM counts but no `direct-messages` read, so `Route::DirectMessages` has
+  nothing to list.
+- **Publishing the local camera and screen.** The engine only receives video: a user's own
+  `ParticipantView` has no tracks.
+- **DM voice.** `Core::join_voice` takes a channel. The DM presence and token endpoints aren't wired.
+- **Third-party images in link previews.** `LinkPreviewView` carries the URLs and nothing loads them.
+  Whether the UI fetches them directly, as the web does, is waiting on Mike. It exposes a viewer's IP
+  to any site a poster links.
+
 ## The ledger
 
 Every unit records this in `results/slice/ledger.jsonl`, one line when it finishes: unit, tier, wall

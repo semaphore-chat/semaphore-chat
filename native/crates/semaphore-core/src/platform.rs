@@ -5,7 +5,7 @@
 
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
-use crate::model::{Conversation, ListOp, ViewKey};
+use crate::model::{Conversation, ListOp, VideoDemand, ViewKey};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -76,8 +76,21 @@ pub trait ScreenCapture: Send + Sync {
 }
 
 /// A voice/video session. Frames and audio devices stay behind the implementation.
+///
+/// An implementation reports what it sees by handing a `VoiceView` to `Core::ingest_media`, whenever
+/// it changes, as a transport hands events to `Core::ingest`. Rejoining a dropped call is its job
+/// too, so the host gives it `Core::voice_token` for the fresh token that takes.
+///
+/// The setters are called from a UI's thread, so they must not block. What they ask for outlives any
+/// one connection: a rejoin puts it all back, and setting one before `connect` applies at `connect`.
 #[async_trait]
 pub trait MediaEngine: Send + Sync {
     async fn connect(&self, url: String, token: String) -> Result<(), CoreError>;
     async fn disconnect(&self);
+    fn set_muted(&self, muted: bool);
+    /// Deafening mutes the mic too. Undeafening restores what the mic was.
+    fn set_deafened(&self, deafened: bool);
+    /// Replaces what's on screen. An implementation whose SDK chooses layers by itself can use this
+    /// for pausing alone.
+    fn set_video_demands(&self, demands: Vec<VideoDemand>);
 }

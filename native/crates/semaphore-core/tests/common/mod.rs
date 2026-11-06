@@ -3,8 +3,8 @@
 
 use async_trait::async_trait;
 use semaphore_core::backend::{Backend, BackendError, BackendResult};
-use semaphore_core::model::{Conversation, ListOp, MessageRow};
-use semaphore_core::platform::{Clock, CoreEvent, EventSink};
+use semaphore_core::model::{Conversation, ListOp, MessageRow, VideoDemand};
+use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, MediaEngine};
 use semaphore_core::realtime::{Realtime, RealtimeError, RealtimeEvent};
 use semaphore_core::{Core, Services};
 use semaphore_wire::enums::{ErrorCode, MessagePageDirection};
@@ -188,12 +188,25 @@ pub struct FakeBackend {
     pub notification_count: Mutex<i64>,
     pub notification_requests: AtomicU64,
     pub capabilities: Mutex<Option<Value>>,
+    pub voice_users: Mutex<Vec<Value>>,
+    pub tokens_minted: AtomicU64,
+    /// What each voice presence call was, in order: `join`, `refresh`, `leave`, `deafen`.
+    pub voice_calls: Mutex<Vec<String>>,
     pub emojis: Mutex<Vec<Value>>,
 }
 
 impl FakeBackend {
     pub fn set_messages(&self, rows: Vec<MessageDto>) {
         self.messages.lock().unwrap().insert(CHANNEL.into(), rows);
+    }
+
+    fn voice_call(
+        &self,
+        what: &str,
+        channel: String,
+    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        self.voice_calls.lock().unwrap().push(what.to_owned());
+        decoded(json!({ "channelId": channel, "message": "ok", "success": true }))
     }
 
     /// The backend's `findAround`: half on each side, newest first, a token only if a side is full.
@@ -533,45 +546,49 @@ impl Backend for FakeBackend {
     async fn livekit_controller_get_connection_info(
         &self,
     ) -> BackendResult<wire::ConnectionInfoResponseDto> {
-        Err(not_found())
+        decoded(json!({ "url": "ws://livekit" }))
     }
     async fn livekit_controller_generate_token(
         &self,
-        _: wire::CreateTokenDto,
+        body: wire::CreateTokenDto,
     ) -> BackendResult<wire::TokenResponseDto> {
-        Err(not_found())
+        let minted = self.tokens_minted.fetch_add(1, Ordering::SeqCst) + 1;
+        decoded(json!({
+            "token": format!("token-{minted}"), "identity": body.identity, "roomId": body.room_id,
+        }))
     }
     async fn voice_presence_controller_get_channel_presence(
         &self,
         channel_id: String,
     ) -> BackendResult<wire::ChannelVoicePresenceResponseDto> {
         self.presence_requests.fetch_add(1, Ordering::SeqCst);
-        decoded(json!({ "channelId": channel_id, "count": 0, "users": [] }))
+        let users = self.voice_users.lock().unwrap().clone();
+        decoded(json!({ "channelId": channel_id, "count": users.len(), "users": users }))
     }
     async fn voice_presence_controller_join_presence(
         &self,
-        _: String,
+        channel: String,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        Err(not_found())
+        self.voice_call("join", channel)
     }
     async fn voice_presence_controller_refresh_presence(
         &self,
-        _: String,
+        channel: String,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        Err(not_found())
+        self.voice_call("refresh", channel)
     }
     async fn voice_presence_controller_leave_presence(
         &self,
-        _: String,
+        channel: String,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        Err(not_found())
+        self.voice_call("leave", channel)
     }
     async fn voice_presence_controller_update_deafen_state(
         &self,
-        _: String,
+        channel: String,
         _: wire::UpdateDeafenStateDto,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        Err(not_found())
+        self.voice_call("deafen", channel)
     }
     async fn file_controller_get_file(&self, _: String) -> BackendResult<Vec<u8>> {
         Err(not_found())
@@ -666,17 +683,67 @@ impl Realtime for FakeRealtime {
     }
 }
 
+/// A media engine that records what it's asked. A test plays its reports with `Core::ingest_media`.
+#[derive(Default)]
+pub struct FakeMedia {
+    /// Everything asked of it, in order, for example `connect token-1`, `muted true`.
+    pub calls: Mutex<Vec<String>>,
+    pub demands: Mutex<Vec<VideoDemand>>,
+    pub connect_fails: Mutex<bool>,
+}
+
+#[async_trait]
+impl MediaEngine for FakeMedia {
+    async fn connect(&self, url: String, token: String) -> Result<(), CoreError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("connect {url} {token}"));
+        if *self.connect_fails.lock().unwrap() {
+            return Err(CoreError::Failed {
+                message: "no room".into(),
+            });
+        }
+        Ok(())
+    }
+    async fn disconnect(&self) {
+        self.calls.lock().unwrap().push("disconnect".into());
+    }
+    fn set_muted(&self, muted: bool) {
+        self.calls.lock().unwrap().push(format!("muted {muted}"));
+    }
+    fn set_deafened(&self, deafened: bool) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("deafened {deafened}"));
+    }
+    fn set_video_demands(&self, demands: Vec<VideoDemand>) {
+        *self.demands.lock().unwrap() = demands;
+    }
+}
+
 pub struct Rig {
     pub core: Core,
     pub clock: Arc<FakeClock>,
     pub events: Arc<Recorder>,
     pub backend: Arc<FakeBackend>,
     pub realtime: Arc<FakeRealtime>,
+    pub media: Arc<FakeMedia>,
     pub rows: Vec<MessageRow>,
 }
 
 impl Rig {
     pub fn new() -> Self {
+        Self::build(false)
+    }
+
+    pub fn with_media() -> Self {
+        Self::build(true)
+    }
+
+    fn build(with_media: bool) -> Self {
+        let media = Arc::new(FakeMedia::default());
         let clock = Arc::new(FakeClock(AtomicU64::new(1_000_000)));
         let events = Arc::new(Recorder::default());
         let backend = Arc::new(FakeBackend::default());
@@ -687,7 +754,7 @@ impl Rig {
             Services {
                 backend: backend.clone(),
                 realtime: realtime.clone(),
-                media: None,
+                media: with_media.then(|| media.clone() as Arc<dyn MediaEngine>),
             },
         );
         Self {
@@ -696,6 +763,7 @@ impl Rig {
             events,
             backend,
             realtime,
+            media,
             rows: Vec::new(),
         }
     }

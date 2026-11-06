@@ -8,18 +8,7 @@ use livekit::webrtc::video_stream::native::{NativeVideoStream, NativeVideoStream
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-/// A video tile that is on screen right now. A track with no demand is paused at the SFU, so it
-/// costs no downlink and no decode.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct VideoDemand {
-    pub track_sid: String,
-    /// Tile size in physical pixels.
-    pub width_px: u32,
-    pub height_px: u32,
-    /// The main view: a focused share gets its top layer whatever its size, as on the web, because
-    /// the top layer is the only one that carries the full frame rate.
-    pub focused: bool,
-}
+pub use semaphore_core::model::VideoDemand;
 
 /// The smallest layer that still covers the tile. A layer may be upscaled by up to 25% before we
 /// take the next one up: the web's adaptive stream is similarly forgiving, and the next layer costs

@@ -28,6 +28,7 @@ use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
 use livekit::{DisconnectReason, Room, RoomEvent, RoomOptions};
 use semaphore_core::CoreError;
+pub use semaphore_core::model::ConnectionQuality as ConnectionQualityView;
 use semaphore_core::model::{
     ParticipantView, UserView, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
 };
@@ -71,29 +72,17 @@ impl MicPreset {
     }
 }
 
-/// A connection's health, as the three-bar indicator shows it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ConnectionQualityView {
-    #[default]
-    Unknown,
-    Excellent,
-    Good,
-    Poor,
-    Lost,
-}
-
-impl From<ConnectionQuality> for ConnectionQualityView {
-    fn from(quality: ConnectionQuality) -> Self {
-        match quality {
-            ConnectionQuality::Excellent => Self::Excellent,
-            ConnectionQuality::Good => Self::Good,
-            ConnectionQuality::Poor => Self::Poor,
-            ConnectionQuality::Lost => Self::Lost,
-        }
+fn quality_view(quality: ConnectionQuality) -> ConnectionQualityView {
+    match quality {
+        ConnectionQuality::Excellent => ConnectionQualityView::Excellent,
+        ConnectionQuality::Good => ConnectionQualityView::Good,
+        ConnectionQuality::Poor => ConnectionQualityView::Poor,
+        ConnectionQuality::Lost => ConnectionQualityView::Lost,
     }
 }
 
-/// Everything a voice UI draws. `voice` is core's frozen model; the rest has no place in it yet.
+/// Everything a voice UI draws. `voice` is what goes to `Core::ingest_media`; the rest is for this
+/// crate's rigs, and for settings that don't pass through core.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MediaSnapshot {
     pub voice: VoiceView,
@@ -499,6 +488,18 @@ impl MediaEngine for LiveKitEngine {
             .runtime
             .spawn(async move { inner.leave().await })
             .await;
+    }
+
+    fn set_muted(&self, muted: bool) {
+        LiveKitEngine::set_muted(self, muted);
+    }
+
+    fn set_deafened(&self, deafened: bool) {
+        LiveKitEngine::set_deafened(self, deafened);
+    }
+
+    fn set_video_demands(&self, demands: Vec<VideoDemand>) {
+        LiveKitEngine::set_video_demands(self, demands);
     }
 }
 
@@ -1160,6 +1161,8 @@ impl Inner {
         let changed = self.snapshot.send_if_modified(|snapshot| {
             let before = snapshot.clone();
             change(snapshot);
+            snapshot.voice.reconnect_attempt = snapshot.rejoin_attempt;
+            snapshot.voice.error = snapshot.last_error.clone();
             before != *snapshot
         });
         if changed {
@@ -1216,17 +1219,19 @@ impl Inner {
                 deafened: wanted_deafened,
                 camera: None,
                 screen_share: None,
+                quality: quality_view(local.connection_quality()),
             }];
-            snapshot.local_quality = local.connection_quality().into();
+            snapshot.local_quality = quality_view(local.connection_quality());
             snapshot.quality.clear();
             let mut remote: Vec<ParticipantView> = room
                 .remote_participants()
                 .values()
                 .map(|participant| {
                     let identity = participant.identity().to_string();
-                    snapshot
-                        .quality
-                        .insert(identity.clone(), participant.connection_quality().into());
+                    snapshot.quality.insert(
+                        identity.clone(),
+                        quality_view(participant.connection_quality()),
+                    );
                     remote_view(participant, speaking.contains(&identity), identity)
                 })
                 .collect();
@@ -1318,6 +1323,7 @@ fn remote_view(
         deafened,
         camera,
         screen_share,
+        quality: quality_view(participant.connection_quality()),
     }
 }
 

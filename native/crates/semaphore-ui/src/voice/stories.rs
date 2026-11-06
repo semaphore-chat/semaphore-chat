@@ -57,6 +57,7 @@ fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
             muted: false,
             deafened: false,
             participants: people,
+            ..VoiceView::default()
         },
         channel_name: "general-voice".into(),
         is_dm: false,

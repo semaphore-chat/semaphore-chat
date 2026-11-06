@@ -12,10 +12,11 @@
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
     AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
-    Conversation, DisplayRole, DraftMention, EmojiView, ErrorView, LinkPreviewView, ListOp,
-    MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft, MessageRow,
-    ParticipantView, RailCounts, ReactionView, ReplyToView, SegKind, SendState, SessionState,
-    TextSeg, TextStyle, UserView, VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
+    ConnectionQuality, Conversation, DisplayRole, DraftMention, EmojiView, ErrorView,
+    LinkPreviewView, ListOp, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
+    MessageRow, ParticipantView, RailCounts, ReactionView, ReplyToView, SegKind, SendState,
+    SessionState, TextSeg, TextStyle, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus,
+    VoiceView, WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -301,6 +302,23 @@ pub struct VideoTrackView {
     pub height: u32,
 }
 
+#[uniffi::remote(Enum)]
+pub enum ConnectionQuality {
+    Unknown,
+    Excellent,
+    Good,
+    Poor,
+    Lost,
+}
+
+#[uniffi::remote(Record)]
+pub struct VideoDemand {
+    pub track_sid: String,
+    pub width_px: u32,
+    pub height_px: u32,
+    pub focused: bool,
+}
+
 #[uniffi::remote(Record)]
 pub struct ParticipantView {
     pub identity: String,
@@ -311,6 +329,7 @@ pub struct ParticipantView {
     pub deafened: bool,
     pub camera: Option<VideoTrackView>,
     pub screen_share: Option<VideoTrackView>,
+    pub quality: ConnectionQuality,
 }
 
 #[uniffi::remote(Record)]
@@ -320,6 +339,8 @@ pub struct VoiceView {
     pub muted: bool,
     pub deafened: bool,
     pub participants: Vec<ParticipantView>,
+    pub reconnect_attempt: Option<u32>,
+    pub error: Option<String>,
 }
 
 #[uniffi::remote(Enum)]
@@ -583,6 +604,22 @@ impl SemaphoreCore {
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {
         self.core.leave_voice().await
+    }
+
+    pub fn set_video_demands(&self, demands: Vec<VideoDemand>) {
+        self.core.set_video_demands(demands);
+    }
+
+    pub fn ingest_media(&self, media: VoiceView) {
+        self.core.ingest_media(media);
+    }
+
+    pub async fn voice_token(&self) -> Result<String, CoreError> {
+        self.core.voice_token().await
+    }
+
+    pub async fn refresh_voice_presence(&self) {
+        self.core.refresh_voice_presence().await;
     }
 
     pub async fn set_muted(&self, muted: bool) -> Result<(), CoreError> {

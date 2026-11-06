@@ -49,6 +49,8 @@ pub(crate) enum Effect {
     ResetWindow(Conversation),
     Send(String),
     RefreshToken,
+    /// The media engine ended the call, so the server should hear this client has left it.
+    LeavePresence(String),
 }
 
 pub(crate) struct State {
@@ -67,6 +69,8 @@ pub(crate) struct State {
     pub session: SessionState,
     pub me: Option<UserView>,
     pub voice: VoiceView,
+    /// What the media engine last reported about the call in `voice`.
+    pub media: Option<VoiceView>,
     pub connection: ConnectionState,
     pub network: NetworkState,
     /// A connection has been up, so the next one follows a gap: the web's `hasConnectedRef`.
@@ -98,6 +102,7 @@ impl State {
             session: SessionState::SignedOut,
             me: None,
             voice: VoiceView::default(),
+            media: None,
             connection: ConnectionState::Disconnected,
             network: NetworkState::Available,
             had_connection: false,
@@ -453,6 +458,7 @@ impl Core {
             Effect::ResetWindow(conversation) => self.reset_window(conversation).await,
             Effect::Send(nonce) => self.run_send(nonce).await,
             Effect::RefreshToken => self.refresh_token().await,
+            Effect::LeavePresence(channel_id) => self.leave_presence(channel_id).await,
         }
     }
 

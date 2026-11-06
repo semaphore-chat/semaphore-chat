@@ -183,6 +183,7 @@ impl Fixture {
             muted: true,
             deafened: false,
             participants,
+            ..VoiceView::default()
         };
     }
 }
