@@ -877,7 +877,8 @@ export class AuthService {
         });
         // Subscriptions aren't tied to a session, and "sign out everywhere
         // else" is what you do when a device isn't yours any more. This
-        // device subscribes again from its settings.
+        // device gives its own back afterwards (SessionsSettings, and
+        // usePushNotifications on mount): the others have no session to do so.
         await tx.pushSubscription.deleteMany({ where: { userId } });
         return { count: result.count, otherFamilyIds: familyIds };
       },
