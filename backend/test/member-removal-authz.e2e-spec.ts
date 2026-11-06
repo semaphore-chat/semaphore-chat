@@ -212,6 +212,81 @@ describe('Removing members and lifting timeouts (e2e)', () => {
       expect(await timeoutRows(c.id, f.id.member)).toBe(1);
     });
 
+    describe('lifting a community ban', () => {
+      const banBy = async (communityId: string, moderator: Who) => {
+        await f
+          .http()
+          .post(`/api/moderation/ban/${communityId}/${f.id.member}`)
+          .set('Authorization', f.bearer(moderator))
+          .send({})
+          .expect(200);
+      };
+      const unbanBy = (communityId: string, moderator: Who) =>
+        f
+          .http()
+          .delete(`/api/moderation/ban/${communityId}/${f.id.member}`)
+          .set('Authorization', f.bearer(moderator))
+          .send({});
+      const banActive = async (communityId: string) =>
+        (
+          await f.db.communityBan.findUniqueOrThrow({
+            where: {
+              communityId_userId: { communityId, userId: f.id.member },
+            },
+          })
+        ).active;
+      /** Community Admin can't ban by default: a role above it that can. */
+      const banners = async (communityId: string, ...who: Who[]) => {
+        const role = await f.customRole(communityId, 5, [RbacActions.BAN_USER]);
+        for (const w of who) await f.give(communityId, w, role);
+      };
+      /** A custom role below the moderators, that may only lift bans. */
+      const lowUnbanner = async (communityId: string) => {
+        const role = await f.customRole(communityId, 200, [
+          RbacActions.UNBAN_USER,
+        ]);
+        await f.give(communityId, 'low', role);
+      };
+
+      it('cannot lift a ban set by a higher rank', async () => {
+        const c = await scene();
+        await banners(c.id, 'admin');
+        await lowUnbanner(c.id);
+        await banBy(c.id, 'admin');
+        await unbanBy(c.id, 'low').expect(403);
+        expect(await banActive(c.id)).toBe(true);
+      });
+
+      it('a peer or a higher rank can lift it', async () => {
+        const c = await scene();
+        await banners(c.id, 'admin', 'peer');
+        await banBy(c.id, 'admin');
+        await unbanBy(c.id, 'peer').expect(200);
+        expect(await banActive(c.id)).toBe(false);
+      });
+
+      it('a ban whose moderator is gone can be lifted', async () => {
+        const c = await scene();
+        await banners(c.id, 'admin');
+        await lowUnbanner(c.id);
+        await banBy(c.id, 'admin');
+        await f.db.communityBan.update({
+          where: {
+            communityId_userId: { communityId: c.id, userId: f.id.member },
+          },
+          data: { moderatorId: null },
+        });
+        await unbanBy(c.id, 'low').expect(200);
+      });
+
+      it('an instance owner can lift any of them', async () => {
+        const c = await scene();
+        await banners(c.id, 'admin');
+        await banBy(c.id, 'admin');
+        await unbanBy(c.id, 'owner').expect(200);
+      });
+    });
+
     it('still allows a peer or a higher rank to lift it', async () => {
       const c = await scene();
       await timeOut(c.id, 'mod', 'member');

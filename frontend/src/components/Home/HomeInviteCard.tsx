@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { inviteControllerCreateInviteMutation } from "../../api-client/@tanstack/react-query.gen";
 import type { CommunityResponseDto } from "../../api-client/types.gen";
 import { useUserPermissions } from "../../features/roles/useUserPermissions";
+import { useInvitableCommunities } from "../../hooks/useInvitableCommunities";
 import { invalidateInviteQueries } from "../../utils/queryInvalidation";
 import { copyToClipboard } from "../../utils/clipboard";
 import { getInstanceUrl } from "../../config/env";
@@ -71,6 +72,10 @@ const HomeInviteCard: React.FC<HomeInviteCardProps> = ({ communities, onDismiss 
   const own = useHomeInviteCard();
   const [lastCode, setLastCode] = useState<string | null>(null);
   const [snackbar, setSnackbar] = useState<string | null>(null);
+  const { invitable, isLoading: isLoadingRoles } = useInvitableCommunities(
+    communities,
+    !!onDismiss || own.visible,
+  );
 
   const { hasPermissions: canViewInvites } = useUserPermissions({
     resourceType: "INSTANCE",
@@ -86,10 +91,11 @@ const HomeInviteCard: React.FC<HomeInviteCardProps> = ({ communities, onDismiss 
 
   const handleQuickInvite = async () => {
     try {
-      // Prefer a community called "default", else every community you're in.
-      const defaultCommunity = communities.find((c) => c.name.toLowerCase() === "default");
+      // Of those you may invite to, prefer a community called "default", else
+      // all of them. With none, it's an invite to the instance alone.
+      const defaultCommunity = invitable.find((c) => c.name.toLowerCase() === "default");
       const body: CreateInviteDto = {
-        communityIds: defaultCommunity ? [defaultCommunity.id] : communities.map((c) => c.id),
+        communityIds: defaultCommunity ? [defaultCommunity.id] : invitable.map((c) => c.id),
         maxUses: 10,
         validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       };
@@ -147,7 +153,7 @@ const HomeInviteCard: React.FC<HomeInviteCardProps> = ({ communities, onDismiss 
             </Tooltip>
           </Box>
         )}
-        <Button variant="contained" size="small" onClick={handleQuickInvite} disabled={isPending}>
+        <Button variant="contained" size="small" onClick={handleQuickInvite} disabled={isPending || isLoadingRoles}>
           {isPending ? <CircularProgress size={18} color="inherit" /> : "Quick invite"}
         </Button>
         {canViewInvites && (

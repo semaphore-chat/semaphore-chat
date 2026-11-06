@@ -7,6 +7,7 @@ import { ChannelsService } from '@/channels/channels.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
+import { InstanceRolesService } from '@/roles/instance-roles.service';
 import {
   ConflictException,
   ForbiddenException,
@@ -33,6 +34,7 @@ describe('UserService', () => {
   let communityRolesService: Mocked<CommunityRolesService>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
   let sessionRevocationService: Mocked<SessionRevocationService>;
+  let instanceRolesService: Mocked<InstanceRolesService>;
   let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
@@ -53,6 +55,7 @@ describe('UserService', () => {
     communityRolesService = unitRef.get(CommunityRolesService);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
+    instanceRolesService = unitRef.get(InstanceRolesService);
     permissionsService = unitRef.get(PermissionsService);
 
     // Mock bcrypt
@@ -1057,6 +1060,30 @@ describe('UserService', () => {
       await service.setBanStatus(target.id, false, 'admin-id');
 
       expect(sessionRevocationService.endAllUserSockets).not.toHaveBeenCalled();
+    });
+
+    it('should stop where the rank rule refuses', async () => {
+      mockDatabase.user.findUnique.mockResolvedValue(UserFactory.build());
+      instanceRolesService.assertMayManageUser.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        service.setBanStatus('target-id', true, 'admin-id'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.setBanStatus('target-id', false, 'admin-id'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(
+        service.setUserPassword('target-id', 'new-password-123', 'admin-id'),
+      ).rejects.toThrow(ForbiddenException);
+      await expect(service.deleteUser('target-id', 'admin-id')).rejects.toThrow(
+        ForbiddenException,
+      );
+
+      expect(mockDatabase.user.update).not.toHaveBeenCalled();
+      expect(mockDatabase.user.delete).not.toHaveBeenCalled();
+      expect(mockDatabase.$transaction).not.toHaveBeenCalled();
     });
 
     it('should not end sockets when the ban is refused', async () => {

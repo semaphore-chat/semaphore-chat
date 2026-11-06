@@ -117,6 +117,29 @@ export class InstanceRolesService implements OnModuleInit {
     }
   }
 
+  /**
+   * Acting on someone's account (password, ban, delete) can amount to being
+   * them, so below full authority it stops at anyone who holds an instance
+   * action you lack: otherwise resetting an admin's password gets you what
+   * assertMayHandle stops you granting yourself. Instance owners are the
+   * callers' business: full authority doesn't reach them either.
+   */
+  async assertMayManageUser(
+    actor: { id: string; role: string },
+    targetUserId: string,
+  ): Promise<void> {
+    if (await this.hasFullInstanceAuthority(actor)) return;
+    const [mine, theirs] = await Promise.all([
+      this.heldInstanceActions(actor.id),
+      this.heldInstanceActions(targetUserId),
+    ]);
+    if ([...theirs].some((action) => !mine.has(action))) {
+      throw new ForbiddenException(
+        'Cannot manage a user who holds permissions you do not have',
+      );
+    }
+  }
+
   /** Assignment on behalf of a user. */
   async assignRoleAsActor(
     actor: { id: string; role: string },

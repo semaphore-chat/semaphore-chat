@@ -11,6 +11,7 @@ import {
   Query,
   Param,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
@@ -124,18 +125,20 @@ export class LivekitController {
       req.user.id,
       createTokenDto.roomId,
     );
+    // No such channel: only an instance owner gets here (the guard stops
+    // everyone else), and a DM id is what dm-token and its membership check
+    // are for.
+    if (!caps) throw new NotFoundException('Channel not found');
     return this.livekitService.generateToken(
       tokenDto,
       this.sessionIdOf(req),
-      caps
-        ? publishGrantFor(
-            caps,
-            await this.voicePresenceService.isServerMuted(
-              createTokenDto.roomId,
-              req.user.id,
-            ),
-          )
-        : { canPublish: false },
+      publishGrantFor(
+        caps,
+        await this.voicePresenceService.isServerMuted(
+          createTokenDto.roomId,
+          req.user.id,
+        ),
+      ),
     );
   }
 
@@ -181,7 +184,14 @@ export class LivekitController {
   async muteParticipant(
     @Param('channelId') channelId: string,
     @Body() dto: MuteParticipantDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<{ success: boolean }> {
+    await this.livekitAccessService.assertMayServerMute(
+      req.user,
+      channelId,
+      dto.participantIdentity,
+    );
+
     // Lifting a mute never touches tracks: LiveKit won't turn someone's mic back
     // on for them, and they may have left since (a mute outlives the call). It
     // gives the microphone back; the user unmutes when they want to.

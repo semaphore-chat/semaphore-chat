@@ -358,40 +358,60 @@ describe('Moderator-removed message visibility (e2e)', () => {
     );
   });
 
-  it('a late upload does not rebroadcast it, and the author gets none of it back', async () => {
+  /**
+   * Runs a refused request, then a real edit: events reach a socket in order,
+   * so once the later edit's arrives, one for this message would have too.
+   */
+  async function expectNoRebroadcast(
+    messageId: string,
+    refused: () => Promise<unknown>,
+  ) {
     const member = await openSubscribed('member');
-    const update = nextMessageUpdate(member, removedId);
+    const seen: string[] = [];
+    member.on(
+      ServerEvents.UPDATE_MESSAGE,
+      (payload: { message: { id: string } }) => seen.push(payload.message.id),
+    );
 
-    const res = await http()
-      .post(`/api/messages/${removedId}/attachments`)
+    await refused();
+
+    const laterId = await post('author', { spans: spans('later') });
+    const later = nextMessageUpdate(member, laterId);
+    await http()
+      .patch(`/api/messages/${laterId}`)
       .set('Authorization', auth('author'))
-      .send({})
-      .expect(201);
+      .send({ spans: spans('later, edited') })
+      .expect(200);
+    await later;
+    expect(seen).not.toContain(messageId);
+  }
 
-    expect(leaks(await update)).toEqual([]);
-    expect(leaks(res.body)).toEqual([]);
+  it('a late upload is refused, so nothing is rebroadcast', async () => {
+    await expectNoRebroadcast(removedId, async () => {
+      const res = await http()
+        .post(`/api/messages/${removedId}/attachments`)
+        .set('Authorization', auth('author'))
+        .send({})
+        .expect(403);
+      expect(leaks(res.body)).toEqual([]);
+    });
   });
 
-  it('an edit after removal does not rebroadcast it, and the author gets none of it back', async () => {
+  it('an edit after removal is refused, changes nothing and is not rebroadcast', async () => {
     const messageId = await post('author', { spans: spans('to be removed') });
-    await db.message.update({
-      where: { id: messageId },
-      data: { linkPreviews: [{ url: PREVIEW_URL, title: 'preview' }] },
-    });
     await moderate(messageId);
-    const member = await openSubscribed('member');
-    const update = nextMessageUpdate(member, messageId);
 
-    const res = await http()
-      .patch(`/api/messages/${messageId}`)
-      .set('Authorization', auth('author'))
-      .send({ spans: spans('edited after removal') })
-      .expect(200);
+    await expectNoRebroadcast(messageId, async () => {
+      const res = await http()
+        .patch(`/api/messages/${messageId}`)
+        .set('Authorization', auth('author'))
+        .send({ spans: spans('edited after removal') })
+        .expect(403);
+      expect(leaks(res.body)).toEqual([]);
+    });
 
-    const event = await update;
-    expect(leaks(event)).toEqual([]);
-    expect(JSON.stringify(event)).not.toContain('edited after removal');
-    expect(leaks(res.body)).toEqual([]);
+    const stored = await db.messageSpan.findMany({ where: { messageId } });
+    expect(stored.map((span) => span.text)).toEqual(['to be removed']);
   });
 
   describe.each(['mod', 'owner'] as const)('as %s', (who) => {

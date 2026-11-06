@@ -132,6 +132,20 @@ describe('Instance invites (e2e)', () => {
       expect((res.body as { usages: unknown[] }).usages).toHaveLength(1);
     });
 
+    it('registration through an invite with no communities joins the instance alone', async () => {
+      const res = await create('inviter', []).expect(201);
+      const { code } = res.body as { code: string };
+      const joined = await request(f.app.getHttpServer())
+        .post('/api/users')
+        .send({ code, username: unique('joiner'), password: 'Password123!' })
+        .expect(201);
+      expect(
+        await f.db.membership.count({
+          where: { userId: (joined.body as { id: string }).id },
+        }),
+      ).toBe(0);
+    });
+
     it('registration through an invite still works and joins its communities', async () => {
       const c = await f.community();
       const code = unique('join');
