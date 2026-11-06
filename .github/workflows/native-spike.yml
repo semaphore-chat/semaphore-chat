@@ -85,8 +85,19 @@ jobs:
           $fxc = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter fxc.exe -ErrorAction SilentlyContinue | Where-Object { $_.FullName -match '\\x64\\' } | Select-Object -First 1
           if (-not $fxc) { throw 'fxc.exe not found: gpui-pre-windows compiles its shaders with it in release' }
           $fxc.FullName
+      # Failures also go out as annotations, which can be read without a login, unlike job logs.
       - name: Build
-        run: cargo build --locked --release -p semaphore-app
+        shell: bash
+        run: |
+          set +e
+          cargo build --locked --release -p semaphore-app 2>&1 | tee build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -ne 0 ]; then
+            grep -nE '^error|error(\[|:)|fatal error|LNK[0-9]+|failed to run custom build' build.log \
+              | head -8 | cut -c1-900 | sed 's/^/::error title=Windows build::/'
+            echo "::error title=Windows build tail::$(tail -n 40 build.log | cut -c1-200 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' | tail -c 3500)"
+          fi
+          exit "$rc"
       - name: Report the binary size
         shell: bash
         run: ls -l target/release/semaphore-app.exe
