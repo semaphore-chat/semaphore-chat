@@ -567,6 +567,23 @@ describe('Authorization of voice, DMs, users and push (e2e)', () => {
         .send({ roomId: dmId, identity: a.id })
         .expect(201);
     });
+
+    it('does not mint a channel token for an owner from a DM id or an unknown room', async () => {
+      const a = await newUser('dm');
+      const b = await newUser('dm');
+      const dmId = await createDm(a, [b]);
+
+      await http()
+        .post('/api/livekit/token')
+        .set('Authorization', bearer(owner))
+        .send({ roomId: dmId, identity: owner.id })
+        .expect(404);
+      await http()
+        .post('/api/livekit/token')
+        .set('Authorization', bearer(owner))
+        .send({ roomId: randomUUID(), identity: owner.id })
+        .expect(404);
+    });
   });
 
   // ---------------------------------------------------------------------------
