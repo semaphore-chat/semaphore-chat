@@ -102,6 +102,7 @@ export class ModerationController {
       userId,
       req.user.id,
       dto.reason,
+      req.user.role,
     );
     return { success: true, message: 'User unbanned successfully' };
   }
