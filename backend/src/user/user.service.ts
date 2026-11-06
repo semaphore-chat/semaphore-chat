@@ -31,6 +31,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
 import { PermissionsService } from '@/roles/permissions.service';
+import { InstanceRolesService } from '@/roles/instance-roles.service';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 
 import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
@@ -55,6 +56,7 @@ export class UserService {
     private readonly permissionsCacheService: PermissionsCacheService,
     private readonly sessionRevocationService: SessionRevocationService,
     private readonly permissionsService: PermissionsService,
+    private readonly instanceRolesService: InstanceRolesService,
   ) {}
 
   async findByUsername(username: string): Promise<User | null> {
@@ -528,6 +530,18 @@ export class UserService {
     return new AdminUserEntity(updatedUser);
   }
 
+  private async assertMayManageUser(
+    actingUserId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    if (actingUserId === targetUserId) return;
+    const actor = await this.findById(actingUserId);
+    await this.instanceRolesService.assertMayManageUser(
+      { id: actingUserId, role: actor?.role ?? InstanceRole.USER },
+      targetUserId,
+    );
+  }
+
   /**
    * Ban or unban a user
    */
@@ -550,6 +564,8 @@ export class UserService {
     if (targetUser.role === InstanceRole.OWNER) {
       throw new ForbiddenException('Cannot ban an instance owner');
     }
+
+    await this.assertMayManageUser(actingUserId, targetUserId);
 
     const updatedUser = await this.databaseService.user.update({
       where: { id: targetUserId },
@@ -650,6 +666,8 @@ export class UserService {
       }
     }
 
+    await this.assertMayManageUser(actingUserId, targetUserId);
+
     const hashedPassword = await this.hashPassword(newPassword);
     const updatedUser = await this.databaseService.$transaction((tx) =>
       this.resetPasswordAndRevokeSessions(targetUserId, hashedPassword, tx),
@@ -686,6 +704,8 @@ export class UserService {
     if (targetUser.role === InstanceRole.OWNER) {
       throw new ForbiddenException('Cannot delete an instance owner');
     }
+
+    await this.assertMayManageUser(actingUserId, targetUserId);
 
     // Delete user and cascade will handle related records
     await this.databaseService.user.delete({

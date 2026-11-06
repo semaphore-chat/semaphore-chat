@@ -1,6 +1,7 @@
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { InstanceRolesService } from './instance-roles.service';
+import { getInstanceAdminActions } from './default-roles.config';
 import { DatabaseService } from '@/database/database.service';
 import {
   PermissionsCacheService,
@@ -12,6 +13,7 @@ import {
   BadRequestException,
   NotFoundException,
   ConflictException,
+  ForbiddenException,
 } from '@nestjs/common';
 
 describe('InstanceRolesService', () => {
@@ -54,6 +56,57 @@ describe('InstanceRolesService', () => {
       expect(result.resourceType).toBe('INSTANCE');
       expect(result.resourceId).toBeNull();
       expect(result.roles).toHaveLength(1);
+    });
+  });
+
+  describe('assertMayManageUser', () => {
+    const fullAdmin = getInstanceAdminActions();
+    const held = (byUser: Record<string, RbacActions[]>) =>
+      mockDatabase.userRoles.findMany.mockImplementation(((args: {
+        where: { userId: string };
+      }) =>
+        Promise.resolve(
+          (byUser[args.where.userId] ?? []).length
+            ? [{ role: { actions: byUser[args.where.userId] } }]
+            : [],
+        )) as never);
+    const actor = { id: 'actor', role: 'USER' };
+
+    it("refuses a target holding an action the actor doesn't", async () => {
+      held({
+        actor: [RbacActions.UPDATE_USER],
+        target: [RbacActions.UPDATE_USER, RbacActions.DELETE_USER],
+      });
+      await expect(
+        service.assertMayManageUser(actor, 'target'),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('allows a target holding nothing, or no more than the actor', async () => {
+      held({
+        actor: [RbacActions.UPDATE_USER],
+        same: [RbacActions.UPDATE_USER],
+      });
+      await expect(
+        service.assertMayManageUser(actor, 'none'),
+      ).resolves.toBeUndefined();
+      await expect(
+        service.assertMayManageUser(actor, 'same'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('full authority reaches holders of actions outside the admin set', async () => {
+      held({ actor: fullAdmin, target: [RbacActions.UNBAN_USER] });
+      await expect(
+        service.assertMayManageUser(actor, 'target'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('an instance owner reaches anyone', async () => {
+      held({ target: fullAdmin });
+      await expect(
+        service.assertMayManageUser({ id: 'actor', role: 'OWNER' }, 'target'),
+      ).resolves.toBeUndefined();
     });
   });
 
