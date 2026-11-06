@@ -30,7 +30,8 @@ export const ConfirmLongName = defineScreen(longNameScenario, LINK);
 /** The server refused to approve (e.g. a session from before sessions were tracked). */
 const clickApprove = () =>
   Array.from(document.querySelectorAll('button')).find(
-    (button) => button.textContent === 'Sign in to the desktop app',
+    // It stays disabled until the current user has loaded: a click before then does nothing.
+    (button) => button.textContent === 'Sign in to the desktop app' && !button.disabled,
   );
 const ApproveWithPassword = () => (
   <SandboxShell path={LINK} overlay={<ClickOnMount find={clickApprove} />}>
