@@ -7,8 +7,8 @@
 
 use async_trait::async_trait;
 use semaphore_core::Core;
-use semaphore_core::cache::QueryKey;
 use semaphore_core::platform::{Clock, CoreEvent, EventSink};
+use semaphore_core::realtime::RealtimeEvent;
 use semaphore_net::socket::{
     EmitError, Refresh, SocketClient, SocketConfig, SocketEvent, TokenSource,
 };
@@ -133,7 +133,6 @@ fn start_session(command: &Value, out: &mpsc::UnboundedSender<Value>) -> Session
     if let Some(expiry) = command.get("tokenExpiresAtMs").and_then(Value::as_u64) {
         core.set_token_expiry(expiry);
     }
-    core.cache_set(QueryKey::new(&["messages", "channel"]), "[]".into());
     let forward = out.clone();
     let core_events = core.clone();
     tokio::spawn(async move {
@@ -143,11 +142,13 @@ fn start_session(command: &Value, out: &mpsc::UnboundedSender<Value>) -> Session
             let line = match event {
                 SocketEvent::Connected { sid } => {
                     conn += 1;
-                    core_events.socket_connected();
+                    core_events.ingest(RealtimeEvent::Connected { sid: sid.clone() });
                     json!({"k":"connected","t":t,"conn":conn,"sid":sid})
                 }
                 SocketEvent::Disconnected { reason } => {
-                    core_events.socket_disconnected();
+                    core_events.ingest(RealtimeEvent::Disconnected {
+                        reason: reason.clone(),
+                    });
                     json!({"k":"disconnected","t":t,"conn":conn,"reason":reason})
                 }
                 SocketEvent::ConnectError { message } => {
@@ -157,7 +158,7 @@ fn start_session(command: &Value, out: &mpsc::UnboundedSender<Value>) -> Session
                     json!({"k":"ev","t":t,"conn":conn,"e":name,"p":payload})
                 }
                 SocketEvent::Resumed => {
-                    core_events.socket_connected();
+                    core_events.ingest(RealtimeEvent::Resumed);
                     json!({"k":"resumed","t":t,"conn":conn})
                 }
                 SocketEvent::Reauthenticated { result } => {
@@ -256,6 +257,7 @@ fn handle(session: &mut Option<Session>, command: Value, out: &mpsc::UnboundedSe
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    semaphore_net::install_crypto_provider();
     let port = std::env::var("CONTROL_PORT").unwrap_or_else(|_| "9000".into());
     let listener = TcpListener::bind(format!("0.0.0.0:{port}")).await?;
     println!("listening on {port}");

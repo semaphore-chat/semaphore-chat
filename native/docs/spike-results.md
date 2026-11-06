@@ -136,8 +136,26 @@ sends later.
 **Not tested:** TLS, real OS suspend (`docker pause` stands in, and it keeps the monotonic clock
 running), and a backend or Redis restart.
 
-**Not run for this work:** `verify.sh`'s full workspace and GPUI build, held back because a priority
-job had the machine. The crates this work touches passed the same checks individually.
+**After merging into `spike/native-gpui`:** `verify.sh` covers this work now. `rig-sio` had to move
+to the rewritten core: it reports socket state through `Core::ingest`, and the move to `reqwest` 0.13
+means it installs the crypto provider itself. Without that, its refresh call panicked and auth fell
+to 1/6. `verify.sh` didn't catch this, because the rig only compiles there: only a real run did.
+
+Rerun on the merged code, with a reduced 100 cycles:
+
+- Auth 6/6 and suspend 5/5 on both clients.
+- 100 cycles, 0 stuck, and 0 duplicates, holes or payload mismatches.
+- 0 presence events missed while connected.
+- Quiet connect-to-`userOnline` median 6 ms for Rust and 5 ms for socket.io-client, within 1-3 ms of
+  each other. Both are 3-4 ms above the recorded 2 ms, on a much smaller sample.
+- The cycles and suspend runs predate the crypto provider line. They made no refresh calls, so they
+  never reached the code it fixes.
+
+**What this rerun can't show:** `resume()` no longer lists stale queries, because the resync now runs
+on `Connected`. So the rig's REST check no longer shows core asking for a refetch: core's own tests
+have to cover that. In `stall-past-ping-timeout`, socket.io-client missed 8 messages against 2
+recorded. Only outgoing packets are dropped there, so the count depends on timing, and this wasn't
+looked into.
 
 ## Facts checked in Phase 0
 
