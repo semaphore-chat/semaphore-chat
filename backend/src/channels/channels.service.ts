@@ -155,6 +155,36 @@ export class ChannelsService {
     }
   }
 
+  /**
+   * Private -> public opens the channel's history to the whole community: it
+   * must not happen over anyone on the member list ranked at or above the
+   * actor (peers included). Holders of the top role are exempt.
+   */
+  private async assertPublishingRespectsHigherRanks(
+    channelId: string,
+    communityId: string,
+    actorId: string,
+  ): Promise<void> {
+    const { best, isTop } = await this.permissionsService.getRank(
+      actorId,
+      communityId,
+    );
+    if (isTop) return;
+    const higher = await this.permissionsService.usersRankedAtOrAbove(
+      communityId,
+      best,
+      actorId,
+    );
+    const onList = await this.channelAccessService.channelMemberIds(channelId, [
+      ...higher.keys(),
+    ]);
+    if (onList.length > 0) {
+      throw new ForbiddenException(
+        'Making this channel public would expose it over members ranked at or above you; ask an admin',
+      );
+    }
+  }
+
   /** The community's channels that `userId` can see. */
   async findAll(communityId: string, userId: string) {
     const visibleIds = await this.channelAccessService.visibleChannelIds(
@@ -233,6 +263,12 @@ export class ChannelsService {
         // channel-visibility: public -> private, checked by rank below
         if (updateChannelDto.isPrivate) {
           await this.assertPrivatizingKeepsHigherRanks(
+            id,
+            before.communityId,
+            actor.id,
+          );
+        } else {
+          await this.assertPublishingRespectsHigherRanks(
             id,
             before.communityId,
             actor.id,
@@ -444,7 +480,8 @@ export class ChannelsService {
         where: { id: channelId },
       });
 
-      if (!channel) {
+      // The guard checked the community in the body: the channel must be in it
+      if (!channel || channel.communityId !== communityId) {
         throw new NotFoundException('Channel not found');
       }
 
@@ -490,7 +527,8 @@ export class ChannelsService {
         where: { id: channelId },
       });
 
-      if (!channel) {
+      // The guard checked the community in the body: the channel must be in it
+      if (!channel || channel.communityId !== communityId) {
         throw new NotFoundException('Channel not found');
       }
 

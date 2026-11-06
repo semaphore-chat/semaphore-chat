@@ -39,6 +39,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 @ApiTags('Community')
 @ApiBearerAuth()
@@ -121,7 +122,7 @@ export class CommunityController {
     @Query('search') search?: string,
   ): Promise<CommunityStatsListResponseDto> {
     return this.communityService.findAllWithStats(
-      limit,
+      clampLimit(limit, 100),
       continuationToken,
       search,
     );
