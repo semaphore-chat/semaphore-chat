@@ -11,10 +11,11 @@
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, ChannelKind, ChannelRow, CommunityRow, Conversation,
-    DraftMention, ErrorView, ListOp, MentionCandidate, MentionKind, MessageDraft, MessageRow,
-    ParticipantView, ReactionView, SegKind, SendState, SessionState, TextSeg, TextStyle, UserView,
-    VideoTrackView, ViewKey, VoiceStatus, VoiceView,
+    AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
+    Conversation, DisplayRole, DraftMention, EmojiView, ErrorView, LinkPreviewView, ListOp,
+    MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft, MessageRow,
+    ParticipantView, RailCounts, ReactionView, ReplyToView, SegKind, SendState, SessionState,
+    TextSeg, TextStyle, UserView, VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -80,6 +81,23 @@ pub struct ChannelRow {
     pub unread_count: u32,
     pub mention_count: u32,
     pub voice_users: Vec<UserView>,
+    pub slowmode_seconds: u32,
+    pub permissions: Option<ChannelPermissions>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChannelPermissions {
+    pub post: bool,
+    pub attach: bool,
+    pub react: bool,
+    pub thread_reply: bool,
+    pub connect: bool,
+    pub speak: bool,
+    pub video: bool,
+    pub share: bool,
+    pub manage_permissions: bool,
+    pub posting_role_names: Vec<String>,
+    pub timed_out_until_ms: Option<i64>,
 }
 
 #[uniffi::remote(Record)]
@@ -138,6 +156,32 @@ pub struct ReactionView {
     pub me: bool,
 }
 
+#[uniffi::remote(Record)]
+pub struct ReplyToView {
+    pub message_id: String,
+    pub author: UserView,
+    pub text: String,
+    pub deleted: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct WebhookView {
+    pub id: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct LinkPreviewView {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub image_url: Option<String>,
+    pub site_name: Option<String>,
+    pub favicon_url: Option<String>,
+    pub author_name: Option<String>,
+}
+
 #[uniffi::remote(Enum)]
 pub enum SendState {
     Sent,
@@ -159,6 +203,11 @@ pub struct MessageRow {
     pub attachments: Vec<AttachmentView>,
     pub reactions: Vec<ReactionView>,
     pub reply_count: u32,
+    pub last_reply_at_ms: Option<i64>,
+    pub reply_to: Option<ReplyToView>,
+    pub link_previews: Vec<LinkPreviewView>,
+    pub pinned: bool,
+    pub webhook: Option<WebhookView>,
     pub send_state: SendState,
     pub revision: u64,
 }
@@ -204,6 +253,39 @@ pub struct MessageDraft {
     pub attachment_file_ids: Vec<String>,
 }
 
+#[uniffi::remote(Record)]
+pub struct EmojiView {
+    pub id: String,
+    pub name: String,
+    pub file_id: String,
+}
+
+#[uniffi::remote(Record)]
+pub struct DisplayRole {
+    pub name: String,
+    pub position: i32,
+}
+
+#[uniffi::remote(Record)]
+pub struct MemberView {
+    pub user: UserView,
+    pub status: Option<String>,
+    pub online: bool,
+    pub display_role: Option<DisplayRole>,
+}
+
+#[uniffi::remote(Record)]
+pub struct MemberList {
+    pub members: Vec<MemberView>,
+    pub truncated: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct RailCounts {
+    pub dm_unread: u32,
+    pub notifications_unread: u32,
+}
+
 #[uniffi::remote(Enum)]
 pub enum VoiceStatus {
     Disconnected,
@@ -246,6 +328,8 @@ pub enum ViewKey {
     Communities,
     Channels { community_id: String },
     Mentionables { community_id: String },
+    Members { community_id: String },
+    Rail,
     Voice,
     Typing { conversation: Conversation },
 }
@@ -389,6 +473,22 @@ impl SemaphoreCore {
         self.core.voice()
     }
 
+    pub fn members(&self, community_id: String) -> Option<MemberList> {
+        self.core.members(community_id)
+    }
+
+    pub fn rail_counts(&self) -> RailCounts {
+        self.core.rail_counts()
+    }
+
+    pub fn custom_emojis(&self, community_id: String) -> Vec<EmojiView> {
+        self.core.custom_emojis(community_id)
+    }
+
+    pub fn at_live_edge(&self, conversation: Conversation) -> bool {
+        self.core.at_live_edge(conversation)
+    }
+
     pub fn hold_rows(&self, conversation: Conversation, start: i64, end: i64) {
         self.core.hold_rows(conversation, Some((start, end)));
     }
@@ -427,6 +527,24 @@ impl SemaphoreCore {
         self.core.load_older(conversation).await
     }
 
+    pub async fn load_newer(&self, conversation: Conversation) -> Result<(), CoreError> {
+        self.core.load_newer(conversation).await
+    }
+
+    pub async fn jump_to_present(&self, conversation: Conversation) -> Result<(), CoreError> {
+        self.core.jump_to_present(conversation).await
+    }
+
+    pub async fn open_conversation_at(
+        &self,
+        conversation: Conversation,
+        message_id: String,
+    ) -> Result<(), CoreError> {
+        self.core
+            .open_conversation_at(conversation, message_id)
+            .await
+    }
+
     pub async fn send_message(
         &self,
         conversation: Conversation,
@@ -437,6 +555,10 @@ impl SemaphoreCore {
 
     pub async fn retry_send(&self, client_nonce: String) -> Result<(), CoreError> {
         self.core.retry_send(client_nonce).await
+    }
+
+    pub async fn discard_failed_send(&self, client_nonce: String) -> Result<(), CoreError> {
+        self.core.discard_failed_send(client_nonce).await
     }
 
     pub async fn toggle_reaction(

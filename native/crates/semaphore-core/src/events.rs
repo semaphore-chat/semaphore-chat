@@ -246,6 +246,7 @@ impl State {
     /// Unread counts changed for this context.
     fn unread_views_changed(&mut self, context_id: &str) {
         self.view_changed(ViewKey::Communities);
+        self.view_changed(ViewKey::Rail);
         if let Some(community_id) = self.community_of_channel(context_id) {
             self.view_changed(ViewKey::Channels { community_id });
         }
@@ -305,10 +306,14 @@ impl State {
         if is_mine && let Some(nonce) = &dto.client_nonce {
             self.sends.remove(nonce);
         }
-        if !detached && let Some(window) = self.windows.get_mut(&conversation) {
+        if let Some(window) = self.windows.get_mut(&conversation) {
+            // A detached window doesn't take it, but a page on its way may be the one that reattaches
+            // the window, and may predate it.
             window.note_upsert(&dto.id, Some(dto.clone()));
-            window.reconcile_echo(dto.clone());
-            window.evict_oldest();
+            if !detached {
+                window.reconcile_echo(dto.clone());
+                window.evict_oldest();
+            }
         }
         if dto.direct_message_group_id.is_some() {
             self.invalidate_for("newMessage");
@@ -339,7 +344,7 @@ impl State {
         ];
         for conversation in targets.into_iter().flatten() {
             if let Some(window) = self.windows.get_mut(&conversation) {
-                window.note_upsert(&id, Some(dto.clone()));
+                window.note_update(&id, Some(dto.clone()));
                 window.update(dto.clone(), None);
             }
         }
@@ -384,7 +389,7 @@ impl State {
             if let Some(window) = self.windows.get_mut(&conversation)
                 && window.edit(message_id, &change)
             {
-                window.note_upsert(message_id, None);
+                window.note_update(message_id, None);
             }
         }
     }
@@ -456,6 +461,17 @@ impl State {
             self.view_changed(ViewKey::Voice);
         } else {
             self.invalidate_for(name);
+        }
+    }
+
+    /// Direct, as these fire on every connect and disconnect in the instance. Nothing to change until
+    /// a members read has loaded the map.
+    fn on_presence(&mut self, user_id: &str, online: bool) {
+        let key = keys::op(keys::PRESENCE);
+        self.note_direct_update(&key);
+        if let Some(presence) = self.cache.presence_mut(&key) {
+            presence.insert(user_id.to_owned(), online);
+            self.members_changed(Some(user_id));
         }
     }
 
@@ -580,6 +596,14 @@ impl State {
             }
             ServerEvent::ReadReceiptUpdated(event) => self.on_read_receipt(event),
             ServerEvent::NewNotification(event) => {
+                if !event.read {
+                    let key = keys::op(keys::NOTIFICATION_COUNT);
+                    self.note_direct_update(&key);
+                    if let Some(count) = self.cache.notification_count_mut(&key) {
+                        *count += 1;
+                        self.view_changed(ViewKey::Rail);
+                    }
+                }
                 let is_mention = matches!(
                     event.type_,
                     NotificationType::UserMention
@@ -603,6 +627,8 @@ impl State {
                 }
             }
             ServerEvent::NotificationRead(event) => {
+                // Refetched, not counted down: another device reading the same one would count twice.
+                self.invalidate(&keys::op(keys::NOTIFICATION_COUNT));
                 if let Some(conversation) =
                     self.mention_notifications.remove(&event.notification_id)
                     && let Conversation::Channel { id } | Conversation::DirectMessage { id } =
@@ -650,13 +676,20 @@ impl State {
                 self.token_expires_at_ms = Some(event.expires_at.timestamp_millis().max(0) as u64);
                 self.push_effect(Effect::RefreshToken);
             }
-            // Presence isn't cached, and the rest have no cache handler on the web either.
-            ServerEvent::UserOnline(_)
-            | ServerEvent::UserOffline(_)
-            | ServerEvent::SessionTerminated(_)
+            ServerEvent::UserOnline(event) => self.on_presence(&event.user_id, true),
+            ServerEvent::UserOffline(event) => self.on_presence(&event.user_id, false),
+            // These have no cache handler on the web either.
+            ServerEvent::SessionTerminated(_)
             | ServerEvent::EgressSegmentsReady(_)
             | ServerEvent::ReplayBufferFailed(_)
             | ServerEvent::ReplayBufferStopped(_) => {}
+            // Who's listed changed. The rules hold the web's keys, and this read has its own.
+            ServerEvent::MemberAddedToCommunity(_)
+            | ServerEvent::UserBanned(_)
+            | ServerEvent::UserKicked(_) => {
+                self.invalidate_for(name);
+                self.invalidate(&keys::op(keys::MEMBERS));
+            }
             ServerEvent::ChannelCreated(_)
             | ServerEvent::ChannelDeleted(_)
             | ServerEvent::ChannelPermissionsUpdated(_)
@@ -664,15 +697,12 @@ impl State {
             | ServerEvent::ChannelUpdated(_)
             | ServerEvent::CommunityDeleted(_)
             | ServerEvent::CommunityUpdated(_)
-            | ServerEvent::MemberAddedToCommunity(_)
             | ServerEvent::RoleAssigned(_)
             | ServerEvent::RoleCreated(_)
             | ServerEvent::RoleDeleted(_)
             | ServerEvent::RoleUnassigned(_)
             | ServerEvent::RoleUpdated(_)
             | ServerEvent::TimeoutRemoved(_)
-            | ServerEvent::UserBanned(_)
-            | ServerEvent::UserKicked(_)
             | ServerEvent::UserTimedOut(_) => self.invalidate_for(name),
             ServerEvent::Unknown { name, .. } => log::debug!("ignoring unknown event {name}"),
             ServerEvent::Malformed {

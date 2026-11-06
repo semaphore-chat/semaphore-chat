@@ -71,6 +71,29 @@ pub struct ChannelRow {
     pub mention_count: u32,
     /// Who is in the channel, for a voice channel.
     pub voice_users: Vec<UserView>,
+    /// The gap the server enforces between this user's messages. 0 means none.
+    pub slowmode_seconds: u32,
+    /// `None` while they load, or if they failed to. Fail open then, as the web does: the server
+    /// enforces them either way.
+    pub permissions: Option<ChannelPermissions>,
+}
+
+/// What this user may do in a channel.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelPermissions {
+    pub post: bool,
+    pub attach: bool,
+    pub react: bool,
+    pub thread_reply: bool,
+    pub connect: bool,
+    pub speak: bool,
+    pub video: bool,
+    pub share: bool,
+    pub manage_permissions: bool,
+    /// Roles whose holders can post here, by rank, for the read-only notice.
+    pub posting_role_names: Vec<String>,
+    /// The end of this user's community timeout, if one is active.
+    pub timed_out_until_ms: Option<i64>,
 }
 
 /// Inline formatting from a span's `bold`, `italic`, `strikethrough` and `code` flags.
@@ -152,6 +175,36 @@ pub struct ReactionView {
     pub me: bool,
 }
 
+/// What a reply shows of the message it answers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReplyToView {
+    pub message_id: String,
+    pub author: UserView,
+    /// Plain text. Blank when the message was removed.
+    pub text: String,
+    pub deleted: bool,
+}
+
+/// Who posted a message that came through a webhook. Such a message has no author.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WebhookView {
+    pub id: String,
+    pub name: String,
+    pub avatar_url: Option<String>,
+}
+
+/// As sent. The image and favicon are third-party URLs: core passes them on and loads nothing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LinkPreviewView {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub image_url: Option<String>,
+    pub site_name: Option<String>,
+    pub favicon_url: Option<String>,
+    pub author_name: Option<String>,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum SendState {
     #[default]
@@ -183,6 +236,12 @@ pub struct MessageRow {
     pub attachments: Vec<AttachmentView>,
     pub reactions: Vec<ReactionView>,
     pub reply_count: u32,
+    pub last_reply_at_ms: Option<i64>,
+    /// Blank on a removed message, like the rest of its content.
+    pub reply_to: Option<ReplyToView>,
+    pub link_previews: Vec<LinkPreviewView>,
+    pub pinned: bool,
+    pub webhook: Option<WebhookView>,
     pub send_state: SendState,
     /// Bumped whenever the row changes, so a view can keep its shaped text until then.
     pub revision: u64,
@@ -246,6 +305,43 @@ pub struct MessageDraft {
     pub attachment_file_ids: Vec<String>,
 }
 
+/// A custom emoji, so a UI can turn `SegKind::Emoji`'s id into a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EmojiView {
+    pub id: String,
+    pub name: String,
+    pub file_id: String,
+}
+
+/// A member's highest role other than the community's default. Lower positions rank higher.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DisplayRole {
+    pub name: String,
+    pub position: i32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MemberView {
+    pub user: UserView,
+    pub status: Option<String>,
+    pub online: bool,
+    pub display_role: Option<DisplayRole>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MemberList {
+    pub members: Vec<MemberView>,
+    /// The community has more members than core reads (1000), so this isn't all of them.
+    pub truncated: bool,
+}
+
+/// The rail's counters.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RailCounts {
+    pub dm_unread: u32,
+    pub notifications_unread: u32,
+}
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum VoiceStatus {
     #[default]
@@ -292,6 +388,8 @@ pub enum ViewKey {
     Communities,
     Channels { community_id: String },
     Mentionables { community_id: String },
+    Members { community_id: String },
+    Rail,
     Voice,
     Typing { conversation: Conversation },
 }

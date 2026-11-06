@@ -385,6 +385,7 @@ pub fn row(seq: i64) -> MessageRow {
         reply_count: 0,
         send_state: SendState::Sent,
         revision: 0,
+        ..MessageRow::default()
     }
 }
 

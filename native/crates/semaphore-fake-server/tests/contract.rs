@@ -90,7 +90,12 @@ impl Schemas {
                                 );
                             }
                         }
-                        "additionalProperties" => {}
+                        // A map says what its values are. Closing it would refuse them all.
+                        "additionalProperties" => {
+                            if value.is_object() {
+                                result.insert(key.clone(), self.inline(value, depth + 1));
+                            }
+                        }
                         _ => {
                             result.insert(key.clone(), value.clone());
                         }
@@ -99,11 +104,12 @@ impl Schemas {
                 // A bare object with no properties of its own (a composed wrapper,
                 // or a map) must not close itself: `additionalProperties` only
                 // knows about properties declared in the same schema object.
-                if result.contains_key("properties")
-                    || (result.get("type").and_then(Value::as_str) == Some("object")
-                        && !result.contains_key("allOf")
-                        && !result.contains_key("oneOf")
-                        && !result.contains_key("anyOf"))
+                if !result.contains_key("additionalProperties")
+                    && (result.contains_key("properties")
+                        || (result.get("type").and_then(Value::as_str) == Some("object")
+                            && !result.contains_key("allOf")
+                            && !result.contains_key("oneOf")
+                            && !result.contains_key("anyOf")))
                 {
                     result.insert("additionalProperties".to_owned(), Value::Bool(false));
                 }
@@ -309,6 +315,41 @@ async fn every_implemented_route_matches_openapi() {
             body: None,
             status: 200,
             schema: schemas.array_of("MembershipResponseDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/membership/community/community-1?limit=5".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("PaginatedMembershipsResponseDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/users/user-1".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("UserEntity"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/presence/users/bulk".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("BulkPresenceResponseDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/notifications/unread-count".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("UnreadCountResponseDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/messages/group/dm-1/around/msg-203?limit=4".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("AnchoredMessagesResponseDto"),
         },
         Case {
             method: reqwest::Method::GET,

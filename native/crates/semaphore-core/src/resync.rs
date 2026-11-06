@@ -12,6 +12,7 @@ use crate::client::{Core, Effect, State, window_key};
 use crate::model::Conversation;
 use crate::platform::CoreError;
 use crate::store::{MAX_ROWS, PAGE_SIZE, ResyncOutcome, THREAD_PAGE_SIZE};
+use semaphore_wire::enums::MessagePageDirection;
 use semaphore_wire::types::MessageDto;
 
 /// `handleReconnect`'s queries, besides the message windows. `fixtures/cache/socket-rules.json`
@@ -25,6 +26,9 @@ pub const RECONNECT_INVALIDATES: &[&str] = &[
     "voicePresenceControllerGetChannelPresence",
 ];
 
+/// What the web keeps fresh some other way, and this client caches: both miss events during a gap.
+const NATIVE_RECONNECT_INVALIDATES: &[&str] = &[keys::MEMBERS, keys::PRESENCE];
+
 /// The most pages a resync reads looking for where the loaded rows begin: the web's page cap.
 const MAX_RESYNC_PAGES: usize = MAX_ROWS / PAGE_SIZE as usize;
 
@@ -32,7 +36,10 @@ impl State {
     /// A connection came back after a gap. Returns what it marked.
     pub fn start_resync(&mut self) -> Vec<QueryKey> {
         let mut marked = Vec::new();
-        for op in RECONNECT_INVALIDATES {
+        for op in RECONNECT_INVALIDATES
+            .iter()
+            .chain(NATIVE_RECONNECT_INVALIDATES)
+        {
             marked.extend(self.invalidate(&keys::op(op)));
         }
         let conversations: Vec<Conversation> = self.windows.keys().cloned().collect();
@@ -87,6 +94,16 @@ impl Core {
         conversation: &Conversation,
         token: Option<String>,
     ) -> Result<(Vec<MessageDto>, Option<String>), CoreError> {
+        self.fetch_page_toward(conversation, token, None).await
+    }
+
+    /// As [`Core::fetch_page`], in a direction. Rows come newest first either way.
+    pub(crate) async fn fetch_page_toward(
+        &self,
+        conversation: &Conversation,
+        token: Option<String>,
+        direction: Option<MessagePageDirection>,
+    ) -> Result<(Vec<MessageDto>, Option<String>), CoreError> {
         let services = self.services().ok_or_else(|| unavailable("the backend"))?;
         let page = match conversation {
             Conversation::Channel { id } => {
@@ -95,7 +112,7 @@ impl Core {
                     .messages_controller_find_all_for_channel(
                         id.clone(),
                         token,
-                        None,
+                        direction,
                         Some(PAGE_SIZE),
                     )
                     .await
@@ -106,7 +123,7 @@ impl Core {
                     .messages_controller_find_all_for_group(
                         id.clone(),
                         token,
-                        None,
+                        direction,
                         Some(PAGE_SIZE),
                     )
                     .await

@@ -181,11 +181,77 @@ pub struct FakeBackend {
     pub server_url: Mutex<Option<String>>,
     pub logged_out: AtomicU64,
     pub refreshes: AtomicU64,
+    /// Every member, in order. Served a page at a time, with a token while more remain.
+    pub members: Mutex<Vec<Value>>,
+    pub member_page_requests: AtomicU64,
+    pub bulk_presence: Mutex<HashMap<String, bool>>,
+    pub notification_count: Mutex<i64>,
+    pub notification_requests: AtomicU64,
+    pub capabilities: Mutex<Option<Value>>,
+    pub emojis: Mutex<Vec<Value>>,
 }
 
 impl FakeBackend {
     pub fn set_messages(&self, rows: Vec<MessageDto>) {
         self.messages.lock().unwrap().insert(CHANNEL.into(), rows);
+    }
+
+    /// The backend's `findAround`: half on each side, newest first, a token only if a side is full.
+    pub fn around(
+        &self,
+        channel: &str,
+        message_id: &str,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
+        let rows = self
+            .messages
+            .lock()
+            .unwrap()
+            .get(channel)
+            .cloned()
+            .unwrap_or_default();
+        let index = rows
+            .iter()
+            .position(|row| row.id == message_id)
+            .ok_or_else(not_found)?;
+        let half = (limit.unwrap_or(50) / 2) as usize;
+        let start = index.saturating_sub(half);
+        let end = (index + 1 + half).min(rows.len());
+        Ok(wire::AnchoredMessagesResponseDto {
+            newer_continuation_token: (index - start == half && start < index)
+                .then(|| rows[start].id.clone()),
+            older_continuation_token: (end - index - 1 == half && end - 1 > index)
+                .then(|| rows[end - 1].id.clone()),
+            messages: rows[start..end].to_vec(),
+        })
+    }
+
+    /// Rows after the token, nearest the token first, then newest first as the backend returns them.
+    pub fn newer_page(
+        &self,
+        channel: &str,
+        token: Option<String>,
+        limit: Option<i64>,
+    ) -> wire::PaginatedMessagesResponseDto {
+        let rows = self
+            .messages
+            .lock()
+            .unwrap()
+            .get(channel)
+            .cloned()
+            .unwrap_or_default();
+        let end = token
+            .and_then(|token| rows.iter().position(|row| row.id == token))
+            .unwrap_or(rows.len());
+        let limit = limit.unwrap_or(25) as usize;
+        let start = end.saturating_sub(limit);
+        let page = rows[start..end].to_vec();
+        wire::PaginatedMessagesResponseDto {
+            continuation_token: (page.len() == limit)
+                .then(|| page.first().map(|row| row.id.clone()))
+                .flatten(),
+            messages: page,
+        }
     }
 
     pub fn page(
@@ -281,7 +347,10 @@ impl Backend for FakeBackend {
         &self,
         _: String,
     ) -> BackendResult<wire::CommunityChannelCapabilitiesDto> {
-        Err(not_found())
+        match self.capabilities.lock().unwrap().clone() {
+            Some(capabilities) => decoded(capabilities),
+            None => Err(not_found()),
+        }
     }
     async fn read_receipts_controller_get_unread_counts(
         &self,
@@ -293,12 +362,16 @@ impl Backend for FakeBackend {
         &self,
         channel_id: String,
         token: Option<String>,
-        _: Option<MessagePageDirection>,
+        direction: Option<MessagePageDirection>,
         limit: Option<i64>,
     ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
         self.page_requests.fetch_add(1, Ordering::SeqCst);
         // The snapshot is taken as the request arrives: the gate only delays the answer.
-        let page = self.page(&channel_id, token, limit);
+        let page = if direction == Some(MessagePageDirection::Newer) {
+            self.newer_page(&channel_id, token, limit)
+        } else {
+            self.page(&channel_id, token, limit)
+        };
         let gate = self.gate.lock().unwrap().take();
         if let Some(gate) = gate {
             let _ = gate.await;
@@ -307,20 +380,24 @@ impl Backend for FakeBackend {
     }
     async fn messages_controller_find_around_for_channel(
         &self,
-        _: String,
-        _: String,
-        _: Option<i64>,
+        channel_id: String,
+        message_id: String,
+        limit: Option<i64>,
     ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
-        Err(not_found())
+        self.around(&channel_id, &message_id, limit)
     }
     async fn messages_controller_find_all_for_group(
         &self,
         group_id: String,
         token: Option<String>,
-        _: Option<MessagePageDirection>,
+        direction: Option<MessagePageDirection>,
         limit: Option<i64>,
     ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
-        Ok(self.page(&group_id, token, limit))
+        Ok(if direction == Some(MessagePageDirection::Newer) {
+            self.newer_page(&group_id, token, limit)
+        } else {
+            self.page(&group_id, token, limit)
+        })
     }
     async fn threads_controller_get_replies(
         &self,
@@ -353,6 +430,51 @@ impl Backend for FakeBackend {
             },
             file_metadata: HashMap::new(),
             replies: page,
+        })
+    }
+    async fn messages_controller_find_around_for_group(
+        &self,
+        group_id: String,
+        message_id: String,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
+        self.around(&group_id, &message_id, limit)
+    }
+    async fn membership_controller_find_all_for_community(
+        &self,
+        _: String,
+        limit: Option<i64>,
+        token: Option<String>,
+    ) -> BackendResult<wire::PaginatedMembershipsResponseDto> {
+        self.member_page_requests.fetch_add(1, Ordering::SeqCst);
+        let members = self.members.lock().unwrap().clone();
+        let start = token.map_or(0, |token| {
+            members
+                .iter()
+                .position(|member| member["id"] == token.as_str())
+                .map_or(members.len(), |index| index + 1)
+        });
+        let limit = limit.unwrap_or(100) as usize;
+        let page: Vec<Value> = members.iter().skip(start).take(limit).cloned().collect();
+        let more = start + page.len() < members.len();
+        let token = more
+            .then(|| page.last().map(|member| member["id"].clone()))
+            .flatten();
+        decoded(json!({ "members": page, "continuationToken": token }))
+    }
+    async fn presence_controller_get_bulk_presence(
+        &self,
+    ) -> BackendResult<wire::BulkPresenceResponseDto> {
+        Ok(wire::BulkPresenceResponseDto {
+            presence: self.bulk_presence.lock().unwrap().clone(),
+        })
+    }
+    async fn notifications_controller_get_unread_count(
+        &self,
+    ) -> BackendResult<wire::UnreadCountResponseDto> {
+        self.notification_requests.fetch_add(1, Ordering::SeqCst);
+        Ok(wire::UnreadCountResponseDto {
+            count: *self.notification_count.lock().unwrap(),
         })
     }
     async fn messages_controller_create(
@@ -406,7 +528,7 @@ impl Backend for FakeBackend {
         &self,
         _: String,
     ) -> BackendResult<Vec<wire::CustomEmojiDto>> {
-        Ok(Vec::new())
+        decoded(Value::Array(self.emojis.lock().unwrap().clone()))
     }
     async fn livekit_controller_get_connection_info(
         &self,

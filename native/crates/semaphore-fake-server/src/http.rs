@@ -17,7 +17,8 @@ use semaphore_wire::enums::ChannelType;
 use semaphore_wire::types::{
     AnchoredMessagesResponseDto, ChannelCapabilitiesDto, CommunityChannelCapabilitiesDto,
     CommunityResponseDto, ConnectionInfoResponseDto, CreateTokenDto, LoginRequestDto,
-    PaginatedMessagesResponseDto, RefreshRequestDto, TokenResponseDto,
+    PaginatedMembershipsResponseDto, PaginatedMessagesResponseDto, RefreshRequestDto,
+    TokenResponseDto,
 };
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
@@ -30,6 +31,7 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .route("/api/auth/refresh", post(refresh))
         .route("/api/auth/logout", post(logout))
         .route("/api/users/profile", get(profile))
+        .route("/api/users/{id}", get(user_by_id))
         .route("/api/community/mine", get(communities_mine))
         .route(
             "/api/channels/community/{communityId}",
@@ -57,9 +59,19 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         )
         .route("/api/messages/group/{groupId}", get(messages_for_group))
         .route(
+            "/api/messages/group/{groupId}/around/{messageId}",
+            get(messages_around_for_group),
+        )
+        .route(
             "/api/messages/reactions",
             post(add_reaction).delete(remove_reaction),
         )
+        .route(
+            "/api/membership/community/{communityId}",
+            get(members_of_community),
+        )
+        .route("/api/presence/users/bulk", get(bulk_presence))
+        .route("/api/notifications/unread-count", get(notification_count))
         .route(
             "/api/membership/community/{communityId}/search",
             get(search_members),
@@ -105,6 +117,7 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         ("POST", "/api/auth/refresh") => "AuthController_refresh",
         ("POST", "/api/auth/logout") => "AuthController_logout",
         ("GET", "/api/users/profile") => "UserController_getProfile",
+        ("GET", "/api/users/{id}") => "UserController_getUserById",
         ("GET", "/api/community/mine") => "CommunityController_findAllMine",
         ("GET", "/api/channels/community/{communityId}") => {
             "ChannelsController_findAllForCommunity"
@@ -122,6 +135,14 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
             "MessagesController_findAroundForChannel"
         }
         ("GET", "/api/messages/group/{groupId}") => "MessagesController_findAllForGroup",
+        ("GET", "/api/messages/group/{groupId}/around/{messageId}") => {
+            "MessagesController_findAroundForGroup"
+        }
+        ("GET", "/api/membership/community/{communityId}") => {
+            "MembershipController_findAllForCommunity"
+        }
+        ("GET", "/api/presence/users/bulk") => "PresenceController_getBulkPresence",
+        ("GET", "/api/notifications/unread-count") => "NotificationsController_getUnreadCount",
         ("POST", "/api/messages") => "MessagesController_create",
         ("POST", "/api/messages/dm") => "MessagesController_createDirectMessage",
         ("POST", "/api/messages/reactions") => "MessagesController_addReaction",
@@ -516,6 +537,103 @@ async fn messages_around(
             older_continuation_token: older,
         })
         .expect("an anchored page serializes"),
+    )
+}
+
+async fn messages_around_for_group(
+    State(inner): State<Arc<Inner>>,
+    Path((group_id, message_id)): Path<(String, String)>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let limit = match limit_query(&query) {
+        Ok(limit) => limit,
+        Err(response) => return response,
+    };
+    let data = lock(&inner.data);
+    let source = data
+        .dm_messages
+        .get(&group_id)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let Some((messages, older, newer)) = messages::around(source, &message_id, limit) else {
+        return inner.error(404, "NOT_FOUND", "Message not found", false);
+    };
+    drop(data);
+    json_response(
+        StatusCode::OK,
+        serde_json::to_value(AnchoredMessagesResponseDto {
+            messages,
+            newer_continuation_token: newer,
+            older_continuation_token: older,
+        })
+        .expect("an anchored page serializes"),
+    )
+}
+
+async fn user_by_id(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
+    match inner.scenario.user(&id) {
+        Some(user) => json_response(
+            StatusCode::OK,
+            serde_json::to_value(user).expect("a user serializes"),
+        ),
+        None => inner.error(404, "NOT_FOUND", "User not found", false),
+    }
+}
+
+/// As the backend pages them: the token is the last row's id, sent only after a full page.
+async fn members_of_community(
+    State(inner): State<Arc<Inner>>,
+    Path(community_id): Path<String>,
+    Query(query): Query<HashMap<String, String>>,
+) -> Response {
+    let limit = match query.get("limit") {
+        Some(raw) => match raw.parse::<usize>() {
+            Ok(limit) => limit.clamp(1, 500),
+            Err(_) => return invalid("limit must be an integer"),
+        },
+        None => 100,
+    };
+    let all = inner
+        .scenario
+        .memberships
+        .get(&community_id)
+        .map(Vec::as_slice)
+        .unwrap_or(&[]);
+    let start = match query.get("continuationToken") {
+        Some(token) => match all.iter().position(|member| member.id == *token) {
+            Some(index) => index + 1,
+            None => return invalid("unknown continuationToken"),
+        },
+        None => 0,
+    };
+    let members: Vec<_> = all.iter().skip(start).take(limit).cloned().collect();
+    let continuation_token = (members.len() == limit)
+        .then(|| members.last().map(|member| member.id.clone()))
+        .flatten();
+    json_response(
+        StatusCode::OK,
+        serde_json::to_value(PaginatedMembershipsResponseDto {
+            continuation_token,
+            members,
+        })
+        .expect("a members page serializes"),
+    )
+}
+
+/// The sandbox's rule: `me`, and anyone with a status, is online. Only the online are listed.
+async fn bulk_presence(State(inner): State<Arc<Inner>>) -> Response {
+    let scenario = &inner.scenario;
+    let online: HashMap<&str, bool> = std::iter::once(&scenario.me)
+        .chain(scenario.users.iter().filter(|user| user.status.is_some()))
+        .map(|user| (user.id.as_str(), true))
+        .collect();
+    json_response(StatusCode::OK, json!({ "presence": online }))
+}
+
+async fn notification_count(State(inner): State<Arc<Inner>>) -> Response {
+    json_response(
+        StatusCode::OK,
+        json!({ "count": inner.scenario.unread_notifications }),
     )
 }
 

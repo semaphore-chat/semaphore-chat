@@ -8,7 +8,8 @@
 
 use crate::model::{
     AttachmentKind, AttachmentView, ChannelKind, ChannelRow, CommunityRow, Conversation,
-    MessageRow, ReactionView, SendState, TextStyle, UserView, VoiceView,
+    LinkPreviewView, MessageRow, ReactionView, ReplyToView, SendState, TextStyle, UserView,
+    VoiceView, WebhookView,
 };
 use crate::platform::CoreError;
 use crate::text::{SpanInput, layout_spans};
@@ -55,6 +56,58 @@ fn integer(value: &Value) -> i64 {
     value.as_i64().unwrap_or(0)
 }
 
+fn time_ms(value: &Value) -> Option<i64> {
+    chrono::DateTime::parse_from_rfc3339(value.as_str()?)
+        .ok()
+        .map(|at| at.timestamp_millis())
+}
+
+fn reply_to_view(value: &Value, authors: &HashMap<String, UserView>) -> Option<ReplyToView> {
+    let message_id = string(get(value, "id"))?;
+    let author_id = string(get(value, "authorId")).unwrap_or_default();
+    let deleted = !get(value, "deletedAt").is_null();
+    Some(ReplyToView {
+        message_id,
+        author: authors
+            .get(&author_id)
+            .cloned()
+            .unwrap_or_else(|| UserView {
+                username: author_id.clone(),
+                id: author_id,
+                ..UserView::default()
+            }),
+        text: if deleted {
+            String::new()
+        } else {
+            list(get(value, "spans"))
+                .iter()
+                .filter_map(|span| get(span, "text").as_str())
+                .collect()
+        },
+        deleted,
+    })
+}
+
+fn link_preview_view(value: &Value) -> LinkPreviewView {
+    LinkPreviewView {
+        url: string(get(value, "url")).unwrap_or_default(),
+        title: string(get(value, "title")),
+        description: string(get(value, "description")),
+        image_url: string(get(value, "imageUrl")),
+        site_name: string(get(value, "siteName")),
+        favicon_url: string(get(value, "faviconUrl")),
+        author_name: string(get(value, "authorName")),
+    }
+}
+
+fn webhook_view(value: &Value) -> Option<WebhookView> {
+    Some(WebhookView {
+        id: string(get(value, "id"))?,
+        name: string(get(value, "name")).unwrap_or_default(),
+        avatar_url: string(get(value, "avatarUrl")),
+    })
+}
+
 fn user_view(value: &Value) -> UserView {
     let id = string(get(value, "id")).unwrap_or_default();
     UserView {
@@ -95,6 +148,8 @@ fn channel_row(
         unread_count,
         mention_count,
         voice_users: voice_users.get(&id).cloned().unwrap_or_default(),
+        slowmode_seconds: integer(get(value, "slowmodeSeconds")).max(0) as u32,
+        permissions: None,
     }
 }
 
@@ -264,6 +319,22 @@ fn message_row(
         attachments,
         reactions,
         reply_count: integer(get(message, "replyCount")).max(0) as u32,
+        last_reply_at_ms: time_ms(get(message, "lastReplyAt")),
+        reply_to: if removed {
+            None
+        } else {
+            reply_to_view(get(message, "replyTo"), authors)
+        },
+        link_previews: if removed {
+            Vec::new()
+        } else {
+            list(get(message, "linkPreviews"))
+                .iter()
+                .map(link_preview_view)
+                .collect()
+        },
+        pinned: flag(get(message, "pinned")),
+        webhook: webhook_view(get(message, "webhook")),
         send_state: SendState::Sent,
         revision: 0,
     })

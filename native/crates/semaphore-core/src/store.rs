@@ -9,8 +9,8 @@
 //! theirs: a selection is held by `seq`, and must survive a reconnect.
 
 use crate::model::{
-    AttachmentKind, AttachmentView, ErrorView, ListOp, MessageRow, ReactionView, SendState,
-    TextStyle, UserView,
+    AttachmentKind, AttachmentView, ErrorView, LinkPreviewView, ListOp, MessageRow, ReactionView,
+    ReplyToView, SendState, TextStyle, UserView, WebhookView,
 };
 use crate::text::{SpanInput, layout_spans};
 use semaphore_wire::types::{MessageDto, ReactionDto, SpanDto};
@@ -76,7 +76,10 @@ pub struct Row {
 /// What an event did while a fetch was running: applied again over the response, which may be older.
 #[derive(Debug, Clone)]
 enum Touch {
+    /// A new message: a row if the response didn't include it.
     Upsert(Box<MessageDto>),
+    /// A change to a message. One the response doesn't include is outside the rows: leave it out.
+    Update(Box<MessageDto>),
     Delete(String),
 }
 
@@ -108,6 +111,7 @@ pub struct Window {
     /// Changes when the rows are replaced, so a response to an older request is dropped.
     pub epoch: u64,
     pub loading_older: bool,
+    pub loading_newer: bool,
     pub loading_first: bool,
     /// What the UI has, by `(seq, revision)`. `None` until the conversation is opened.
     shown: Option<Vec<(i64, u64)>>,
@@ -361,7 +365,12 @@ impl Window {
     /// Asks for a row to be sent again, when something it's drawn from changed.
     pub fn touch_author(&mut self, author_id: &str) {
         for row in &mut self.rows {
-            if row.message.dto.author_id.as_deref() == Some(author_id) {
+            let dto = &row.message.dto;
+            let reply_author = dto
+                .reply_to
+                .as_ref()
+                .and_then(|reply| reply.author_id.as_deref());
+            if dto.author_id.as_deref() == Some(author_id) || reply_author == Some(author_id) {
                 row.revision += 1;
             }
         }
@@ -391,6 +400,7 @@ impl Window {
                         self.reconcile_echo(*dto);
                     }
                 }
+                Touch::Update(dto) => self.update_keeping_send(*dto),
                 Touch::Delete(id) => {
                     self.delete(&id);
                 }
@@ -421,6 +431,17 @@ impl Window {
         }
     }
 
+    /// Records a change to a message that may be outside the rows, if a fetch is running.
+    pub fn note_update(&mut self, id: &str, dto: Option<MessageDto>) {
+        if self.fetching == 0 {
+            return;
+        }
+        let dto = dto.or_else(|| self.find(id).map(|message| message.dto.clone()));
+        if let Some(dto) = dto {
+            self.touched.push(Touch::Update(Box::new(dto)));
+        }
+    }
+
     pub fn note_delete(&mut self, id: &str) {
         if self.fetching > 0 {
             self.touched.push(Touch::Delete(id.to_owned()));
@@ -429,6 +450,26 @@ impl Window {
 
     /// Replaces everything with the live edge. Rows still being sent stay, after the page.
     pub fn apply_live_page(&mut self, newest_first: Vec<MessageDto>, token: Option<String>) {
+        self.replace_rows(newest_first, token, false);
+    }
+
+    /// Replaces everything with the rows around a message. `more_newer` is whether the server has
+    /// rows past them, which detaches the window.
+    pub fn apply_around_page(
+        &mut self,
+        newest_first: Vec<MessageDto>,
+        older_token: Option<String>,
+        more_newer: bool,
+    ) {
+        self.replace_rows(newest_first, older_token, more_newer);
+    }
+
+    fn replace_rows(
+        &mut self,
+        newest_first: Vec<MessageDto>,
+        token: Option<String>,
+        detached: bool,
+    ) {
         let unsettled: Vec<StoredMessage> = self
             .rows
             .drain(..)
@@ -438,7 +479,7 @@ impl Window {
         self.by_id.clear();
         self.epoch += 1;
         self.loaded = true;
-        self.detached = false;
+        self.detached = detached;
         self.reset_deferred = false;
         self.stale = false;
         self.at_start = token.is_none();
@@ -468,6 +509,53 @@ impl Window {
         }
         self.grew_older_while_held |= self.held.is_some();
         self.evict_newest();
+    }
+
+    /// Where a page toward the live edge starts: the newest row the server knows about. `None` when
+    /// the window is at the live edge already, or has nothing to start from.
+    pub fn newer_cursor(&self) -> Option<String> {
+        if !self.loaded || !self.detached {
+            return None;
+        }
+        self.rows
+            .iter()
+            .rev()
+            .find(|row| !row.message.is_placeholder())
+            .map(|row| row.message.dto.id.clone())
+    }
+
+    /// Adds a page of newer rows, newest first as a page holds them. With no more after it, the
+    /// window has reached the live edge. Past the cap the oldest rows go. Rows still being sent stay
+    /// last, in the gap before them: false when that has run out, and only a reset can fix it.
+    pub fn apply_newer_page(&mut self, newest_first: Vec<MessageDto>, more: bool) -> bool {
+        let mut run = Vec::new();
+        for dto in newest_first.into_iter().rev() {
+            if self.by_id.contains_key(&dto.id) {
+                self.update_keeping_send(dto);
+            } else {
+                run.push(dto);
+            }
+        }
+        let first_unsettled = self.rows.iter().position(|row| row.message.is_optimistic());
+        let (after, before) = match first_unsettled {
+            Some(index) => (
+                index.checked_sub(1).map(|index| self.rows[index].seq),
+                Some(self.rows[index].seq),
+            ),
+            None => (self.rows.back().map(|row| row.seq), None),
+        };
+        if !self.slot_between(after, before, run) {
+            return false;
+        }
+        if !more {
+            self.detached = false;
+        }
+        self.evict_oldest();
+        true
+    }
+
+    pub fn holds_id(&self, id: &str) -> bool {
+        self.by_id.contains_key(id)
     }
 
     /// Thread replies come oldest first, and the token walks forward, so a thread is read to its
@@ -808,16 +896,54 @@ pub fn project(
         dto.spans.iter().map(span_input).collect()
     };
     let (display, segs) = layout_spans(&spans);
-    let author = dto
-        .author_id
-        .as_deref()
-        .map(|id| {
-            author(id).unwrap_or_else(|| UserView {
-                id: id.to_owned(),
-                ..UserView::default()
+    let mut view_of = |id: &Option<String>| {
+        id.as_deref()
+            .map(|id| {
+                author(id).unwrap_or_else(|| UserView {
+                    id: id.to_owned(),
+                    ..UserView::default()
+                })
             })
+            .unwrap_or_default()
+    };
+    let reply_to = dto.reply_to.as_ref().filter(|_| !removed).map(|reply| {
+        let deleted = reply.deleted_at.is_some();
+        ReplyToView {
+            message_id: reply.id.clone(),
+            author: view_of(&reply.author_id),
+            text: if deleted {
+                String::new()
+            } else {
+                reply
+                    .spans
+                    .iter()
+                    .filter_map(|span| span.text.as_deref())
+                    .collect()
+            },
+            deleted,
+        }
+    });
+    let author = view_of(&dto.author_id);
+    let link_previews = dto
+        .link_previews
+        .iter()
+        .flatten()
+        .filter(|_| !removed)
+        .map(|preview| LinkPreviewView {
+            url: preview.url.clone(),
+            title: preview.title.clone(),
+            description: preview.description.clone(),
+            image_url: preview.image_url.clone(),
+            site_name: preview.site_name.clone(),
+            favicon_url: preview.favicon_url.clone(),
+            author_name: preview.author_name.clone(),
         })
-        .unwrap_or_default();
+        .collect();
+    let webhook = dto.webhook.as_ref().map(|webhook| WebhookView {
+        id: webhook.id.clone(),
+        name: webhook.name.clone(),
+        avatar_url: webhook.avatar_url.clone(),
+    });
     MessageRow {
         seq: row.seq,
         id: (!message.is_placeholder()).then(|| dto.id.clone()),
@@ -854,6 +980,11 @@ pub fn project(
                 .collect()
         },
         reply_count: dto.reply_count.max(0) as u32,
+        last_reply_at_ms: dto.last_reply_at.map(|at| at.timestamp_millis()),
+        reply_to,
+        link_previews,
+        pinned: dto.pinned,
+        webhook,
         send_state: match &message.send {
             SendStatus::Settled => SendState::Sent,
             SendStatus::Pending => SendState::Pending,

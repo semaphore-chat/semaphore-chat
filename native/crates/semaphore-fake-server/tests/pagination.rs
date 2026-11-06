@@ -151,3 +151,58 @@ async fn around_returns_the_anchor_in_the_middle() {
         .collect();
     assert_eq!(ids[2], anchor, "the anchor is in the middle");
 }
+
+#[tokio::test]
+async fn member_pages_reach_everyone_once_and_a_short_page_ends_them() {
+    let server = start("big-community").await;
+    let base = server.base_url();
+    let client = http();
+
+    let mut seen = Vec::new();
+    let mut token: Option<String> = None;
+    for _ in 0..20 {
+        let path = match &token {
+            Some(token) => {
+                format!("/api/membership/community/community-1?limit=5&continuationToken={token}")
+            }
+            None => "/api/membership/community/community-1?limit=5".to_owned(),
+        };
+        let (status, page) = get(&client, &base, &path).await;
+        assert_eq!(status, 200, "{page}");
+        seen.extend(
+            page["members"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|member| member["id"].clone()),
+        );
+        token = page["continuationToken"].as_str().map(str::to_owned);
+        if token.is_none() {
+            break;
+        }
+    }
+    assert_eq!(seen.len(), 12);
+    seen.dedup();
+    assert_eq!(seen.len(), 12);
+}
+
+#[tokio::test]
+async fn around_in_a_dm_finds_the_anchor() {
+    let server = start("big-community").await;
+    let base = server.base_url();
+    let client = http();
+    let (status, page) = get(
+        &client,
+        &base,
+        "/api/messages/group/dm-1/around/msg-203?limit=2",
+    )
+    .await;
+    assert_eq!(status, 200, "{page}");
+    assert!(
+        page["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|m| m["id"] == "msg-203")
+    );
+}

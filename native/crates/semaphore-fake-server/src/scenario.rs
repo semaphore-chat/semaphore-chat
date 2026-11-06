@@ -115,6 +115,14 @@ struct RawScenario {
     unread_by_context_id: BTreeMap<String, RawUnread>,
     #[serde(rename = "dmGroups", default)]
     dm_groups: Vec<DmGroup>,
+    #[serde(default)]
+    notifications: Vec<RawNotification>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct RawNotification {
+    #[serde(default)]
+    read: bool,
 }
 
 /// The immutable part of a loaded scenario.
@@ -130,6 +138,7 @@ pub struct Scenario {
     pub voice: BTreeMap<String, Vec<VoicePresenceUserDto>>,
     pub unread: BTreeMap<String, (i64, i64)>,
     pub dm_ids: BTreeSet<String>,
+    pub unread_notifications: i64,
     pub epoch: DateTime<Utc>,
 }
 
@@ -180,6 +189,11 @@ impl Scenario {
             voice: raw.voice_presence_by_channel,
             unread,
             dm_ids: raw.dm_groups.into_iter().map(|group| group.id).collect(),
+            unread_notifications: raw
+                .notifications
+                .iter()
+                .filter(|notification| !notification.read)
+                .count() as i64,
             epoch,
         })
     }

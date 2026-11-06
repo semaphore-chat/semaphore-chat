@@ -7,7 +7,7 @@
 
 use semaphore_wire::types as wire;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Hierarchical key, like a TanStack Query key. The first segment is the web client's query `_id`,
 /// the camelCase `operationId`, so the rules in [`crate::events`] read like its handlers: a key
@@ -48,6 +48,9 @@ pub mod keys {
     pub const MEMBER_SEARCH: &str = "membershipControllerSearchCommunityMembers";
     pub const MENTIONABLE: &str = "channelsControllerGetMentionableChannels";
     pub const EMOJIS: &str = "customEmojiControllerListCommunityEmojis";
+    pub const MEMBERS: &str = "membershipControllerFindAllForCommunity";
+    pub const PRESENCE: &str = "presenceControllerGetBulkPresence";
+    pub const NOTIFICATION_COUNT: &str = "notificationsControllerGetUnreadCount";
     pub const CHANNEL_MESSAGES: &str = "messagesControllerFindAllForChannel";
     pub const DM_MESSAGES: &str = "messagesControllerFindAllForGroup";
     pub const THREAD_REPLIES: &str = "threadsControllerGetReplies";
@@ -74,6 +77,17 @@ pub enum CacheValue {
     MemberSearch(Vec<wire::MembershipResponseDto>),
     MentionableChannels(Vec<wire::ChannelDto>),
     Emojis(Vec<wire::CustomEmojiDto>),
+    Members(MemberPages),
+    Presence(HashMap<String, bool>),
+    NotificationCount(i64),
+}
+
+/// As many pages of a community's members as core reads.
+#[derive(Debug, Clone)]
+pub struct MemberPages {
+    pub members: Vec<wire::MembershipResponseDto>,
+    /// The server had more when core stopped reading.
+    pub truncated: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -134,6 +148,21 @@ impl QueryCache {
         member_search_mut,
         MemberSearch,
         Vec<wire::MembershipResponseDto>
+    );
+    typed_read!(
+        capabilities,
+        capabilities_mut,
+        Capabilities,
+        wire::CommunityChannelCapabilitiesDto
+    );
+    typed_read!(emojis, emojis_mut, Emojis, Vec<wire::CustomEmojiDto>);
+    typed_read!(members, members_mut, Members, MemberPages);
+    typed_read!(presence, presence_mut, Presence, HashMap<String, bool>);
+    typed_read!(
+        notification_count,
+        notification_count_mut,
+        NotificationCount,
+        i64
     );
     typed_read!(
         mentionable_channels,

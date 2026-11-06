@@ -5,17 +5,19 @@
 //! and fetch what's missing or stale, as `useQuery` does: `CoreEvent::ViewChanged` says when to read
 //! again.
 
-use crate::cache::{CacheValue, QueryKey, keys};
+use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
 use crate::client::{Core, Effect, State, user_view};
 use crate::model::{
-    ChannelKind, ChannelRow, CommunityRow, Conversation, MentionCandidate, MentionKind,
-    MessageDraft, ParticipantView, SessionState, UserView, ViewKey, VoiceStatus, VoiceView,
+    ChannelKind, ChannelPermissions, ChannelRow, CommunityRow, Conversation, DisplayRole,
+    EmojiView, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
+    ParticipantView, RailCounts, SessionState, UserView, ViewKey, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
 use crate::resync::{failed, unavailable};
 use crate::send::is_optimistic_id;
-use semaphore_wire::enums::ChannelType;
+use crate::store::SendStatus;
+use semaphore_wire::enums::{ChannelType, MessagePageDirection};
 use semaphore_wire::events::{MARK_AS_READ, REAUTHENTICATE};
 use semaphore_wire::types as wire;
 use serde_json::json;
@@ -25,6 +27,11 @@ const MENTION_SEARCH_LIMIT: i64 = 10;
 /// Special mentions, from the web's `useMentionAutocomplete`.
 const SPECIAL_MENTIONS: [&str; 2] = ["here", "channel"];
 const REAUTHENTICATE_TIMEOUT_MS: u64 = 10_000;
+/// A page of members, and the most rows read. `MemberList::truncated` says when that wasn't all.
+const MEMBER_PAGE_SIZE: i64 = 100;
+const MAX_MEMBERS: usize = 1000;
+/// How many messages to ask for around an anchor: half on each side.
+const AROUND_LIMIT: i64 = 50;
 
 /// The `exp` claim of a JWT, in Unix milliseconds. Core doesn't verify it, only schedules by it.
 fn jwt_expiry_ms(token: &str) -> Option<u64> {
@@ -103,6 +110,7 @@ impl State {
                     window.touch_author(&id);
                 }
                 self.view_changed(ViewKey::Voice);
+                self.members_changed(Some(&id));
             }
             keys::COMMUNITIES => {
                 self.view_changed(ViewKey::Communities);
@@ -120,8 +128,17 @@ impl State {
                 self.view_changed(ViewKey::Communities);
                 self.view_changed(ViewKey::Channels { community_id: id });
             }
+            keys::CAPABILITIES => {
+                self.view_changed(ViewKey::Channels { community_id: id });
+            }
+            keys::MEMBERS => {
+                self.view_changed(ViewKey::Members { community_id: id });
+            }
+            keys::PRESENCE => self.members_changed(None),
+            keys::NOTIFICATION_COUNT => self.view_changed(ViewKey::Rail),
             keys::UNREAD => {
                 self.view_changed(ViewKey::Communities);
+                self.view_changed(ViewKey::Rail);
                 for channels_key in self.cache.keys_with_op(keys::CHANNELS) {
                     if let Some(community_id) = channels_key.segments.get(1).cloned() {
                         self.view_changed(ViewKey::Channels { community_id });
@@ -149,6 +166,20 @@ impl State {
                 self.view_changed(ViewKey::Mentionables { community_id: id });
             }
             _ => {}
+        }
+    }
+
+    /// A member list that shows this user, or any if `None`, should read again.
+    pub(crate) fn members_changed(&mut self, user_id: Option<&str>) {
+        for key in self.cache.keys_with_op(keys::MEMBERS) {
+            let listed = user_id.is_none_or(|user_id| {
+                self.cache.members(&key).is_some_and(|pages| {
+                    pages.members.iter().any(|member| member.user_id == user_id)
+                })
+            });
+            if listed && let Some(community_id) = key.segments.get(1).cloned() {
+                self.view_changed(ViewKey::Members { community_id });
+            }
         }
     }
 
@@ -192,6 +223,49 @@ impl State {
     }
 }
 
+impl State {
+    /// A members page carries each user, so nothing needs a request of its own. A user already cached
+    /// is told about only if they changed, because telling redraws every row they wrote, and a big
+    /// community would do that a thousand times over.
+    fn seed_users_from_members(&mut self, pages: &MemberPages, now: u64) {
+        let same = |a: &wire::UserEntity, b: &wire::UserEntity| {
+            a.username == b.username
+                && a.display_name == b.display_name
+                && a.avatar_url == b.avatar_url
+                && a.status == b.status
+        };
+        for user in pages
+            .members
+            .iter()
+            .filter_map(|member| member.user.as_ref())
+        {
+            let key = keys::scoped(keys::USER, &user.id);
+            let known = self.cache.user(&key).map(|known| same(known, user));
+            self.cache
+                .set(key.clone(), CacheValue::User(user.clone()), now);
+            if known == Some(false) {
+                self.query_changed(&key);
+            }
+        }
+    }
+}
+
+fn channel_permissions(capability: &wire::ChannelCapabilitiesDto) -> ChannelPermissions {
+    ChannelPermissions {
+        post: capability.post,
+        attach: capability.attach,
+        react: capability.react,
+        thread_reply: capability.thread_reply,
+        connect: capability.connect,
+        speak: capability.speak,
+        video: capability.video,
+        share: capability.share,
+        manage_permissions: capability.manage_permissions,
+        posting_role_names: capability.posting_role_names.clone(),
+        timed_out_until_ms: capability.timed_out_until.map(|at| at.timestamp_millis()),
+    }
+}
+
 impl Core {
     pub(crate) async fn fetch_query(&self, key: QueryKey) {
         let result = self.fetch_value(&key).await;
@@ -211,6 +285,9 @@ impl Core {
                                 .set(user_key.clone(), CacheValue::User(user.clone()), now);
                             state.query_changed(&user_key);
                         }
+                    }
+                    if let CacheValue::Members(pages) = &value {
+                        state.seed_users_from_members(pages, now);
                     }
                     state.cache.set(key.clone(), value, now);
                     state.query_changed(&key);
@@ -289,6 +366,21 @@ impl Core {
                     .await
                     .map_err(failed)?,
             ),
+            keys::MEMBERS => CacheValue::Members(self.fetch_members(id).await?),
+            keys::PRESENCE => CacheValue::Presence(
+                backend
+                    .presence_controller_get_bulk_presence()
+                    .await
+                    .map_err(failed)?
+                    .presence,
+            ),
+            keys::NOTIFICATION_COUNT => CacheValue::NotificationCount(
+                backend
+                    .notifications_controller_get_unread_count()
+                    .await
+                    .map_err(failed)?
+                    .count,
+            ),
             keys::EMOJIS => CacheValue::Emojis(
                 backend
                     .custom_emoji_controller_list_community_emojis(id)
@@ -302,6 +394,35 @@ impl Core {
             }
         };
         Ok(value)
+    }
+
+    /// A community's members, a page at a time, up to [`MAX_MEMBERS`]. A failed page fails the read,
+    /// so what's cached stays until one succeeds, rather than a list that silently shrank.
+    async fn fetch_members(&self, community_id: String) -> Result<MemberPages, CoreError> {
+        let backend = &self
+            .services()
+            .ok_or_else(|| unavailable("the backend"))?
+            .backend;
+        let mut members = Vec::new();
+        let mut token = None;
+        loop {
+            let left = MAX_MEMBERS - members.len();
+            let page = backend
+                .membership_controller_find_all_for_community(
+                    community_id.clone(),
+                    Some(MEMBER_PAGE_SIZE.min(left as i64)),
+                    token,
+                )
+                .await
+                .map_err(failed)?;
+            members.extend(page.members);
+            token = page.continuation_token.filter(|token| !token.is_empty());
+            if token.is_none() || members.len() >= MAX_MEMBERS {
+                let truncated = token.is_some();
+                members.truncate(MAX_MEMBERS);
+                return Ok(MemberPages { members, truncated });
+            }
+        }
     }
 
     /// `tokenExpiring`: a new token, then give it to the live socket so it outlives the old one.
@@ -478,6 +599,151 @@ impl Core {
         page.map(|_| ())
     }
 
+    /// Loads newer rows into a window that has moved away from the live edge, sent as a `ListOp::Insert`
+    /// at the end. A no-op at the live edge. [`Core::at_live_edge`] turns true with the last page.
+    pub async fn load_newer(&self, conversation: Conversation) -> Result<(), CoreError> {
+        let begun = self.write(|state, _| {
+            let window = state.windows.get_mut(&conversation)?;
+            if window.loading_newer || !window.is_detached_from_live_edge() {
+                return None;
+            }
+            let Some(cursor) = window.newer_cursor() else {
+                // Nothing the server knows about to start from.
+                state.request_reset(&conversation);
+                return None;
+            };
+            window.loading_newer = true;
+            Some((window.begin_fetch(), cursor))
+        });
+        let Some((epoch, cursor)) = begun else {
+            return Ok(());
+        };
+        let page = self
+            .fetch_page_toward(
+                &conversation,
+                Some(cursor),
+                Some(MessagePageDirection::Newer),
+            )
+            .await;
+        self.write(|state, _| {
+            let mut out_of_room = false;
+            if let Some(window) = state.windows.get_mut(&conversation) {
+                if let Ok((rows, token)) = &page
+                    && window.epoch == epoch
+                {
+                    out_of_room = !window.apply_newer_page(rows.clone(), token.is_some());
+                }
+                window.loading_newer = false;
+                window.end_fetch();
+                window.evict_oldest();
+            }
+            if out_of_room {
+                state.request_reset(&conversation);
+            }
+        });
+        page.map(|_| ())
+    }
+
+    /// Whether the newest rows loaded are the newest there are. If not, nothing new lands in this list
+    /// until [`Core::load_newer`] reaches the edge or [`Core::jump_to_present`] returns to it. Read it
+    /// again after `CoreEvent::MessagesChanged`.
+    pub fn at_live_edge(&self, conversation: Conversation) -> bool {
+        self.read(|state| {
+            state
+                .windows
+                .get(&conversation)
+                .is_none_or(|window| !window.is_detached_from_live_edge())
+        })
+    }
+
+    /// Replaces a detached window's rows with the live edge, as `ListOp::Reset`. If a selection holds
+    /// the rows, that happens when it lets go. A no-op at the live edge.
+    pub async fn jump_to_present(&self, conversation: Conversation) -> Result<(), CoreError> {
+        if self.at_live_edge(conversation.clone()) {
+            return Ok(());
+        }
+        self.load_live_edge(&conversation).await
+    }
+
+    /// Makes this the conversation on screen with a message's rows loaded, for a reply or a pin to jump
+    /// to. If they're loaded already nothing is fetched, and the UI scrolls to the row. Otherwise rows
+    /// come as `ListOp::Reset`, and if they don't reach the live edge the window is detached: see
+    /// [`Core::at_live_edge`]. Fails if a selection holds the rows it would replace: release it first.
+    /// A thread reads to its end, so it only opens.
+    pub async fn open_conversation_at(
+        &self,
+        conversation: Conversation,
+        message_id: String,
+    ) -> Result<(), CoreError> {
+        if matches!(conversation, Conversation::Thread { .. }) {
+            return self.open_conversation(conversation).await;
+        }
+        let services = self.services().ok_or_else(|| unavailable("the backend"))?;
+        let begun = self.write(|state, _| {
+            state.open(&conversation);
+            let window = state.windows.get_mut(&conversation)?;
+            if window.holds_id(&message_id) {
+                return Some(Ok(None));
+            }
+            if window.is_held() {
+                return Some(Err(CoreError::Failed {
+                    message: "a selection holds the rows".into(),
+                }));
+            }
+            // Whatever is on its way for the rows these replace no longer matters.
+            window.epoch += 1;
+            Some(Ok(Some(window.begin_fetch())))
+        });
+        let epoch = match begun {
+            Some(Ok(Some(epoch))) => epoch,
+            Some(Err(error)) => return Err(error),
+            _ => return Ok(()),
+        };
+        let page = match &conversation {
+            Conversation::Channel { id } => {
+                services
+                    .backend
+                    .messages_controller_find_around_for_channel(
+                        id.clone(),
+                        message_id,
+                        Some(AROUND_LIMIT),
+                    )
+                    .await
+            }
+            Conversation::DirectMessage { id } => {
+                services
+                    .backend
+                    .messages_controller_find_around_for_group(
+                        id.clone(),
+                        message_id,
+                        Some(AROUND_LIMIT),
+                    )
+                    .await
+            }
+            Conversation::Thread { .. } => unreachable!("a thread returned above"),
+        }
+        .map_err(failed);
+        self.write(|state, _| {
+            let Some(window) = state.windows.get_mut(&conversation) else {
+                return;
+            };
+            if let Ok(page) = &page
+                && window.epoch == epoch
+            {
+                let present = |token: &Option<String>| {
+                    token.as_ref().filter(|token| !token.is_empty()).cloned()
+                };
+                window.apply_around_page(
+                    page.messages.clone(),
+                    present(&page.older_continuation_token),
+                    present(&page.newer_continuation_token).is_some(),
+                );
+            }
+            window.end_fetch();
+        });
+        page.map(|_| ())
+    }
+
     /// While a selection is held, core keeps that span of rows loaded. `None` releases it, and a
     /// reset that was waiting on it then runs.
     pub fn hold_rows(&self, conversation: Conversation, seq_range: Option<(i64, i64)>) {
@@ -506,6 +772,32 @@ impl Core {
     pub async fn retry_send(&self, client_nonce: String) -> Result<(), CoreError> {
         self.services().ok_or_else(|| unavailable("sending"))?;
         self.begin_retry(&client_nonce);
+        Ok(())
+    }
+
+    /// Throws a failed send away: its row goes, as a `ListOp::Remove`, and it can't be retried. A send
+    /// still pending, or one that has settled, is left alone. If the failed send had really reached
+    /// the server, its message still arrives as anyone's would.
+    pub async fn discard_failed_send(&self, client_nonce: String) -> Result<(), CoreError> {
+        self.write(|state, _| {
+            let Some(send) = state.sends.get(&client_nonce) else {
+                return;
+            };
+            if send.in_flight || send.parked_since.is_some() {
+                return;
+            }
+            let (conversation, client_id) = (send.conversation.clone(), send.client_id.clone());
+            let window = state.windows.get_mut(&conversation);
+            let row = window.as_deref().and_then(|window| window.find(&client_id));
+            // Pending with no attempt running: a retry has been queued.
+            if row.is_some_and(|row| !matches!(row.send, SendStatus::Failed(_))) {
+                return;
+            }
+            if let Some(window) = window {
+                window.remove_optimistic(&client_id);
+            }
+            state.sends.remove(&client_nonce);
+        });
         Ok(())
     }
 
@@ -731,6 +1023,8 @@ impl Core {
             let key = keys::scoped(keys::CHANNELS, &community_id);
             state.ensure_query(key.clone());
             state.ensure_query(keys::op(keys::UNREAD));
+            let capabilities_key = keys::scoped(keys::CAPABILITIES, &community_id);
+            state.ensure_query(capabilities_key.clone());
             let mut channels = state.cache.channels(&key).cloned().unwrap_or_default();
             channels.sort_by_key(|channel| channel.position);
             channels
@@ -746,7 +1040,20 @@ impl Core {
                     }
                     let (unread_count, mention_count) = state.unread_for(&channel.id);
                     let voice_users = Core::presence_users(state, &channel.id);
+                    let permissions =
+                        state
+                            .cache
+                            .capabilities(&capabilities_key)
+                            .and_then(|capabilities| {
+                                capabilities
+                                    .channels
+                                    .iter()
+                                    .find(|capability| capability.channel_id == channel.id)
+                                    .map(channel_permissions)
+                            });
                     ChannelRow {
+                        slowmode_seconds: channel.slowmode_seconds.max(0) as u32,
+                        permissions,
                         community_id: channel.community_id,
                         is_private: channel.is_private,
                         position: channel.position as i32,
@@ -757,6 +1064,101 @@ impl Core {
                         mention_count,
                         voice_users,
                     }
+                })
+                .collect()
+        })
+    }
+
+    /// `None` until the first page has loaded. `ViewKey::Members` says when to read again.
+    pub fn members(&self, community_id: String) -> Option<MemberList> {
+        self.write(|state, _| {
+            let key = keys::scoped(keys::MEMBERS, &community_id);
+            let presence_key = keys::op(keys::PRESENCE);
+            state.ensure_query(key.clone());
+            state.ensure_query(presence_key.clone());
+            let me_id = state.me_id().to_owned();
+            let pages = state.cache.members(&key)?;
+            let online = state.cache.presence(&presence_key);
+            let members = pages
+                .members
+                .iter()
+                .map(|member| {
+                    // The user's own entry is what events keep fresh.
+                    let user = state
+                        .cache
+                        .user(&keys::scoped(keys::USER, &member.user_id))
+                        .or(member.user.as_ref());
+                    let display_role = member
+                        .roles
+                        .iter()
+                        .filter(|role| !role.is_default)
+                        .min_by_key(|role| role.position)
+                        .map(|role| DisplayRole {
+                            name: role.name.clone(),
+                            position: role.position as i32,
+                        });
+                    MemberView {
+                        user: user.map(user_view).unwrap_or_else(|| UserView {
+                            id: member.user_id.clone(),
+                            ..UserView::default()
+                        }),
+                        status: user.and_then(|user| user.status.clone()),
+                        // This client is connected even before the map says so.
+                        online: member.user_id == me_id
+                            || online
+                                .and_then(|online| online.get(&member.user_id))
+                                .copied()
+                                .unwrap_or(false),
+                        display_role,
+                    }
+                })
+                .collect();
+            Some(MemberList {
+                members,
+                truncated: pages.truncated,
+            })
+        })
+    }
+
+    /// The rail's counters. Zero until they load; `ViewKey::Rail` says when to read again.
+    pub fn rail_counts(&self) -> RailCounts {
+        self.write(|state, _| {
+            let unread_key = keys::op(keys::UNREAD);
+            let notifications_key = keys::op(keys::NOTIFICATION_COUNT);
+            state.ensure_query(unread_key.clone());
+            state.ensure_query(notifications_key.clone());
+            let dm_unread = state
+                .cache
+                .unread_counts(&unread_key)
+                .into_iter()
+                .flatten()
+                .filter(|count| count.direct_message_group_id.is_some())
+                .map(|count| count.unread_count.max(0) as u32)
+                .sum();
+            RailCounts {
+                dm_unread,
+                notifications_unread: state
+                    .cache
+                    .notification_count(&notifications_key)
+                    .map_or(0, |count| (*count).max(0) as u32),
+            }
+        })
+    }
+
+    /// A community's custom emoji. `ViewKey::Mentionables` says when to read again.
+    pub fn custom_emojis(&self, community_id: String) -> Vec<EmojiView> {
+        self.write(|state, _| {
+            let key = keys::scoped(keys::EMOJIS, &community_id);
+            state.ensure_query(key.clone());
+            state
+                .cache
+                .emojis(&key)
+                .into_iter()
+                .flatten()
+                .map(|emoji| EmojiView {
+                    id: emoji.id.clone(),
+                    name: emoji.name.clone(),
+                    file_id: emoji.file_id.clone(),
                 })
                 .collect()
         })

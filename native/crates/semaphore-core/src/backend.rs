@@ -91,6 +91,12 @@ pub trait Backend: Send + Sync {
         message_id: String,
         limit: Option<i64>,
     ) -> BackendResult<wire::AnchoredMessagesResponseDto>;
+    async fn messages_controller_find_around_for_group(
+        &self,
+        group_id: String,
+        message_id: String,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::AnchoredMessagesResponseDto>;
     async fn messages_controller_find_all_for_group(
         &self,
         group_id: String,
@@ -124,6 +130,20 @@ pub trait Backend: Send + Sync {
         &self,
         body: wire::MarkAsReadDto,
     ) -> BackendResult<wire::ReadReceiptDto>;
+
+    // Members and counters
+    async fn membership_controller_find_all_for_community(
+        &self,
+        community_id: String,
+        limit: Option<i64>,
+        continuation_token: Option<String>,
+    ) -> BackendResult<wire::PaginatedMembershipsResponseDto>;
+    async fn presence_controller_get_bulk_presence(
+        &self,
+    ) -> BackendResult<wire::BulkPresenceResponseDto>;
+    async fn notifications_controller_get_unread_count(
+        &self,
+    ) -> BackendResult<wire::UnreadCountResponseDto>;
 
     // Composer
     async fn membership_controller_search_community_members(
