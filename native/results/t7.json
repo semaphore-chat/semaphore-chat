@@ -1,0 +1,213 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-06T02:22:28.736217+00:00",
+ "provisional": false,
+ "provisional_reasons": [],
+ "build": {
+  "version": "0.0.0-spike",
+  "commit": "ae1fd727",
+  "stripped": false
+ },
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "xvfb",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 0,
+   "height": 0,
+   "device_scale_factor": 1
+  },
+  "renderer": {
+   "name": "none: headless protocol rig, no window",
+   "icd": null
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 91252120,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "rig-reconnect",
+    "bytes": 91252120
+   }
+  ],
+  "binary": {
+   "bytes": 91252120,
+   "stripped": false
+  },
+  "artifacts": []
+ },
+ "cold_start_ms": null,
+ "comparability_notes": [
+  "T7 pass bar: every ordered pair audible by tone after a full reconnect in 10 of 10 runs, on resubscribed tracks.",
+  "Audio is judged per publisher on NativeAudioStream's decoded PCM, Goertzel per 100 ms. No real audio device was involved.",
+  "No Electron counterpart: this is a behaviour test, not a measurement to compare.",
+  "cpu_pct_core and memory_mb are one 30 s sample of one participant with the tone running, on a loaded host, because the schema requires them. Never compare them.",
+  "env.display and env.window are placeholders the schema requires: there is no window."
+ ],
+ "scenarios": {
+  "t7_netkill": {
+   "title": "Victim's network dropped by tc for 30 s, mid-call, 3 participants",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "42.09 32.31 33.89 4/2365 4026534",
+    "end": "35.25 38.80 36.47 3/2975 4112214",
+    "peak_load1": 54.9,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 54.9; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 6.82,
+    "p95": 7.99
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 16.0,
+    "rss": 32.1,
+    "anon": 7.6,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "runs": 10,
+    "passed": 10,
+    "args": {
+     "scenario": "netkill",
+     "runs": 10,
+     "out": "results/t7/netkill",
+     "outage_s": 30,
+     "deadline_s": 90,
+     "rejoin": false
+    },
+    "worst_pair_recover_ms_after_heal": {
+     "median": 870.5,
+     "max": 4711,
+     "per_run": [
+      1171,
+      327,
+      1079,
+      4026,
+      275,
+      746,
+      4711,
+      995,
+      539,
+      427
+     ]
+    },
+    "raw": "results/t7/netkill/"
+   }
+  },
+  "t7_lkrestart": {
+   "title": "LiveKit server restarted mid-call, 3 participants",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "35.25 38.80 36.47 8/2758 4112433",
+    "end": "24.98 34.41 35.13 8/3210 4134566",
+    "peak_load1": 35.25,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 35.2; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 6.82,
+    "p95": 7.99
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 16.0,
+    "rss": 32.1,
+    "anon": 7.6,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "runs": 10,
+    "passed": 10,
+    "args": {
+     "scenario": "lkrestart",
+     "runs": 10,
+     "out": "results/t7/lkrestart",
+     "outage_s": 30,
+     "deadline_s": 90,
+     "rejoin": false
+    },
+    "worst_pair_recover_ms_after_heal": {
+     "median": 407.0,
+     "max": 434,
+     "per_run": [
+      397,
+      318,
+      423,
+      417,
+      389,
+      434,
+      420,
+      298,
+      419,
+      291
+     ]
+    },
+    "raw": "results/t7/lkrestart/"
+   }
+  },
+  "t7_netkill_past_budget": {
+   "title": "Characterisation, not the bar: outage past the SDK's 60 s reconnect budget, with an app-level rejoin",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "55.15 39.40 36.56 58/2995 4154441",
+    "end": "43.74 30.61 32.92 77/3694 4190250",
+    "peak_load1": 55.15,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 55.1; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 6.82,
+    "p95": 7.99
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 16.0,
+    "rss": 32.1,
+    "anon": 7.6,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "runs": 3,
+    "passed": 3,
+    "args": {
+     "scenario": "netkill",
+     "runs": 3,
+     "out": "results/t7/netkill-long",
+     "outage_s": 90.0,
+     "deadline_s": 90,
+     "rejoin": true
+    },
+    "worst_pair_recover_ms_after_heal": {
+     "median": 1654,
+     "max": 3745,
+     "per_run": [
+      992,
+      1654,
+      3745
+     ]
+    },
+    "raw": "results/t7/netkill-long/"
+   }
+  }
+ },
+ "ok": true
+}

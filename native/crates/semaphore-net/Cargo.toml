@@ -12,6 +12,9 @@ publish.workspace = true
 # builds, and install it in `install_crypto_provider`.
 reqwest = { workspace = true, features = ["rustls-no-provider"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+async-trait.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+serde_json.workspace = true
 tokio-tungstenite.workspace = true
 semaphore-core.workspace = true
-tokio = { workspace = true, features = ["net"] }
+tokio = { workspace = true, features = ["macros", "net", "rt", "sync", "time"] }

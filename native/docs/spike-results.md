@@ -25,7 +25,8 @@ Phase 1 was launched from this branch after Phase 0. Results land here as those 
 | T1 video | Investigated separately by two agents, outside this workspace, for now |
 | T2 message list | **Provisional.** Fling timing needs the real desktop. No-jump and memory pass, each with a stated condition |
 | T3 selection | **Pass with a prototype, fail with the kit's selection** in a message list |
-| T7, T8 | Phase 1, on `spike/t7-t8`, not reported yet |
+| T7 reconnect | **Pass**: 10/10 network kill, 10/10 LiveKit restart |
+| T8 Socket.IO | **Pass**, see the limits below |
 | T10 agent loop | Harness passes on a one-screen crate (`results/t10.json`, provisional: load peaked at 107). Rerun on the slice's real UI crate is U14 |
 | `gpui-pre` audit | **Reviewed:** no behavioural change found. See "Supply chain" |
 | T4-T6, T9, T11 | Not started, or reported separately |
@@ -52,6 +53,91 @@ listed keep the brief's bar unchanged.
 | T9, T10 | Pass/fail like the others | Not automatic stops, but a failure of either forces a re-decision with Mike and a revised estimate. A clean go still requires both to pass | **Decided** | Replaces the design's "raises the estimate only". The plan relies on agents doing the bulk of the work and on staying current with weekly kit releases |
 | T1 patch path | "Patch the renderer" | Only if T1 alone fails, profiling blames conversion or upload, Iced's shader arm uses at least 30% less CPU or holds 60 fps; budget 3 agent-days | **Added** | New gate |
 | Switch to Iced | "Move to Iced" | Iced must first pass T2-T5 | **Added** | Stricter |
+
+## T7 and T8
+
+Raw data, transcripts and result JSON are in `results/t7`, `results/t8`, `results/t7.json` and
+`results/t8.json`. T8's final runs tested commit `ae1fd727`: a rebuild of it gave the same binary
+hash as the one that ran (`0d9e2968564da037`).
+
+### T7: pass
+
+Three participants in three network namespaces, each hearing the others judged by tone per
+publisher on decoded PCM. No real audio device was involved, so playout is not tested.
+
+| Fault | Result | Worst pair audible |
+|---|---|---|
+| Victim's network dropped by `tc` for 30 s | 10/10 | 275-4711 ms after heal |
+| LiveKit restarted | 10/10 | 291-434 ms after the server answered |
+| 90 s outage, past the SDK's budget, with our rejoin (not the bar) | 3/3 | 992-3745 ms |
+| 90 s outage, no rejoin (not the bar) | Never recovers | SDK gives up at its 60 s deadline |
+
+**What a real session must add:** the SDK ends with `Disconnected` after 60 s, so the rejoin loop
+in `rigs/reconnect` belongs in `semaphore-media-livekit`.
+
+**Adaptive stream, read from the source, not tested (audio only):** `RoomOptions.adaptive_stream`
+only sets a signalling flag. Nothing tracks what's visible: the app must call `set_enabled` and
+`update_video_dimensions` itself, and again after a full reconnect, when publications are new.
+
+### T8: pass
+
+| Run (Rust and socket.io-client together) | Lost, Rust / ref | Duplicates, holes, losses outside the gap, payload mismatches | load1 |
+|---|---|---|---|
+| 1,000 cycles, 100 ms reconnect base | 1494 / 1555 of 5155 | 0 | 3.0-34.5 |
+| 100 cycles, the web's 1 s base, up 2-4 s | 1291 / 1366 of 6532 | 0 | 12.4-32.0 |
+| 200 cycles, reference cut first | 285 / 313 of 1039 | 0 | 11.8-40.6 |
+
+Auth 6/6 on both clients: acks on every acked event, refresh and reauthenticate at the real 120 s
+margin, expiry then refresh then reconnect, expired token at connect, logout. Suspend, freeze and
+stall 5/5.
+
+**The bars cover `newMessage`.** "Beyond web-client behaviour" was fixed before the first full run
+as: no duplicates or holes beyond the reference, every loss inside the client's own disconnect gap,
+and gap losses within 20% plus 10 messages of the reference. The backend ran with
+`WS_CONNECTION_RATE_LIMIT` raised: the default of 10 per minute per address would refuse most of
+1,000 reconnects from any client.
+
+**Presence:** totals can't be compared between clients. The server broadcasts only on an
+offline-to-online change, to whoever is connected at that moment, so totals record who won a race
+(618+8 against 810 before the fix, 485+22 against 450+8 after). The valid test is whether a client
+connected at the moment of a broadcast missed it: 0 missed in every run
+(`results/t8/presence.json`).
+
+**A real latency bug, found and fixed:** the Rust client had Nagle on, so `presenceOnline` waited on
+a delayed ack after `subscribeAll`. Time from connect to own `userOnline`, for the first client to
+connect:
+
+| Build | Rust p50 / p90 | Ref p50 / p90 | load1 |
+|---|---|---|---|
+| Before, 1,000 cycles | 21 / 44 ms | 2 / 18 ms | 18-60 |
+| `TCP_NODELAY` off only, 200 cycles | 15 / 41 ms | 2 / 7 ms | 4-15 |
+| On, 200 cycles, same seed | 6 / 27 ms | 4 / 35 ms | 12-41 |
+| On, 1,000 cycles | 3 / 13 ms | 3 / 14 ms | 3-35 |
+| On, its first 200 cycles, the quiet part | 2 / 6 ms | 2 / 6 ms | 3-4 |
+
+**What a resync can and can't recover.** The server has no sequence numbers, so nothing says what
+was missed; the client refetches everything it holds. Measured against a witness that stayed
+connected:
+
+- **Recovered by REST:** new messages, edits, deletes and reactions, if they fall inside the pages
+  refetched. One early rig run had a gap's messages pushed out of a 100-message page, so a refetch
+  must follow `continuationToken` until it reaches what it already has.
+- **Gone:** typing, and presence changes, unless presence is refetched separately. The rig tested
+  channel messages only: DMs, threads, notifications, roles and voice presence need the same check.
+- **`POST /api/messages` emits no `newMessage`:** only the gateway fans out.
+
+**A frozen process keeps its socket** if it thaws before the server's 85 s limit. `resume()` used to
+replace that socket and lost a buffered message. It now asks first with an acked `presenceOnline`,
+and `freeze-short-resume` misses nothing.
+
+**Deliberate difference:** `emit` while disconnected returns an error. socket.io-client buffers and
+sends later.
+
+**Not tested:** TLS, real OS suspend (`docker pause` stands in, and it keeps the monotonic clock
+running), and a backend or Redis restart.
+
+**Not run for this work:** `verify.sh`'s full workspace and GPUI build, held back because a priority
+job had the machine. The crates this work touches passed the same checks individually.
 
 ## Facts checked in Phase 0
 

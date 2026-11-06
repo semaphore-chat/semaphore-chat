@@ -18,6 +18,7 @@ pub mod resync;
 #[cfg(feature = "fixtures")]
 pub mod scenario;
 pub mod send;
+pub mod socketio;
 pub mod store;
 pub mod text;
 

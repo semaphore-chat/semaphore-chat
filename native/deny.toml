@@ -41,6 +41,8 @@ exceptions = [
     { crate = "semaphore-app", allow = ["AGPL-3.0-only"] },
     { crate = "rig-shot", allow = ["AGPL-3.0-only"] },
     { crate = "rig-list", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-reconnect", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-sio", allow = ["AGPL-3.0-only"] },
 ]
 
 [licenses.private]

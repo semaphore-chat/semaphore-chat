@@ -1,0 +1,17 @@
+{
+ "cpu_pct_core": {
+  "avg": 6.82,
+  "p95": 7.99
+ },
+ "memory_mb": {
+  "primary_metric": "pss",
+  "pss": 16.0,
+  "rss": 32.1,
+  "anon": 7.6,
+  "private_working_set": null,
+  "pss_peak": null
+ },
+ "window_s": 30,
+ "container": "t7-5fc5047b-b",
+ "loadavg": "48.40 37.32 35.01 49/2643 24691"
+}
