@@ -8,3 +8,8 @@ rustflags = [
     "-C", "link-arg=-lgobject-2.0",
     "-C", "link-arg=-lglib-2.0",
 ]
+
+# LiveKit's prebuilt libwebrtc uses the static C runtime (/MT), so everything linked with it has to.
+# Without this the MSVC link fails with LNK2038 on RuntimeLibrary.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
