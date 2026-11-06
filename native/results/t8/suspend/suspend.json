@@ -1,0 +1,323 @@
+[
+ {
+  "name": "suspend-graceful",
+  "load_start": "17.79 16.35 15.55 19/2247 818942",
+  "gap_s": 30,
+  "witness_saw": {
+   "newMessage": 9,
+   "updateMessage": 1,
+   "deleteMessage": 1,
+   "reactionAdded": 1,
+   "userTyping": 1,
+   "userOnline": 2
+  },
+  "rest_after_resync": {
+   "new_messages_present": true,
+   "edit_visible": true,
+   "delete_applied": true,
+   "reaction_visible": true
+  },
+  "recovered_ms_after_gap": {
+   "rust": 20,
+   "ref": 20
+  },
+  "clients": {
+   "rust": {
+    "saw": {
+     "newMessage": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 8,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 2
+    },
+    "disconnect_reasons": [
+     "io client disconnect"
+    ],
+    "resync_plans": [
+     {
+      "k": "resync_plan",
+      "reconnect": true,
+      "refresh": false,
+      "stale": [
+       "QueryKey { segments: [\"messages\", \"channel\"] }"
+      ],
+      "t": 1793917838673
+     }
+    ]
+   },
+   "ref": {
+    "saw": {
+     "newMessage": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 8,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 2
+    },
+    "disconnect_reasons": [
+     "io client disconnect"
+    ],
+    "resync_plans": []
+   }
+  },
+  "ok": true,
+  "load_end": "14.24 15.73 15.38 1/2117 826565"
+ },
+ {
+  "name": "freeze-short",
+  "load_start": "14.24 15.73 15.38 2/2117 826565",
+  "gap_s": 40,
+  "witness_saw": {
+   "newMessage": 9,
+   "updateMessage": 1,
+   "deleteMessage": 1,
+   "reactionAdded": 1,
+   "userTyping": 1,
+   "userOnline": 1
+  },
+  "rest_after_resync": {
+   "new_messages_present": true,
+   "edit_visible": true,
+   "delete_applied": true,
+   "reaction_visible": true
+  },
+  "recovered_ms_after_gap": {
+   "rust": 43,
+   "ref": 43
+  },
+  "clients": {
+   "rust": {
+    "saw": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {},
+    "disconnect_reasons": [],
+    "resync_plans": []
+   },
+   "ref": {
+    "saw": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {},
+    "disconnect_reasons": [],
+    "resync_plans": []
+   }
+  },
+  "ok": true,
+  "load_end": "8.38 13.97 14.80 3/2079 833544"
+ },
+ {
+  "name": "freeze-short-resume",
+  "load_start": "8.38 13.97 14.80 4/2079 833544",
+  "gap_s": 40,
+  "witness_saw": {
+   "newMessage": 9,
+   "updateMessage": 1,
+   "deleteMessage": 1,
+   "reactionAdded": 1,
+   "userTyping": 1,
+   "userOnline": 1
+  },
+  "rest_after_resync": {
+   "new_messages_present": true,
+   "edit_visible": true,
+   "delete_applied": true,
+   "reaction_visible": true
+  },
+  "recovered_ms_after_gap": {
+   "rust": 213,
+   "ref": 237
+  },
+  "clients": {
+   "rust": {
+    "saw": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {},
+    "disconnect_reasons": [],
+    "resync_plans": [
+     {
+      "k": "resync_plan",
+      "reconnect": true,
+      "refresh": false,
+      "stale": [
+       "QueryKey { segments: [\"messages\", \"channel\"] }"
+      ],
+      "t": 1793917927573
+     }
+    ]
+   },
+   "ref": {
+    "saw": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {},
+    "disconnect_reasons": [],
+    "resync_plans": []
+   }
+  },
+  "ok": true,
+  "load_end": "11.48 13.86 14.72 22/2129 849338"
+ },
+ {
+  "name": "freeze-long",
+  "load_start": "11.48 13.86 14.72 22/2129 849338",
+  "gap_s": 95,
+  "witness_saw": {
+   "newMessage": 10,
+   "updateMessage": 1,
+   "deleteMessage": 1,
+   "reactionAdded": 1,
+   "userTyping": 1,
+   "userOnline": 4
+  },
+  "rest_after_resync": {
+   "new_messages_present": true,
+   "edit_visible": true,
+   "delete_applied": true,
+   "reaction_visible": true
+  },
+  "recovered_ms_after_gap": {
+   "rust": 1121,
+   "ref": 1121
+  },
+  "clients": {
+   "rust": {
+    "saw": {
+     "newMessage": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 4
+    },
+    "disconnect_reasons": [
+     "ping timeout"
+    ],
+    "resync_plans": [
+     {
+      "k": "resync_plan",
+      "reconnect": true,
+      "refresh": false,
+      "stale": [
+       "QueryKey { segments: [\"messages\", \"channel\"] }"
+      ],
+      "t": 1793918027801
+     }
+    ]
+   },
+   "ref": {
+    "saw": {
+     "newMessage": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 9,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 4
+    },
+    "disconnect_reasons": [
+     "ping timeout"
+    ],
+    "resync_plans": []
+   }
+  },
+  "ok": true,
+  "load_end": "19.66 15.42 15.16 9/2103 880303"
+ },
+ {
+  "name": "stall-past-ping-timeout",
+  "load_start": "19.66 15.42 15.16 11/2102 880303",
+  "gap_s": 95,
+  "witness_saw": {
+   "newMessage": 100,
+   "updateMessage": 1,
+   "deleteMessage": 1,
+   "reactionAdded": 1,
+   "userTyping": 1,
+   "userOnline": 5
+  },
+  "rest_after_resync": {
+   "new_messages_present": true,
+   "edit_visible": true,
+   "delete_applied": true,
+   "reaction_visible": true
+  },
+  "recovered_ms_after_gap": {
+   "rust": 10449,
+   "ref": 35025
+  },
+  "clients": {
+   "rust": {
+    "saw": {
+     "newMessage": 98,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 2,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 4
+    },
+    "disconnect_reasons": [
+     "ping timeout"
+    ],
+    "resync_plans": []
+   },
+   "ref": {
+    "saw": {
+     "newMessage": 98,
+     "userOnline": 1
+    },
+    "missed_vs_witness": {
+     "newMessage": 2,
+     "updateMessage": 1,
+     "deleteMessage": 1,
+     "reactionAdded": 1,
+     "userTyping": 1,
+     "userOnline": 4
+    },
+    "disconnect_reasons": [
+     "ping timeout"
+    ],
+    "resync_plans": []
+   }
+  },
+  "ok": true,
+  "load_end": "21.69 18.23 16.23 4/2967 923032"
+ }
+]

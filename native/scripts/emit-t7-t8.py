@@ -123,12 +123,15 @@ def main():
         "The backend ran with WS_CONNECTION_RATE_LIMIT raised: the default of 10 per minute per address refuses most of 1,000 reconnects, for both clients.",
         "The 1,000 cycle run used a 100 ms reconnect base for both clients to fit the time box; the 100 cycle run uses the web's 1,000 ms.",
         "cpu_pct_core and memory_mb are one 30 s sample of the Rust client receiving 16 msg/s, on a loaded host, because the schema requires them. Never compare them.",
+        "The bars cover newMessage. Presence is compared separately in results/t8/presence.json, since the server broadcasts it only on a change, to whoever is connected at that moment.",
+        "results/t8/pre-fix holds the runs before the TCP_NODELAY and resume fixes, kept as the comparison.",
         "Refresh in the rig replays the login's refresh cookie. No special User-Agent. Never in a real client.",
         "env.display and env.window are placeholders the schema requires: there is no window.",
     ])
     t8["scenarios"] = {
         "t8_cycles": t8_cycles("t8/cycles", "1,000 disconnect cycles, events flowing, against socket.io-client"),
         "t8_cycles_web_delay": t8_cycles("t8/cycles-web-delay", "100 cycles with the web's 1 s reconnect delay and 2-4 s up"),
+        "t8_cycles_ref_first": t8_cycles("t8/cycles-ref-first", "200 cycles, cutting socket.io-client first"),
         "t8_auth": t8_list("t8/auth", "auth.json", "Acks, refresh, reauthenticate, expiry, logout"),
         "t8_suspend": t8_list("t8/suspend", "suspend.json", "Suspend, freeze and stall, then resync"),
     }

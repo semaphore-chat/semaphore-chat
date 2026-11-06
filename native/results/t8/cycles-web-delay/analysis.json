@@ -1,0 +1,93 @@
+{
+ "cycles_done": 100,
+ "stuck": [],
+ "modes": {
+  "kill": 81,
+  "close": 19
+ },
+ "messages_acked": 6532,
+ "send_failed": 0,
+ "send_failed_errors": [],
+ "duration_s": 423.223,
+ "load_start": "32.01 20.45 13.23 5/2054 711203",
+ "load_end": "12.40 19.47 15.68 3/1948 777319",
+ "clients": {
+  "rust": {
+   "connections": 101,
+   "received_unique": 5241,
+   "duplicates": 0,
+   "missing": 1291,
+   "holes_inside_a_connection": 0,
+   "holes_sample": [],
+   "losses_outside_own_gap": 0,
+   "unexplained_sample": [],
+   "order_violations": 0,
+   "unparsed_newMessage": 0,
+   "disconnect_reasons": {
+    "transport close": 81,
+    "io client disconnect": 19
+   },
+   "connect_errors": {},
+   "other_events": {
+    "userOnline": 51
+   },
+   "reconnect_ms": {
+    "p50": 802,
+    "p95": 1460,
+    "max": 1495
+   },
+   "connect_to_first_message_ms": {
+    "p50": 31,
+    "p95": 62,
+    "max": 65
+   }
+  },
+  "ref": {
+   "connections": 101,
+   "received_unique": 5166,
+   "duplicates": 0,
+   "missing": 1366,
+   "holes_inside_a_connection": 0,
+   "holes_sample": [],
+   "losses_outside_own_gap": 0,
+   "unexplained_sample": [],
+   "order_violations": 0,
+   "unparsed_newMessage": 0,
+   "disconnect_reasons": {
+    "transport close": 81,
+    "io client disconnect": 19
+   },
+   "connect_errors": {},
+   "other_events": {
+    "userOnline": 42
+   },
+   "reconnect_ms": {
+    "p50": 977,
+    "p95": 1406,
+    "max": 1515
+   },
+   "connect_to_first_message_ms": {
+    "p50": 35,
+    "p95": 68,
+    "max": 78
+   }
+  }
+ },
+ "diff": {
+  "received_by_both": 4985,
+  "only_rust": 256,
+  "only_ref": 181,
+  "payload_mismatches": 0,
+  "mismatch_sample": []
+ },
+ "bars": {
+  "no_stuck_cycles": true,
+  "all_cycles_done": true,
+  "no_duplicates_beyond_ref": true,
+  "no_holes_beyond_ref": true,
+  "every_loss_in_own_gap": true,
+  "gap_loss_within_ref": true,
+  "payloads_identical": true
+ },
+ "pass": true
+}

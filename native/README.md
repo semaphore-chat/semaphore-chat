@@ -15,6 +15,8 @@ the long-lived `spike/native-gpui` branch. Status, test bars and decisions are i
 | `crates/semaphore-ui` | GPUI views | core, gpui-kit |
 | `crates/semaphore-app` | The desktop binary | all of the above |
 | `rigs/shot` | T10: render a story to a PNG with no display | core, ui |
+| `rigs/reconnect` | T7: voice participants judged by tone, and the fault driver | livekit |
+| `rigs/sio` | T8: the Socket.IO session against socket.io-client | core, net |
 | `rigs/video-iced` (not created yet) | Excluded from the workspace, with its own lockfile | |
 
 ## Rules
