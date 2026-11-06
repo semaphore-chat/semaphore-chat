@@ -135,6 +135,37 @@ describe('LivekitReplayService', () => {
       storageService.deleteDirectory.mockResolvedValue(undefined);
     });
 
+    describe('segment readiness check', () => {
+      beforeEach(() => {
+        jest.useFakeTimers({
+          doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+        });
+        databaseService.egressSession.findUnique.mockResolvedValue(null);
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('runs 15 seconds after the buffer starts', async () => {
+        await service.startReplayBuffer(startParams);
+        expect(databaseService.egressSession.findUnique).not.toHaveBeenCalled();
+
+        await jest.advanceTimersByTimeAsync(15_000);
+
+        expect(databaseService.egressSession.findUnique).toHaveBeenCalled();
+      });
+
+      it('does not run after shutdown', async () => {
+        await service.startReplayBuffer(startParams);
+
+        service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(15_000);
+
+        expect(databaseService.egressSession.findUnique).not.toHaveBeenCalled();
+      });
+    });
+
     it('should start new egress session', async () => {
       const result = await service.startReplayBuffer(startParams);
 

@@ -6,6 +6,7 @@ import {
   ForbiddenException,
   NotFoundException,
   OnApplicationBootstrap,
+  OnModuleDestroy,
   PayloadTooLargeException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -58,7 +59,9 @@ import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
 import { withTimeout } from './livekit-request-timeout.util';
 
 @Injectable()
-export class LivekitReplayService implements OnApplicationBootstrap {
+export class LivekitReplayService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(LivekitReplayService.name);
   private readonly segmentsPath: string;
   private readonly egressOutputPath: string;
@@ -92,6 +95,9 @@ export class LivekitReplayService implements OnApplicationBootstrap {
    * updates. Per-instance state is fine: the cron is per-pod anyway.
    */
   private reconcileInProgress = false;
+
+  /** Pending segment readiness checks, cancelled at shutdown: they query the database. */
+  private readonly segmentChecks = new Set<NodeJS.Timeout>();
 
   constructor(
     @Inject(EGRESS_CLIENT)
@@ -143,6 +149,13 @@ export class LivekitReplayService implements OnApplicationBootstrap {
    * and fail k8s startup/readiness probes. Failures are logged, never
    * propagated.
    */
+  onModuleDestroy(): void {
+    for (const check of this.segmentChecks) {
+      clearTimeout(check);
+    }
+    this.segmentChecks.clear();
+  }
+
   onApplicationBootstrap(): void {
     void this.reconcileEgressStatus().catch((error) => {
       this.logger.warn(
@@ -285,7 +298,8 @@ export class LivekitReplayService implements OnApplicationBootstrap {
       });
 
       // Schedule a delayed check to notify the client when segments are available
-      setTimeout(() => {
+      const segmentCheck = setTimeout(() => {
+        this.segmentChecks.delete(segmentCheck);
         this.checkAndNotifySegmentsReady(session.id, userId, channelId).catch(
           (err) =>
             this.logger.warn(
@@ -293,6 +307,7 @@ export class LivekitReplayService implements OnApplicationBootstrap {
             ),
         );
       }, 15_000).unref();
+      this.segmentChecks.add(segmentCheck);
 
       return {
         sessionId: session.id,
