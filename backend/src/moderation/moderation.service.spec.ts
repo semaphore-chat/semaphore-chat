@@ -116,6 +116,9 @@ describe('ModerationService', () => {
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
+        aliasGroupMember: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         membership: { delete: jest.fn().mockResolvedValue({}) },
         moderationLog: { create: jest.fn().mockResolvedValue({}) },
@@ -252,6 +255,9 @@ describe('ModerationService', () => {
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
+        aliasGroupMember: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         membership: { delete: jest.fn().mockResolvedValue({}) },
         moderationLog: { create: jest.fn().mockResolvedValue({}) },
@@ -331,6 +337,9 @@ describe('ModerationService', () => {
         },
         communityBan: { upsert: jest.fn().mockResolvedValue({}) },
         channelMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        aliasGroupMember: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -457,6 +466,9 @@ describe('ModerationService', () => {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         channelMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        aliasGroupMember: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },

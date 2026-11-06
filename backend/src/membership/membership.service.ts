@@ -11,7 +11,8 @@ import {
   MembershipResponseDto,
   PaginatedMembershipsResponseDto,
 } from './dto/membership-response.dto';
-import { RbacActions } from '@prisma/client';
+import { InstanceRole, ModerationAction, RbacActions } from '@prisma/client';
+import { ServerEvents } from '@semaphore-chat/shared';
 import { DatabaseService } from '@/database/database.service';
 import { CommunityService } from '@/community/community.service';
 import { CommunityRolesService } from '@/roles/community-roles.service';
@@ -19,10 +20,16 @@ import { isPrismaError } from '@/common/utils/prisma.utils';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
+import { PermissionsService } from '@/roles/permissions.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { RoomName } from '@/common/utils/room-name.util';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 @Injectable()
 export class MembershipService {
   private readonly logger = new Logger(MembershipService.name);
+
+  static readonly MAX_SEARCH_LIMIT = 50;
 
   constructor(
     private readonly databaseService: DatabaseService,
@@ -30,6 +37,8 @@ export class MembershipService {
     private readonly communityRolesService: CommunityRolesService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
+    private readonly permissionsService: PermissionsService,
+    private readonly websocketService: WebsocketService,
   ) {}
 
   async create(
@@ -315,6 +324,11 @@ export class MembershipService {
           where: { userId, parentMessage: { channel: { communityId } } },
         });
 
+        // Alias groups list the community's members
+        await tx.aliasGroupMember.deleteMany({
+          where: { userId, aliasGroup: { communityId } },
+        });
+
         // Remove user roles in the community
         await tx.userRoles.deleteMany({
           where: {
@@ -339,8 +353,9 @@ export class MembershipService {
       // this user's cached permissions now that the transaction committed.
       await this.permissionsCacheService.bumpUserEpoch(userId);
 
-      // Emit domain event — the RoomSubscriptionHandler will remove sockets
-      this.eventEmitter.emit(RoomEvents.MEMBERSHIP_REMOVED, {
+      // Domain event, as for a kick: the RoomSubscriptionHandler removes the
+      // user's sockets and disconnects them from the community's voice channels
+      this.eventEmitter.emit(RoomEvents.MODERATION_USER_KICKED, {
         userId,
         communityId,
       });
@@ -358,6 +373,52 @@ export class MembershipService {
 
       throw error;
     }
+  }
+
+  /**
+   * Removal of someone else (DELETE_MEMBER): kick's rank rule, kick's log entry
+   * and kick's events. Removing yourself is leaving. The instance owner
+   * bypasses rank, as for every RBAC check.
+   */
+  async removeByActor(
+    actor: { id: string; role: string },
+    userId: string,
+    communityId: string,
+  ): Promise<void> {
+    if (actor.id === userId) {
+      return this.remove(userId, communityId);
+    }
+    if (
+      actor.role !== InstanceRole.OWNER &&
+      !(await this.permissionsService.outranks(actor.id, userId, communityId))
+    ) {
+      throw new ForbiddenException(
+        'Cannot remove a user with equal or higher role',
+      );
+    }
+
+    await this.remove(userId, communityId);
+
+    await this.databaseService.moderationLog.create({
+      data: {
+        communityId,
+        moderatorId: actor.id,
+        action: ModerationAction.KICK_USER,
+        targetUserId: userId,
+      },
+    });
+
+    const payload = { communityId, userId, moderatorId: actor.id };
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.USER_KICKED,
+      payload,
+    );
+    this.websocketService.sendToRoom(
+      RoomName.community(communityId),
+      ServerEvents.USER_KICKED,
+      payload,
+    );
   }
 
   async isMember(userId: string, communityId: string): Promise<boolean> {
@@ -378,6 +439,7 @@ export class MembershipService {
     query: string,
     limit: number = 10,
   ): Promise<MembershipResponseDto[]> {
+    limit = clampLimit(limit, MembershipService.MAX_SEARCH_LIMIT);
     const memberships = await this.databaseService.membership.findMany({
       where: {
         communityId,
