@@ -12,6 +12,8 @@ gpui-kit.workspace = true
 # Only for building fixture emoji and images in memory: `RenderImage` is made of `image::Frame`s.
 image = { version = "0.25", default-features = false, optional = true }
 semaphore-core.workspace = true
+semaphore-design.workspace = true
+serde_json = { workspace = true, optional = true }
 unicode-segmentation = "1"
 
 # `mallopt`, for the allocator setting T2 found the list needs. See `messages::media`.
@@ -26,4 +28,4 @@ serde_json.workspace = true
 
 [features]
 # The story registry and scenario fixtures. The app never turns this on.
-stories = ["semaphore-core/fixtures", "dep:image"]
+stories = ["semaphore-core/fixtures", "dep:image", "dep:serde_json"]

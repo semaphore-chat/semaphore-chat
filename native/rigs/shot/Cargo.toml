@@ -13,5 +13,6 @@ path = "src/main.rs"
 [dependencies]
 anyhow.workspace = true
 gpui-kit = { workspace = true, features = ["test-support"] }
+image = { version = "0.25", default-features = false }
 semaphore-core.workspace = true
 semaphore-ui = { workspace = true, features = ["stories"] }
