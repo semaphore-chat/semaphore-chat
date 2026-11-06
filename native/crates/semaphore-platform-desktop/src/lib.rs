@@ -40,6 +40,10 @@ impl AppPaths for DesktopPaths {
 /// Secrets in the OS's native store: Secret Service on Linux, Credential Manager on Windows.
 /// Never a file: with no store, or a locked one, every call fails with a [`CoreError`] that says
 /// so, and nothing is written anywhere else.
+///
+/// Every call blocks, for as long as an unlock prompt stays open. On Linux it also runs zbus's own
+/// `block_on`, which panics on a Tokio worker thread, so call this from a plain thread:
+/// `HttpBackend` keeps one for its store.
 pub struct KeyringSecrets {
     service: String,
 }
