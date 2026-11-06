@@ -26,6 +26,10 @@ pub enum RealtimeEvent {
     Reauthenticated {
         result: Value,
     },
+    /// The session can't be recovered: core signs out, and the app must sign in again.
+    AuthLost {
+        reason: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]

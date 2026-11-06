@@ -1,6 +1,11 @@
 //! Transport: the Socket.IO session in [`socket`], and the generated REST client later.
 
+pub mod backend;
+pub mod realtime;
 pub mod socket;
+
+pub use backend::HttpBackend;
+pub use realtime::SocketRealtime;
 
 use std::sync::Once;
 
@@ -20,8 +25,17 @@ pub fn install_crypto_provider() {
 }
 
 pub fn http_client() -> Result<reqwest::Client, CoreError> {
+    http_client_with_headers(reqwest::header::HeaderMap::new())
+}
+
+/// [`http_client`] that sends `headers` on every request. The generated client has no hook for
+/// per-request headers, so [`HttpBackend`] builds one per server and per access token.
+pub fn http_client_with_headers(
+    headers: reqwest::header::HeaderMap,
+) -> Result<reqwest::Client, CoreError> {
     install_crypto_provider();
     reqwest::Client::builder()
+        .default_headers(headers)
         .build()
         .map_err(|error| CoreError::Failed {
             message: error.to_string(),

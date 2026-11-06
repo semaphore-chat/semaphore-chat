@@ -119,7 +119,11 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
                     .and_then(Value::as_str)
             });
             inner.record_socket("handshake", Some(data.clone()), protocol.clone());
-            if !valid_token(token) {
+            let required = inner.required_access_token();
+            let current = required.as_deref().is_none_or(|required| {
+                token.and_then(|token| token.strip_prefix("Bearer ")) == Some(required)
+            });
+            if !valid_token(token) || !current {
                 inner.enqueue_text(&tx, "44{\"message\":\"AUTH_FAILED\"}".to_owned());
                 break;
             }

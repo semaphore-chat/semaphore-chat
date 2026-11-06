@@ -716,6 +716,14 @@ impl State {
                 self.had_connection = true;
                 self.release_parked_sends();
             }
+            // The session can't be recovered, so end it as a sign-out would, without a logout call.
+            RealtimeEvent::AuthLost { reason } => {
+                log::warn!(
+                    "session lost: {}",
+                    reason.as_deref().unwrap_or("no reason given")
+                );
+                self.reset_signed_out();
+            }
             RealtimeEvent::Reauthenticated { result } => {
                 match serde_json::from_value::<ReauthenticateResultDto>(result) {
                     Ok(ReauthenticateResultDto {

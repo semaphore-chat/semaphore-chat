@@ -8,4 +8,6 @@ publish.workspace = true
 
 [dependencies]
 directories.workspace = true
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust"] }
+notify-rust = "4.18"
 semaphore-core.workspace = true

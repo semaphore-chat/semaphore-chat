@@ -18,7 +18,7 @@ Spec files exist for U1-U4, which go to DeepSeek Flash. The rest get theirs from
 | [U4 fake server](U4-fake-server.md) | `semaphore-fake-server` | U1, U3 | Flash | U2, U5-U10 |
 | U5 core | `core/src/{store,events,send,resync,commands,cache,backend}*`, `semaphore-ffi` | U1 | **opus-high** | U4, U6, U8-U12 |
 | U6 text | `core/src/text` | U1 | sonnet-medium | Everything after U1 |
-| U7 net | `semaphore-net`, `semaphore-platform-desktop` | U1, U5, `spike/t7-t8` | sonnet-medium | U8-U12 |
+| U7 net | `semaphore-net`, `semaphore-platform-desktop` | U1, U5 | sonnet-medium | U8-U12 |
 | U8 shell | `ui/src/{theme,kit,shell,auth,nav}`, `rigs/shot` steps | U2, U3 | **opus-medium** | U5, U6, U7, U9-U12 |
 | U9 messages | `ui/src/messages` | U3 | **opus-high** | U5, U6, U7, U8, U10-U12 |
 | U10 composer | `ui/src/composer` | U3 | **opus-medium** | U5, U6, U7, U8, U9, U11, U12 |
@@ -48,14 +48,14 @@ inside `cache.rs`, which U5 replaces with typed entries.
 ## Known gaps to carry
 
 - **The pinned contract lacks the auth contract.** `security/release` isn't an ancestor of the pin,
-  so `X-Client-Type` isn't in `contract/openapi.json`. U7 sends it by hand. Real-backend flows need
+  so `X-Client-Type` isn't in `contract/openapi.json`. U7 sends it by hand (`desktop-native`, with `X-Device-Id` and a `User-Agent`, which the backend requires of native clients). Real-backend flows need
   a backend with both, which is `security/release` plus the API-contract stack.
 - **U5 must keep `scripts/test-policy.sh` working when core gains `semaphore-wire`:** its fixture
   copies core alone and has its own `[workspace.dependencies]`. Keep `[dependencies]` last in core's
   `Cargo.toml` too, because that script appends to the file.
-- **`spike/t7-t8` is not merged.** Expect conflicts in `Cargo.toml`, `Cargo.lock`, `deny.toml`, and
-  in `core/src/lib.rs` and `net/src/lib.rs`. `RealtimeEvent` mirrors its `SocketEvent`, and
-  `semaphore-net` adapts it to `Realtime`.
+- **`spike/t7-t8` is merged**, and U7 (`slice/u7-net`) implements `Backend` and `Realtime` over it:
+  `HttpBackend` and `SocketRealtime` in `semaphore-net`. Sessions are not restored on startup yet:
+  U7 stores the refresh token per server but nothing reads it back (needs a core command).
 - **Windows now has a surface path:** `Window::video_uploader()` returns `Some` there too, through the
   vendored D3D11 patch, so tiles take the same path on both. It has compiled but never run on Windows
   (the CI job waits on a push). `third_party/README.md` has the API. U11 removes the fallback comment

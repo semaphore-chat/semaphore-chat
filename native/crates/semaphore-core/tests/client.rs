@@ -1425,6 +1425,24 @@ async fn sign_out_forgets_the_session() {
 }
 
 #[tokio::test]
+async fn auth_lost_signs_out_and_clears_the_session() {
+    let mut rig = Rig::new()
+        .signed_in()
+        .await
+        .open_channel(history("m", 1))
+        .await;
+    rig.settle().await;
+    rig.core.ingest(RealtimeEvent::AuthLost {
+        reason: Some("SESSION_REVOKED".into()),
+    });
+    assert_eq!(rig.core.session(), SessionState::SignedOut);
+    assert!(rig.core.communities().is_empty());
+    assert!(rig.core.query_state(&keys::op(keys::COMMUNITIES)).is_none());
+    // The server already ended it: no logout call.
+    assert_eq!(rig.backend.logged_out.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn token_expiring_refreshes_and_hands_the_socket_the_new_token() {
     let rig = Rig::new().signed_in().await;
     *rig.backend.access_token.lock().unwrap() = "e30.eyJleHAiOjIwMDB9.sig".into();

@@ -53,6 +53,25 @@ fn jwt_expiry_ms(token: &str) -> Option<u64> {
 }
 
 impl State {
+    /// Everything a session leaves behind, forgotten. Sign-out and a lost session both end here.
+    pub(crate) fn reset_signed_out(&mut self) {
+        self.cache.clear();
+        self.fetching.clear();
+        self.windows.clear();
+        self.sends.clear();
+        self.typing.clear();
+        self.mention_notifications.clear();
+        self.effects.clear();
+        self.main_conversation = None;
+        self.thread_conversation = None;
+        self.me = None;
+        self.session = SessionState::SignedOut;
+        self.voice = VoiceView::default();
+        self.had_connection = false;
+        self.token_expires_at_ms = None;
+        self.view_changed(ViewKey::Session);
+    }
+
     pub(crate) fn user_or_stub(&self, id: &str) -> UserView {
         if self.me_id() == id
             && let Some(me) = &self.me
@@ -403,23 +422,7 @@ impl Core {
         if let Err(error) = services.backend.auth_controller_logout(body).await {
             log::warn!("logout failed, signing out here anyway: {error}");
         }
-        self.write(|state, _| {
-            state.cache.clear();
-            state.fetching.clear();
-            state.windows.clear();
-            state.sends.clear();
-            state.typing.clear();
-            state.mention_notifications.clear();
-            state.effects.clear();
-            state.main_conversation = None;
-            state.thread_conversation = None;
-            state.me = None;
-            state.session = SessionState::SignedOut;
-            state.voice = VoiceView::default();
-            state.had_connection = false;
-            state.token_expires_at_ms = None;
-            state.view_changed(ViewKey::Session);
-        });
+        self.write(|state, _| state.reset_signed_out());
         Ok(())
     }
 
