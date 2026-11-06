@@ -1,0 +1,27 @@
+{
+  "scenario": "idle-real",
+  "readings": {
+    "no_animation": {
+      "row": 60060,
+      "cpu_pct_core": 0.3,
+      "frames_per_s": 0.0,
+      "animated_paints_per_s": 0.0
+    },
+    "animated_emoji_on_screen": {
+      "row": 50004,
+      "cpu_pct_core": 4.0,
+      "frames_per_s": 12.5,
+      "animated_paints_per_s": 25.0
+    }
+  },
+  "memory_mb": {
+    "pss": 372.6,
+    "rss": 424.5,
+    "anon": 274.1,
+    "swap": 0.0
+  },
+  "load": {
+    "start": "25.45 20.89 20.35 35/2135 111",
+    "end": "17.08 19.29 19.84 1/2189 125"
+  }
+}

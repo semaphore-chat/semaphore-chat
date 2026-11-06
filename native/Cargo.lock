@@ -7026,6 +7026,8 @@ dependencies = [
  "anyhow",
  "gpui-kit",
  "image",
+ "semaphore-core",
+ "semaphore-ui",
  "serde_json",
 ]
 
@@ -7576,8 +7578,13 @@ dependencies = [
 name = "semaphore-ui"
 version = "0.0.0"
 dependencies = [
+ "chrono",
  "gpui-kit",
+ "image",
+ "libc",
  "semaphore-core",
+ "serde_json",
+ "unicode-segmentation",
 ]
 
 [[package]]
