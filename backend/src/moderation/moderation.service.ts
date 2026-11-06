@@ -27,6 +27,7 @@ import {
   Prisma,
   CommunityBan,
   CommunityTimeout,
+  InstanceRole,
 } from '@prisma/client';
 import { PermissionsCacheService } from '@/roles/permissions-cache.service';
 
@@ -419,6 +420,11 @@ export class ModerationService {
       where: { userId, parentMessage: { channel: { communityId } } },
     });
 
+    // Alias groups list the community's members
+    await tx.aliasGroupMember.deleteMany({
+      where: { userId, aliasGroup: { communityId } },
+    });
+
     // Remove user roles in the community
     await tx.userRoles.deleteMany({
       where: { userId, communityId },
@@ -573,6 +579,7 @@ export class ModerationService {
     userId: string,
     moderatorId: string,
     reason?: string,
+    moderatorRole?: string,
   ): Promise<void> {
     const timeout = await this.databaseService.communityTimeout.findUnique({
       where: { communityId_userId: { communityId, userId } },
@@ -580,6 +587,23 @@ export class ModerationService {
 
     if (!timeout) {
       throw new NotFoundException('User is not timed out');
+    }
+
+    // Serving a timeout, or set by a higher rank: not yours to lift
+    if (moderatorRole !== InstanceRole.OWNER) {
+      if (userId === moderatorId) {
+        throw new ForbiddenException('You cannot lift your own timeout');
+      }
+      if (
+        timeout.moderatorId &&
+        timeout.moderatorId !== moderatorId &&
+        (await this.getUserBestRolePosition(timeout.moderatorId, communityId)) <
+          (await this.getUserBestRolePosition(moderatorId, communityId))
+      ) {
+        throw new ForbiddenException(
+          'Cannot lift a timeout set by a higher role',
+        );
+      }
     }
 
     await this.databaseService.communityTimeout.delete({

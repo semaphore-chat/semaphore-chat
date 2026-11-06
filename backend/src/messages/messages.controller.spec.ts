@@ -94,7 +94,7 @@ describe('MessagesController', () => {
         parentMessageId: null,
         replyCount: 0,
         lastReplyAt: null,
-      } as any;
+      };
 
       const mockMessage = MessageFactory.build({
         channelId: createDto.channelId,

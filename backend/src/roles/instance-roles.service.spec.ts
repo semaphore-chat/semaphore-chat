@@ -242,7 +242,10 @@ describe('InstanceRolesService', () => {
         const roleId = 'role-123';
         const role = RoleFactory.build({ id: roleId });
 
-        mockDatabase.role.findUnique.mockResolvedValue(role);
+        mockDatabase.role.findUnique.mockResolvedValue({
+          ...role,
+          communityId: null,
+        });
         mockDatabase.userRoles.findFirst.mockResolvedValue(null);
         mockDatabase.userRoles.create.mockResolvedValue({});
 
@@ -268,9 +271,10 @@ describe('InstanceRolesService', () => {
 
       it('should throw ConflictException when user already has role', async () => {
         const roleId = 'role-123';
-        mockDatabase.role.findUnique.mockResolvedValue(
-          RoleFactory.build({ id: roleId }),
-        );
+        mockDatabase.role.findUnique.mockResolvedValue({
+          ...RoleFactory.build({ id: roleId }),
+          communityId: null,
+        });
         mockDatabase.userRoles.findFirst.mockResolvedValue({
           id: 'existing-assignment',
         });
