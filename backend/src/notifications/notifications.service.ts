@@ -138,6 +138,17 @@ export class NotificationsService {
       }
     }
 
+    if (message.directMessageGroupId && mentionedUserIds.size > 0) {
+      // A DM's mentions only reach its own members, and not those who blocked
+      // the author (a block doesn't stop a group DM, its notifications do)
+      const allowed = new Set(
+        await this.dmRecipients(message, [...mentionedUserIds]),
+      );
+      for (const userId of mentionedUserIds) {
+        if (!allowed.has(userId)) mentionedUserIds.delete(userId);
+      }
+    }
+
     // Create notifications for mentioned users
     const mentionPromises = Array.from(mentionedUserIds).map((userId) =>
       this.createNotificationIfAllowed(
@@ -164,6 +175,36 @@ export class NotificationsService {
         viewers,
       );
     }
+  }
+
+  /**
+   * Which of `userIds` may be notified about a DM message: members of its
+   * group who haven't blocked its author.
+   */
+  private async dmRecipients(
+    message: Pick<Message, 'directMessageGroupId' | 'authorId'>,
+    userIds: string[],
+  ): Promise<string[]> {
+    if (!message.directMessageGroupId || userIds.length === 0) return [];
+    const members =
+      await this.databaseService.directMessageGroupMember.findMany({
+        where: {
+          groupId: message.directMessageGroupId,
+          userId: { in: userIds },
+        },
+        select: { userId: true },
+      });
+    if (!message.authorId) return members.map((m) => m.userId);
+
+    const blockers = await this.databaseService.userBlock.findMany({
+      where: {
+        blockedId: message.authorId,
+        blockerId: { in: members.map((m) => m.userId) },
+      },
+      select: { blockerId: true },
+    });
+    const blocked = new Set(blockers.map((b) => b.blockerId));
+    return members.map((m) => m.userId).filter((id) => !blocked.has(id));
   }
 
   /** Memoized ChannelAccessService.viewerUserIds for one message. */
@@ -232,19 +273,24 @@ export class NotificationsService {
         select: { userId: true },
       });
 
-    const notificationPromises = members
-      .filter(
-        (m) =>
-          m.userId !== message.authorId &&
-          !alreadyNotifiedUserIds.has(m.userId),
-      )
-      .map((m) =>
-        this.createNotificationIfAllowed(
-          m.userId,
-          NotificationType.DIRECT_MESSAGE,
-          message,
-        ),
-      );
+    const recipients = await this.dmRecipients(
+      message,
+      members
+        .filter(
+          (m) =>
+            m.userId !== message.authorId &&
+            !alreadyNotifiedUserIds.has(m.userId),
+        )
+        .map((m) => m.userId),
+    );
+
+    const notificationPromises = recipients.map((userId) =>
+      this.createNotificationIfAllowed(
+        userId,
+        NotificationType.DIRECT_MESSAGE,
+        message,
+      ),
+    );
 
     await Promise.all(notificationPromises);
   }
@@ -1031,6 +1077,15 @@ export class NotificationsService {
         const allowed = new Set(
           await this.channelAccessService.filterViewers(
             reply.channelId,
+            subscribers.map((s) => s.userId),
+          ),
+        );
+        recipients = subscribers.filter((s) => allowed.has(s.userId));
+      } else if (reply.directMessageGroupId) {
+        // DM threads: only current members of the group
+        const allowed = new Set(
+          await this.dmRecipients(
+            reply,
             subscribers.map((s) => s.userId),
           ),
         );

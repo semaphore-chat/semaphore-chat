@@ -17,6 +17,9 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { LivekitAccessService } from './livekit-access.service';
+import { DatabaseService } from '@/database/database.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { FULL_PUBLISH_GRANT, publishGrantFor } from './publish-grant.util';
 import { LivekitReplayService } from './livekit-replay.service';
 import { ClipLibraryService } from './clip-library.service';
@@ -72,7 +75,22 @@ export class LivekitController {
     private readonly voicePresenceService: VoicePresenceService,
     private readonly jwtService: JwtService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly livekitAccessService: LivekitAccessService,
+    private readonly databaseService: DatabaseService,
   ) {}
+
+  /**
+   * The participant in a token is who's asking, with their account's name.
+   * Neither comes from the request: other participants see that name on their
+   * tile, so a client-chosen one could pose as anybody.
+   */
+  private participantOf(dto: CreateTokenDto, req: AuthenticatedRequest) {
+    return {
+      ...dto,
+      identity: req.user.id,
+      name: req.user.displayName || req.user.username,
+    };
+  }
 
   /**
    * The auth session (`sid`) of the access token JwtAuthGuard authenticated
@@ -98,13 +116,10 @@ export class LivekitController {
     @Body() createTokenDto: CreateTokenDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<TokenResponseDto> {
-    // Always use the authenticated user's ID to prevent identity spoofing
-    const tokenDto = {
-      ...createTokenDto,
-      identity: req.user.id,
-    };
+    const tokenDto = this.participantOf(createTokenDto, req);
     // What they may publish follows their channel voice capabilities
-    // (SPEAK/VIDEO/SCREEN_SHARE overwrites, community timeouts)
+    // (SPEAK/VIDEO/SCREEN_SHARE overwrites, community timeouts) and any
+    // server mute a moderator set
     const caps = await this.channelAccessService.channelCapabilities(
       req.user.id,
       createTokenDto.roomId,
@@ -112,7 +127,15 @@ export class LivekitController {
     return this.livekitService.generateToken(
       tokenDto,
       this.sessionIdOf(req),
-      caps ? publishGrantFor(caps) : { canPublish: false },
+      caps
+        ? publishGrantFor(
+            caps,
+            await this.voicePresenceService.isServerMuted(
+              createTokenDto.roomId,
+              req.user.id,
+            ),
+          )
+        : { canPublish: false },
     );
   }
 
@@ -128,11 +151,17 @@ export class LivekitController {
     @Body() createTokenDto: CreateTokenDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<TokenResponseDto> {
-    // Always use the authenticated user's ID to prevent identity spoofing
-    const tokenDto = {
-      ...createTokenDto,
-      identity: req.user.id,
-    };
+    // The guard lets instance owners through; a DM call is for its members
+    await this.livekitAccessService.assertDmMember(
+      req.user.id,
+      createTokenDto.roomId,
+    );
+    await assertNotBlockedInDm(
+      this.databaseService,
+      req.user.id,
+      createTokenDto.roomId,
+    );
+    const tokenDto = this.participantOf(createTokenDto, req);
     // DM calls: timeouts are community-scoped, so DMs publish freely
     return this.livekitService.generateToken(
       tokenDto,
@@ -153,10 +182,33 @@ export class LivekitController {
     @Param('channelId') channelId: string,
     @Body() dto: MuteParticipantDto,
   ): Promise<{ success: boolean }> {
-    await this.livekitService.muteParticipant(
+    // Lifting a mute never touches tracks: LiveKit won't turn someone's mic back
+    // on for them, and they may have left since (a mute outlives the call). It
+    // gives the microphone back; the user unmutes when they want to.
+    if (dto.mute) {
+      await this.livekitService.muteParticipant(
+        channelId,
+        dto.participantIdentity,
+        true,
+      );
+    }
+
+    // Muting the track alone doesn't hold: the client can unmute it, or
+    // publish a new one. The mute is remembered and takes the microphone out
+    // of what they may publish, now and on every later join.
+    await this.voicePresenceService.setServerMuted(
       channelId,
       dto.participantIdentity,
       dto.mute,
+    );
+    const caps = await this.channelAccessService.channelCapabilities(
+      dto.participantIdentity,
+      channelId,
+    );
+    await this.livekitService.updatePublishPermissions(
+      channelId,
+      dto.participantIdentity,
+      caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
     );
     await this.voicePresenceService.updateServerMuteState(
       channelId,
@@ -186,7 +238,7 @@ export class LivekitController {
    * Start replay buffer egress for screen share
    */
   @Post('replay/start')
-  @RequiredActions(RbacActions.JOIN_CHANNEL)
+  @RequiredActions(RbacActions.JOIN_CHANNEL, RbacActions.CAPTURE_REPLAY)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
@@ -200,10 +252,8 @@ export class LivekitController {
     return this.livekitReplayService.startReplayBuffer({
       userId: req.user.id,
       channelId: dto.channelId,
-      roomName: dto.roomName,
       videoTrackId: dto.videoTrackId,
       audioTrackId: dto.audioTrackId,
-      participantIdentity: dto.participantIdentity,
     });
   }
 

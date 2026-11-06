@@ -56,6 +56,12 @@ export type SessionTerminatedReason =
   | 'ACCOUNT_BANNED'
   | 'ACCOUNT_DELETED';
 
+export interface DesktopSignInPayload {
+  /** Where the app signed in from, as the server saw it. */
+  ipAddress: string | null;
+  signedInAt: string;
+}
+
 export interface SessionTerminatedPayload {
   reason: SessionTerminatedReason;
 }
@@ -417,6 +423,7 @@ export type ServerEventPayloads = {
   // Session lifecycle
   [ServerEvents.TOKEN_EXPIRING]: TokenExpiringPayload;
   [ServerEvents.SESSION_TERMINATED]: SessionTerminatedPayload;
+  [ServerEvents.DESKTOP_SIGN_IN]: DesktopSignInPayload;
 
   // Messaging: Channels
   [ServerEvents.NEW_MESSAGE]: NewMessagePayload;

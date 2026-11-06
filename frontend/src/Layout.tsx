@@ -13,7 +13,14 @@ import type { User } from "./types/auth.type";
 import { useThemeSync } from "./hooks/useThemeSync";
 import { useAppBadge } from "./hooks/useAppBadge";
 import { usePushResync } from "./hooks/usePushResync";
+import { useDesktopSignInNotice } from "./hooks/useDesktopSignInNotice";
 import { LayoutProviders } from "./components/LayoutProviders";
+
+/** Has to sit inside LayoutProviders: it needs their socket. */
+const DesktopSignInNotice: React.FC = () => {
+  useDesktopSignInNotice();
+  return null;
+};
 
 const Layout: React.FC = () => {
   const { user: userData } = useCurrentUser();
@@ -61,6 +68,7 @@ const Layout: React.FC = () => {
 
   return (
     <LayoutProviders>
+      <DesktopSignInNotice />
       {isMobile ? (
         <MobileLayout />
       ) : isTablet ? (

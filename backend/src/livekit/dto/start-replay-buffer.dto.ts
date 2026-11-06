@@ -4,8 +4,12 @@ export class StartReplayBufferDto {
   @IsUUID()
   channelId: string;
 
+  /**
+   * Ignored: the room is the authorized channel's. Existing clients send it.
+   */
+  @IsOptional()
   @IsString()
-  roomName: string;
+  roomName?: string;
 
   @IsString()
   videoTrackId: string;
@@ -15,8 +19,7 @@ export class StartReplayBufferDto {
   audioTrackId?: string;
 
   /**
-   * Participant identity (usually the user ID)
-   * Used to query track resolution for matching egress encoding to source quality
+   * Ignored: the tracks must be the caller's own. Existing clients send it.
    */
   @IsOptional()
   @IsString()

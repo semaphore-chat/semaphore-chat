@@ -31,6 +31,7 @@ describe('NotificationsService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    mockDatabase.userBlock.findMany.mockResolvedValue([]);
 
     const { unit, unitRef } = await TestBed.solitary(NotificationsService)
       .mock(DatabaseService)
@@ -386,7 +387,16 @@ describe('NotificationsService', () => {
         { userId: 'user-3' },
       ];
 
-      mockDatabase.directMessageGroupMember.findMany.mockResolvedValue(members);
+      // The query for a subset of the members is answered as Postgres would
+      mockDatabase.directMessageGroupMember.findMany.mockImplementation(
+        (args: { where: { userId?: { in: string[] } } }) =>
+          Promise.resolve(
+            members.filter(
+              (m) =>
+                !args.where.userId || args.where.userId.in.includes(m.userId),
+            ),
+          ),
+      );
       const settings = UserNotificationSettingsFactory.build();
       mockDatabase.userNotificationSettings.upsert.mockResolvedValue(settings);
       mockDatabase.notification.create.mockImplementation((args) =>

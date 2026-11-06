@@ -69,7 +69,8 @@ test.describe('Mute permissions & rapid toggles', () => {
     await moderatorMute(owner, target.identity, true, owner.channelId); // throws if not 2xx
     await expectNoAudioGrowth(owner, target);
 
-    // Restore (server mute can only be lifted by the publisher).
+    // Restore: the owner lifts the mute, then the target unmutes themselves.
+    await moderatorMute(owner, target.identity, false, owner.channelId);
     await setMicEnabled(target, true);
     await waitForAudioFlow(owner, target, { timeout: 30_000 });
   });

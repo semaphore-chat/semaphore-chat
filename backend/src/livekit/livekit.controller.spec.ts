@@ -39,6 +39,8 @@ describe('LivekitController', () => {
     headers: {},
   } as any;
 
+  const accountName = mockUser.displayName || mockUser.username;
+
   beforeEach(async () => {
     const { unit, unitRef } =
       await TestBed.solitary(LivekitController).compile();
@@ -76,7 +78,7 @@ describe('LivekitController', () => {
 
         expect(jwtService.decode).toHaveBeenCalledWith('access-jwt');
         expect(service.generateToken).toHaveBeenCalledWith(
-          { roomId: 'room-1', identity: mockUser.id },
+          { roomId: 'room-1', identity: mockUser.id, name: accountName },
           'sess-1',
           FULL_PUBLISH_GRANT,
         );
@@ -95,7 +97,7 @@ describe('LivekitController', () => {
 
       expect(jwtService.decode).toHaveBeenCalledWith('cookie-jwt');
       expect(service.generateToken).toHaveBeenCalledWith(
-        { roomId: 'room-1', identity: mockUser.id },
+        { roomId: 'room-1', identity: mockUser.id, name: accountName },
         'sess-2',
         FULL_PUBLISH_GRANT,
       );
@@ -111,7 +113,7 @@ describe('LivekitController', () => {
       await controller.generateToken({ roomId: 'room-1', identity: '' }, req);
 
       expect(service.generateToken).toHaveBeenCalledWith(
-        { roomId: 'room-1', identity: mockUser.id },
+        { roomId: 'room-1', identity: mockUser.id, name: accountName },
         undefined,
         FULL_PUBLISH_GRANT,
       );
@@ -145,6 +147,7 @@ describe('LivekitController', () => {
         {
           ...createTokenDto,
           identity: mockUser.id,
+          name: accountName,
         },
         undefined, // no session: the request carries no access token
         FULL_PUBLISH_GRANT,
@@ -296,6 +299,7 @@ describe('LivekitController', () => {
         {
           ...createTokenDto,
           identity: mockUser.id,
+          name: accountName,
         },
         undefined, // no session: the request carries no access token
         FULL_PUBLISH_GRANT,
@@ -425,8 +429,7 @@ describe('LivekitController', () => {
       expect(result).toEqual({ success: true });
     });
 
-    it('should pass mute=false for unmute and update server mute state', async () => {
-      service.muteParticipant.mockResolvedValue(undefined);
+    it('should lift a mute without touching tracks, giving the microphone back', async () => {
       voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
 
       await controller.muteParticipant('channel-123', {
@@ -434,10 +437,16 @@ describe('LivekitController', () => {
         mute: false,
       });
 
-      expect(service.muteParticipant).toHaveBeenCalledWith(
+      expect(service.muteParticipant).not.toHaveBeenCalled();
+      expect(voicePresenceService.setServerMuted).toHaveBeenCalledWith(
         'channel-123',
         'user-456',
         false,
+      );
+      expect(service.updatePublishPermissions).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+        FULL_PUBLISH_GRANT,
       );
       expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledWith(
         'channel-123',

@@ -87,6 +87,7 @@ export class ThreadsController {
   async getReplies(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Req() req: AuthenticatedRequest,
     @Query('continuationToken') continuationToken?: string,
   ): Promise<ThreadRepliesResponseDto> {
     limit = Math.min(limit, 100);
@@ -94,6 +95,7 @@ export class ThreadsController {
       parentMessageId,
       limit,
       continuationToken,
+      req.user.id,
     );
   }
 

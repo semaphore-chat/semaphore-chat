@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '@/database/database.module';
 import { StorageModule } from '@/storage/storage.module';
+import { StorageQuotaModule } from '@/storage-quota/storage-quota.module';
 import { WebsocketModule } from '@/websocket/websocket.module';
 import { VoicePresenceModule } from '@/voice-presence/voice-presence.module';
 import { LivekitService } from './livekit.service';
@@ -30,6 +31,7 @@ import { ThumbnailService } from '@/file/thumbnail.service';
     DatabaseModule,
     RedisModule,
     StorageModule,
+    StorageQuotaModule,
     WebsocketModule,
     UserModule,
     RolesModule,

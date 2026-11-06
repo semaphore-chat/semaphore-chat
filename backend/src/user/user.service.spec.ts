@@ -13,6 +13,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InstanceRole } from '@prisma/client';
+import { PermissionsService } from '@/roles/permissions.service';
 import * as bcrypt from 'bcrypt';
 import { instanceToPlain } from 'class-transformer';
 import {
@@ -32,6 +33,7 @@ describe('UserService', () => {
   let communityRolesService: Mocked<CommunityRolesService>;
   let permissionsCacheService: Mocked<PermissionsCacheService>;
   let sessionRevocationService: Mocked<SessionRevocationService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -51,6 +53,7 @@ describe('UserService', () => {
     communityRolesService = unitRef.get(CommunityRolesService);
     permissionsCacheService = unitRef.get(PermissionsCacheService);
     sessionRevocationService = unitRef.get(SessionRevocationService);
+    permissionsService = unitRef.get(PermissionsService);
 
     // Mock bcrypt
     (bcrypt.hash as jest.Mock).mockResolvedValue('hashed-password');
@@ -629,68 +632,113 @@ describe('UserService', () => {
   });
 
   describe('searchUsers', () => {
-    it('should search users by username', async () => {
+    const owner = { id: 'owner-1', role: InstanceRole.OWNER };
+    const member = { id: 'member-1', role: InstanceRole.USER };
+    const nameMatches = {
+      OR: [
+        { username: { contains: 'test', mode: 'insensitive' } },
+        { displayName: { contains: 'test', mode: 'insensitive' } },
+      ],
+    };
+
+    it('should search the whole directory for an owner', async () => {
       const users = UserFactory.buildMany(3, { username: 'testuser' });
       mockDatabase.user.findMany.mockResolvedValue(users);
 
-      const result = await service.searchUsers('test');
+      const result = await service.searchUsers(
+        'test',
+        undefined,
+        undefined,
+        owner,
+      );
 
       expect(result).toHaveLength(3);
       expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: {
-            OR: [
-              { username: { contains: 'test', mode: 'insensitive' } },
-              { displayName: { contains: 'test', mode: 'insensitive' } },
-            ],
-          },
+          where: nameMatches,
           select: expect.objectContaining({ id: true, username: true }),
-          take: 50,
+          take: 25,
           orderBy: { username: 'asc' },
         }),
       );
     });
 
     it('should filter out existing community members', async () => {
-      const users = UserFactory.buildMany(2);
       const communityId = 'community-123';
-      mockDatabase.user.findMany.mockResolvedValue(users);
+      mockDatabase.user.findMany.mockResolvedValue(UserFactory.buildMany(2));
 
-      await service.searchUsers('test', communityId);
+      await service.searchUsers('test', communityId, undefined, owner);
+
+      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            ...nameMatches,
+            NOT: { memberships: { some: { communityId } } },
+          },
+        }),
+      );
+    });
+
+    it('should respect a custom limit, up to the cap', async () => {
+      mockDatabase.user.findMany.mockResolvedValue([]);
+
+      await service.searchUsers('test', undefined, 10, owner);
+      expect(mockDatabase.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 10 }),
+      );
+
+      await service.searchUsers('test', undefined, 100000, owner);
+      expect(mockDatabase.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ take: 50 }),
+      );
+    });
+
+    it('should scope a member without READ_USER to shared communities', async () => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+      mockDatabase.membership.findMany.mockResolvedValue([
+        { communityId: 'c1' },
+      ]);
+      mockDatabase.user.findMany.mockResolvedValue([]);
+
+      await service.searchUsers('test', undefined, 25, member);
 
       expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             OR: [
-              { username: { contains: 'test', mode: 'insensitive' } },
-              { displayName: { contains: 'test', mode: 'insensitive' } },
-            ],
-            NOT: {
-              memberships: {
-                some: {
-                  communityId: communityId,
-                },
+              {
+                AND: [
+                  nameMatches,
+                  { memberships: { some: { communityId: { in: ['c1'] } } } },
+                ],
               },
-            },
+              { username: { equals: 'test', mode: 'insensitive' } },
+            ],
           },
-          select: expect.objectContaining({ id: true, username: true }),
-          take: 50,
-          orderBy: { username: 'asc' },
         }),
       );
     });
 
-    it('should respect custom limit', async () => {
-      const users = UserFactory.buildMany(10);
-      mockDatabase.user.findMany.mockResolvedValue(users);
-
-      await service.searchUsers('test', undefined, 10);
-
-      expect(mockDatabase.user.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          take: 10,
-        }),
+    it('should refuse the community filter outside their communities', async () => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
       );
+      mockDatabase.membership.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.searchUsers('test', 'other', 25, member),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should return nothing for an empty query without READ_USER', async () => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+
+      expect(await service.searchUsers('', undefined, 25, member)).toEqual([]);
+      expect(mockDatabase.user.findMany).not.toHaveBeenCalled();
     });
   });
 

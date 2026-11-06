@@ -13,6 +13,7 @@ import {
   Res,
   UnauthorizedException,
   NotFoundException,
+  ForbiddenException,
   Logger,
   ParseUUIDPipe,
 } from '@nestjs/common';
@@ -241,6 +242,13 @@ export class AuthController {
     ) {
       // Tokens from before sessions were tracked can't vouch for a session
       throw new UnauthorizedException('Sign in again to approve this');
+    }
+    // A session alone isn't enough to sign in a new device: script running in
+    // the page, or a browser left open, has a session and not the password.
+    // Forbidden, not Unauthorized: the session is fine, and clients answer a
+    // 401 by refreshing it.
+    if (!(await this.authService.checkPassword(req.user.id, dto.password))) {
+      throw new ForbiddenException('Wrong password');
     }
     const grant = await this.deviceLoginGrantService.createApproved(
       dto.codeChallenge,

@@ -4,9 +4,11 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { VoicePresenceService } from '@/voice-presence/voice-presence.service';
 import { LivekitService } from '@/livekit/livekit.service';
 import { LivekitAccessService } from '@/livekit/livekit-access.service';
+import { ServerEvents } from '@semaphore-chat/shared';
 import type { SessionTerminatedReason } from '@semaphore-chat/shared';
 import { RoomName } from '@/common/utils/room-name.util';
 import {
+  AuthDesktopSignInEvent,
   AuthSessionsRevokedEvent,
   AuthUserSessionsEndedEvent,
   RoomEvents,
@@ -76,6 +78,16 @@ export class SessionRevocationHandler {
     if (sessionIds.length > 0) {
       await this.revokeSessionsVoice(userId, sessionIds, reason);
     }
+  }
+
+  /** Tell the user's connected sessions that a desktop app just signed in. */
+  @OnEvent(RoomEvents.AUTH_DESKTOP_SIGN_IN)
+  onDesktopSignIn({ userId, ipAddress }: AuthDesktopSignInEvent): void {
+    this.websocketService.sendToRoom(
+      RoomName.user(userId),
+      ServerEvents.DESKTOP_SIGN_IN,
+      { ipAddress, signedInAt: new Date().toISOString() },
+    );
   }
 
   /**

@@ -131,6 +131,12 @@ export class AuthService {
     return null;
   }
 
+  /** Whether this is the password of a user who is already signed in. */
+  async checkPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.userService.findById(userId);
+    return user ? bcrypt.compare(password, user.hashedPassword) : false;
+  }
+
   /**
    * Sign an access token.
    * @param sessionId - The refresh token family the token is issued from
@@ -869,6 +875,10 @@ export class AuthService {
             OR: [{ familyId: { in: familyIds } }, { familyId: null }],
           },
         });
+        // Subscriptions aren't tied to a session, and "sign out everywhere
+        // else" is what you do when a device isn't yours any more. This
+        // device subscribes again from its settings.
+        await tx.pushSubscription.deleteMany({ where: { userId } });
         return { count: result.count, otherFamilyIds: familyIds };
       },
     );

@@ -469,7 +469,12 @@ export class ReadReceiptsService {
     }
 
     // Process DM groups with read receipts
-    const dmReceipts = readReceipts.filter((r) => r.directMessageGroupId);
+    // Only receipts of groups the user is still in
+    const currentDmGroups = new Set(dmGroupIds);
+    const dmReceipts = readReceipts.filter(
+      (r) =>
+        r.directMessageGroupId && currentDmGroups.has(r.directMessageGroupId),
+    );
     const dmReceiptsWithTimestamp: Array<{
       directMessageGroupId: string;
       lastReadMessageId: string;

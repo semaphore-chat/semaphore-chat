@@ -9,6 +9,7 @@ import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
 import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { groupReactions } from '@/common/utils/reactions.utils';
@@ -94,7 +95,8 @@ export class ThreadsService {
       where: { id: parentMessageId },
     });
 
-    if (!parent) {
+    // A moderator-removed message takes no new replies or subscribers
+    if (!parent || parent.deletedAt) {
       throw new NotFoundException('Parent message not found');
     }
 
@@ -115,6 +117,15 @@ export class ThreadsService {
 
     // Validate parent message exists and isn't a thread reply itself
     const parent = await this.getParentMessage(parentMessageId);
+
+    // Same as a new DM message: a 1:1 DM with a block between the two is closed
+    if (parent.directMessageGroupId) {
+      await assertNotBlockedInDm(
+        this.databaseService,
+        authorId,
+        parent.directMessageGroupId,
+      );
+    }
 
     // Attaching files in a channel thread needs ATTACH_FILES
     if (
@@ -224,15 +235,32 @@ export class ThreadsService {
     parentMessageId: string,
     limit = 50,
     continuationToken?: string,
+    viewerId?: string,
   ) {
     // Verify parent exists
     const parent = await this.databaseService.message.findUnique({
       where: { id: parentMessageId },
-      select: { id: true },
+      select: { id: true, deletedAt: true, channelId: true },
     });
 
     if (!parent) {
       throw new NotFoundException('Parent message not found');
+    }
+
+    // The thread of a moderator-removed message goes with it, for those who
+    // may not see what was removed
+    if (
+      parent.deletedAt &&
+      !(
+        parent.channelId &&
+        viewerId &&
+        (await this.permissionsService.canSeeRemovedMessages(
+          viewerId,
+          parent.channelId,
+        ))
+      )
+    ) {
+      return { replies: [], continuationToken: undefined };
     }
 
     const replies = await this.databaseService.message.findMany({
@@ -259,9 +287,15 @@ export class ThreadsService {
     parentMessageId: string,
     limit = 50,
     continuationToken?: string,
+    viewerId?: string,
   ) {
     const { replies, continuationToken: nextToken } =
-      await this.getThreadReplies(parentMessageId, limit, continuationToken);
+      await this.getThreadReplies(
+        parentMessageId,
+        limit,
+        continuationToken,
+        viewerId,
+      );
 
     // Transform replies: group reactions and convert attachments to file metadata
     const repliesWithMetadata = replies.map((reply) =>

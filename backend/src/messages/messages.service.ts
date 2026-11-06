@@ -1,3 +1,4 @@
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import {
   BadRequestException,
   Injectable,
@@ -87,6 +88,15 @@ export class MessagesService {
     ) {
       throw new BadRequestException(
         'Must provide exactly one of channelId or directMessageGroupId',
+      );
+    }
+
+    // Block between the two people in a 1:1 DM: no new messages, either way
+    if (createMessageDto.directMessageGroupId && createMessageDto.authorId) {
+      await assertNotBlockedInDm(
+        this.databaseService,
+        createMessageDto.authorId,
+        createMessageDto.directMessageGroupId,
       );
     }
 

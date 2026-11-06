@@ -182,7 +182,10 @@ describe('UserController', () => {
   });
 
   describe('searchUsers', () => {
-    it('should search users with query', async () => {
+    const req = { user: { id: 'viewer-1', role: 'USER' } } as never;
+    const viewer = { id: 'viewer-1', role: 'USER' };
+
+    it('should search users with query, as the requester', async () => {
       const query = 'john';
       const mockUsers = [
         new UserEntity(UserFactory.build({ username: 'john1' })),
@@ -191,12 +194,13 @@ describe('UserController', () => {
 
       service.searchUsers.mockResolvedValue(mockUsers);
 
-      const result = await controller.searchUsers(query);
+      const result = await controller.searchUsers(req, query);
 
       expect(service.searchUsers).toHaveBeenCalledWith(
         query,
         undefined,
         undefined,
+        viewer,
       );
       expect(result).toEqual(mockUsers);
     });
@@ -207,12 +211,13 @@ describe('UserController', () => {
 
       service.searchUsers.mockResolvedValue([]);
 
-      await controller.searchUsers(query, communityId);
+      await controller.searchUsers(req, query, communityId);
 
       expect(service.searchUsers).toHaveBeenCalledWith(
         query,
         communityId,
         undefined,
+        viewer,
       );
     });
 
@@ -222,9 +227,14 @@ describe('UserController', () => {
 
       service.searchUsers.mockResolvedValue([]);
 
-      await controller.searchUsers(query, undefined, limit);
+      await controller.searchUsers(req, query, undefined, limit);
 
-      expect(service.searchUsers).toHaveBeenCalledWith(query, undefined, 10);
+      expect(service.searchUsers).toHaveBeenCalledWith(
+        query,
+        undefined,
+        10,
+        viewer,
+      );
     });
   });
 

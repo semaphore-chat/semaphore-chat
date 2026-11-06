@@ -1,4 +1,6 @@
 import {
+  IsBoolean,
+  IsEnum,
   IsString,
   IsOptional,
   IsArray,
@@ -25,6 +27,7 @@ export class CreateThreadReplyDto {
   spans: CreateMessageSpanDto[];
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   attachments?: string[];
 

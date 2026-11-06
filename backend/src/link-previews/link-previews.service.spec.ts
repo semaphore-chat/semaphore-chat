@@ -90,6 +90,48 @@ describe('LinkPreviewsService', () => {
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
+    it('should not broadcast a removed message when clearing its previews', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        linkPreviews: [{ url: 'https://old.example' }],
+        deletedAt: new Date(),
+      });
+
+      await service.processMessageLinkPreviews(
+        messageId,
+        [{ text: 'edited, no links' }],
+        roomId,
+        serverEvent,
+      );
+
+      expect(mockDatabase.message.update).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('should not broadcast a message removed while its previews were stored', async () => {
+      mockFetchLinkMetadata.mockResolvedValue({
+        url: 'https://example.com',
+        title: 'Example',
+      });
+      mockDatabase.message.findUnique
+        .mockResolvedValueOnce({ id: messageId, deletedAt: null })
+        .mockResolvedValueOnce({
+          id: messageId,
+          deletedAt: new Date(),
+          spans: [],
+          reactions: [],
+          attachments: [],
+        });
+
+      await service.processMessageLinkPreviews(
+        messageId,
+        [{ text: 'see https://example.com' }],
+        roomId,
+        serverEvent,
+      );
+
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
     it('should return early when all URL fetches fail', async () => {
       mockFetchLinkMetadata.mockResolvedValue(null);
 

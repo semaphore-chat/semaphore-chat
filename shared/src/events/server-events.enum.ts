@@ -7,6 +7,8 @@ export enum ServerEvents {
   TOKEN_EXPIRING = 'tokenExpiring',
   /** Sent right before the server disconnects the socket, with the reason. */
   SESSION_TERMINATED = 'sessionTerminated',
+  /** A desktop app was signed in to this account through a browser approval. */
+  DESKTOP_SIGN_IN = 'desktopSignIn',
 
   // Messaging: Channels
   NEW_MESSAGE = 'newMessage',

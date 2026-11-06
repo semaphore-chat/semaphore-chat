@@ -589,6 +589,7 @@ async function main() {
       await page.locator('button[type="submit"]').click();
       await page.getByRole('heading', { name: /sign in to the desktop app/i }).waitFor({ timeout: 20_000 });
       await page.screenshot({ path: `${OUT}/14-browser-confirm.png` }).catch(() => {});
+      await page.getByLabel(/your password/i).fill(USER.password);
       await page.getByRole('button', { name: /^sign in to the desktop app$/i }).click();
       // The page hands the code to the app's loopback listener (https -> http://127.0.0.1)
       await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/callback\?/, { timeout: 20_000 });
