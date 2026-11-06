@@ -9,8 +9,8 @@ publish.workspace = true
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 gpui-kit.workspace = true
-# Only for building fixture emoji and images in memory: `RenderImage` is made of `image::Frame`s.
-image = { version = "0.25", default-features = false, optional = true }
+# Builds RenderImage frames: fixture emoji and images, and the RGBA video fallback.
+image = { version = "0.25", default-features = false }
 semaphore-core.workspace = true
 semaphore-design.workspace = true
 serde_json = { workspace = true, optional = true }
@@ -22,10 +22,9 @@ libc = "0.2"
 
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
-image = { version = "0.25", default-features = false }
 semaphore-core = { workspace = true, features = ["fixtures"] }
 serde_json.workspace = true
 
 [features]
 # The story registry and scenario fixtures. The app never turns this on.
-stories = ["semaphore-core/fixtures", "dep:image", "dep:serde_json"]
+stories = ["semaphore-core/fixtures", "dep:serde_json"]
