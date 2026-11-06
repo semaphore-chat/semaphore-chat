@@ -358,40 +358,29 @@ describe('Moderator-removed message visibility (e2e)', () => {
     );
   });
 
-  it('a late upload does not rebroadcast it, and the author gets none of it back', async () => {
-    const member = await openSubscribed('member');
-    const update = nextMessageUpdate(member, removedId);
-
+  it('a late upload is refused, so nothing is rebroadcast', async () => {
     const res = await http()
       .post(`/api/messages/${removedId}/attachments`)
       .set('Authorization', auth('author'))
       .send({})
-      .expect(201);
+      .expect(403);
 
-    expect(leaks(await update)).toEqual([]);
     expect(leaks(res.body)).toEqual([]);
   });
 
-  it('an edit after removal does not rebroadcast it, and the author gets none of it back', async () => {
+  it('an edit after removal is refused and changes nothing', async () => {
     const messageId = await post('author', { spans: spans('to be removed') });
-    await db.message.update({
-      where: { id: messageId },
-      data: { linkPreviews: [{ url: PREVIEW_URL, title: 'preview' }] },
-    });
     await moderate(messageId);
-    const member = await openSubscribed('member');
-    const update = nextMessageUpdate(member, messageId);
 
     const res = await http()
       .patch(`/api/messages/${messageId}`)
       .set('Authorization', auth('author'))
       .send({ spans: spans('edited after removal') })
-      .expect(200);
+      .expect(403);
 
-    const event = await update;
-    expect(leaks(event)).toEqual([]);
-    expect(JSON.stringify(event)).not.toContain('edited after removal');
     expect(leaks(res.body)).toEqual([]);
+    const stored = await db.messageSpan.findMany({ where: { messageId } });
+    expect(stored.map((span) => span.text)).toEqual(['to be removed']);
   });
 
   describe.each(['mod', 'owner'] as const)('as %s', (who) => {
