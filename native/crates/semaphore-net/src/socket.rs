@@ -562,10 +562,10 @@ impl Actor {
             let refresh_at = self
                 .refresh_at
                 .unwrap_or_else(|| Instant::now() + Duration::from_secs(86_400));
-            let probe_deadline = self
-                .resume_probe
-                .as_ref()
-                .map_or_else(|| Instant::now() + Duration::from_secs(86_400), |probe| probe.deadline);
+            let probe_deadline = self.resume_probe.as_ref().map_or_else(
+                || Instant::now() + Duration::from_secs(86_400),
+                |probe| probe.deadline,
+            );
             tokio::select! {
                 // Biased, frames first: after a freeze every timer is already due, and what is
                 // buffered on the socket has to be read before any of them can end the connection.
@@ -711,8 +711,12 @@ impl Actor {
                 // The ping clock didn't run usefully while we were away: the probe decides now.
                 self.last_ping = Instant::now();
                 let idle = self.idle.load(Ordering::Relaxed);
-                let frame = socketio::encode_event(PRESENCE_ONLINE, &json!({ "idle": idle }), Some(ack_id));
-                send_text(ws, frame).await.err().map(|_| Ended::Transport("transport error"))
+                let frame =
+                    socketio::encode_event(PRESENCE_ONLINE, &json!({ "idle": idle }), Some(ack_id));
+                send_text(ws, frame)
+                    .await
+                    .err()
+                    .map(|_| Ended::Transport("transport error"))
             }
             Command::TokenRefreshed(token) => {
                 self.next_ack_id += 1;
@@ -972,23 +976,35 @@ mod tests {
         let (mut ws, _) = accept(&listener, 25_000).await;
         next_text(&mut ws).await;
         next_text(&mut ws).await;
-        assert!(matches!(events.recv().await, Some(SocketEvent::Connected { .. })));
+        assert!(matches!(
+            events.recv().await,
+            Some(SocketEvent::Connected { .. })
+        ));
 
         client.resume(false);
 
-        assert_eq!(next_text(&mut ws).await, r#"421["presenceOnline",{"idle":false}]"#);
+        assert_eq!(
+            next_text(&mut ws).await,
+            r#"421["presenceOnline",{"idle":false}]"#
+        );
         ws.send(Message::text(r#"42["buffered",1]"#)).await.unwrap();
         ws.send(Message::text(r#"431["ACK"]"#)).await.unwrap();
         assert_eq!(
             events.recv().await,
-            Some(SocketEvent::Event { name: "buffered".into(), payload: json!(1) })
+            Some(SocketEvent::Event {
+                name: "buffered".into(),
+                payload: json!(1)
+            })
         );
         assert_eq!(events.recv().await, Some(SocketEvent::Resumed));
         // Still the same connection.
         ws.send(Message::text(r#"42["after",2]"#)).await.unwrap();
         assert_eq!(
             events.recv().await,
-            Some(SocketEvent::Event { name: "after".into(), payload: json!(2) })
+            Some(SocketEvent::Event {
+                name: "after".into(),
+                payload: json!(2)
+            })
         );
     }
 
@@ -1009,7 +1025,9 @@ mod tests {
         client.resume(false);
 
         // The old socket stays open and silent. A new connection arrives anyway.
-        let (_second, _) = timeout(Duration::from_secs(5), accept(&listener, 25_000)).await.unwrap();
+        let (_second, _) = timeout(Duration::from_secs(5), accept(&listener, 25_000))
+            .await
+            .unwrap();
         let mut seen = Vec::new();
         while seen.len() < 3 {
             seen.push(events.recv().await.unwrap());
@@ -1030,7 +1048,9 @@ mod tests {
         assert_eq!(next_text(&mut ws).await, "41");
         client.resume(false);
 
-        let (_second, auth) = timeout(Duration::from_secs(5), accept(&listener, 25_000)).await.unwrap();
+        let (_second, auth) = timeout(Duration::from_secs(5), accept(&listener, 25_000))
+            .await
+            .unwrap();
         assert_eq!(auth, r#"40{"token":"Bearer first"}"#);
     }
 
