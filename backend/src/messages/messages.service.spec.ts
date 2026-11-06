@@ -541,7 +541,7 @@ describe('MessagesService', () => {
       );
       await service.update('m1', {
         spans: [mention('visible'), mention('hidden')],
-      } as any);
+      });
 
       expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         'author',
@@ -580,7 +580,7 @@ describe('MessagesService', () => {
             aliasId: null,
           },
         ],
-      } as any);
+      });
 
       const { data } = mockDatabase.message.update.mock.calls[0][0];
       expect(Object.keys(data).sort()).toEqual(['editedAt', 'searchText']);
