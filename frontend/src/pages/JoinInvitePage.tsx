@@ -117,7 +117,8 @@ const JoinInvitePage: React.FC = () => {
     );
   }
 
-  if (inviteError || !invite) {
+  // An unusable or unknown code answers an empty 200, which the client gives us as {}.
+  if (inviteError || !invite?.code) {
     return (
       <FormContainer>
         <FormBox>
