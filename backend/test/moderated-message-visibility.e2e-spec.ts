@@ -358,27 +358,58 @@ describe('Moderator-removed message visibility (e2e)', () => {
     );
   });
 
-  it('a late upload is refused, so nothing is rebroadcast', async () => {
-    const res = await http()
-      .post(`/api/messages/${removedId}/attachments`)
-      .set('Authorization', auth('author'))
-      .send({})
-      .expect(403);
+  /**
+   * Runs a refused request, then a real edit: events reach a socket in order,
+   * so once the later edit's arrives, one for this message would have too.
+   */
+  async function expectNoRebroadcast(
+    messageId: string,
+    refused: () => Promise<unknown>,
+  ) {
+    const member = await openSubscribed('member');
+    const seen: string[] = [];
+    member.on(
+      ServerEvents.UPDATE_MESSAGE,
+      (payload: { message: { id: string } }) => seen.push(payload.message.id),
+    );
 
-    expect(leaks(res.body)).toEqual([]);
+    await refused();
+
+    const laterId = await post('author', { spans: spans('later') });
+    const later = nextMessageUpdate(member, laterId);
+    await http()
+      .patch(`/api/messages/${laterId}`)
+      .set('Authorization', auth('author'))
+      .send({ spans: spans('later, edited') })
+      .expect(200);
+    await later;
+    expect(seen).not.toContain(messageId);
+  }
+
+  it('a late upload is refused, so nothing is rebroadcast', async () => {
+    await expectNoRebroadcast(removedId, async () => {
+      const res = await http()
+        .post(`/api/messages/${removedId}/attachments`)
+        .set('Authorization', auth('author'))
+        .send({})
+        .expect(403);
+      expect(leaks(res.body)).toEqual([]);
+    });
   });
 
-  it('an edit after removal is refused and changes nothing', async () => {
+  it('an edit after removal is refused, changes nothing and is not rebroadcast', async () => {
     const messageId = await post('author', { spans: spans('to be removed') });
     await moderate(messageId);
 
-    const res = await http()
-      .patch(`/api/messages/${messageId}`)
-      .set('Authorization', auth('author'))
-      .send({ spans: spans('edited after removal') })
-      .expect(403);
+    await expectNoRebroadcast(messageId, async () => {
+      const res = await http()
+        .patch(`/api/messages/${messageId}`)
+        .set('Authorization', auth('author'))
+        .send({ spans: spans('edited after removal') })
+        .expect(403);
+      expect(leaks(res.body)).toEqual([]);
+    });
 
-    expect(leaks(res.body)).toEqual([]);
     const stored = await db.messageSpan.findMany({ where: { messageId } });
     expect(stored.map((span) => span.text)).toEqual(['to be removed']);
   });
