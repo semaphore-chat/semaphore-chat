@@ -1,11 +1,23 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import { Agent } from 'node:https';
+import { isIP } from 'node:net';
 import * as webpush from 'web-push';
 import { DatabaseService } from '@/database/database.service';
 import { SubscribePushDto } from './dto/subscribe.dto';
 import { PushSubscription } from '@prisma/client';
+import {
+  isPublicUrl,
+  publicOnlyLookup,
+} from '@/common/utils/public-address.util';
 
 /**
  * Domain-separation string used when deriving the push action-token signing
@@ -16,6 +28,34 @@ import { PushSubscription } from '@prisma/client';
 const ACTION_TOKEN_KEY_INFO = 'semaphore-push-action-v1';
 
 const ACTION_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60;
+
+/** Browsers' push endpoints are far shorter; the column has no other limit. */
+const MAX_ENDPOINT_LENGTH = 2048;
+
+/** A push service that doesn't answer mustn't hold a send open. */
+const PUSH_REQUEST_TIMEOUT_MS = 10_000;
+
+/**
+ * What a push endpoint must look like (RFC 8030: an HTTPS URL of a push
+ * service): https on the default port, a host name rather than an IP address,
+ * no credentials. Returns the host name, or null. Whether that name is public
+ * is a separate, DNS-dependent check.
+ */
+function pushEndpointHost(endpoint: string): string | null {
+  if (endpoint.length > MAX_ENDPOINT_LENGTH) return null;
+  let url: URL;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
+  if (url.port !== '' && url.port !== '443') return null;
+  // URL keeps the brackets of an IPv6 literal
+  if (isIP(url.hostname.replace(/^\[|\]$/g, '')) !== 0) return null;
+  return url.hostname;
+}
 
 interface ActionTokenPayload {
   u: string;
@@ -37,6 +77,8 @@ export class PushNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(PushNotificationsService.name);
   private isConfigured = false;
   private vapidPublicKey: string | null = null;
+  /** Re-checks at connection time what a push endpoint's name resolves to. */
+  private readonly pushAgent = new Agent({ lookup: publicOnlyLookup });
 
   constructor(
     private readonly configService: ConfigService,
@@ -169,6 +211,8 @@ export class PushNotificationsService implements OnModuleInit {
     userId: string,
     dto: SubscribePushDto,
   ): Promise<PushSubscription> {
+    await this.assertValidEndpoint(dto.endpoint);
+
     // Cast keys to JSON-compatible format for Prisma
     const keysJson = {
       p256dh: dto.keys.p256dh,
@@ -194,6 +238,17 @@ export class PushNotificationsService implements OnModuleInit {
   }
 
   /**
+   * The server POSTs to whatever endpoint is stored here, so an endpoint must
+   * be a real push service URL and never an address inside the network.
+   */
+  private async assertValidEndpoint(endpoint: string): Promise<void> {
+    const host = pushEndpointHost(endpoint);
+    if (!host || !(await isPublicUrl(host))) {
+      throw new BadRequestException('That is not a valid push endpoint');
+    }
+  }
+
+  /**
    * Unsubscribe a user from push notifications
    */
   async unsubscribe(userId: string, endpoint: string): Promise<void> {
@@ -209,6 +264,39 @@ export class PushNotificationsService implements OnModuleInit {
     return this.databaseService.pushSubscription.findMany({
       where: { userId },
     });
+  }
+
+  /**
+   * The user's subscriptions as they may see them. The full endpoint URL is a
+   * delivery capability, so only its host goes out.
+   */
+  async listUserSubscriptions(userId: string): Promise<
+    {
+      id: string;
+      endpointHost: string | null;
+      userAgent: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    }[]
+  > {
+    const subscriptions = await this.getUserSubscriptions(userId);
+    return subscriptions.map((subscription) => ({
+      id: subscription.id,
+      endpointHost: pushEndpointHost(subscription.endpoint),
+      userAgent: subscription.userAgent,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt,
+    }));
+  }
+
+  /** Revoke one of the user's own subscriptions. */
+  async revokeSubscription(userId: string, id: string): Promise<void> {
+    const { count } = await this.databaseService.pushSubscription.deleteMany({
+      where: { id, userId },
+    });
+    if (count === 0) {
+      throw new NotFoundException('Push subscription not found');
+    }
   }
 
   /**
@@ -265,6 +353,14 @@ export class PushNotificationsService implements OnModuleInit {
     subscription: PushSubscription,
     payload: PushNotificationPayload,
   ): Promise<void> {
+    // Rows from before endpoints were validated: drop them like a dead
+    // subscription (sendToUser removes on 410) instead of connecting
+    if (!pushEndpointHost(subscription.endpoint)) {
+      throw Object.assign(new Error('Invalid push endpoint'), {
+        statusCode: 410,
+      });
+    }
+
     const keys = subscription.keys as { p256dh: string; auth: string };
 
     await webpush.sendNotification(
@@ -279,6 +375,8 @@ export class PushNotificationsService implements OnModuleInit {
       {
         TTL: 60 * 60 * 24, // 24 hours
         urgency: 'normal',
+        agent: this.pushAgent,
+        timeout: PUSH_REQUEST_TIMEOUT_MS,
       },
     );
   }

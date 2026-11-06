@@ -23,14 +23,19 @@ export const FULL_PUBLISH_GRANT: PublishGrant = { canPublish: true };
  * nothing-allowed is expressed as `canPublish: false`. A partial grant must
  * list sources, which blocks the soundboard (Source.Unknown) too.
  */
-export function publishGrantFor(caps: {
-  speak: boolean;
-  video: boolean;
-  share: boolean;
-}): PublishGrant {
-  if (caps.speak && caps.video && caps.share) return FULL_PUBLISH_GRANT;
+export function publishGrantFor(
+  caps: {
+    speak: boolean;
+    video: boolean;
+    share: boolean;
+  },
+  /** A moderator's server mute takes the microphone until it's lifted. */
+  serverMuted = false,
+): PublishGrant {
+  const speak = caps.speak && !serverMuted;
+  if (speak && caps.video && caps.share) return FULL_PUBLISH_GRANT;
   const sources: TrackSource[] = [];
-  if (caps.speak) sources.push(TrackSource.MICROPHONE);
+  if (speak) sources.push(TrackSource.MICROPHONE);
   if (caps.video) sources.push(TrackSource.CAMERA);
   if (caps.share) {
     sources.push(TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO);

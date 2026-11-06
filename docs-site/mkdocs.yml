@@ -51,6 +51,7 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Backend: architecture/backend.md
+      - Auth Clients: architecture/auth-clients.md
       - Frontend: architecture/frontend.md
       - Database Schema: architecture/database.md
       - WebSocket Patterns: architecture/websocket-patterns.md

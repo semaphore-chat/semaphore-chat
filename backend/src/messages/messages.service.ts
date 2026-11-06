@@ -1,4 +1,6 @@
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -13,6 +15,7 @@ import { FileService } from '@/file/file.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
+import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
 import { FileType, Prisma, SpanType } from '@prisma/client';
 import { groupReactions } from '@/common/utils/reactions.utils';
 
@@ -78,6 +81,25 @@ export class MessagesService {
       webhookId?: string | null;
     },
   ) {
+    // A message lives in exactly one place. Callers authorize one target, so
+    // a second one in the payload would be written without any check.
+    if (
+      !createMessageDto.channelId === !createMessageDto.directMessageGroupId
+    ) {
+      throw new BadRequestException(
+        'Must provide exactly one of channelId or directMessageGroupId',
+      );
+    }
+
+    // Block between the two people in a 1:1 DM: no new messages, either way
+    if (createMessageDto.directMessageGroupId && createMessageDto.authorId) {
+      await assertNotBlockedInDm(
+        this.databaseService,
+        createMessageDto.authorId,
+        createMessageDto.directMessageGroupId,
+      );
+    }
+
     // Validate replyToId references a message in the same channel/DM group
     if (createMessageDto.replyToId) {
       const replyTarget = await this.databaseService.message.findUnique({
@@ -113,6 +135,12 @@ export class MessagesService {
       await this.permissionsService.assertCanAttachFiles(
         createMessageDto.authorId,
         createMessageDto.channelId,
+      );
+    }
+    if (createMessageDto.authorId && !createMessageDto.webhookId) {
+      await this.assertFilesAttachable(
+        createMessageDto.authorId,
+        createMessageDto.attachments ?? [],
       );
     }
 
@@ -161,6 +189,29 @@ export class MessagesService {
     });
 
     return this.formatMessageWithReply(message);
+  }
+
+  assertFilesAttachable(userId: string, fileIds: readonly unknown[]) {
+    return assertFilesAttachable(this.databaseService, userId, fileIds);
+  }
+
+  /**
+   * Files leave with a message only when its author uploaded them. Older rows
+   * can carry someone else's file, which stays for its own message.
+   */
+  private async markAuthorFilesForDeletion(
+    tx: Prisma.TransactionClient,
+    authorId: string | null,
+    fileIds: string[],
+  ) {
+    if (fileIds.length === 0) return;
+    const files = await tx.file.findMany({
+      where: { id: { in: fileIds }, uploadedById: authorId },
+      select: { id: true },
+    });
+    for (const { id } of files) {
+      await this.fileService.markForDeletion(id, tx);
+    }
   }
 
   /**
@@ -353,10 +404,16 @@ export class MessagesService {
             const removedAttachments = originalAttachments.filter(
               (oldId) => !newAttachmentIds.includes(oldId),
             );
-            for (const fileId of removedAttachments) {
-              await this.fileService.markForDeletion(fileId, tx);
-            }
             if (removedAttachments.length > 0) {
+              const { authorId } = await tx.message.findUniqueOrThrow({
+                where: { id },
+                select: { authorId: true },
+              });
+              await this.markAuthorFilesForDeletion(
+                tx,
+                authorId,
+                removedAttachments,
+              );
               this.logger.debug(
                 `Marked ${removedAttachments.length} removed attachments for deletion`,
               );
@@ -364,14 +421,13 @@ export class MessagesService {
           }
         }
 
-        // Remove spans and attachments from the update data passed to message.update
-        // (they're handled above via junction tables)
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { spans: _s, attachments: _a, ...restDto } = updateMessageDto;
-
+        // Only spans and attachments are editable, both handled above. The DTO
+        // also allows the create-time fields (target, quote, pending count),
+        // and old clients may repeat them, so they're ignored rather than
+        // rejected: nothing has authorized them for this message.
         const updatedMessage = await tx.message.update({
           where: { id },
-          data: { ...restDto, ...dataToUpdate },
+          data: dataToUpdate,
           include: MESSAGE_INCLUDE_WITH_REPLY,
         });
 
@@ -390,9 +446,11 @@ export class MessagesService {
         });
 
         for (const reply of threadReplies) {
-          for (const attachment of reply.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
+          await this.markAuthorFilesForDeletion(
+            tx,
+            reply.authorId,
+            reply.attachments.map((attachment) => attachment.file.id),
+          );
         }
 
         // Delete all thread replies (thread subscribers cascade-delete with the parent)
@@ -409,11 +467,10 @@ export class MessagesService {
           deletedMessage.attachments &&
           deletedMessage.attachments.length > 0
         ) {
-          for (const attachment of deletedMessage.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
-          this.logger.debug(
-            `Marked ${deletedMessage.attachments.length} attachments for deletion`,
+          await this.markAuthorFilesForDeletion(
+            tx,
+            deletedMessage.authorId,
+            deletedMessage.attachments.map((attachment) => attachment.file.id),
           );
         }
 

@@ -266,6 +266,15 @@ jobs:
           # are free text.
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
 
+      # Firefox's page script can send what Chromium's can't. Only this spec.
+      - name: Run token delivery spec on Firefox
+        working-directory: frontend
+        run: |
+          timeout 240 pnpm exec playwright install --with-deps firefox
+          pnpm exec playwright test --project=auth-token-delivery-firefox
+        env:
+          CI: true
+
       - name: Upload Playwright report
         uses: actions/upload-artifact@v7
         if: always()

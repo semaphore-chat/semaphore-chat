@@ -26,6 +26,7 @@ import {
 } from '@/auth/rbac-resource.decorator';
 
 import { AuthenticatedRequest } from '@/types';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 import {
   ModerationBanUserDto,
   UnbanUserDto,
@@ -101,6 +102,7 @@ export class ModerationController {
       userId,
       req.user.id,
       dto.reason,
+      req.user.role,
     );
     return { success: true, message: 'User unbanned successfully' };
   }
@@ -199,6 +201,7 @@ export class ModerationController {
       userId,
       req.user.id,
       dto.reason,
+      req.user.role,
     );
     return { success: true, message: 'Timeout removed successfully' };
   }
@@ -340,8 +343,8 @@ export class ModerationController {
     @Query('action') action?: ModerationAction,
   ): Promise<ModerationLogsResponseDto> {
     return this.moderationService.getModerationLogs(communityId, {
-      limit,
-      offset,
+      limit: clampLimit(limit, 100),
+      offset: Math.max(offset, 0),
       action,
     });
   }

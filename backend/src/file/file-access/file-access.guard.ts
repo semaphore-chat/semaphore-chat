@@ -10,6 +10,7 @@ import { Request } from 'express';
 import { FileService } from '@/file/file.service';
 import { MembershipService } from '@/membership/membership.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { ResourceType } from '@prisma/client';
@@ -35,6 +36,7 @@ export class FileAccessGuard implements CanActivate {
     private readonly membershipService: MembershipService,
     private readonly channelAccessService: ChannelAccessService,
     private readonly databaseService: DatabaseService,
+    private readonly permissionsService: PermissionsService,
   ) {
     this.strategies = this.buildStrategyRegistry();
   }
@@ -50,10 +52,12 @@ export class FileAccessGuard implements CanActivate {
     const messageStrategy = new MessageAttachmentStrategy(
       this.databaseService,
       this.channelAccessService,
+      this.permissionsService,
     );
     const replayClipStrategy = new ReplayClipAccessStrategy(
       this.databaseService,
       this.channelAccessService,
+      this.permissionsService,
     );
 
     return new Map<ResourceType, IFileAccessStrategy>([

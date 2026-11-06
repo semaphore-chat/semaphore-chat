@@ -1,4 +1,6 @@
-import { promises as dns } from 'dns';
+import { isPrivateIp, isPublicUrl } from '@/common/utils/public-address.util';
+
+export { isPrivateIp, isPublicUrl };
 
 export interface LinkPreviewData {
   url: string;
@@ -453,76 +455,5 @@ async function fetchOgTags(
     return parseOpenGraphTags(html, url);
   } catch {
     return null;
-  }
-}
-
-/** Private/reserved IPv4 ranges */
-const PRIVATE_IPV4_RANGES = [
-  /^127\./, // loopback
-  /^10\./, // Class A private
-  /^172\.(1[6-9]|2\d|3[01])\./, // Class B private
-  /^192\.168\./, // Class C private
-  /^169\.254\./, // link-local
-  /^0\./, // unspecified
-];
-
-/** Private/reserved IPv6 patterns */
-const PRIVATE_IPV6_PATTERNS = [
-  /^::1$/, // loopback
-  /^::$/, // unspecified
-  /^fe80:/i, // link-local
-  /^fc00:/i, // unique local (fc00::/7)
-  /^fd/i, // unique local (fd00::/8)
-  /^::ffff:/i, // IPv4-mapped IPv6 (e.g., ::ffff:127.0.0.1)
-];
-
-/**
- * Check if an IP address is private/reserved.
- */
-export function isPrivateIp(address: string): boolean {
-  // Check IPv4-mapped IPv6 addresses against IPv4 ranges
-  if (address.toLowerCase().startsWith('::ffff:')) {
-    const ipv4 = address.slice(7); // strip ::ffff: prefix
-    for (const range of PRIVATE_IPV4_RANGES) {
-      if (range.test(ipv4)) return true;
-    }
-  }
-
-  // Check IPv4 private ranges
-  for (const range of PRIVATE_IPV4_RANGES) {
-    if (range.test(address)) return true;
-  }
-
-  // Check IPv6 private ranges
-  for (const pattern of PRIVATE_IPV6_PATTERNS) {
-    if (pattern.test(address)) return true;
-  }
-
-  return false;
-}
-
-/**
- * Check if a hostname resolves to a public IP address.
- * Resolves ALL addresses and blocks if ANY is private/reserved.
- *
- * Note: There is an inherent TOCTOU gap between this DNS check and the
- * subsequent fetch() call — a malicious DNS server could return different
- * results (DNS rebinding). This is accepted risk for a self-hosted app
- * behind a firewall. The redirect validation in fetchOgTags provides an
- * additional layer of defense.
- */
-export async function isPublicUrl(hostname: string): Promise<boolean> {
-  try {
-    const results = await dns.lookup(hostname, { all: true });
-
-    // Block if ANY resolved address is private
-    for (const { address } of results) {
-      if (isPrivateIp(address)) return false;
-    }
-
-    return results.length > 0;
-  } catch {
-    // DNS resolution failed — treat as unsafe
-    return false;
   }
 }

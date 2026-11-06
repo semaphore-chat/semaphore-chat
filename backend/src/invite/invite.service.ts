@@ -7,11 +7,16 @@ import {
 import { randomBytes } from 'crypto';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
+import { InstanceRolesService } from '@/roles/instance-roles.service';
+import { PermissionsService } from '@/roles/permissions.service';
+import { PublicInviteDto } from './dto/public-invite.dto';
 import {
   InstanceInvite,
   InstanceInviteDefaultCommunity,
   InstanceInviteUsage,
   Prisma,
+  RbacActions,
 } from '@prisma/client';
 
 export type InstanceInviteWithRelations = InstanceInvite & {
@@ -23,7 +28,40 @@ export type InstanceInviteWithRelations = InstanceInvite & {
 export class InviteService {
   private readonly logger = new Logger(InviteService.name);
 
-  constructor(private readonly databaseService: DatabaseService) {}
+  constructor(
+    private readonly databaseService: DatabaseService,
+    private readonly permissionsService: PermissionsService,
+    private readonly instanceRolesService: InstanceRolesService,
+  ) {}
+
+  /**
+   * An invite joins whoever redeems it to its communities, so its creator needs
+   * the right to invite to each of them, or instance-wide authority. A community
+   * that doesn't exist answers like one you can't invite to.
+   */
+  private async assertMayInviteTo(
+    creator: UserEntity,
+    communityIds: string[],
+  ): Promise<void> {
+    if (communityIds.length === 0) return;
+    if (await this.instanceRolesService.hasFullInstanceAuthority(creator)) {
+      return;
+    }
+    for (const communityId of communityIds) {
+      const allowed =
+        await this.permissionsService.verifyActionsForUserAndResource(
+          creator.id,
+          communityId,
+          RbacResourceType.COMMUNITY,
+          [RbacActions.CREATE_INVITE],
+        );
+      if (!allowed) {
+        throw new ForbiddenException(
+          `You don't have permission to invite to community ${communityId}`,
+        );
+      }
+    }
+  }
 
   async createInvite(
     creator: UserEntity,
@@ -31,6 +69,8 @@ export class InviteService {
     validUntil?: Date,
     communityIds: string[] = [],
   ): Promise<InstanceInviteWithRelations> {
+    await this.assertMayInviteTo(creator, communityIds);
+
     // generate a short code for the invite
     let shortCode = this.generateInviteCode();
     // Check if the short code already exists
@@ -173,6 +213,33 @@ export class InviteService {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * What the join screen shows, for a code that can still be used. Anyone can
+   * ask, so no ids, no redeemers and no target communities.
+   */
+  async getPublicInvite(code: string): Promise<PublicInviteDto | null> {
+    const invite = await this.databaseService.instanceInvite.findUnique({
+      where: { code },
+      select: {
+        code: true,
+        uses: true,
+        maxUses: true,
+        validUntil: true,
+        disabled: true,
+        createdBy: { select: { username: true } },
+      },
+    });
+    if (
+      !invite ||
+      invite.disabled ||
+      (invite.validUntil && new Date() > invite.validUntil) ||
+      (invite.maxUses !== null && invite.uses >= invite.maxUses)
+    ) {
+      return null;
+    }
+    return invite;
   }
 
   async getInviteByCode(

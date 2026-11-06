@@ -349,16 +349,24 @@ describe('ChannelsService', () => {
         expect(permissionsService.getRank).not.toHaveBeenCalled();
       });
 
-      it('private -> public does not check ranks', async () => {
+      it('private -> public is refused over someone ranked at or above', async () => {
         mockDatabase.channel.findUnique.mockResolvedValue({
           isPrivate: true,
           communityId: 'community-1',
         });
+        permissionsService.getRank.mockResolvedValue({
+          best: 20,
+          isTop: false,
+        });
+        permissionsService.usersRankedAtOrAbove.mockResolvedValue(
+          new Map([['admin', []]]),
+        );
+        channelAccessService.channelMemberIds.mockResolvedValue(['admin']);
 
-        await service.update(channelId, { isPrivate: false }, manager);
-
-        expect(mockDatabase.channel.update).toHaveBeenCalled();
-        expect(permissionsService.getRank).not.toHaveBeenCalled();
+        await expect(
+          service.update(channelId, { isPrivate: false }, manager),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.channel.update).not.toHaveBeenCalled();
       });
     });
 

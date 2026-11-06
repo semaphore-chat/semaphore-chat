@@ -5,7 +5,15 @@ import {
   NotFoundException,
   Logger,
 } from '@nestjs/common';
-import { InstanceInvite, InstanceRole, User, Prisma } from '@prisma/client';
+import {
+  InstanceInvite,
+  InstanceRole,
+  User,
+  Prisma,
+  RbacActions,
+  ResourceType,
+} from '@prisma/client';
+import { assertOwnFiles } from '@/common/utils/attachable-files.utils';
 import { AdminUserEntity } from './dto/admin-user-response.dto';
 import * as bcrypt from 'bcrypt';
 import { DatabaseService } from '../database/database.service';
@@ -22,8 +30,16 @@ import { UserEntity } from './dto/user-response.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { SessionRevocationService } from '@/auth/session-revocation.service';
+import { PermissionsService } from '@/roles/permissions.service';
+import { InstanceRolesService } from '@/roles/instance-roles.service';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 
 import { lockUserForSessionRevocation } from '@/auth/session-lock.util';
+
+/** Results of one user search, by default and at most. */
+const SEARCH_DEFAULT_LIMIT = 25;
+const SEARCH_MAX_LIMIT = 50;
+
 /** A password hashed for storing (UserService.hashPassword). */
 export type HashedPassword = string & { readonly __hashedPassword: true };
 
@@ -39,6 +55,8 @@ export class UserService {
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
     private readonly sessionRevocationService: SessionRevocationService,
+    private readonly permissionsService: PermissionsService,
+    private readonly instanceRolesService: InstanceRolesService,
   ) {}
 
   async findByUsername(username: string): Promise<User | null> {
@@ -72,11 +90,13 @@ export class UserService {
     password: string,
     email?: string,
   ): Promise<User> {
-    await this.checkForFieldConflicts(username, email);
+    // The invite first: without one, nobody learns whether a name or email
+    // is taken.
     const invite = await this.getInvite(code);
     if (!invite) {
       throw new NotFoundException('No invite found for the provided code.');
     }
+    await this.checkForFieldConflicts(username, email);
 
     const userCount = await this.databaseService.user.count();
     const role = userCount === 0 ? InstanceRole.OWNER : InstanceRole.USER;
@@ -253,17 +273,67 @@ export class UserService {
     return { users, continuationToken: nextToken };
   }
 
+  /**
+   * Search users by name, for pickers (new DM, add friend).
+   *
+   * The instance directory is READ_USER's. Everyone else finds the people they
+   * share a community with, and anyone whose exact username they already know
+   * (GET /users/username/:name answers that anyway).
+   *
+   * `communityId` leaves out that community's members, which says who is in
+   * it: only for READ_USER holders and its own members.
+   */
   async searchUsers(
-    query: string,
-    communityId?: string,
-    limit: number = 50,
+    query: string | undefined,
+    communityId: string | undefined,
+    limit: number = SEARCH_DEFAULT_LIMIT,
+    viewer: { id: string; role: InstanceRole },
   ): Promise<UserEntity[]> {
-    const whereClause: Prisma.UserWhereInput = {
+    const q = (query ?? '').trim();
+    const take = Math.min(Math.max(limit, 1), SEARCH_MAX_LIMIT);
+    const nameMatches: Prisma.UserWhereInput = {
       OR: [
-        { username: { contains: query, mode: 'insensitive' } },
-        { displayName: { contains: query, mode: 'insensitive' } },
+        { username: { contains: q, mode: 'insensitive' } },
+        { displayName: { contains: q, mode: 'insensitive' } },
       ],
     };
+
+    const readsDirectory =
+      viewer.role === InstanceRole.OWNER ||
+      (await this.permissionsService.verifyActionsForUserAndResource(
+        viewer.id,
+        undefined,
+        RbacResourceType.INSTANCE,
+        [RbacActions.READ_USER],
+      ));
+
+    const whereClause: Prisma.UserWhereInput = {};
+    if (readsDirectory) {
+      Object.assign(whereClause, nameMatches);
+    } else {
+      if (!q) return [];
+      const memberships = await this.databaseService.membership.findMany({
+        where: { userId: viewer.id },
+        select: { communityId: true },
+      });
+      const viewerCommunities = memberships.map((m) => m.communityId);
+      if (communityId && !viewerCommunities.includes(communityId)) {
+        throw new ForbiddenException(
+          'You can only search within your own communities',
+        );
+      }
+      whereClause.OR = [
+        {
+          AND: [
+            nameMatches,
+            {
+              memberships: { some: { communityId: { in: viewerCommunities } } },
+            },
+          ],
+        },
+        { username: { equals: q, mode: 'insensitive' } },
+      ];
+    }
 
     // If communityId is provided, filter to users who are NOT already members
     if (communityId) {
@@ -279,7 +349,7 @@ export class UserService {
     const users = await this.databaseService.user.findMany({
       where: whereClause,
       select: PUBLIC_USER_SELECT,
-      take: limit,
+      take,
       orderBy: { username: 'asc' },
     });
 
@@ -293,6 +363,22 @@ export class UserService {
     const user = await this.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    // Clients may resend the current value, so only a change is checked.
+    for (const [fileId, current, resourceType] of [
+      [updateProfileDto.avatar, user.avatarUrl, ResourceType.USER_AVATAR],
+      [updateProfileDto.banner, user.bannerUrl, ResourceType.USER_BANNER],
+    ] as const) {
+      if (fileId && fileId !== current) {
+        await assertOwnFiles(
+          this.databaseService,
+          userId,
+          [fileId],
+          [resourceType],
+          'You can only use images you uploaded',
+        );
+      }
     }
 
     const updateData: Prisma.UserUpdateInput = {};
@@ -394,7 +480,11 @@ export class UserService {
   }
 
   /**
-   * Update a user's instance role (OWNER/USER)
+   * Update a user's instance role (OWNER/USER).
+   *
+   * OWNER bypasses every permission check, so only an owner may grant or take
+   * it, whatever instance roles the actor holds. The last owner can't be
+   * demoted by anyone.
    */
   async updateUserRole(
     targetUserId: string,
@@ -406,28 +496,50 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    // Prevent demoting yourself if you're the last owner
-    if (
-      targetUserId === actingUserId &&
-      targetUser.role === InstanceRole.OWNER &&
-      newRole !== InstanceRole.OWNER
-    ) {
-      const ownerCount = await this.databaseService.user.count({
-        where: { role: InstanceRole.OWNER },
-      });
-      if (ownerCount <= 1) {
+    const changesOwner =
+      (targetUser.role === InstanceRole.OWNER) !==
+      (newRole === InstanceRole.OWNER);
+    if (!changesOwner) return new AdminUserEntity(targetUser);
+
+    const actingUser = await this.findById(actingUserId);
+    if (actingUser?.role !== InstanceRole.OWNER) {
+      throw new ForbiddenException(
+        'Only an instance owner can grant or remove the owner role',
+      );
+    }
+
+    const updatedUser = await this.databaseService.$transaction(async (tx) => {
+      // The owners' rows locked: two owners demoting each other go one at a
+      // time, so the second sees it would leave nobody.
+      const owners = await tx.$queryRaw<{ id: string }[]>`
+        SELECT "id" FROM "User" WHERE "role" = 'OWNER' FOR UPDATE`;
+      if (
+        newRole !== InstanceRole.OWNER &&
+        !owners.some((owner) => owner.id !== targetUserId)
+      ) {
         throw new ForbiddenException(
           'Cannot demote the last owner. Promote another user first.',
         );
       }
-    }
-
-    const updatedUser = await this.databaseService.user.update({
-      where: { id: targetUserId },
-      data: { role: newRole },
+      return tx.user.update({
+        where: { id: targetUserId },
+        data: { role: newRole },
+      });
     });
 
     return new AdminUserEntity(updatedUser);
+  }
+
+  private async assertMayManageUser(
+    actingUserId: string,
+    targetUserId: string,
+  ): Promise<void> {
+    if (actingUserId === targetUserId) return;
+    const actor = await this.findById(actingUserId);
+    await this.instanceRolesService.assertMayManageUser(
+      { id: actingUserId, role: actor?.role ?? InstanceRole.USER },
+      targetUserId,
+    );
   }
 
   /**
@@ -453,6 +565,8 @@ export class UserService {
       throw new ForbiddenException('Cannot ban an instance owner');
     }
 
+    await this.assertMayManageUser(actingUserId, targetUserId);
+
     const updatedUser = await this.databaseService.user.update({
       where: { id: targetUserId },
       data: {
@@ -463,7 +577,11 @@ export class UserService {
     });
 
     // Authentication rejects banned users from now on; end the live sockets
+    // and stop pushing message previews to their devices
     if (banned) {
+      await this.databaseService.pushSubscription.deleteMany({
+        where: { userId: targetUserId },
+      });
       this.sessionRevocationService.endAllUserSockets(
         targetUserId,
         'ACCOUNT_BANNED',
@@ -510,6 +628,11 @@ export class UserService {
     await tx.refreshToken.deleteMany({
       where: { userId },
     });
+    // A subscription outlives sessions, so whoever had the account could
+    // otherwise keep receiving message previews on a device of their own.
+    await tx.pushSubscription.deleteMany({
+      where: { userId },
+    });
 
     return user;
   }
@@ -542,6 +665,8 @@ export class UserService {
         );
       }
     }
+
+    await this.assertMayManageUser(actingUserId, targetUserId);
 
     const hashedPassword = await this.hashPassword(newPassword);
     const updatedUser = await this.databaseService.$transaction((tx) =>
@@ -579,6 +704,8 @@ export class UserService {
     if (targetUser.role === InstanceRole.OWNER) {
       throw new ForbiddenException('Cannot delete an instance owner');
     }
+
+    await this.assertMayManageUser(actingUserId, targetUserId);
 
     // Delete user and cascade will handle related records
     await this.databaseService.user.delete({

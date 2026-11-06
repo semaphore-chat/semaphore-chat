@@ -156,7 +156,11 @@ export class DmVoicePresenceController {
   @ApiOkResponse({ type: DmVoicePresenceResponseDto })
   async getDmPresence(
     @Param('dmGroupId') dmGroupId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<DmVoicePresenceResponseDto> {
+    // The guard lets instance owners through; who's in a DM call is for its
+    // members to see
+    await this.voicePresenceService.assertDmMember(dmGroupId, req.user.id);
     const users = await this.voicePresenceService.getDmPresence(dmGroupId);
     return {
       dmGroupId,

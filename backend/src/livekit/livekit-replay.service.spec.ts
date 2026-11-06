@@ -19,6 +19,7 @@ import { FfmpegService } from './ffmpeg.service';
 import { ReplaySegmentsService } from './replay-segments.service';
 import { EGRESS_CLIENT } from './providers/egress-client.provider';
 import { ROOM_SERVICE_CLIENT } from './providers/room-service.provider';
+import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { RbacActions } from '@prisma/client';
 
@@ -87,6 +88,8 @@ describe('LivekitReplayService', () => {
     permissionsService = unitRef.get(PermissionsService);
     // Default: the user may post files in the target channel
     permissionsService.userHasChannelActions.mockResolvedValue(true);
+    // Default: clips fit the user's storage quota
+    unitRef.get(StorageQuotaService).fitsQuota.mockResolvedValue(true);
 
     // Set up default return values for StorageService
     storageService.getSegmentsPrefix.mockReturnValue(
@@ -109,13 +112,18 @@ describe('LivekitReplayService', () => {
     const startParams = {
       userId: 'user-123',
       channelId: 'channel-456',
-      roomName: 'room-789',
       videoTrackId: 'video-track-1',
       audioTrackId: 'audio-track-1',
     };
 
     beforeEach(() => {
       databaseService.egressSession.findFirst.mockResolvedValue(null);
+      mockRoomServiceClient.getParticipant.mockResolvedValue({
+        tracks: [
+          { sid: 'video-track-1', type: 1 /* VIDEO */ },
+          { sid: 'audio-track-1', type: 0 /* AUDIO */ },
+        ],
+      });
       mockEgressClient.startTrackCompositeEgress.mockResolvedValue({
         egressId: 'egress-123',
       });
@@ -125,6 +133,37 @@ describe('LivekitReplayService', () => {
         status: 'active',
       });
       storageService.deleteDirectory.mockResolvedValue(undefined);
+    });
+
+    describe('segment readiness check', () => {
+      beforeEach(() => {
+        jest.useFakeTimers({
+          doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'],
+        });
+        databaseService.egressSession.findUnique.mockResolvedValue(null);
+      });
+
+      afterEach(() => {
+        jest.useRealTimers();
+      });
+
+      it('runs 15 seconds after the buffer starts', async () => {
+        await service.startReplayBuffer(startParams);
+        expect(databaseService.egressSession.findUnique).not.toHaveBeenCalled();
+
+        await jest.advanceTimersByTimeAsync(15_000);
+
+        expect(databaseService.egressSession.findUnique).toHaveBeenCalled();
+      });
+
+      it('does not run after shutdown', async () => {
+        await service.startReplayBuffer(startParams);
+
+        service.onModuleDestroy();
+        await jest.advanceTimersByTimeAsync(15_000);
+
+        expect(databaseService.egressSession.findUnique).not.toHaveBeenCalled();
+      });
     });
 
     it('should start new egress session', async () => {
@@ -139,7 +178,7 @@ describe('LivekitReplayService', () => {
           data: expect.objectContaining({
             userId: 'user-123',
             channelId: 'channel-456',
-            roomName: 'room-789',
+            roomName: 'channel-456',
             egressId: 'egress-123',
             status: 'active',
           }),
@@ -183,11 +222,6 @@ describe('LivekitReplayService', () => {
     });
 
     it('should use AAC audio codec (not Opus) for HLS/MPEG-TS compatibility', async () => {
-      const paramsWithIdentity = {
-        ...startParams,
-        participantIdentity: 'user-identity',
-      };
-
       mockRoomServiceClient.getParticipant.mockResolvedValue({
         tracks: [
           {
@@ -196,13 +230,14 @@ describe('LivekitReplayService', () => {
             width: 1920,
             height: 1080,
           },
+          { sid: 'audio-track-1', type: 0 /* AUDIO */ },
         ],
       });
 
-      await service.startReplayBuffer(paramsWithIdentity);
+      await service.startReplayBuffer(startParams);
 
       expect(mockEgressClient.startTrackCompositeEgress).toHaveBeenCalledWith(
-        'room-789',
+        'channel-456',
         expect.objectContaining({ segments: expect.any(Object) }),
         expect.objectContaining({
           encodingOptions: expect.objectContaining({
@@ -1230,7 +1265,11 @@ describe('LivekitReplayService', () => {
           id: 'target-channel-1',
           communityId: 'community-1',
         });
-        permissionsService.userHasChannelActions.mockResolvedValue(false);
+        // May capture in the session's channel, not post in the target
+        permissionsService.userHasChannelActions.mockImplementation(
+          (_user: string, channelId: string) =>
+            Promise.resolve(channelId !== 'target-channel-1'),
+        );
 
         await expect(service.captureReplay(userId, channelDto)).rejects.toThrow(
           ForbiddenException,

@@ -16,6 +16,7 @@ import {
 } from './session-lock.util';
 import { RefreshTokenGraceService } from './refresh-token-grace.service';
 import { isSameClient } from './client-match.util';
+import { ClientType } from './client-type.util';
 import { databaseNow } from './db-clock.util';
 
 /**
@@ -32,6 +33,13 @@ export interface DeviceInfo {
    * sessions of the same install, and only those
    */
   deviceId?: string;
+  /**
+   * The kind of client (X-Client-Type), as it says. Stored on the session for
+   * showing it and for later device features: decides nothing about security
+   */
+  clientType?: ClientType;
+  /** The client's own name for the device (parseDeviceName). User-supplied. */
+  deviceName?: string;
 }
 
 /**
@@ -121,6 +129,12 @@ export class AuthService {
     }
 
     return null;
+  }
+
+  /** Whether this is the password of a user who is already signed in. */
+  async checkPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.userService.findById(userId);
+    return user ? bcrypt.compare(password, user.hashedPassword) : false;
   }
 
   /**
@@ -411,9 +425,7 @@ export class AuthService {
     } = prepared ?? (await this.prepareRefreshToken(userId));
     const sessionId = familyId ?? randomUUID();
     const client = tx ?? this.databaseService;
-    const deviceName = deviceInfo?.userAgent
-      ? this.parseDeviceName(deviceInfo.userAgent)
-      : 'Unknown Device';
+    const deviceName = this.describeDevice(deviceInfo);
 
     const deviceId = deviceInfo?.deviceId;
 
@@ -445,6 +457,7 @@ export class AuthService {
         userAgent: deviceInfo?.userAgent,
         ipAddress: deviceInfo?.ipAddress,
         deviceId,
+        clientType: deviceInfo?.clientType,
         lastUsedAt: new Date(),
         familyId: sessionId,
       },
@@ -452,6 +465,23 @@ export class AuthService {
 
     // The family id is the session id access tokens carry (`sid`)
     return { refreshToken, sessionId, replacedSessionIds };
+  }
+
+  /**
+   * The name a session is listed under: the client's own, a native client's
+   * generic one (its user agent isn't a browser's), or from the user agent.
+   */
+  private describeDevice(deviceInfo?: DeviceInfo): string {
+    if (deviceInfo?.deviceName) return deviceInfo.deviceName;
+    if (deviceInfo?.clientType === 'desktop-native') {
+      return 'Semaphore Chat Desktop';
+    }
+    if (deviceInfo?.clientType === 'mobile-native') {
+      return 'Semaphore Chat Mobile';
+    }
+    return deviceInfo?.userAgent
+      ? this.parseDeviceName(deviceInfo.userAgent)
+      : 'Unknown Device';
   }
 
   /**
@@ -756,6 +786,21 @@ export class AuthService {
   }
 
   /**
+   * The current refresh token of a session (`sid`), if the session is alive:
+   * how a request that doesn't carry its refresh token names its session.
+   */
+  async findLiveTokenIdOfSession(
+    userId: string,
+    sessionId: string,
+  ): Promise<string | undefined> {
+    const token = await this.databaseService.refreshToken.findFirst({
+      where: { userId, familyId: sessionId, consumed: false },
+      select: { id: true },
+    });
+    return token?.id;
+  }
+
+  /**
    * Revoke a specific session: delete its refresh tokens, revoke the access
    * tokens issued from it and disconnect its sockets.
    * @param sessionId - The session's id, as getUserSessions lists it (its
@@ -830,6 +875,11 @@ export class AuthService {
             OR: [{ familyId: { in: familyIds } }, { familyId: null }],
           },
         });
+        // Subscriptions aren't tied to a session, and "sign out everywhere
+        // else" is what you do when a device isn't yours any more. This
+        // device gives its own back afterwards (SessionsSettings, and
+        // usePushNotifications on mount): the others have no session to do so.
+        await tx.pushSubscription.deleteMany({ where: { userId } });
         return { count: result.count, otherFamilyIds: familyIds };
       },
     );

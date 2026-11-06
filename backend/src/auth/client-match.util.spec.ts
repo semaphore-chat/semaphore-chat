@@ -40,6 +40,27 @@ describe('client-match.util', () => {
       expect(isSameClient(stored, { ...stored })).toBe(true);
     });
 
+    it('requires the same device id once the session has one', () => {
+      const withId = { ...stored, deviceId: 'device-a' };
+      expect(isSameClient(withId, { ...withId })).toBe(true);
+      expect(isSameClient(withId, { ...stored, deviceId: 'device-b' })).toBe(
+        false,
+      );
+      expect(isSameClient(withId, { ...stored })).toBe(false);
+    });
+
+    it('does without a device id for a session from before them', () => {
+      expect(isSameClient(stored, { ...stored, deviceId: 'device-a' })).toBe(
+        true,
+      );
+      expect(
+        isSameClient(
+          { ...stored, deviceId: null },
+          { ...stored, deviceId: 'device-a' },
+        ),
+      ).toBe(true);
+    });
+
     it('requires the exact user agent', () => {
       expect(isSameClient(stored, { ...stored, userAgent: 'Chrome/121' })).toBe(
         false,

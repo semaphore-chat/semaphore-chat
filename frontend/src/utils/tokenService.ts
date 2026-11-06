@@ -12,6 +12,7 @@ import { getElectronAPI } from "./electronBridge";
 import { logger } from "./logger";
 import { nextSessionRefreshDelayMs } from "./sessionRefreshPolicy";
 import { deviceIdHeaders } from "./deviceId";
+import { clientTypeHeaders } from "./clientType";
 import type { SessionTerminatedReason } from "@semaphore-chat/shared";
 
 // Event emitter for token refresh notifications
@@ -381,7 +382,10 @@ async function performRefresh(): Promise<string> {
       refreshResponse = await axios.post<RefreshResponseBody>(
         getApiUrl("/auth/refresh"),
         { refreshToken },
-        { timeout: REFRESH_REQUEST_TIMEOUT_MS, headers: deviceIdHeaders() }
+        {
+          timeout: REFRESH_REQUEST_TIMEOUT_MS,
+          headers: { ...deviceIdHeaders(), ...clientTypeHeaders() },
+        }
       );
     } else {
       // For web clients, use cookie-based refresh

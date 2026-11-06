@@ -13,7 +13,8 @@ import {
   ConflictException,
   ForbiddenException,
 } from '@nestjs/common';
-import { RbacActions, Prisma } from '@prisma/client';
+import { InstanceRole, RbacActions, Prisma } from '@prisma/client';
+import { PermissionsService } from './permissions.service';
 import { UserRolesResponseDto, RoleDto } from './dto/user-roles-response.dto';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -24,6 +25,31 @@ import {
   DEFAULT_MEMBER_ROLE,
 } from './default-roles.config';
 
+/** Who is asking, for the rank rules below. */
+export interface RoleActor {
+  id: string;
+  role: string;
+}
+
+/**
+ * What an actor may do to roles in a community.
+ *
+ * Rank: lower position = higher rank. An actor works strictly below their own
+ * highest role. The community has no owner column, so holders of its top-ranked
+ * role act as its owners for rank (they can promote co-admins and edit the top
+ * role), as channel permissions already treat them; they still can't place a
+ * role above their own rank. The instance owner bypasses everything.
+ *
+ * Grants: only actions the actor holds, top-role holders included.
+ */
+interface RoleStanding {
+  isOwner: boolean;
+  isTop: boolean;
+  best: number;
+  held: Set<RbacActions>;
+  heldRoleIds: Set<string>;
+}
+
 @Injectable()
 export class CommunityRolesService {
   private readonly logger = new Logger(CommunityRolesService.name);
@@ -32,7 +58,227 @@ export class CommunityRolesService {
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsCacheService: PermissionsCacheService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  private async standing(
+    actor: RoleActor,
+    communityId: string,
+  ): Promise<RoleStanding> {
+    if (actor.role === InstanceRole.OWNER) {
+      return {
+        isOwner: true,
+        isTop: true,
+        best: 0,
+        held: new Set(),
+        heldRoleIds: new Set(),
+      };
+    }
+    const [rank, mine] = await Promise.all([
+      this.permissionsService.getRank(actor.id, communityId),
+      this.getUserRolesForCommunity(actor.id, communityId),
+    ]);
+    return {
+      isOwner: false,
+      isTop: rank.isTop,
+      best: rank.best,
+      held: new Set(mine.roles.flatMap((r) => r.actions)),
+      heldRoleIds: new Set(mine.roles.map((r) => r.id)),
+    };
+  }
+
+  /** The role sits strictly below the actor. */
+  private assertRoleBelowActor(st: RoleStanding, position: number): void {
+    if (st.isTop || position > st.best) return;
+    throw new ForbiddenException(
+      'You can only manage roles below your highest role',
+    );
+  }
+
+  /** Where a role may be placed: never above the actor's rank. */
+  private assertPositionAllowed(st: RoleStanding, position: number): void {
+    if (st.isOwner) return;
+    if (st.isTop ? position >= st.best : position > st.best) return;
+    throw new ForbiddenException(
+      'You can only place roles below your highest role',
+    );
+  }
+
+  private assertHolds(st: RoleStanding, actions: RbacActions[]): void {
+    if (st.isOwner) return;
+    const missing = actions.filter((action) => !st.held.has(action));
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `Cannot grant permissions you do not have: ${missing.join(', ')}`,
+      );
+    }
+  }
+
+  /** Changing a person's roles: yourself, or someone ranked below you. */
+  private async assertCanChangeRolesOf(
+    actor: RoleActor,
+    st: RoleStanding,
+    userId: string,
+    communityId: string,
+  ): Promise<void> {
+    if (st.isTop || userId === actor.id) return;
+    if (await this.permissionsService.outranks(actor.id, userId, communityId)) {
+      return;
+    }
+    throw new ForbiddenException(
+      'You can only change the roles of members ranked below you',
+    );
+  }
+
+  /** Assignment on behalf of a user, with the rank and grant rules. */
+  async assignRoleAsActor(
+    actor: RoleActor,
+    userId: string,
+    communityId: string,
+    roleId: string,
+  ): Promise<void> {
+    const role = await this.databaseService.role.findUnique({
+      where: { id: roleId },
+    });
+    if (!role || role.communityId !== communityId) {
+      throw new NotFoundException('Role not found in this community');
+    }
+
+    const [membership, ban] = await Promise.all([
+      this.databaseService.membership.findUnique({
+        where: { userId_communityId: { userId, communityId } },
+        select: { id: true },
+      }),
+      this.databaseService.communityBan.findUnique({
+        where: { communityId_userId: { communityId, userId } },
+        select: { active: true, expiresAt: true },
+      }),
+    ]);
+    if (!membership) {
+      throw new BadRequestException('User is not a member of this community');
+    }
+    if (ban?.active && (!ban.expiresAt || ban.expiresAt > new Date())) {
+      throw new BadRequestException('User is banned from this community');
+    }
+
+    const st = await this.standing(actor, communityId);
+    this.assertRoleBelowActor(st, role.position);
+    this.assertHolds(st, role.actions);
+    await this.assertCanChangeRolesOf(actor, st, userId, communityId);
+
+    await this.assignUserToCommunityRole(userId, communityId, roleId);
+  }
+
+  /** Removal on behalf of a user, with the rank rules. */
+  async removeRoleAsActor(
+    actor: RoleActor,
+    userId: string,
+    communityId: string,
+    roleId: string,
+  ): Promise<void> {
+    const role = await this.databaseService.role.findUnique({
+      where: { id: roleId },
+      select: { communityId: true, position: true },
+    });
+    if (role?.communityId === communityId) {
+      const st = await this.standing(actor, communityId);
+      this.assertRoleBelowActor(st, role.position);
+      await this.assertCanChangeRolesOf(actor, st, userId, communityId);
+    }
+    await this.removeUserFromCommunityRole(userId, communityId, roleId);
+  }
+
+  /** Deletion on behalf of a user, with the rank rule. */
+  async deleteRoleAsActor(
+    actor: RoleActor,
+    roleId: string,
+    communityId: string,
+  ): Promise<void> {
+    const role = await this.databaseService.role.findUnique({
+      where: { id: roleId },
+      select: { communityId: true, position: true },
+    });
+    if (role?.communityId === communityId) {
+      this.assertRoleBelowActor(
+        await this.standing(actor, communityId),
+        role.position,
+      );
+    }
+    await this.deleteRole(roleId, communityId);
+  }
+
+  /**
+   * Reorder on behalf of a user. Roles at or above a non-top actor keep their
+   * order, and a tie with the actor's role would be broken by the new
+   * positions, so it blocks the reorder. A top-role holder can't put a role
+   * they don't hold first: that would hand the top rank to it.
+   */
+  async reorderRolesAsActor(
+    actor: RoleActor,
+    communityId: string,
+    roleIds: string[],
+  ): Promise<RoleDto[]> {
+    const st = await this.standing(actor, communityId);
+    if (!st.isOwner) {
+      const roles = await this.databaseService.role.findMany({
+        where: { communityId },
+        orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+      });
+      const reorderable = roles.filter(
+        (r) => !(r.isDefault && r.name === DEFAULT_MEMBER_ROLE.name),
+      );
+      const incoming = roleIds.filter((id) =>
+        reorderable.some((r) => r.id === id),
+      );
+      const above = reorderable
+        .filter((r) => r.position <= st.best)
+        .map((r) => r.id);
+      const allowed = st.isTop
+        ? incoming.length === 0 || st.heldRoleIds.has(incoming[0])
+        : above.every((id, i) => incoming[i] === id) &&
+          !reorderable.some(
+            (r) => r.position === st.best && !st.heldRoleIds.has(r.id),
+          );
+      if (!allowed) {
+        throw new ForbiddenException(
+          'You can only reorder roles below your highest role',
+        );
+      }
+    }
+    return this.reorderRoles(communityId, roleIds);
+  }
+
+  /**
+   * Reset on behalf of a user: for every default role the reset would change,
+   * the actor must outrank it (before and after) and hold what it would grant.
+   */
+  async resetDefaultsAsActor(
+    actor: RoleActor,
+    communityId: string,
+  ): Promise<CommunityRolesResponseDto> {
+    const st = await this.standing(actor, communityId);
+    if (!st.isOwner) {
+      const roles = await this.databaseService.role.findMany({
+        where: { communityId },
+      });
+      for (const target of getDefaultCommunityRoles()) {
+        const existing = roles.find((r) => r.name === target.name);
+        const granted = target.actions.filter(
+          (a) => !existing?.actions.includes(a),
+        );
+        const changes =
+          !existing ||
+          granted.length > 0 ||
+          existing.actions.length !== target.actions.length ||
+          existing.position !== target.position;
+        if (!changes) continue;
+        if (existing) this.assertRoleBelowActor(st, existing.position);
+        this.assertRoleBelowActor(st, target.position);
+        this.assertHolds(st, granted);
+      }
+    }
+    return this.resetDefaultCommunityRoles(communityId);
+  }
 
   async getUserRolesForCommunity(
     userId: string,
@@ -505,26 +751,14 @@ export class CommunityRolesService {
       );
     }
 
-    // Privilege escalation prevention: user cannot grant permissions they don't have
-    // Instance OWNERs bypass RBAC entirely, so skip this check for them
-    if (userId && userInstanceRole !== 'OWNER') {
-      const userRolesResponse = await this.getUserRolesForCommunity(
-        userId,
-        communityId,
-      );
-      const userActions = new Set(
-        userRolesResponse.roles.flatMap((r) => r.actions),
-      );
-      const unauthorizedActions = createRoleDto.actions.filter(
-        (action) => !userActions.has(action),
-      );
-
-      if (unauthorizedActions.length > 0) {
-        throw new ForbiddenException(
-          `Cannot grant permissions you do not have: ${unauthorizedActions.join(', ')}`,
-        );
-      }
-    }
+    // Privilege escalation prevention: only what you hold, placed below you
+    const st = userId
+      ? await this.standing(
+          { id: userId, role: userInstanceRole ?? '' },
+          communityId,
+        )
+      : null;
+    if (st) this.assertHolds(st, createRoleDto.actions);
 
     // Auto-assign position if not provided: use max position among non-Member roles + 1
     let position = createRoleDto.position;
@@ -541,6 +775,13 @@ export class CommunityRolesService {
       if (position >= 100) {
         position = 99;
       }
+      // A low-ranked actor (e.g. a Member role with CREATE_ROLE) gets a role
+      // just below their own
+      if (st && !st.isTop && position <= st.best) {
+        position = st.best + 1;
+      }
+    } else if (st) {
+      this.assertPositionAllowed(st, position);
     }
 
     const role = await database.role.create({
@@ -612,6 +853,20 @@ export class CommunityRolesService {
       );
     }
 
+    // Rank: only roles below your own, and never placed at or above you
+    const st = userId
+      ? await this.standing(
+          { id: userId, role: userInstanceRole ?? '' },
+          communityId,
+        )
+      : null;
+    if (st) {
+      this.assertRoleBelowActor(st, existingRole.position);
+      if (updateRoleDto.position !== undefined) {
+        this.assertPositionAllowed(st, updateRoleDto.position);
+      }
+    }
+
     // Check if this is a default role and prevent name changes (but allow permission changes)
     if (
       existingRole.isDefault &&
@@ -636,26 +891,8 @@ export class CommunityRolesService {
         );
       }
 
-      // Privilege escalation prevention: user cannot grant permissions they don't have
-      // Instance OWNERs bypass RBAC entirely, so skip this check for them
-      if (userId && userInstanceRole !== 'OWNER') {
-        const userRolesResponse = await this.getUserRolesForCommunity(
-          userId,
-          communityId,
-        );
-        const userActions = new Set(
-          userRolesResponse.roles.flatMap((r) => r.actions),
-        );
-        const unauthorizedActions = updateRoleDto.actions.filter(
-          (action) => !userActions.has(action),
-        );
-
-        if (unauthorizedActions.length > 0) {
-          throw new ForbiddenException(
-            `Cannot grant permissions you do not have: ${unauthorizedActions.join(', ')}`,
-          );
-        }
-      }
+      // Privilege escalation prevention: only what you hold
+      if (st) this.assertHolds(st, updateRoleDto.actions);
     }
 
     // If name is being updated, check for conflicts

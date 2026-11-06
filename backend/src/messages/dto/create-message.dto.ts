@@ -1,6 +1,7 @@
 import { $Enums } from '@prisma/client';
-import { Exclude } from 'class-transformer';
+import { Exclude, Type } from 'class-transformer';
 import {
+  IsEnum,
   IsString,
   IsOptional,
   IsArray,
@@ -8,18 +9,41 @@ import {
   IsUUID,
   IsBoolean,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SpanTypeValues } from '@/common/enums/swagger-enums';
 import { ArrayMinLength } from '../../decorators/array-min-length.decorator';
 
-class CreateMessageSpanDto {
+/**
+ * One span of a message, as a client sends it. Spans are validated and
+ * whitelisted (`@ValidateNested` on the parent), so a client can only set these
+ * fields: everything else about a span is the server's.
+ */
+export class CreateMessageSpanDto {
   @ApiProperty({ enum: SpanTypeValues })
+  @IsEnum($Enums.SpanType)
   type: $Enums.SpanType;
-  text: string | null;
-  userId: string | null;
-  specialKind: string | null;
-  communityId: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  text?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  userId?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsString()
+  specialKind?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  communityId?: string | null;
 
   /** For CHANNEL_MENTION (text is ignored and stored as null). */
   @ApiProperty({ type: String, required: false, nullable: true })
@@ -27,8 +51,15 @@ class CreateMessageSpanDto {
   @IsUUID()
   channelId?: string | null;
 
-  aliasId: string | null;
-  emojiId: string | null;
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  aliasId?: string | null;
+
+  @ApiPropertyOptional({ type: String, nullable: true })
+  @IsOptional()
+  @IsUUID()
+  emojiId?: string | null;
 
   // Composable inline-formatting flags (optional, PLAINTEXT spans).
   @IsOptional()
@@ -77,6 +108,8 @@ export class CreateMessageDto {
   @ApiProperty({ type: [CreateMessageSpanDto] })
   @IsArray()
   @ArrayMinLength(1, { message: 'At least one span is required' })
+  @ValidateNested({ each: true })
+  @Type(() => CreateMessageSpanDto)
   spans: CreateMessageSpanDto[];
 
   @IsArray()

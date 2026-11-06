@@ -114,10 +114,16 @@ describe('CommunityController', () => {
 
       service.update.mockResolvedValue(updatedCommunity as any);
 
-      const result = await controller.update(communityId, updateDto);
+      const result = await controller.update(communityId, updateDto, {
+        user: { id: 'user-1' },
+      } as any);
 
       expect(result).toEqual(updatedCommunity);
-      expect(service.update).toHaveBeenCalledWith(communityId, updateDto);
+      expect(service.update).toHaveBeenCalledWith(
+        communityId,
+        updateDto,
+        'user-1',
+      );
     });
   });
 

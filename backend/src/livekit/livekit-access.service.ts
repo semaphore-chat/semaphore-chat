@@ -1,7 +1,16 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { InstanceRole } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 import { DatabaseService } from '@/database/database.service';
+import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { revokedSessionKey } from '@/auth/token-blacklist.service';
 import {
@@ -13,7 +22,13 @@ import {
 
 /** Why a participant may not stay in a LiveKit room. */
 export type LivekitJoinDenial =
-  'USER_DELETED' | 'USER_BANNED' | 'TOKEN_REVOKED' | 'SESSION_REVOKED';
+  | 'USER_DELETED'
+  | 'USER_BANNED'
+  | 'TOKEN_REVOKED'
+  | 'SESSION_REVOKED'
+  | 'NO_CHANNEL_ACCESS'
+  | 'NOT_DM_MEMBER'
+  | 'UNKNOWN_ROOM';
 
 const TOKEN_CUTOFF_PREFIX = 'livekit:token_cutoff:';
 
@@ -41,7 +56,104 @@ export class LivekitAccessService {
     private readonly configService: ConfigService,
     private readonly databaseService: DatabaseService,
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  /**
+   * A server mute takes a microphone away, over any capability they hold, so
+   * it follows moderation's rank rule both ways: the actor strictly outranks
+   * the target (so never themselves). An instance owner is above that rule,
+   * on either side of it, whatever roles they hold in this community.
+   *
+   * Only channels have this: the guard stops everyone else at a DM id, and a DM
+   * call publishes on a grant this doesn't govern, so an owner gets a 404.
+   */
+  async assertMayServerMute(
+    actor: { id: string; role: string },
+    channelId: string,
+    targetId: string,
+  ): Promise<void> {
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: { communityId: true },
+    });
+    if (!channel) throw new NotFoundException('Channel not found');
+    if (actor.role === InstanceRole.OWNER) return;
+
+    const target = await this.databaseService.user.findUnique({
+      where: { id: targetId },
+      select: { role: true },
+    });
+    if (
+      target?.role === InstanceRole.OWNER ||
+      !(await this.permissionsService.outranks(
+        actor.id,
+        targetId,
+        channel.communityId,
+      ))
+    ) {
+      throw new ForbiddenException(
+        'You can only server mute someone you outrank',
+      );
+    }
+  }
+
+  /** Throws unless the user is in the DM group: owners get no bypass here. */
+  async assertDmMember(userId: string, groupId: string): Promise<void> {
+    const member =
+      await this.databaseService.directMessageGroupMember.findFirst({
+        where: { groupId, userId },
+        select: { id: true },
+      });
+    if (!member) {
+      throw new ForbiddenException('You are not a member of this DM group');
+    }
+  }
+
+  /**
+   * Whether a participant who just joined may be in this room now: the token
+   * may have been issued before they lost access. Channel rooms follow
+   * JOIN_CHANNEL and channel visibility, DM rooms membership (an owner too).
+   *
+   * Identities that aren't users (minted with the API secret, e.g.
+   * scripts/livekit-test-participant.sh) are checkJoin's business, not this
+   * one's. Fails open like checkJoin: a database blip must not empty voice.
+   */
+  async checkRoomAccess(
+    identity: string,
+    roomName: string,
+  ): Promise<LivekitJoinDenial | null> {
+    try {
+      const user = await this.databaseService.user.findUnique({
+        where: { id: identity },
+        select: { id: true },
+      });
+      if (!user) return null;
+
+      const caps = await this.channelAccessService.channelCapabilities(
+        identity,
+        roomName,
+      );
+      if (caps) return caps.connect ? null : 'NO_CHANNEL_ACCESS';
+
+      const group = await this.databaseService.directMessageGroup.findUnique({
+        where: { id: roomName },
+        select: {
+          members: { where: { userId: identity }, select: { id: true } },
+        },
+      });
+      if (!group) return 'UNKNOWN_ROOM';
+      return group.members.length > 0 ? null : 'NOT_DM_MEMBER';
+    } catch (error) {
+      this.logger.error(
+        `Could not check room access of ${identity} to ${roomName}; allowing the join: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return null;
+    }
+  }
 
   /**
    * Reject the user's LiveKit tokens issued up to now (password changed,

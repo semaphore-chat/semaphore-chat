@@ -1,3 +1,4 @@
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { LivekitController } from './livekit.controller';
@@ -9,6 +10,7 @@ import { JwtService } from '@nestjs/jwt';
 import { TrackSource } from 'livekit-server-sdk';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { FULL_PUBLISH_GRANT } from './publish-grant.util';
+import { LivekitAccessService } from './livekit-access.service';
 
 describe('LivekitController', () => {
   let controller: LivekitController;
@@ -16,6 +18,7 @@ describe('LivekitController', () => {
   let voicePresenceService: Mocked<VoicePresenceService>;
   let jwtService: Mocked<JwtService>;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let livekitAccessService: Mocked<LivekitAccessService>;
 
   const allCaps = {
     channelId: 'room-1',
@@ -39,6 +42,8 @@ describe('LivekitController', () => {
     headers: {},
   } as any;
 
+  const accountName = mockUser.displayName || mockUser.username;
+
   beforeEach(async () => {
     const { unit, unitRef } =
       await TestBed.solitary(LivekitController).compile();
@@ -48,6 +53,7 @@ describe('LivekitController', () => {
     voicePresenceService = unitRef.get(VoicePresenceService);
     jwtService = unitRef.get(JwtService);
     channelAccessService = unitRef.get(ChannelAccessService);
+    livekitAccessService = unitRef.get(LivekitAccessService);
     channelAccessService.channelCapabilities.mockResolvedValue(allCaps);
   });
 
@@ -76,7 +82,7 @@ describe('LivekitController', () => {
 
         expect(jwtService.decode).toHaveBeenCalledWith('access-jwt');
         expect(service.generateToken).toHaveBeenCalledWith(
-          { roomId: 'room-1', identity: mockUser.id },
+          { roomId: 'room-1', identity: mockUser.id, name: accountName },
           'sess-1',
           FULL_PUBLISH_GRANT,
         );
@@ -95,7 +101,7 @@ describe('LivekitController', () => {
 
       expect(jwtService.decode).toHaveBeenCalledWith('cookie-jwt');
       expect(service.generateToken).toHaveBeenCalledWith(
-        { roomId: 'room-1', identity: mockUser.id },
+        { roomId: 'room-1', identity: mockUser.id, name: accountName },
         'sess-2',
         FULL_PUBLISH_GRANT,
       );
@@ -111,7 +117,7 @@ describe('LivekitController', () => {
       await controller.generateToken({ roomId: 'room-1', identity: '' }, req);
 
       expect(service.generateToken).toHaveBeenCalledWith(
-        { roomId: 'room-1', identity: mockUser.id },
+        { roomId: 'room-1', identity: mockUser.id, name: accountName },
         undefined,
         FULL_PUBLISH_GRANT,
       );
@@ -145,6 +151,7 @@ describe('LivekitController', () => {
         {
           ...createTokenDto,
           identity: mockUser.id,
+          name: accountName,
         },
         undefined, // no session: the request carries no access token
         FULL_PUBLISH_GRANT,
@@ -240,19 +247,17 @@ describe('LivekitController', () => {
       );
     });
 
-    it('a missing channel gets nothing to publish', async () => {
+    it('a room that is not a channel gets no token at all', async () => {
       channelAccessService.channelCapabilities.mockResolvedValue(null);
 
-      await controller.generateToken(
-        { roomId: 'room-1', identity: '' },
-        mockRequest,
-      );
+      await expect(
+        controller.generateToken(
+          { roomId: 'room-1', identity: '' },
+          mockRequest,
+        ),
+      ).rejects.toBeInstanceOf(NotFoundException);
 
-      expect(service.generateToken).toHaveBeenCalledWith(
-        expect.anything(),
-        undefined,
-        { canPublish: false },
-      );
+      expect(service.generateToken).not.toHaveBeenCalled();
     });
 
     it('DM calls are never restricted (timeouts are community-scoped)', async () => {
@@ -296,6 +301,7 @@ describe('LivekitController', () => {
         {
           ...createTokenDto,
           identity: mockUser.id,
+          name: accountName,
         },
         undefined, // no session: the request carries no access token
         FULL_PUBLISH_GRANT,
@@ -407,10 +413,14 @@ describe('LivekitController', () => {
       service.muteParticipant.mockResolvedValue(undefined);
       voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
 
-      const result = await controller.muteParticipant('channel-123', {
-        participantIdentity: 'user-456',
-        mute: true,
-      });
+      const result = await controller.muteParticipant(
+        'channel-123',
+        {
+          participantIdentity: 'user-456',
+          mute: true,
+        },
+        mockRequest,
+      );
 
       expect(service.muteParticipant).toHaveBeenCalledWith(
         'channel-123',
@@ -425,19 +435,28 @@ describe('LivekitController', () => {
       expect(result).toEqual({ success: true });
     });
 
-    it('should pass mute=false for unmute and update server mute state', async () => {
-      service.muteParticipant.mockResolvedValue(undefined);
+    it('should lift a mute without touching tracks, giving the microphone back', async () => {
       voicePresenceService.updateServerMuteState.mockResolvedValue(undefined);
 
-      await controller.muteParticipant('channel-123', {
-        participantIdentity: 'user-456',
-        mute: false,
-      });
+      await controller.muteParticipant(
+        'channel-123',
+        {
+          participantIdentity: 'user-456',
+          mute: false,
+        },
+        mockRequest,
+      );
 
-      expect(service.muteParticipant).toHaveBeenCalledWith(
+      expect(service.muteParticipant).not.toHaveBeenCalled();
+      expect(voicePresenceService.setServerMuted).toHaveBeenCalledWith(
         'channel-123',
         'user-456',
         false,
+      );
+      expect(service.updatePublishPermissions).toHaveBeenCalledWith(
+        'channel-123',
+        'user-456',
+        FULL_PUBLISH_GRANT,
       );
       expect(voicePresenceService.updateServerMuteState).toHaveBeenCalledWith(
         'channel-123',
@@ -446,14 +465,41 @@ describe('LivekitController', () => {
       );
     });
 
+    it('refused by the rank rule, it changes nothing', async () => {
+      livekitAccessService.assertMayServerMute.mockRejectedValue(
+        new ForbiddenException(),
+      );
+
+      await expect(
+        controller.muteParticipant(
+          'channel-123',
+          { participantIdentity: 'user-456', mute: true },
+          mockRequest,
+        ),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+
+      expect(livekitAccessService.assertMayServerMute).toHaveBeenCalledWith(
+        mockUser,
+        'channel-123',
+        'user-456',
+      );
+      expect(service.muteParticipant).not.toHaveBeenCalled();
+      expect(voicePresenceService.setServerMuted).not.toHaveBeenCalled();
+      expect(service.updatePublishPermissions).not.toHaveBeenCalled();
+    });
+
     it('should propagate service errors without calling updateServerMuteState', async () => {
       service.muteParticipant.mockRejectedValue(new Error('Mute failed'));
 
       await expect(
-        controller.muteParticipant('channel-123', {
-          participantIdentity: 'user-456',
-          mute: true,
-        }),
+        controller.muteParticipant(
+          'channel-123',
+          {
+            participantIdentity: 'user-456',
+            mute: true,
+          },
+          mockRequest,
+        ),
       ).rejects.toThrow('Mute failed');
 
       expect(voicePresenceService.updateServerMuteState).not.toHaveBeenCalled();

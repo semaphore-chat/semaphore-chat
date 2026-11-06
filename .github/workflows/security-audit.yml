@@ -45,9 +45,12 @@ jobs:
       # itself and surfaces the result in the step summary instead.
       # TODO: remove the `|| ...` downgrade to make this blocking once the
       # baseline is cleared.
-      - name: Audit production dependencies (report-only)
+      # No --prod: the frontend keeps its renderer packages in devDependencies so
+      # electron-builder doesn't package what Vite already bundled, so --prod
+      # would skip code that ships to users.
+      - name: Audit all dependencies (report-only)
         run: |
-          if pnpm audit --prod --audit-level high; then
+          if pnpm audit --audit-level high; then
             echo "✅ pnpm audit: no high/critical advisories" >> "$GITHUB_STEP_SUMMARY"
           else
             echo "⚠️ pnpm audit found high/critical advisories (report-only — see job log). Known baseline documented in this workflow file." >> "$GITHUB_STEP_SUMMARY"

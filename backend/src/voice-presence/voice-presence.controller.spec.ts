@@ -222,8 +222,11 @@ describe('DmVoicePresenceController', () => {
 
       service.getDmPresence.mockResolvedValue(mockUsers as any);
 
-      const result = await controller.getDmPresence(dmGroupId);
+      const result = await controller.getDmPresence(dmGroupId, {
+        user: { id: 'user-1' },
+      } as never);
 
+      expect(service.assertDmMember).toHaveBeenCalledWith(dmGroupId, 'user-1');
       expect(service.getDmPresence).toHaveBeenCalledWith(dmGroupId);
       expect(result).toEqual({
         dmGroupId,

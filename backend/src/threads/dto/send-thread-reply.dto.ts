@@ -3,29 +3,12 @@ import {
   IsOptional,
   IsArray,
   IsInt,
-  IsUUID,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { $Enums } from '@prisma/client';
+import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
-import { SpanTypeValues } from '@/common/enums/swagger-enums';
-
-class SendThreadReplySpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
-  type: $Enums.SpanType;
-  text: string | null;
-  userId: string | null;
-  specialKind: string | null;
-  communityId: string | null;
-
-  /** For CHANNEL_MENTION (text is ignored and stored as null). */
-  @ApiProperty({ type: String, required: false, nullable: true })
-  @IsOptional()
-  @IsUUID()
-  channelId?: string | null;
-
-  aliasId: string | null;
-}
+import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
  * DTO for sending a thread reply via WebSocket.
@@ -34,9 +17,11 @@ export class SendThreadReplyDto {
   @IsString()
   parentMessageId: string;
 
-  @ApiProperty({ type: [SendThreadReplySpanDto] })
+  @ApiProperty({ type: [CreateMessageSpanDto] })
   @IsArray()
-  spans: SendThreadReplySpanDto[];
+  @ValidateNested({ each: true })
+  @Type(() => CreateMessageSpanDto)
+  spans: CreateMessageSpanDto[];
 
   @IsArray()
   @IsOptional()

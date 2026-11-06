@@ -69,6 +69,7 @@ describe('DesktopLoginPage', () => {
   it('on confirm, mints a code for the challenge and hands it to the app over loopback', async () => {
     const { user, redirect } = renderPage();
 
+    await user.type(screen.getByLabelText(/your password/i), 'hunter2');
     await user.click(screen.getByRole('button', { name: /^sign in to the desktop app$/i }));
 
     await waitFor(() => {
@@ -76,7 +77,11 @@ describe('DesktopLoginPage', () => {
         `http://127.0.0.1:51234/callback?code=${code}&state=${state}`,
       );
     });
-    expect(authorizeBody).toEqual({ codeChallenge: challenge, codeChallengeMethod: 'S256' });
+    expect(authorizeBody).toEqual({
+      codeChallenge: challenge,
+      codeChallengeMethod: 'S256',
+      password: 'hunter2',
+    });
     expect(screen.getByRole('heading', { name: /return to the desktop app/i })).toBeInTheDocument();
   });
 
@@ -88,9 +93,30 @@ describe('DesktopLoginPage', () => {
     );
     const { user, redirect } = renderPage();
 
+    await user.type(screen.getByLabelText(/your password/i), 'hunter2');
     await user.click(screen.getByRole('button', { name: /^sign in to the desktop app$/i }));
 
     expect(await screen.findByText(/couldn.t approve the sign-in/i)).toBeInTheDocument();
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("can't confirm without the password", () => {
+    renderPage();
+
+    expect(screen.getByRole('button', { name: /^sign in to the desktop app$/i })).toBeDisabled();
+  });
+
+  it('says so when the password is wrong, and stays put', async () => {
+    server.use(
+      http.post('http://localhost:3000/api/auth/desktop/authorize', () =>
+        HttpResponse.json({ statusCode: 403, message: 'Wrong password' }, { status: 403 }),
+      ),
+    );
+    const { user, redirect } = renderPage();
+
+    await user.type(screen.getByLabelText(/your password/i), 'wrong{Enter}');
+
+    expect(await screen.findByText(/that password isn.t right/i)).toBeInTheDocument();
     expect(redirect).not.toHaveBeenCalled();
   });
 
@@ -133,6 +159,7 @@ describe('DesktopLoginPage', () => {
       const { user } = renderWithProviders(<DesktopLoginPage />, {
         routerProps: { initialEntries: [`/desktop-login?${query}`] },
       });
+      await user.type(screen.getByLabelText(/your password/i), 'hunter2');
       await user.click(screen.getByRole('button', { name: /^sign in to the desktop app$/i }));
       await waitFor(() =>
         expect(replace).toHaveBeenCalledWith(

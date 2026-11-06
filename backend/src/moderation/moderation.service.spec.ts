@@ -20,7 +20,7 @@ import {
   ChannelFactory,
   MessageFactory,
 } from '@/test-utils';
-import { ModerationAction } from '@prisma/client';
+import { InstanceRole, ModerationAction } from '@prisma/client';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { RoomName } from '@/common/utils/room-name.util';
 import { ServerEvents } from '@semaphore-chat/shared';
@@ -114,6 +114,9 @@ describe('ModerationService', () => {
         },
         communityBan: { upsert: jest.fn().mockResolvedValue({}) },
         channelMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        aliasGroupMember: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -252,6 +255,9 @@ describe('ModerationService', () => {
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
+        aliasGroupMember: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         membership: { delete: jest.fn().mockResolvedValue({}) },
         moderationLog: { create: jest.fn().mockResolvedValue({}) },
@@ -333,6 +339,9 @@ describe('ModerationService', () => {
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
+        aliasGroupMember: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
         membership: { delete: jest.fn().mockResolvedValue({}) },
         moderationLog: { create: jest.fn().mockResolvedValue({}) },
@@ -379,6 +388,64 @@ describe('ModerationService', () => {
           }),
         }),
       );
+    });
+
+    describe('rank', () => {
+      const banBy = (bannedBy: string | null) =>
+        mockDatabase.communityBan.findUnique.mockResolvedValue({
+          id: 'ban-1',
+          active: true,
+          moderatorId: bannedBy,
+        } as any);
+      const positions = (byUser: Record<string, number>) =>
+        communityRolesService.getUserRolesForCommunity.mockImplementation(
+          (id: string) =>
+            Promise.resolve({
+              roles: byUser[id] ? [{ position: byUser[id] }] : [],
+            }) as any,
+        );
+
+      it('refuses a ban set by a higher rank', async () => {
+        banBy('higher');
+        positions({ higher: 10, [moderatorId]: 50 });
+        await expect(
+          service.unbanUser(communityId, userId, moderatorId),
+        ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.communityBan.update).not.toHaveBeenCalled();
+      });
+
+      it('refuses lifting your own ban', async () => {
+        banBy('higher');
+        await expect(
+          service.unbanUser(communityId, moderatorId, moderatorId),
+        ).rejects.toThrow(ForbiddenException);
+      });
+
+      it('allows a ban set by a peer or lower rank', async () => {
+        banBy('peer');
+        positions({ peer: 50, [moderatorId]: 50 });
+        await service.unbanUser(communityId, userId, moderatorId);
+        expect(mockDatabase.communityBan.update).toHaveBeenCalled();
+      });
+
+      it('allows a ban whose moderator is gone', async () => {
+        banBy(null);
+        await service.unbanUser(communityId, userId, moderatorId);
+        expect(mockDatabase.communityBan.update).toHaveBeenCalled();
+      });
+
+      it('an instance owner is above it', async () => {
+        banBy('higher');
+        positions({ higher: 10 });
+        await service.unbanUser(
+          communityId,
+          moderatorId,
+          moderatorId,
+          undefined,
+          InstanceRole.OWNER,
+        );
+        expect(mockDatabase.communityBan.update).toHaveBeenCalled();
+      });
     });
 
     it('should throw NotFoundException when user is not banned', async () => {
@@ -457,6 +524,9 @@ describe('ModerationService', () => {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         channelMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        aliasGroupMember: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userRoles: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },

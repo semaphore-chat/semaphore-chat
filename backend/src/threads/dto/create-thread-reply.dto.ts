@@ -3,29 +3,12 @@ import {
   IsOptional,
   IsArray,
   IsInt,
-  IsUUID,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { $Enums } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
-import { SpanTypeValues } from '@/common/enums/swagger-enums';
-
-class ThreadReplySpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
-  type: $Enums.SpanType;
-  text: string | null;
-  userId: string | null;
-  specialKind: string | null;
-  communityId: string | null;
-
-  /** For CHANNEL_MENTION (text is ignored and stored as null). */
-  @ApiProperty({ type: String, required: false, nullable: true })
-  @IsOptional()
-  @IsUUID()
-  channelId?: string | null;
-
-  aliasId: string | null;
-}
+import { Type } from 'class-transformer';
+import { ApiProperty, OmitType } from '@nestjs/swagger';
+import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
  * DTO for creating a thread reply message.
@@ -35,11 +18,14 @@ export class CreateThreadReplyDto {
   @IsString()
   parentMessageId: string;
 
-  @ApiProperty({ type: [ThreadReplySpanDto] })
+  @ApiProperty({ type: [CreateMessageSpanDto] })
   @IsArray()
-  spans: ThreadReplySpanDto[];
+  @ValidateNested({ each: true })
+  @Type(() => CreateMessageSpanDto)
+  spans: CreateMessageSpanDto[];
 
   @IsArray()
+  @IsString({ each: true })
   @IsOptional()
   attachments?: string[];
 
@@ -48,3 +34,11 @@ export class CreateThreadReplyDto {
   @IsOptional()
   pendingAttachments?: number;
 }
+
+/**
+ * The REST body: the parent comes from the route. A real class, because the
+ * validation pipe skips a body typed `Omit<...>` (no runtime type).
+ */
+export class CreateThreadReplyBodyDto extends OmitType(CreateThreadReplyDto, [
+  'parentMessageId',
+] as const) {}

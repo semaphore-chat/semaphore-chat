@@ -1,3 +1,4 @@
+import type { EventEmitter2 } from '@nestjs/event-emitter';
 import type Redis from 'ioredis';
 import { createHash } from 'crypto';
 import {
@@ -67,6 +68,7 @@ describe('DeviceLoginGrantService', () => {
       database as unknown as DatabaseService,
       authService as unknown as AuthService,
       blacklist as unknown as TokenBlacklistService,
+      { emit: jest.fn() } as unknown as EventEmitter2,
     );
   });
 

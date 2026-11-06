@@ -16,6 +16,7 @@ export class RefreshTokenFactory {
       userAgent: null,
       ipAddress: null,
       deviceId: null,
+      clientType: null,
       lastUsedAt: now,
       familyId: this.generateId(),
       consumed: false,

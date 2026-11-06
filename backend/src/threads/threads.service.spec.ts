@@ -261,7 +261,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(dtoWithExtraFields as any, authorId);
+      await service.createThreadReply(dtoWithExtraFields, authorId);
 
       const createCall = mockDatabase.message.create.mock.calls[0][0];
       const spans = createCall.data.spans.create;
@@ -305,7 +305,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;
@@ -336,7 +336,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;
@@ -370,7 +370,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;

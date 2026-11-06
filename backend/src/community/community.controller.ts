@@ -39,6 +39,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 @ApiTags('Community')
 @ApiBearerAuth()
@@ -87,8 +88,9 @@ export class CommunityController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCommunityDto: UpdateCommunityDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<CommunityResponseDto> {
-    return this.communityService.update(id, updateCommunityDto);
+    return this.communityService.update(id, updateCommunityDto, req.user.id);
   }
 
   @Delete(':id')
@@ -120,7 +122,7 @@ export class CommunityController {
     @Query('search') search?: string,
   ): Promise<CommunityStatsListResponseDto> {
     return this.communityService.findAllWithStats(
-      limit,
+      clampLimit(limit, 100),
       continuationToken,
       search,
     );

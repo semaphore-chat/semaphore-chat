@@ -17,7 +17,11 @@
     "overrides": {
       "form-data": "^4.0.6",
       "ws": "^8.21.0",
-      "multer": "^2.3.0",
+      "multer": "^2.5.0",
+      "body-parser": "^2.4.0",
+      "undici@6": "^6.29.1",
+      "undici@7": "^7.30.1",
+      "undici@8": "^8.12.2",
       "mysql2": "^3.23.1",
       "brace-expansion@1": "^1.1.21",
       "handlebars": "^4.7.10",

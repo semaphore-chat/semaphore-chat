@@ -16,6 +16,10 @@ export class CreateTokenDto {
   @IsNotEmpty()
   roomId: string;
 
+  /**
+   * Ignored: the display name in the token is the account's. Accepted because
+   * clients send it, and the whitelist would otherwise only strip it.
+   */
   @IsOptional()
   @IsString()
   name?: string;

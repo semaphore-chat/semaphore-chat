@@ -8,7 +8,15 @@ import {
 } from '@nestjs/common';
 import { CreateFileUploadDto } from './dto/create-file-upload.dto';
 import { DatabaseService } from '@/database/database.service';
-import { FileType, ResourceType, StorageType } from '@prisma/client';
+import {
+  FileType,
+  InstanceRole,
+  RbacActions,
+  ResourceType,
+  StorageType,
+} from '@prisma/client';
+import { RbacResourceType } from '@/auth/rbac-resource.decorator';
+import { PermissionsService } from '@/roles/permissions.service';
 import { createHash } from 'crypto';
 import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
@@ -16,6 +24,14 @@ import { ThumbnailService } from '@/file/thumbnail.service';
 import { ResourceTypeFileValidator } from './validators';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { FileUploadResponseDto } from './dto/file-upload-response.dto';
+
+/** What uploading each community-owned file needs, as using it does. */
+const COMMUNITY_UPLOAD_ACTIONS: Partial<Record<ResourceType, RbacActions>> = {
+  [ResourceType.COMMUNITY_AVATAR]: RbacActions.UPDATE_COMMUNITY,
+  [ResourceType.COMMUNITY_BANNER]: RbacActions.UPDATE_COMMUNITY,
+  [ResourceType.CUSTOM_EMOJI]: RbacActions.MANAGE_EMOJIS,
+  [ResourceType.SOUNDBOARD_SOUND]: RbacActions.CREATE_SOUNDBOARD_SOUND,
+};
 
 @Injectable()
 export class FileUploadService {
@@ -26,7 +42,53 @@ export class FileUploadService {
     private readonly storageService: StorageService,
     private readonly storageQuotaService: StorageQuotaService,
     private readonly thumbnailService: ThumbnailService,
+    private readonly permissionsService: PermissionsService,
   ) {}
+
+  /**
+   * A resourceId decides who can read the file and what can use it, so it has
+   * to be something the uploader controls. Uploads without one stay allowed:
+   * nothing but the uploader can reach them. An unknown id gets the same error,
+   * so this can't be used to test whether a message exists.
+   */
+  private async assertCanUploadFor(
+    { resourceType, resourceId }: CreateFileUploadDto,
+    user: UserEntity,
+  ): Promise<void> {
+    if (!resourceId) return;
+
+    let allowed: boolean;
+    switch (resourceType) {
+      case ResourceType.USER_AVATAR:
+      case ResourceType.USER_BANNER:
+      case ResourceType.REPLAY_CLIP:
+        allowed = resourceId === user.id;
+        break;
+      case ResourceType.MESSAGE_ATTACHMENT: {
+        const message = await this.databaseService.message.findUnique({
+          where: { id: resourceId },
+          select: { authorId: true },
+        });
+        allowed = !!message && message.authorId === user.id;
+        break;
+      }
+      default:
+        allowed =
+          user.role === InstanceRole.OWNER ||
+          (await this.permissionsService.verifyActionsForUserAndResource(
+            user.id,
+            resourceId,
+            RbacResourceType.COMMUNITY,
+            [COMMUNITY_UPLOAD_ACTIONS[resourceType]!],
+          ));
+    }
+
+    if (!allowed) {
+      throw new ForbiddenException(
+        'You cannot upload a file for this resource',
+      );
+    }
+  }
 
   async uploadFile(
     file: Express.Multer.File,
@@ -43,6 +105,13 @@ export class FileUploadService {
     // key is the bare multer-generated filename and the bytes get streamed
     // up below before the DB record is created.
     let objectKey = file.path;
+
+    try {
+      await this.assertCanUploadFor(createFileUploadDto, user);
+    } catch (error) {
+      await this.cleanupFile(file.path);
+      throw error;
+    }
 
     try {
       // Check storage quota before processing

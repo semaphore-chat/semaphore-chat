@@ -237,12 +237,17 @@ describe('RolesController', () => {
       const communityId = 'community-456';
       const roleId = 'role-999';
 
-      service.deleteRole.mockResolvedValue(undefined);
+      const req = { user: { id: 'actor', role: 'USER' } } as any;
+      service.deleteRoleAsActor.mockResolvedValue(undefined);
 
-      const result = await controller.deleteRole(communityId, roleId);
+      const result = await controller.deleteRole(communityId, roleId, req);
 
       expect(result).toBeUndefined();
-      expect(service.deleteRole).toHaveBeenCalledWith(roleId, communityId);
+      expect(service.deleteRoleAsActor).toHaveBeenCalledWith(
+        req.user,
+        roleId,
+        communityId,
+      );
     });
   });
 
@@ -254,15 +259,18 @@ describe('RolesController', () => {
         roleId: 'role-333',
       };
 
-      service.assignUserToCommunityRole.mockResolvedValue(undefined);
+      const req = { user: { id: 'actor', role: 'USER' } } as any;
+      service.assignRoleAsActor.mockResolvedValue(undefined);
 
       const result = await controller.assignRoleToUser(
         communityId,
         assignRoleDto,
+        req,
       );
 
       expect(result).toBeUndefined();
-      expect(service.assignUserToCommunityRole).toHaveBeenCalledWith(
+      expect(service.assignRoleAsActor).toHaveBeenCalledWith(
+        req.user,
         'user-222',
         communityId,
         'role-333',
@@ -276,16 +284,19 @@ describe('RolesController', () => {
       const userId = 'user-555';
       const roleId = 'role-666';
 
-      service.removeUserFromCommunityRole.mockResolvedValue(undefined);
+      const req = { user: { id: 'actor', role: 'USER' } } as any;
+      service.removeRoleAsActor.mockResolvedValue(undefined);
 
       const result = await controller.removeRoleFromUser(
         communityId,
         userId,
         roleId,
+        req,
       );
 
       expect(result).toBeUndefined();
-      expect(service.removeUserFromCommunityRole).toHaveBeenCalledWith(
+      expect(service.removeRoleAsActor).toHaveBeenCalledWith(
+        req.user,
         userId,
         communityId,
         roleId,

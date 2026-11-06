@@ -7,6 +7,8 @@ import {
 } from '@nestjs/common';
 import { InstanceRole, RbacActions } from '@prisma/client';
 import { Request } from 'express';
+import { DatabaseService } from '@/database/database.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { MessagesService } from '@/messages/messages.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
@@ -15,7 +17,9 @@ import { RbacResourceType } from './rbac-resource.decorator';
 /**
  * Guards message mutation routes (`/messages/:id...`).
  *
- * - The author may always edit, delete and add attachments.
+ * - The author may always delete. Editing and adding attachments reach everyone
+ *   else like a new message does, so they take what sending takes today: see
+ *   assertMayStillWrite.
  * - A non-author may only DELETE, and only with DELETE_ANY_MESSAGE for the
  *   message's channel/community. DM messages are author-only.
  * - Everything else is denied. This guard never delegates to RbacGuard: with
@@ -29,6 +33,7 @@ export class MessageOwnershipGuard implements CanActivate {
   constructor(
     private readonly messagesService: MessagesService,
     private readonly permissionsService: PermissionsService,
+    private readonly databaseService: DatabaseService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -46,6 +51,9 @@ export class MessageOwnershipGuard implements CanActivate {
     const message = await this.messagesService.findOne(messageId);
 
     if (message.authorId === user.id) {
+      if (request.method !== 'DELETE') {
+        await this.assertMayStillWrite(user.id, message);
+      }
       return true;
     }
 
@@ -72,5 +80,49 @@ export class MessageOwnershipGuard implements CanActivate {
       throw new ForbiddenException('Missing permission to delete this message');
     }
     return true;
+  }
+
+  /**
+   * Having written a message doesn't outlast losing the room it's in. In a
+   * channel: CREATE_MESSAGE now, which covers access (view gate) and timeouts
+   * (mask), with the owner bypass sending has. In a DM: membership now, no
+   * bypass, and no block in a 1:1. A message a moderator removed stays removed.
+   */
+  private async assertMayStillWrite(
+    userId: string,
+    message: {
+      channelId: string | null;
+      directMessageGroupId: string | null;
+      deletedAt: Date | null;
+    },
+  ): Promise<void> {
+    if (message.deletedAt) {
+      throw new ForbiddenException('This message was removed');
+    }
+
+    const { channelId, directMessageGroupId: groupId } = message;
+    if (groupId) {
+      const member =
+        await this.databaseService.directMessageGroupMember.findFirst({
+          where: { groupId, userId },
+          select: { id: true },
+        });
+      if (!member) {
+        throw new ForbiddenException('You are not a member of this DM group');
+      }
+      await assertNotBlockedInDm(this.databaseService, userId, groupId);
+      return;
+    }
+
+    if (
+      !channelId ||
+      !(await this.permissionsService.userHasChannelActions(userId, channelId, [
+        RbacActions.CREATE_MESSAGE,
+      ]))
+    ) {
+      throw new ForbiddenException(
+        "You can't send messages here, so you can't edit this one",
+      );
+    }
   }
 }
