@@ -7259,6 +7259,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-surface-smoke"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "gpui-kit",
+ "image",
+]
+
+[[package]]
 name = "ring"
 version = "0.17.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1849,6 +1849,11 @@ pub trait VideoUploader: Send + Sync {
     fn upload(&self, id: VideoSurfaceId, frame: &Nv12Frame<'_>);
     /// Frees the textures.
     fn remove(&self, id: VideoSurfaceId);
+    /// A surface couldn't be written or drawn. It stays failed: a caller should stop using surfaces
+    /// and draw its frames some other way. The rest of the window is unaffected.
+    fn failed(&self) -> bool {
+        false
+    }
 }
 
 #[doc(hidden)]

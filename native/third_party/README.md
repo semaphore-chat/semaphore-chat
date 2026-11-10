@@ -20,11 +20,13 @@ let uploader = window.video_uploader();        // Option<Arc<dyn VideoUploader>>
 uploader.upload(id, &frame);                   // Nv12Frame borrowed from the caller
 window.paint_video_surface(bounds, radii, id); // in paint; draws nothing until a frame arrived
 uploader.remove(id);                           // when the tile goes away
+uploader.failed();                             // a surface failed: stop using them
 ```
 
 - **The window must keep drawing** for frames to appear, for example with `window.request_animation_frame()`.
 - **`upload` differs by platform:** wgpu writes to the GPU directly. On Windows it copies into a parked buffer, and the render thread writes the latest frame before each draw.
 - **After a lost device** a surface draws nothing until its next upload.
+- **A failed surface** on Windows goes dark without costing the window its frame, and `uploader.failed()` turns true for good. `VideoFrames` then moves to RGBA. Wgpu never reports this.
 - **Limits:** frames are read as BT.601 limited range, with no colour-space argument, and no mipmaps, so tiles far below source size can alias. macOS has none of this API.
 
 **Windows builds:** a release build compiles the shaders with `fxc.exe` from the Windows SDK, so a release

@@ -363,7 +363,7 @@ impl DirectXRenderer {
         scene: &Scene,
         background_appearance: WindowBackgroundAppearance,
     ) -> Result<()> {
-        self.atlas.flush_video().context("Writing video frames")?;
+        self.atlas.flush_video();
         self.pre_draw(&match background_appearance {
             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
             _ => [0.0f32; 4],
@@ -862,14 +862,17 @@ impl DirectXRenderer {
             let Some((y_view, uv_view)) = self.atlas.video_views(surface.video) else {
                 continue;
             };
-            self.pipelines.surfaces.draw_surface(
+            // One tile that won't draw mustn't cost the frame everything after it.
+            if let Err(error) = self.pipelines.surfaces.draw_surface(
                 &devices.device_context,
                 &y_view,
                 &uv_view,
                 batch_params_buffer,
                 slice::from_ref(&self.globals.sampler),
                 (start + offset) as u32,
-            )?;
+            ) {
+                self.atlas.video_failed(&error);
+            }
         }
         Ok(())
     }

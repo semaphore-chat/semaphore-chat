@@ -1,0 +1,16 @@
+[package]
+name = "rig-surface-smoke"
+description = "Draws one NV12 video surface through the real renderer and checks its pixels."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "rig-surface-smoke"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
+anyhow.workspace = true
+image = { version = "0.25", default-features = false }

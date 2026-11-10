@@ -56,10 +56,14 @@ inside `cache.rs`, which U5 replaces with typed entries.
 - **`spike/t7-t8` is not merged.** Expect conflicts in `Cargo.toml`, `Cargo.lock`, `deny.toml`, and
   in `core/src/lib.rs` and `net/src/lib.rs`. `RealtimeEvent` mirrors its `SocketEvent`, and
   `semaphore-net` adapts it to `Realtime`.
-- **Windows now has a surface path:** `Window::video_uploader()` returns `Some` there too, through the
-  vendored D3D11 patch, so tiles take the same path on both. It has compiled but never run on Windows
-  (the CI job waits on a push). `third_party/README.md` has the API. U11 removes the fallback comment
-  in `ui/src/voice/mod.rs`.
+- **Windows now has a surface path, untested on a GPU:** `Window::video_uploader()` returns `Some`
+  there too, through the vendored D3D11 patch, and `SURFACE_PATH_BUILT` includes Windows, so tiles take
+  the same path on both. It has compiled but never run on a real GPU. `rigs/surface-smoke` in the
+  `windows-link` job runs it on whatever the hosted runner offers, which at best is WARP, software
+  rendering (the CI job waits on a push). A surface failure moves tiles to RGBA, but wrong colours or a
+  black tile can't be detected: `SEMAPHORE_VIDEO_PATH=rgba` is the way out. If the surface pipeline
+  fails to build at startup, renderer creation fails with it and no window opens, in any call or none.
+  `third_party/README.md` has the API.
 
 ## U13 must do
 

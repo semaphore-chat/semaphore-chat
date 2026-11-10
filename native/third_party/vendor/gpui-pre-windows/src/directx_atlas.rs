@@ -2,6 +2,7 @@ use collections::FxHashMap;
 use etagere::BucketedAtlasAllocator;
 use parking_lot::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use windows::Win32::Graphics::{
     Direct3D11::{
         D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_CPU_ACCESS_WRITE, D3D11_MAP_WRITE_DISCARD,
@@ -21,7 +22,7 @@ pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>, DirectXV
 /// The immediate context is single-threaded, so `VideoUploader::upload` only parks the latest
 /// frame here, and `DirectXAtlas::flush_video` writes it into the textures before each draw.
 #[derive(Default)]
-struct DirectXVideoQueue(Mutex<DirectXVideoQueueState>);
+struct DirectXVideoQueue(Mutex<DirectXVideoQueueState>, AtomicBool);
 
 #[derive(Default)]
 struct DirectXVideoQueueState {
@@ -72,6 +73,10 @@ impl gpui::VideoUploader for DirectXVideoQueue {
             state.spare.push(pending);
         }
         state.removed.push(id);
+    }
+
+    fn failed(&self) -> bool {
+        self.1.load(Ordering::Acquire)
     }
 }
 
@@ -197,12 +202,14 @@ impl DirectXAtlas {
         )
     }
 
-    /// Writes each surface's latest parked frame into its textures. Runs on the render thread.
-    pub(crate) fn flush_video(&self) -> anyhow::Result<()> {
+    /// Writes each surface's latest parked frame into its textures. Runs on the render thread. A
+    /// surface that can't be written goes dark and sets `failed`, so it costs the window one tile
+    /// instead of every frame it would have drawn.
+    pub(crate) fn flush_video(&self) {
         let (pending, removed) = {
             let mut state = self.1.queue.0.lock();
             if state.pending.is_empty() && state.removed.is_empty() {
-                return Ok(());
+                return;
             }
             (
                 std::mem::take(&mut state.pending),
@@ -219,33 +226,46 @@ impl DirectXAtlas {
         }
         let mut spare = Vec::with_capacity(pending.len());
         for (id, frame) in pending {
-            let current = textures
-                .get(&id)
-                .is_some_and(|texture| texture.size == (frame.width, frame.height));
-            if !current {
-                textures.insert(id, DirectXVideoTexture::new(&device, frame.width, frame.height)?);
+            let written = (|| -> anyhow::Result<()> {
+                let current = textures
+                    .get(&id)
+                    .is_some_and(|texture| texture.size == (frame.width, frame.height));
+                if !current {
+                    textures
+                        .insert(id, DirectXVideoTexture::new(&device, frame.width, frame.height)?);
+                }
+                let texture = &textures[&id];
+                DirectXVideoTexture::write_plane(
+                    &device_context,
+                    &texture.y,
+                    &frame.y,
+                    frame.y_stride,
+                    frame.width,
+                    frame.height,
+                )?;
+                DirectXVideoTexture::write_plane(
+                    &device_context,
+                    &texture.uv,
+                    &frame.uv,
+                    frame.uv_stride,
+                    frame.width.div_ceil(2) * 2,
+                    frame.height.div_ceil(2),
+                )
+            })();
+            if let Err(error) = written {
+                textures.remove(&id);
+                self.video_failed(&error);
             }
-            let texture = &textures[&id];
-            DirectXVideoTexture::write_plane(
-                &device_context,
-                &texture.y,
-                &frame.y,
-                frame.y_stride,
-                frame.width,
-                frame.height,
-            )?;
-            DirectXVideoTexture::write_plane(
-                &device_context,
-                &texture.uv,
-                &frame.uv,
-                frame.uv_stride,
-                frame.width.div_ceil(2) * 2,
-                frame.height.div_ceil(2),
-            )?;
             spare.push(frame);
         }
         self.1.queue.0.lock().spare.append(&mut spare);
-        Ok(())
+    }
+
+    /// Says so once, and from then on `VideoUploader::failed` is true.
+    pub(crate) fn video_failed(&self, error: &anyhow::Error) {
+        if !self.1.queue.1.swap(true, Ordering::AcqRel) {
+            log::error!("video surface failed, callers should stop using surfaces: {error:#}");
+        }
     }
 
     /// The luma and chroma views of a surface that has received a frame.

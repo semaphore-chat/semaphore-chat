@@ -1,4 +1,4 @@
-diff -ruN a/build.rs b/build.rs
+diff --color -ruN a/build.rs b/build.rs
 --- a/build.rs
 +++ b/build.rs
 @@ -40,6 +40,7 @@
@@ -9,14 +9,15 @@ diff -ruN a/build.rs b/build.rs
          ];
  
          let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);
-diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
+diff --color -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
 --- a/src/directx_atlas.rs
 +++ b/src/directx_atlas.rs
-@@ -1,8 +1,11 @@
+@@ -1,8 +1,12 @@
 +use collections::FxHashMap;
  use etagere::BucketedAtlasAllocator;
  use parking_lot::Mutex;
 +use std::sync::Arc;
++use std::sync::atomic::{AtomicBool, Ordering};
  use windows::Win32::Graphics::{
      Direct3D11::{
 -        D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
@@ -25,7 +26,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
          ID3D11Device, ID3D11DeviceContext, ID3D11ShaderResourceView, ID3D11Texture2D,
      },
      Dxgi::Common::*,
-@@ -13,7 +16,155 @@
+@@ -13,7 +17,159 @@
      AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, Size,
  };
  
@@ -35,7 +36,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
 +/// The immediate context is single-threaded, so `VideoUploader::upload` only parks the latest
 +/// frame here, and `DirectXAtlas::flush_video` writes it into the textures before each draw.
 +#[derive(Default)]
-+struct DirectXVideoQueue(Mutex<DirectXVideoQueueState>);
++struct DirectXVideoQueue(Mutex<DirectXVideoQueueState>, AtomicBool);
 +
 +#[derive(Default)]
 +struct DirectXVideoQueueState {
@@ -86,6 +87,10 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
 +            state.spare.push(pending);
 +        }
 +        state.removed.push(id);
++    }
++
++    fn failed(&self) -> bool {
++        self.1.load(Ordering::Acquire)
 +    }
 +}
 +
@@ -182,7 +187,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
  
  struct DirectXAtlasTextures {
      device: ID3D11Device,
-@@ -34,13 +185,80 @@
+@@ -34,13 +190,95 @@
  
  impl DirectXAtlas {
      pub(crate) fn new(device: &ID3D11Device, device_context: &ID3D11DeviceContext) -> Self {
@@ -205,12 +210,14 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
 +        )
 +    }
 +
-+    /// Writes each surface's latest parked frame into its textures. Runs on the render thread.
-+    pub(crate) fn flush_video(&self) -> anyhow::Result<()> {
++    /// Writes each surface's latest parked frame into its textures. Runs on the render thread. A
++    /// surface that can't be written goes dark and sets `failed`, so it costs the window one tile
++    /// instead of every frame it would have drawn.
++    pub(crate) fn flush_video(&self) {
 +        let (pending, removed) = {
 +            let mut state = self.1.queue.0.lock();
 +            if state.pending.is_empty() && state.removed.is_empty() {
-+                return Ok(());
++                return;
 +            }
 +            (
 +                std::mem::take(&mut state.pending),
@@ -227,33 +234,46 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
 +        }
 +        let mut spare = Vec::with_capacity(pending.len());
 +        for (id, frame) in pending {
-+            let current = textures
-+                .get(&id)
-+                .is_some_and(|texture| texture.size == (frame.width, frame.height));
-+            if !current {
-+                textures.insert(id, DirectXVideoTexture::new(&device, frame.width, frame.height)?);
++            let written = (|| -> anyhow::Result<()> {
++                let current = textures
++                    .get(&id)
++                    .is_some_and(|texture| texture.size == (frame.width, frame.height));
++                if !current {
++                    textures
++                        .insert(id, DirectXVideoTexture::new(&device, frame.width, frame.height)?);
++                }
++                let texture = &textures[&id];
++                DirectXVideoTexture::write_plane(
++                    &device_context,
++                    &texture.y,
++                    &frame.y,
++                    frame.y_stride,
++                    frame.width,
++                    frame.height,
++                )?;
++                DirectXVideoTexture::write_plane(
++                    &device_context,
++                    &texture.uv,
++                    &frame.uv,
++                    frame.uv_stride,
++                    frame.width.div_ceil(2) * 2,
++                    frame.height.div_ceil(2),
++                )
++            })();
++            if let Err(error) = written {
++                textures.remove(&id);
++                self.video_failed(&error);
 +            }
-+            let texture = &textures[&id];
-+            DirectXVideoTexture::write_plane(
-+                &device_context,
-+                &texture.y,
-+                &frame.y,
-+                frame.y_stride,
-+                frame.width,
-+                frame.height,
-+            )?;
-+            DirectXVideoTexture::write_plane(
-+                &device_context,
-+                &texture.uv,
-+                &frame.uv,
-+                frame.uv_stride,
-+                frame.width.div_ceil(2) * 2,
-+                frame.height.div_ceil(2),
-+            )?;
 +            spare.push(frame);
 +        }
 +        self.1.queue.0.lock().spare.append(&mut spare);
-+        Ok(())
++    }
++
++    /// Says so once, and from then on `VideoUploader::failed` is true.
++    pub(crate) fn video_failed(&self, error: &anyhow::Error) {
++        if !self.1.queue.1.swap(true, Ordering::AcqRel) {
++            log::error!("video surface failed, callers should stop using surfaces: {error:#}");
++        }
 +    }
 +
 +    /// The luma and chroma views of a surface that has received a frame.
@@ -270,7 +290,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
      }
  
      /// Returns the view backing `id`, or `None` once every tile in it has been
-@@ -61,6 +279,8 @@
+@@ -61,6 +299,8 @@
          device: &ID3D11Device,
          device_context: &ID3D11DeviceContext,
      ) {
@@ -279,7 +299,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
          let mut lock = self.0.lock();
          lock.clear(|textures| {
              textures.device = device.clone();
-@@ -73,6 +293,10 @@
+@@ -73,6 +313,10 @@
  }
  
  impl PlatformAtlas for DirectXAtlas {
@@ -290,7 +310,7 @@ diff -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
      fn get_or_insert_with<'a>(
          &self,
          key: AtlasKey,
-diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
+diff --color -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
 --- a/src/directx_renderer.rs
 +++ b/src/directx_renderer.rs
 @@ -92,6 +92,18 @@
@@ -316,7 +336,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
          scene: &Scene,
          background_appearance: WindowBackgroundAppearance,
      ) -> Result<()> {
-+        self.atlas.flush_video().context("Writing video frames")?;
++        self.atlas.flush_video();
          self.pre_draw(&match background_appearance {
              WindowBackgroundAppearance::Opaque => [1.0f32; 4],
              _ => [0.0f32; 4],
@@ -357,7 +377,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
          Ok(())
      }
  
-@@ -813,10 +847,30 @@
+@@ -813,10 +847,33 @@
          )
      }
  
@@ -377,19 +397,22 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
 +            let Some((y_view, uv_view)) = self.atlas.video_views(surface.video) else {
 +                continue;
 +            };
-+            self.pipelines.surfaces.draw_surface(
++            // One tile that won't draw mustn't cost the frame everything after it.
++            if let Err(error) = self.pipelines.surfaces.draw_surface(
 +                &devices.device_context,
 +                &y_view,
 +                &uv_view,
 +                batch_params_buffer,
 +                slice::from_ref(&self.globals.sampler),
 +                (start + offset) as u32,
-+            )?;
++            ) {
++                self.atlas.video_failed(&error);
++            }
 +        }
          Ok(())
      }
  
-@@ -997,6 +1051,13 @@
+@@ -997,6 +1054,13 @@
              16,
              create_blend_state(device)?,
          )?;
@@ -403,7 +426,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
  
          Ok(Self {
              shadow_pipeline,
-@@ -1007,6 +1068,7 @@
+@@ -1007,6 +1071,7 @@
              mono_sprites,
              subpixel_sprites,
              poly_sprites,
@@ -411,7 +434,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
          })
      }
  }
-@@ -1233,6 +1295,38 @@
+@@ -1233,6 +1298,38 @@
          Ok(())
      }
  
@@ -450,7 +473,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
      fn draw_range_with_texture(
          &self,
          device_context: &ID3D11DeviceContext,
-@@ -1716,6 +1810,7 @@
+@@ -1716,6 +1813,7 @@
          MonochromeSprite,
          SubpixelSprite,
          PolychromeSprite,
@@ -458,7 +481,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
          EmojiRasterization,
      }
  
-@@ -1790,6 +1885,10 @@
+@@ -1790,6 +1888,10 @@
                      ShaderTarget::Vertex => POLYCHROME_SPRITE_VERTEX_BYTES,
                      ShaderTarget::Fragment => POLYCHROME_SPRITE_FRAGMENT_BYTES,
                  },
@@ -469,7 +492,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
                  ShaderModule::EmojiRasterization => match target {
                      ShaderTarget::Vertex => EMOJI_RASTERIZATION_VERTEX_BYTES,
                      ShaderTarget::Fragment => EMOJI_RASTERIZATION_FRAGMENT_BYTES,
-@@ -1880,6 +1979,7 @@
+@@ -1880,6 +1982,7 @@
                  ShaderModule::MonochromeSprite => "monochrome_sprite",
                  ShaderModule::SubpixelSprite => "subpixel_sprite",
                  ShaderModule::PolychromeSprite => "polychrome_sprite",
@@ -477,7 +500,7 @@ diff -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
                  ShaderModule::EmojiRasterization => "emoji_rasterization",
              }
          }
-diff -ruN a/src/shaders.hlsl b/src/shaders.hlsl
+diff --color -ruN a/src/shaders.hlsl b/src/shaders.hlsl
 --- a/src/shaders.hlsl
 +++ b/src/shaders.hlsl
 @@ -1266,3 +1266,61 @@

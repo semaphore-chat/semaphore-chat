@@ -43,6 +43,7 @@ exceptions = [
     { crate = "rig-list", allow = ["AGPL-3.0-only"] },
     { crate = "rig-reconnect", allow = ["AGPL-3.0-only"] },
     { crate = "rig-sio", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-surface-smoke", allow = ["AGPL-3.0-only"] },
 ]
 
 [licenses.private]

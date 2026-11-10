@@ -98,6 +98,36 @@ jobs:
             echo "::error title=Windows build tail::$(tail -n 40 build.log | cut -c1-200 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' | tail -c 3500)"
           fi
           exit "$rc"
+      # Runs the D3D11 video surface on whatever the hosted runner has. At best that's WARP, which is
+      # software rendering: a pass proves the code, not a GPU. No device is reported, never passed.
+      - name: Video surface smoke test (software rendering at best)
+        shell: bash
+        run: |
+          set +e
+          cargo build --locked --release -p rig-surface-smoke || exit 1
+          out="$(timeout 300 target/release/rig-surface-smoke 2>&1)"
+          rc=$?
+          echo "$out"
+          line="$(echo "$out" | grep '^SURFACE_SMOKE' | tail -n 1)"
+          case "$rc" in
+            0)
+              if echo "$line" | grep -q 'software=false'; then
+                label="an adapter that says it is hardware (check which: hosted runners have no GPU)"
+              else
+                label="software rendering (WARP, or unknown), so NOT proof that a GPU draws it"
+              fi
+              echo "::notice title=Video surface smoke::Passed on $label: $line"
+              echo "Video surface smoke test passed on $label: \`$line\`" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            3)
+              echo "::warning title=Video surface NOT TESTED::No D3D11 device, window or uploader here, so the surface path did not run: $line"
+              echo "Video surface smoke test: **NOT TESTED**, no D3D11 device, window or uploader: \`$line\`" >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "::error title=Video surface smoke::exit $rc: ${line:-no result line}"
+              exit "$rc"
+              ;;
+          esac
       - name: Report the binary size
         shell: bash
         run: ls -l target/release/semaphore-app.exe

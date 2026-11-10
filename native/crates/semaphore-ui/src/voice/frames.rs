@@ -31,21 +31,30 @@ impl VideoFrames {
 
     /// Forces a path, to exercise the fallback on a machine that has the fast one.
     pub fn with_path(window: &Window, path: VideoPath) -> Arc<Self> {
+        Self::with_uploader(path, window.video_uploader())
+    }
+
+    fn with_uploader(path: VideoPath, uploader: Option<Arc<dyn VideoUploader>>) -> Arc<Self> {
         Arc::new(Self {
             path,
-            uploader: window.video_uploader(),
+            uploader,
             slots: RwLock::default(),
             dirty: AtomicBool::new(false),
         })
     }
 
+    /// The path frames take now. A surface that failed moves this to RGBA for good, from the next
+    /// frame on, so a tile that went dark comes back.
     pub fn path(&self) -> VideoPath {
-        self.path
+        match (&self.path, &self.uploader) {
+            (VideoPath::Surface, Some(uploader)) if !uploader.failed() => VideoPath::Surface,
+            _ => VideoPath::RgbaFallback,
+        }
     }
 
     /// A new frame. Safe from any thread, and doesn't wait on the UI thread.
     pub fn push(&self, track_sid: &str, frame: &Nv12Frame<'_>) {
-        match (self.path, &self.uploader) {
+        match (self.path(), &self.uploader) {
             (VideoPath::Surface, Some(uploader)) => {
                 let surface = self.ensure_slot(track_sid, frame);
                 uploader.upload(surface, frame);
@@ -297,5 +306,89 @@ mod tests {
     #[test]
     fn a_zero_sized_frame_fills_the_box() {
         assert_eq!(fit_contain(rect(100., 100.), 0, 0), rect(100., 100.));
+    }
+}
+
+#[cfg(test)]
+mod failover_tests {
+    use super::*;
+    use std::prelude::rust_2024::test;
+    use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
+
+    #[derive(Default)]
+    struct FakeUploader {
+        failed: AtomicBool,
+        uploads: AtomicUsize,
+        removed: Mutex<Vec<VideoSurfaceId>>,
+    }
+
+    impl VideoUploader for FakeUploader {
+        fn upload(&self, _: VideoSurfaceId, _: &Nv12Frame<'_>) {
+            self.uploads.fetch_add(1, Ordering::SeqCst);
+        }
+        fn remove(&self, id: VideoSurfaceId) {
+            self.removed.lock().unwrap().push(id);
+        }
+        fn failed(&self) -> bool {
+            self.failed.load(Ordering::SeqCst)
+        }
+    }
+
+    fn push(frames: &VideoFrames) {
+        let y = [128u8; 16];
+        let uv = [128u8; 8];
+        frames.push(
+            "track",
+            &Nv12Frame {
+                width: 4,
+                height: 4,
+                y: &y,
+                y_stride: 4,
+                uv: &uv,
+                uv_stride: 4,
+            },
+        );
+    }
+
+    fn holds_image(frames: &VideoFrames) -> bool {
+        frames.slots.read().unwrap()["track"].image.is_some()
+    }
+
+    #[test]
+    fn frames_move_to_rgba_when_the_surface_fails_and_stay_there() {
+        let uploader = Arc::new(FakeUploader::default());
+        let frames = VideoFrames::with_uploader(VideoPath::Surface, Some(uploader.clone()));
+
+        push(&frames);
+        assert_eq!(frames.path(), VideoPath::Surface);
+        assert_eq!(uploader.uploads.load(Ordering::SeqCst), 1);
+        assert!(!holds_image(&frames));
+
+        uploader.failed.store(true, Ordering::SeqCst);
+        assert_eq!(frames.path(), VideoPath::RgbaFallback);
+        push(&frames);
+        assert_eq!(uploader.uploads.load(Ordering::SeqCst), 1);
+        // What `paint` draws in preference to the surface, so the tile is back.
+        assert!(holds_image(&frames));
+    }
+
+    #[test]
+    fn asking_for_rgba_never_touches_the_uploader() {
+        let uploader = Arc::new(FakeUploader::default());
+        let frames = VideoFrames::with_uploader(VideoPath::RgbaFallback, Some(uploader.clone()));
+        push(&frames);
+        assert_eq!(uploader.uploads.load(Ordering::SeqCst), 0);
+        assert!(holds_image(&frames));
+    }
+
+    #[test]
+    fn ending_a_track_still_frees_its_surface_after_a_failure() {
+        let uploader = Arc::new(FakeUploader::default());
+        let frames = VideoFrames::with_uploader(VideoPath::Surface, Some(uploader.clone()));
+        push(&frames);
+        uploader.failed.store(true, Ordering::SeqCst);
+        frames.end("track");
+        assert_eq!(uploader.removed.lock().unwrap().len(), 1);
     }
 }
