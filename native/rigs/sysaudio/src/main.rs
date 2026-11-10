@@ -143,7 +143,7 @@ impl Judge {
 
     /// Interleaved stereo, full scale 1.0.
     fn push(&mut self, interleaved: &[f64]) {
-        for pair in interleaved.chunks_exact(2) {
+        for pair in interleaved.as_chunks::<2>().0 {
             self.left.push(pair[0]);
             self.right.push(pair[1]);
             self.frames += 1;

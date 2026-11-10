@@ -236,7 +236,10 @@ fn run(
             let Some(first) = buffer.datas_mut().first_mut() else {
                 return;
             };
-            let (offset, size) = (first.chunk().offset() as usize, first.chunk().size() as usize);
+            let (offset, size) = (
+                first.chunk().offset() as usize,
+                first.chunk().size() as usize,
+            );
             let Some(bytes) = first.data() else {
                 return;
             };
@@ -245,8 +248,10 @@ fn run(
             data.scratch.clear();
             data.scratch.extend(
                 bytes
-                    .chunks_exact(4)
-                    .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]])),
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|b| f32::from_le_bytes(*b)),
             );
             if !data.scratch.is_empty() {
                 (data.on_audio)(&data.scratch);
@@ -410,7 +415,8 @@ fn on_global(ctx: &Rc<Ctx>, global: &pw::registry::GlobalObject<&spa::utils::dic
                         Some(entry) => {
                             // A node's process never changes: once seen, a PID stays.
                             if parsed.app_pid.is_none() {
-                                parsed.app_pid = entry.props.as_ref().and_then(|p| p.app_pid.clone());
+                                parsed.app_pid =
+                                    entry.props.as_ref().and_then(|p| p.app_pid.clone());
                             }
                             let changed = entry.props.as_ref() != Some(&parsed);
                             entry.props = Some(parsed);
@@ -440,7 +446,10 @@ fn on_global(ctx: &Rc<Ctx>, global: &pw::registry::GlobalObject<&spa::utils::dic
             let listener = proxy
                 .add_listener_local()
                 .info(move |info| {
-                    if !info.change_mask().contains(pw::client::ClientChangeMask::PROPS) {
+                    if !info
+                        .change_mask()
+                        .contains(pw::client::ClientChangeMask::PROPS)
+                    {
                         return;
                     }
                     let Some(ctx) = weak.upgrade() else {
@@ -691,22 +700,15 @@ fn reconcile(ctx: &Rc<Ctx>) {
             }
         }
 
-        if log::log_enabled!(target: "sysaudio", log::Level::Debug) {
+        if log::log_enabled!(target: "sysaudio", log::Level::Debug) && !logs.is_empty() {
             let mut links: Vec<_> = graph.links.iter().collect();
             links.sort();
-            let groups: Vec<_> = graph
-                .nodes
-                .iter()
-                .map(|(id, entry)| (*id, entry.props.as_ref().map(|p| p.link_group.clone())))
-                .collect();
-            log::debug!(target: "sysaudio", "tainted {tainted:?} unknown {unknown:?} links {links:?} groups {groups:?}");
+            log::debug!(target: "sysaudio", "tainted {tainted:?} waiting {unknown:?} links {links:?}");
         }
-        let ports_now = graph.ports.clone();
-        let verdicts_now = graph.verdicts.clone();
         graph.ours.retain(|key, _| {
             let keep = desired.contains(key);
             if !keep {
-                log::debug!(target: "sysaudio", "unlinking {key:?}; desired {desired:?}; routed {routed:?}; port {:?}; verdicts {verdicts_now:?}", ports_now.get(&key.0));
+                log::debug!(target: "sysaudio", "unlinking {key:?}");
             }
             keep
         });
@@ -734,8 +736,11 @@ fn reconcile(ctx: &Rc<Ctx>) {
                     let key = *key;
                     let listener = link
                         .add_listener_local()
-                        .info(move |info| {
-                            log::debug!(target: "sysaudio", "our link {key:?} id {}: {:?}", info.id(), info.state());
+                        .info(move |info| match info.state() {
+                            pw::link::LinkState::Error(message) => {
+                                log::warn!(target: "sysaudio", "link {key:?} failed: {message}");
+                            }
+                            state => log::debug!(target: "sysaudio", "link {key:?}: {state:?}"),
                         })
                         .register();
                     graph.ours.insert(key, (link, listener));
