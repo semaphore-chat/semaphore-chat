@@ -11,6 +11,7 @@ use super::store::RowStore;
 use super::text::{self, BlockKind};
 use super::text_element::{BlockGeom, MessageText};
 use super::view::{MessageList, MessageListEvent};
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView, MessageRow, SegKind, SendState};
@@ -1034,7 +1035,32 @@ pub(crate) fn render_row(
         body = body.child(render_header(&row, &prepared, &palette));
     }
     if let Some(reply) = &reply {
-        body = body.child(render_reply(reply, &palette));
+        let preview = render_reply(reply, &palette);
+        // A click jumps to the message answered, unless it's gone.
+        let target = row
+            .reply_to
+            .as_ref()
+            .filter(|reply_to| !reply_to.deleted && !reply_to.message_id.is_empty())
+            .map(|reply_to| reply_to.message_id.clone());
+        body = match target {
+            Some(message_id) => {
+                let event_shared = shared.clone();
+                body.child(
+                    clickable(("reply", row.seq as u64))
+                        .test_support()
+                        .on_click(move |_, _, cx| {
+                            event_shared.emit(
+                                MessageListEvent::OpenReply {
+                                    message_id: message_id.clone(),
+                                },
+                                cx,
+                            );
+                        })
+                        .child(preview),
+                )
+            }
+            None => body.child(preview),
+        };
     }
     if row.removed {
         body = body.child(

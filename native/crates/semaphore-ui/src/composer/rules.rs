@@ -1,11 +1,11 @@
 //! The composer's text rules. No GPUI, so they are tested as plain functions.
 //!
-//! `get_current_mention` and `insert_mention` are the names U6 exposes from `core/src/text`. These
-//! local versions port `frontend/src/utils/mentionParser.ts` so the composer works until U6 lands;
-//! then this part of the file goes and `view.rs` imports U6's instead. Offsets here are bytes, where
-//! the web's are UTF-16 units, because the kit's caret is a byte offset.
+//! `get_current_mention` and `insert_mention` wrap U6's ports of `mentionParser.ts` in `core/src/text`,
+//! keeping the composer's own trigger type. Offsets here are bytes, where the web's are UTF-16 units,
+//! because the kit's caret is a byte offset.
 
 use semaphore_core::model::{DraftMention, MentionCandidate, MentionKind};
+use semaphore_core::text::{self, MentionTarget, Trigger};
 use std::ops::Range;
 use std::time::Duration;
 
@@ -26,52 +26,47 @@ pub struct CurrentMention {
     pub end: usize,
 }
 
+/// A byte of a mention name, `[\w-]`, for `resolve_mentions`' token boundaries.
 fn is_mention_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-'
 }
 
-/// The mention being typed at `cursor`: looks back over word characters for `@` or `#`. As on the
-/// web, `\w` is ASCII, so a non-ASCII character ends the search, and an email address matches.
+/// The mention being typed at `cursor`, by U6's `getCurrentMention` port in core. As on the web,
+/// `\w` is ASCII, so a non-ASCII character ends the search, and an email address matches.
 pub fn get_current_mention(text: &str, cursor: usize) -> Option<CurrentMention> {
-    let bytes = text.as_bytes();
-    let mut start = cursor.min(bytes.len());
-    let end = start;
-    while start > 0 {
-        let byte = bytes[start - 1];
-        let trigger = match byte {
-            b'@' => Some(MentionTrigger::At),
-            b'#' => Some(MentionTrigger::Hash),
-            _ => None,
-        };
-        if let Some(trigger) = trigger {
-            return Some(CurrentMention {
-                trigger,
-                query: text[start..end].to_owned(),
-                start: start - 1,
-                end,
-            });
-        }
-        if !is_mention_byte(byte) {
-            return None;
-        }
-        start -= 1;
+    // Core wants a char boundary; the kit's caret is one, but a stale caret may not be.
+    let cursor = cursor.min(text.len());
+    if !text.is_char_boundary(cursor) {
+        return None;
     }
-    None
+    let current = text::get_current_mention(text, cursor)?;
+    Some(CurrentMention {
+        trigger: match current.kind {
+            Trigger::Channel => MentionTrigger::Hash,
+            Trigger::User | Trigger::Special => MentionTrigger::At,
+        },
+        query: current.query,
+        start: current.start,
+        end: current.end,
+    })
 }
 
-/// Replaces the mention being typed, or inserts at the caret if none is. Returns the text and the
-/// caret after it. `insert_text` carries its own `@` or `#`; a space follows it, as on the web.
+/// Replaces the mention being typed, or inserts at the caret if none is, by core's `insertMention`.
+/// Returns the text and the caret after it. `insert_text` carries its own `@` or `#`; a space
+/// follows it, as on the web.
 pub fn insert_mention(text: &str, cursor: usize, insert_text: &str) -> (String, usize) {
-    let range = get_current_mention(text, cursor)
-        .map(|mention| mention.start..mention.end)
-        .unwrap_or(cursor..cursor);
-    let mut out = String::with_capacity(text.len() + insert_text.len() + 1);
-    out.push_str(&text[..range.start]);
-    out.push_str(insert_text);
-    out.push(' ');
-    let caret = out.len();
-    out.push_str(&text[range.end..]);
-    (out, caret)
+    let name = insert_text
+        .strip_prefix('@')
+        .or_else(|| insert_text.strip_prefix('#'))
+        .unwrap_or(insert_text)
+        .to_owned();
+    // Which kind only decides the leading character, so `@` covers users, aliases and specials.
+    let target = if insert_text.starts_with('#') {
+        MentionTarget::Channel(name)
+    } else {
+        MentionTarget::User(name)
+    };
+    text::insert_mention(text, cursor.min(text.len()), &target)
 }
 
 /// Finds the mentions in outgoing text. `picked` are the ones chosen from the dropdown, whose

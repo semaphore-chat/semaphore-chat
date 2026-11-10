@@ -66,9 +66,12 @@ impl Shell {
             .unwrap_or_default()
             .to_owned();
         let members = self.source.members(&community_id);
+        // Core reads the first thousand: past that the count would be a lie, so say so.
+        let truncated = self.source.members_truncated(&community_id);
         let title = match &members {
             Load::Loading => "Members — ...".to_owned(),
             Load::Failed(_) => "Members".to_owned(),
+            Load::Ready(rows) if truncated => format!("Members — {}+", rows.len()),
             Load::Ready(rows) => format!("Members — {}", rows.len()),
         };
         let body = match members {
@@ -108,6 +111,18 @@ impl Shell {
                 if !sections.offline.is_empty() {
                     list = list.child(section_header("Offline", sections.offline.len(), cx));
                     list = list.children(sections.offline.iter().map(|row| member_row(row, cx)));
+                }
+                if truncated {
+                    list = list.child(
+                        div()
+                            .px(spacing(2.))
+                            .py(spacing(1.5))
+                            .text_color(sem.text_secondary)
+                            .child(text(
+                                Variant::Caption,
+                                "Showing the first 1,000 members",
+                            )),
+                    );
                 }
                 list.into_any_element()
             }

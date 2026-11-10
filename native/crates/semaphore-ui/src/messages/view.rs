@@ -8,6 +8,7 @@ use super::selection::{self, Motion, Pos, Selection, Unit, UnitDrag};
 use super::store::{RowChange, RowStore};
 use super::text;
 use gpui_kit::base::AutoScroll;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -111,9 +112,17 @@ pub enum MessageListEvent {
     RetrySend {
         client_nonce: String,
     },
-    /// Throw a failed send away. `Core` has no command for it yet.
+    /// Throw a failed send away: `Core::discard_failed_send`.
     DiscardFailed {
         client_nonce: String,
+    },
+    /// Detached from the live edge, and few rows left below the viewport: `Core::load_newer`.
+    LoadNewer,
+    /// The "jump to present" button: `Core::jump_to_present`.
+    JumpToPresent,
+    /// A reply's quote was clicked: `Core::open_conversation_at` the message it answers.
+    OpenReply {
+        message_id: String,
     },
 }
 
@@ -168,6 +177,9 @@ pub struct MessageList {
     goal_x: Option<Pixels>,
     held: Option<(i64, i64)>,
     asked_older: bool,
+    /// The rows loaded don't reach the newest: see `Core::at_live_edge`.
+    detached: bool,
+    asked_newer: bool,
     animation_timer: Option<Task<()>>,
 }
 
@@ -225,6 +237,8 @@ impl MessageList {
             goal_x: None,
             held: None,
             asked_older: false,
+            detached: false,
+            asked_newer: false,
             animation_timer: None,
         }
     }
@@ -236,6 +250,21 @@ impl MessageList {
     pub fn set_status(&mut self, status: ListStatus, cx: &mut Context<Self>) {
         self.status = status;
         cx.notify();
+    }
+
+    /// Whether the rows here stop short of the newest. The owner reads `Core::at_live_edge` after
+    /// each change. While detached the list asks for newer rows near its end, offers a way back to the
+    /// present, and doesn't follow the tail.
+    pub fn set_detached(&mut self, detached: bool, cx: &mut Context<Self>) {
+        if detached != self.detached {
+            self.detached = detached;
+            self.asked_newer = false;
+            cx.notify();
+        }
+    }
+
+    pub fn is_detached(&self) -> bool {
+        self.detached
     }
 
     pub fn set_replies(&mut self, replies: HashMap<i64, ReplyPreview>, cx: &mut Context<Self>) {
@@ -300,6 +329,9 @@ impl MessageList {
         }
         if inserted_at_front {
             self.asked_older = false;
+        } else {
+            // Rows arrived at the end, or the list changed shape: whatever was asked has answered.
+            self.asked_newer = false;
         }
         if own_send_at_end {
             self.scroll_to_latest();
@@ -727,6 +759,16 @@ impl MessageList {
             self.asked_older = true;
             cx.emit(MessageListEvent::LoadOlder);
         }
+        if self.detached && !self.asked_newer {
+            let count = self.list.item_count();
+            let near_end = count == 0
+                || self.list.item_is_below_viewport(count.saturating_sub(LOAD_OLDER_WITHIN))
+                    == Some(false);
+            if near_end {
+                self.asked_newer = true;
+                cx.emit(MessageListEvent::LoadNewer);
+            }
+        }
         self.arm_animation(cx);
     }
 
@@ -843,5 +885,35 @@ impl Render for MessageList {
                 .size_0(),
             )
             .when(self.scrollbar, |root| root.vertical_scrollbar(&self.list))
+            .when(self.detached, |root| root.child(render_jump_to_present(&palette, cx)))
     }
+}
+
+/// The web's "You're viewing older messages" bar, reduced to its button.
+fn render_jump_to_present(palette: &Palette, cx: &mut Context<MessageList>) -> impl IntoElement {
+    div()
+        .absolute()
+        .bottom(px(12.))
+        .left_0()
+        .right_0()
+        .flex()
+        .justify_center()
+        .child(
+            div()
+                .id("jump-to-present")
+                .test_support()
+                .role(Role::Button)
+                .aria_label("Jump to present")
+                .cursor_pointer()
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .px(px(14.))
+                .py(px(6.))
+                .rounded(px(16.))
+                .bg(palette.primary)
+                .text_color(palette.background)
+                .text_size(px(13.))
+                .font_weight(FontWeight::SEMIBOLD)
+                .child("Jump to present")
+                .on_click(cx.listener(|_, _, _, cx| cx.emit(MessageListEvent::JumpToPresent))),
+        )
 }

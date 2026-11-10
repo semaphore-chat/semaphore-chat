@@ -16,7 +16,7 @@ use super::view::{
 use super::{MediaSource, ReplyPreview};
 use gpui_kit::*;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, ListOp, MessageRow, SegKind, SendState, TextStyle,
+    AttachmentKind, AttachmentView, ListOp, MessageRow, ReplyToView, SegKind, SendState, TextStyle,
 };
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -1290,4 +1290,85 @@ fn a_press_on_the_scrollbar_does_not_start_a_selection(cx: &mut TestAppContext) 
     cx.simulate_mouse_up(elsewhere, MouseButton::Left, Modifiers::default());
     draw(cx);
     assert_eq!(selected(&view, cx), "", "dragging the bar selects nothing");
+}
+
+fn has_label(label: &str, cx: &mut VisualTestContext) -> bool {
+    use gpui_kit::test::TestQueryExt as _;
+    cx.update(|window, _| !window.find_all_by_label(label).is_empty())
+}
+
+fn click_id(id: impl Into<ElementId>, cx: &mut VisualTestContext) {
+    use gpui_kit::test::TestWindowExt as _;
+    let id = id.into();
+    cx.update(|window, cx| window.click(id, cx));
+    draw(cx);
+}
+
+#[gpui_kit::test]
+fn a_detached_list_asks_for_newer_rows_and_offers_the_present(cx: &mut TestAppContext) {
+    let (view, cx) = open_list(cx, one_author(0, 300), Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    let count = |events: &Rc<RefCell<Vec<MessageListEvent>>>, wanted: &MessageListEvent| {
+        events.borrow().iter().filter(|event| *event == wanted).count()
+    };
+    // At the live edge, the end of the rows is the end: nothing to ask for, no button.
+    settle(cx);
+    assert_eq!(count(&events, &MessageListEvent::LoadNewer), 0);
+    assert!(!has_label("Jump to present", cx));
+
+    view.update(cx, |view, cx| view.set_detached(true, cx));
+    settle(cx);
+    assert_eq!(count(&events, &MessageListEvent::LoadNewer), 1);
+    settle(cx);
+    assert_eq!(count(&events, &MessageListEvent::LoadNewer), 1, "once until rows arrive");
+
+    assert!(has_label("Jump to present", cx));
+    click_id("jump-to-present", cx);
+    assert_eq!(count(&events, &MessageListEvent::JumpToPresent), 1);
+
+    // Newer rows arriving at the end let it ask again.
+    view.update(cx, |view, cx| {
+        view.apply(
+            ListOp::Insert {
+                index: 300,
+                rows: one_author(300, 5),
+            },
+            cx,
+        );
+    });
+    settle(cx);
+    assert_eq!(count(&events, &MessageListEvent::LoadNewer), 2);
+
+    view.update(cx, |view, cx| view.set_detached(false, cx));
+    settle(cx);
+    assert!(!has_label("Jump to present", cx));
+}
+
+#[gpui_kit::test]
+fn clicking_a_quote_opens_the_message_it_answers(cx: &mut TestAppContext) {
+    let mut rows = one_author(0, 3);
+    rows[2].reply_to = Some(ReplyToView {
+        message_id: "m-answered".into(),
+        author: rows[0].author.clone(),
+        text: "the question".into(),
+        deleted: false,
+    });
+    let replies = HashMap::from([(
+        2,
+        ReplyPreview {
+            author: "Ava".into(),
+            text: "the question".into(),
+            deleted: false,
+        },
+    )]);
+    let (view, cx) = open_with_replies(cx, rows, replies, Rc::new(NoMedia));
+    let events = record_events(&view, cx);
+    settle(cx);
+    click_id(("reply", 2u64), cx);
+    assert_eq!(
+        events.borrow().as_slice(),
+        [MessageListEvent::OpenReply {
+            message_id: "m-answered".into()
+        }]
+    );
 }
