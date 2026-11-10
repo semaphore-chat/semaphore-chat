@@ -22,6 +22,8 @@
 #   --host               run the app on this desktop, not in the container
 #   --no-sandbox         with --host, if Chromium's sandbox can't start here
 #   --keep               leave the backend, LiveKit and databases running
+#   --dry-run            build, measure disk, start and seed the stack, then stop before
+#                        launching the app (checks the harness without a window)
 #
 # Writes <out>/results.json, valid against result.schema.json. Exits 2 if it is
 # invalid, 3 if it is valid but a scenario failed validation.
@@ -49,7 +51,7 @@ SCALE=1
 COLD_RUNS=0
 LOAD_WAIT=180
 RELEASE=
-BUILD=false KEEP=false HOST=false NO_SANDBOX_FLAG=false
+BUILD=false KEEP=false HOST=false NO_SANDBOX_FLAG=false DRY_RUN=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ticket) TICKET="$2"; shift 2 ;;
@@ -65,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --host) HOST=true; shift ;;
     --no-sandbox) NO_SANDBOX_FLAG=true; shift ;;
     --keep) KEEP=true; shift ;;
+    --dry-run) DRY_RUN=true; shift ;;
     -h|--help) sed -n '2,/^set -euo/p' "$0" | sed -e 's/^# \{0,1\}//' -e '/^set -euo/d'; exit 0 ;;
     *) die "unknown option $1" ;;
   esac
@@ -254,6 +257,11 @@ stop_publishers() {
   docker stop -t 15 "$PUBLISHERS" >/dev/null 2>&1 || true
   docker rm -f "$PUBLISHERS" >/dev/null 2>&1 || true
 }
+
+if [[ "$DRY_RUN" == true ]]; then
+  log "dry run: stack up and seeded ($(tool python3 -c 'import json; print(json.load(open("/out/seed.json"))["channels"])')); not launching the app"
+  exit 0
+fi
 
 log "signing in on a fresh profile"
 step prep

@@ -5,7 +5,7 @@
 //!   rig-list fling  --out x.json [--arm rows|textview|real] [--image-cache lru|global] [--messages N] [--up-secs S]
 //!   rig-list idle-real --out x.json
 //!   rig-list jump   --out x.json
-//!   rig-list select --out x.json [--shot-wait-file PATH]
+//!   rig-list select --out x.json [--shot-wait-file PATH] [--wait-secs S] [--expected-out PATH]
 //!   rig-list idle   --out x.json
 
 use anyhow::{Context as _, Result, bail};
@@ -40,6 +40,8 @@ struct Args {
     v0: f64,
     image_dir: PathBuf,
     wait_file: Option<PathBuf>,
+    wait_secs: u64,
+    expected_out: Option<PathBuf>,
     no_images: bool,
 }
 
@@ -58,6 +60,8 @@ fn parse_args() -> Result<Args> {
         v0: 9000.,
         image_dir: PathBuf::from("/tmp/rig-list-images"),
         wait_file: None,
+        wait_secs: 60,
+        expected_out: None,
         no_images: false,
     };
     while let Some(flag) = raw.next() {
@@ -79,6 +83,8 @@ fn parse_args() -> Result<Args> {
             "--v0" => args.v0 = value.parse()?,
             "--image-dir" => args.image_dir = value.into(),
             "--shot-wait-file" => args.wait_file = Some(value.into()),
+            "--wait-secs" => args.wait_secs = value.parse()?,
+            "--expected-out" => args.expected_out = Some(value.into()),
             other => bail!("unknown flag {other}"),
         }
     }
@@ -664,6 +670,12 @@ fn open_scripted(
         })
     })
     .expect("opening the window");
+    // Focused, so a real Ctrl+C reaches the list's CopySelection binding.
+    handle
+        .update(cx, |_, window, cx| {
+            view.read(cx).focus_handle().clone().focus(window, cx)
+        })
+        .expect("focusing the list");
     (view, handle, frames)
 }
 
@@ -865,6 +877,7 @@ fn run_select(args: Args, cx: &mut App) {
     let (view, handle, frames) = open_scripted(&args, args.messages, cx);
     let out = args.out.clone();
     let wait_file = args.wait_file.clone();
+    let (wait_secs, expected_out) = (args.wait_secs, args.expected_out.clone());
     cx.spawn(async move |cx| {
         frames.wait(10, cx).await;
         let (cpu_start, run_start) = (cpu_seconds(), Instant::now());
@@ -949,6 +962,10 @@ fn run_select(args: Args, cx: &mut App) {
             }
         }
         let expected = expected.join("\n");
+        // For an outside reader of the clipboard (the desk kit's wl-paste check).
+        if let Some(path) = &expected_out {
+            std::fs::write(path, &expected).expect("writing the expected text");
+        }
         let copy_started = Instant::now();
         view.update(cx, |view, cx| view.copy(cx));
         let copy_ms = copy_started.elapsed().as_secs_f64() * 1000.0;
@@ -1011,7 +1028,7 @@ fn run_select(args: Args, cx: &mut App) {
         // Lets a screenshot run against the finished selection. Bounded by the script's timeout.
         if let Some(file) = wait_file {
             let started = Instant::now();
-            while !file.exists() && started.elapsed() < Duration::from_secs(60) {
+            while !file.exists() && started.elapsed() < Duration::from_secs(wait_secs) {
                 refresh(&view, cx);
                 frames.wait(1, cx).await;
             }
@@ -1139,6 +1156,11 @@ fn main() -> Result<()> {
     let args = parse_args()?;
     gpui_kit::application().run(move |cx| {
         gpui_kit::init(cx);
+        cx.bind_keys([KeyBinding::new(
+            "ctrl-c",
+            rig_list::view::CopySelection,
+            Some("MessageList"),
+        )]);
         cx.activate(true);
         match args.mode.as_str() {
             "fling" => run_fling(args, cx),
