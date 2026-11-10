@@ -83,7 +83,7 @@ pub enum Step {
 }
 
 /// Splits on spaces, keeping double-quoted runs whole. A `#` outside quotes ends the line.
-fn words(line: &str) -> Result<Vec<String>, String> {
+pub fn words(line: &str) -> Result<Vec<String>, String> {
     let mut words = Vec::new();
     let mut chars = line.chars().peekable();
     while let Some(&c) = chars.peek() {
@@ -121,7 +121,7 @@ fn words(line: &str) -> Result<Vec<String>, String> {
     Ok(words)
 }
 
-fn step(words: &[&str]) -> Result<Step, String> {
+pub fn step(words: &[&str]) -> Result<Step, String> {
     let number = |value: &str, what: &str| {
         value
             .parse::<u32>()

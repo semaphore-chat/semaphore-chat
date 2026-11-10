@@ -24,7 +24,7 @@ Spec files exist for U1-U4, which go to DeepSeek Flash. The rest get theirs from
 | U10 composer | `ui/src/composer` | U3 | **opus-medium** | U5, U6, U7, U8, U9, U11, U12 |
 | U11 voice | `semaphore-media-livekit`, `ui/src/voice` | U0; final patch from the video agent | **opus-high** | U5-U10, U12 |
 | U12 image dimensions | `backend/` on the API-contract stack | That stack landing | sonnet-medium | Everything |
-| U13 app | `semaphore-app`, `scripts/slice-e2e.sh` | All | **opus-medium** | Nothing |
+| U13 app | `semaphore-app`, `rigs/slice`, `scripts/slice-{e2e,run}.sh` | All | **opus-medium** | Nothing; phase 1 done |
 | U14 measure | `results/slice` | U13 | Fresh **opus-medium**; scripts Flash | Nothing: it measures, so run it alone |
 
 **Rules for running them.**
@@ -49,7 +49,8 @@ inside `cache.rs`, which U5 replaces with typed entries.
 
 - **The pinned contract lacks the auth contract.** `security/release` isn't an ancestor of the pin,
   so `X-Client-Type` isn't in `contract/openapi.json`. U7 sends it by hand (`desktop-native`, with `X-Device-Id` and a `User-Agent`, which the backend requires of native clients). Real-backend flows need
-  a backend with both, which is `security/release` plus the API-contract stack.
+  a backend with both, which is `security/release` plus the API-contract stack. The smoke test that
+  proves it, once one exists: [docs/slice-app.md](../slice-app.md#a-real-backend-smoke-test-later).
 - **U5 must keep `scripts/test-policy.sh` working when core gains `semaphore-wire`:** its fixture
   copies core alone and has its own `[workspace.dependencies]`. Keep `[dependencies]` last in core's
   `Cargo.toml` too, because that script appends to the file.
@@ -67,7 +68,20 @@ inside `cache.rs`, which U5 replaces with typed entries.
 
 ## U13 must do
 
-Core and the media crate provide these, but nothing calls them until the app does:
+U13 is in four phases, each leaving the app runnable: **1 text client (done)**, 2 voice, 3 session
+restore and OS lifecycle, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
+
+**Done in phase 1:** the app (`semaphore-app` as a library and binary; core on a Tokio runtime of its
+own, events to GPUI through a channel), `CoreSource` over core's load states, members (with the
+truncated flag) and rail counts, the list's `LoadNewer`, "Jump to present" and reply click,
+`DiscardFailed`, channel permissions and slowmode to the composer, `send_settled` after every
+`Send`, typing over the socket, the composer on U6's mention functions, `messages::init`,
+`with_list_frame_policy`, `video_window_options`, `UiAssets` and `Root`. Core gained `load_state`,
+`retry_failed`, `last_sign_out`, `probe_server` and `send_typing`, and a 401 after the backend's
+refresh ends the session as `AuthLost` does. `SocketRealtime` now asks for typed send acks
+(`auth.protocol: 2`); without it a refused send waited out the 10 s ack timeout.
+
+**Phase 2, voice.** Core and the media crate provide these, but nothing calls them yet:
 
 - **The voice heartbeat.** Call `Core::refresh_voice_presence` about every 30 s for as long as the
   app lives. The server's presence TTL is 90 s, so without it a user drops off the voice roster about
@@ -79,28 +93,43 @@ Core and the media crate provide these, but nothing calls them until the app doe
 - **Report the engine to core.** Forward `LiveKitEngine::subscribe()` to `Core::ingest_media`, sending
   `snapshot.voice`. Without it `Core::voice()` has no tracks or speaking, and a call the engine ends
   still reads as connected.
-- **`CoreSource`'s new reads** (`ui/src/shell/source.rs`): `members` from `Core::members`, mapping
-  `MemberView` to `MemberRow` and showing `MemberList::truncated`; `rail_counts` from
-  `Core::rail_counts`. They return empty today. `Core::members` returns `None` while loading, which is
-  `Load::Loading`. Listen for `ViewKey::Members` and `ViewKey::Rail`.
-- **`TileDemand` to `VideoDemand`.** `VoiceController::set_video_demands` takes the UI's `TileDemand`.
-  Convert it and call `Core::set_video_demands`, or replace it with `core::model::VideoDemand`.
-- **The `QualityLevel` mapping.** `VoiceStageModel` reads quality from its own map. Fill it from
-  `ParticipantView::quality`, and `reconnect_attempt` from `VoiceView::reconnect_attempt`.
-- **Wire up the rest of the row and list:** `MessageRow::reply_to` to `ListData::replies`, a
-  `LoadNewer` event from `Core::at_live_edge` and `Core::load_newer`, a "jump to present" through
-  `Core::jump_to_present`, a reply click through `Core::open_conversation_at`,
-  `MessageListEvent::DiscardFailed` to `Core::discard_failed_send`, `MediaSource::emoji` from
-  `Core::custom_emojis`, and `ChannelRow::{slowmode_seconds, permissions}` to the composer. A `None`
-  in `permissions` fails open.
+- **The call id (approved).** `MediaEngine::connect(url, token, call)` and
+  `Core::ingest_media(call, view)`: core numbers each join, the engine stamps every report with it,
+  and a `Disconnected` for the current call ends it whether or not core saw it connected. This
+  replaces the `was_live` guard, which misses a call that connects and drops between two reports.
+- **`Effect::EndCall` on `AuthLost`.** A lost session resets core's voice state but leaves the engine
+  connected.
+- **`TileDemand` to `VideoDemand`**, **the `QualityLevel` mapping** from `ParticipantView::quality`,
+  and `reconnect_attempt` from `VoiceView::reconnect_attempt`.
+- Closing the window during a call quits and leaves the call (Mike may overrule).
 
-Some UI comments still say core lacks these (`shell/source.rs`, `voice/model.rs`, `messages/view.rs`).
-Drop each as its gap closes.
+**Phase 3, restore and lifecycle.** `Core::restore_session(url)`, answering `SignedIn`, `NoSession`,
+`Refused` or `Unreachable`; `HttpBackend` reads the last server and its refresh token with the device
+id at construction, records the last server at sign-in, and gets a `flush` for its store queue at
+shutdown (a rotated token lost at exit trips the server's reuse detection). Suspend, resume and
+network changes from logind and NetworkManager (zbus 5 on async-io: `scripts/check-zbus-tokio.sh`
+guards it) and Windows' power and interface notifications, plus a boottime-against-monotonic jump
+check where neither exists. The e2e's restart steps.
+
+**Phase 4, media.** `MediaSource` over a memory-only file cache (`Core::file`), avatars, custom emoji
+from `Core::custom_emojis` with unknown ones drawn as `:name:`, mention avatars, the emoji picker,
+the file dialog, and uploads on `Send`. **Decide first:** the web sends a message with
+`pendingAttachments` and then uploads each file against it (`useMessageFileUpload.ts`), but
+`MessageDraft::attachment_file_ids` assumes the files upload first. Core's send pipeline follows one
+of the two. The e2e's upload step (step 6) waits on this.
+
+Some UI comments still say core lacks these (`voice/model.rs`). Drop each as its gap closes.
 
 ## Follow-ups, not cut
 
 Later in the order, not out of scope:
 
+- **A thread pane.** `MessageListEvent::OpenThread` logs; core opens threads already.
+- **Editing.** `ComposerEvent::EditLastMessage` logs; core has no edit command.
+- **Browser sign-in, registration, password reset.** Browser sign-in needs the client-type backend;
+  Register and Forgot password open the server's web app.
+- **Notifications.** `DesktopNotifier` works (notify-rust's zbus is async-io, so it doesn't panic on
+  a Tokio worker, but it blocks: run it on its own thread), but core has no event that says to notify.
 - **A DM list read.** Core has DM counts but no `direct-messages` read, so `Route::DirectMessages` has
   nothing to list.
 - **Publishing the local camera and screen.** The engine only receives video: a user's own

@@ -931,7 +931,8 @@ fn render_failed(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
                             },
                             cx,
                         );
-                    }),
+                    })
+                    .test_support(),
                 )
             })
             .child(
@@ -949,7 +950,8 @@ fn render_failed(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
                         },
                         cx,
                     );
-                }),
+                })
+                .test_support(),
             )
             .into_any_element(),
     )

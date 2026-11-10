@@ -762,7 +762,9 @@ impl MessageList {
         if self.detached && !self.asked_newer {
             let count = self.list.item_count();
             let near_end = count == 0
-                || self.list.item_is_below_viewport(count.saturating_sub(LOAD_OLDER_WITHIN))
+                || self
+                    .list
+                    .item_is_below_viewport(count.saturating_sub(LOAD_OLDER_WITHIN))
                     == Some(false);
             if near_end {
                 self.asked_newer = true;
@@ -885,7 +887,9 @@ impl Render for MessageList {
                 .size_0(),
             )
             .when(self.scrollbar, |root| root.vertical_scrollbar(&self.list))
-            .when(self.detached, |root| root.child(render_jump_to_present(&palette, cx)))
+            .when(self.detached, |root| {
+                root.child(render_jump_to_present(&palette, cx))
+            })
     }
 }
 

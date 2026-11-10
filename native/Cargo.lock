@@ -7422,6 +7422,12 @@ dependencies = [
  "anyhow",
  "async-channel",
  "gpui-kit",
+ "log",
+ "rig-shot",
+ "semaphore-app",
+ "semaphore-core",
+ "semaphore-ui",
+ "serde_json",
  "tokio",
 ]
 
@@ -7927,12 +7933,15 @@ dependencies = [
 name = "semaphore-app"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
  "gpui-kit",
+ "log",
  "semaphore-core",
  "semaphore-media-livekit",
  "semaphore-net",
  "semaphore-platform-desktop",
  "semaphore-ui",
+ "tokio",
 ]
 
 [[package]]

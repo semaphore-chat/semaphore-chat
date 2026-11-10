@@ -37,10 +37,11 @@ step() { # <name> <command...>
 step "vendored crates match series" "$NATIVE_DIR/third_party/vendor.sh" --check
 step "contract matches PIN" "$NATIVE_DIR/scripts/pin-contract.sh" --check
 step "cargo build --workspace" "$IN_IMAGE" cargo build --locked --workspace
-step "cargo test -p semaphore-core" "$IN_IMAGE" cargo test --locked -p semaphore-core
+step "cargo test --workspace" "$IN_IMAGE" cargo test --locked --workspace
 step "cargo fmt --check" "$IN_IMAGE" cargo fmt --all --check
-step "cargo clippy" "$IN_IMAGE" cargo clippy --locked --workspace -- -D warnings
+step "cargo clippy" "$IN_IMAGE" cargo clippy --locked --workspace --all-targets -- -D warnings
 step "cargo deny check" "$IN_IMAGE" cargo deny check
+step "zbus 5 has no tokio feature" "$IN_IMAGE" scripts/check-zbus-tokio.sh
 step "core boundary" "$IN_IMAGE" python3 scripts/check-core-boundary.py
 step "guards reject bad input" "$IN_IMAGE" scripts/test-policy.sh
 step "core: cargo check Android" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-linux-android

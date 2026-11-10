@@ -98,6 +98,14 @@ impl AuthScreen {
         cx.notify();
     }
 
+    /// Fills in the server URL field, for an app that remembers or was told one.
+    pub fn set_server_url(&mut self, url: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let url = url.to_owned();
+        self.server_url
+            .update(cx, |field, cx| field.set_value(url, window, cx));
+        cx.notify();
+    }
+
     pub fn set_session(&mut self, session: SessionState, cx: &mut Context<Self>) {
         self.session = session;
         cx.notify();

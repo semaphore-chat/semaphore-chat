@@ -101,6 +101,20 @@ native/scripts/desk/baseline.sh --short    # about 20 minutes, without the 30-mi
   resolution). If Chromium's sandbox can't start, pass the harness's `--no-sandbox` by running
   `scripts/native-baseline/run.sh --host --no-sandbox ...` directly.
 
+## The slice app: T4 IME, T5 screen reader
+
+```bash
+native/scripts/slice-run.sh                 # the real app against the fake server
+```
+
+- **Takes:** several minutes to build the first time, then seconds.
+- **You see:** the Semaphore window, on a server URL that's already filled in. Connect, then sign in
+  with any name and any password but `wrong`.
+- **You do:** the T4 and T5 checks, and anything else in
+  [`docs/slice-app.md`](../../docs/slice-app.md#what-to-try). Closing the window stops the server.
+- **Pass:** T4 and T5 have their bars in `docs/spike-results.md`; the rest is judgement, with
+  screenshots and `SEMAPHORE_LOG=info` output for anything off.
+
 ## What the kit adds to the rigs
 
 - `rigs/video`: the T1 GPUI video rig, moved from the video agent's notes (`gpui-rig/rig`), outside

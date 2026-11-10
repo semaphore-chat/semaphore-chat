@@ -432,7 +432,9 @@ pub enum LoadState {
     Loading,
     Ready,
     /// The last fetch failed. Core won't try again until `Core::retry_failed`, or a new connection.
-    Failed { error: ErrorView },
+    Failed {
+        error: ErrorView,
+    },
 }
 
 /// Why the last session ended, for the sign-in screen to say.

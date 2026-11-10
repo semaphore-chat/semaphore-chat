@@ -237,10 +237,7 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         return response;
     }
 
-    if operation.is_some()
-        && !is_public(operation)
-        && !has_bearer(request.headers())
-    {
+    if operation.is_some() && !is_public(operation) && !has_bearer(request.headers()) {
         let response = inner.error(401, "UNAUTHENTICATED", "Missing bearer token", false);
         inner.record_http(
             method.as_str(),

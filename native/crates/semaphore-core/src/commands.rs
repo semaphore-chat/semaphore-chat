@@ -380,7 +380,9 @@ impl Core {
                 Err(error) => {
                     log::warn!("fetching {key:?} failed: {error}");
                     if let Some(view) = view_for(&key) {
-                        state.failed_queries.insert(key.clone(), core_error_view(&error));
+                        state
+                            .failed_queries
+                            .insert(key.clone(), core_error_view(&error));
                         state.view_changed(view);
                     }
                 }
@@ -1242,9 +1244,7 @@ impl Core {
     /// Asks a server about itself before signing in: whether it answers at all, and its name. Points
     /// the backend at `server_url`, as `sign_in` does.
     pub async fn probe_server(&self, server_url: String) -> Result<ServerInfo, CoreError> {
-        let services = self
-            .services()
-            .ok_or_else(|| unavailable("the backend"))?;
+        let services = self.services().ok_or_else(|| unavailable("the backend"))?;
         let url = server_url.trim().trim_end_matches('/').to_owned();
         services.backend.set_server_url(url.clone());
         let settings = services

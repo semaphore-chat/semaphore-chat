@@ -354,6 +354,16 @@ impl FakeServer {
 
     /// Start on a chosen loopback port (`0` for ephemeral).
     pub async fn start_on(source: ScenarioSource, port: u16) -> Result<Self, ScenarioError> {
+        Self::start_at(source, std::net::Ipv4Addr::LOCALHOST, port).await
+    }
+
+    /// Start on `ip`, for a server in a container that a client outside it uses: `0.0.0.0` there.
+    /// `base_url` still says loopback; a client outside uses the container's own address.
+    pub async fn start_at(
+        source: ScenarioSource,
+        ip: std::net::Ipv4Addr,
+        port: u16,
+    ) -> Result<Self, ScenarioError> {
         let scenario = scenario::Scenario::load(&source)?;
         let epoch = scenario.epoch;
         let data = Data {
@@ -364,9 +374,9 @@ impl FakeServer {
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),
         };
-        let listener = tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+        let listener = tokio::net::TcpListener::bind((ip, port))
             .await
-            .map_err(|error| ScenarioError(format!("cannot bind loopback port {port}: {error}")))?;
+            .map_err(|error| ScenarioError(format!("cannot bind {ip}:{port}: {error}")))?;
         let address = listener
             .local_addr()
             .map_err(|error| ScenarioError(format!("cannot read the bound address: {error}")))?;

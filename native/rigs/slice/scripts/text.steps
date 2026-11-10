@@ -1,0 +1,111 @@
+# U13 phase 1: the text client end to end against semaphore-fake-server (scenario showcase).
+# Shots named *-live-* can differ between runs and aren't compared.
+
+# 1. Probe the server, then sign in.
+app 1280 800
+wait idle
+expect label "Server URL"
+shot 01-server-url
+click auth-connect
+wait core label "Username" within 5
+wait idle
+shot 02-sign-in
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+expect requests AuthController_login >= 1
+expect requests InstanceController_getPublicSettings >= 1
+
+# 2. Lists: communities, the first one's channels, its first text channel's first page.
+wait core channel cc-general
+wait core rows >= 14
+wait core connection connected
+expect label "Couch Co-op"
+expect label "Members"
+wait idle
+shot 03-general
+
+# 3. Select across rows and copy.
+drag 420 168 575 322
+press ctrl-c
+expect clipboard "are we doing friday or not"
+expect clipboard "yeah i'll bring it friday"
+wait idle
+shot 04-selection
+press escape
+
+# 4. A mention from the picker.
+click channel-cc-lfg
+wait core channel cc-lfg
+wait core rows >= 3
+click channel-cc-general
+wait core channel cc-general
+wait core rows >= 14
+type "on it @drop"
+wait idle
+shot 05-mention-menu
+press enter
+type "thanks"
+expect requests typingStart >= 1
+
+# 5. Send: a pending row, acked by its nonce, exactly once.
+press enter
+wait core sent "on it @dropbear thanks"
+expect core count "on it @dropbear thanks" 1
+expect requests sendMessage >= 1
+wait idle
+shot 06-sent
+
+# 7. A send the server refuses: shown failed, retried with the same nonce, then one discarded.
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "second try works"
+press enter
+wait core failed "second try works" within 3
+wait idle
+shot 07-failed
+click-row retry "second try works"
+wait core sent "second try works"
+expect core count "second try works" 1
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "this one goes away"
+press enter
+wait core failed "this one goes away" within 3
+click-row discard "this one goes away"
+wait core no-text "this one goes away"
+
+# 8. A message from someone else arrives live.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"live from pri\"}"
+wait core text "live from pri"
+wait idle
+shot 08-incoming
+
+# 9. The socket drops; a message posted meanwhile reaches nobody; reconnecting resyncs it in.
+server refuse_connections "{\"refuse\": true}"
+server drop_connections
+wait core connection disconnected
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-samira\", \"text\": \"missed while away\", \"broadcast\": false}"
+wait idle
+shot 09-live-reconnecting
+expect core no-text "missed while away"
+server refuse_connections "{\"refuse\": false}"
+wait core connection connected within 40
+wait core text "missed while away"
+expect core count "missed while away" 1
+expect core count "on it @dropbear thanks" 1
+wait idle
+shot 10-resynced
+
+# 12. Sign out from the account menu.
+click rail-account
+wait core label "Sign out"
+wait idle
+shot 11-account
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+expect requests AuthController_logout >= 1
+wait idle
+shot 12-signed-out

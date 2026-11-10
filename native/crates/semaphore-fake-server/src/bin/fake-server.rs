@@ -1,4 +1,4 @@
-//! `fake-server --scenario <name> [--port N]`
+//! `fake-server --scenario <name> [--port N] [--bind IP]`
 //!
 //! Serves one scenario until killed, and exposes the control API at
 //! `POST /__control/<name>` for scripts.
@@ -6,7 +6,7 @@
 use semaphore_fake_server::{FakeServer, ScenarioSource, load_named};
 
 fn usage() -> ! {
-    eprintln!("usage: fake-server --scenario <name> [--port N]");
+    eprintln!("usage: fake-server --scenario <name> [--port N] [--bind IP]");
     std::process::exit(2);
 }
 
@@ -14,6 +14,7 @@ fn usage() -> ! {
 async fn main() {
     let mut scenario = None;
     let mut port = 0u16;
+    let mut bind = std::net::Ipv4Addr::LOCALHOST;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -21,6 +22,10 @@ async fn main() {
             "--port" => {
                 let Some(value) = args.next() else { usage() };
                 port = value.parse().unwrap_or_else(|_| usage());
+            }
+            "--bind" => {
+                let Some(value) = args.next() else { usage() };
+                bind = value.parse().unwrap_or_else(|_| usage());
             }
             "--help" | "-h" => usage(),
             other => {
@@ -39,9 +44,12 @@ async fn main() {
             std::process::exit(1);
         }
     };
-    match FakeServer::start_on(source, port).await {
+    match FakeServer::start_at(source, bind, port).await {
         Ok(server) => {
-            println!("fake-server {scenario} listening on {}", server.base_url());
+            println!(
+                "fake-server {scenario} listening on {} (bound to {bind})",
+                server.base_url()
+            );
             std::future::pending::<()>().await;
         }
         Err(error) => {

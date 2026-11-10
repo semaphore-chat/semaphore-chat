@@ -1309,7 +1309,11 @@ fn a_detached_list_asks_for_newer_rows_and_offers_the_present(cx: &mut TestAppCo
     let (view, cx) = open_list(cx, one_author(0, 300), Rc::new(NoMedia));
     let events = record_events(&view, cx);
     let count = |events: &Rc<RefCell<Vec<MessageListEvent>>>, wanted: &MessageListEvent| {
-        events.borrow().iter().filter(|event| *event == wanted).count()
+        events
+            .borrow()
+            .iter()
+            .filter(|event| *event == wanted)
+            .count()
     };
     // At the live edge, the end of the rows is the end: nothing to ask for, no button.
     settle(cx);
@@ -1320,7 +1324,11 @@ fn a_detached_list_asks_for_newer_rows_and_offers_the_present(cx: &mut TestAppCo
     settle(cx);
     assert_eq!(count(&events, &MessageListEvent::LoadNewer), 1);
     settle(cx);
-    assert_eq!(count(&events, &MessageListEvent::LoadNewer), 1, "once until rows arrive");
+    assert_eq!(
+        count(&events, &MessageListEvent::LoadNewer),
+        1,
+        "once until rows arrive"
+    );
 
     assert!(has_label("Jump to present", cx));
     click_id("jump-to-present", cx);

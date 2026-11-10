@@ -118,10 +118,7 @@ impl Shell {
                             .px(spacing(2.))
                             .py(spacing(1.5))
                             .text_color(sem.text_secondary)
-                            .child(text(
-                                Variant::Caption,
-                                "Showing the first 1,000 members",
-                            )),
+                            .child(text(Variant::Caption, "Showing the first 1,000 members")),
                     );
                 }
                 list.into_any_element()

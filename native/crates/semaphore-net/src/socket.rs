@@ -53,6 +53,10 @@ pub trait TokenSource: Send + Sync {
     async fn refresh(&self) -> Refresh;
 }
 
+/// `SOCKET_PROTOCOL_SEND_ACK` in `@semaphore-chat/shared`: the handshake's `auth.protocol` that gets
+/// typed send acks.
+pub const SOCKET_PROTOCOL_SEND_ACK: u32 = 2;
+
 #[derive(Clone)]
 pub struct SocketConfig {
     pub base_url: String,
@@ -413,7 +417,13 @@ impl Actor {
             other_frame => return Err(other(format!("expected engine open, got {other_frame:?}"))),
         };
         let token = self.tokens.access_token().await.unwrap_or_default();
-        let hello = socketio::encode_connect(&json!({ "token": format!("Bearer {token}") }));
+        // `protocol` asks for typed send acks (`SendAckDto`), as the web's `socketSingleton.ts` does.
+        // Without it the server acks a send with a bare id, and a refused one gets no ack at all,
+        // only an `exception` event: core then waits out its 10 s ack timeout.
+        let hello = socketio::encode_connect(&json!({
+            "token": format!("Bearer {token}"),
+            "protocol": SOCKET_PROTOCOL_SEND_ACK,
+        }));
         ws.send(Message::text(hello))
             .await
             .map_err(|error| other(format!("websocket error: {error}")))?;
@@ -783,6 +793,13 @@ fn jitter_unit() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connect packet's auth, whatever order serde_json keeps keys in: `preserve_order` is on when
+    /// the whole workspace builds and off for this crate alone.
+    fn handshake(packet: &str) -> Value {
+        let body = packet.strip_prefix("40").expect("a connect packet");
+        serde_json::from_str(body).expect("its auth is JSON")
+    }
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
 
@@ -849,7 +866,10 @@ mod tests {
         let (_client, _events) = client_for(&listener, Duration::from_millis(30)).await;
         let (mut ws, auth) = accept(&listener, 25_000).await;
 
-        assert_eq!(auth, r#"40{"token":"Bearer first"}"#);
+        assert_eq!(
+            handshake(&auth),
+            json!({ "token": "Bearer first", "protocol": 2 })
+        );
         assert_eq!(next_text(&mut ws).await, r#"42["subscribeAll"]"#);
         for _ in 0..3 {
             assert_eq!(
@@ -968,7 +988,10 @@ mod tests {
         ws.send(Message::text("41")).await.unwrap();
 
         let (_second, auth) = accept(&listener, 25_000).await;
-        assert_eq!(auth, r#"40{"token":"Bearer fresh"}"#);
+        assert_eq!(
+            handshake(&auth),
+            json!({ "token": "Bearer fresh", "protocol": 2 })
+        );
     }
 
     #[tokio::test]
@@ -1053,7 +1076,10 @@ mod tests {
         let (_second, auth) = timeout(Duration::from_secs(5), accept(&listener, 25_000))
             .await
             .unwrap();
-        assert_eq!(auth, r#"40{"token":"Bearer first"}"#);
+        assert_eq!(
+            handshake(&auth),
+            json!({ "token": "Bearer first", "protocol": 2 })
+        );
     }
 
     #[test]

@@ -3,8 +3,8 @@
 //! still wake and run once the rig ticks the scheduler again.
 
 use gpui_kit::*;
-use std::prelude::rust_2024::test;
 use std::cell::Cell;
+use std::prelude::rust_2024::test;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};

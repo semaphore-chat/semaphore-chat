@@ -8,6 +8,14 @@ publish.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-async-channel = "2"
 gpui-kit = { workspace = true, features = ["test-support"] }
+log.workspace = true
+rig-shot = { path = "../shot" }
+semaphore-app = { path = "../../crates/semaphore-app" }
+semaphore-core.workspace = true
+semaphore-ui.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+async-channel = "2"
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }

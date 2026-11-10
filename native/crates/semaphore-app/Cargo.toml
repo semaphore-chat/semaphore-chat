@@ -6,10 +6,20 @@ edition.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "semaphore-app"
+path = "src/main.rs"
+
 [dependencies]
+async-channel = "2"
 gpui-kit.workspace = true
+log.workspace = true
 semaphore-core.workspace = true
 semaphore-media-livekit.workspace = true
 semaphore-net.workspace = true
 semaphore-platform-desktop.workspace = true
 semaphore-ui.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "time"] }

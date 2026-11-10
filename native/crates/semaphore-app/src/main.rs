@@ -1,25 +1,13 @@
 // No console window on Windows release builds.
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
-use gpui_kit::component::Root;
 use gpui_kit::*;
-use semaphore_core::{Core, CoreEvent, EventSink};
-use semaphore_platform_desktop::SystemClock;
-use semaphore_ui::Shell;
+use semaphore_app::AppConfig;
+use semaphore_platform_desktop::{KeyringSecrets, SystemClock};
 use semaphore_ui::kit::UiAssets;
-use semaphore_ui::nav::Route;
-use semaphore_ui::shell::CoreSource;
+use semaphore_ui::messages::TimeFormat;
 use std::process::ExitCode;
-use std::rc::Rc;
 use std::sync::Arc;
-
-struct LogEvents;
-
-impl EventSink for LogEvents {
-    fn on_event(&self, event: CoreEvent) {
-        eprintln!("core: {event:?}");
-    }
-}
 
 /// `semaphore-app --probe-media <url> <token>`: join a LiveKit room, leave, exit.
 ///
@@ -45,31 +33,90 @@ fn run_media_probe(args: &[String]) -> Option<ExitCode> {
     }
 }
 
+/// Log lines to stderr, at `SEMAPHORE_LOG` (error, warn, info, debug, trace; warn by default).
+struct StderrLog(log::LevelFilter);
+
+impl log::Log for StderrLog {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= self.0
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            eprintln!("{} {}: {}", record.level(), record.target(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+fn init_logging() {
+    let level = std::env::var("SEMAPHORE_LOG")
+        .ok()
+        .and_then(|level| level.parse().ok())
+        .unwrap_or(log::LevelFilter::Warn);
+    if log::set_boxed_logger(Box::new(StderrLog(level))).is_ok() {
+        log::set_max_level(level);
+    }
+}
+
+fn usage() -> ExitCode {
+    eprintln!("usage: semaphore-app [--server <url>] | --probe-media <url> <token>");
+    ExitCode::from(2)
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = run_media_probe(&args) {
         return code;
     }
-
-    let core = Arc::new(Core::new(Arc::new(SystemClock), Arc::new(LogEvents)));
-    let connection = core.connection();
+    let server_url = match args.as_slice() {
+        [] => None,
+        [flag, url] if flag == "--server" => Some(url.clone()),
+        _ => return usage(),
+    };
+    init_logging();
 
     gpui_kit::application()
         .with_assets(UiAssets)
         .run(move |cx| {
-            gpui_kit::init(cx);
-            semaphore_ui::theme::init(cx);
-            gpui_kit::open_window(WindowOptions::default(), cx, |window, cx| {
-                // U13 wires the real content, the auth flow and the events. This is the shell alone.
-                let content =
-                    Rc::new(|_: &_, _: &mut Window, _: &mut App| div().into_any_element());
-                let shell = cx.new(|cx| {
-                    let source = Rc::new(CoreSource(core.clone()));
-                    Shell::new(source, Route::Home, content, connection, cx)
-                });
-                cx.new(|cx| Root::new(shell, window, cx))
+            semaphore_app::init(cx);
+            let config = AppConfig {
+                secrets: Arc::new(KeyringSecrets::new()),
+                clock: Arc::new(SystemClock),
+                server_url,
+                time: TimeFormat::default(),
+                scrollbar: true,
+            };
+            let options = semaphore_app::window_options(WindowOptions {
+                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
+                    None,
+                    size(px(1280.), px(800.)),
+                    cx,
+                ))),
+                app_id: Some("app.semaphorechat.semaphore".into()),
+                titlebar: Some(TitlebarOptions {
+                    title: Some("Semaphore".into()),
+                    ..Default::default()
+                }),
+                ..WindowOptions::default()
+            });
+            let mut app_root = None;
+            gpui_kit::open_window(options, cx, |window, cx| {
+                let (root, app) = semaphore_app::build_root(config, window, cx);
+                app_root = Some(app);
+                root
             })
             .expect("failed to open the main window");
+            // Closing the window quits, and a quit ends the socket and core first.
+            cx.on_window_closed(|cx, _| cx.quit()).detach();
+            if let Some(app) = app_root {
+                cx.on_app_quit(move |cx| {
+                    app.update(cx, |app, _| app.shutdown());
+                    async {}
+                })
+                .detach();
+            }
         });
     ExitCode::SUCCESS
 }
