@@ -9,6 +9,7 @@
 pub mod apm;
 pub mod cpal_io;
 pub mod mixer;
+pub mod system;
 pub mod virtual_io;
 
 use std::any::Any;

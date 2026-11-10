@@ -136,3 +136,15 @@ jobs:
           name: semaphore-app-windows
           path: native/target/release/semaphore-app.exe
           if-no-files-found: error
+      # T11: system audio by WASAPI process loopback. Built here, run by hand on a real machine
+      # (scripts/desk/t11-sysaudio-windows.ps1); a hosted runner has no audio device.
+      - name: Build the T11 system audio rig
+        shell: bash
+        run: cargo build --locked --release -p rig-sysaudio
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rig-sysaudio-windows
+          path: |
+            native/target/release/rig-sysaudio.exe
+            native/scripts/desk/t11-sysaudio-windows.ps1
+          if-no-files-found: error

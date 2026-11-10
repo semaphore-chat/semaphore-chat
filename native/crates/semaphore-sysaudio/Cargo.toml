@@ -1,0 +1,33 @@
+[package]
+name = "semaphore-sysaudio"
+description = "System audio capture for screen share, minus our own call audio: PipeWire on Linux, WASAPI process loopback on Windows."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = ["media"]
+# The media crate's trait. Off, nothing here builds C, so Windows can be checked in the image.
+media = ["dep:semaphore-media-livekit"]
+
+[dependencies]
+log.workspace = true
+semaphore-media-livekit = { workspace = true, optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+pipewire = "0.10"
+
+# The version cpal already pulls, so Windows builds carry one copy.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_Variant",
+] }
+windows-core = "=0.62.2"

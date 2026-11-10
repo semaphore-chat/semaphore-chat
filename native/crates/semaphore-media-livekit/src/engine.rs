@@ -9,6 +9,9 @@ use crate::VideoSink;
 use crate::audio::apm::{Apm, AudioProcessing};
 use crate::audio::cpal_io::CpalIo;
 use crate::audio::mixer::{MAX_VOLUME_PERCENT, Mixer, MixerInput};
+use crate::audio::system::{
+    CaptureScope, STEREO_FRAME_SAMPLES, SYSTEM_AUDIO_CHANNELS, StereoChunker, SystemAudioCapture,
+};
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
@@ -37,7 +40,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 use tokio::sync::{mpsc, watch};
@@ -211,6 +214,16 @@ struct Inner {
     event_sink: RwLock<Option<Arc<dyn EventSink>>>,
     token_source: RwLock<Option<Arc<dyn TokenSource>>>,
     session: tokio::sync::Mutex<Option<Session>>,
+    /// The screen share's system audio, while it runs. Outlives a `Room`, so a rejoin republishes.
+    system_audio: Mutex<Option<SystemAudioShare>>,
+    /// 10 ms system audio frames dropped because the publisher fell behind, since the engine began.
+    system_audio_dropped: Arc<AtomicU64>,
+}
+
+struct SystemAudioShare {
+    source: NativeAudioSource,
+    _capture: AudioStream,
+    pump: JoinHandle<()>,
 }
 
 pub struct LiveKitEngine {
@@ -276,6 +289,8 @@ impl LiveKitEngine {
                 event_sink: RwLock::new(None),
                 token_source: RwLock::new(None),
                 session: tokio::sync::Mutex::new(None),
+                system_audio: Mutex::new(None),
+                system_audio_dropped: Arc::new(AtomicU64::new(0)),
             }),
             runtime: Some(runtime),
         }
@@ -386,6 +401,66 @@ impl LiveKitEngine {
             // The mic's callback holds the module it was opened with.
             self.inner.input_lost.store(true, Ordering::Relaxed);
             self.inner.reopen_lost_streams();
+        }
+    }
+
+    /// Starts capturing system audio (everything but our own call) and publishes it as the screen
+    /// share's audio track, in stereo with no voice processing, as the web client does. Works
+    /// before or during a call; a rejoin republishes it.
+    pub fn start_system_audio(&self, capture: &dyn SystemAudioCapture) -> Result<(), String> {
+        self.stop_system_audio();
+        let source = NativeAudioSource::new(
+            // Music and game sound, not speech: no echo cancelling, suppression or gain.
+            AudioSourceOptions::default(),
+            SAMPLE_RATE,
+            SYSTEM_AUDIO_CHANNELS as u32,
+            SYSTEM_AUDIO_QUEUE_MS,
+        );
+        let (frames_tx, frames_rx) = mpsc::channel::<Vec<i16>>(16);
+        let mut chunker = StereoChunker::new();
+        let dropped = self.inner.system_audio_dropped.clone();
+        let on_audio = Box::new(move |samples: &[f32]| {
+            chunker.push(samples, |frame| {
+                // Full means the pump is behind by 160 ms: dropping 10 ms beats growing latency.
+                if frames_tx.try_send(frame.to_vec()).is_err() {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        });
+        let on_error: ErrorCallback =
+            Arc::new(|message| log::warn!("system audio capture: {message}"));
+        let capture = capture.start(CaptureScope::EverythingExceptOurs, on_audio, on_error)?;
+        let pump = self
+            .inner
+            .runtime
+            .spawn(pump_system_audio(source.clone(), frames_rx));
+        *lock(&self.inner.system_audio) = Some(SystemAudioShare {
+            source: source.clone(),
+            _capture: capture,
+            pump,
+        });
+        if let Some(room) = self.inner.current_room() {
+            self.inner
+                .runtime
+                .spawn(async move { publish_system_audio(&room, source).await });
+        }
+        Ok(())
+    }
+
+    pub fn system_audio_dropped_frames(&self) -> u64 {
+        self.inner.system_audio_dropped.load(Ordering::Relaxed)
+    }
+
+    /// Stops the capture and unpublishes the track. Nothing is left in the OS audio graph.
+    pub fn stop_system_audio(&self) {
+        let Some(share) = lock(&self.inner.system_audio).take() else {
+            return;
+        };
+        share.pump.abort();
+        if let Some(room) = self.inner.current_room() {
+            self.inner.runtime.spawn(async move {
+                unpublish_system_audio(&room).await;
+            });
         }
     }
 
@@ -584,6 +659,10 @@ impl Inner {
         session.device_task.abort();
         let _ = session.task.await;
         session.mic_pump.abort();
+        // Leaving the call ends the share's audio with it.
+        if let Some(share) = lock(&self.system_audio).take() {
+            share.pump.abort();
+        }
         self.clear_media();
         self.stop_audio();
         lock(&self.applied_quality).clear();
@@ -616,6 +695,12 @@ impl Inner {
         }
         self.send_deafen_metadata();
         self.apply_mic_state();
+        let system_audio = lock(&self.system_audio)
+            .as_ref()
+            .map(|share| share.source.clone());
+        if let Some(source) = system_audio {
+            publish_system_audio(room, source).await;
+        }
         self.subscribe_to_everything_audible(room);
         self.apply_video_demands();
         Ok(())
@@ -1337,6 +1422,63 @@ async fn pump_mic(source: NativeAudioSource, mut frames: mpsc::Receiver<Vec<i16>
         };
         if let Err(error) = source.capture_frame(&frame).await {
             log::warn!("mic frame refused: {error}");
+        }
+    }
+}
+
+/// 50 ms: enough to ride out one late capture quantum, and libwebrtc sends silence when it runs dry.
+const SYSTEM_AUDIO_QUEUE_MS: u32 = 50;
+
+async fn pump_system_audio(source: NativeAudioSource, mut frames: mpsc::Receiver<Vec<i16>>) {
+    while let Some(data) = frames.recv().await {
+        let frame = AudioFrame {
+            data: Cow::Owned(data),
+            sample_rate: SAMPLE_RATE,
+            num_channels: SYSTEM_AUDIO_CHANNELS as u32,
+            samples_per_channel: (STEREO_FRAME_SAMPLES / SYSTEM_AUDIO_CHANNELS) as u32,
+        };
+        if let Err(error) = source.capture_frame(&frame).await {
+            log::warn!("system audio frame refused: {error}");
+        }
+    }
+}
+
+/// The web client's `SCREEN_SHARE_AUDIO_PUBLISH_OPTIONS`: 128 kbps, no DTX (it would gate quiet
+/// passages), RED on.
+async fn publish_system_audio(room: &Room, source: NativeAudioSource) {
+    let track =
+        LocalAudioTrack::create_audio_track("screen_share_audio", RtcAudioSource::Native(source));
+    let published = room
+        .local_participant()
+        .publish_track(
+            LocalTrack::Audio(track),
+            TrackPublishOptions {
+                source: TrackSource::ScreenshareAudio,
+                audio_encoding: Some(AudioEncoding {
+                    max_bitrate: 128_000,
+                }),
+                dtx: false,
+                red: true,
+                ..Default::default()
+            },
+        )
+        .await;
+    if let Err(error) = published {
+        log::warn!("system audio publish failed: {error}");
+    }
+}
+
+async fn unpublish_system_audio(room: &Room) {
+    let local = room.local_participant();
+    let sids: Vec<_> = local
+        .track_publications()
+        .values()
+        .filter(|publication| publication.source() == TrackSource::ScreenshareAudio)
+        .map(|publication| publication.sid())
+        .collect();
+    for sid in sids {
+        if let Err(error) = local.unpublish_track(&sid).await {
+            log::warn!("system audio unpublish failed: {error}");
         }
     }
 }

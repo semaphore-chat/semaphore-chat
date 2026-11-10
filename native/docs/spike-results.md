@@ -29,7 +29,8 @@ Phase 1 was launched from this branch after Phase 0. Results land here as those 
 | T8 Socket.IO | **Pass**, see the limits below |
 | T10 agent loop | Harness passes on a one-screen crate (`results/t10.json`, provisional: load peaked at 107). Rerun on the slice's real UI crate is U14 |
 | `gpui-pre` audit | **Reviewed:** no behavioural change found. See "Supply chain" |
-| T4-T6, T9, T11 | Not started, or reported separately |
+| T11 system audio | **Linux headless: pass**, L1-L10 5/5 each through LiveKit, one run at a time. The first run, five at once on a loaded host, failed 4 scenarios on decoder glitches (kept, explained below). **Windows, Flatpak and the real desktop: untested** |
+| T4-T6, T9 | Not started, or reported separately |
 | Windows | CI job written, **never run**: pushing the branch is waiting on Mike |
 
 ## Test bars: what differs from the original brief
@@ -156,6 +157,134 @@ on `Connected`. So the rig's REST check no longer shows core asking for a refetc
 have to cover that. In `stall-past-ping-timeout`, socket.io-client missed 8 messages against 2
 recorded. Only outgoing packets are dropped there, so the count depends on timing, and this wasn't
 looked into.
+
+## T11: system audio in a screen share
+
+Raw data and result JSON are in `results/t11/`: `livekit.json` is the verdict (through a real
+LiveKit server to a second participant), `local.json` judges the capture before any codec, and
+`parallel5/` is the first full run, with five runs at once on a loaded host. Code:
+`crates/semaphore-sysaudio`, the publisher in `semaphore-media-livekit` (`start_system_audio`), and
+the rig in `rigs/sysaudio`.
+
+### What Electron does, the bar to beat
+
+- **Windows:** Chromium's `loopbackWithoutChrome`, process loopback that leaves out the app's own
+  process tree. 48 kHz stereo, no voice processing, 128 kbps, DTX off.
+- **Linux:** no system audio at all. The picker's toggle is disabled on Linux, and `restrictOwnAudio`
+  is Windows and Mac only in Chromium. So on Linux T11 asks for more than Electron does.
+
+### How it works
+
+- **Linux:** one PipeWire capture stream of ours (`node.autoconnect=false`), linked by hand, with
+  passive `object.linger=false` links, to every app's output stream that the session manager has
+  routed to a sink, except ours. PipeWire mixes the links on its own clock. Ours means
+  `application.process.id` equals our PID, on the node or its client. Anything downstream of ours
+  by link or `node.link-group` (an effects chain) is never linked. `pipewire-rs` 0.10.1, MIT.
+- **Windows:** WASAPI process loopback with `PROCESS_LOOPBACK_MODE_EXCLUDE_TARGET_PROCESS_TREE` and our
+  PID. Our call audio is played by cpal inside our process, so the OS leaves it out.
+- **Publishing:** `LiveKitEngine::start_system_audio` takes any `SystemAudioCapture`, cuts 10 ms
+  stereo frames into a `NativeAudioSource` (48 kHz, 2 channels, 50 ms queue) and publishes it as
+  `ScreenshareAudio` with the web client's settings: 128 kbps, DTX off, RED on. A rejoin republishes.
+- **Where it lives:** the trait sits next to `AudioIo` in `semaphore-media-livekit`; core is
+  untouched. The backends are in `semaphore-sysaudio`, which links libpipewire, so it stays out of
+  core.
+
+### The test
+
+Each run is a fresh container with its own PipeWire, WirePlumber and pipewire-pulse, two null
+sinks and a 440 Hz test-tone microphone. No sound card, no privileges, no network created.
+- Games are separate processes: `paplay` (PulseAudio protocol) and `pw-play` (native), tones at
+  -12.04 dBFS.
+- Our client is a real `LiveKitEngine` in a call. The viewer speaks tone B (743 Hz) into the room;
+  our engine plays it through the real cpal output, so B is exactly "other participants' voices
+  played by our client".
+- The viewer subscribes to the screen share audio, decodes it, and judges every 1 s window by
+  Hann-windowed Goertzel at each tone (bins on integer Hz).
+
+### Results on Linux (headless PipeWire 1.6.10)
+
+Bars were fixed before any run: a tone is **present** when it is within 6 dB of -12.04 dBFS in at
+least 95% of 1 s windows, and **absent** when every 1 s window is at or below
+min(L9 call level - 50 dB, -80 dBFS), which is -80 dBFS. 5 runs each, after a 2 s warm-up.
+
+**Through LiveKit to a viewer (the verdict), one run at a time:**
+
+| | Scenario | Runs | Call tone B, worst window | Notes |
+|---|---|---|---|---|
+| L1 | PulseAudio game, our call playing | 5/5 | -109.6 dBFS | Game at -12.04 in L and R: stereo intact |
+| L2 | Native PipeWire game | 5/5 | -87.8 | |
+| L3 | Game starts 6 s into the share | 5/5 | -91.0 | Heard 149-175 ms after it starts (median 164; bars 1.5 s, median 0.5 s) |
+| L4 | Game on a second sink; our call moved there mid-share | 5/5 | -83.0 | |
+| L5 | Our call output switched to another device mid-share | 5/5 | -105.2 | A new stream of ours is never linked |
+| L6 | Mono game; 5.1 game with sound only in the centre | 5/5 | -95.3 | Centre arrives at -15.05: PipeWire's -3 dB downmix in the app's stream, which is what the user hears |
+| L7 | A live mic (440 Hz, being recorded) | 5/5 | -106.0 | Mic tone at most -90.5 dBFS in the share; at 0 dBFS in the recording |
+| L8 | Our call moved into an effects chain mid-share | 5/5 | -105.2 | Worst 100 ms window within 1 s of the move: -94.1 dBFS |
+| L9 | Negative control: our streams included | 5/5 | -12.03 | The detector sees the leak at full level |
+| L10 | 10 minute soak of L1, PipeWire at realtime priority | 5/5 | -97.3 | 0 dropped blocks; game in 100% of windows; capture threads 0.13-0.21% of a core (provisional: shared host) |
+
+**Before any codec (`--mode local`), 45/45 pass**, and the call tone is at the numerical floor:
+-112 dBFS at worst, -143 in most runs. Mid-share streams are captured 121-126 ms after they start.
+
+**Failed, and kept: the first full run, five at a time on a loaded host** (`results/t11/parallel5`).
+L1, L4-L8 passed 5/5; L2 4/5, L3 3/5, L9 4/5 and L10 0/5 failed the bars. The windows that failed
+are not leaks:
+- B never rose above the tones nobody was playing, in the same window: at most 8 dB above the
+  loudest of six such tones, against about 80 dB for a real leak (L9).
+- The game tone dipped by 6-12 dB in the same windows. That's a dropped or concealed packet,
+  which spreads energy across the whole spectrum: B at -55 to -63 dBFS, and the unplayed tones
+  at -46 to -70.
+- A local run without realtime priority for PipeWire had one such window too (B at -73.9 dBFS,
+  9.9 dB below the unplayed tones): the graph skipped a quantum. The runs since give PipeWire
+  realtime priority (`--cap-add SYS_NICE`, as rtkit does on a desktop): the local suite and the
+  L10 soak above. Serial LiveKit runs L1-L9 ran without it and passed anyway. The run without it is
+  in `results/t11/local-no-rt`.
+
+The bar as written can't tell a glitch from a leak. It stays as it is; whether to add "and B not
+above the unplayed tones" is a decision for the coordinator.
+
+### Findings that change the plan
+
+- **libwebrtc's PipeWire stubs shadow libpipewire.** webrtc-sys links stubs for 37 `pw_*`
+  functions that jump through pointers filled only when libwebrtc's own screen capturer starts.
+  They come ahead of `-lpipewire-0.3` on the link line, so the first `pw_init` from Rust jumped to
+  address 0. Any Rust PipeWire code in the app hits this, Wayland screen capture included. The fix
+  is in `linux.rs`: fill the pointers through libwebrtc's own `modules_portal::InitializePipewire`
+  from the loaded libpipewire. A libwebrtc that renames it fails the link, loudly.
+- **`pipewire.sec.pid` can't identify an app.** For PulseAudio clients it is pipewire-pulse's PID.
+  `application.process.id`, which both libpipewire and the Rust PulseAudio client set from
+  `getpid()`, is on the stream node and its client, and works.
+- **Node info without the PROPS bit has an empty property dict.** Reading it as "no properties" lost
+  the class and PID of live streams, and unlinked them a millisecond after linking.
+- **A stream playing into a source is not "what you hear".** Only streams the session manager has
+  linked to a sink are captured. That also waits for the stream's ports to be configured.
+- **The Rust PulseAudio client looks for its cookie in `$HOME` only** (libpulse uses
+  `XDG_CONFIG_HOME`). Without one, pipewire-pulse refuses it and cpal silently falls back to ALSA.
+  On a normal desktop the cookie is in `$HOME`; the rig sets `PULSE_COOKIE`.
+
+
+### What's untested
+
+- **Windows: nothing has run.** The backend compiles for `x86_64-pc-windows-msvc` in the image
+  (`verify.sh` checks it) and the CI job builds and uploads `rig-sysaudio.exe`, but the branch
+  isn't pushed. `scripts/desk/t11-sysaudio-windows.ps1` is the run.
+- **Flatpak:** not tested. A sandboxed client may not be allowed to link other apps' nodes.
+- **The real desktop:** not run (Mike's machine was in use). `scripts/desk/t11-sysaudio.sh` is the run.
+- **Real games, Bluetooth, HDMI, EasyEffects:** only on the desktop run.
+- **CPU and latency numbers:** the machine was shared with other agents, so they are provisional.
+
+### For Mike
+
+- **Hyprland, about 2 minutes:** `native/scripts/desk/t11-sysaudio.sh`. Two quiet tones play for 60 s;
+  play a game, a video, a Flatpak app, a Bluetooth headset, EasyEffects if you use it. Pass is
+  printed. Then listen to what a viewer would get: `pw-play <printed dir>/raw/capture.wav`. The
+  binary is at `native/scripts/desk/.bin/rig-sysaudio`.
+- **Windows, about 2 minutes:** push the branch; from the `rig-sysaudio-windows` artifact run
+  `powershell -ExecutionPolicy Bypass -File t11-sysaudio-windows.ps1`. Three runs: exclusion,
+  negative control, and exclusion while you switch the output device once.
+- **By ear, in a real call:** share a game with system audio to a second machine and listen there.
+- **Product questions are open** (from the design): whether a window share should carry only that
+  app's audio, and whether other call apps' audio belongs in the share. The defaults match
+  Electron: everything except our own call, on by default.
 
 ## Facts checked in Phase 0
 

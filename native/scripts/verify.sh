@@ -52,6 +52,7 @@ step "rig-surface-smoke: cargo check Windows" "$IN_IMAGE" cargo check --locked -
 # The OS sleep and network listeners: the furthest the image gets towards the app on Windows (net and
 # media need MSVC headers for ring and libwebrtc; the windows-link CI job builds the rest).
 step "platform-desktop: cargo clippy Windows" "$IN_IMAGE" cargo clippy --locked -p semaphore-platform-desktop --target x86_64-pc-windows-msvc --all-targets -- -D warnings
+step "T11 Windows capture: cargo check" "$IN_IMAGE" cargo check --locked -p semaphore-sysaudio --no-default-features --target x86_64-pc-windows-msvc
 step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
 step "cargo build --release -p semaphore-app" "$IN_IMAGE" nice -n 10 cargo build --locked --release -p semaphore-app
 step "release binary joins a real LiveKit room" "$NATIVE_DIR/scripts/media-probe.sh"
