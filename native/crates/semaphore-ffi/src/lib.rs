@@ -610,8 +610,8 @@ impl SemaphoreCore {
         self.core.set_video_demands(demands);
     }
 
-    pub fn ingest_media(&self, media: VoiceView) {
-        self.core.ingest_media(media);
+    pub fn ingest_media(&self, call: u64, media: VoiceView) {
+        self.core.ingest_media(call, media);
     }
 
     pub async fn voice_token(&self) -> Result<String, CoreError> {

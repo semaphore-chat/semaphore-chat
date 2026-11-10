@@ -101,6 +101,7 @@ fn core_error_view(error: &CoreError) -> ErrorView {
 impl State {
     /// Everything a session leaves behind, forgotten. Sign-out and a lost session both end here.
     pub(crate) fn reset_signed_out(&mut self) {
+        let call_live = self.voice.channel_id.is_some();
         self.cache.clear();
         self.fetching.clear();
         self.failed_queries.clear();
@@ -115,9 +116,15 @@ impl State {
         self.session = SessionState::SignedOut;
         self.voice = VoiceView::default();
         self.media = None;
+        self.call_ended_early = None;
         self.had_connection = false;
         self.token_expires_at_ms = None;
         self.view_changed(ViewKey::Session);
+        self.view_changed(ViewKey::Voice);
+        // After the queue was cleared above: a call mustn't outlive the session.
+        if call_live {
+            self.push_effect(Effect::EndCall);
+        }
     }
 
     /// Forgets which queries failed and fetches again the ones a view is showing.
@@ -1028,15 +1035,17 @@ impl Core {
         let me = self
             .read(|state| state.me.clone())
             .ok_or_else(|| unavailable("voice while signed out"))?;
-        let (muted, deafened) = self.write(|state, _| {
+        let (muted, deafened, call) = self.write(|state, _| {
             state.voice.status = VoiceStatus::Connecting;
             state.voice.channel_id = Some(channel_id.clone());
             state.voice.reconnect_attempt = None;
             state.voice.error = None;
             state.media = None;
+            state.call += 1;
+            state.call_ended_early = None;
             state.view_changed(ViewKey::Voice);
             state.ensure_query(keys::scoped(keys::VOICE_PRESENCE, &channel_id));
-            (state.voice.muted, state.voice.deafened)
+            (state.voice.muted, state.voice.deafened, state.call)
         });
         // The engine remembers these across calls, and what this call starts with is what's shown.
         // Deafen first: undeafening restores a mute this then overrides.
@@ -1056,7 +1065,7 @@ impl Core {
             let url = token.url.or(info.url).ok_or_else(|| CoreError::Failed {
                 message: "the server gave no LiveKit address".into(),
             })?;
-            media.connect(url, token.token).await?;
+            media.connect(url, token.token, call).await?;
             services
                 .backend
                 .voice_presence_controller_join_presence(channel_id.clone())
@@ -1066,15 +1075,41 @@ impl Core {
         }
         .await;
         self.write(|state, _| {
-            if joined.is_ok() {
-                state.voice.status = VoiceStatus::Connected;
-            } else {
-                state.voice = VoiceView::default();
-                state.media = None;
+            // Another join, a leave or a sign-out came while this one ran: it answers for nothing.
+            if state.call != call || state.voice.channel_id.as_deref() != Some(&channel_id) {
+                return joined.clone().and(Err(CoreError::Failed {
+                    message: "the call was left while joining".into(),
+                }));
             }
-            state.view_changed(ViewKey::Voice);
-        });
-        joined
+            let ended = state.call_ended_early.take();
+            match (&joined, ended) {
+                (Ok(()), None) => {
+                    state.voice.status = VoiceStatus::Connected;
+                    state.view_changed(ViewKey::Voice);
+                    Ok(())
+                }
+                // The engine connected and dropped again before this finished. The server has heard
+                // of the join, so it hears of the leave too.
+                (Ok(()), Some(error)) => {
+                    state.voice = VoiceView {
+                        error: error.clone(),
+                        ..VoiceView::default()
+                    };
+                    state.media = None;
+                    state.push_effect(Effect::LeavePresence(channel_id.clone()));
+                    state.view_changed(ViewKey::Voice);
+                    Err(CoreError::Failed {
+                        message: error.unwrap_or_else(|| "the call ended as it started".into()),
+                    })
+                }
+                (Err(error), _) => {
+                    state.voice = VoiceView::default();
+                    state.media = None;
+                    state.view_changed(ViewKey::Voice);
+                    Err(error.clone())
+                }
+            }
+        })
     }
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {
@@ -1187,29 +1222,29 @@ impl Core {
         }
     }
 
-    /// The media engine hands what it sees here, whenever it changes. Not part of a UI's surface.
-    pub fn ingest_media(&self, media: VoiceView) {
+    /// The media engine hands what it sees here, whenever it changes, with the number of the
+    /// `connect` it belongs to. Not part of a UI's surface.
+    ///
+    /// A report carrying another call's number is ignored: it is from a call that's over. A
+    /// `Disconnected` carrying this call's number ends it, whether or not core saw it connect: the
+    /// engine's reports coalesce, so a call that connects and drops between two of them shows up as
+    /// a `Disconnected` alone.
+    pub fn ingest_media(&self, call: u64, media: VoiceView) {
         self.write(|state, _| {
-            // Too late for a call that's over.
-            if state.voice.status == VoiceStatus::Disconnected
+            // Too late for a call that's over, or from some other call.
+            if call != state.call
+                || state.voice.status == VoiceStatus::Disconnected
                 || state.media.as_ref() == Some(&media)
             {
                 return;
             }
-            let was_live = state.media.as_ref().is_some_and(|last| {
-                matches!(
-                    last.status,
-                    VoiceStatus::Connected | VoiceStatus::Reconnecting
-                )
-            });
-            let in_call = matches!(
-                state.voice.status,
-                VoiceStatus::Connected | VoiceStatus::Reconnecting
-            );
-            match media.status {
-                // Only after the engine has said it was in the call. A report from before it joined
-                // can arrive after `connect` returned, and says nothing about this call.
-                VoiceStatus::Disconnected if in_call && was_live => {
+            match (media.status, state.voice.status) {
+                // Still joining: `join_voice` finishes the job when `connect` returns.
+                (VoiceStatus::Disconnected, VoiceStatus::Connecting) => {
+                    state.call_ended_early = Some(media.error);
+                    return;
+                }
+                (VoiceStatus::Disconnected, _) => {
                     let channel_id = state.voice.channel_id.take();
                     state.voice = VoiceView {
                         error: media.error,
@@ -1222,7 +1257,10 @@ impl Core {
                     state.view_changed(ViewKey::Voice);
                     return;
                 }
-                VoiceStatus::Connected | VoiceStatus::Reconnecting if in_call => {
+                (
+                    VoiceStatus::Connected | VoiceStatus::Reconnecting,
+                    VoiceStatus::Connected | VoiceStatus::Reconnecting,
+                ) => {
                     state.voice.status = media.status;
                 }
                 _ => {}

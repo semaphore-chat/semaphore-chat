@@ -57,7 +57,10 @@ impl Peer {
             ..EngineOptions::default()
         });
         let token = token::dev_token(room, identity, identity);
-        engine.connect(url.to_owned(), token).await.expect("joins");
+        engine
+            .connect(url.to_owned(), token, 1)
+            .await
+            .expect("joins");
         Self {
             engine,
             io,
@@ -274,7 +277,7 @@ async fn per_user_volume_scales_one_person_and_survives_a_republish() {
     })
     .await;
     a.engine
-        .connect(url.clone(), token::dev_token(&room, "a", "a"))
+        .connect(url.clone(), token::dev_token(&room, "a", "a"), 1)
         .await
         .unwrap();
     eventually("a is back", WAIT, || {
@@ -488,7 +491,7 @@ async fn a_room_with_no_sound_card_still_joins_and_says_why() {
         ..EngineOptions::default()
     });
     engine
-        .connect(url, token::dev_token(&room, "a", "a"))
+        .connect(url, token::dev_token(&room, "a", "a"), 1)
         .await
         .expect("a call needs no sound card");
     let snapshot = engine.snapshot();

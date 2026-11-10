@@ -295,7 +295,7 @@ fn participant() -> Result<()> {
         })
     };
     let runtime = tokio::runtime::Runtime::new()?;
-    runtime.block_on(engine.connect(url, token::dev_token(&room, &identity, &identity)))?;
+    runtime.block_on(engine.connect(url, token::dev_token(&room, &identity, &identity), 1))?;
     let want_video = std::env::var("WANT_VIDEO").is_ok_and(|value| value == "1");
     let started = Instant::now();
     loop {
@@ -499,7 +499,7 @@ fn bench(room: &str, out: &str, seconds: u64, rounds: usize) -> Result<()> {
     }));
     engine.set_video_sink(Arc::new(CountingSink));
     let runtime = tokio::runtime::Runtime::new()?;
-    runtime.block_on(engine.connect(url, token::dev_token(room, "bench", "bench")))?;
+    runtime.block_on(engine.connect(url, token::dev_token(room, "bench", "bench"), 1))?;
     eprintln!("joined; waiting for 9 cameras and a share");
     let deadline = Instant::now() + Duration::from_secs(120);
     let snapshot = loop {
@@ -808,7 +808,7 @@ fn shot(room: &str, width: f32, height: f32, layout: &str, out: &str) -> Result<
         )
     })?;
     eprintln!("video path: {:?}", frames_slot.borrow());
-    runtime.block_on(engine.connect(url, token::dev_token(room, "viewer", "Viewer")))?;
+    runtime.block_on(engine.connect(url, token::dev_token(room, "viewer", "Viewer"), 1))?;
 
     let deadline = Instant::now() + Duration::from_secs(90);
     loop {
@@ -916,7 +916,7 @@ fn window(room: &str, seconds: u64, rgba: bool) -> Result<()> {
         .expect("the window opens");
 
         runtime
-            .block_on(engine.connect(url.clone(), token::dev_token(&room, "window-viewer", "Viewer")))
+            .block_on(engine.connect(url.clone(), token::dev_token(&room, "window-viewer", "Viewer"), 1))
             .expect("joins");
         let engine = engine.clone();
         let draws = draws.clone();

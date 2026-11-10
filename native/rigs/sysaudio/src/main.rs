@@ -389,7 +389,7 @@ async fn run_share() {
         audio_io: Arc::new(CpalIo::default()),
         ..EngineOptions::default()
     });
-    engine.connect(url, token).await.expect("sharer joins");
+    engine.connect(url, token, 1).await.expect("sharer joins");
     emit(json!({"ev":"joined","t":now_ms(),"pid":std::process::id()}));
     let capture = capture();
     engine

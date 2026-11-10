@@ -77,15 +77,17 @@ pub trait ScreenCapture: Send + Sync {
 
 /// A voice/video session. Frames and audio devices stay behind the implementation.
 ///
-/// An implementation reports what it sees by handing a `VoiceView` to `Core::ingest_media`, whenever
-/// it changes, as a transport hands events to `Core::ingest`. Rejoining a dropped call is its job
+/// An implementation reports what it sees by handing a `VoiceView` to `Core::ingest_media`, with the
+/// number of the `connect` it belongs to, whenever it changes, as a transport hands events to `Core::ingest`. Rejoining a dropped call is its job
 /// too, so the host gives it `Core::voice_token` for the fresh token that takes.
 ///
 /// The setters are called from a UI's thread, so they must not block. What they ask for outlives any
 /// one connection: a rejoin puts it all back, and setting one before `connect` applies at `connect`.
 #[async_trait]
 pub trait MediaEngine: Send + Sync {
-    async fn connect(&self, url: String, token: String) -> Result<(), CoreError>;
+    /// `call` numbers this join. Every report the engine makes from here until the next `connect`
+    /// carries it, so core can tell this call's end from an earlier call's.
+    async fn connect(&self, url: String, token: String, call: u64) -> Result<(), CoreError>;
     async fn disconnect(&self);
     fn set_muted(&self, muted: bool);
     /// Deafening mutes the mic too. Undeafening restores what the mic was.

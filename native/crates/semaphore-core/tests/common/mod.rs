@@ -3,7 +3,7 @@
 
 use async_trait::async_trait;
 use semaphore_core::backend::{Backend, BackendError, BackendResult};
-use semaphore_core::model::{Conversation, ListOp, MessageRow, VideoDemand};
+use semaphore_core::model::{Conversation, ListOp, MessageRow, VideoDemand, VoiceView};
 use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, MediaEngine};
 use semaphore_core::realtime::{Realtime, RealtimeError, RealtimeEvent};
 use semaphore_core::{Core, Services};
@@ -708,15 +708,26 @@ pub struct FakeMedia {
     pub calls: Mutex<Vec<String>>,
     pub demands: Mutex<Vec<VideoDemand>>,
     pub connect_fails: Mutex<bool>,
+    /// The number `connect` was last given.
+    pub last_call: Mutex<u64>,
+    /// Reported to `core` while `connect` runs, as an engine whose call drops at once would.
+    pub report_during_connect: Mutex<Option<VoiceView>>,
+    pub core: Mutex<Option<Core>>,
 }
 
 #[async_trait]
 impl MediaEngine for FakeMedia {
-    async fn connect(&self, url: String, token: String) -> Result<(), CoreError> {
+    async fn connect(&self, url: String, token: String, call: u64) -> Result<(), CoreError> {
         self.calls
             .lock()
             .unwrap()
             .push(format!("connect {url} {token}"));
+        *self.last_call.lock().unwrap() = call;
+        if let Some(report) = self.report_during_connect.lock().unwrap().take()
+            && let Some(core) = self.core.lock().unwrap().clone()
+        {
+            core.ingest_media(call, report);
+        }
         if *self.connect_fails.lock().unwrap() {
             return Err(CoreError::Failed {
                 message: "no room".into(),
@@ -775,6 +786,7 @@ impl Rig {
                 media: with_media.then(|| media.clone() as Arc<dyn MediaEngine>),
             },
         );
+        *media.core.lock().unwrap() = Some(core.clone());
         Self {
             core,
             clock,

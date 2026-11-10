@@ -88,6 +88,10 @@ fn quality_view(quality: ConnectionQuality) -> ConnectionQualityView {
 /// crate's rigs, and for settings that don't pass through core.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MediaSnapshot {
+    /// Which `connect` this report belongs to: core's number for the call. Goes with `voice` to
+    /// `Core::ingest_media`, so a report from an earlier call, or one core never saw begin, can't
+    /// be mistaken for this one's.
+    pub call: u64,
     pub voice: VoiceView,
     /// By identity. Absent until the server has said.
     pub quality: HashMap<String, ConnectionQualityView>,
@@ -547,11 +551,11 @@ impl LiveKitEngine {
 impl MediaEngine for LiveKitEngine {
     /// Returns once joined, with the mic published if there is one. A failure here isn't retried:
     /// the app is still on its join screen and can say so. Only a call in progress rejoins.
-    async fn connect(&self, url: String, token: String) -> Result<(), CoreError> {
+    async fn connect(&self, url: String, token: String, call: u64) -> Result<(), CoreError> {
         let inner = self.inner.clone();
         self.inner
             .runtime
-            .spawn(async move { inner.join(url, token).await })
+            .spawn(async move { inner.join(url, token, call).await })
             .await
             .map_err(failed)?
     }
@@ -604,8 +608,10 @@ impl Inner {
         lock(&self.input_stream).is_some()
     }
 
-    async fn join(self: Arc<Self>, url: String, token: String) -> Result<(), CoreError> {
+    async fn join(self: Arc<Self>, url: String, token: String, call: u64) -> Result<(), CoreError> {
+        // Whatever the last call reports on its way out is still stamped with its own number.
         self.clone().leave().await;
+        self.update_snapshot(|snapshot| snapshot.call = call);
         self.set_status(VoiceStatus::Connecting, None);
         let (room, events) = match Room::connect(&url, &token, room_options()).await {
             Ok(connected) => connected,

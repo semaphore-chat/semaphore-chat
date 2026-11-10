@@ -53,6 +53,9 @@ pub(crate) enum Effect {
     RefreshToken,
     /// The media engine ended the call, so the server should hear this client has left it.
     LeavePresence(String),
+    /// The session ended under a live call: the engine leaves the room. No presence call, because
+    /// the session that would make it is gone.
+    EndCall,
 }
 
 pub(crate) struct State {
@@ -78,6 +81,10 @@ pub(crate) struct State {
     pub voice: VoiceView,
     /// What the media engine last reported about the call in `voice`.
     pub media: Option<VoiceView>,
+    /// The number of the last `join_voice`: reports carrying another are from some other call.
+    pub call: u64,
+    /// The engine said this call ended before `join_voice` had finished, with why.
+    pub call_ended_early: Option<Option<String>>,
     pub connection: ConnectionState,
     pub network: NetworkState,
     /// A connection has been up, so the next one follows a gap: the web's `hasConnectedRef`.
@@ -112,6 +119,8 @@ impl State {
             me: None,
             voice: VoiceView::default(),
             media: None,
+            call: 0,
+            call_ended_early: None,
             connection: ConnectionState::Disconnected,
             network: NetworkState::Available,
             had_connection: false,
@@ -468,6 +477,11 @@ impl Core {
             Effect::Send(nonce) => self.run_send(nonce).await,
             Effect::RefreshToken => self.refresh_token().await,
             Effect::LeavePresence(channel_id) => self.leave_presence(channel_id).await,
+            Effect::EndCall => {
+                if let Some(media) = self.services().and_then(|services| services.media.clone()) {
+                    media.disconnect().await;
+                }
+            }
         }
     }
 

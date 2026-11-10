@@ -26,7 +26,7 @@ pub fn probe_connection(url: String, token: String) -> Result<(), CoreError> {
             audio_io: std::sync::Arc::new(audio::virtual_io::VirtualIo::new()),
             ..EngineOptions::default()
         });
-        engine.connect(url, token).await?;
+        engine.connect(url, token, 1).await?;
         engine.disconnect().await;
         Ok(())
     })

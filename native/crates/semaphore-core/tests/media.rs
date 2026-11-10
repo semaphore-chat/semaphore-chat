@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
 const ROOM: &str = "room";
+/// The first `join_voice` in a test is call 1.
+const CALL: u64 = 1;
 
 fn presence(id: &str) -> Value {
     json!({
@@ -87,7 +89,7 @@ async fn a_failed_join_leaves_nothing_behind() {
 async fn mute_and_deafen_reach_the_engine_and_show_at_once() {
     let rig = in_call(&["me"]).await;
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
     rig.media.calls.lock().unwrap().clear();
 
     rig.core.set_muted(true).await.unwrap();
@@ -140,7 +142,7 @@ async fn names_come_from_presence_and_tracks_from_the_engine() {
     ava.screen_share = Some(track("screen"));
     ava.quality = ConnectionQuality::Poor;
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me"), ava]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me"), ava]));
 
     let voice = rig.core.voice();
     let row = voice
@@ -175,10 +177,10 @@ async fn either_side_can_say_someone_is_muted_or_deafened() {
     let mut c = seen("c");
     c.muted = true;
     c.deafened = true;
-    rig.core.ingest_media(report(
-        VoiceStatus::Connected,
-        vec![seen("a"), seen("b"), c],
-    ));
+    rig.core.ingest_media(
+        CALL,
+        report(VoiceStatus::Connected, vec![seen("a"), seen("b"), c]),
+    );
 
     let voice = rig.core.voice();
     let flags: Vec<(bool, bool)> = voice
@@ -194,7 +196,7 @@ async fn someone_only_the_engine_sees_is_still_listed_and_someone_only_presence_
 {
     let rig = in_call(&["me", "ava"]).await;
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("bea")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("bea")]));
     let voice = rig.core.voice();
     let ids: Vec<&str> = voice
         .participants
@@ -210,19 +212,22 @@ async fn someone_only_the_engine_sees_is_still_listed_and_someone_only_presence_
 async fn a_rejoin_shows_its_attempt_and_comes_back() {
     let rig = in_call(&["me"]).await;
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
-    rig.core.ingest_media(VoiceView {
-        reconnect_attempt: Some(3),
-        error: Some("no route".into()),
-        ..report(VoiceStatus::Reconnecting, Vec::new())
-    });
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            reconnect_attempt: Some(3),
+            error: Some("no route".into()),
+            ..report(VoiceStatus::Reconnecting, Vec::new())
+        },
+    );
     let voice = rig.core.voice();
     assert_eq!(voice.status, VoiceStatus::Reconnecting);
     assert_eq!(voice.reconnect_attempt, Some(3));
     assert_eq!(voice.error.as_deref(), Some("no route"));
 
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
     let voice = rig.core.voice();
     assert_eq!(voice.status, VoiceStatus::Connected);
     assert_eq!(voice.reconnect_attempt, None);
@@ -233,12 +238,15 @@ async fn a_rejoin_shows_its_attempt_and_comes_back() {
 async fn the_engine_ending_a_call_ends_it_here_and_on_the_server() {
     let mut rig = in_call(&["me"]).await;
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
-    rig.core.ingest_media(VoiceView {
-        status: VoiceStatus::Disconnected,
-        error: Some("removed from the room".into()),
-        ..VoiceView::default()
-    });
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            status: VoiceStatus::Disconnected,
+            error: Some("removed from the room".into()),
+            ..VoiceView::default()
+        },
+    );
     rig.settle().await;
     let voice = rig.core.voice();
     assert_eq!(voice.status, VoiceStatus::Disconnected);
@@ -248,9 +256,10 @@ async fn the_engine_ending_a_call_ends_it_here_and_on_the_server() {
 }
 
 #[tokio::test]
-async fn a_report_from_before_the_engine_joined_does_not_end_the_call() {
+async fn a_report_from_another_call_does_not_end_this_one() {
     let rig = in_call(&["me"]).await;
-    rig.core.ingest_media(VoiceView::default());
+    // Call 0: the engine's state before any join, or an earlier call's last word.
+    rig.core.ingest_media(0, VoiceView::default());
     assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
     assert_eq!(voice_calls(&rig), ["join"]);
 }
@@ -260,7 +269,7 @@ async fn a_report_after_leaving_changes_nothing() {
     let rig = in_call(&["me"]).await;
     rig.core.leave_voice().await.unwrap();
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
     assert_eq!(rig.core.voice(), VoiceView::default());
     assert_eq!(voice_calls(&rig), ["join", "leave"]);
     assert!(media_calls(&rig).contains(&"disconnect".to_owned()));
@@ -286,14 +295,14 @@ async fn the_heartbeat_only_runs_while_connected() {
     assert_eq!(voice_calls(&rig), ["join", "refresh"]);
 
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
     rig.core
-        .ingest_media(report(VoiceStatus::Reconnecting, Vec::new()));
+        .ingest_media(CALL, report(VoiceStatus::Reconnecting, Vec::new()));
     rig.core.refresh_voice_presence().await;
     assert_eq!(voice_calls(&rig), ["join", "refresh"]);
 
     rig.core
-        .ingest_media(report(VoiceStatus::Connected, vec![seen("me")]));
+        .ingest_media(CALL, report(VoiceStatus::Connected, vec![seen("me")]));
     rig.core.refresh_voice_presence().await;
     assert_eq!(voice_calls(&rig), ["join", "refresh", "refresh"]);
 
@@ -310,4 +319,64 @@ async fn a_voice_token_is_new_each_time_and_only_in_a_call() {
     assert_eq!(rig.backend.tokens_minted.load(Ordering::SeqCst), 1);
     assert_eq!(rig.core.voice_token().await.unwrap(), "token-2");
     assert_eq!(rig.core.voice_token().await.unwrap(), "token-3");
+}
+
+#[tokio::test]
+async fn a_call_that_drops_between_two_reports_still_ends() {
+    // The engine's reports coalesce: Connected then Disconnected can arrive as Disconnected alone.
+    let mut rig = in_call(&["me"]).await;
+    assert_eq!(*rig.media.last_call.lock().unwrap(), CALL);
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            status: VoiceStatus::Disconnected,
+            error: Some("gone".into()),
+            ..VoiceView::default()
+        },
+    );
+    rig.settle().await;
+    assert_eq!(rig.core.voice().status, VoiceStatus::Disconnected);
+    assert_eq!(rig.core.voice().error.as_deref(), Some("gone"));
+    assert_eq!(voice_calls(&rig), ["join", "leave"]);
+}
+
+#[tokio::test]
+async fn a_call_that_ends_while_joining_fails_the_join_and_leaves() {
+    let mut rig = Rig::with_media().signed_in().await;
+    *rig.backend.voice_users.lock().unwrap() = vec![presence("me")];
+    *rig.media.report_during_connect.lock().unwrap() = Some(VoiceView {
+        status: VoiceStatus::Disconnected,
+        error: Some("kicked".into()),
+        ..VoiceView::default()
+    });
+    let joined = rig.core.join_voice(ROOM.into()).await;
+    assert!(joined.is_err(), "{joined:?}");
+    rig.settle().await;
+    assert_eq!(rig.core.voice().status, VoiceStatus::Disconnected);
+    assert_eq!(rig.core.voice().channel_id, None);
+    assert_eq!(voice_calls(&rig), ["join", "leave"]);
+}
+
+#[tokio::test]
+async fn each_join_is_a_new_call_and_the_last_ones_reports_are_ignored() {
+    let rig = in_call(&["me"]).await;
+    rig.core.leave_voice().await.unwrap();
+    rig.core.join_voice(ROOM.into()).await.unwrap();
+    assert_eq!(*rig.media.last_call.lock().unwrap(), CALL + 1);
+    // The first call's engine says goodbye after the second began.
+    rig.core.ingest_media(CALL, VoiceView::default());
+    assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
+    rig.core
+        .ingest_media(CALL + 1, report(VoiceStatus::Connected, vec![seen("me")]));
+    assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
+}
+
+#[tokio::test]
+async fn a_lost_session_ends_the_call_in_the_engine() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core
+        .ingest(semaphore_core::realtime::RealtimeEvent::AuthLost { reason: None });
+    rig.settle().await;
+    assert!(media_calls(&rig).contains(&"disconnect".to_owned()));
+    assert_eq!(rig.core.voice(), VoiceView::default());
 }
