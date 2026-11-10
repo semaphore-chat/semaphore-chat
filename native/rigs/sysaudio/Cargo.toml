@@ -1,0 +1,17 @@
+[package]
+name = "rig-sysaudio"
+description = "T11: share system audio and check, by tone, that viewers hear the apps and never our call."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+futures-util.workspace = true
+livekit.workspace = true
+log.workspace = true
+semaphore-core.workspace = true
+semaphore-media-livekit.workspace = true
+semaphore-sysaudio.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }

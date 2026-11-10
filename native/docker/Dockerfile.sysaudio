@@ -1,0 +1,11 @@
+# T11: the pinned build image plus a headless PipeWire session (daemon, WirePlumber,
+# pipewire-pulse and pw-cat), from the same archive snapshot. Dockerfile.build stays
+# unchanged so its tag, and everything that depends on it, doesn't move.
+# gdb is for a crash inside libpipewire, which has no Rust backtrace.
+#
+# Built by rigs/sysaudio/image.sh, which passes BASE (the build image's tag).
+ARG BASE
+FROM ${BASE}
+
+RUN pacman -S --noconfirm --needed wireplumber pipewire-pulse pipewire-audio gdb \
+ && rm -rf /var/cache/pacman/pkg/*

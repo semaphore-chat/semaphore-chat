@@ -1,0 +1,15 @@
+[package]
+name = "semaphore-sysaudio"
+description = "System audio capture for screen share, minus our own call audio: PipeWire on Linux, WASAPI process loopback on Windows."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+log.workspace = true
+semaphore-media-livekit.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+pipewire = "0.10"
