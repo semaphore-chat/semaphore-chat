@@ -49,6 +49,9 @@ step "core: cargo check iOS" "$IN_IMAGE" cargo check --locked -p semaphore-core 
 step "patched Windows renderer: cargo check" "$IN_IMAGE" cargo check --locked -p gpui-pre-windows --target x86_64-pc-windows-msvc
 step "video surface draws on lavapipe" "$IN_IMAGE" sh -c 'cargo build --locked -q -p rig-surface-smoke && VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json XDG_RUNTIME_DIR=/tmp /cache/target/debug/rig-surface-smoke'
 step "rig-surface-smoke: cargo check Windows" "$IN_IMAGE" cargo check --locked -p rig-surface-smoke --target x86_64-pc-windows-msvc
+# The OS sleep and network listeners: the furthest the image gets towards the app on Windows (net and
+# media need MSVC headers for ring and libwebrtc; the windows-link CI job builds the rest).
+step "platform-desktop: cargo clippy Windows" "$IN_IMAGE" cargo clippy --locked -p semaphore-platform-desktop --target x86_64-pc-windows-msvc --all-targets -- -D warnings
 step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
 step "cargo build --release -p semaphore-app" "$IN_IMAGE" nice -n 10 cargo build --locked --release -p semaphore-app
 step "release binary joins a real LiveKit room" "$NATIVE_DIR/scripts/media-probe.sh"

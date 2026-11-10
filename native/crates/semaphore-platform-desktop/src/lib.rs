@@ -1,6 +1,9 @@
-//! Desktop OS services: the clock, app directories, the system keyring and notifications.
+//! Desktop OS services: the clock, app directories, the system keyring, notifications, and the OS's
+//! sleep and network events ([`lifecycle`]).
 //! Tray and screen capture are traits in `semaphore_core::platform` that arrive with the tests
 //! that exercise them (T6, T11).
+
+pub mod lifecycle;
 
 use directories::ProjectDirs;
 use semaphore_core::platform::{AppPaths, Clock, CoreError, Notifier, SecretStore};

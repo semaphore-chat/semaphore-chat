@@ -44,6 +44,12 @@ pub trait Backend: Send + Sync {
     /// Where the next requests go, from `Core::sign_in`. The client is built per server.
     fn set_server_url(&self, server_url: String);
 
+    /// A session for the server set last survives from an earlier run: a refresh can resume it
+    /// without a password. `Core::restore_session` asks before refreshing.
+    fn has_stored_session(&self) -> bool {
+        false
+    }
+
     // Session
     async fn auth_controller_login(
         &self,

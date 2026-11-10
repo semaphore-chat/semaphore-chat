@@ -1,4 +1,5 @@
-# U13 phase 1: the text client end to end against semaphore-fake-server (scenario showcase).
+# U13: the text client end to end against semaphore-fake-server (scenario showcase), with the
+# OS's sleep and network events, and restarts that resume, can't reach, or are refused a session.
 # Shots named *-live-* can differ between runs and aren't compared.
 
 # 1. Probe the server, then sign in.
@@ -98,14 +99,79 @@ expect core count "on it @dropbear thanks" 1
 wait idle
 shot 10-resynced
 
-# 12. Sign out from the account menu.
+# 10. The OS: a sleep the socket doesn't survive, the network gone and back, then a network change.
+os suspend
+wait core connection suspended
+server drop_connections
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-aiko\", \"text\": \"posted while asleep\", \"broadcast\": false}"
+os resume
+wait core connection connected within 40
+wait core text "posted while asleep"
+expect core count "posted while asleep" 1
+os network-down
+wait core connection offline
+wait idle
+shot 11-offline
+os network-up
+wait core connection connected within 40
+# Wi-Fi to cellular, say: the socket is replaced and the new connection resyncs.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-diego\", \"text\": \"sent as the network moved\", \"broadcast\": false}"
+os network-up
+wait core text "sent as the network moved" within 40
+expect core count "sent as the network moved" 1
+
+# 11. Restart: the stored session resumes with no password.
+expect stored-session yes
+restart
+wait core session signed-in
+wait core channel cc-general
+wait core rows >= 14
+wait core connection connected
+expect requests AuthController_refresh >= 1
+wait idle
+shot 12-restored
+# The server doesn't answer at start: the session is kept and a retry offered.
+server fail_route "{\"operationId\": \"AuthController_refresh\", \"status\": 503, \"code\": \"SERVICE_UNAVAILABLE\"}"
+restart
+wait core label "Try again"
+expect core session signed-out
+expect stored-session yes
+wait idle
+shot 13-unreachable
+click restore-retry
+wait core session signed-in
+wait core channel cc-general
+
+# 12. Sign out from the account menu: the stored session goes, the server is remembered.
 click rail-account
 wait core label "Sign out"
 wait idle
-shot 11-account
+shot 14-account
 click account-sign-out
 wait core session signed-out
 wait core label "Username"
 expect requests AuthController_logout >= 1
+expect stored-session no
 wait idle
-shot 12-signed-out
+shot 15-signed-out
+restart
+wait core label "Username"
+expect core session signed-out
+wait idle
+shot 16-restart-signed-out
+
+# 11, refused: the server refuses the stored session at start. Signed out, told why, token gone.
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+expect stored-session yes
+server fail_route "{\"operationId\": \"AuthController_refresh\", \"status\": 401, \"code\": \"UNAUTHENTICATED\"}"
+restart
+wait core label "Your session has expired. Please sign in again."
+expect core session signed-out
+expect stored-session no
+wait idle
+shot 17-expired

@@ -503,3 +503,86 @@ async fn a_login_without_a_refresh_token_forgets_the_stored_one() {
     assert_eq!(backend.access_token().as_deref(), Some("a-access-bare"));
     assert_eq!(secrets.get(&stub.key()), None);
 }
+
+/// U13 phase 3: a session stored at one run resumes at the next with no password, using the stored
+/// refresh token, and only for the server it belongs to.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stored_session_resumes_at_the_next_start() {
+    let stub = Stub::auth("a").await;
+    let (first, secrets) = backend();
+    signed_in(&first, &stub).await;
+    assert_eq!(secrets.get(&stub.key()).as_deref(), Some("a-refresh-l1"));
+    drop(first);
+
+    let store = secrets.clone();
+    let url = stub.url.clone();
+    let next = within("constructing", move || {
+        HttpBackend::restoring(store, Some(format!("{url}/")))
+    });
+    assert!(
+        !next.has_stored_session(),
+        "nothing until the server is set"
+    );
+    next.set_server_url(stub.url.clone());
+    assert!(next.has_stored_session());
+    let refreshed = next
+        .auth_controller_refresh(semaphore_wire::types::RefreshRequestDto {
+            refresh_token: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(refreshed.access_token, "a-access-r1");
+    let sent = stub.to(REFRESH);
+    assert_eq!(sent.len(), 1);
+    assert!(sent[0].body.contains("a-refresh-l1"), "{}", sent[0].body);
+    // The rotated token replaces the stored one.
+    assert_eq!(secrets.get(&stub.key()).as_deref(), Some("a-refresh-r1"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_stored_session_is_only_for_its_own_server() {
+    let stub = Stub::auth("a").await;
+    let other = Stub::auth("b").await;
+    let (first, secrets) = backend();
+    signed_in(&first, &stub).await;
+
+    let store = secrets.clone();
+    let url = stub.url.clone();
+    let next = within("constructing", move || {
+        HttpBackend::restoring(store, Some(url))
+    });
+    next.set_server_url(other.url.clone());
+    assert!(!next.has_stored_session());
+    // Coming back to the stored server finds it still waiting.
+    next.set_server_url(stub.url.clone());
+    assert!(next.has_stored_session());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn flush_waits_for_writes_already_queued() {
+    let stub = Stub::auth("a").await;
+    let (backend, secrets) = backend();
+    let _unblock = Unblock(secrets.clone());
+    backend.set_server_url(stub.url.clone());
+    secrets.block_saves();
+    let login = tokio::spawn({
+        let backend = backend.clone();
+        async move { backend.auth_controller_login(credentials()).await }
+    });
+    until("the save to reach the store", || secrets.waiting() == 1).await;
+
+    let held = backend.clone();
+    let flushed = tokio::task::spawn_blocking(move || held.flush(Duration::from_millis(100)))
+        .await
+        .unwrap();
+    assert!(!flushed, "the write is still held at the store");
+
+    secrets.unblock();
+    let held = backend.clone();
+    let flushed = tokio::task::spawn_blocking(move || held.flush(Duration::from_secs(5)))
+        .await
+        .unwrap();
+    assert!(flushed);
+    assert_eq!(secrets.get(&stub.key()).as_deref(), Some("a-refresh-l1"));
+    login.await.unwrap().unwrap();
+}

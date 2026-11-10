@@ -3,6 +3,7 @@
 use super::{Variant, icon_path, text};
 use crate::theme::SemTheme;
 use crate::theme::color::{darken, hsla_of, lighten};
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::progress::{Progress as KitProgress, ProgressCircle};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -462,7 +463,12 @@ impl RenderOnce for Alert {
         } else {
             (lighten(light, 0.9), darken(light, 0.6))
         };
+        // An alert, so a screen reader reads it out when it appears: "your session has expired".
         div()
+            .id("alert")
+            .test_support()
+            .role(Role::Alert)
+            .aria_label(self.message.clone())
             .w_full()
             .flex()
             .gap(px(12.))

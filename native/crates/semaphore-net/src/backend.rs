@@ -99,8 +99,22 @@ impl Session {
 }
 
 enum StoreOp {
-    Save { key: String, value: String },
-    Delete { key: String },
+    Save {
+        key: String,
+        value: String,
+    },
+    Delete {
+        key: String,
+    },
+    /// Writes nothing: answers once everything queued before it has been written.
+    Flush(mpsc::Sender<()>),
+}
+
+/// What the store thread reads before anything else, for [`HttpBackend::new`].
+struct Startup {
+    device_id: String,
+    /// The refresh token stored for the server asked about, if there is one.
+    stored: Option<Token>,
 }
 
 struct StoreJob {
@@ -111,15 +125,28 @@ struct StoreJob {
 /// Resolves when a queued store write has finished.
 type Stored = Option<oneshot::Receiver<()>>;
 
-/// The one thread that touches the store. Reads the device id first, for [`HttpBackend::new`].
+/// The one thread that touches the store. Reads the device id first, and the refresh token stored
+/// for `server`, for [`HttpBackend::new`].
 fn run_store(
     secrets: Arc<dyn SecretStore>,
-    device_id: mpsc::Sender<String>,
+    server: Option<String>,
+    startup: mpsc::Sender<Startup>,
     jobs: mpsc::Receiver<StoreJob>,
 ) {
-    let _ = device_id.send(load_device_id(secrets.as_ref()));
+    let device_id = load_device_id(secrets.as_ref());
+    let stored = server.and_then(|url| match secrets.load(secret_key(&url)) {
+        Ok(token) => token.filter(|token| !token.is_empty()).map(Token),
+        Err(error) => {
+            log::warn!("cannot read the stored session, so this start signs in again: {error}");
+            None
+        }
+    });
+    let _ = startup.send(Startup { device_id, stored });
     while let Ok(StoreJob { op, done }) = jobs.recv() {
         match op {
+            StoreOp::Flush(flushed) => {
+                let _ = flushed.send(());
+            }
             StoreOp::Save { key, value } => {
                 if let Err(error) = secrets.save(key, value) {
                     log::warn!("the refresh token was not stored, so it is lost on exit: {error}");
@@ -156,6 +183,9 @@ struct Inner {
     device_id: String,
     timeouts: Timeouts,
     state: Mutex<Session>,
+    /// The session stored at the last run: its server and refresh token, until `set_server_url`
+    /// takes it up for that server.
+    stored: Mutex<Option<(String, Token)>>,
     /// Held across a refresh or a sign-out: callers queue here and share a refresh's result. It
     /// is owned, so the task doing the work holds it, and a caller that stops waiting can't open
     /// it while a token is still being rotated.
@@ -483,28 +513,65 @@ impl HttpBackend {
         Self::with_timeouts(secrets, Timeouts::default())
     }
 
+    /// [`new`](Self::new), and also reads the refresh token stored for `server`, in the same wait,
+    /// so a later `set_server_url(server)` resumes that session: `Backend::has_stored_session`
+    /// says so, and the first refresh uses it. The server is the app's to remember; it isn't a
+    /// secret.
+    pub fn restoring(secrets: Arc<dyn SecretStore>, server: Option<String>) -> Self {
+        Self::build(secrets, Timeouts::default(), server)
+    }
+
     /// [`new`](Self::new) with other limits. It blocks the same way.
     pub fn with_timeouts(secrets: Arc<dyn SecretStore>, timeouts: Timeouts) -> Self {
+        Self::build(secrets, timeouts, None)
+    }
+
+    fn build(secrets: Arc<dyn SecretStore>, timeouts: Timeouts, server: Option<String>) -> Self {
+        let server = server.map(|url| url.trim_end_matches('/').to_owned());
         let (store, jobs) = mpsc::channel();
-        let (device_id_sender, device_id) = mpsc::channel();
+        let (startup_sender, startup) = mpsc::channel();
+        let asked = server.clone();
         // A thread rather than the runtime's blocking pool: a store stuck at a prompt must not
         // hold up the runtime shutting down, and this runs before a runtime need exist.
         std::thread::Builder::new()
             .name("semaphore-secrets".into())
-            .spawn(move || run_store(secrets, device_id_sender, jobs))
+            .spawn(move || run_store(secrets, asked, startup_sender, jobs))
             .expect("the OS starts a thread for the secret store");
-        let device_id = device_id
-            .recv()
-            .unwrap_or_else(|_| uuid::Uuid::new_v4().to_string());
+        let Startup { device_id, stored } = startup.recv().unwrap_or_else(|_| Startup {
+            device_id: uuid::Uuid::new_v4().to_string(),
+            stored: None,
+        });
         Self {
             inner: Arc::new(Inner {
                 store,
                 device_id,
                 timeouts,
                 state: Mutex::new(Session::default()),
+                stored: Mutex::new(server.zip(stored)),
                 refresh_gate: Arc::new(tokio::sync::Mutex::new(())),
             }),
         }
+    }
+
+    /// Waits until every write queued so far has reached the secret store, or `limit` passes, and
+    /// says which. For shutdown: a refresh token rotated just before exit and not yet written would
+    /// be lost, and the next start would present the old one, which the server's reuse detection
+    /// treats as theft. Blocks, so not on a Tokio worker.
+    pub fn flush(&self, limit: std::time::Duration) -> bool {
+        let (flushed, done) = mpsc::channel();
+        let (sender, _) = oneshot::channel();
+        if self
+            .inner
+            .store
+            .send(StoreJob {
+                op: StoreOp::Flush(flushed),
+                done: sender,
+            })
+            .is_err()
+        {
+            return true;
+        }
+        done.recv_timeout(limit).is_ok()
     }
 
     /// The server requests go to now.
@@ -651,10 +718,28 @@ impl Backend for HttpBackend {
         // Tokens belong to one server. Its stored refresh token stays, under its own key.
         state.next_generation();
         state.access = None;
-        state.refresh = None;
+        // The session stored at the last run, if it was this server's.
+        state.refresh = {
+            let mut stored = self
+                .inner
+                .stored
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            match stored.take() {
+                Some((stored_url, token)) if stored_url == url => Some(token),
+                other => {
+                    *stored = other;
+                    None
+                }
+            }
+        };
         state.authed = anon.clone();
         state.anon = anon;
         state.server_url = Some(url);
+    }
+
+    fn has_stored_session(&self) -> bool {
+        self.inner.lock().refresh.is_some()
     }
 
     async fn auth_controller_login(

@@ -13,6 +13,9 @@
 //! server post_as {"channelId": "cc-general", "authorId": "pri", "text": "hi"}
 //! expect requests typingStart >= 1    # what the fake server saw, by operation or socket event
 //! expect clipboard "some text"        # what the last copy put there contains this
+//! os suspend                          # also resume, network-down, network-up
+//! restart                             # quit as closing the window does, start again
+//! expect stored-session yes           # a refresh token is in the (memory) keyring
 //! ```
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
@@ -24,10 +27,10 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
 use rig_shot::driver::Driver;
 use rig_shot::script;
-use semaphore_app::{AppConfig, AppRoot};
-use semaphore_core::ConnectionState;
+use semaphore_app::{AppConfig, AppRoot, OsEvent};
 use semaphore_core::model::{Conversation, MessageRow, SendState, SessionState};
 use semaphore_core::platform::{Clock, CoreError, SecretStore};
+use semaphore_core::{ConnectionState, NetworkState};
 use semaphore_ui::kit::{UiAssets, set_reduced_motion};
 use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
@@ -118,6 +121,12 @@ enum Step {
         name: String,
         text: String,
     },
+    /// What the OS watcher would report.
+    Os(OsEvent),
+    /// Quits the app as closing the window does, then starts it again on the same keyring and data.
+    Restart,
+    /// Whether a refresh token is stored.
+    ExpectStoredSession(bool),
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -185,6 +194,13 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                 at_least: count.parse().map_err(|_| at(anyhow!("count")))?,
             },
             ["expect", "clipboard", text] => Step::ExpectClipboard((*text).into()),
+            ["os", "suspend"] => Step::Os(OsEvent::Suspending),
+            ["os", "resume"] => Step::Os(OsEvent::Resumed),
+            ["os", "network-down"] => Step::Os(OsEvent::Network(NetworkState::Unavailable)),
+            ["os", "network-up"] => Step::Os(OsEvent::Network(NetworkState::Available)),
+            ["restart"] => Step::Restart,
+            ["expect", "stored-session", "yes"] => Step::ExpectStoredSession(true),
+            ["expect", "stored-session", "no"] => Step::ExpectStoredSession(false),
             ["click-row", name, text] => Step::ClickRow {
                 name: (*name).into(),
                 text: (*text).into(),
@@ -281,10 +297,14 @@ struct Rig {
     server: String,
     now_ms: i64,
     app: Option<Entity<AppRoot>>,
+    /// The keyring and the data directory, kept across a restart.
+    secrets: Arc<MemorySecrets>,
+    data_dir: PathBuf,
+    size: (f32, f32),
 }
 
 impl Rig {
-    fn new(server: String, now_ms: i64) -> Self {
+    fn new(server: String, now_ms: i64, data_dir: PathBuf) -> Self {
         let mut driver = Driver::new(Arc::new(UiAssets));
         driver.cx.update(|cx| {
             semaphore_app::init(cx);
@@ -297,12 +317,45 @@ impl Rig {
             server,
             now_ms,
             app: None,
+            secrets: Arc::default(),
+            data_dir,
+            size: (1280., 800.),
         }
     }
 
+    fn stored_session(&self) -> bool {
+        self.secrets
+            .0
+            .lock()
+            .unwrap()
+            .keys()
+            .any(|key| key.starts_with("refresh-token:"))
+    }
+
+    /// What closing the window does, then a new start.
+    fn restart(&mut self) -> Result<()> {
+        let app = self.app()?.clone();
+        self.driver
+            .cx
+            .update(|cx| app.update(cx, |app, _| app.shutdown()));
+        if let Some(window) = self.driver.window.take() {
+            self.driver
+                .cx
+                .update_window(window, |_, window, _| window.remove_window())
+                .context("closing the window")?;
+        }
+        self.app = None;
+        self.driver.cx.run_until_parked();
+        let (width, height) = self.size;
+        self.open(width, height)
+    }
+
     fn open(&mut self, width: f32, height: f32) -> Result<()> {
+        self.size = (width, height);
         let config = AppConfig {
-            secrets: Arc::new(MemorySecrets::default()),
+            secrets: self.secrets.clone(),
+            data_dir: self.data_dir.clone(),
+            watch_os: false,
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),
@@ -505,6 +558,19 @@ impl Rig {
                     }
                 }
                 Step::ClickRow { name, text } => self.click_row(name, text),
+                Step::Os(event) => {
+                    let app = self.app()?.clone();
+                    self.driver.cx.update(|cx| app.read(cx).os_event(*event));
+                    Ok(())
+                }
+                Step::Restart => self.restart(),
+                Step::ExpectStoredSession(wanted) => {
+                    if self.stored_session() == *wanted {
+                        Ok(())
+                    } else {
+                        Err(anyhow!("expected a stored session: {wanted}"))
+                    }
+                }
                 Step::ExpectClipboard(text) => {
                     let copied = self
                         .driver
@@ -574,7 +640,12 @@ fn main() -> Result<()> {
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = scenario_now_ms(&scenario)?;
     std::fs::create_dir_all(&out_dir)?;
-    let mut rig = Rig::new(server, now_ms);
+    // A fresh data directory per run: no server remembered from the last one.
+    let data_dir = out_dir.join("app-data");
+    if data_dir.exists() {
+        std::fs::remove_dir_all(&data_dir)?;
+    }
+    let mut rig = Rig::new(server, now_ms, data_dir);
     let result = rig.run(&steps, &out_dir);
     if let Some(app) = rig.app.clone() {
         rig.driver

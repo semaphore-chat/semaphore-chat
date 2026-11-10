@@ -196,6 +196,10 @@ pub struct FakeBackend {
     /// What the communities read fails with, while set.
     pub communities_error: Mutex<Option<BackendError>>,
     pub community_requests: AtomicU64,
+    /// A session survives from an earlier run.
+    pub stored_session: Mutex<bool>,
+    /// What a refresh fails with, while set.
+    pub refresh_error: Mutex<Option<BackendError>>,
 }
 
 impl FakeBackend {
@@ -314,6 +318,10 @@ impl Backend for FakeBackend {
         *self.server_url.lock().unwrap() = Some(server_url);
     }
 
+    fn has_stored_session(&self) -> bool {
+        *self.stored_session.lock().unwrap()
+    }
+
     async fn auth_controller_login(
         &self,
         _: wire::LoginRequestDto,
@@ -328,6 +336,9 @@ impl Backend for FakeBackend {
         _: wire::RefreshRequestDto,
     ) -> BackendResult<wire::LoginResponseDto> {
         self.refreshes.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.refresh_error.lock().unwrap().clone() {
+            return Err(error);
+        }
         decoded(json!({ "accessToken": self.access_token.lock().unwrap().clone() }))
     }
     async fn auth_controller_logout(

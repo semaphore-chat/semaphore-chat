@@ -9,9 +9,11 @@ use crate::services::{self, Services};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    ChannelKind, CommunityRow, LoadState, SessionState, SignOutReason, ViewKey,
+    ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
+    ViewKey,
 };
 use semaphore_core::{Core, CoreEvent};
+use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep, BrowserLogin};
 use semaphore_ui::kit::{Button, Dialog, Spinner, Variant, emit_core_event, on_core_event, text};
@@ -23,6 +25,25 @@ use std::sync::Arc;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
+
+/// Resuming the session stored at the last run.
+#[derive(Debug, Clone, PartialEq)]
+enum Restore {
+    /// Nothing to resume, or done.
+    Idle,
+    Running,
+    /// The server didn't answer. The stored session is kept for another try.
+    Unreachable {
+        url: String,
+        error: ErrorView,
+    },
+}
+
+/// What the sign-in screen calls a server it hasn't asked the name of: its host.
+fn server_label(url: &str) -> String {
+    let host = url.split("://").nth(1).unwrap_or(url);
+    host.split('/').next().unwrap_or(host).to_owned()
+}
 
 pub struct AppRoot {
     config: Rc<AppConfig>,
@@ -38,6 +59,10 @@ pub struct AppRoot {
     /// Signed-in sessions go to their first community once, as the web's last route would.
     landed: bool,
     account_open: bool,
+    restore: Restore,
+    /// The server the last-server file names, once written for this session.
+    remembered: Option<String>,
+    os_watcher: Option<OsWatcher>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -47,6 +72,7 @@ impl AppRoot {
         let started = services::start(
             config.secrets.clone(),
             config.clock.clone(),
+            config.data_dir.clone(),
             activity.clone(),
         );
         // Core's events, a batch per wake, onto the bus every view listens to.
@@ -94,6 +120,9 @@ impl AppRoot {
             shown: None,
             landed: false,
             account_open: false,
+            restore: Restore::Idle,
+            remembered: None,
+            os_watcher: None,
             _subscriptions: vec![activation],
         }
     }
@@ -134,9 +163,92 @@ impl AppRoot {
                 cx,
             )
         });
+        let last_server = services.last_server.clone();
         self.pane = Some(pane);
         self.services = Some(services);
+        if self.config.watch_os {
+            let handle = self.services.as_ref().map(|services| services.exec.clone());
+            if let (Some(exec), Some(core)) = (handle, self.core()) {
+                let sink: lifecycle::OsEventSink = Arc::new(move |event| {
+                    let core = core.clone();
+                    exec.fire(async move { apply_os_event(&core, event) });
+                });
+                self.os_watcher = Some(lifecycle::watch(sink));
+            }
+        }
+        if let Some(url) = last_server {
+            self.server = Some((url.clone(), server_label(&url)));
+            self.restore_session(url, window, cx);
+        }
         cx.notify();
+    }
+
+    /// Resumes the stored session. The splash stays up meanwhile.
+    fn restore_session(&mut self, url: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        self.restore = Restore::Running;
+        let core = services.core.clone();
+        let asked = url.clone();
+        services.exec.run(
+            window,
+            cx,
+            async move { core.restore_session(asked).await },
+            move |this, outcome, _, cx| {
+                this.restore = match outcome {
+                    Ok(RestoreOutcome::Unreachable { error }) => {
+                        Restore::Unreachable { url, error }
+                    }
+                    Ok(outcome) => {
+                        log::info!("restoring the session: {outcome:?}");
+                        Restore::Idle
+                    }
+                    Err(error) => {
+                        log::warn!("restoring the session: {error}");
+                        Restore::Idle
+                    }
+                };
+                // Whatever the session is now, the screens follow it again.
+                this.shown = None;
+                cx.notify();
+            },
+        );
+        cx.notify();
+    }
+
+    /// What the OS said, as the watcher would hand it over. The rig calls this directly.
+    pub fn os_event(&self, event: OsEvent) {
+        if let (Some(services), Some(core)) = (&self.services, self.core()) {
+            services
+                .exec
+                .fire(async move { apply_os_event(&core, event) });
+        }
+    }
+
+    /// Remembers the server of a session that's signed in, for the next start to resume.
+    fn remember_server(&mut self) {
+        let Some(services) = &self.services else {
+            return;
+        };
+        let Some(url) = services.backend.server_url() else {
+            return;
+        };
+        if self.remembered.as_ref() == Some(&url) {
+            return;
+        }
+        self.remembered = Some(url.clone());
+        self.server = Some((
+            url.clone(),
+            self.server
+                .as_ref()
+                .filter(|(known, _)| *known == url)
+                .map_or_else(|| server_label(&url), |(_, name)| name.clone()),
+        ));
+        let data_dir = services.data_dir.clone();
+        services.exec.handle().spawn_blocking(move || {
+            services::write_last_server(&data_dir, &url);
+        });
     }
 
     fn on_core(&mut self, event: &CoreEvent, cx: &mut Context<Self>) {
@@ -183,6 +295,10 @@ impl AppRoot {
         let Some(core) = self.core() else {
             return;
         };
+        // The splash, or the retry screen, until a restore has its answer.
+        if self.restore != Restore::Idle {
+            return;
+        }
         let session = core.session();
         if self.shown.as_ref() == Some(&session) {
             return;
@@ -191,6 +307,7 @@ impl AppRoot {
         match &session {
             SessionState::SignedIn { .. } => {
                 self.auth = None;
+                self.remember_server();
                 if self.shell.is_none() {
                     self.shell = Some(self.build_shell(core.clone(), window, cx));
                     self.landed = false;
@@ -430,6 +547,83 @@ impl AppRoot {
     }
 }
 
+impl AppRoot {
+    /// The stored session couldn't be checked: offer another try, or a sign-in elsewhere.
+    fn unreachable(
+        &self,
+        url: String,
+        error: ErrorView,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let sem = cx.sem().clone();
+        let retry = cx.entity().downgrade();
+        let elsewhere = retry.clone();
+        let retry_url = url.clone();
+        div()
+            .id("restore-unreachable")
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap(px(12.))
+            .child(text(Variant::H5, format!("Can't reach {}", server_label(&url))))
+            .child(
+                div()
+                    .max_w(px(480.))
+                    .text_color(sem.text_secondary)
+                    .child(text(
+                        Variant::Body2,
+                        format!(
+                            "You're still signed in there. Check your connection, then try again. ({})",
+                            error.message
+                        ),
+                    )),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap(px(8.))
+                    .child(
+                        Button::new("restore-sign-in", "Sign in again").on_click(move |_, _, cx| {
+                            elsewhere
+                                .update(cx, |this, cx| {
+                                    this.restore = Restore::Idle;
+                                    this.shown = None;
+                                    cx.notify();
+                                })
+                                .ok();
+                        }),
+                    )
+                    .child(
+                        Button::new("restore-retry", "Try again")
+                            .contained()
+                            .on_click(move |_, window, cx| {
+                                let url = retry_url.clone();
+                                retry
+                                    .update(cx, |this, cx| this.restore_session(url, window, cx))
+                                    .ok();
+                            }),
+                    ),
+            )
+    }
+}
+
+/// Core's side of an OS event. On the net runtime: `resume` and `network_changed` reach the socket,
+/// which spawns.
+fn apply_os_event(core: &Core, event: OsEvent) {
+    log::info!("OS: {event:?}");
+    match event {
+        OsEvent::Suspending => core.suspend(),
+        OsEvent::Resumed => {
+            core.resume();
+        }
+        OsEvent::Network(network) => {
+            core.network_changed(network);
+        }
+    }
+}
+
 fn sign_in_step(server_url: String, server_name: String, notice: Option<String>) -> AuthStep {
     AuthStep::SignIn {
         server_url,
@@ -502,6 +696,16 @@ impl Render for AppRoot {
             .relative()
             .bg(sem.background_default)
             .text_color(sem.text_primary);
+        if let Restore::Unreachable { url, error } = self.restore.clone() {
+            return root.child(self.unreachable(url, error, cx));
+        }
+        if self.restore == Restore::Running {
+            return root
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(Spinner::new("app-restoring"));
+        }
         if let Some(shell) = &self.shell {
             return root.child(shell.clone()).when(self.account_open, |root| {
                 root.child(self.account_dialog(cx))

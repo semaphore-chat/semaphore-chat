@@ -5,7 +5,7 @@ mod common;
 
 use common::*;
 use semaphore_core::backend::BackendError;
-use semaphore_core::model::{LoadState, SessionState, SignOutReason, ViewKey};
+use semaphore_core::model::{LoadState, RestoreOutcome, SessionState, SignOutReason, ViewKey};
 use semaphore_wire::enums::ErrorCode;
 use std::sync::atomic::Ordering;
 
@@ -155,4 +155,97 @@ async fn typing_goes_over_the_socket_for_channels_only() {
     let names: Vec<&str> = emitted.iter().map(|(name, _)| name.as_str()).collect();
     assert_eq!(names, ["typingStart", "typingStop"]);
     assert_eq!(emitted[0].1["channelId"], CHANNEL);
+}
+
+#[tokio::test]
+async fn restore_without_a_stored_session_asks_for_a_sign_in() {
+    let rig = Rig::new();
+    let outcome = rig
+        .core
+        .restore_session("http://server/".into())
+        .await
+        .unwrap();
+    assert_eq!(outcome, RestoreOutcome::NoSession);
+    assert_eq!(rig.core.session(), SessionState::SignedOut);
+    assert_eq!(rig.backend.refreshes.load(Ordering::SeqCst), 0);
+    // The URL is normalised as sign-in's is.
+    assert_eq!(
+        rig.backend.server_url.lock().unwrap().as_deref(),
+        Some("http://server")
+    );
+}
+
+#[tokio::test]
+async fn restore_signs_in_with_the_stored_session_and_connects() {
+    let rig = Rig::new();
+    *rig.backend.stored_session.lock().unwrap() = true;
+    let outcome = rig
+        .core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    assert_eq!(outcome, RestoreOutcome::SignedIn);
+    assert!(matches!(rig.core.session(), SessionState::SignedIn { .. }));
+    assert_eq!(rig.backend.refreshes.load(Ordering::SeqCst), 1);
+    assert!(rig.realtime.calls().contains(&"connect".to_owned()));
+    rig.core.run_until_idle().await;
+    assert_eq!(rig.core.load_state(ViewKey::Communities), LoadState::Ready);
+}
+
+#[tokio::test]
+async fn a_refused_stored_session_signs_out_with_the_reason() {
+    for status in [401, 403] {
+        let rig = Rig::new();
+        *rig.backend.stored_session.lock().unwrap() = true;
+        *rig.backend.refresh_error.lock().unwrap() = Some(error(status, "UNAUTHENTICATED"));
+        let outcome = rig
+            .core
+            .restore_session("http://server".into())
+            .await
+            .unwrap();
+        assert_eq!(outcome, RestoreOutcome::Refused, "{status}");
+        assert_eq!(rig.core.session(), SessionState::SignedOut);
+        assert_eq!(rig.core.last_sign_out(), Some(SignOutReason::Expired));
+        assert!(!rig.realtime.calls().contains(&"connect".to_owned()));
+    }
+}
+
+#[tokio::test]
+async fn an_unreachable_server_keeps_the_session_for_a_retry() {
+    let rig = Rig::new();
+    *rig.backend.stored_session.lock().unwrap() = true;
+    *rig.backend.refresh_error.lock().unwrap() = Some(error(0, "UNKNOWN"));
+    let outcome = rig
+        .core
+        .restore_session("http://server".into())
+        .await
+        .unwrap();
+    let RestoreOutcome::Unreachable { error } = outcome else {
+        panic!("expected unreachable, got {outcome:?}");
+    };
+    assert_eq!(error.code, "UNKNOWN");
+    assert_eq!(rig.core.session(), SessionState::SignedOut);
+    // Not a refusal: the sign-in screen has nothing to explain.
+    assert_eq!(rig.core.last_sign_out(), None);
+
+    *rig.backend.refresh_error.lock().unwrap() = Some(error_503());
+    assert!(matches!(
+        rig.core
+            .restore_session("http://server".into())
+            .await
+            .unwrap(),
+        RestoreOutcome::Unreachable { .. }
+    ));
+    *rig.backend.refresh_error.lock().unwrap() = None;
+    assert_eq!(
+        rig.core
+            .restore_session("http://server".into())
+            .await
+            .unwrap(),
+        RestoreOutcome::SignedIn
+    );
+}
+
+fn error_503() -> BackendError {
+    error(503, "SERVICE_UNAVAILABLE")
 }

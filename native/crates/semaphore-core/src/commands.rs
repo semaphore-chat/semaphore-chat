@@ -10,8 +10,8 @@ use crate::client::{Core, Effect, State, user_view};
 use crate::model::{
     ChannelKind, ChannelPermissions, ChannelRow, CommunityRow, Conversation, DisplayRole,
     EmojiView, ErrorView, LoadState, MemberList, MemberView, MentionCandidate, MentionKind,
-    MessageDraft, ParticipantView, RailCounts, ServerInfo, SessionState, SignOutReason, UserView,
-    VideoDemand, ViewKey, VoiceStatus, VoiceView,
+    MessageDraft, ParticipantView, RailCounts, RestoreOutcome, ServerInfo, SessionState,
+    SignOutReason, UserView, VideoDemand, ViewKey, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
@@ -575,22 +575,7 @@ impl Core {
         }
         .await;
         match signed_in {
-            Ok((login, profile)) => {
-                self.write(|state, now| {
-                    let me = user_view(&profile);
-                    state.me = Some(me.clone());
-                    state.session = SessionState::SignedIn { me };
-                    state.sign_out_reason = None;
-                    state.token_expires_at_ms = jwt_expiry_ms(&login.access_token);
-                    state
-                        .cache
-                        .set(keys::op(keys::PROFILE), CacheValue::Profile(profile), now);
-                    state.view_changed(ViewKey::Session);
-                    state.ensure_query(keys::op(keys::COMMUNITIES));
-                    state.ensure_query(keys::op(keys::UNREAD));
-                });
-                services.realtime.connect();
-            }
+            Ok((login, profile)) => self.signed_in(&services, &login.access_token, profile),
             Err(error) => self.write(|state, _| {
                 state.session = SessionState::SignInFailed {
                     error: error.view(),
@@ -599,6 +584,81 @@ impl Core {
             }),
         }
         Ok(())
+    }
+
+    /// A session is established: what sign-in and restore share.
+    fn signed_in(
+        &self,
+        services: &crate::client::Services,
+        access_token: &str,
+        profile: wire::UserEntity,
+    ) {
+        self.write(|state, now| {
+            let me = user_view(&profile);
+            state.me = Some(me.clone());
+            state.session = SessionState::SignedIn { me };
+            state.sign_out_reason = None;
+            state.token_expires_at_ms = jwt_expiry_ms(access_token);
+            state
+                .cache
+                .set(keys::op(keys::PROFILE), CacheValue::Profile(profile), now);
+            state.view_changed(ViewKey::Session);
+            state.ensure_query(keys::op(keys::COMMUNITIES));
+            state.ensure_query(keys::op(keys::UNREAD));
+        });
+        services.realtime.connect();
+    }
+
+    /// Resumes the session stored for `server_url` at an earlier run, with no password: the
+    /// backend refreshes it, then core reads the profile and connects, as `sign_in` does. A refused
+    /// session is forgotten and the session says why (`last_sign_out`). An unreachable server
+    /// keeps it, signed out for now, for the caller to offer a retry.
+    pub async fn restore_session(&self, server_url: String) -> Result<RestoreOutcome, CoreError> {
+        let services = self
+            .services()
+            .ok_or_else(|| unavailable("restoring a session"))?
+            .clone();
+        services
+            .backend
+            .set_server_url(server_url.trim_end_matches('/').to_owned());
+        if !services.backend.has_stored_session() {
+            return Ok(RestoreOutcome::NoSession);
+        }
+        self.write(|state, _| {
+            state.session = SessionState::SigningIn;
+            state.view_changed(ViewKey::Session);
+        });
+        let restored = async {
+            let body = wire::RefreshRequestDto {
+                refresh_token: None,
+            };
+            let refreshed = services.backend.auth_controller_refresh(body).await?;
+            let profile = services.backend.user_controller_get_profile().await?;
+            Ok::<_, crate::backend::BackendError>((refreshed, profile))
+        }
+        .await;
+        match restored {
+            Ok((refreshed, profile)) => {
+                self.signed_in(&services, &refreshed.access_token, profile);
+                Ok(RestoreOutcome::SignedIn)
+            }
+            Err(error) => {
+                let refused = matches!(error.status, 401 | 403);
+                self.write(|state, _| {
+                    state.reset_signed_out();
+                    if refused {
+                        state.sign_out_reason = Some(SignOutReason::Expired);
+                    }
+                });
+                if refused {
+                    Ok(RestoreOutcome::Refused)
+                } else {
+                    Ok(RestoreOutcome::Unreachable {
+                        error: error.view(),
+                    })
+                }
+            }
+        }
     }
 
     /// Ends the session and forgets everything from it.

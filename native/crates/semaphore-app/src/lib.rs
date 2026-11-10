@@ -15,9 +15,11 @@ use gpui_kit::component::Root;
 use gpui_kit::*;
 use semaphore_core::platform::{Clock, SecretStore};
 use semaphore_ui::messages::TimeFormat;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use root::AppRoot;
+pub use semaphore_platform_desktop::lifecycle::OsEvent;
 
 pub struct AppConfig {
     /// Where the refresh token and device id live: the OS keyring in the app.
@@ -30,6 +32,10 @@ pub struct AppConfig {
     pub time: TimeFormat,
     /// The list's scrollbar fades on a real clock, so the rig turns it off.
     pub scrollbar: bool,
+    /// Where the app keeps what isn't secret: the server signed in to last.
+    pub data_dir: PathBuf,
+    /// Listen to the OS for sleep and network changes. The rig sends its own.
+    pub watch_os: bool,
 }
 
 /// Once per process, before the first window.

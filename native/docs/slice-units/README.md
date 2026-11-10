@@ -68,8 +68,8 @@ inside `cache.rs`, which U5 replaces with typed entries.
 
 ## U13 must do
 
-U13 is in four phases, each leaving the app runnable: **1 text client (done)**, 2 voice, 3 session
-restore and OS lifecycle, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
+U13 is in four phases, each leaving the app runnable: **1 text client (done)**, 2 voice, **3 session
+restore and OS lifecycle (done)**, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
 
 **Done in phase 1:** the app (`semaphore-app` as a library and binary; core on a Tokio runtime of its
 own, events to GPUI through a channel), `CoreSource` over core's load states, members (with the
@@ -103,20 +103,31 @@ refresh ends the session as `AuthLost` does. `SocketRealtime` now asks for typed
   and `reconnect_attempt` from `VoiceView::reconnect_attempt`.
 - Closing the window during a call quits and leaves the call (Mike may overrule).
 
-**Phase 3, restore and lifecycle.** `Core::restore_session(url)`, answering `SignedIn`, `NoSession`,
-`Refused` or `Unreachable`; `HttpBackend` reads the last server and its refresh token with the device
-id at construction, records the last server at sign-in, and gets a `flush` for its store queue at
-shutdown (a rotated token lost at exit trips the server's reuse detection). Suspend, resume and
-network changes from logind and NetworkManager (zbus 5 on async-io: `scripts/check-zbus-tokio.sh`
-guards it) and Windows' power and interface notifications, plus a boottime-against-monotonic jump
-check where neither exists. The e2e's restart steps.
+**Done in phase 3:** `Core::restore_session(url)` answers `SignedIn`, `NoSession`, `Refused` or
+`Unreachable`. The app keeps the last server in `<data dir>/last-server` (not a secret);
+`HttpBackend::restoring` reads that server's refresh token with the device id, in the one wait on the
+keyring, and `set_server_url` takes it up. A refused token is deleted and the sign-in screen says the
+session expired; an unreachable server keeps it and offers Try again. Shutdown stops core and the
+socket, then the runtime, then waits for the keyring's queued writes (`HttpBackend::flush`), so a
+rotated refresh token isn't lost at exit. `semaphore_platform_desktop::lifecycle` reports sleep and
+network changes to `Core::suspend`, `resume` and `network_changed`: logind's `PrepareForSleep` and
+NetworkManager's `StateChanged` over zbus 5 on async-io on a thread of its own, a boot-against-monotonic
+clock check where logind is missing, and on Windows `PowerRegisterSuspendResumeNotification` and
+`NotifyIpInterfaceChange` with `GetNetworkConnectivityHint`. Kit alerts are now accessible alerts.
+
+Left out of phase 3, as follow-ups: a logind delay inhibitor (today a sleep can start before core has
+heard of it, which costs nothing but a reconnect); NetworkManager's `PrimaryConnection` changes, so a
+Wi-Fi to Wi-Fi move with no state change goes unnoticed until the socket's ping times out; networks
+without NetworkManager (iwd, systemd-networkd) report nothing; Windows modern standby may skip
+`PBT_APMSUSPEND`; the restored sign-in screen names the server by its host until it is probed again.
 
 **Phase 4, media.** `MediaSource` over a memory-only file cache (`Core::file`), avatars, custom emoji
 from `Core::custom_emojis` with unknown ones drawn as `:name:`, mention avatars, the emoji picker,
-the file dialog, and uploads on `Send`. **Decide first:** the web sends a message with
-`pendingAttachments` and then uploads each file against it (`useMessageFileUpload.ts`), but
-`MessageDraft::attachment_file_ids` assumes the files upload first. Core's send pipeline follows one
-of the two. The e2e's upload step (step 6) waits on this.
+the file dialog, and uploads on `Send`. **Decided (2026-11-10): follow the server's contract as the
+web uses it** (`useMessageFileUpload.ts`): send the message first with `pendingAttachments` set to
+the file count, then upload each file with `resourceType: MESSAGE_ATTACHMENT` and the message's id.
+Core's draft model changes to match (`MessageDraft` carries the files to upload, not
+`attachment_file_ids`); the backend doesn't. The e2e's upload step (step 6) comes with it.
 
 Some UI comments still say core lacks these (`voice/model.rs`). Drop each as its gap closes.
 

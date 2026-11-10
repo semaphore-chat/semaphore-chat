@@ -3,7 +3,8 @@
 
 use gpui_kit::*;
 use semaphore_app::AppConfig;
-use semaphore_platform_desktop::{KeyringSecrets, SystemClock};
+use semaphore_core::platform::AppPaths as _;
+use semaphore_platform_desktop::{DesktopPaths, KeyringSecrets, SystemClock};
 use semaphore_ui::kit::UiAssets;
 use semaphore_ui::messages::TimeFormat;
 use std::process::ExitCode;
@@ -76,6 +77,12 @@ fn main() -> ExitCode {
         _ => return usage(),
     };
     init_logging();
+    let Some(data_dir) =
+        DesktopPaths::new().map(|paths| std::path::PathBuf::from(paths.data_dir()))
+    else {
+        eprintln!("semaphore-app: the OS reports no home directory");
+        return ExitCode::FAILURE;
+    };
 
     gpui_kit::application()
         .with_assets(UiAssets)
@@ -87,6 +94,8 @@ fn main() -> ExitCode {
                 server_url,
                 time: TimeFormat::default(),
                 scrollbar: true,
+                data_dir,
+                watch_os: true,
             };
             let options = semaphore_app::window_options(WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
