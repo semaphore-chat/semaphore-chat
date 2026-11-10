@@ -32,6 +32,8 @@ async fn serve(status: u16, body: &'static str) -> String {
 
 /// Calls a generated operation against that server and converts its error.
 async fn failed_call(base: &str) -> ApiError {
+    // Only this workspace's other crates make it needed; harmless when it isn't.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     let client = Client::new(base);
     match client.app_controller_get_hello().await {
         Ok(response) => panic!("expected an error, got {response:?}"),

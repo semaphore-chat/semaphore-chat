@@ -42,7 +42,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["sync"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+# rustls with no roots: semaphore-net hands every connection its OS-trust config, so forgetting it
+# is a refused connection and not a second trust store.
+tokio-tungstenite = { version = "0.26", features = ["__rustls-tls"] }
 
 # The NV12 video surface. Built from crates.io source and our patches: see third_party/README.md.
 [patch.crates-io]

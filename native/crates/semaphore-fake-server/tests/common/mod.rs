@@ -19,6 +19,8 @@ pub async fn start(name: &'static str) -> FakeServer {
 }
 
 pub fn http() -> reqwest::Client {
+    // Only this workspace's other crates make it needed; harmless when it isn't.
+    let _ = rustls::crypto::ring::default_provider().install_default();
     reqwest::Client::new()
 }
 

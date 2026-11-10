@@ -21,7 +21,7 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, sleep_until, timeout};
 use tokio_tungstenite::tungstenite::Message;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_with_config};
+use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async_tls_with_config};
 
 pub const SUBSCRIBE_ALL: &str = "subscribeAll";
 pub const PRESENCE_ONLINE: &str = "presenceOnline";
@@ -403,7 +403,9 @@ impl Actor {
         // Nagle off, as `ws` does for socket.io-client. subscribeAll and presenceOnline are two
         // small writes in a row, so with it on, presenceOnline waits for the ack of the first,
         // which the server delays by up to 40 ms because subscribeAll gets no reply.
-        let (mut ws, _) = connect_async_with_config(url.as_str(), None, true)
+        let connector = crate::websocket_connector()
+            .map_err(|error| other(format!("websocket error: {error}")))?;
+        let (mut ws, _) = connect_async_tls_with_config(url.as_str(), None, true, Some(connector))
             .await
             .map_err(|error| other(format!("websocket error: {error}")))?;
         let open = match next_frame(&mut ws).await {

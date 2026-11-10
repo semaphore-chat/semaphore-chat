@@ -176,6 +176,13 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
     })
 }
 
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+}
+
 fn has_bearer(headers: &HeaderMap) -> bool {
     headers
         .get(header::AUTHORIZATION)
@@ -218,9 +225,26 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
 
     if operation.is_some()
         && operation != Some("AuthController_login")
+        && operation != Some("AuthController_refresh")
         && !has_bearer(request.headers())
     {
         let response = inner.error(401, "UNAUTHENTICATED", "Missing bearer token", false);
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    if operation.is_some()
+        && operation != Some("AuthController_login")
+        && operation != Some("AuthController_refresh")
+        && let Some(required) = inner.required_access_token()
+        && bearer_token(request.headers()) != Some(required.as_str())
+    {
+        let response = inner.error(401, "UNAUTHENTICATED", "Access token expired", false);
         inner.record_http(
             method.as_str(),
             &path,
@@ -335,20 +359,20 @@ async fn login(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     json_response(
         StatusCode::OK,
         json!({
-            "accessToken": "fake-access-token",
+            "accessToken": inner.current_access_token(),
             "refreshToken": "fake-refresh-token",
         }),
     )
 }
 
-async fn refresh(State(_inner): State<Arc<Inner>>, body: Bytes) -> Response {
+async fn refresh(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     if !body.is_empty() && typed::<RefreshRequestDto>(&body).is_err() {
         return invalid("The request body does not match the contract");
     }
     json_response(
         StatusCode::OK,
         json!({
-            "accessToken": "fake-access-token",
+            "accessToken": inner.current_access_token(),
             "refreshToken": "fake-refresh-token",
         }),
     )

@@ -73,6 +73,9 @@ pub(crate) struct Faults {
     pub drop_acks: bool,
     pub fail_next_send: Option<SendFault>,
     pub fail_routes: HashMap<String, RouteFault>,
+    /// Set by `expire_access_token`: the only access token the server still accepts.
+    pub required_token: Option<String>,
+    pub token_generation: u64,
 }
 
 /// A nonce a message was created with, so a retry can find it again.
@@ -267,6 +270,24 @@ impl Inner {
         );
     }
 
+    pub fn current_access_token(&self) -> String {
+        lock(&self.faults)
+            .required_token
+            .clone()
+            .unwrap_or_else(|| "fake-access-token".to_owned())
+    }
+
+    /// The bearer the server insists on after `expire_access_token`, if it was called.
+    pub fn required_access_token(&self) -> Option<String> {
+        lock(&self.faults).required_token.clone()
+    }
+
+    pub fn expire_access_token(&self) {
+        let mut faults = lock(&self.faults);
+        faults.token_generation += 1;
+        faults.required_token = Some(format!("fake-access-token-{}", faults.token_generation));
+    }
+
     pub fn advance_clock(&self, by: Duration) {
         let by = chrono::Duration::from_std(by).unwrap_or(chrono::Duration::MAX);
         *lock(&self.clock) += by;
@@ -415,6 +436,13 @@ impl FakeServer {
     /// Make the next request with this operation id fail with `status` and `code`.
     pub fn fail_route(&self, operation: &str, status: u16, code: &str) {
         self.inner.fail_route(operation, status, code);
+    }
+
+    /// Expire every access token handed out so far: calls and socket handshakes carrying one get
+    /// `401 UNAUTHENTICATED` (or `AUTH_FAILED`) until a refresh returns the new one, which login
+    /// returns too. Until this is called, any non-empty bearer is accepted.
+    pub fn expire_access_token(&self) {
+        self.inner.expire_access_token();
     }
 
     /// Every HTTP request and socket event seen so far, in order.

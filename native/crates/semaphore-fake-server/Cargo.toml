@@ -25,6 +25,9 @@ tokio = { version = "1", default-features = false, features = [
 uuid = { version = "1", features = ["serde"] }
 
 [dev-dependencies]
+# Under `cargo test --workspace`, semaphore-net's `rustls-no-provider` feature reaches reqwest here
+# too, and a client then panics with no crypto provider. Install the one semaphore-net uses.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 jsonschema = "0.30"
 reqwest.workspace = true
 tokio-tungstenite.workspace = true
