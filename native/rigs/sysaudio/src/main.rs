@@ -7,6 +7,7 @@
 //!                through cpal, captures system audio and publishes it as the screen share's audio.
 //!   MODE=viewer  speaks the call tone into the room and judges the sharer's screen share audio,
 //!                decoded, as other people would hear it.
+//!   MODE=game    plays GAME_HZ through cpal from its own process: the "game" on Windows.
 //!   MODE=desktop like local, on a real desktop session: plays the call tone quietly and records
 //!                the captured audio to RECORD (a WAV) for a person to listen to.
 //!
@@ -29,7 +30,10 @@ use semaphore_media_livekit::audio::system::{CaptureScope, SystemAudioCapture};
 use semaphore_media_livekit::audio::{AudioIo, ErrorCallback};
 use semaphore_media_livekit::testing::ToneMic;
 use semaphore_media_livekit::{EngineOptions, LiveKitEngine};
-use semaphore_sysaudio::PipeWireCapture;
+#[cfg(target_os = "linux")]
+use semaphore_sysaudio::PipeWireCapture as PlatformCapture;
+#[cfg(windows)]
+use semaphore_sysaudio::ProcessLoopbackCapture as PlatformCapture;
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::io::Write as _;
@@ -255,11 +259,13 @@ impl Wav {
     }
 }
 
-fn capture() -> PipeWireCapture {
+/// INCLUDE_OWN=1 is the negative control: Linux links our own streams too; Windows captures
+/// only our process tree. Either way the call tone must then be heard.
+fn capture() -> PlatformCapture {
     if env("INCLUDE_OWN").is_some_and(|value| value == "1") {
-        PipeWireCapture::negative_control()
+        PlatformCapture::negative_control()
     } else {
-        PipeWireCapture::default()
+        PlatformCapture::default()
     }
 }
 
@@ -350,6 +356,27 @@ fn run_local(record: Option<String>) {
     emit_cpu(started);
     drop(stream);
     drop(output);
+    emit(json!({"ev":"done","t":now_ms()}));
+}
+
+/// A stand-in game for machines without the container's players (Windows): plays GAME_HZ
+/// through cpal from its own process for DURATION_S.
+fn run_game() {
+    let duration = Duration::from_secs_f64(env_f64("DURATION_S", 30.0));
+    let io = CpalIo::default();
+    let mut tone = ToneMic::new(env_f64("GAME_HZ", 523.0), env_f64("GAME_AMPLITUDE", 0.25));
+    let _output = io
+        .open_output(
+            None,
+            Box::new(move |out, _| tone.fill(out)),
+            on_error("game output"),
+        )
+        .expect("game output opens");
+    emit(json!({"ev":"game_playing","t":now_ms(),"pid":std::process::id()}));
+    let started = Instant::now();
+    while started.elapsed() < duration {
+        std::thread::sleep(Duration::from_millis(100));
+    }
     emit(json!({"ev":"done","t":now_ms()}));
 }
 
@@ -490,6 +517,7 @@ fn main() {
     let mode = env("MODE").unwrap_or_else(|| "local".into());
     match mode.as_str() {
         "local" => run_local(None),
+        "game" => run_game(),
         "desktop" => run_local(env("RECORD")),
         "share" | "viewer" => {
             let runtime = tokio::runtime::Runtime::new().expect("runtime");

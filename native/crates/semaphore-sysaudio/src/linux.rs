@@ -17,15 +17,15 @@
 //! new stream of ours is never linked even briefly. Links are `object.linger=false`: they go away
 //! with this connection, crash included.
 
+use crate::{CHANNELS as SYSTEM_AUDIO_CHANNELS, RATE as SYSTEM_AUDIO_RATE};
+use crate::{
+    Capturing, OnAudio as SystemAudioCallback, OnError as ErrorCallback,
+    Support as SystemAudioSupport,
+};
 use pipewire as pw;
 use pw::properties::properties;
 use pw::spa;
 use pw::types::ObjectType;
-use semaphore_media_livekit::audio::system::{
-    CaptureScope, SYSTEM_AUDIO_CHANNELS, SYSTEM_AUDIO_RATE, SystemAudioCallback,
-    SystemAudioCapture, SystemAudioSupport,
-};
-use semaphore_media_livekit::audio::{AudioStream, ErrorCallback};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::{Rc, Weak};
@@ -51,10 +51,10 @@ impl PipeWireCapture {
     }
 }
 
-impl SystemAudioCapture for PipeWireCapture {
+impl PipeWireCapture {
     /// A socket check, not a connection: cheap enough for a settings screen. `start` reports
     /// anything the socket can't tell.
-    fn support(&self) -> SystemAudioSupport {
+    pub fn support(&self) -> SystemAudioSupport {
         let socket = std::env::var_os("PIPEWIRE_REMOTE")
             .map(std::path::PathBuf::from)
             .filter(|path| path.is_absolute())
@@ -68,13 +68,12 @@ impl SystemAudioCapture for PipeWireCapture {
         }
     }
 
-    fn start(
+    /// Starts capturing everything except our own process. Dropping the result stops it.
+    pub fn start_capture(
         &self,
-        scope: CaptureScope,
         on_audio: SystemAudioCallback,
         on_error: ErrorCallback,
-    ) -> Result<AudioStream, String> {
-        let CaptureScope::EverythingExceptOurs = scope;
+    ) -> Result<Capturing, String> {
         let include_own = self.include_own;
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
         let (stop_tx, stop_rx) = pw::channel::channel::<()>();
@@ -91,7 +90,7 @@ impl SystemAudioCapture for PipeWireCapture {
             thread: Some(thread),
         };
         match ready_rx.recv_timeout(START_TIMEOUT) {
-            Ok(Ok(())) => Ok(AudioStream::new(running)),
+            Ok(Ok(())) => Ok(Capturing::new(running)),
             Ok(Err(error)) => Err(error),
             Err(_) => {
                 running.stop();
@@ -129,6 +128,7 @@ impl Drop for Running {
 /// ahead of `-lpipewire-0.3` (found by T11: `pw_init` jumped to address 0). So we fill the
 /// pointers ourselves, from the libpipewire that is already loaded, through libwebrtc's own
 /// initializer. If libwebrtc renames it, the link fails, which is loud and early.
+#[cfg(feature = "media")]
 mod webrtc_stubs {
     use std::ffi::c_void;
 
@@ -161,6 +161,14 @@ mod webrtc_stubs {
             }
         })
         .clone()
+    }
+}
+
+/// Without the media crate there's no libwebrtc in the binary, so no stubs to fill.
+#[cfg(not(feature = "media"))]
+mod webrtc_stubs {
+    pub(super) fn ensure() -> Result<(), String> {
+        Ok(())
     }
 }
 

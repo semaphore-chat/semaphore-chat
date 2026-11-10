@@ -181,6 +181,13 @@ def evaluate(result, mode, call_ref):
             out["metrics"]["a3_onset_ms"] = onset
             out["checks"]["a3_onset"] = onset is not None and onset <= (1000 if mode == "local" else 1500)
     threshold = min(call_ref - ABSENT_BELOW_CALL, ABSENT_FLOOR)
+    # Not a bar: how far the absent tone stands above tones nobody plays, in the same window. A
+    # leak puts it far above them; decoder noise (a concealed packet) raises them all together.
+    controls = [t for t in slow[0]["db"] if t not in PRESENT[s] and t not in ABSENT.get(s, []) and t != "a3"] if slow else []
+    for tone in ABSENT.get(s, []):
+        margins = [w["db"][tone] - max(w["db"][c] for c in controls) for w in slow if controls]
+        if margins:
+            out["metrics"][f"{tone}_above_unplayed_tones_max_db"] = round(max(margins), 2)
     for tone in ABSENT.get(s, []):
         levels = [w["db"][tone] for w in slow]
         fast_levels = [w["db"][tone] for w in fast]
@@ -283,7 +290,11 @@ def main():
     for s in scenarios:
         runs = [evaluate(r, args.mode, call_ref) for r in results if r["scenario"] == s]
         passed = sum(1 for r in runs if r["pass"])
-        entry = {"what": WHAT[s], "passed": passed, "runs": len(runs), "pass": passed == len(runs), "detail": runs}
+        entry = {"what": WHAT[s], "commit": summary["commit"], "parallel": args.parallel, "passed": passed,
+                 "runs": len(runs), "pass": passed == len(runs), "detail": runs}
+        failed_absent = [r["metrics"].get("b_above_unplayed_tones_max_db") for r in runs]
+        if any(v is not None for v in failed_absent):
+            entry["b_above_unplayed_tones_max_db"] = max(v for v in failed_absent if v is not None)
         if s == "L3":
             onsets = [r["metrics"].get("a3_onset_ms") for r in runs if r["metrics"].get("a3_onset_ms") is not None]
             entry["a3_onset_ms_median"] = statistics.median(onsets) if onsets else None

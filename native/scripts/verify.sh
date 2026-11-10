@@ -46,6 +46,7 @@ step "guards reject bad input" "$IN_IMAGE" scripts/test-policy.sh
 step "core: cargo check Android" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-linux-android
 step "core: cargo check iOS" "$IN_IMAGE" cargo check --locked -p semaphore-core --target aarch64-apple-ios
 step "patched Windows renderer: cargo check" "$IN_IMAGE" cargo check --locked -p gpui-pre-windows --target x86_64-pc-windows-msvc
+step "T11 Windows capture: cargo check" "$IN_IMAGE" cargo check --locked -p semaphore-sysaudio --no-default-features --target x86_64-pc-windows-msvc
 step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
 step "cargo build --release -p semaphore-app" "$IN_IMAGE" nice -n 10 cargo build --locked --release -p semaphore-app
 step "release binary joins a real LiveKit room" "$NATIVE_DIR/scripts/media-probe.sh"
