@@ -380,3 +380,21 @@ async fn a_lost_session_ends_the_call_in_the_engine() {
     assert!(media_calls(&rig).contains(&"disconnect".to_owned()));
     assert_eq!(rig.core.voice(), VoiceView::default());
 }
+
+#[tokio::test]
+async fn leaving_while_the_room_is_still_connecting_ends_what_the_join_started() {
+    let mut rig = Rig::with_media().signed_in().await;
+    *rig.backend.voice_users.lock().unwrap() = vec![presence("me")];
+    *rig.media.leave_during_connect.lock().unwrap() = true;
+    let joined = rig.core.join_voice(ROOM.into()).await;
+    assert!(joined.is_err(), "{joined:?}");
+    rig.settle().await;
+    assert_eq!(rig.core.voice().status, VoiceStatus::Disconnected);
+    assert_eq!(rig.core.voice().channel_id, None);
+    // The join finished after the leave: the engine and the server both hear it's over.
+    assert_eq!(
+        media_calls(&rig).last().map(String::as_str),
+        Some("disconnect")
+    );
+    assert_eq!(voice_calls(&rig), ["leave", "join", "leave"]);
+}

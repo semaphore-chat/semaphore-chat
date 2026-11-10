@@ -1077,6 +1077,15 @@ impl Core {
         self.write(|state, _| {
             // Another join, a leave or a sign-out came while this one ran: it answers for nothing.
             if state.call != call || state.voice.channel_id.as_deref() != Some(&channel_id) {
+                // A leave or sign-out can run before the engine has a room to leave, and this join
+                // then finishes after it. No newer join owns the engine, so end what this one
+                // started: the room, and the presence entry if there's still a session to say so.
+                if state.call == call && joined.is_ok() {
+                    state.push_effect(Effect::EndCall);
+                    if state.me.is_some() {
+                        state.push_effect(Effect::LeavePresence(channel_id.clone()));
+                    }
+                }
                 return joined.clone().and(Err(CoreError::Failed {
                     message: "the call was left while joining".into(),
                 }));

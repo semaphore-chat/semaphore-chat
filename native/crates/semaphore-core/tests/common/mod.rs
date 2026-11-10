@@ -712,6 +712,9 @@ pub struct FakeMedia {
     pub last_call: Mutex<u64>,
     /// Reported to `core` while `connect` runs, as an engine whose call drops at once would.
     pub report_during_connect: Mutex<Option<VoiceView>>,
+    /// `connect` leaves the call through `core` before it returns, as a user who hangs up while
+    /// the room is still connecting would.
+    pub leave_during_connect: Mutex<bool>,
     pub core: Mutex<Option<Core>>,
 }
 
@@ -727,6 +730,11 @@ impl MediaEngine for FakeMedia {
             && let Some(core) = self.core.lock().unwrap().clone()
         {
             core.ingest_media(call, report);
+        }
+        let leave = *self.leave_during_connect.lock().unwrap();
+        let core = self.core.lock().unwrap().clone();
+        if leave && let Some(core) = core {
+            let _ = core.leave_voice().await;
         }
         if *self.connect_fails.lock().unwrap() {
             return Err(CoreError::Failed {
