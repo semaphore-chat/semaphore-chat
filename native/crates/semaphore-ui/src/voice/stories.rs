@@ -66,6 +66,8 @@ fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
         reconnect_attempt: None,
         ptt: None,
         always_show_overlays: true,
+        system_audio: false,
+        system_audio_error: None,
     }
 }
 
@@ -171,6 +173,19 @@ fn muted(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     stage(m, window, cx)
 }
 
+fn sharing_audio(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    let mut m = model(cameras(4));
+    m.system_audio = true;
+    stage(m, window, cx)
+}
+
+/// What a machine with no PipeWire, or a refused capture, shows: the reason, in the bar.
+fn audio_share_failed(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    let mut m = model(cameras(4));
+    m.system_audio_error = Some("no PipeWire session to capture from".into());
+    stage(m, window, cx)
+}
+
 fn deafened(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
     let mut m = model(cameras(4));
     m.voice.muted = true;
@@ -244,6 +259,8 @@ pub fn stories() -> Vec<Story> {
         Story::new("voice-avatars", avatars),
         Story::new("voice-muted", muted),
         Story::new("voice-deafened", deafened),
+        Story::new("voice-sharing-audio", sharing_audio),
+        Story::new("voice-audio-share-failed", audio_share_failed),
         Story::new("voice-reconnecting", reconnecting),
         Story::new("voice-screen-share", screen_share),
         Story::new("voice-ptt-held", ptt_held),

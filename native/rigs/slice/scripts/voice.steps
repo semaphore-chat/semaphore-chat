@@ -1,0 +1,72 @@
+# U13 phase 2: voice against semaphore-fake-server minting real tokens for lk-stack's LiveKit, with
+# a demo publisher (`demo-peer`, video) already in Squad Up. Run by `slice-e2e.sh --voice`.
+# Snaps named *-live-* carry video and aren't compared; 04-left is.
+
+app 1280 800
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel cc-general
+wait core connection connected
+
+# Join: connected, the publisher seen, its video reaching a tile.
+click channel-vc-squad
+wait core voice connected within 30
+# The stage, with its own bar, is what the column shows.
+wait core label "Share audio"
+wait core voice participant demo-peer within 30
+wait core voice frames within 30
+expect requests VoicePresenceController_joinPresence >= 1
+expect requests LivekitController_generateToken >= 1
+tick 100
+snap 01-live-in-call
+
+# The heartbeat, at 1 s here: presence refreshed while the call lasts.
+wait core requests VoicePresenceController_refreshPresence >= 2 within 10
+
+# Mute and deafen.
+click voice-mic
+wait core voice muted
+click voice-deafen
+wait core voice deafened
+wait core requests VoicePresenceController_updateDeafenState >= 1
+click voice-deafen
+wait core voice undeafened
+click voice-mic
+wait core voice unmuted
+
+# Share audio: no PipeWire in a container, so it fails, says why, and the call goes on.
+click voice-share-audio
+wait core voice share-error within 10
+expect core voice connected
+tick 100
+snap 02-live-share-failed
+
+# Elsewhere in the app, the call's bar stays under the columns.
+click channel-cc-general
+wait core channel cc-general
+wait core label "Share audio"
+expect core voice connected
+tick 100
+snap 03-live-bar-elsewhere
+
+# A moderator removes us: the call ends here, and the server hears we left.
+livekit remove vc-squad me
+wait core voice disconnected within 15
+wait core requests VoicePresenceController_leavePresence >= 1
+
+# A new call, then leaving it from the bar.
+click channel-vc-squad
+wait core voice connected within 30
+wait core voice participant demo-peer within 30
+click voice-leave
+wait core voice disconnected
+wait core requests VoicePresenceController_leavePresence >= 2
+wait core label "Join voice"
+wait idle
+shot 04-left

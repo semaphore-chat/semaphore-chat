@@ -91,10 +91,11 @@ pub(super) fn voice_bar(
     } else {
         model.channel_name.clone().into()
     };
-    let subtitle = if model.is_dm {
-        "DM Voice Call"
-    } else {
-        "Voice Connected"
+    let subtitle: SharedString = match (&model.system_audio_error, model.system_audio) {
+        (Some(error), _) => format!("Audio share failed: {error}").into(),
+        (None, true) => "Sharing audio".into(),
+        (None, false) if model.is_dm => "DM Voice Call".into(),
+        (None, false) => "Voice Connected".into(),
     };
     let reconnecting = model
         .reconnect_attempt
@@ -306,12 +307,12 @@ pub(super) fn voice_bar(
         .items_center()
         .flex_shrink_0()
         .gap(px(if narrow { 2. } else { 8. }))
-        .child(mic)
-        .child(deafen);
+        .child(mic.test_support())
+        .child(deafen.test_support());
     if !narrow {
         controls = controls.child(vertical_divider());
     }
-    controls = controls.child(camera);
+    controls = controls.child(camera.test_support());
     if narrow {
         controls = controls.child(round_button(
             "voice-more",
@@ -321,6 +322,8 @@ pub(super) fn voice_bar(
             move |_, _, _| settings_controller.open_settings(),
         ));
     } else {
+        let sharing = model.system_audio;
+        let share_controller = controller.clone();
         controls = controls
             .child(round_button(
                 "voice-share",
@@ -329,17 +332,46 @@ pub(super) fn voice_bar(
                 false,
                 |_, _, _| {},
             ))
+            // Audio only: the screen's picture isn't published yet, its sound is (T11).
+            .child(
+                round_button(
+                    "voice-share-audio",
+                    icons::VOLUME_UP,
+                    if sharing {
+                        ButtonStyle {
+                            icon: theme::white(),
+                            fill: Some(theme::primary()),
+                            hover: alpha(theme::primary(), 0.8),
+                            disabled: false,
+                        }
+                    } else {
+                        plain()
+                    },
+                    false,
+                    move |_, _, _| share_controller.set_system_audio(!sharing),
+                )
+                .role(Role::Button)
+                .aria_label(if sharing {
+                    "Stop sharing audio"
+                } else {
+                    "Share audio"
+                })
+                .test_support(),
+            )
             .child(vertical_divider())
-            .child(round_button(
-                "voice-settings",
-                icons::SETTINGS,
-                plain(),
-                false,
-                move |_, _, _| settings_controller.open_settings(),
-            ))
+            .child(
+                round_button(
+                    "voice-settings",
+                    icons::SETTINGS,
+                    plain(),
+                    false,
+                    move |_, _, _| settings_controller.open_settings(),
+                )
+                .test_support(),
+            )
             .child(vertical_divider());
     }
-    controls = controls.child(leave);
+    controls = controls.child(leave.test_support());
 
     let row = div()
         .flex()

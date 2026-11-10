@@ -16,6 +16,16 @@ pub use model::{
 };
 pub use stage::VoiceStage;
 
+/// The call's bar on its own, for the shell to show under the columns away from the call.
+pub fn voice_bar_element(
+    model: &VoiceStageModel,
+    narrow: bool,
+    controller: std::sync::Arc<dyn VoiceController>,
+) -> gpui_kit::AnyElement {
+    use gpui_kit::IntoElement as _;
+    bar::voice_bar(model, narrow, controller).into_any_element()
+}
+
 use gpui_kit::{Window, WindowOptions};
 
 /// How a tile gets its pixels.

@@ -7543,6 +7543,8 @@ dependencies = [
  "rig-shot",
  "semaphore-app",
  "semaphore-core",
+ "semaphore-fake-server",
+ "semaphore-media-livekit",
  "semaphore-ui",
  "serde_json",
  "tokio",
@@ -8071,6 +8073,7 @@ dependencies = [
  "semaphore-media-livekit",
  "semaphore-net",
  "semaphore-platform-desktop",
+ "semaphore-sysaudio",
  "semaphore-ui",
  "tokio",
 ]
@@ -8099,8 +8102,10 @@ name = "semaphore-fake-server"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "base64 0.22.1",
  "chrono",
  "futures-util",
+ "hmac",
  "image",
  "jsonschema",
  "reqwest 0.13.5",
@@ -8108,6 +8113,7 @@ dependencies = [
  "semaphore-wire",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "uuid",

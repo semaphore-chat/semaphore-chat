@@ -21,5 +21,6 @@ semaphore-core.workspace = true
 semaphore-media-livekit.workspace = true
 semaphore-net.workspace = true
 semaphore-platform-desktop.workspace = true
+semaphore-sysaudio.workspace = true
 semaphore-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }

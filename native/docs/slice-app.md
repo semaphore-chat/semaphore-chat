@@ -2,8 +2,8 @@
 
 `crates/semaphore-app` is the real client: sign-in, the community and channel lists, a live message
 list with selection, a composer with mentions, send with a nonce and a typed ack, and reconnect with
-resync, session restore and the OS's sleep and network events. Voice and attachments come in later
-phases (see the U13 list
+resync, session restore, the OS's sleep and network events, and voice with video tiles. Attachments
+come in a later phase (see the U13 list
 in [slice-units](slice-units/README.md)).
 
 ## Launch it on the desktop
@@ -68,7 +68,24 @@ Run with `SEMAPHORE_LOG=info`: each event logs as `OS: Suspending` and so on.
   turn Wi-Fi off and on, with `SEMAPHORE_LOG=info` in a console build. Expect the same log lines.
   This code has only ever been compiled for Windows, never run.
 
-Not in this build, so not bugs yet: voice (joining a voice channel logs and does nothing), images and
+### Voice
+
+The fake server's tokens are placeholders, so voice needs a LiveKit: run
+`LK_STACK_NAME=u13-voice-livekit native/scripts/lk-stack.sh up`, then start the fake server with
+`--livekit-url ws://<that address>:7880 --livekit-key devkey --livekit-secret
+secret-that-is-at-least-32-characters-long` (the address `lk-stack.sh url` prints). A second
+participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, or the web client.
+
+- [ ] Join Squad Up: your mic is live, others hear you, you hear them; the speaking ring follows.
+- [ ] Mute, deafen and undeafen from the bar; the others see it.
+- [ ] Settings: switch input and output while talking.
+- [ ] Share audio while a video plays: the others hear it, and don't hear themselves echoed back.
+  Stop it again. (T11 in the real app.)
+- [ ] Video tiles from a sharing participant play smoothly on the GPU path.
+- [ ] Leave from the bar; join, then close the window: the others see you leave at once.
+- [ ] Stay in a call for an hour (T6 later runs 24): you stay on the roster throughout.
+
+Not in this build, so not bugs yet: publishing your camera or screen, DM voice, images and
 avatars (placeholders), attachments, the emoji picker, threads, DMs, editing, notifications.
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
@@ -77,8 +94,14 @@ Please report anything that looks wrong with a screenshot, and the terminal outp
 ## The headless proof
 
 ```bash
-native/scripts/in-image.sh scripts/slice-e2e.sh            # twice, about 35 s after the build
+native/scripts/in-image.sh scripts/slice-e2e.sh            # twice, about 45 s after the build
+native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit too, about 15 s
 ```
+
+`--voice` brings up `lk-stack.sh`'s LiveKit and a `lk room join --publish-demo` publisher, then runs
+`rigs/slice/scripts/voice.steps` twice: join, the publisher's video reaching a tile, the heartbeat,
+mute and deafen, Share audio failing cleanly (no PipeWire in a container), the bar elsewhere, a
+moderator removing us (the call ends here and on the server), a second call, and leaving.
 
 `rig-slice` runs the app's own code in GPUI's headless context on lavapipe, against a fake server in
 the same container, through `rigs/slice/scripts/text.steps`: probe and sign in, lists, selection and

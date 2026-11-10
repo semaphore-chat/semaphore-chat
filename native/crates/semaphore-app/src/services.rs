@@ -5,9 +5,12 @@
 //! and everything here is built on a thread of its own, then handed to the main thread.
 
 use crate::runtime::{Activity, Exec, net_runtime};
+use crate::voice::{self, FramesSink};
 use semaphore_core::platform::{Clock, SecretStore};
 use semaphore_core::realtime::Realtime as _;
 use semaphore_core::{Core, CoreEvent, EventSink, Services as CoreServices};
+use semaphore_media_livekit::audio::AudioIo;
+use semaphore_media_livekit::{EngineOptions, LiveKitEngine};
 use semaphore_net::socket::SocketConfig;
 use semaphore_net::{HttpBackend, SocketRealtime};
 use std::path::{Path, PathBuf};
@@ -55,6 +58,9 @@ pub struct Services {
     /// The server signed in to last, read before the backend was built.
     pub last_server: Option<String>,
     pub data_dir: PathBuf,
+    pub engine: Arc<LiveKitEngine>,
+    /// Where the engine's frames go once the window's `VideoFrames` is attached.
+    pub frames: Arc<FramesSink>,
     realtime: Arc<SocketRealtime>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -68,6 +74,20 @@ impl Services {
     /// keeps the newest token. Losing it would present an old one next time, which the server's
     /// reuse detection treats as theft and ends the session.
     pub fn shutdown(&mut self) {
+        // Closing the window during a call leaves it, so the server drops this client from the
+        // roster now rather than when presence expires.
+        if self.core.voice().channel_id.is_some()
+            && let Some(runtime) = &self.runtime
+        {
+            self.engine.stop_system_audio();
+            let core = self.core.clone();
+            let left = runtime.block_on(async move {
+                tokio::time::timeout(Duration::from_secs(2), core.leave_voice()).await
+            });
+            if !matches!(left, Ok(Ok(()))) {
+                log::warn!("leaving the call at exit didn't finish: {left:?}");
+            }
+        }
         self.core.shutdown();
         let realtime = self.realtime.clone();
         if let Some(runtime) = self.runtime.take() {
@@ -96,12 +116,22 @@ pub struct Started {
 
 /// Starts building on a thread of its own. The events channel exists at once, so nothing core says
 /// while starting is lost.
-pub fn start(
-    secrets: Arc<dyn SecretStore>,
-    clock: Arc<dyn Clock>,
-    data_dir: PathBuf,
-    activity: Arc<Activity>,
-) -> Started {
+pub struct StartOptions {
+    pub secrets: Arc<dyn SecretStore>,
+    pub clock: Arc<dyn Clock>,
+    pub data_dir: PathBuf,
+    pub audio: Option<Arc<dyn AudioIo>>,
+    pub heartbeat: Duration,
+}
+
+pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
+    let StartOptions {
+        secrets,
+        clock,
+        data_dir,
+        audio,
+        heartbeat,
+    } = options;
     let (events_sender, events) = async_channel::unbounded();
     let (services_sender, services) = async_channel::bounded(1);
     std::thread::Builder::new()
@@ -113,6 +143,12 @@ pub fn start(
             // Reads the device id and the last server's refresh token in one wait on the store.
             let backend = HttpBackend::restoring(secrets, last_server.clone());
             let realtime = SocketRealtime::new(SocketConfig::new("unused"), backend.clone());
+            // Its own runtime: the SDK spawns on whatever runtime it was entered from.
+            let mut engine_options = EngineOptions::default();
+            if let Some(audio) = audio {
+                engine_options.audio_io = audio;
+            }
+            let engine = Arc::new(LiveKitEngine::new(engine_options));
             let sink = Arc::new(ChannelSink {
                 sender: events_sender,
                 activity: activity.clone(),
@@ -123,11 +159,11 @@ pub fn start(
                 CoreServices {
                     backend: Arc::new(backend.clone()),
                     realtime: realtime.clone(),
-                    // Voice is phase 2.
-                    media: None,
+                    media: Some(engine.clone()),
                 },
             ));
             realtime.attach((*core).clone());
+            let frames = voice::wire(&engine, &core, &runtime, heartbeat, activity.clone());
             let driver = core.clone();
             runtime.spawn(async move { driver.drive().await });
             let services = Services {
@@ -136,6 +172,8 @@ pub fn start(
                 backend,
                 last_server,
                 data_dir,
+                engine,
+                frames,
                 realtime,
                 runtime: Some(runtime),
             };

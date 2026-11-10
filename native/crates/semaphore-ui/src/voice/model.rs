@@ -1,5 +1,5 @@
 //! What the voice UI draws and what it can ask for. `VoiceView` is core's; the rest is here because
-//! core's frozen model doesn't carry it yet.
+//! it's the app's (quality and rejoin from the engine, push-to-talk, the audio share).
 
 use semaphore_core::model::{ParticipantView, VideoTrackView, VoiceView};
 use std::collections::HashMap;
@@ -50,17 +50,29 @@ pub struct VoiceStageModel {
     pub ptt: Option<PttState>,
     /// Name strips stay up, for touch screens, which never hover, and for review screenshots.
     pub always_show_overlays: bool,
+    /// The system's audio is being shared into the call (audio only: no screen or camera yet).
+    pub system_audio: bool,
+    /// Why starting the audio share failed, until it's tried again.
+    pub system_audio_error: Option<String>,
 }
 
-/// A tile on screen right now, as the media layer needs it. Anything unlisted gets paused.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TileDemand {
-    pub track_sid: String,
-    /// In physical pixels.
-    pub width_px: u32,
-    pub height_px: u32,
-    pub focused: bool,
+impl QualityLevel {
+    /// Core's quality, as the bars show it.
+    pub fn from_core(quality: semaphore_core::model::ConnectionQuality) -> Self {
+        use semaphore_core::model::ConnectionQuality as Core;
+        match quality {
+            Core::Unknown => Self::Unknown,
+            Core::Excellent => Self::Excellent,
+            Core::Good => Self::Good,
+            Core::Poor => Self::Poor,
+            Core::Lost => Self::Lost,
+        }
+    }
 }
+
+/// A tile on screen right now, as the media layer needs it: core's `VideoDemand`, which the app hands
+/// straight to `Core::set_video_demands`. Anything unlisted gets paused.
+pub type TileDemand = semaphore_core::model::VideoDemand;
 
 /// What the buttons and the renderer ask for. The app implements it over the media engine.
 pub trait VoiceController: Send + Sync {
@@ -70,6 +82,8 @@ pub trait VoiceController: Send + Sync {
     fn set_video_demands(&self, demands: Vec<TileDemand>);
     fn ptt_pressed(&self, _pressed: bool) {}
     fn open_settings(&self) {}
+    /// Share the system's audio into the call, or stop.
+    fn set_system_audio(&self, _on: bool) {}
 }
 
 /// For stories: every button does nothing.

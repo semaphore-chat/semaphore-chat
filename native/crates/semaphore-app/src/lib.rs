@@ -5,11 +5,13 @@
 //! - `services`: building core and its transports off the main thread.
 //! - `root`: splash, sign-in or shell, following core's session.
 //! - `conversation`: the message list and composer over core.
+//! - `voice`: the LiveKit engine wired to core, the stage's controls, video frames.
 
 pub mod conversation;
 pub mod root;
 pub mod runtime;
 pub mod services;
+pub mod voice;
 
 use gpui_kit::component::Root;
 use gpui_kit::*;
@@ -36,6 +38,10 @@ pub struct AppConfig {
     pub data_dir: PathBuf,
     /// Listen to the OS for sleep and network changes. The rig sends its own.
     pub watch_os: bool,
+    /// The call's audio: `None` for the real devices, or the rig's virtual ones.
+    pub audio: Option<Arc<dyn semaphore_media_livekit::audio::AudioIo>>,
+    /// How often voice presence is refreshed: `voice::HEARTBEAT`, or less in the rig.
+    pub heartbeat: std::time::Duration,
 }
 
 /// Once per process, before the first window.

@@ -96,6 +96,8 @@ fn main() -> ExitCode {
                 scrollbar: true,
                 data_dir,
                 watch_os: true,
+                audio: None,
+                heartbeat: semaphore_app::voice::HEARTBEAT,
             };
             let options = semaphore_app::window_options(WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

@@ -6,6 +6,7 @@
 //! with a settable clock, and exposes faults for tests.
 
 mod http;
+pub mod livekit;
 mod messages;
 mod png;
 pub mod scenario;
@@ -98,6 +99,8 @@ pub(crate) struct Data {
 
 pub(crate) struct Inner {
     pub base_url: String,
+    /// A real LiveKit to mint tokens for, instead of the placeholder.
+    pub livekit: Mutex<Option<livekit::LiveKit>>,
     pub scenario: scenario::Scenario,
     pub data: Mutex<Data>,
     pub clock: Mutex<DateTime<Utc>>,
@@ -383,6 +386,7 @@ impl FakeServer {
         let (close, _) = watch::channel(0u64);
         let inner = Arc::new(Inner {
             base_url: format!("http://127.0.0.1:{}", address.port()),
+            livekit: Mutex::new(None),
             scenario,
             data: Mutex::new(data),
             clock: Mutex::new(epoch),
@@ -402,6 +406,11 @@ impl FakeServer {
             let _ = axum::serve(listener, router).await;
         });
         Ok(Self { inner, task })
+    }
+
+    /// Mint real tokens for this LiveKit from now on, instead of the placeholder.
+    pub fn set_livekit(&self, livekit: livekit::LiveKit) {
+        *lock(&self.inner.livekit) = Some(livekit);
     }
 
     /// `http://127.0.0.1:<port>`.

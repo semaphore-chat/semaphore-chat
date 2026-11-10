@@ -68,8 +68,8 @@ inside `cache.rs`, which U5 replaces with typed entries.
 
 ## U13 must do
 
-U13 is in four phases, each leaving the app runnable: **1 text client (done)**, 2 voice, **3 session
-restore and OS lifecycle (done)**, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
+U13 is in four phases, each leaving the app runnable: **1 text client (done)**, **2 voice (done)**,
+**3 session restore and OS lifecycle (done)**, 4 media and attachments. How to run it: [docs/slice-app.md](../slice-app.md).
 
 **Done in phase 1:** the app (`semaphore-app` as a library and binary; core on a Tokio runtime of its
 own, events to GPUI through a channel), `CoreSource` over core's load states, members (with the
@@ -81,27 +81,19 @@ truncated flag) and rail counts, the list's `LoadNewer`, "Jump to present" and r
 refresh ends the session as `AuthLost` does. `SocketRealtime` now asks for typed send acks
 (`auth.protocol: 2`); without it a refused send waited out the 10 s ack timeout.
 
-**Phase 2, voice.** Core and the media crate provide these, but nothing calls them yet:
-
-- **The voice heartbeat.** Call `Core::refresh_voice_presence` about every 30 s for as long as the
-  app lives. The server's presence TTL is 90 s, so without it a user drops off the voice roster about
-  90 s into every call, while their audio keeps working. It does nothing outside a connected call, so
-  a plain timer is enough.
-- **`TokenSource`.** Implement it over `Core::voice_token` and pass it to
-  `LiveKitEngine::set_token_source`. Without one, the engine's rejoin loop reuses the first token and
-  gives up after 20 failed attempts.
-- **Report the engine to core.** Forward `LiveKitEngine::subscribe()` to `Core::ingest_media`, sending
-  `snapshot.voice`. Without it `Core::voice()` has no tracks or speaking, and a call the engine ends
-  still reads as connected.
-- **The call id (approved).** `MediaEngine::connect(url, token, call)` and
-  `Core::ingest_media(call, view)`: core numbers each join, the engine stamps every report with it,
-  and a `Disconnected` for the current call ends it whether or not core saw it connected. This
-  replaces the `was_live` guard, which misses a call that connects and drops between two reports.
-- **`Effect::EndCall` on `AuthLost`.** A lost session resets core's voice state but leaves the engine
-  connected.
-- **`TileDemand` to `VideoDemand`**, **the `QualityLevel` mapping** from `ParticipantView::quality`,
-  and `reconnect_attempt` from `VoiceView::reconnect_attempt`.
-- Closing the window during a call quits and leaves the call (Mike may overrule).
+**Done in phase 2:** the LiveKit engine is core's media engine. Its reports reach
+`Core::ingest_media` with the call number they carry (`MediaEngine::connect(url, token, call)`), so a
+call that connects and drops between two reports ends instead of showing connected; `Effect::EndCall`
+disconnects the engine when a session ends under a call. Rejoins take fresh tokens from
+`Core::voice_token`, presence is refreshed every 30 s, frames go into the window's `VideoFrames`, and
+tile demands go to `Core::set_video_demands` (`TileDemand` is core's `VideoDemand` now). A voice row
+joins and shows the stage; elsewhere the call's bar sits under the columns. The bar's Share audio
+starts T11's system audio (`platform_capture()`, everything but our own call), audio only; a failure
+shows in the bar and isn't retried. Settings opens a two-list device dialog. Closing the window leaves
+the call (Mike may overrule). Not built: publishing the camera or the screen's picture (the bar keeps
+those buttons off), DM voice, a push-to-talk key. T11's known gaps stand: the capture callback
+allocates on the realtime thread, a failed PipeWire link isn't retried, and only our own process is
+left out of the capture.
 
 **Done in phase 3:** `Core::restore_session(url)` answers `SignedIn`, `NoSession`, `Refused` or
 `Unreachable`. The app keeps the last server in `<data dir>/last-server` (not a secret);

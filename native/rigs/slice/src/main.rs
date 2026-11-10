@@ -15,6 +15,10 @@
 //! expect clipboard "some text"        # what the last copy put there contains this
 //! os suspend                          # also resume, network-down, network-up
 //! restart                             # quit as closing the window does, start again
+//! tick 100                            # move GPUI's headless clock: the stage redraws on a timer
+//! snap name                           # one frame, no waiting for stillness (live video)
+//! livekit remove vc-squad me          # LiveKit's server API removes someone (needs --livekit-http)
+//! wait core voice connected           # also frames, muted, deafened, participant ID, share-error
 //! expect stored-session yes           # a refresh token is in the (memory) keyring
 //! ```
 //!
@@ -28,9 +32,11 @@ use gpui_kit::*;
 use rig_shot::driver::Driver;
 use rig_shot::script;
 use semaphore_app::{AppConfig, AppRoot, OsEvent};
-use semaphore_core::model::{Conversation, MessageRow, SendState, SessionState};
+use semaphore_core::model::{Conversation, MessageRow, SendState, SessionState, VoiceStatus};
 use semaphore_core::platform::{Clock, CoreError, SecretStore};
 use semaphore_core::{ConnectionState, NetworkState};
+use semaphore_fake_server::livekit::LiveKit;
+use semaphore_media_livekit::audio::virtual_io::VirtualIo;
 use semaphore_ui::kit::{UiAssets, set_reduced_motion};
 use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
@@ -93,6 +99,17 @@ enum Condition {
     Live,
     /// An element with this accessible name exists.
     Label(String),
+    /// The call's status: `connected`, `connecting`, `reconnecting`, `disconnected`.
+    Voice(String),
+    /// Someone in the call has a camera whose frames have reached the window.
+    VoiceFrames,
+    VoiceMuted(bool),
+    VoiceDeafened(bool),
+    VoiceParticipant(String),
+    /// The audio share failed and the bar says why.
+    VoiceShareError,
+    /// The fake server has seen at least this many of an operation or socket event.
+    Requests(String, usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,6 +144,15 @@ enum Step {
     Restart,
     /// Whether a refresh token is stored.
     ExpectStoredSession(bool),
+    /// Moves GPUI's headless clock on: the stage redraws on a timer.
+    Tick(u64),
+    /// One frame to a PNG, without waiting for the window to stop changing: live video never does.
+    Snap(String),
+    /// Asks LiveKit's server API to remove someone from a room, as a moderator would.
+    LiveKitRemove {
+        room: String,
+        identity: String,
+    },
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -149,6 +175,15 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["detached"] => Condition::Detached,
         ["live"] => Condition::Live,
         ["label", label] => Condition::Label((*label).into()),
+        ["voice", "frames"] => Condition::VoiceFrames,
+        ["voice", "muted"] => Condition::VoiceMuted(true),
+        ["voice", "unmuted"] => Condition::VoiceMuted(false),
+        ["voice", "deafened"] => Condition::VoiceDeafened(true),
+        ["voice", "undeafened"] => Condition::VoiceDeafened(false),
+        ["voice", "participant", identity] => Condition::VoiceParticipant((*identity).into()),
+        ["voice", "share-error"] => Condition::VoiceShareError,
+        ["requests", name, ">=", count] => Condition::Requests((*name).into(), number(count)?),
+        ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
 }
@@ -199,6 +234,12 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["os", "network-down"] => Step::Os(OsEvent::Network(NetworkState::Unavailable)),
             ["os", "network-up"] => Step::Os(OsEvent::Network(NetworkState::Available)),
             ["restart"] => Step::Restart,
+            ["tick", ms] => Step::Tick(ms.parse().map_err(|_| at(anyhow!("tick ms")))?),
+            ["snap", name] => Step::Snap((*name).into()),
+            ["livekit", "remove", room, identity] => Step::LiveKitRemove {
+                room: (*room).into(),
+                identity: (*identity).into(),
+            },
             ["expect", "stored-session", "yes"] => Step::ExpectStoredSession(true),
             ["expect", "stored-session", "no"] => Step::ExpectStoredSession(false),
             ["click-row", name, text] => Step::ClickRow {
@@ -214,6 +255,16 @@ fn parse(source: &str) -> Result<Vec<Step>> {
 
 /// A POST to the fake server, over a bare socket: the rig needs nothing more than one request.
 fn http(server: &str, method: &str, path: &str, body: &str) -> Result<Value> {
+    http_with(server, method, path, body, None)
+}
+
+fn http_with(
+    server: &str,
+    method: &str,
+    path: &str,
+    body: &str,
+    bearer: Option<&str>,
+) -> Result<Value> {
     let address = server
         .strip_prefix("http://")
         .ok_or_else(|| anyhow!("the server URL must be http://"))?
@@ -222,9 +273,12 @@ fn http(server: &str, method: &str, path: &str, body: &str) -> Result<Value> {
         TcpStream::connect(address).with_context(|| format!("connecting {address}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     let body = if body.is_empty() { "{}" } else { body };
+    let auth = bearer.map_or_else(String::new, |token| {
+        format!("Authorization: Bearer {token}\r\n")
+    });
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     )?;
     let mut response = String::new();
@@ -299,12 +353,21 @@ struct Rig {
     app: Option<Entity<AppRoot>>,
     /// The keyring and the data directory, kept across a restart.
     secrets: Arc<MemorySecrets>,
+    /// LiveKit's server API, for steps that act on a room as a moderator would.
+    livekit: Option<LiveKit>,
+    heartbeat: Duration,
     data_dir: PathBuf,
     size: (f32, f32),
 }
 
 impl Rig {
-    fn new(server: String, now_ms: i64, data_dir: PathBuf) -> Self {
+    fn new(
+        server: String,
+        now_ms: i64,
+        data_dir: PathBuf,
+        livekit: Option<LiveKit>,
+        heartbeat: Duration,
+    ) -> Self {
         let mut driver = Driver::new(Arc::new(UiAssets));
         driver.cx.update(|cx| {
             semaphore_app::init(cx);
@@ -318,6 +381,8 @@ impl Rig {
             now_ms,
             app: None,
             secrets: Arc::default(),
+            livekit,
+            heartbeat,
             data_dir,
             size: (1280., 800.),
         }
@@ -356,6 +421,9 @@ impl Rig {
             secrets: self.secrets.clone(),
             data_dir: self.data_dir.clone(),
             watch_os: false,
+            // No sound card in a container, and a rig mustn't use the machine's.
+            audio: Some(Arc::new(VirtualIo::new())),
+            heartbeat: self.heartbeat,
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),
@@ -411,6 +479,12 @@ impl Rig {
         if let Condition::Label(label) = condition {
             return self.driver.has_label(label);
         }
+        if let Some(answer) = self.voice_holds(condition)? {
+            return Ok(answer);
+        }
+        if let Condition::Requests(name, count) = condition {
+            return Ok(self.requests(name)? >= *count);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -458,7 +532,14 @@ impl Rig {
             }
             Condition::Detached => detached,
             Condition::Live => !detached,
-            Condition::Label(_) => unreachable!("answered above"),
+            Condition::Label(_)
+            | Condition::Voice(_)
+            | Condition::VoiceFrames
+            | Condition::VoiceMuted(_)
+            | Condition::VoiceDeafened(_)
+            | Condition::VoiceParticipant(_)
+            | Condition::VoiceShareError
+            | Condition::Requests(..) => unreachable!("answered above"),
         })
     }
 
@@ -489,6 +570,95 @@ impl Rig {
             }
             activity.wait_past(seen, LOOK_EVERY.min(deadline - now));
         }
+    }
+
+    fn voice_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
+        let app = self.app()?.clone();
+        let answer = self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            let core = root.core()?;
+            let voice = core.voice();
+            Some(match condition {
+                Condition::Voice(status) => {
+                    let wanted = match status.as_str() {
+                        "connected" => VoiceStatus::Connected,
+                        "connecting" => VoiceStatus::Connecting,
+                        "reconnecting" => VoiceStatus::Reconnecting,
+                        "disconnected" => VoiceStatus::Disconnected,
+                        _ => return Some(Err(anyhow!("unknown voice status {status}"))),
+                    };
+                    Ok(voice.status == wanted)
+                }
+                Condition::VoiceFrames => {
+                    let stage = root.stage()?.read(cx);
+                    Ok(voice.participants.iter().any(|participant| {
+                        participant
+                            .camera
+                            .as_ref()
+                            .is_some_and(|track| stage.frames().has_frame(&track.track_sid))
+                    }))
+                }
+                Condition::VoiceMuted(muted) => Ok(voice.muted == *muted),
+                Condition::VoiceDeafened(deafened) => Ok(voice.deafened == *deafened),
+                Condition::VoiceParticipant(identity) => Ok(voice
+                    .participants
+                    .iter()
+                    .any(|participant| &participant.identity == identity)),
+                Condition::VoiceShareError => Ok(root.app_voice()?.share().error.is_some()),
+                _ => return None,
+            })
+        });
+        match answer {
+            Some(result) => result.map(Some),
+            None if matches!(
+                condition,
+                Condition::Voice(_)
+                    | Condition::VoiceFrames
+                    | Condition::VoiceMuted(_)
+                    | Condition::VoiceDeafened(_)
+                    | Condition::VoiceParticipant(_)
+                    | Condition::VoiceShareError
+            ) =>
+            {
+                Ok(Some(false))
+            }
+            None => Ok(None),
+        }
+    }
+
+    fn snap(&mut self, out: &Path) -> Result<()> {
+        self.driver.settle()?;
+        let window = self
+            .driver
+            .window
+            .ok_or_else(|| anyhow!("no window is open"))?;
+        let image = self
+            .driver
+            .cx
+            .capture_screenshot(window)
+            .context("offscreen rendering is unavailable")?;
+        image
+            .save(out)
+            .with_context(|| format!("writing {}", out.display()))?;
+        println!("{} {}x{}", out.display(), image.width(), image.height());
+        Ok(())
+    }
+
+    fn livekit_remove(&self, room: &str, identity: &str) -> Result<()> {
+        let livekit = self
+            .livekit
+            .as_ref()
+            .ok_or_else(|| anyhow!("--livekit-http is needed for livekit steps"))?;
+        let token = livekit.admin_token(room);
+        let body = serde_json::json!({ "room": room, "identity": identity }).to_string();
+        http_with(
+            &livekit.url,
+            "POST",
+            "/twirp/livekit.RoomService/RemoveParticipant",
+            &body,
+            Some(&token),
+        )
+        .map(|_| ())
     }
 
     fn click_row(&mut self, name: &str, text: &str) -> Result<()> {
@@ -564,6 +734,12 @@ impl Rig {
                     Ok(())
                 }
                 Step::Restart => self.restart(),
+                Step::Tick(ms) => {
+                    self.driver.cx.advance_clock(Duration::from_millis(*ms));
+                    self.driver.settle()
+                }
+                Step::LiveKitRemove { room, identity } => self.livekit_remove(room, identity),
+                Step::Snap(name) => self.snap(&out_dir.join(format!("{name}.png"))),
                 Step::ExpectStoredSession(wanted) => {
                     if self.stored_session() == *wanted {
                         Ok(())
@@ -611,6 +787,14 @@ impl log::Log for StderrLog {
     fn flush(&self) {}
 }
 
+fn optional_flag(args: &mut Vec<String>, flag: &str) -> Result<Option<String>> {
+    if args.iter().any(|arg| arg == flag) {
+        take_flag(args, flag).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
 fn take_flag(args: &mut Vec<String>, flag: &str) -> Result<String> {
     let index = args
         .iter()
@@ -636,6 +820,21 @@ fn main() -> Result<()> {
     let scenario = PathBuf::from(take_flag(&mut args, "--scenario")?);
     let script_path = take_flag(&mut args, "--script")?;
     let out_dir = PathBuf::from(take_flag(&mut args, "--out")?);
+    let heartbeat = Duration::from_millis(
+        optional_flag(&mut args, "--heartbeat-ms")?
+            .map(|ms| ms.parse())
+            .transpose()?
+            .unwrap_or(30_000),
+    );
+    let livekit = match (
+        optional_flag(&mut args, "--livekit-http")?,
+        optional_flag(&mut args, "--livekit-key")?,
+        optional_flag(&mut args, "--livekit-secret")?,
+    ) {
+        (Some(url), Some(key), Some(secret)) => Some(LiveKit { url, key, secret }),
+        (None, None, None) => None,
+        _ => bail!("--livekit-http, --livekit-key and --livekit-secret go together"),
+    };
     let source = std::fs::read_to_string(&script_path).with_context(|| script_path.clone())?;
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = scenario_now_ms(&scenario)?;
@@ -645,7 +844,7 @@ fn main() -> Result<()> {
     if data_dir.exists() {
         std::fs::remove_dir_all(&data_dir)?;
     }
-    let mut rig = Rig::new(server, now_ms, data_dir);
+    let mut rig = Rig::new(server, now_ms, data_dir, livekit, heartbeat);
     let result = rig.run(&steps, &out_dir);
     if let Some(app) = rig.app.clone() {
         rig.driver

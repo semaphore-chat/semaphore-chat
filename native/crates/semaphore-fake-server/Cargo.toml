@@ -8,12 +8,15 @@ publish.workspace = true
 
 [dependencies]
 axum = { version = "0.8", features = ["ws"] }
+base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 futures-util = "0.3"
+hmac = "0.12"
 image = { version = "0.25", default-features = false, features = ["png"] }
 semaphore-wire.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 tokio = { version = "1", default-features = false, features = [
   "macros",
   "net",

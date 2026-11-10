@@ -758,6 +758,8 @@ fn to_model(snapshot: &MediaSnapshot, channel: &str) -> VoiceStageModel {
         reconnect_attempt: snapshot.rejoin_attempt,
         ptt: None,
         always_show_overlays: true,
+        system_audio: false,
+        system_audio_error: None,
     }
 }
 

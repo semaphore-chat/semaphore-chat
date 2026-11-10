@@ -829,11 +829,18 @@ async fn list_emojis(State(_inner): State<Arc<Inner>>) -> Response {
     json_response(StatusCode::OK, Value::Array(Vec::new()))
 }
 
-async fn connection_info(State(_inner): State<Arc<Inner>>) -> Response {
+fn livekit_url(inner: &Inner) -> String {
+    lock(&inner.livekit).as_ref().map_or_else(
+        || "wss://fake-livekit.invalid".to_owned(),
+        |livekit| livekit.url.clone(),
+    )
+}
+
+async fn connection_info(State(inner): State<Arc<Inner>>) -> Response {
     json_response(
         StatusCode::OK,
         serde_json::to_value(ConnectionInfoResponseDto {
-            url: Some("wss://fake-livekit.invalid".to_owned()),
+            url: Some(livekit_url(&inner)),
         })
         .expect("connection info serializes"),
     )
@@ -845,14 +852,20 @@ async fn generate_token(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
     };
     let ttl = dto.ttl.map(|ttl| ttl.get()).unwrap_or(3600).min(3600);
     let expires_at = inner.now() + chrono::Duration::seconds(ttl as i64);
+    // One lock at a time: the token and the URL each read the LiveKit settings.
+    let token = lock(&inner.livekit).as_ref().map_or_else(
+        || "fake-livekit-token".to_owned(),
+        |livekit| livekit.token(&dto.identity, dto.name.as_deref(), &dto.room_id, ttl),
+    );
+    let url = livekit_url(&inner);
     json_response(
         StatusCode::CREATED,
         serde_json::to_value(TokenResponseDto {
             expires_at: Some(expires_at),
+            token,
+            url: Some(url),
             identity: dto.identity,
             room_id: dto.room_id,
-            token: "fake-livekit-token".to_owned(),
-            url: Some("wss://fake-livekit.invalid".to_owned()),
         })
         .expect("a token serializes"),
     )
