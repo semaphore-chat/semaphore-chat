@@ -8,6 +8,7 @@ import { RbacActions } from '@prisma/client';
 import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
+import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import {
   ClipMessageCreateEvent,
@@ -36,6 +37,7 @@ export class ClipLibraryService {
     private readonly storageService: StorageService,
     private readonly eventEmitter: EventEmitter2,
     private readonly permissionsService: PermissionsService,
+    private readonly storageQuotaService: StorageQuotaService,
   ) {}
 
   /**
@@ -193,6 +195,7 @@ export class ClipLibraryService {
         file: {
           select: {
             id: true,
+            size: true,
             storagePath: true,
           },
         },
@@ -212,6 +215,8 @@ export class ClipLibraryService {
     await this.databaseService.file.delete({
       where: { id: clip.fileId },
     });
+
+    await this.storageQuotaService.decrementUserStorage(userId, clip.file.size);
 
     // Delete actual file from storage
     try {

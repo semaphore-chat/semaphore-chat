@@ -53,6 +53,7 @@ import { copyToClipboard } from "../utils/clipboard";
 import { getInstanceUrl } from "../config/env";
 import { invalidateInviteQueries } from "../utils/queryInvalidation";
 import { useUserPermissions } from "../features/roles/useUserPermissions";
+import { useInvitableCommunities } from "../hooks/useInvitableCommunities";
 import { CreateInviteDto, InstanceInvite } from "../types/invite.type";
 
 interface InviteFilters {
@@ -106,19 +107,28 @@ const AdminInvitePage: React.FC = () => {
     actions: ["DELETE_INSTANCE_INVITE"],
   });
 
+  // Only pre-select where you hold CREATE_INVITE: the backend refuses the whole
+  // invite over any other. A full Instance Admin may still tick the rest by hand.
+  const { invitable, isLoading: loadingInvitable } = useInvitableCommunities(
+    communities,
+    createDialogOpen,
+  );
+
   // Auto-select communities when dialog opens
   useEffect(() => {
-    if (createDialogOpen && communities.length > 0 && selectedCommunities.length === 0) {
+    if (createDialogOpen && !loadingInvitable && invitable.length > 0 && selectedCommunities.length === 0) {
       // Auto-select the "default" community if it exists, otherwise select all communities
-      const defaultCommunity = communities.find(c => c.name.toLowerCase() === 'default');
+      const defaultCommunity = invitable.find(c => c.name.toLowerCase() === 'default');
       if (defaultCommunity) {
         setSelectedCommunities([defaultCommunity.id]);
       } else {
         // If no default community, select all communities (assuming user wants to be inclusive)
-        setSelectedCommunities(communities.map(c => c.id));
+        setSelectedCommunities(invitable.map(c => c.id));
       }
     }
-  }, [createDialogOpen, communities, selectedCommunities.length]);
+    // `invitable` is rebuilt each render, so depend on what it's made from.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createDialogOpen, loadingInvitable, invitable.length, selectedCommunities.length]);
 
   const { hasPermissions: canViewInvites } = useUserPermissions({
     resourceType: "INSTANCE", 

@@ -96,6 +96,7 @@ describe('ModerationController', () => {
         targetUserId,
         userId,
         'Appeal accepted',
+        mockReq.user.role,
       );
     });
   });

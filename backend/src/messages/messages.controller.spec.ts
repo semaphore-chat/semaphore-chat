@@ -53,6 +53,17 @@ describe('MessagesController', () => {
   });
 
   describe('create', () => {
+    it('requires a channel', async () => {
+      await expect(
+        controller.create(mockRequest, {
+          directMessageGroupId: 'group-123',
+          spans: [],
+          attachments: [],
+        } as any),
+      ).rejects.toThrow('channelId is required');
+      expect(service.create).not.toHaveBeenCalled();
+    });
+
     it('should create a message with author ID and timestamp', async () => {
       const createDto: CreateMessageDto = {
         channelId: 'channel-123',
@@ -83,7 +94,7 @@ describe('MessagesController', () => {
         parentMessageId: null,
         replyCount: 0,
         lastReplyAt: null,
-      } as any;
+      };
 
       const mockMessage = MessageFactory.build({
         channelId: createDto.channelId,

@@ -11,6 +11,8 @@ import { ChannelMembershipResponseDto } from './dto/channel-membership-response.
 import { DatabaseService } from '@/database/database.service';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import { RoomEvents } from '@/rooms/room-subscription.events';
+import { PermissionsService } from '@/roles/permissions.service';
+import { InstanceRole, ModerationAction } from '@prisma/client';
 
 @Injectable()
 export class ChannelMembershipService {
@@ -19,6 +21,7 @@ export class ChannelMembershipService {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async create(
@@ -193,6 +196,48 @@ export class ChannelMembershipService {
     }
 
     return new ChannelMembershipResponseDto(membership);
+  }
+
+  /**
+   * Removal of someone else from a private channel (DELETE_MEMBER): kick's rank
+   * rule and a log entry. Removing yourself is leaving.
+   */
+  async removeByActor(
+    actor: { id: string; role: string },
+    userId: string,
+    channelId: string,
+  ): Promise<void> {
+    const channel = await this.databaseService.channel.findUnique({
+      where: { id: channelId },
+      select: { communityId: true },
+    });
+    if (!channel || actor.id === userId) {
+      return this.remove(userId, channelId);
+    }
+    if (
+      actor.role !== InstanceRole.OWNER &&
+      !(await this.permissionsService.outranks(
+        actor.id,
+        userId,
+        channel.communityId,
+      ))
+    ) {
+      throw new ForbiddenException(
+        'Cannot remove a user with equal or higher role',
+      );
+    }
+
+    await this.remove(userId, channelId);
+
+    await this.databaseService.moderationLog.create({
+      data: {
+        communityId: channel.communityId,
+        moderatorId: actor.id,
+        action: ModerationAction.KICK_USER,
+        targetUserId: userId,
+        metadata: { channelId },
+      },
+    });
   }
 
   async remove(userId: string, channelId: string): Promise<void> {

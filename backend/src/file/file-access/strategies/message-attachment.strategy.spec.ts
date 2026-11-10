@@ -1,4 +1,5 @@
 import { TestBed } from '@suites/unit';
+import { PermissionsService } from '@/roles/permissions.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { MessageAttachmentStrategy } from './message-attachment.strategy';
@@ -10,6 +11,7 @@ describe('MessageAttachmentStrategy', () => {
   let strategy: MessageAttachmentStrategy;
   let mockDatabase: any;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -21,6 +23,7 @@ describe('MessageAttachmentStrategy', () => {
 
     strategy = unit;
     channelAccessService = unitRef.get(ChannelAccessService);
+    permissionsService = unitRef.get(PermissionsService);
   });
 
   afterEach(() => {
@@ -42,6 +45,39 @@ describe('MessageAttachmentStrategy', () => {
       await expect(
         strategy.checkAccess('user-123', 'message-456', 'file-789'),
       ).rejects.toThrow('Message not found');
+    });
+
+    describe('a message removed by a moderator', () => {
+      beforeEach(() => {
+        mockDatabase.message.findUnique.mockResolvedValue({
+          id: 'message-1',
+          channelId: 'channel-1',
+          directMessageGroupId: null,
+          deletedAt: new Date(),
+        });
+        mockDatabase.channel.findUnique.mockResolvedValue({ id: 'channel-1' });
+        channelAccessService.canViewChannel.mockResolvedValue(true);
+      });
+
+      it('denies a reader who may not see removed messages', async () => {
+        permissionsService.canSeeRemovedMessages.mockResolvedValue(false);
+
+        await expect(
+          strategy.checkAccess('user-1', 'message-1', 'file-1'),
+        ).rejects.toThrow(ForbiddenException);
+        expect(permissionsService.canSeeRemovedMessages).toHaveBeenCalledWith(
+          'user-1',
+          'channel-1',
+        );
+      });
+
+      it('allows a reader who may', async () => {
+        permissionsService.canSeeRemovedMessages.mockResolvedValue(true);
+
+        await expect(
+          strategy.checkAccess('user-1', 'message-1', 'file-1'),
+        ).resolves.toBe(true);
+      });
     });
 
     it('grants access to a channel message when the user can view the channel', async () => {

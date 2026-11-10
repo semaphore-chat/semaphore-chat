@@ -688,6 +688,9 @@ describe('MembershipService', () => {
         channelMembership: {
           deleteMany: jest.fn().mockResolvedValue({ count: 5 }),
         },
+        aliasGroupMember: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
         userRoles: {
           deleteMany: jest.fn().mockResolvedValue({ count: 2 }),
         },
@@ -733,7 +736,7 @@ describe('MembershipService', () => {
         },
       });
       expect(eventEmitter.emit).toHaveBeenCalledWith(
-        RoomEvents.MEMBERSHIP_REMOVED,
+        RoomEvents.MODERATION_USER_KICKED,
         { userId: user.id, communityId: community.id },
       );
       // Role assignments were removed via the raw tx.userRoles.deleteMany
@@ -788,6 +791,9 @@ describe('MembershipService', () => {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         channelMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        },
+        aliasGroupMember: {
           deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         userRoles: {

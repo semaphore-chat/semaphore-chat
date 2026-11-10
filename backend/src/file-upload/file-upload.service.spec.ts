@@ -6,7 +6,11 @@ import { DatabaseService } from '@/database/database.service';
 import { StorageService } from '@/storage/storage.service';
 import { StorageQuotaService } from '@/storage-quota/storage-quota.service';
 import { ThumbnailService } from '@/file/thumbnail.service';
-import { UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { PermissionsService } from '@/roles/permissions.service';
 import { ResourceType, FileType, StorageType } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Readable } from 'stream';
@@ -21,6 +25,7 @@ describe('FileUploadService', () => {
   let storageService: Mocked<StorageService>;
   let storageQuotaService: Mocked<StorageQuotaService>;
   let thumbnailService: Mocked<ThumbnailService>;
+  let permissionsService: Mocked<PermissionsService>;
   let mockS3Provider: jest.Mocked<IStorageProvider>;
 
   const mockUser = {
@@ -51,9 +56,15 @@ describe('FileUploadService', () => {
     storageService = unitRef.get(StorageService);
     storageQuotaService = unitRef.get(StorageQuotaService);
     thumbnailService = unitRef.get(ThumbnailService);
+    permissionsService = unitRef.get(PermissionsService);
 
     // Reset mocks
     jest.clearAllMocks();
+
+    // The fixtures upload for the user's own message.
+    (databaseService.message.findUnique as jest.Mock).mockResolvedValue({
+      authorId: mockUser.id,
+    });
 
     // Default mock implementations - use StorageService instead of direct fs calls.
     // Checksum computation streams the file through createReadStream (never
@@ -931,6 +942,52 @@ describe('FileUploadService', () => {
           data: { deletedAt: expect.any(Date) },
         });
       }
+    });
+  });
+
+  describe('resourceId', () => {
+    const reject = (dto: Record<string, unknown>, user: any = mockUser) =>
+      expect(service.uploadFile(mockFile, dto as any, user)).rejects.toThrow(
+        ForbiddenException,
+      );
+
+    afterEach(() => {
+      expect(storageQuotaService.incrementUserStorage).not.toHaveBeenCalled();
+      expect(storageService.deleteFile).toHaveBeenCalledWith(mockFile.path);
+    });
+
+    it("rejects someone else's message, or none at all", async () => {
+      (databaseService.message.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ authorId: 'other' })
+        .mockResolvedValueOnce(null);
+      const dto = {
+        resourceType: ResourceType.MESSAGE_ATTACHMENT,
+        resourceId: 'msg-1',
+      };
+      await reject(dto);
+      await reject(dto);
+    });
+
+    it.each([ResourceType.USER_AVATAR, ResourceType.USER_BANNER])(
+      'rejects %s for another user',
+      async (resourceType) => {
+        await reject({ resourceType, resourceId: 'other' });
+      },
+    );
+
+    it.each([
+      [ResourceType.COMMUNITY_AVATAR, 'UPDATE_COMMUNITY'],
+      [ResourceType.COMMUNITY_BANNER, 'UPDATE_COMMUNITY'],
+      [ResourceType.CUSTOM_EMOJI, 'MANAGE_EMOJIS'],
+      [ResourceType.SOUNDBOARD_SOUND, 'CREATE_SOUNDBOARD_SOUND'],
+    ])('%s needs %s in the community', async (resourceType, action) => {
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        false,
+      );
+      await reject({ resourceType, resourceId: 'community-1' });
+      expect(
+        permissionsService.verifyActionsForUserAndResource,
+      ).toHaveBeenCalledWith(mockUser.id, 'community-1', 'COMMUNITY', [action]);
     });
   });
 });

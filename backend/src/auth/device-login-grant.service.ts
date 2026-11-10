@@ -5,10 +5,15 @@ import {
   Logger,
 } from '@nestjs/common';
 import Redis from 'ioredis';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import { DatabaseService } from '@/database/database.service';
 import { UserEntity } from '@/user/dto/user-response.dto';
+import {
+  AuthDesktopSignInEvent,
+  RoomEvents,
+} from '@/rooms/room-subscription.events';
 import { AuthService, DeviceInfo } from './auth.service';
 import {
   AccessTokenClaims,
@@ -120,6 +125,7 @@ export class DeviceLoginGrantService {
     private readonly databaseService: DatabaseService,
     private readonly authService: AuthService,
     private readonly tokenBlacklistService: TokenBlacklistService,
+    private readonly eventEmitter: EventEmitter2,
   ) {}
 
   /**
@@ -210,6 +216,14 @@ export class DeviceLoginGrantService {
       new UserEntity(user),
       deviceInfo,
     );
+
+    // The user's other sessions hear about the new device
+    const event: AuthDesktopSignInEvent = {
+      userId: user.id,
+      ipAddress: deviceInfo.ipAddress ?? null,
+    };
+    this.eventEmitter.emit(RoomEvents.AUTH_DESKTOP_SIGN_IN, event);
+
     return { ok: true, ...tokens, userId: user.id };
   }
 

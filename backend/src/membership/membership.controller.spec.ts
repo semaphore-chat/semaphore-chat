@@ -221,11 +221,16 @@ describe('MembershipController', () => {
       const userId = 'user-123';
       const communityId = 'community-123';
 
-      service.remove.mockResolvedValue(undefined);
+      const req = { user: { id: 'actor', role: 'USER' } } as any;
+      service.removeByActor.mockResolvedValue(undefined);
 
-      await controller.remove(userId, communityId);
+      await controller.remove(userId, communityId, req);
 
-      expect(service.remove).toHaveBeenCalledWith(userId, communityId);
+      expect(service.removeByActor).toHaveBeenCalledWith(
+        req.user,
+        userId,
+        communityId,
+      );
     });
   });
 

@@ -91,6 +91,9 @@ EventEmitter2 (domain events) --> RoomSubscriptionHandler --> WebsocketService
 3. **Refresh**: `POST /auth/refresh` -> validates refresh token -> issues new pair
 4. **RBAC**: `RbacGuard` checks user's roles against `@RequiredActions()` decorator
 
+How each kind of client receives and presents its refresh token is in
+[Auth Clients](auth-clients.md).
+
 Access tokens live 1 hour and carry a session id (`sid`, the refresh token
 family). Revocation is remembered in Redis until the tokens would have
 expired anyway (`TokenBlacklistService`): logout revokes that token and its
@@ -102,9 +105,10 @@ Refresh tokens rotate on every refresh. A rotated token presented again
 within 30 seconds (tabs sharing the refresh cookie, a retry after a lost
 response) gets the token it was rotated to, not a new one
 (`RefreshTokenGraceService`), so the session never forks. Only the client
-that did the rotation gets it: the same user agent and IP address (the same
-/64 for IPv6, `client-match.util.ts`; `req.ip`, so behind a reverse proxy
-set `TRUST_PROXY`). Presented later, or within the window by another client,
+that did the rotation gets it: the same user agent, device id (once the
+session has one) and IP address (the same /64 for IPv6,
+`client-match.util.ts`; `req.ip`, so behind a reverse proxy set
+`TRUST_PROXY`). Presented later, or within the window by another client,
 it counts as stolen: the whole session is revoked, including its access
 tokens and sockets. Rotation times come from the database's clock, so
 backend instances with clocks that disagree agree on the window. Logins,

@@ -7,6 +7,7 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Req,
   DefaultValuePipe,
@@ -15,7 +16,11 @@ import {
 } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
 import { ThreadsService } from './threads.service';
-import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
+import {
+  CreateThreadReplyBodyDto,
+  CreateThreadReplyDto,
+} from './dto/create-thread-reply.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -39,6 +44,7 @@ import {
  */
 @Controller('threads')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class ThreadsController {
   constructor(private readonly threadsService: ThreadsService) {}
 
@@ -57,7 +63,7 @@ export class ThreadsController {
   @ApiCreatedResponse({ type: ThreadReplyDto })
   async createReply(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
-    @Body() body: Omit<CreateThreadReplyDto, 'parentMessageId'>,
+    @Body() body: CreateThreadReplyBodyDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<ThreadReplyDto> {
     const dto: CreateThreadReplyDto = {
@@ -81,6 +87,7 @@ export class ThreadsController {
   async getReplies(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Req() req: AuthenticatedRequest,
     @Query('continuationToken') continuationToken?: string,
   ): Promise<ThreadRepliesResponseDto> {
     limit = Math.min(limit, 100);
@@ -88,6 +95,7 @@ export class ThreadsController {
       parentMessageId,
       limit,
       continuationToken,
+      req.user.id,
     );
   }
 

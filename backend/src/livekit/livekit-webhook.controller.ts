@@ -164,9 +164,10 @@ export class LivekitWebhookController {
    * When a participant joins a LiveKit room, we update Redis and notify clients.
    *
    * It is also the safety net for revoked voice access: LiveKit tokens can't
-   * be revoked, so a banned or deleted user, or a token issued before the
-   * user's credentials changed, is removed from the room right away (and
-   * never shows up in voice presence).
+   * be revoked, so a banned or deleted user, a token issued before the user's
+   * credentials changed, or a user who has since lost access to this channel
+   * or DM is removed from the room right away (and never shows up in voice
+   * presence).
    *
    * @param event - The verified event, which carries the participant's kind
    *   and attributes (the DTO doesn't)
@@ -224,10 +225,14 @@ export class LivekitWebhookController {
       return false;
     }
 
-    const denial = await this.livekitAccessService.checkJoin(
-      identity,
-      event.participant?.attributes,
-    );
+    const denial =
+      (await this.livekitAccessService.checkJoin(
+        identity,
+        event.participant?.attributes,
+      )) ??
+      // The account is fine: is this room still theirs? A token outlives the
+      // membership it was issued for.
+      (await this.livekitAccessService.checkRoomAccess(identity, roomName));
     if (!denial) return false;
 
     this.logger.warn(
@@ -268,7 +273,10 @@ export class LivekitWebhookController {
         roomName,
       );
       if (!caps) return; // not a channel room (DM call)
-      const grant = publishGrantFor(caps);
+      const grant = publishGrantFor(
+        caps,
+        await this.voicePresenceService.isServerMuted(roomName, identity),
+      );
       if (grant === FULL_PUBLISH_GRANT) return;
       await this.livekitService.updatePublishPermissions(
         roomName,

@@ -171,7 +171,12 @@ export class RoomSubscriptionHandler {
         await this.livekitService.updatePublishPermissions(
           id,
           userId,
-          caps ? publishGrantFor(caps) : { canPublish: false },
+          caps
+            ? publishGrantFor(
+                caps,
+                await this.voicePresenceService.isServerMuted(id, userId),
+              )
+            : { canPublish: false },
         );
       }
     } catch (error) {
@@ -428,12 +433,22 @@ export class RoomSubscriptionHandler {
   }
 
   @OnEvent(RoomEvents.DM_GROUP_MEMBER_LEFT)
-  onDmGroupMemberLeft({ groupId, userId }: DmGroupMemberLeftEvent): void {
+  async onDmGroupMemberLeft({
+    groupId,
+    userId,
+  }: DmGroupMemberLeftEvent): Promise<void> {
     this.websocketService.removeSocketsFromRoom(
       RoomName.user(userId),
       RoomName.dmGroup(groupId),
     );
     this.logger.debug(`User ${userId} left DM group room ${groupId}`);
+
+    // Leaving the group ends their part in its call too. Errors are logged,
+    // never thrown (the membership is already gone).
+    await Promise.allSettled([
+      this.livekitService.removeParticipant(groupId, userId),
+      this.voicePresenceService.leaveDmVoice(groupId, userId),
+    ]);
   }
 
   // =========================================================================

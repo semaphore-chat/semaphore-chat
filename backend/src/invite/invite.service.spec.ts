@@ -1,6 +1,8 @@
 import { TestBed } from '@suites/unit';
 import { Logger } from '@nestjs/common';
+import type { Mocked } from '@suites/doubles.jest';
 import { InviteService } from './invite.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { DatabaseService } from '@/database/database.service';
 import {
   createMockDatabase,
@@ -11,16 +13,18 @@ import {
 describe('InviteService', () => {
   let service: InviteService;
   let mockDatabase: any;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
 
-    const { unit } = await TestBed.solitary(InviteService)
+    const { unit, unitRef } = await TestBed.solitary(InviteService)
       .mock(DatabaseService)
       .final(mockDatabase)
       .compile();
 
     service = unit;
+    permissionsService = unitRef.get(PermissionsService);
   });
 
   afterEach(() => {
@@ -112,6 +116,9 @@ describe('InviteService', () => {
 
       mockDatabase.instanceInvite.findFirst.mockResolvedValue(null);
       mockDatabase.instanceInvite.create.mockResolvedValue(mockInvite);
+      permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+        true,
+      );
 
       const result = await service.createInvite(
         creator,

@@ -5,7 +5,9 @@ import {
   MaxLength,
   IsEnum,
   IsOptional,
-  IsNumber,
+  IsInt,
+  Min,
+  Max,
 } from 'class-validator';
 import { RbacActions } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -26,6 +28,8 @@ export class CreateRoleDto {
     description: 'Position for ordering (lower = higher priority)',
   })
   @IsOptional()
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
   position?: number;
 }

@@ -1,4 +1,5 @@
 import { TestBed } from '@suites/unit';
+import { PermissionsService } from '@/roles/permissions.service';
 import type { Mocked } from '@suites/doubles.jest';
 import { ForbiddenException } from '@nestjs/common';
 import { ReplayClipAccessStrategy } from './replay-clip.strategy';
@@ -10,6 +11,7 @@ describe('ReplayClipAccessStrategy', () => {
   let strategy: ReplayClipAccessStrategy;
   let mockDatabase: any;
   let channelAccessService: Mocked<ChannelAccessService>;
+  let permissionsService: Mocked<PermissionsService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
@@ -21,6 +23,7 @@ describe('ReplayClipAccessStrategy', () => {
 
     strategy = unit;
     channelAccessService = unitRef.get(ChannelAccessService);
+    permissionsService = unitRef.get(PermissionsService);
   });
 
   afterEach(() => {
@@ -220,6 +223,39 @@ describe('ReplayClipAccessStrategy', () => {
           await expect(
             strategy.checkAccess('user-123', 'user-456', 'file-789'),
           ).rejects.toThrow(ForbiddenException);
+        });
+      });
+
+      describe('a message removed by a moderator', () => {
+        beforeEach(() => {
+          mockDatabase.message.findMany.mockResolvedValue([
+            {
+              id: 'message-1',
+              channelId: 'channel-1',
+              directMessageGroupId: null,
+              deletedAt: new Date(),
+            },
+          ]);
+          channelAccessService.canViewChannel.mockResolvedValue(true);
+          mockDatabase.channel.findUnique.mockResolvedValue({
+            id: 'channel-1',
+          });
+        });
+
+        it('grants nothing to a reader who may not see removed messages', async () => {
+          permissionsService.canSeeRemovedMessages.mockResolvedValue(false);
+
+          await expect(
+            strategy.checkAccess('user-1', 'owner-1', 'file-1'),
+          ).rejects.toThrow(ForbiddenException);
+        });
+
+        it('still grants access to a reader who may', async () => {
+          permissionsService.canSeeRemovedMessages.mockResolvedValue(true);
+
+          await expect(
+            strategy.checkAccess('user-1', 'owner-1', 'file-1'),
+          ).resolves.toBe(true);
         });
       });
 

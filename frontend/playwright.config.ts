@@ -53,6 +53,17 @@ export default defineConfig({
       testIgnore: [/auth\.spec\.ts/, /\/e2e\/voice\//],
     },
 
+    // Token delivery on Firefox, whose page script can send what Chromium's
+    // can't. Only this spec, so the normal E2E runtime doesn't grow; Chromium
+    // runs it in the `chromium` project.
+    {
+      name: 'auth-token-delivery-firefox',
+      // Not devices['Desktop Firefox']: its user agent override would replace
+      // the one page script sets, which is part of what the spec pins
+      use: { browserName: 'firefox' },
+      testMatch: /\/e2e\/auth-token-delivery\.spec\.ts$/,
+    },
+
     // Auth tests — run without saved state so they can test login/register flows
     {
       name: 'auth-tests',

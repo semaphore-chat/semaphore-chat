@@ -21,6 +21,10 @@ describe('CommunityService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    mockDatabase.file.count.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.length),
+    );
 
     const { unit, unitRef } = await TestBed.solitary(CommunityService)
       .mock(DatabaseService)
@@ -335,7 +339,7 @@ describe('CommunityService', () => {
       mockDatabase.community.findUnique.mockResolvedValue(community);
       mockDatabase.community.update.mockResolvedValue(updatedCommunity);
 
-      const result = await service.update(community.id, updateDto);
+      const result = await service.update(community.id, updateDto, 'user-1');
 
       expect(result).toEqual(updatedCommunity);
       expect(mockDatabase.community.update).toHaveBeenCalledWith({
@@ -351,18 +355,33 @@ describe('CommunityService', () => {
       const updateDto = { avatar: newAvatarId };
 
       mockDatabase.community.findUnique.mockResolvedValue(community);
-      mockDatabase.file.update.mockResolvedValue({ id: oldAvatarId });
+      mockDatabase.file.updateMany.mockResolvedValue({ count: 1 });
       mockDatabase.community.update.mockResolvedValue({
         ...community,
         avatar: newAvatarId,
       });
 
-      await service.update(community.id, updateDto);
+      await service.update(community.id, updateDto, 'user-1');
 
-      expect(mockDatabase.file.update).toHaveBeenCalledWith({
-        where: { id: oldAvatarId },
+      expect(mockDatabase.file.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: oldAvatarId,
+          resourceType: 'COMMUNITY_AVATAR',
+          OR: [{ fileCommunityId: community.id }, { fileCommunityId: null }],
+        },
         data: { deletedAt: expect.any(Date) },
       });
+    });
+
+    it("rejects an image the user didn't upload, before changing anything", async () => {
+      const community = CommunityFactory.build({ avatar: null });
+      mockDatabase.community.findUnique.mockResolvedValue(community);
+      mockDatabase.file.count.mockResolvedValue(0);
+
+      await expect(
+        service.update(community.id, { avatar: 'foreign' }, 'user-1'),
+      ).rejects.toThrow('You can only use images you uploaded');
+      expect(mockDatabase.community.update).not.toHaveBeenCalled();
     });
 
     it('should mark old banner for deletion when replaced', async () => {
@@ -372,16 +391,20 @@ describe('CommunityService', () => {
       const updateDto = { banner: newBannerId };
 
       mockDatabase.community.findUnique.mockResolvedValue(community);
-      mockDatabase.file.update.mockResolvedValue({ id: oldBannerId });
+      mockDatabase.file.updateMany.mockResolvedValue({ count: 1 });
       mockDatabase.community.update.mockResolvedValue({
         ...community,
         banner: newBannerId,
       });
 
-      await service.update(community.id, updateDto);
+      await service.update(community.id, updateDto, 'user-1');
 
-      expect(mockDatabase.file.update).toHaveBeenCalledWith({
-        where: { id: oldBannerId },
+      expect(mockDatabase.file.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: oldBannerId,
+          resourceType: 'COMMUNITY_BANNER',
+          OR: [{ fileCommunityId: community.id }, { fileCommunityId: null }],
+        },
         data: { deletedAt: expect.any(Date) },
       });
     });
@@ -397,9 +420,9 @@ describe('CommunityService', () => {
         ...updateDto,
       });
 
-      await service.update(community.id, updateDto);
+      await service.update(community.id, updateDto, 'user-1');
 
-      expect(mockDatabase.file.update).not.toHaveBeenCalled();
+      expect(mockDatabase.file.updateMany).not.toHaveBeenCalled();
     });
 
     it('should not mark files for deletion when community has no old files', async () => {
@@ -412,21 +435,21 @@ describe('CommunityService', () => {
         ...updateDto,
       });
 
-      await service.update(community.id, updateDto);
+      await service.update(community.id, updateDto, 'user-1');
 
-      expect(mockDatabase.file.update).not.toHaveBeenCalled();
+      expect(mockDatabase.file.updateMany).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException when community not found', async () => {
       const updateDto = { name: 'Updated Name' };
       mockDatabase.community.findUnique.mockResolvedValue(null);
 
-      await expect(service.update('nonexistent', updateDto)).rejects.toThrow(
-        NotFoundException,
-      );
-      await expect(service.update('nonexistent', updateDto)).rejects.toThrow(
-        'Community not found',
-      );
+      await expect(
+        service.update('nonexistent', updateDto, 'user-1'),
+      ).rejects.toThrow(NotFoundException);
+      await expect(
+        service.update('nonexistent', updateDto, 'user-1'),
+      ).rejects.toThrow('Community not found');
     });
 
     it('should handle both avatar and banner replacement in one update', async () => {
@@ -441,21 +464,29 @@ describe('CommunityService', () => {
       const updateDto = { avatar: newAvatarId, banner: newBannerId };
 
       mockDatabase.community.findUnique.mockResolvedValue(community);
-      mockDatabase.file.update.mockResolvedValue({});
+      mockDatabase.file.updateMany.mockResolvedValue({ count: 1 });
       mockDatabase.community.update.mockResolvedValue({
         ...community,
         ...updateDto,
       });
 
-      await service.update(community.id, updateDto);
+      await service.update(community.id, updateDto, 'user-1');
 
-      expect(mockDatabase.file.update).toHaveBeenCalledTimes(2);
-      expect(mockDatabase.file.update).toHaveBeenCalledWith({
-        where: { id: oldAvatarId },
+      expect(mockDatabase.file.updateMany).toHaveBeenCalledTimes(2);
+      expect(mockDatabase.file.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: oldAvatarId,
+          resourceType: 'COMMUNITY_AVATAR',
+          OR: [{ fileCommunityId: community.id }, { fileCommunityId: null }],
+        },
         data: { deletedAt: expect.any(Date) },
       });
-      expect(mockDatabase.file.update).toHaveBeenCalledWith({
-        where: { id: oldBannerId },
+      expect(mockDatabase.file.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: oldBannerId,
+          resourceType: 'COMMUNITY_BANNER',
+          OR: [{ fileCommunityId: community.id }, { fileCommunityId: null }],
+        },
         data: { deletedAt: expect.any(Date) },
       });
     });

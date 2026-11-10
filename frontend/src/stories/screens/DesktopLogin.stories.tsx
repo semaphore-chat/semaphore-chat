@@ -30,16 +30,29 @@ export const ConfirmLongName = defineScreen(longNameScenario, LINK);
 /** The server refused to approve (e.g. a session from before sessions were tracked). */
 const clickApprove = () =>
   Array.from(document.querySelectorAll('button')).find(
-    (button) => button.textContent === 'Sign in to the desktop app',
+    // It stays disabled until the current user has loaded: a click before then does nothing.
+    (button) => button.textContent === 'Sign in to the desktop app' && !button.disabled,
   );
-export const ApproveFailed: LadleStoryComponent = defineScreen(bigCommunityScenario, LINK, {
-  overlay: <ClickOnMount find={clickApprove} />,
-});
+const ApproveWithPassword = () => (
+  <SandboxShell path={LINK} overlay={<ClickOnMount find={clickApprove} />}>
+    <DesktopLoginPage redirect={() => {}} initialPassword="correct horse" />
+  </SandboxShell>
+);
+export const ApproveFailed: LadleStoryComponent = () => <ApproveWithPassword />;
 ApproveFailed.msw = [
   http.post('/api/auth/desktop/authorize', () =>
     HttpResponse.json({ message: 'Sign in again to approve this' }, { status: 401 }),
   ),
-  ...(ApproveFailed.msw ?? []),
+  ...makeHandlers(bigCommunityScenario),
+];
+
+/** The account password is asked for again, and this one was wrong. */
+export const WrongPassword: LadleStoryComponent = () => <ApproveWithPassword />;
+WrongPassword.msw = [
+  http.post('/api/auth/desktop/authorize', () =>
+    HttpResponse.json({ statusCode: 403, message: 'Wrong password' }, { status: 403 }),
+  ),
+  ...makeHandlers(bigCommunityScenario),
 ];
 
 /** A damaged or incomplete link (missing challenge). */

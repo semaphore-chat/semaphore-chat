@@ -370,6 +370,22 @@ export class PermissionsService {
   }
 
   /**
+   * Moderation's rule: the actor holds a role and strictly outranks the
+   * target. A user with no roles ranks below everyone.
+   */
+  async outranks(
+    actorId: string,
+    targetId: string,
+    communityId: string,
+  ): Promise<boolean> {
+    const [actor, target] = await Promise.all([
+      this.getRank(actorId, communityId),
+      this.getRank(targetId, communityId),
+    ]);
+    return actor.best !== Number.MAX_SAFE_INTEGER && actor.best < target.best;
+  }
+
+  /**
    * Every other community member holding a role ranked at or above
    * `position`, with ALL their community roles (their real role set).
    */
@@ -432,6 +448,19 @@ export class PermissionsService {
    * Channel check for code paths without a guard (e.g. attachments added to
    * an existing message). Applies the instance OWNER bypass like RbacGuard.
    */
+  /**
+   * Whether a reader may see what a moderator removed from this channel: those
+   * who can remove messages there.
+   */
+  async canSeeRemovedMessages(
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    return this.userHasChannelActions(userId, channelId, [
+      RbacActions.DELETE_ANY_MESSAGE,
+    ]);
+  }
+
   async userHasChannelActions(
     userId: string,
     channelId: string,

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Get,
   Post,
@@ -7,6 +8,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Logger,
   Query,
@@ -45,6 +47,7 @@ import {
   PaginatedMessagesResponseDto,
 } from './dto/message-response.dto';
 import { groupReactions } from '@/common/utils/reactions.utils';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import { RoomName } from '@/common/utils/room-name.util';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
 import { InjectQueue } from '@nestjs/bullmq';
@@ -55,6 +58,7 @@ import { LinkPreviewJobData } from '@/jobs/jobs.types';
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
 
@@ -80,6 +84,12 @@ export class MessagesController {
     @Req() req: AuthenticatedRequest,
     @Body() createMessageDto: CreateMessageDto,
   ): Promise<EnrichedMessageDto> {
+    // RBAC here checks the channel. Without one, the guard falls back to the
+    // instance-level check, which says nothing about where this message goes.
+    if (!createMessageDto.channelId) {
+      throw new BadRequestException('channelId is required');
+    }
+
     const message = await this.messagesService.create({
       ...createMessageDto,
       authorId: req.user.id,
@@ -342,6 +352,12 @@ export class MessagesController {
       );
     }
 
+    if (addAttachmentDto.fileId) {
+      await this.messagesService.assertFilesAttachable(req.user.id, [
+        addAttachmentDto.fileId,
+      ]);
+    }
+
     // Add the attachment and decrement pendingAttachments
     // If fileId is omitted (upload failed), just decrements counter
     const updatedMessage = await this.messagesService.addAttachment(
@@ -399,10 +415,11 @@ export class MessagesController {
     );
 
     // Adding files in an edit needs ATTACH_FILES like sending them
-    const addsFiles = (updateMessageDto.attachments ?? []).some(
+    const newFileIds = (updateMessageDto.attachments ?? []).filter(
       (fileId) => !originalFileIds.includes(fileId),
     );
-    if (addsFiles && originalMessage.channelId) {
+    await this.messagesService.assertFilesAttachable(req.user.id, newFileIds);
+    if (newFileIds.length > 0 && originalMessage.channelId) {
       await this.permissionsService.assertCanAttachFiles(
         req.user.id,
         originalMessage.channelId,

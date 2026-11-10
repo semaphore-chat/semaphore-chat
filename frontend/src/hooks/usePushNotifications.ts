@@ -7,7 +7,7 @@
  * This hook is only relevant for web PWA - Electron uses native notifications.
  */
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { logger } from '../utils/logger';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
@@ -80,6 +80,29 @@ export function usePushNotifications(): UsePushNotificationsResult {
     });
   }, [isSupported]);
 
+  // The server can lose this device while the browser keeps its subscription
+  // ("sign out everywhere else" ends every subscription), and nothing here would
+  // show it: the switch reads the browser's. So give it back, once per mount.
+  // Turning push off removes the browser's subscription, so this can't undo that,
+  // and unsubscribe waits for or cancels a re-post already under way.
+  const repost = useRef<Promise<void> | null>(null);
+  const turningOff = useRef(false);
+  useEffect(() => {
+    if (!isSupported || !isServerEnabled || !hasPermission || repost.current) return;
+    repost.current = (async () => {
+      try {
+        const subscription = await getCurrentPushSubscription();
+        if (!subscription || turningOff.current) return;
+        await subscribePushMutation({ body: extractSubscriptionData(subscription) });
+        await swDbSet(SW_DB_KEYS.lastSyncedEndpoint, subscription.endpoint);
+        refetchStatus();
+      } catch (err) {
+        // Best effort, like usePushResync: the switch still works by hand.
+        logger.warn('[usePushNotifications] Could not re-post the subscription:', err);
+      }
+    })();
+  }, [isSupported, isServerEnabled, hasPermission, subscribePushMutation, refetchStatus]);
+
   // Subscribe to push notifications
   const subscribe = useCallback(async (): Promise<boolean> => {
     if (!isSupported) {
@@ -148,8 +171,11 @@ export function usePushNotifications(): UsePushNotificationsResult {
 
     setIsLoading(true);
     setError(null);
+    turningOff.current = true;
 
     try {
+      await repost.current;
+
       // Get current subscription
       const subscription = await getCurrentPushSubscription();
       if (!subscription) {
@@ -182,6 +208,7 @@ export function usePushNotifications(): UsePushNotificationsResult {
       logger.error('[usePushNotifications] Unsubscribe error:', err);
       return false;
     } finally {
+      turningOff.current = false;
       setIsLoading(false);
     }
   }, [isSupported, unsubscribePushMutation, refetchStatus]);

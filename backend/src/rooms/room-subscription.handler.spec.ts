@@ -777,8 +777,8 @@ describe('RoomSubscriptionHandler', () => {
   });
 
   describe('onDmGroupMemberLeft', () => {
-    it('should remove user from the DM group room', () => {
-      handler.onDmGroupMemberLeft({
+    it('should remove user from the DM group room and its call', async () => {
+      await handler.onDmGroupMemberLeft({
         groupId: 'dm-group-123',
         userId: 'user-123',
       });
@@ -786,6 +786,14 @@ describe('RoomSubscriptionHandler', () => {
       expect(websocketService.removeSocketsFromRoom).toHaveBeenCalledWith(
         'user:user-123',
         'dm:dm-group-123',
+      );
+      expect(livekitService.removeParticipant).toHaveBeenCalledWith(
+        'dm-group-123',
+        'user-123',
+      );
+      expect(voicePresenceService.leaveDmVoice).toHaveBeenCalledWith(
+        'dm-group-123',
+        'user-123',
       );
     });
   });

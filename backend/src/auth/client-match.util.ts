@@ -12,6 +12,7 @@ export const IPV6_CLIENT_PREFIX = 64;
 export interface ClientFingerprint {
   ipAddress?: string | null;
   userAgent?: string | null;
+  deviceId?: string | null;
 }
 
 /**
@@ -48,10 +49,12 @@ export function isSameClientAddress(
 
 /**
  * Whether a request comes from the client that used a refresh token: the
- * same user agent, exactly, and the same address (see isSameClientAddress).
+ * same user agent, exactly, the same address (see isSameClientAddress) and,
+ * if the token's session has a device id, the same device id.
  *
- * Tabs of one browser, and a retry after a lost response, share both. A
- * different agent or network is not the client that rotated the token.
+ * Tabs of one browser, and a retry after a lost response, share all three. A
+ * different agent, network or install is not the client that rotated the
+ * token. A session from before device ids (stored null) has only the rest.
  */
 export function isSameClient(
   stored: ClientFingerprint,
@@ -59,6 +62,7 @@ export function isSameClient(
 ): boolean {
   return (
     (stored.userAgent ?? '') === (presenting.userAgent ?? '') &&
+    (!stored.deviceId || stored.deviceId === presenting.deviceId) &&
     isSameClientAddress(stored.ipAddress, presenting.ipAddress)
   );
 }

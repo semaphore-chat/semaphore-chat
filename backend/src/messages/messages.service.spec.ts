@@ -3,7 +3,11 @@ import type { Mocked } from '@suites/doubles.jest';
 import { MessagesService } from './messages.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { PermissionsService } from '@/roles/permissions.service';
 import { SpanType, FileType } from '@prisma/client';
@@ -50,6 +54,19 @@ describe('MessagesService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    // Files in these tests were uploaded by the message's author, unless a
+    // test says otherwise.
+    mockDatabase.file.count.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.length),
+    );
+    mockDatabase.file.findMany.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id }))),
+    );
+    mockDatabase.message.findUniqueOrThrow.mockResolvedValue({
+      authorId: 'user-123',
+    });
 
     const { unit, unitRef } = await TestBed.solitary(MessagesService)
       .mock(DatabaseService)
@@ -67,6 +84,34 @@ describe('MessagesService', () => {
   });
 
   describe('create', () => {
+    describe('target', () => {
+      const base = { authorId: 'user-123', spans: [], attachments: [] };
+
+      it.each([
+        ['both', { channelId: 'channel-1', directMessageGroupId: 'group-1' }],
+        ['neither', {}],
+        ['only nulls', { channelId: null, directMessageGroupId: null }],
+      ])('rejects %s before writing anything', async (_label, target) => {
+        await expect(
+          service.create({ ...base, ...target } as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a channel', { channelId: 'channel-1', directMessageGroupId: null }],
+        ['a DM group', { channelId: null, directMessageGroupId: 'group-1' }],
+      ])('accepts %s', async (_label, target) => {
+        mockDatabase.message.create.mockResolvedValue(
+          buildMessageWithIncludes({ ...base, ...target }),
+        );
+
+        await service.create({ ...base, ...target } as any);
+
+        expect(mockDatabase.message.create).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('ATTACH_FILES', () => {
       const base = {
         channelId: 'channel-123',
@@ -99,6 +144,15 @@ describe('MessagesService', () => {
         await expect(
           service.create({ ...base, attachments: ['file-1'] } as any),
         ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it("rejects a file the author didn't upload", async () => {
+        mockDatabase.file.count.mockResolvedValue(0);
+
+        await expect(
+          service.create({ ...base, attachments: ['file-1'] } as any),
+        ).rejects.toThrow('You can only attach files you uploaded');
         expect(mockDatabase.message.create).not.toHaveBeenCalled();
       });
 
@@ -487,7 +541,7 @@ describe('MessagesService', () => {
       );
       await service.update('m1', {
         spans: [mention('visible'), mention('hidden')],
-      } as any);
+      });
 
       expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         'author',
@@ -506,6 +560,32 @@ describe('MessagesService', () => {
   });
 
   describe('update', () => {
+    it('writes only what an edit may change', async () => {
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', {
+        channelId: 'other-channel',
+        directMessageGroupId: 'other-group',
+        replyToId: 'other-message',
+        pendingAttachments: 9,
+        spans: [
+          {
+            type: SpanType.PLAINTEXT,
+            text: 'Edited',
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      });
+
+      const { data } = mockDatabase.message.update.mock.calls[0][0];
+      expect(Object.keys(data).sort()).toEqual(['editedAt', 'searchText']);
+    });
+
     it('should update a message and set editedAt', async () => {
       const messageId = 'msg-123';
       const updateDto = {
@@ -556,6 +636,32 @@ describe('MessagesService', () => {
       expect(updateCall.where).toEqual({ id: messageId });
       expect(updateCall.data.searchText).toBe('updated text');
       expect(updateCall.data.editedAt).toBeInstanceOf(Date);
+    });
+
+    it('only marks files the author uploaded for deletion', async () => {
+      mockDatabase.file.findMany.mockResolvedValue([{ id: 'own-file' }]);
+      mockDatabase.messageAttachment.findMany.mockResolvedValue([]);
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', { attachments: [] }, [
+        'own-file',
+        'foreign-file',
+      ]);
+
+      expect(mockDatabase.file.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['own-file', 'foreign-file'] },
+          uploadedById: 'user-123',
+        },
+        select: { id: true },
+      });
+      expect(fileService.markForDeletion).toHaveBeenCalledTimes(1);
+      expect(fileService.markForDeletion).toHaveBeenCalledWith(
+        'own-file',
+        expect.any(Object),
+      );
     });
 
     it('should mark removed attachments for deletion', async () => {
