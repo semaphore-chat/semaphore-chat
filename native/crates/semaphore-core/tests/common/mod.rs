@@ -193,6 +193,9 @@ pub struct FakeBackend {
     /// What each voice presence call was, in order: `join`, `refresh`, `leave`, `deafen`.
     pub voice_calls: Mutex<Vec<String>>,
     pub emojis: Mutex<Vec<Value>>,
+    /// What the communities read fails with, while set.
+    pub communities_error: Mutex<Option<BackendError>>,
+    pub community_requests: AtomicU64,
 }
 
 impl FakeBackend {
@@ -344,6 +347,10 @@ impl Backend for FakeBackend {
     async fn community_controller_find_all_mine(
         &self,
     ) -> BackendResult<Vec<wire::CommunityResponseDto>> {
+        self.community_requests.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.communities_error.lock().unwrap().clone() {
+            return Err(error);
+        }
         decoded(json!([{
             "id": "comm", "name": "Community", "description": null, "avatar": null, "banner": null,
             "createdAt": "2026-09-22T18:00:00.000Z",

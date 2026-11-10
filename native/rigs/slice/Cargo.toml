@@ -1,0 +1,13 @@
+[package]
+name = "rig-slice"
+description = "U13: drives the real app headless against the fake server, with screenshots and state checks."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-channel = "2"
+gpui-kit = { workspace = true, features = ["test-support"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "time"] }

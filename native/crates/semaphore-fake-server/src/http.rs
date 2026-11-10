@@ -102,6 +102,7 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
             "/api/channels/{channelId}/voice-presence/deafen",
             post(voice_deafen),
         )
+        .route("/api/instance/settings/public", get(public_settings))
         .route("/api/file/{id}", get(get_file))
         .route("/api/file/{id}/thumbnail", get(get_file_thumbnail))
         .route("/socket.io/", any(crate::socket::socket_io))
@@ -114,6 +115,7 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
 fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
     Some(match (method.as_str(), route) {
         ("POST", "/api/auth/login") => "AuthController_login",
+        ("GET", "/api/instance/settings/public") => "InstanceController_getPublicSettings",
         ("POST", "/api/auth/refresh") => "AuthController_refresh",
         ("POST", "/api/auth/logout") => "AuthController_logout",
         ("GET", "/api/users/profile") => "UserController_getProfile",
@@ -192,6 +194,18 @@ fn has_bearer(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// Routes that answer without a session.
+fn is_public(operation: Option<&str>) -> bool {
+    matches!(
+        operation,
+        Some(
+            "AuthController_login"
+                | "AuthController_refresh"
+                | "InstanceController_getPublicSettings"
+        )
+    )
+}
+
 async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> Response {
     let method = request.method().clone();
     let path = request.uri().path().to_owned();
@@ -224,8 +238,7 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
     }
 
     if operation.is_some()
-        && operation != Some("AuthController_login")
-        && operation != Some("AuthController_refresh")
+        && !is_public(operation)
         && !has_bearer(request.headers())
     {
         let response = inner.error(401, "UNAUTHENTICATED", "Missing bearer token", false);
@@ -239,8 +252,7 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
     }
 
     if operation.is_some()
-        && operation != Some("AuthController_login")
-        && operation != Some("AuthController_refresh")
+        && !is_public(operation)
         && let Some(required) = inner.required_access_token()
         && bearer_token(request.headers()) != Some(required.as_str())
     {
@@ -801,6 +813,21 @@ async fn search_members(
     json_response(StatusCode::OK, Value::Array(members))
 }
 
+/// What the sign-in screen asks before anyone signs in. The name says which scenario this is.
+async fn public_settings(State(_inner): State<Arc<Inner>>) -> Response {
+    json_response(
+        StatusCode::OK,
+        json!({
+            "name": "Semaphore fake server",
+            "registrationMode": "INVITE_ONLY",
+            "maxFileSizeBytes": 10 * 1024 * 1024,
+            "gifSearchEnabled": false,
+            "passwordResetEnabled": false,
+            "desktopBrowserLogin": false,
+        }),
+    )
+}
+
 async fn list_emojis(State(_inner): State<Arc<Inner>>) -> Response {
     json_response(StatusCode::OK, Value::Array(Vec::new()))
 }
@@ -919,6 +946,20 @@ async fn control(
             };
             let payload = request.get("payload").cloned().unwrap_or(Value::Null);
             inner.broadcast(event, payload);
+        }
+        "post_as" => {
+            let field = |name: &str| request.get(name).and_then(Value::as_str);
+            let (Some(channel), Some(author), Some(text)) =
+                (field("channelId"), field("authorId"), field("text"))
+            else {
+                return invalid("channelId, authorId and text are required");
+            };
+            let broadcast = request
+                .get("broadcast")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let message = messages::post_as(&inner, channel, author, text, broadcast);
+            return json_response(StatusCode::OK, json!({ "id": message.id }));
         }
         "drop_connections" => {
             inner.close_connections();

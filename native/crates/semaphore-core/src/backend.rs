@@ -194,4 +194,18 @@ pub trait Backend: Send + Sync {
     // Files
     async fn file_controller_get_file(&self, id: String) -> BackendResult<Vec<u8>>;
     async fn file_controller_get_file_thumbnail(&self, id: String) -> BackendResult<Vec<u8>>;
+
+    // Instance
+    /// Before sign-in, against the server URL set last. A backend that has no such call says so.
+    async fn instance_controller_get_public_settings(
+        &self,
+    ) -> BackendResult<wire::PublicSettingsResponseDto> {
+        Err(BackendError {
+            status: 0,
+            code: ErrorCode::Unknown("UNSUPPORTED".into()),
+            message: "this backend cannot read a server's public settings".into(),
+            retryable: false,
+            retry_after_ms: None,
+        })
+    }
 }

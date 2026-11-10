@@ -11,7 +11,7 @@
 use crate::cache::keys;
 use crate::client::{Core, Effect, State};
 use crate::lifecycle::ConnectionState;
-use crate::model::{Conversation, UserView, ViewKey};
+use crate::model::{Conversation, SignOutReason, UserView, ViewKey};
 use crate::realtime::RealtimeEvent;
 use crate::store::Window;
 use semaphore_wire::enums::NotificationType;
@@ -726,6 +726,8 @@ impl State {
                 if std::mem::replace(&mut self.had_connection, true) {
                     self.start_resync();
                 }
+                // Whatever failed may have failed for want of this connection.
+                self.retry_failed_queries();
                 self.release_parked_sends();
             }
             RealtimeEvent::Disconnected { reason } => {
@@ -753,6 +755,7 @@ impl State {
                     reason.as_deref().unwrap_or("no reason given")
                 );
                 self.reset_signed_out();
+                self.sign_out_reason = Some(SignOutReason::Expired);
             }
             RealtimeEvent::Reauthenticated { result } => {
                 match serde_json::from_value::<ReauthenticateResultDto>(result) {

@@ -14,7 +14,9 @@
 use crate::backend::Backend;
 use crate::cache::{QueryCache, QueryKey, keys};
 use crate::lifecycle::{ConnectionState, NetworkState, ResyncPlan};
-use crate::model::{Conversation, SessionState, UserView, ViewKey, VoiceView};
+use crate::model::{
+    Conversation, ErrorView, SessionState, SignOutReason, UserView, ViewKey, VoiceView,
+};
 use crate::platform::{Clock, CoreEvent, EventSink, MediaEngine};
 use crate::realtime::Realtime;
 use crate::send::PendingSend;
@@ -57,6 +59,11 @@ pub(crate) struct State {
     pub cache: QueryCache,
     /// True while a fetch for this key runs and the answer is already out of date.
     pub fetching: HashMap<QueryKey, bool>,
+    /// Queries whose last fetch failed. Not fetched again until a retry or a new connection, so a UI
+    /// that reads on every frame can't turn one failure into a stream of requests.
+    pub failed_queries: HashMap<QueryKey, ErrorView>,
+    /// Why the last session ended. Cleared by the next sign-in.
+    pub sign_out_reason: Option<SignOutReason>,
     pub windows: HashMap<Conversation, Window>,
     pub main_conversation: Option<Conversation>,
     pub thread_conversation: Option<Conversation>,
@@ -91,6 +98,8 @@ impl State {
         Self {
             cache: QueryCache::default(),
             fetching: HashMap::new(),
+            failed_queries: HashMap::new(),
+            sign_out_reason: None,
             windows: HashMap::new(),
             main_conversation: None,
             thread_conversation: None,
@@ -157,7 +166,7 @@ impl State {
             return;
         }
         let fresh = self.cache.get(&key).is_some_and(|entry| !entry.stale);
-        if !fresh && !self.fetching.contains_key(&key) {
+        if !fresh && !self.fetching.contains_key(&key) && !self.failed_queries.contains_key(&key) {
             self.fetching.insert(key.clone(), false);
             self.push_effect(Effect::FetchQuery(key));
         }

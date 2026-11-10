@@ -423,3 +423,33 @@ pub enum ViewKey {
     Voice,
     Typing { conversation: Conversation },
 }
+
+/// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to
+/// ask again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum LoadState {
+    #[default]
+    Loading,
+    Ready,
+    /// The last fetch failed. Core won't try again until `Core::retry_failed`, or a new connection.
+    Failed { error: ErrorView },
+}
+
+/// Why the last session ended, for the sign-in screen to say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignOutReason {
+    /// The user signed out.
+    SignedOut,
+    /// The server refused the session: it expired, or was revoked elsewhere.
+    Expired,
+}
+
+/// What a server says about itself before anyone signs in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ServerInfo {
+    /// The URL requests go to, as it was normalised.
+    pub url: String,
+    pub name: Option<String>,
+    pub max_file_bytes: Option<u64>,
+    pub password_reset: bool,
+}

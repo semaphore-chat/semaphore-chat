@@ -988,4 +988,20 @@ impl Backend for HttpBackend {
         let id = id.as_str();
         bytes(rpc!(self, c => c.file_controller_get_file_thumbnail(id))?).await
     }
+
+    /// Public, so it goes out without a token: it's how a server is tested before signing in.
+    async fn instance_controller_get_public_settings(
+        &self,
+    ) -> BackendResult<wire::PublicSettingsResponseDto> {
+        let client = self
+            .inner
+            .lock()
+            .anon
+            .clone()
+            .ok_or_else(|| failure("no server URL is set"))?;
+        match client.instance_controller_get_public_settings().await {
+            Ok(response) => Ok(response.into_inner()),
+            Err(error) => Err(convert(error).await),
+        }
+    }
 }

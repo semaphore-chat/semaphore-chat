@@ -464,6 +464,68 @@ pub(crate) fn send(
     Ok(message)
 }
 
+/// A channel message from someone other than the signed-in user, as if another client sent it. With
+/// `broadcast` false nobody hears of it, which is what a client misses while disconnected: only a
+/// resync finds it.
+pub(crate) fn post_as(
+    inner: &Inner,
+    channel_id: &str,
+    author_id: &str,
+    text: &str,
+    broadcast: bool,
+) -> MessageDto {
+    let span = SendSpan {
+        kind: "PLAIN".into(),
+        text: Some(text.to_owned()),
+        ..SendSpan::default()
+    };
+    let message = MessageDto {
+        attachments: Vec::new(),
+        author_id: Some(author_id.to_owned()),
+        channel_id: Some(channel_id.to_owned()),
+        client_nonce: None,
+        deleted_at: None,
+        deleted_by: None,
+        deleted_by_reason: None,
+        direct_message_group_id: None,
+        edited_at: None,
+        id: inner.next_message_id(),
+        last_reply_at: None,
+        link_previews: None,
+        parent_message_id: None,
+        pending_attachments: Some(0),
+        pinned: false,
+        pinned_at: None,
+        pinned_by: None,
+        reactions: Vec::new(),
+        reply_count: 0,
+        reply_to: None,
+        reply_to_id: None,
+        sent_at: inner.now(),
+        spans: vec![span_from(&span)],
+        webhook: None,
+    };
+    {
+        let mut data = lock(&inner.data);
+        let messages = data
+            .channel_messages
+            .entry(channel_id.to_owned())
+            .or_default();
+        messages.push(message.clone());
+        sorted(messages);
+    }
+    if broadcast {
+        let payload = NewMessagePayloadDto {
+            message: message.clone(),
+        };
+        inner.broadcast(
+            "newMessage",
+            serde_json::to_value(&payload).expect("a payload serializes"),
+        );
+    }
+    message
+}
+
 fn find_message(data: &crate::Data, id: &str) -> Option<MessageDto> {
     data.channel_messages
         .values()

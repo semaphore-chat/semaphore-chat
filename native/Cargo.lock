@@ -7416,6 +7416,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-slice"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "gpui-kit",
+ "tokio",
+]
+
+[[package]]
 name = "rig-surface-smoke"
 version = "0.0.0"
 dependencies = [

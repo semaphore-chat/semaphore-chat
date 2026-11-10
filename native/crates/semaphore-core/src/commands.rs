@@ -9,9 +9,9 @@ use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
 use crate::client::{Core, Effect, State, user_view};
 use crate::model::{
     ChannelKind, ChannelPermissions, ChannelRow, CommunityRow, Conversation, DisplayRole,
-    EmojiView, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
-    ParticipantView, RailCounts, SessionState, UserView, VideoDemand, ViewKey, VoiceStatus,
-    VoiceView,
+    EmojiView, ErrorView, LoadState, MemberList, MemberView, MentionCandidate, MentionKind,
+    MessageDraft, ParticipantView, RailCounts, ServerInfo, SessionState, SignOutReason, UserView,
+    VideoDemand, ViewKey, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
@@ -19,7 +19,7 @@ use crate::resync::{failed, unavailable};
 use crate::send::is_optimistic_id;
 use crate::store::SendStatus;
 use semaphore_wire::enums::{ChannelType, MessagePageDirection};
-use semaphore_wire::events::{MARK_AS_READ, REAUTHENTICATE};
+use semaphore_wire::events::{MARK_AS_READ, REAUTHENTICATE, TYPING_START, TYPING_STOP};
 use semaphore_wire::types as wire;
 use serde_json::json;
 
@@ -60,11 +60,50 @@ fn jwt_expiry_ms(token: &str) -> Option<u64> {
     claims.get("exp")?.as_u64()?.checked_mul(1000)
 }
 
+/// The view that shows a query's data, for the queries a UI shows a loading or failed state for.
+fn view_for(key: &QueryKey) -> Option<ViewKey> {
+    let id = || key.segments.get(1).cloned().unwrap_or_default();
+    match key.op() {
+        keys::COMMUNITIES => Some(ViewKey::Communities),
+        keys::CHANNELS => Some(ViewKey::Channels { community_id: id() }),
+        keys::MEMBERS => Some(ViewKey::Members { community_id: id() }),
+        _ => None,
+    }
+}
+
+/// The query behind a view's list, the reverse of [`view_for`].
+fn key_for(view: &ViewKey) -> Option<QueryKey> {
+    match view {
+        ViewKey::Communities => Some(keys::op(keys::COMMUNITIES)),
+        ViewKey::Channels { community_id } => Some(keys::scoped(keys::CHANNELS, community_id)),
+        ViewKey::Members { community_id } => Some(keys::scoped(keys::MEMBERS, community_id)),
+        _ => None,
+    }
+}
+
+fn core_error_view(error: &CoreError) -> ErrorView {
+    match error {
+        CoreError::Unavailable { what } => ErrorView {
+            code: "UNAVAILABLE".into(),
+            message: format!("not available: {what}"),
+            retryable: false,
+            retry_after_ms: None,
+        },
+        CoreError::Failed { message } => ErrorView {
+            code: "FAILED".into(),
+            message: message.clone(),
+            retryable: true,
+            retry_after_ms: None,
+        },
+    }
+}
+
 impl State {
     /// Everything a session leaves behind, forgotten. Sign-out and a lost session both end here.
     pub(crate) fn reset_signed_out(&mut self) {
         self.cache.clear();
         self.fetching.clear();
+        self.failed_queries.clear();
         self.windows.clear();
         self.sends.clear();
         self.typing.clear();
@@ -79,6 +118,17 @@ impl State {
         self.had_connection = false;
         self.token_expires_at_ms = None;
         self.view_changed(ViewKey::Session);
+    }
+
+    /// Forgets which queries failed and fetches again the ones a view is showing.
+    pub(crate) fn retry_failed_queries(&mut self) {
+        let keys: Vec<QueryKey> = self.failed_queries.drain().map(|(key, _)| key).collect();
+        for key in keys {
+            if let Some(view) = view_for(&key) {
+                self.view_changed(view);
+            }
+            self.ensure_query(key);
+        }
     }
 
     pub(crate) fn user_or_stub(&self, id: &str) -> UserView {
@@ -320,13 +370,20 @@ impl Core {
                         state.seed_users_from_members(pages, now);
                     }
                     state.cache.set(key.clone(), value, now);
+                    state.failed_queries.remove(&key);
                     state.query_changed(&key);
                     if dirty {
                         // It changed while this was in flight, so this answer may be old.
                         state.invalidate(&key);
                     }
                 }
-                Err(error) => log::warn!("fetching {key:?} failed: {error}"),
+                Err(error) => {
+                    log::warn!("fetching {key:?} failed: {error}");
+                    if let Some(view) = view_for(&key) {
+                        state.failed_queries.insert(key.clone(), core_error_view(&error));
+                        state.view_changed(view);
+                    }
+                }
             }
         });
     }
@@ -342,43 +399,43 @@ impl Core {
                 backend
                     .user_controller_get_profile()
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::USER => CacheValue::User(
                 backend
                     .user_controller_get_user_by_id(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::COMMUNITIES => CacheValue::Communities(
                 backend
                     .community_controller_find_all_mine()
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::CHANNELS => CacheValue::Channels(
                 backend
                     .channels_controller_find_all_for_community(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::CAPABILITIES => CacheValue::Capabilities(
                 backend
                     .channel_permissions_controller_get_my_community_channel_permissions(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::UNREAD => CacheValue::UnreadCounts(
                 backend
                     .read_receipts_controller_get_unread_counts()
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::VOICE_PRESENCE => CacheValue::VoicePresence(
                 backend
                     .voice_presence_controller_get_channel_presence(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::MEMBER_SEARCH => CacheValue::MemberSearch(
                 backend
@@ -388,34 +445,34 @@ impl Core {
                         Some(MENTION_SEARCH_LIMIT),
                     )
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::MENTIONABLE => CacheValue::MentionableChannels(
                 backend
                     .channels_controller_get_mentionable_channels(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             keys::MEMBERS => CacheValue::Members(self.fetch_members(id).await?),
             keys::PRESENCE => CacheValue::Presence(
                 backend
                     .presence_controller_get_bulk_presence()
                     .await
-                    .map_err(failed)?
+                    .map_err(|error| self.backend_failed(error))?
                     .presence,
             ),
             keys::NOTIFICATION_COUNT => CacheValue::NotificationCount(
                 backend
                     .notifications_controller_get_unread_count()
                     .await
-                    .map_err(failed)?
+                    .map_err(|error| self.backend_failed(error))?
                     .count,
             ),
             keys::EMOJIS => CacheValue::Emojis(
                 backend
                     .custom_emoji_controller_list_community_emojis(id)
                     .await
-                    .map_err(failed)?,
+                    .map_err(|error| self.backend_failed(error))?,
             ),
             op => {
                 return Err(CoreError::Failed {
@@ -444,7 +501,7 @@ impl Core {
                     token,
                 )
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
             members.extend(page.members);
             token = page.continuation_token.filter(|token| !token.is_empty());
             if token.is_none() || members.len() >= MAX_MEMBERS {
@@ -521,6 +578,7 @@ impl Core {
                     let me = user_view(&profile);
                     state.me = Some(me.clone());
                     state.session = SessionState::SignedIn { me };
+                    state.sign_out_reason = None;
                     state.token_expires_at_ms = jwt_expiry_ms(&login.access_token);
                     state
                         .cache
@@ -560,7 +618,10 @@ impl Core {
         if let Err(error) = services.backend.auth_controller_logout(body).await {
             log::warn!("logout failed, signing out here anyway: {error}");
         }
-        self.write(|state, _| state.reset_signed_out());
+        self.write(|state, _| {
+            state.reset_signed_out();
+            state.sign_out_reason = Some(SignOutReason::SignedOut);
+        });
         Ok(())
     }
 
@@ -742,7 +803,7 @@ impl Core {
             }
             Conversation::Thread { .. } => unreachable!("a thread returned above"),
         }
-        .map_err(failed);
+        .map_err(|error| self.backend_failed(error));
         self.write(|state, _| {
             let Some(window) = state.windows.get_mut(&conversation) else {
                 return;
@@ -854,7 +915,7 @@ impl Core {
                 .backend
                 .messages_controller_remove_reaction(body)
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
         } else {
             let body = wire::AddReactionDto {
                 emoji,
@@ -864,7 +925,7 @@ impl Core {
                 .backend
                 .messages_controller_add_reaction(body)
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
         }
         Ok(())
     }
@@ -924,12 +985,12 @@ impl Core {
                 .backend
                 .livekit_controller_get_connection_info()
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
             let token = services
                 .backend
                 .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
             let url = token.url.or(info.url).ok_or_else(|| CoreError::Failed {
                 message: "the server gave no LiveKit address".into(),
             })?;
@@ -938,7 +999,7 @@ impl Core {
                 .backend
                 .voice_presence_controller_join_presence(channel_id.clone())
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
             Ok::<_, CoreError>(())
         }
         .await;
@@ -971,7 +1032,7 @@ impl Core {
                 .backend
                 .voice_presence_controller_leave_presence(channel_id)
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
         }
         Ok(())
     }
@@ -1011,7 +1072,7 @@ impl Core {
                 .backend
                 .voice_presence_controller_update_deafen_state(channel_id, body)
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
         }
         Ok(())
     }
@@ -1036,7 +1097,7 @@ impl Core {
             .backend
             .livekit_controller_generate_token(voice_token_request(&me, &channel_id))
             .await
-            .map_err(failed)?;
+            .map_err(|error| self.backend_failed(error))?;
         Ok(token.token)
     }
 
@@ -1125,6 +1186,104 @@ impl Core {
     /// The transport hands every event here. Not part of a UI's surface.
     pub fn ingest(&self, event: RealtimeEvent) {
         self.ingest_batch(vec![event]);
+    }
+
+    /// A failed REST call. A 401 here comes after the backend has already tried a refresh and been
+    /// refused (`HttpBackend` refreshes on the first 401 and retries once), so the session is over:
+    /// it ends as `AuthLost` would, rather than leaving a signed-in UI whose every call fails.
+    pub(crate) fn backend_failed(&self, error: crate::backend::BackendError) -> CoreError {
+        if error.status == 401 {
+            let lost = self.write(|state, _| {
+                if !matches!(state.session, SessionState::SignedIn { .. }) {
+                    return false;
+                }
+                log::warn!("the server refused the session: {error}");
+                state.reset_signed_out();
+                state.sign_out_reason = Some(SignOutReason::Expired);
+                true
+            });
+            if lost && let Some(services) = self.services() {
+                services.realtime.disconnect();
+            }
+        }
+        failed(error)
+    }
+
+    /// Whether a list has arrived. For `Communities`, `Channels` and `Members`; anything else reads
+    /// as `Ready`.
+    pub fn load_state(&self, view: ViewKey) -> LoadState {
+        let Some(key) = key_for(&view) else {
+            return LoadState::Ready;
+        };
+        self.read(|state| {
+            if let Some(error) = state.failed_queries.get(&key) {
+                return LoadState::Failed {
+                    error: error.clone(),
+                };
+            }
+            if state.cache.get(&key).is_some() {
+                LoadState::Ready
+            } else {
+                LoadState::Loading
+            }
+        })
+    }
+
+    /// Fetches again whatever failed. A new connection does this by itself.
+    pub fn retry_failed(&self) {
+        self.write(|state, _| state.retry_failed_queries());
+    }
+
+    /// Why the last session ended, while signed out. `None` before any session has.
+    pub fn last_sign_out(&self) -> Option<SignOutReason> {
+        self.read(|state| state.sign_out_reason)
+    }
+
+    /// Asks a server about itself before signing in: whether it answers at all, and its name. Points
+    /// the backend at `server_url`, as `sign_in` does.
+    pub async fn probe_server(&self, server_url: String) -> Result<ServerInfo, CoreError> {
+        let services = self
+            .services()
+            .ok_or_else(|| unavailable("the backend"))?;
+        let url = server_url.trim().trim_end_matches('/').to_owned();
+        services.backend.set_server_url(url.clone());
+        let settings = services
+            .backend
+            .instance_controller_get_public_settings()
+            .await
+            .map_err(failed)?;
+        Ok(ServerInfo {
+            url,
+            name: Some(settings.name).filter(|name| !name.trim().is_empty()),
+            max_file_bytes: u64::try_from(settings.max_file_size_bytes)
+                .ok()
+                .filter(|bytes| *bytes > 0),
+            password_reset: settings.password_reset_enabled,
+        })
+    }
+
+    /// The user is typing here (`started`), or stopped. The owner debounces: the web sends a start at
+    /// most every few seconds while keys arrive, and a stop when the draft is sent or cleared. Over
+    /// the socket; nothing happens while it's down, because typing is worthless late.
+    pub async fn send_typing(
+        &self,
+        conversation: Conversation,
+        started: bool,
+    ) -> Result<(), CoreError> {
+        let services = self.services().ok_or_else(|| unavailable("typing"))?;
+        let payload = match &conversation {
+            Conversation::Channel { id } => json!({ "channelId": id }),
+            Conversation::DirectMessage { id } => json!({ "directMessageGroupId": id }),
+            Conversation::Thread { .. } => return Ok(()),
+        };
+        let name = if started { TYPING_START } else { TYPING_STOP };
+        services
+            .realtime
+            .emit(name.to_owned(), payload)
+            .await
+            .map_err(|error| CoreError::Failed {
+                message: error.to_string(),
+            })
     }
 
     pub fn session(&self) -> SessionState {

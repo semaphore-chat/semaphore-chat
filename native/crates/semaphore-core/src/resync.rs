@@ -134,7 +134,7 @@ impl Core {
                 });
             }
         }
-        .map_err(failed)?;
+        .map_err(|error| self.backend_failed(error))?;
         // An empty string and no token both mean the start.
         let token = page.continuation_token.filter(|token| !token.is_empty());
         Ok((page.messages, token))
@@ -150,7 +150,7 @@ impl Core {
                 .backend
                 .threads_controller_get_replies(parent.to_owned(), token, Some(THREAD_PAGE_SIZE))
                 .await
-                .map_err(failed)?;
+                .map_err(|error| self.backend_failed(error))?;
             replies.extend(page.replies);
             token = page.continuation_token.filter(|token| !token.is_empty());
             if token.is_none() || replies.len() >= MAX_ROWS {

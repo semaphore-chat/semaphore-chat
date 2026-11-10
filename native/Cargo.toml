@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "rigs/shot", "rigs/list", "rigs/reconnect", "rigs/sio", "rigs/surface-smoke"]
+members = ["crates/*", "rigs/shot", "rigs/list", "rigs/reconnect", "rigs/sio", "rigs/surface-smoke", "rigs/slice"]
 # Fallback-framework rigs keep their own lockfile so Iced's dependency tree never
 # unifies with GPUI's. Nothing lives there in Phase 0.
 exclude = ["rigs/video-iced", "rigs/video", "third_party", "tools"]
