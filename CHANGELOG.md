@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-## [0.8.0] - 2026-11-05
+## [0.8.0] - 2026-11-10
 
 A security release. An audit found authorization gaps across roles, members, invites, messages, voice and direct messages, including ways for a moderator or user manager to gain admin or owner rights. **Upgrade as soon as you can.**
 
