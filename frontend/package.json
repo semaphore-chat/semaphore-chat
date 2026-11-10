@@ -67,7 +67,7 @@
   "dependencies": {
     "electron-audio-loopback": "^1.0.6",
     "electron-log": "5.4.4",
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.11"
   },
   "devDependencies": {
     "@emotion/react": "^11.14.0",
