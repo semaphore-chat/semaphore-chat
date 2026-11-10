@@ -26,6 +26,7 @@ the long-lived `spike/native-gpui` branch. Status, test bars and decisions are i
 | `rigs/list` | T2/T3: 100k message list and selection | gpui-kit |
 | `rigs/reconnect` | T7: voice participants judged by tone, and the fault driver | livekit |
 | `rigs/sio` | T8: the Socket.IO session against socket.io-client | core, net |
+| `rigs/video` | T1: the GPUI video rig. Excluded from the workspace, own lockfile, rig-only telemetry patch | third_party |
 | `rigs/video-iced` (not created yet) | Excluded from the workspace, with its own lockfile | |
 
 The slice's work units and their specs are in [docs/slice-units](docs/slice-units/README.md).
@@ -63,6 +64,8 @@ native/scripts/run-list.sh gpu /tmp/out fling             # T2 in a real window 
 native/scripts/run-list.sh gpu /tmp/out jump
 native/scripts/run-list.sh lavapipe /tmp/out select
 ```
+
+Real-desktop runs for T1, T2, T3 and the Electron baseline: [scripts/desk](scripts/desk/README.md).
 
 `cargo build --workspace` turns on gpui-kit's `test-support` for every crate, because `rig-shot`
 needs it. For size or performance numbers, build with `-p semaphore-app` in release mode.

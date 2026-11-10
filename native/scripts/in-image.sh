@@ -26,6 +26,11 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     --build-arg "HOST_UID=$HOST_UID" -t "$IMAGE" "$NATIVE_DIR" >/dev/null
 fi
 
+# `in-image.sh --print-image` builds the image if needed and prints its tag, for images layered on it.
+if [ "${1:-}" = --print-image ]; then echo "$IMAGE"; exit 0; fi
+# NATIVE_IMAGE runs in an image layered on this one (the video rig adds libyuv and ffmpeg).
+IMAGE="${NATIVE_IMAGE:-$IMAGE}"
+
 "$ROOT/scripts/test-net.sh" >/dev/null
 
 checkout="$(printf '%s' "$ROOT" | sha256sum | cut -c1-8)"

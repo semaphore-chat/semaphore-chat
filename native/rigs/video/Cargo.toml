@@ -1,0 +1,36 @@
+# T1 video rig, moved here from the video agent's notes (gpui-rig/rig) so the desk kit builds from
+# the repo. Outside the workspace, with its own lockfile: it needs the rig-only telemetry patch on
+# top of the vendored renderer, which the app must never get. See README.md.
+[package]
+name = "gpui-video-rig"
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[dependencies]
+gpui = { package = "gpui-pre", version = "=0.3.11" }
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.11", features = ["wayland", "x11"] }
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.11" }
+image = { version = "0.25", default-features = false }
+smallvec = "1"
+libc = "0.2"
+memmap2 = "0.9"
+
+[profile.release]
+debug = "line-tables-only"
+opt-level = 3
+lto = false
+codegen-units = 16
+incremental = false
+
+[profile.release.package."*"]
+debug = "line-tables-only"
+
+# gpui-pre: the repo's vendored, video-patched copy as is. gpui-pre-wgpu: the same copy plus
+# patches/gpui-pre-wgpu-telemetry.patch, made by prepare.sh into .vendor/ (gitignored).
+[patch.crates-io]
+gpui-pre = { path = "../../third_party/vendor/gpui-pre" }
+gpui-pre-wgpu = { path = ".vendor/gpui-pre-wgpu" }
+
+[workspace]

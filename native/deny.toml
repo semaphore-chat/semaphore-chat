@@ -38,6 +38,7 @@ exceptions = [
     { crate = "semaphore-media-livekit", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-platform-desktop", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-ui", allow = ["AGPL-3.0-only"] },
+    { crate = "gpui-video-rig", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-app", allow = ["AGPL-3.0-only"] },
     { crate = "rig-shot", allow = ["AGPL-3.0-only"] },
     { crate = "rig-list", allow = ["AGPL-3.0-only"] },
