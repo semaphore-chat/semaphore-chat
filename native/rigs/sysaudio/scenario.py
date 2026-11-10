@@ -204,6 +204,11 @@ def main():
     finally:
         for p in procs + games + helpers:
             p.stop()
+    # Our links are object.linger=false: with the rig gone, nothing of ours may be left.
+    dump = json.loads(subprocess.run(["pw-dump"], capture_output=True, text=True).stdout or "[]")
+    ours = {o["id"] for o in dump if o.get("info", {}).get("props", {}).get("node.name") == "semaphore-system-audio"}
+    links = sum(1 for o in dump if o.get("type", "").endswith("Link") and o.get("info", {}).get("input-node-id") in ours)
+    out({"ev": "leftover", "t": now_ms(), "src": "scenario", "nodes": len(ours), "links": links})
     if scenario == "L7":
         out({"ev": "decoy_mic", "t": now_ms(), "src": "scenario", "db": wav_tone_db(f"{files}/mic.wav", TONES["m"])})
     out({"ev": "scenario_done", "t": now_ms(), "src": "scenario",

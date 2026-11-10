@@ -93,6 +93,9 @@ def one_run(scenario, index, mode, args, lk_url, img):
     cmd = ["docker", "run", "--rm", "--init", "--name", name,
            "--network", "semaphore-test" if mode == "livekit" else "none",
            "--user", f"{os.getuid()}:{os.getgid()}",
+           # What rtkit gives PipeWire on a desktop: realtime priority for its data threads.
+           # Without it a loaded host makes the graph skip quanta (T11's first runs).
+           *(["--cap-add", "SYS_NICE", "--ulimit", "rtprio=95", "--ulimit", "memlock=-1"] if args.rt else []),
            "-v", f"{target_volume()}:/cache/target:ro", "-v", f"{NATIVE}:{NATIVE}", "-w", str(RIG)]
     if mode == "livekit":
         cmd += ["-e", f"LK_URL={lk_url}", "-e", f"LK_TOKEN_SHARE={token('sharer', room)}",
@@ -226,6 +229,9 @@ def evaluate(result, mode, call_ref):
         if mode == "livekit":
             out["checks"]["dropped_per_minute"] = dropped is not None and dropped["frames"] / minutes <= 1.0
         out["checks"]["capture_cpu_provisional"] = bool(cpu) and cpu["capture_s"] / cpu["wall_s"] < 0.02
+    leftover = first(ev, "leftover")
+    if leftover:
+        out["checks"]["nothing_left_in_graph"] = leftover["nodes"] == 0 and leftover["links"] == 0
     out["verdicts"] = [e.get("msg") for e in ev if e.get("target") == "sysaudio" and str(e.get("msg", "")).startswith("node ")]
     out["errors"] = [e.get("msg") for e in ev if e.get("ev") == "error" or e.get("level") in ("WARN", "ERROR")][:10]
     out["pass"] = all(out["checks"].values()) and result["exit"] == 0
@@ -248,6 +254,8 @@ def main():
     parser.add_argument("--scenarios", default=",".join(ALL))
     parser.add_argument("--profile", default="release")
     parser.add_argument("--parallel", type=int, default=3)
+    parser.add_argument("--no-rt", dest="rt", action="store_false",
+                        help="no realtime priority for PipeWire in the container (the first runs had none)")
     parser.add_argument("--out", default=str(NATIVE / "results/t11"))
     args = parser.parse_args()
     scenarios = args.scenarios.split(",")
@@ -290,7 +298,7 @@ def main():
     for s in scenarios:
         runs = [evaluate(r, args.mode, call_ref) for r in results if r["scenario"] == s]
         passed = sum(1 for r in runs if r["pass"])
-        entry = {"what": WHAT[s], "commit": summary["commit"], "parallel": args.parallel, "passed": passed,
+        entry = {"what": WHAT[s], "commit": summary["commit"], "parallel": args.parallel, "realtime": args.rt, "passed": passed,
                  "runs": len(runs), "pass": passed == len(runs), "detail": runs}
         failed_absent = [r["metrics"].get("b_above_unplayed_tones_max_db") for r in runs]
         if any(v is not None for v in failed_absent):
