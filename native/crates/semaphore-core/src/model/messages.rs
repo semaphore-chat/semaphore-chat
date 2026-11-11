@@ -155,7 +155,7 @@ pub struct MessageRow {
     pub reactions: Vec<ReactionView>,
     pub reply_count: u32,
     pub last_reply_at_ms: Option<i64>,
-    /// Blank on a removed message, like the rest of its content.
+    /// As the server sent it: blank on a removed message, except for moderators.
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
     pub pinned: bool,

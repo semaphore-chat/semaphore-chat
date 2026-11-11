@@ -713,3 +713,205 @@ async fn assert_routes_are_implemented(_schemas: &Schemas, client: &reqwest::Cli
         "{body}"
     );
 }
+
+/// W1 part A: edit, delete, read one, pins, a moderator's removal and channel roles, each against
+/// its schema, and each broadcast against socket-events.json.
+#[tokio::test]
+async fn message_actions_match_openapi_and_socket_events() {
+    let schemas = Schemas::load();
+    let server = start("big-community").await;
+    let base = server.base_url();
+    let client = http();
+    let events: Value = serde_json::from_str(include_str!("../../../contract/socket-events.json"))
+        .expect("socket-events.json is valid JSON");
+    let mut socket = Socket::connect(&base, json!({ "token": TOKEN, "protocol": 2 })).await;
+    let payload_schema = |name: &str| {
+        schemas.reference(
+            events["server"][name]["payload"]["$ref"]
+                .as_str()
+                .unwrap_or_else(|| panic!("a payload ref for {name}")),
+        )
+    };
+    let call = |method: reqwest::Method, path: &'static str, body: Option<Value>| {
+        let (client, base) = (client.clone(), base.clone());
+        async move { request(&client, method, &base, path, body, true).await }
+    };
+
+    // Edit: the author's own message, formatting kept.
+    let (status, body) = call(
+        reqwest::Method::PATCH,
+        "/api/messages/msg-18",
+        Some(json!({
+            "spans": [
+                { "type": "PLAINTEXT", "text": "bold", "bold": true },
+                { "type": "PLAINTEXT", "text": " plain" },
+            ],
+            "attachments": [],
+        })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(&schemas, &schemas.component("MessageDto"), &body, "edit");
+    assert_eq!(body["spans"][0]["bold"], true, "{body}");
+    assert!(body["editedAt"].is_string(), "{body}");
+    let (event, _) = expect_broadcast(&mut socket, "updateMessage").await;
+    assert_valid(
+        &schemas,
+        &payload_schema("updateMessage"),
+        &event,
+        "updateMessage",
+    );
+
+    // Someone else's can't be edited.
+    let (status, body) = call(
+        reqwest::Method::PATCH,
+        "/api/messages/msg-14",
+        Some(json!({ "spans": [{ "type": "PLAINTEXT", "text": "no" }], "attachments": [] })),
+    )
+    .await;
+    assert_eq!(status, 403, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("ErrorResponseDto"),
+        &body,
+        "edit refused",
+    );
+
+    let (status, body) = call(reqwest::Method::GET, "/api/messages/msg-18", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("MessageDto"),
+        &body,
+        "find one",
+    );
+
+    // Pin, list, unpin.
+    let (status, body) = call(
+        reqwest::Method::POST,
+        "/api/moderation/pin/msg-14",
+        Some(json!({})),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("SuccessMessageDto"),
+        &body,
+        "pin",
+    );
+    let (event, _) = expect_broadcast(&mut socket, "messagePinned").await;
+    assert_valid(
+        &schemas,
+        &payload_schema("messagePinned"),
+        &event,
+        "messagePinned",
+    );
+
+    let (status, body) = call(
+        reqwest::Method::GET,
+        "/api/moderation/pins/channel-13",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.array_of("PinnedMessageDto"),
+        &body,
+        "pins",
+    );
+    let pinned: Vec<&str> = body
+        .as_array()
+        .expect("a list")
+        .iter()
+        .filter_map(|pin| pin["id"].as_str())
+        .collect();
+    assert_eq!(
+        pinned.last(),
+        Some(&"msg-14"),
+        "newest pin last: {pinned:?}"
+    );
+    assert!(pinned.contains(&"msg-15"), "{pinned:?}");
+
+    let (status, body) = call(
+        reqwest::Method::DELETE,
+        "/api/moderation/pin/msg-14",
+        Some(json!({ "reason": "done" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("SuccessMessageDto"),
+        &body,
+        "unpin",
+    );
+    let (event, _) = expect_broadcast(&mut socket, "messageUnpinned").await;
+    assert_valid(
+        &schemas,
+        &payload_schema("messageUnpinned"),
+        &event,
+        "messageUnpinned",
+    );
+
+    // A moderator's removal keeps the message, removed, with who and why.
+    let (status, body) = call(
+        reqwest::Method::DELETE,
+        "/api/moderation/message/msg-16",
+        Some(json!({ "reason": "spam" })),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("SuccessMessageDto"),
+        &body,
+        "remove",
+    );
+    let (event, _) = expect_broadcast(&mut socket, "deleteMessage").await;
+    assert_valid(
+        &schemas,
+        &payload_schema("deleteMessage"),
+        &event,
+        "deleteMessage",
+    );
+    let (status, body) = call(reqwest::Method::GET, "/api/messages/msg-16", None).await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(&schemas, &schemas.component("MessageDto"), &body, "removed");
+    assert!(body["deletedAt"].is_string(), "{body}");
+    assert_eq!(body["deletedByReason"], "spam", "{body}");
+
+    // A delete takes it away.
+    let (status, body) = call(reqwest::Method::DELETE, "/api/messages/msg-29", None).await;
+    assert_eq!(status, 204, "{body}");
+    let (event, _) = expect_broadcast(&mut socket, "deleteMessage").await;
+    assert_valid(
+        &schemas,
+        &payload_schema("deleteMessage"),
+        &event,
+        "deleteMessage",
+    );
+    let (status, body) = call(reqwest::Method::GET, "/api/messages/msg-29", None).await;
+    assert_eq!(status, 404, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("ErrorResponseDto"),
+        &body,
+        "deleted",
+    );
+
+    let (status, body) = call(
+        reqwest::Method::GET,
+        "/api/roles/my/channel/channel-13",
+        None,
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_valid(
+        &schemas,
+        &schemas.component("UserRolesResponseDto"),
+        &body,
+        "channel roles",
+    );
+}

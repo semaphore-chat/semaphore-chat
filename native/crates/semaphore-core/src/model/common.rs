@@ -62,6 +62,10 @@ pub enum ViewKey {
     UnreadMarker {
         conversation: Conversation,
     },
+    /// `Core::channel_moderation`.
+    ChannelModeration {
+        channel_id: String,
+    },
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

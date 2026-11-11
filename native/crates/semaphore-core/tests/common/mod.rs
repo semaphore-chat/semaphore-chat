@@ -4,6 +4,8 @@
 // W1: each part's fakes in a file of its own, so the two don't edit the same lines.
 mod actions;
 mod reading;
+#[allow(unused_imports)]
+pub use actions::refusal;
 
 use async_trait::async_trait;
 use semaphore_core::backend::{
@@ -213,6 +215,8 @@ pub struct FakeBackend {
     pub upload_error: Mutex<Option<BackendError>>,
     /// Each attach: message id, file id (none releases a slot).
     pub attaches: Mutex<Vec<(String, Option<String>)>>,
+    /// W1 part A's calls: `actions.rs`.
+    pub actions: actions::ActionsFake,
 }
 
 impl FakeBackend {
@@ -586,16 +590,45 @@ impl MessagesBackend for FakeBackend {
 
     async fn messages_controller_add_reaction(
         &self,
-        _: wire::AddReactionDto,
+        body: wire::AddReactionDto,
     ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
+        self.fake_react(
+            "add_reaction",
+            body.message_id.to_string(),
+            body.emoji,
+            true,
+        )
+        .await
     }
 
     async fn messages_controller_remove_reaction(
         &self,
-        _: wire::RemoveReactionDto,
+        body: wire::RemoveReactionDto,
     ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
+        self.fake_react(
+            "remove_reaction",
+            body.message_id.to_string(),
+            body.emoji,
+            false,
+        )
+        .await
+    }
+
+    // W1 part A: in `actions.rs`.
+    async fn messages_controller_update(
+        &self,
+        id: String,
+        body: wire::UpdateMessageDto,
+    ) -> BackendResult<MessageDto> {
+        self.fake_update(id, body).await
+    }
+
+    async fn messages_controller_remove(&self, id: String) -> BackendResult<()> {
+        self.fake_remove(id).await
+    }
+
+    async fn messages_controller_find_one(&self, id: String) -> BackendResult<MessageDto> {
+        self.fake_find_one(id).await
     }
 
     async fn read_receipts_controller_mark_as_read(

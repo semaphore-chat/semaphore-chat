@@ -24,3 +24,13 @@ pub struct PinnedList {
     pub state: LoadState,
     pub rows: Vec<PinnedRow>,
 }
+
+/// What this user may do to other people's messages in a channel. The author's own edit and
+/// delete need nothing here.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ChannelModeration {
+    pub pin: bool,
+    pub unpin: bool,
+    /// Remove someone else's message. Those who may also still see what was removed.
+    pub remove_any: bool,
+}

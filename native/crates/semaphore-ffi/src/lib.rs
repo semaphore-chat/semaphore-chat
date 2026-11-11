@@ -11,13 +11,13 @@
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
-    ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView, ErrorView,
-    LinkPreviewView, ListOp, LoadState, MemberList, MemberView, MentionCandidate, MentionKind,
-    MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts,
-    ReactionUsers, ReactionView, ReplyToView, SearchHit, SearchScope, SegKind, SendState,
-    SessionState, TextSeg, TextStyle, ThreadInfo, UnreadMarker, UploadView, UserView, VideoDemand,
-    VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
+    AttachmentKind, AttachmentView, ChannelKind, ChannelModeration, ChannelPermissions, ChannelRow,
+    CommunityRow, ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView,
+    ErrorView, LinkPreviewView, ListOp, LoadState, MemberList, MemberView, MentionCandidate,
+    MentionKind, MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow,
+    RailCounts, ReactionUsers, ReactionView, ReplyToView, SearchHit, SearchScope, SegKind,
+    SendState, SessionState, TextSeg, TextStyle, ThreadInfo, UnreadMarker, UploadView, UserView,
+    VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -390,6 +390,14 @@ pub enum ViewKey {
     ReactionUsers { message_id: String, emoji: String },
     Thread { parent_message_id: String },
     UnreadMarker { conversation: Conversation },
+    ChannelModeration { channel_id: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct ChannelModeration {
+    pub pin: bool,
+    pub unpin: bool,
+    pub remove_any: bool,
 }
 
 #[uniffi::remote(Enum)]

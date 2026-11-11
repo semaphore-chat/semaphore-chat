@@ -60,6 +60,9 @@ pub(crate) enum Effect {
     Upload(String),
     /// Release a pending attachment slot on this message: a file the user gave up on.
     ReleaseSlot(String),
+    /// Read a message again after a `deleteMessage`, for a reader who may see removed ones: a
+    /// moderator's removal keeps the row, a delete takes it away.
+    RefetchMessage(String),
 }
 
 pub(crate) struct State {
@@ -284,9 +287,14 @@ impl State {
             view
         };
         let uploads = self.upload_views();
+        let editing = &self.actions.pending_edits;
         let mut changes = Vec::new();
         for (conversation, window) in &mut self.windows {
-            let ops = window.take_ops(|row| project(row, &me_id, &mut author, &uploads));
+            let ops = window.take_ops(|row| {
+                let mut view = project(row, &me_id, &mut author, &uploads);
+                view.edit_pending = editing.contains_key(&row.message.dto.id);
+                view
+            });
             if !ops.is_empty() {
                 changes.push(CoreEvent::MessagesChanged {
                     conversation: conversation.clone(),
@@ -495,6 +503,7 @@ impl Core {
             Effect::LeavePresence(channel_id) => self.leave_presence(channel_id).await,
             Effect::Upload(nonce) => self.run_uploads(nonce).await,
             Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
+            Effect::RefetchMessage(message_id) => self.refetch_message(message_id).await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;
