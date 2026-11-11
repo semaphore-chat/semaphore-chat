@@ -119,10 +119,10 @@ wait core side-panel pins
 wait core label "Unpin message"
 wait idle
 shot 08-pins
-click pin-sc-cc-pit-caption
+click pin-$MSG(sc-cc-pit-caption)
 wait idle
 shot 09-pin-jumped
-click unpin-sc-cc-pit-caption
+click unpin-$MSG(sc-cc-pit-caption)
 wait core unpinned "found this from last time"
 expect requests ModerationController_unpinMessage >= 1
 wait core pinned-count 0
@@ -130,11 +130,7 @@ click header-pins
 wait core side-panel none
 
 # 6. React from the picker, and who reacted in the tooltip. The composer's emoji button inserts.
-# The contract types a reaction's message id as a UUID, so this one has a real one.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-marcus\", \"text\": \"rematch tonight?\", \"id\": \"5f0c6a1e-8c2b-4d7a-9a1e-3b6f2c9d0e11\"}"
-wait core text "rematch tonight?"
-wait idle
-hover-row message "rematch tonight?"
+hover-row message "found this from last time"
 click message-action-react
 wait core picker open
 type "fire"
@@ -142,9 +138,9 @@ wait idle
 shot 10-picker
 click "emoji-🔥"
 wait core picker closed
-wait core reaction "rematch tonight?" "🔥" 1
+wait core reaction "found this from last time" "🔥" 1
 expect requests MessagesController_addReaction >= 1
-hover-row reaction "rematch tonight?" 0
+hover-row reaction "found this from last time" 1
 wait core label "alexk"
 wait idle
 shot 11-reaction-tooltip
@@ -166,7 +162,7 @@ wait core requests MessagesController_searchChannelMessages >= 1
 wait core search-hits >= 1
 wait idle
 shot 15-search
-click search-hit-sc-thread-ok-9
+click search-hit-$MSG(sc-thread-ok-9)
 wait core side-panel thread
 wait core thread-rows >= 5
 wait idle
@@ -177,7 +173,7 @@ click header-search
 wait core side-panel none
 
 # 8. A message link in the web's form opens its channel at the message, not the browser.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"the lfg post: $SERVER/#/community/c-couch/channel/cc-lfg?highlight=sc-msg-24\"}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"the lfg post: $SERVER/#/community/c-couch/channel/cc-lfg?highlight=$MSG(sc-msg-24)\"}"
 wait core text "the lfg post"
 wait idle
 click-text "the lfg post" "/#/community"

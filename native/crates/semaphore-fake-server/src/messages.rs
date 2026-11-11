@@ -486,9 +486,6 @@ pub(crate) struct PostExtras {
     pub emoji: Option<(String, String)>,
     /// A link preview, as the server's unfurler would have made it.
     pub link_preview: Option<serde_json::Value>,
-    /// The message's id, in place of the next readable one: a UUID, for what the contract types
-    /// as one (reactions).
-    pub id: Option<String>,
 }
 
 pub(crate) fn post_as(
@@ -526,7 +523,7 @@ pub(crate) fn post_as(
         deleted_by_reason: None,
         direct_message_group_id: None,
         edited_at: None,
-        id: extras.id.unwrap_or_else(|| inner.next_message_id()),
+        id: inner.next_message_id(),
         last_reply_at: None,
         link_previews,
         parent_message_id: None,

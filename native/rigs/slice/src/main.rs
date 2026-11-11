@@ -30,7 +30,8 @@
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! ```
 //!
-//! `$SERVER` anywhere in a script is the fake server's URL, for links to it.
+//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, and `$MSG(sc-msg-24)`
+//! the UUID the fake server serves that showcase message as (`message_uuid`).
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
@@ -354,6 +355,24 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
+}
+
+/// `$MSG(sc-cc-pit-caption)` is the UUID the fake server serves that showcase message as.
+fn message_ids(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(start) = rest.find("$MSG(") {
+        let Some(len) = rest[start + 5..].find(')') else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&semaphore_fake_server::message_uuid(
+            &rest[start + 5..start + 5 + len],
+        ));
+        rest = &rest[start + 5 + len + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn parse(source: &str) -> Result<Vec<Step>> {
@@ -1331,9 +1350,11 @@ fn main() -> Result<()> {
         (None, None, None) => None,
         _ => bail!("--livekit-http, --livekit-key and --livekit-secret go together"),
     };
-    let source = std::fs::read_to_string(&script_path)
-        .with_context(|| script_path.clone())?
-        .replace("$SERVER", server.trim_end_matches('/'));
+    let source = message_ids(
+        &std::fs::read_to_string(&script_path)
+            .with_context(|| script_path.clone())?
+            .replace("$SERVER", server.trim_end_matches('/')),
+    );
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = scenario_now_ms(&scenario)?;
     std::fs::create_dir_all(&out_dir)?;
