@@ -97,6 +97,7 @@ fn ring(group: &str, from: UserView) -> IncomingCallView {
         dm_group_id: "dm-1".into(),
         group_name: group.into(),
         caller: from,
+        is_group: false,
         started_at_ms: 0,
         expires_at_ms: 30_000,
     }
