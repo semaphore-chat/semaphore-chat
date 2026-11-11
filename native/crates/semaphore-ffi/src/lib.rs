@@ -21,6 +21,7 @@ use semaphore_core::model::{
     UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
     WebhookView,
 };
+use semaphore_core::model::{ChannelPreset, RemovalCause};
 use semaphore_core::model::{ReplayState, ShareTracks, SoundCue, VoiceRoom};
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -32,6 +33,8 @@ uniffi::setup_scaffolding!("semaphore");
 // file. UniFFI takes any number of such blocks for one object.
 mod account;
 mod actions;
+mod admin_w5a;
+mod admin_w5b;
 mod dms;
 mod notify;
 mod onboarding;
@@ -100,6 +103,7 @@ pub struct ChannelRow {
     pub voice_users: Vec<UserView>,
     pub slowmode_seconds: u32,
     pub permissions: Option<ChannelPermissions>,
+    pub preset: ChannelPreset,
 }
 
 #[uniffi::remote(Record)]
@@ -435,36 +439,114 @@ pub struct ScreenShareRequest {
 pub enum ViewKey {
     Session,
     Communities,
-    Channels { community_id: String },
-    Mentionables { community_id: String },
-    Members { community_id: String },
+    Channels {
+        community_id: String,
+    },
+    Mentionables {
+        community_id: String,
+    },
+    Members {
+        community_id: String,
+    },
     Rail,
     Voice,
-    Typing { conversation: Conversation },
-    Pins { channel_id: String },
-    ReactionUsers { message_id: String, emoji: String },
-    Thread { parent_message_id: String },
-    UnreadMarker { conversation: Conversation },
-    ChannelModeration { channel_id: String },
+    Typing {
+        conversation: Conversation,
+    },
+    Pins {
+        channel_id: String,
+    },
+    ReactionUsers {
+        message_id: String,
+        emoji: String,
+    },
+    Thread {
+        parent_message_id: String,
+    },
+    UnreadMarker {
+        conversation: Conversation,
+    },
+    ChannelModeration {
+        channel_id: String,
+    },
     DirectMessages,
     Friends,
     Notifications,
     NotificationSettings,
-    ChannelNotifyLevel { channel_id: String },
+    ChannelNotifyLevel {
+        channel_id: String,
+    },
     Badge,
-    Profile { user_id: String },
+    Profile {
+        user_id: String,
+    },
     ProfileEdit,
     Sessions,
     Appearance,
-    InvitePreview { code: String },
+    InvitePreview {
+        code: String,
+    },
     BrowserSignIn,
     InstancePermissions,
     IncomingCall,
-    Soundboard { community_id: String },
+    Soundboard {
+        community_id: String,
+    },
     Clips,
-    UserClips { user_id: String },
+    UserClips {
+        user_id: String,
+    },
     ReplaySession,
     VoiceDiagnostics,
+    CommunitySettings {
+        community_id: String,
+    },
+    PrivateMembers {
+        channel_id: String,
+    },
+    AliasGroups {
+        community_id: String,
+    },
+    AliasGroup {
+        group_id: String,
+    },
+    CustomEmoji {
+        community_id: String,
+    },
+    Webhooks {
+        channel_id: String,
+    },
+    Invites,
+    CommunityPermissions {
+        community_id: String,
+    },
+    Roles {
+        community_id: String,
+    },
+    RoleMembers {
+        community_id: String,
+        role_id: String,
+    },
+    MemberRoles {
+        community_id: String,
+        user_id: String,
+    },
+    ChannelOverwrites {
+        channel_id: String,
+    },
+    ModerationTarget {
+        community_id: String,
+        user_id: String,
+    },
+    Bans {
+        community_id: String,
+    },
+    Timeouts {
+        community_id: String,
+    },
+    ModerationLog {
+        community_id: String,
+    },
 }
 
 #[uniffi::remote(Record)]
@@ -596,6 +678,15 @@ pub enum CoreEvent {
     },
     Sound {
         cue: SoundCue,
+    },
+    CommunityRemoved {
+        community_id: String,
+        name: String,
+        cause: RemovalCause,
+    },
+    ChannelRemoved {
+        community_id: String,
+        channel_id: String,
     },
 }
 

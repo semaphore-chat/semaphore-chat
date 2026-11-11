@@ -3,6 +3,7 @@
 //! so parallel work doesn't collide.
 
 pub mod auth;
+pub mod community_settings;
 pub mod composer;
 pub mod dms;
 pub mod emoji;
@@ -10,12 +11,14 @@ pub mod friends;
 pub mod home;
 pub mod kit;
 pub mod messages;
+pub mod moderation;
 pub mod nav;
 pub mod notifications;
 pub mod panel;
 pub mod player;
 pub mod profile;
 pub mod replay;
+pub mod roles;
 pub mod settings;
 pub mod shell;
 #[cfg(feature = "stories")]

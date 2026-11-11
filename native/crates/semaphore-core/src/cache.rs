@@ -128,6 +128,11 @@ pub enum CacheValue {
     Clips(Vec<wire::ClipResponseDto>),
     /// W4: my replay buffer.
     ReplaySession(wire::SessionInfoResponseDto),
+    /// W5-A's queries (`commands::community_admin::W5aValue`): its own variants, so the lane adds
+    /// none here.
+    W5a(crate::commands::community_admin::W5aValue),
+    /// W5-B's queries (`commands::moderation::W5bValue`).
+    W5b(crate::commands::moderation::W5bValue),
 }
 
 /// Friends and pending requests, from two calls read as one.

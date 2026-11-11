@@ -12,6 +12,7 @@
 
 mod account;
 mod communities;
+mod community_admin;
 mod dms;
 mod files;
 mod messages;
@@ -19,6 +20,7 @@ mod moderation;
 mod notify;
 mod onboarding;
 mod replay;
+mod roles;
 mod search;
 mod session;
 mod social;
@@ -28,6 +30,7 @@ mod voice;
 
 pub use account::AccountBackend;
 pub use communities::CommunitiesBackend;
+pub use community_admin::CommunityAdminBackend;
 pub use dms::DmsBackend;
 pub use files::FilesBackend;
 pub use messages::MessagesBackend;
@@ -35,6 +38,7 @@ pub use moderation::ModerationBackend;
 pub use notify::NotifyBackend;
 pub use onboarding::OnboardingBackend;
 pub use replay::ReplayBackend;
+pub use roles::RolesBackend;
 pub use search::SearchBackend;
 pub use session::SessionBackend;
 pub use social::SocialBackend;
@@ -107,6 +111,8 @@ pub trait Backend:
     + OnboardingBackend
     + ReplayBackend
     + SoundboardBackend
+    + CommunityAdminBackend
+    + RolesBackend
 {
 }
 
@@ -129,6 +135,8 @@ impl<T> Backend for T where
         + OnboardingBackend
         + ReplayBackend
         + SoundboardBackend
+        + CommunityAdminBackend
+        + RolesBackend
 {
 }
 

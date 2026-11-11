@@ -114,6 +114,71 @@ pub enum ViewKey {
     ReplaySession,
     /// W4: `Core::voice_diagnostics`.
     VoiceDiagnostics,
+    /// W5: `Core::community_settings`.
+    CommunitySettings {
+        community_id: String,
+    },
+    /// W5: `Core::private_members`.
+    PrivateMembers {
+        channel_id: String,
+    },
+    /// W5: `Core::alias_groups`.
+    AliasGroups {
+        community_id: String,
+    },
+    /// W5: `Core::alias_group`.
+    AliasGroup {
+        group_id: String,
+    },
+    /// W5: `Core::custom_emoji`.
+    CustomEmoji {
+        community_id: String,
+    },
+    /// W5: `Core::webhooks`.
+    Webhooks {
+        channel_id: String,
+    },
+    /// W5: `Core::community_invites`, for every community (the server lists all of mine at once).
+    Invites,
+    /// W5: `Core::community_permissions`.
+    CommunityPermissions {
+        community_id: String,
+    },
+    /// W5: `Core::roles`.
+    Roles {
+        community_id: String,
+    },
+    /// W5: `Core::role_members`.
+    RoleMembers {
+        community_id: String,
+        role_id: String,
+    },
+    /// W5: `Core::member_roles`.
+    MemberRoles {
+        community_id: String,
+        user_id: String,
+    },
+    /// W5: `Core::channel_overwrites`.
+    ChannelOverwrites {
+        channel_id: String,
+    },
+    /// W5: `Core::moderation_target`.
+    ModerationTarget {
+        community_id: String,
+        user_id: String,
+    },
+    /// W5: `Core::bans`.
+    Bans {
+        community_id: String,
+    },
+    /// W5: `Core::timeouts`.
+    Timeouts {
+        community_id: String,
+    },
+    /// W5: `Core::moderation_log`.
+    ModerationLog {
+        community_id: String,
+    },
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to
