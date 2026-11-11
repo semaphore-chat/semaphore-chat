@@ -19,6 +19,7 @@
 #define av_sample_fmt_is_planar LK_av_sample_fmt_is_planar
 #define avcodec_alloc_context3 LK_avcodec_alloc_context3
 #define avcodec_find_decoder LK_avcodec_find_decoder
+#define avcodec_flush_buffers LK_avcodec_flush_buffers
 #define avcodec_free_context LK_avcodec_free_context
 #define avcodec_open2 LK_avcodec_open2
 #define avcodec_parameters_to_context LK_avcodec_parameters_to_context
@@ -28,6 +29,7 @@
 #define avformat_close_input LK_avformat_close_input
 #define avformat_find_stream_info LK_avformat_find_stream_info
 #define avformat_open_input LK_avformat_open_input
+#define avformat_seek_file LK_avformat_seek_file
 #define avio_alloc_context LK_avio_alloc_context
 #define avio_context_free LK_avio_context_free
 

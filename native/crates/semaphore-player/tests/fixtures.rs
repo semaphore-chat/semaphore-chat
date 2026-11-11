@@ -366,3 +366,77 @@ fn media_moves_to_another_thread() {
     .expect("joins");
     assert_eq!(frames, FRAMES);
 }
+
+#[test]
+fn seeking_lands_on_the_keyframe_before_and_decodes_to_the_target() {
+    for file in [
+        "h264-aac.mp4",
+        "vp8-vorbis.webm",
+        "vp9-opus.webm",
+        "av1-opus.mkv",
+    ] {
+        let mut media = open(file).expect("opens");
+        media.enable(0).expect("video");
+        media
+            .seek(std::time::Duration::from_millis(1500))
+            .expect("seeks");
+        let mut first_at_target = None;
+        while let Some(frame) = media.next_frame().expect("decodes") {
+            let Frame::Video(frame) = frame else { continue };
+            let pts = frame.pts_us.expect("pts");
+            assert!(
+                pts >= 900_000,
+                "{file}: {pts} us is before the keyframe at 1 s"
+            );
+            if pts >= 1_450_000 && first_at_target.is_none() {
+                first_at_target = Some((pts, centre(&frame)));
+            }
+        }
+        let (pts, colour) = first_at_target.expect("a frame at the target");
+        assert!(
+            pts <= 1_550_000,
+            "{file}: first frame at the target is at {pts} us"
+        );
+        assert_colour(file, "seek", colour, yuv(0.0, 0.0, 1.0));
+    }
+}
+
+#[test]
+fn a_corrupt_stretch_is_skipped_and_decoding_reaches_the_end() {
+    // Faststart MP4: the sample tables come first, so garbage in the back half of the file hits
+    // only frame payloads (the container still demuxes every packet).
+    let mut bytes = fixture("h264-aac.mp4");
+    let (from, to) = (bytes.len() * 3 / 5, bytes.len() * 4 / 5);
+    for (i, byte) in bytes[from..to].iter_mut().enumerate() {
+        *byte = (i * 37 % 251) as u8;
+    }
+    let mut media = Media::open_bytes(bytes).expect("the headers are intact");
+    media.enable(0).expect("video");
+    let mut frames = 0;
+    loop {
+        match media.next_frame() {
+            Ok(Some(_)) => frames += 1,
+            Ok(None) => break,
+            Err(error) => panic!("decoding stopped at {frames} frames: {error}"),
+        }
+    }
+    assert!(frames >= 5, "{frames} frames");
+    println!(
+        "{frames} frames, {} packets skipped",
+        media.skipped_packets()
+    );
+}
+
+#[test]
+fn an_empty_packet_is_ignored() {
+    // Matroska with a zero-length block is hard to make with ffmpeg; the shim drops any packet
+    // of size 0 before a decoder sees it (dav1d refuses them), so a normal decode must not change.
+    let mut media = open("av1-opus.mkv").expect("opens");
+    media.enable(0).expect("av1");
+    let mut frames = 0;
+    while media.next_frame().expect("decodes").is_some() {
+        frames += 1;
+    }
+    assert_eq!(frames, FRAMES);
+    assert_eq!(media.skipped_packets(), 0);
+}

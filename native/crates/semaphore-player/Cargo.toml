@@ -13,6 +13,12 @@ default = []
 aac = []
 
 [dependencies]
+log.workspace = true
+rtrb = "0.3"
+semaphore-core.workspace = true
+# The audio output seam (AudioIo) and its 48 kHz rate. Already in the app; the player adds no
+# second audio stack.
+semaphore-media-livekit.workspace = true
 # Only to link libwebrtc.a, where every symbol the shim calls lives. No features, so it never
 # changes what the app's webrtc-sys builds with.
 webrtc-sys = { version = "0.3.53", default-features = false }

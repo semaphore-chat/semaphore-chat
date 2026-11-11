@@ -2,10 +2,17 @@
 //! prebuilt libwebrtc already contains (docs/player.md has why, and what that means for licences
 //! and patents).
 //!
-//! This is build-order step 1, the spike: open bytes, list their streams, decode frames. There
-//! is no clock, seeking, threading, fetching or UI yet. FFmpeg demuxes (MP4/MOV/M4A, MKV/WebM,
-//! Ogg, WAV, MP3, FLAC, ADTS AAC); H.264 and every audio codec decode in FFmpeg, VP8 and VP9 in
-//! libvpx, AV1 in dav1d. Video comes out as 8-bit I420, audio as interleaved `f32`.
+//! Two layers. [`Media`] decodes: open a source, list its streams, decode frames, seek. FFmpeg
+//! demuxes (MP4/MOV/M4A, MKV/WebM, Ogg, WAV, MP3, FLAC, ADTS AAC); H.264 and every audio codec
+//! decode in FFmpeg, VP8 and VP9 in libvpx, AV1 in dav1d. Video comes out as 8-bit I420, audio
+//! as interleaved `f32`. [`DesktopPlayers`] plays: a thread per player, audio to an
+//! [`AudioIo`](semaphore_media_livekit::audio::AudioIo) output through a ring, video as NV12 to
+//! a [`VideoSink`] timed by the audio clock, behind `semaphore-core`'s player traits.
+//!
+//! - **A corrupt packet is skipped**, as browsers do, and counted ([`Media::skipped_packets`]);
+//!   64 rejected in a row end decoding with [`Error::Decode`].
+//! - **FFmpeg's log** goes to stderr at its default level. Its callback and level are one
+//!   process-wide setting that libwebrtc's H.264 decoder shares, so the player leaves both alone.
 //!
 //! - **Unsupported** is not **invalid**: bytes no demuxer recognises (AVI, say) are
 //!   [`Error::UnsupportedContainer`]; a known container that won't parse is [`Error::Invalid`];
@@ -13,7 +20,11 @@
 //!   [`Error::UnsupportedCodec`] from [`Media::enable`], and the other streams still play.
 //! - **Desktop only.** `build.rs` refuses a target or a libwebrtc without this FFmpeg.
 
+mod engine;
 mod ffi;
+pub mod resample;
+
+pub use engine::{DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
 
 // Links libwebrtc.a, where every symbol the shim calls lives. None of webrtc-sys's Rust is used.
 use webrtc_sys as _;
@@ -154,6 +165,57 @@ pub struct VideoFrame<'a> {
     pub planes: [Plane<'a>; 3],
 }
 
+impl VideoFrame<'_> {
+    /// Into NV12 (libyuv), reusing `out`'s buffers.
+    pub fn to_nv12(&self, out: &mut Nv12Image) -> Result<(), Error> {
+        let (width, height) = (self.width as usize, self.height as usize);
+        let y_stride = width;
+        let uv_stride = width.div_ceil(2) * 2;
+        out.y.resize(y_stride * height, 0);
+        out.uv.resize(uv_stride * height.div_ceil(2), 0);
+        let mut frame = ffi::sp_frame {
+            kind: ffi::SP_KIND_VIDEO,
+            width: c_int::try_from(self.width).map_err(|_| Error::PixelFormat)?,
+            height: c_int::try_from(self.height).map_err(|_| Error::PixelFormat)?,
+            ..ffi::sp_frame::default()
+        };
+        for (i, plane) in self.planes.iter().enumerate() {
+            frame.planes[i] = plane.data.as_ptr();
+            frame.strides[i] = c_int::try_from(plane.stride).map_err(|_| Error::PixelFormat)?;
+        }
+        let (ys, uvs) = (
+            c_int::try_from(y_stride).map_err(|_| Error::PixelFormat)?,
+            c_int::try_from(uv_stride).map_err(|_| Error::PixelFormat)?,
+        );
+        // SAFETY: the planes hold the frame's rows (see `next_frame`) and `out`'s buffers were
+        // sized for its strides and rows just above.
+        let code = unsafe {
+            ffi::sp_i420_to_nv12(&frame, out.y.as_mut_ptr(), ys, out.uv.as_mut_ptr(), uvs)
+        };
+        if code != ffi::SP_OK {
+            return Err(Error::PixelFormat);
+        }
+        out.width = self.width;
+        out.height = self.height;
+        out.y_stride = y_stride as u32;
+        out.uv_stride = uv_stride as u32;
+        out.pts_us = self.pts_us;
+        Ok(())
+    }
+}
+
+/// A decoded frame converted to NV12, owned: what the video queue holds.
+#[derive(Debug, Clone, Default)]
+pub struct Nv12Image {
+    pub width: u32,
+    pub height: u32,
+    pub y: Vec<u8>,
+    pub y_stride: u32,
+    pub uv: Vec<u8>,
+    pub uv_stride: u32,
+    pub pts_us: Option<i64>,
+}
+
 #[derive(Debug)]
 pub struct AudioFrame<'a> {
     pub stream: usize,
@@ -264,6 +326,23 @@ impl Media {
             ffi::SP_OK => Ok(()),
             code => Err(Error::from_code(code)),
         }
+    }
+
+    /// To the keyframe at or before `to`, decoders flushed. Frames before `to` still come out:
+    /// the caller drops them (an accurate seek).
+    pub fn seek(&mut self, to: Duration) -> Result<(), Error> {
+        let us = i64::try_from(to.as_micros()).map_err(|_| Error::Invalid)?;
+        // SAFETY: an open media.
+        match unsafe { ffi::sp_seek(self.raw.as_ptr(), us) } {
+            ffi::SP_OK => Ok(()),
+            code => Err(Error::from_code(code)),
+        }
+    }
+
+    /// Packets the decoders rejected as corrupt and skipped.
+    pub fn skipped_packets(&self) -> u64 {
+        // SAFETY: an open media.
+        unsafe { ffi::sp_skipped_packets(self.raw.as_ptr()) }
     }
 
     /// The next frame of any enabled stream in file order, or `None` once all are drained. The

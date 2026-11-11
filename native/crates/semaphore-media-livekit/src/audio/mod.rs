@@ -34,7 +34,8 @@ pub struct AudioDevices {
 
 /// Mono 48 kHz samples, and how long ago the device captured them.
 pub type InputCallback = Box<dyn FnMut(&[i16], u32) + Send>;
-/// Fill with mono 48 kHz samples; the second argument is how far ahead of the device they are.
+/// Fill with 48 kHz samples, mono unless opened with more channels (then interleaved); the
+/// second argument is how far ahead of the device they are, in milliseconds.
 pub type OutputCallback = Box<dyn FnMut(&mut [i16], u32) + Send>;
 /// The stream died, usually because its device was unplugged.
 pub type ErrorCallback = Arc<dyn Fn(String) + Send + Sync>;
@@ -68,6 +69,35 @@ pub trait AudioIo: Send + Sync {
         on_audio: OutputCallback,
         on_error: ErrorCallback,
     ) -> Result<AudioStream, String>;
+    /// [`Self::open_output`] with `channels` interleaved channels in each buffer, for media that
+    /// has them (an attachment in stereo). 1 is exactly `open_output`. This default mixes them
+    /// down to mono, for an output with no wider path.
+    fn open_output_channels(
+        &self,
+        device: Option<&str>,
+        channels: u16,
+        on_audio: OutputCallback,
+        on_error: ErrorCallback,
+    ) -> Result<AudioStream, String> {
+        if channels <= 1 {
+            return self.open_output(device, on_audio, on_error);
+        }
+        self.open_output(device, mix_down(usize::from(channels), on_audio), on_error)
+    }
+}
+
+/// A mono output callback that asks `wide` for `channels` interleaved channels and averages them.
+pub fn mix_down(channels: usize, mut wide: OutputCallback) -> OutputCallback {
+    let mut buffer: Vec<i16> = Vec::new();
+    Box::new(move |mono: &mut [i16], latency| {
+        buffer.clear();
+        buffer.resize(mono.len() * channels, 0);
+        wide(&mut buffer, latency);
+        for (out, frame) in mono.iter_mut().zip(buffer.chunks_exact(channels)) {
+            let sum: i32 = frame.iter().map(|&s| i32::from(s)).sum();
+            *out = (sum / channels as i32) as i16;
+        }
+    })
 }
 
 /// Turns any callback size into 10 ms frames.
@@ -90,5 +120,52 @@ impl Chunker {
             start += FRAME_SAMPLES;
         }
         self.pending.drain(..start);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    #[test]
+    fn mixing_down_averages_the_channels() {
+        let mut mono = mix_down(
+            2,
+            Box::new(|wide: &mut [i16], _| {
+                for frame in wide.as_chunks_mut::<2>().0 {
+                    *frame = [1000, 3000];
+                }
+            }),
+        );
+        let mut out = [0i16; 4];
+        mono(&mut out, 0);
+        assert_eq!(out, [2000; 4]);
+    }
+
+    #[test]
+    fn the_virtual_speaker_hears_stereo_interleaved_and_calls_stay_mono() {
+        let io = virtual_io::VirtualIo::new();
+        let (heard, frames) = mpsc::channel::<usize>();
+        let heard = Mutex::new(heard);
+        io.set_speaker(Box::new(move |frame| {
+            let _ = heard.lock().unwrap().send(frame.len());
+        }));
+        let quiet: ErrorCallback = Arc::new(|_| {});
+        let stereo = io
+            .open_output_channels(None, 2, Box::new(|_, _| {}), quiet.clone())
+            .unwrap();
+        let len = frames.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert_eq!(len, FRAME_SAMPLES * 2);
+        drop(stereo);
+        while frames.try_recv().is_ok() {}
+        let _mono = io.open_output(None, Box::new(|_, _| {}), quiet).unwrap();
+        // A tick of the stereo clock may still be in flight; the next mono one is the proof.
+        let lens: Vec<usize> = (0..3)
+            .filter_map(|_| frames.recv_timeout(Duration::from_secs(2)).ok())
+            .collect();
+        assert_eq!(lens.last(), Some(&FRAME_SAMPLES));
     }
 }
