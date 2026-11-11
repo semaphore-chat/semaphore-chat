@@ -10,24 +10,28 @@
 //! areas are added without touching the same lines. Callers hold `dyn Backend`; an implementor
 //! implements each area trait, and gets `Backend` from the blanket impl.
 
+mod account;
 mod communities;
 mod dms;
 mod files;
 mod messages;
 mod moderation;
 mod notify;
+mod onboarding;
 mod search;
 mod session;
 mod social;
 mod threads;
 mod voice;
 
+pub use account::AccountBackend;
 pub use communities::CommunitiesBackend;
 pub use dms::DmsBackend;
 pub use files::FilesBackend;
 pub use messages::MessagesBackend;
 pub use moderation::ModerationBackend;
 pub use notify::NotifyBackend;
+pub use onboarding::OnboardingBackend;
 pub use search::SearchBackend;
 pub use session::SessionBackend;
 pub use social::SocialBackend;
@@ -95,6 +99,8 @@ pub trait Backend:
     + DmsBackend
     + SocialBackend
     + NotifyBackend
+    + AccountBackend
+    + OnboardingBackend
 {
 }
 
@@ -113,6 +119,8 @@ impl<T> Backend for T where
         + DmsBackend
         + SocialBackend
         + NotifyBackend
+        + AccountBackend
+        + OnboardingBackend
 {
 }
 

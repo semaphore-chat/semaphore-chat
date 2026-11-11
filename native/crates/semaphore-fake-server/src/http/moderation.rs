@@ -21,6 +21,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         .route("/api/moderation/pins/{channelId}", get(pins))
         .route("/api/moderation/message/{messageId}", delete(remove_as_mod))
         .route("/api/roles/my/channel/{channelId}", get(my_channel_roles))
+        .route("/api/roles/my/instance", get(my_instance_roles))
 }
 
 pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
@@ -35,6 +36,7 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
             "ModerationController_deleteMessageAsMod"
         }
         ("GET", "/api/roles/my/channel/{channelId}") => "RolesController_getMyRolesForChannel",
+        ("GET", "/api/roles/my/instance") => "RolesController_getMyInstanceRoles",
         _ => return None,
     })
 }
@@ -126,6 +128,12 @@ async fn remove_as_mod(
         Ok(()) => success("Message deleted successfully"),
         Err(refusal) => refused(&inner, refusal),
     }
+}
+
+/// W3: what decides "Create community". The fake's user holds the instance's default role, which
+/// may create communities.
+async fn my_instance_roles(State(inner): State<Arc<Inner>>) -> Response {
+    json_response(StatusCode::OK, actions::my_instance_roles(&inner))
 }
 
 async fn my_channel_roles(

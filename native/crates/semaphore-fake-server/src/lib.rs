@@ -5,6 +5,7 @@
 //! `native/fixtures/scenarios/` over HTTP and Socket.IO framing, from an in-memory state
 //! with a settable clock, and exposes faults for tests.
 
+mod accounts;
 mod actions;
 mod http;
 pub mod livekit;
@@ -26,6 +27,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinHandle;
 
+pub use accounts::{InviteSeed, ProfileOrder, SeededSession};
 pub use scenario::{ScenarioError, ScenarioSource, entity_uuid, load_named, message_uuid};
 
 /// One thing the server saw, in the order it finished handling it.
@@ -110,6 +112,9 @@ pub(crate) struct Data {
 /// An uploaded file, kept in memory for the server's life.
 #[derive(Clone, Debug)]
 pub(crate) struct StoredFile {
+    /// Who uploaded it and as what (`resourceType`): a profile or community image must be one's own.
+    pub uploaded_by: String,
+    pub resource_type: String,
     pub filename: String,
     pub mime_type: String,
     pub bytes: Vec<u8>,
@@ -127,6 +132,10 @@ pub(crate) struct Inner {
     /// Whose socket each is: the handshake's `userId` (a fake-only extension, so a test can
     /// connect as someone else), otherwise the signed-in user.
     pub socket_users: Mutex<HashMap<u64, String>>,
+    /// The access token each socket connected with, to tell a session's sockets apart.
+    pub socket_tokens: Mutex<HashMap<u64, String>>,
+    /// Accounts, sessions, invites, grants, appearance and created communities (W3).
+    pub accounts: Mutex<accounts::Accounts>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -374,6 +383,17 @@ impl Inner {
     }
 }
 
+/// Resolve once no queued frame is left unwritten.
+pub(crate) async fn wait_flushed(inner: &Inner) {
+    loop {
+        let notified = inner.notify.notified();
+        if inner.queued.load(Ordering::SeqCst) == 0 {
+            return;
+        }
+        notified.await;
+    }
+}
+
 /// The HTTP body of an error, in `ErrorResponseDto` shape.
 pub(crate) fn error_body(
     status: u16,
@@ -447,6 +467,8 @@ impl FakeServer {
             records: Mutex::new(Vec::new()),
             sockets: Mutex::new(HashMap::new()),
             socket_users: Mutex::new(HashMap::new()),
+            socket_tokens: Mutex::new(HashMap::new()),
+            accounts: Mutex::new(accounts::Accounts::new()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),
@@ -562,6 +584,78 @@ impl FakeServer {
     /// returns too. Until this is called, any non-empty bearer is accepted.
     pub fn expire_access_token(&self) {
         self.inner.expire_access_token();
+    }
+
+    /// Plays the browser's `POST /auth/desktop/authorize` for the signed-in fake user: mints the
+    /// 43-character code bound to `code_challenge`, valid for 60 s of the server's clock (see
+    /// `advance_clock`) and for one redeem.
+    pub fn approve_desktop(&self, code_challenge: &str) -> String {
+        self.approve(code_challenge, false)
+    }
+
+    /// As `approve_desktop`, but the approving session has since ended, so redeeming fails.
+    pub fn approve_desktop_with_revoked_approver(&self, code_challenge: &str) -> String {
+        self.approve(code_challenge, true)
+    }
+
+    fn approve(&self, code_challenge: &str, approver_revoked: bool) -> String {
+        let now = self.inner.now();
+        let me = self.inner.scenario.me.id.clone();
+        lock(&self.inner.accounts).approve(code_challenge, &me, now, approver_revoked)
+    }
+
+    /// Tell every socket of the signed-in fake user that a desktop app signed in, with this
+    /// address (`desktopSignIn`).
+    pub fn emit_desktop_sign_in(&self, ip: Option<&str>) {
+        let me = self.inner.scenario.me.id.clone();
+        self.inner.emit_to_user(
+            &me,
+            "desktopSignIn",
+            serde_json::json!({ "ipAddress": ip, "signedInAt": self.inner.now() }),
+        );
+    }
+
+    /// Plant an invite, for the public invite lookup and for registration.
+    pub fn seed_invite(&self, invite: InviteSeed) {
+        lock(&self.inner.accounts).invites.push(accounts::Invite {
+            code: invite.code,
+            uses: invite.uses,
+            max_uses: invite.max_uses,
+            valid_until: invite.valid_until,
+            disabled: invite.disabled,
+            created_by: invite.created_by,
+        });
+    }
+
+    /// Add a session of the signed-in fake user, as another device's sign-in would. Its tokens
+    /// work as bearers and refresh tokens, and `DELETE /auth/sessions/{id}` ends them.
+    pub fn add_session(&self, device_name: &str, ip: Option<&str>) -> SeededSession {
+        let now = self.inner.now();
+        let me = self.inner.scenario.me.id.clone();
+        let mut accounts = lock(&self.inner.accounts);
+        let index = accounts.start_session(&me, Some(device_name), ip, now, None, false);
+        let session = &accounts.sessions[index];
+        SeededSession {
+            id: session.id.clone(),
+            access_token: session.access.clone(),
+            refresh_token: session.refresh.clone(),
+        }
+    }
+
+    /// When `PATCH /api/users/profile` sends `userProfileUpdated` relative to its reply.
+    pub fn set_profile_order(&self, order: ProfileOrder) {
+        lock(&self.inner.accounts).profile_order = order;
+    }
+
+    /// Send the events `ProfileOrder::ReplyThenEvent` held back. How many were sent.
+    pub fn release_held_events(&self) -> usize {
+        let held = std::mem::take(&mut lock(&self.inner.accounts).held);
+        let count = held.len();
+        for event in held {
+            self.inner
+                .emit_to_users(&event.users, event.event, event.payload);
+        }
+        count
     }
 
     /// Every HTTP request and socket event seen so far, in order.

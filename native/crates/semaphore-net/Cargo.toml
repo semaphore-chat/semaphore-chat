@@ -27,6 +27,8 @@ log.workspace = true
 
 [dev-dependencies]
 semaphore-fake-server = { path = "../semaphore-fake-server" }
+# W3: sign in with browser end to end on the real loopback listener.
+semaphore-platform-desktop = { path = "../semaphore-platform-desktop" }
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "pem", "ring"] }
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }

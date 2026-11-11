@@ -7,11 +7,14 @@ pub mod composer;
 pub mod dms;
 pub mod emoji;
 pub mod friends;
+pub mod home;
 pub mod kit;
 pub mod messages;
 pub mod nav;
 pub mod notifications;
 pub mod panel;
+pub mod profile;
+pub mod settings;
 pub mod shell;
 #[cfg(feature = "stories")]
 pub mod stories;

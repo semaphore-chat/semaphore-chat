@@ -339,7 +339,8 @@ impl Shell {
             CoreEvent::QueriesInvalidated { .. }
             | CoreEvent::MessagesChanged { .. }
             | CoreEvent::Notify { .. }
-            | CoreEvent::WithdrawNotifications { .. } => {}
+            | CoreEvent::WithdrawNotifications { .. }
+            | CoreEvent::DesktopSignedIn { .. } => {}
         }
         cx.notify();
     }

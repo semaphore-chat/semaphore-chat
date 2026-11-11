@@ -124,9 +124,15 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
             let current = required.as_deref().is_none_or(|required| {
                 token.and_then(|token| token.strip_prefix("Bearer ")) == Some(required)
             });
-            if !valid_token(token) || !current {
+            let bearer = token.and_then(|token| token.strip_prefix("Bearer "));
+            let revoked = bearer.is_some_and(|bearer| inner.token_revoked(bearer));
+            if !valid_token(token) || !current || revoked {
                 inner.enqueue_text(&tx, "44{\"message\":\"AUTH_FAILED\"}".to_owned());
                 break;
+            }
+            // A token that belongs to a session is that session's user (a registered account's).
+            if let Some(bearer) = bearer {
+                user = inner.user_of(Some(bearer));
             }
             // Register before the connect ack, so a client that has its ack is
             // already receiving broadcasts.
@@ -140,6 +146,9 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
                 user = who.to_owned();
             }
             lock(&inner.socket_users).insert(sid, user.clone());
+            if let Some(bearer) = bearer {
+                lock(&inner.socket_tokens).insert(sid, bearer.to_owned());
+            }
             lock(&inner.sockets).insert(sid, tx.clone());
             connected = true;
             inner.enqueue_text(&tx, format!("40{}", json!({ "sid": sid_text })));
@@ -196,6 +205,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
         }
         lock(&inner.sockets).remove(&sid);
         lock(&inner.socket_users).remove(&sid);
+        lock(&inner.socket_tokens).remove(&sid);
         inner.record_socket("disconnect", None, protocol.clone());
         if !abrupt {
             inner.enqueue(&tx, Outbound::Close);

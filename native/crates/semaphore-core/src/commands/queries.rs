@@ -168,6 +168,24 @@ impl Core {
             keys::NOTIFICATIONS => self.fetch_notifications().await?,
             keys::NOTIFY_SETTINGS => self.fetch_notify_settings().await?,
             keys::CHANNEL_LEVEL => self.fetch_channel_level(id).await?,
+            keys::SESSIONS => CacheValue::Sessions(
+                backend
+                    .auth_controller_get_sessions()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::INSTANCE_ROLES => CacheValue::InstanceRoles(
+                backend
+                    .roles_controller_get_my_instance_roles()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::APPEARANCE => CacheValue::Appearance(
+                backend
+                    .appearance_settings_controller_get_settings()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
             op => {
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),
@@ -254,6 +272,9 @@ impl Core {
 
     /// Fetches again whatever failed. A new connection does this by itself.
     pub fn retry_failed(&self) {
-        self.write(|state, _| state.retry_failed_queries());
+        self.write(|state, _| {
+            state.retry_failed_queries();
+            state.retry_failed_invites();
+        });
     }
 }

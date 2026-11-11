@@ -80,6 +80,24 @@ pub enum ViewKey {
     },
     /// `Core::badge_count`: the tray and dock badge.
     Badge,
+    /// `Core::profile`.
+    Profile {
+        user_id: String,
+    },
+    /// `Core::profile_edit`.
+    ProfileEdit,
+    /// `Core::sessions`.
+    Sessions,
+    /// `Core::appearance`.
+    Appearance,
+    /// `Core::invite_preview`.
+    InvitePreview {
+        code: String,
+    },
+    /// `Core::browser_sign_in`.
+    BrowserSignIn,
+    /// `Core::instance_permissions`.
+    InstancePermissions,
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

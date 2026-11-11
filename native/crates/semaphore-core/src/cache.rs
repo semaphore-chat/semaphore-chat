@@ -65,6 +65,10 @@ pub mod keys {
     pub const NOTIFICATIONS: &str = "notificationsControllerGetNotifications";
     pub const NOTIFY_SETTINGS: &str = "notificationsControllerGetSettings";
     pub const CHANNEL_LEVEL: &str = "notificationsControllerGetChannelOverride";
+    // W3
+    pub const SESSIONS: &str = "authControllerGetSessions";
+    pub const APPEARANCE: &str = "appearanceSettingsControllerGetSettings";
+    pub const INSTANCE_ROLES: &str = "rolesControllerGetMyInstanceRoles";
 
     pub fn scoped(op: &str, id: &str) -> QueryKey {
         QueryKey::new(&[op, id])
@@ -104,6 +108,12 @@ pub enum CacheValue {
     NotifySettings(wire::UserNotificationSettingsDto),
     /// A channel's own level, keyed by channel. `None`: it has none.
     ChannelLevel(Option<wire::ChannelNotificationOverrideDto>),
+    /// W3: this account's sessions.
+    Sessions(Vec<wire::SessionInfoDto>),
+    /// W3: the theme the server keeps.
+    Appearance(wire::AppearanceSettingsResponseDto),
+    /// W3: this user's instance roles.
+    InstanceRoles(wire::UserRolesResponseDto),
 }
 
 /// Friends and pending requests, from two calls read as one.
@@ -202,6 +212,19 @@ impl QueryCache {
         Option<wire::ChannelNotificationOverrideDto>
     );
     typed_read!(profile, profile_mut, Profile, wire::UserEntity);
+    typed_read!(
+        instance_roles,
+        instance_roles_mut,
+        InstanceRoles,
+        wire::UserRolesResponseDto
+    );
+    typed_read!(sessions, sessions_mut, Sessions, Vec<wire::SessionInfoDto>);
+    typed_read!(
+        appearance,
+        appearance_mut,
+        Appearance,
+        wire::AppearanceSettingsResponseDto
+    );
     typed_read!(
         communities,
         communities_mut,

@@ -3,7 +3,9 @@
 use super::{REAUTHENTICATE_TIMEOUT_MS, jwt_expiry_ms};
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, user_view};
-use crate::model::{RestoreOutcome, ServerInfo, SessionState, SignOutReason, ViewKey};
+use crate::model::{
+    RegistrationMode, RestoreOutcome, ServerInfo, SessionState, SignOutReason, ViewKey,
+};
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
 use crate::resync::{failed, unavailable};
@@ -60,10 +62,13 @@ impl Core {
             .services()
             .ok_or_else(|| unavailable("signing in"))?
             .clone();
+        // A password sign-in replaces a browser sign-in still waiting.
+        self.cancel_browser_sign_in();
         self.write(|state, _| {
             state.session = SessionState::SigningIn;
             state.view_changed(ViewKey::Session);
             state.reading.server_url = Some(server_url.clone());
+            state.use_server(&server_url);
         });
         services.backend.set_server_url(server_url);
         let body = wire::LoginRequestDto { password, username };
@@ -85,8 +90,8 @@ impl Core {
         Ok(())
     }
 
-    /// A session is established: what sign-in and restore share.
-    fn signed_in(
+    /// A session is established: what sign-in, restore and sign in with browser share.
+    pub(crate) fn signed_in(
         &self,
         services: &crate::client::Services,
         access_token: &str,
@@ -105,6 +110,7 @@ impl Core {
             state.ensure_query(keys::op(keys::COMMUNITIES));
             state.ensure_query(keys::op(keys::UNREAD));
             state.w2_signed_in();
+            state.ensure_query(keys::op(keys::APPEARANCE));
         });
         services.realtime.connect();
     }
@@ -119,7 +125,10 @@ impl Core {
             .ok_or_else(|| unavailable("restoring a session"))?
             .clone();
         let server_url = server_url.trim_end_matches('/').to_owned();
-        self.write(|state, _| state.reading.server_url = Some(server_url.clone()));
+        self.write(|state, _| {
+            state.reading.server_url = Some(server_url.clone());
+            state.use_server(&server_url);
+        });
         services.backend.set_server_url(server_url);
         if !services.backend.has_stored_session() {
             return Ok(RestoreOutcome::NoSession);
@@ -198,19 +207,29 @@ impl Core {
         let services = self.services().ok_or_else(|| unavailable("the backend"))?;
         let url = server_url.trim().trim_end_matches('/').to_owned();
         services.backend.set_server_url(url.clone());
+        self.write(|state, _| state.use_server(&url));
         let settings = services
             .backend
             .instance_controller_get_public_settings()
             .await
             .map_err(failed)?;
-        Ok(ServerInfo {
+        let info = ServerInfo {
             url,
             name: Some(settings.name).filter(|name| !name.trim().is_empty()),
             max_file_bytes: u64::try_from(settings.max_file_size_bytes)
                 .ok()
                 .filter(|bytes| *bytes > 0),
             password_reset: settings.password_reset_enabled,
-        })
+            registration: match settings.registration_mode {
+                semaphore_wire::enums::RegistrationMode::Open => RegistrationMode::Open,
+                semaphore_wire::enums::RegistrationMode::Closed => RegistrationMode::Closed,
+                // Unknown modes ask for a code, as every mode does today.
+                _ => RegistrationMode::InviteOnly,
+            },
+            browser_sign_in: settings.desktop_browser_login,
+        };
+        self.write(|state, _| state.server_probed(&info));
+        Ok(info)
     }
 
     pub fn session(&self) -> SessionState {
