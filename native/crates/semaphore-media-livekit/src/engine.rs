@@ -177,6 +177,17 @@ struct VideoPump {
     task: JoinHandle<()>,
 }
 
+/// `LiveKitEngine::choices`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EngineChoices {
+    pub input_device: Option<String>,
+    pub output_device: Option<String>,
+    pub camera_device: Option<String>,
+    pub ptt_mode: bool,
+    pub preset: MicPreset,
+    pub processing: AudioProcessing,
+}
+
 /// What the user asked for. Outlives any one `Room`, so a rejoin puts it all back.
 #[derive(Default)]
 struct Wanted {
@@ -501,6 +512,20 @@ impl LiveKitEngine {
     /// The camera to use from the next `set_camera(true)`; `None` for the first one.
     pub fn select_camera(&self, device: Option<String>) {
         lock(&self.inner.wanted).camera_device = device;
+    }
+
+    /// What the settings set: devices, processing, push-to-talk mode and the mic preset, as the
+    /// engine holds them now. For a settings screen to show, and for rigs to check.
+    pub fn choices(&self) -> EngineChoices {
+        let wanted = lock(&self.inner.wanted);
+        EngineChoices {
+            input_device: wanted.input_device.clone(),
+            output_device: wanted.output_device.clone(),
+            camera_device: wanted.camera_device.clone(),
+            ptt_mode: wanted.ptt_mode,
+            preset: wanted.preset,
+            processing: *lock(&self.inner.processing),
+        }
     }
 
     pub fn output_latency_ms(&self) -> u32 {

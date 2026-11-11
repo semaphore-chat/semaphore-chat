@@ -9,7 +9,7 @@ pub mod testing;
 mod video;
 
 pub use engine::{
-    ConnectionQualityView, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset, RejoinPolicy,
+    ConnectionQualityView, EngineChoices, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset, RejoinPolicy,
     TokenSource,
 };
 pub use video::local::{

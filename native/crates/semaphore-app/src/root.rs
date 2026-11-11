@@ -295,6 +295,7 @@ impl AppRoot {
             }
         })
         .detach();
+        voice.apply_settings(&self.settings.get().voice);
         let controller: Arc<dyn VoiceController> = voice.clone();
         let model = VoiceStageModel::default();
         self.stage = Some(cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx)));
@@ -382,6 +383,9 @@ impl AppRoot {
                 .find(|channel| channel.id == channel_id)
         {
             self.voice_channel_name = channel.name;
+        }
+        if let Some(voice) = &self.voice {
+            voice.apply_settings(&self.settings.get().voice);
         }
         let core = services.core.clone();
         let joining = channel_id.clone();
