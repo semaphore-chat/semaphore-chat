@@ -94,6 +94,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
 
     let mut protocol: Option<Value> = None;
     let mut connected = false;
+    let mut user = inner.scenario.me.id.clone();
     inner.begin();
     while let Some(frame) = stream.next().await {
         let Ok(message) = frame else {
@@ -129,6 +130,16 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
             }
             // Register before the connect ack, so a client that has its ack is
             // already receiving broadcasts.
+            // A fake-only extension: `userId` in the handshake makes this socket that user's, so a
+            // test can watch what another member of a DM receives. Real clients never send it.
+            if let Some(who) = data
+                .get("userId")
+                .or_else(|| data.get("auth").and_then(|auth| auth.get("userId")))
+                .and_then(Value::as_str)
+            {
+                user = who.to_owned();
+            }
+            lock(&inner.socket_users).insert(sid, user.clone());
             lock(&inner.sockets).insert(sid, tx.clone());
             connected = true;
             inner.enqueue_text(&tx, format!("40{}", json!({ "sid": sid_text })));
@@ -167,7 +178,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
                             }
                             if let Some((ack, args)) = parse_event(text) {
                                 inner.begin();
-                                handle_event(&inner, &tx, protocol.clone(), ack, args).await;
+                                handle_event(&inner, &tx, &user, protocol.clone(), ack, args).await;
                                 inner.end();
                             } else if let Some(rest) = text.strip_prefix("43") {
                                 inner.record_socket(
@@ -184,6 +195,7 @@ async fn connection(inner: Arc<Inner>, socket: WebSocket) {
             }
         }
         lock(&inner.sockets).remove(&sid);
+        lock(&inner.socket_users).remove(&sid);
         inner.record_socket("disconnect", None, protocol.clone());
         if !abrupt {
             inner.enqueue(&tx, Outbound::Close);
@@ -224,6 +236,7 @@ async fn writer_task(
 async fn handle_event(
     inner: &Arc<Inner>,
     tx: &mpsc::UnboundedSender<Outbound>,
+    user: &str,
     protocol: Option<Value>,
     ack: Option<u64>,
     args: Vec<Value>,
@@ -236,8 +249,12 @@ async fn handle_event(
 
     match name.as_str() {
         "sendMessage" | "sendDirectMessage" | "sendThreadReply" => {
-            handle_send(inner, tx, protocol, ack, &name, payload).await;
+            handle_send(inner, tx, user, protocol, ack, &name, payload).await;
         }
+        "markAsRead" => mark_as_read(inner, tx, user, ack, payload),
+        // The backend records the connection (and its idle flag) and answers 'ACK'. The event
+        // is in `requests()` with its payload; nothing else of the fake depends on it.
+        "presenceOnline" => ack_value(inner, tx, ack, Value::from("ACK")),
         "reauthenticate" => {
             let result = ReauthenticateResultDto {
                 error: None,
@@ -258,6 +275,7 @@ async fn handle_event(
 async fn handle_send(
     inner: &Arc<Inner>,
     tx: &mpsc::UnboundedSender<Outbound>,
+    user: &str,
     protocol: Option<Value>,
     ack: Option<u64>,
     name: &str,
@@ -329,6 +347,7 @@ async fn handle_send(
         let target = target?;
         Ok(messages::send(
             inner,
+            user,
             target,
             &body,
             inner.take_send_fault(),
@@ -418,4 +437,77 @@ fn ack_value(
         }
         None => inner.enqueue_text(tx, frame),
     }
+}
+
+/// `markAsRead {channelId | directMessageGroupId, lastReadMessageId}` (`markReadAndAnnounce`):
+/// the read state moves, the user's unread notifications of that context are marked read without
+/// a `notificationRead`, and `readReceiptUpdated` goes to the user's sockets; for a DM, also to
+/// the group, with the reader's details, as the backend's DM room broadcast does.
+fn mark_as_read(
+    inner: &Arc<Inner>,
+    tx: &mpsc::UnboundedSender<Outbound>,
+    user: &str,
+    ack: Option<u64>,
+    payload: Option<Value>,
+) {
+    let field = |name: &str| {
+        payload
+            .as_ref()
+            .and_then(|payload| payload.get(name))
+            .and_then(Value::as_str)
+    };
+    let (channel, group, last) = (
+        field("channelId"),
+        field("directMessageGroupId"),
+        field("lastReadMessageId"),
+    );
+    let refuse = |message: &str| {
+        inner.enqueue_text(
+            tx,
+            event_frame(
+                "exception",
+                error_body(400, "BAD_REQUEST", message.to_owned(), false, None),
+            ),
+        );
+    };
+    let Some(last) = last else {
+        return refuse("lastReadMessageId is required");
+    };
+    if channel.is_some() == group.is_some() {
+        return refuse("Must provide exactly one of channelId or directMessageGroupId");
+    }
+    let belongs = {
+        let data = lock(&inner.data);
+        messages::find_message(&data, last).is_some_and(|message| {
+            message.channel_id.as_deref() == channel.filter(|_| group.is_none())
+                && message.direct_message_group_id.as_deref() == group
+        })
+    };
+    if !belongs {
+        return refuse("Message not found in the specified channel or DM group");
+    }
+
+    let receipt = messages::mark_read(inner, channel, group, last);
+    let (channel_id, group_id) = (channel.map(str::to_owned), group.map(str::to_owned));
+    let reader = {
+        let mut data = lock(&inner.data);
+        crate::social::mark_context_read(&mut data, user, channel, group);
+        crate::social::dm_member_ids(&data, group.unwrap_or_default())
+    };
+    let payload = json!({
+        "channelId": channel_id,
+        "directMessageGroupId": group_id,
+        "lastReadMessageId": last,
+        "lastReadAt": receipt["lastReadAt"],
+    });
+    inner.emit_to_user(user, "readReceiptUpdated", payload.clone());
+    if let (Some(members), Some(reader)) = (reader, inner.scenario.user(user)) {
+        let mut room = payload;
+        room["userId"] = Value::from(reader.id.clone());
+        room["username"] = Value::from(reader.username.clone());
+        room["displayName"] = json!(reader.display_name);
+        room["avatarUrl"] = json!(reader.avatar_url);
+        inner.emit_to_users(&members, "readReceiptUpdated", room);
+    }
+    ack_value(inner, tx, ack, Value::from("ACK"));
 }

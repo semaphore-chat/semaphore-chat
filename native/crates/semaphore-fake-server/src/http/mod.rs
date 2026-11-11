@@ -7,11 +7,14 @@
 #![allow(clippy::result_large_err)]
 
 mod communities;
+mod dms;
 mod files;
 mod messages;
 mod moderation;
+mod notify;
 mod search;
 mod session;
+mod social;
 mod threads;
 mod voice;
 
@@ -39,6 +42,9 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(moderation::routes())
         .merge(threads::routes())
         .merge(search::routes())
+        .merge(dms::routes())
+        .merge(social::routes())
+        .merge(notify::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -55,6 +61,9 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| moderation::operation_id(method, route))
         .or_else(|| threads::operation_id(method, route))
         .or_else(|| search::operation_id(method, route))
+        .or_else(|| dms::operation_id(method, route))
+        .or_else(|| social::operation_id(method, route))
+        .or_else(|| notify::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -252,7 +261,11 @@ async fn control(
                 return invalid("event is required");
             };
             let payload = request.get("payload").cloned().unwrap_or(Value::Null);
-            inner.broadcast(event, payload);
+            // With a `userId`, only that user's sockets hear it; otherwise every socket.
+            match request.get("userId").and_then(Value::as_str) {
+                Some(user) => inner.emit_to_user(user, event, payload),
+                None => inner.broadcast(event, payload),
+            }
         }
         "post_as" => {
             let field = |name: &str| request.get(name).and_then(Value::as_str);

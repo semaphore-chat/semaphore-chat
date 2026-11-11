@@ -184,7 +184,13 @@ async fn create_message(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::Channel(channel_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::Channel(channel_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
@@ -206,7 +212,13 @@ async fn create_direct_message(State(inner): State<Arc<Inner>>, body: Bytes) -> 
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::DirectMessage(group_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::DirectMessage(group_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
