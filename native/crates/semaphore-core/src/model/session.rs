@@ -1,6 +1,6 @@
 //! Signing in and out, and what a server says before anyone has.
 
-use super::{ErrorView, UserView};
+use super::{ErrorView, RegistrationMode, UserView};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum SessionState {
@@ -32,6 +32,10 @@ pub struct ServerInfo {
     pub name: Option<String>,
     pub max_file_bytes: Option<u64>,
     pub password_reset: bool,
+    /// Who may register. Hide Register when `Closed`.
+    pub registration: RegistrationMode,
+    /// The server offers sign in with browser (`Core::start_browser_sign_in`).
+    pub browser_sign_in: bool,
 }
 
 /// How `Core::restore_session` went.

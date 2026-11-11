@@ -5,11 +5,15 @@
 //! and fetch what's missing or stale, as `useQuery` does: `CoreEvent::ViewChanged` says when to read
 //! again.
 
+pub mod account;
 pub(crate) mod actions;
+pub mod browser_sign_in;
 mod communities;
 mod dms;
 mod messages;
 pub(crate) mod notify;
+mod onboarding;
+mod profile;
 mod queries;
 pub(crate) mod reading;
 mod session;

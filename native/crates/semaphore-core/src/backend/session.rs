@@ -31,6 +31,15 @@ pub trait SessionBackend: Send + Sync {
         &self,
         body: wire::LogoutRequestDto,
     ) -> BackendResult<wire::LogoutResponseDto>;
+    /// Sign in with browser, the last step: the code the browser handed back and the PKCE verifier,
+    /// for a session of this device's own. Stores the tokens as `auth_controller_login` does. The
+    /// body holds secrets: never log it.
+    async fn auth_controller_redeem_desktop_login(
+        &self,
+        _body: wire::DesktopLoginTokenRequestDto,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        Err(unsupported("sign in with browser"))
+    }
     async fn user_controller_get_profile(&self) -> BackendResult<wire::UserEntity>;
     async fn user_controller_get_user_by_id(&self, id: String) -> BackendResult<wire::UserEntity>;
 

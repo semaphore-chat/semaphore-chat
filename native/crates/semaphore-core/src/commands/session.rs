@@ -3,7 +3,9 @@
 use super::{REAUTHENTICATE_TIMEOUT_MS, jwt_expiry_ms};
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, user_view};
-use crate::model::{RestoreOutcome, ServerInfo, SessionState, SignOutReason, ViewKey};
+use crate::model::{
+    RegistrationMode, RestoreOutcome, ServerInfo, SessionState, SignOutReason, ViewKey,
+};
 use crate::platform::CoreError;
 use crate::realtime::RealtimeEvent;
 use crate::resync::{failed, unavailable};
@@ -210,6 +212,13 @@ impl Core {
                 .ok()
                 .filter(|bytes| *bytes > 0),
             password_reset: settings.password_reset_enabled,
+            registration: match settings.registration_mode {
+                semaphore_wire::enums::RegistrationMode::Open => RegistrationMode::Open,
+                semaphore_wire::enums::RegistrationMode::Closed => RegistrationMode::Closed,
+                // Unknown modes ask for a code, as every mode does today.
+                _ => RegistrationMode::InviteOnly,
+            },
+            browser_sign_in: settings.desktop_browser_login,
         })
     }
 

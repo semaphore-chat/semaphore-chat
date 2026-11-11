@@ -29,9 +29,12 @@ uniffi::setup_scaffolding!("semaphore");
 
 // W1: each part exports its commands in an `#[uniffi::export] impl SemaphoreCore` block of its own
 // file. UniFFI takes any number of such blocks for one object.
+mod account;
 mod actions;
 mod dms;
 mod notify;
+mod onboarding;
+mod profile;
 mod reading;
 mod social;
 
@@ -438,6 +441,12 @@ pub enum ViewKey {
     NotificationSettings,
     ChannelNotifyLevel { channel_id: String },
     Badge,
+    Profile { user_id: String },
+    ProfileEdit,
+    Sessions,
+    Appearance,
+    InvitePreview { code: String },
+    BrowserSignIn,
 }
 
 #[uniffi::remote(Record)]
@@ -562,6 +571,10 @@ pub enum CoreEvent {
     },
     WithdrawNotifications {
         tag: String,
+    },
+    DesktopSignedIn {
+        ip_address: Option<String>,
+        at_ms: i64,
     },
 }
 

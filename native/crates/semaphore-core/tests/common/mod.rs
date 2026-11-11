@@ -5,6 +5,7 @@
 mod actions;
 mod reading;
 pub mod w2;
+pub mod w3;
 #[allow(unused_imports)]
 pub use actions::refusal;
 
