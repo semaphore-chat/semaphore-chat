@@ -31,7 +31,10 @@ pub const TRACK_NAME: &str = "soundboard";
 
 /// The server takes at most 1 MiB; this leaves room and still bounds the work.
 const MAX_BYTES: usize = 4 * 1024 * 1024;
-pub(crate) const MAX_SECONDS: u32 = 120;
+/// The backend caps the file (1 MiB) but not its length, and a soundboard sound is a short
+/// effect: a longer one is refused rather than decoded (a few KB of Opus silence would
+/// otherwise decode to minutes).
+pub(crate) const MAX_SECONDS: u32 = 30;
 pub(crate) const MIN_RATE: u32 = 8_000;
 pub(crate) const MAX_RATE: u32 = 192_000;
 pub(crate) const MAX_CHANNELS: u16 = 8;
@@ -114,9 +117,7 @@ pub(crate) fn decode(bytes: &[u8], extra: Option<&dyn SoundDecoder>) -> Result<A
             format!("This sound is {name}, which this build of the app can't play")
         }
         DecodeError::Invalid(why) => format!("This sound can't be played: {why}"),
-        DecodeError::TooLong => {
-            format!("This sound is longer than {} minutes", MAX_SECONDS / 60)
-        }
+        DecodeError::TooLong => format!("This sound is longer than {MAX_SECONDS} seconds"),
     })
 }
 

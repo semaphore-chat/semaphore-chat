@@ -17,6 +17,7 @@ use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
 use crate::diagnostics::{self, Totals};
+use crate::input_test::TestShared;
 use crate::soundboard::{self, SoundCache, SoundDecoder};
 use crate::video::local::{
     Capturing, FramePipeline, VideoCaptureSource, VideoSources, may_publish,
@@ -282,11 +283,23 @@ struct Inner {
     /// This call's `soundboard` track source, made (and published) by the first play.
     soundboard_source: Mutex<Option<NativeAudioSource>>,
     soundboard: Mutex<Option<PlayingSound>>,
-    /// One soundboard start at a time, so two plays can't publish two tracks.
+    /// One soundboard start at a time.
     soundboard_ops: tokio::sync::Mutex<()>,
+    /// Held while making sure the room has the `soundboard` track, by a play and by a (re)join's
+    /// setup alike, so it's published once.
+    soundboard_publish: tokio::sync::Mutex<()>,
+    /// Bumped, under the `soundboard` lock, by every stop and by leaving: a play that began
+    /// before it doesn't start.
+    soundboard_generation: AtomicU64,
     next_sound: AtomicU64,
     /// The last `diagnostics()` byte totals, for its bitrates.
     last_totals: Mutex<Option<Totals>>,
+    /// The server has muted our mic's publication (`on_local_mic_mute`).
+    server_muted: AtomicBool,
+    /// The settings page's mic test while it runs: a call stops it.
+    input_test: Mutex<Option<std::sync::Weak<TestShared>>>,
+    /// What we last asked of the mic's publication: muted or not.
+    mic_asked_muted: AtomicBool,
 }
 
 struct PlayingSound {
@@ -299,6 +312,8 @@ struct PlayingSound {
 const SOUNDBOARD_MONITOR: &str = "\u{1}soundboard";
 
 struct SystemAudioShare {
+    /// Which share this is, so a publish that finishes late can tell it's for one that's gone.
+    id: u64,
     source: NativeAudioSource,
     /// Its publication's sid in the current room, for the replay buffer.
     sid: Arc<Mutex<Option<String>>>,
@@ -412,8 +427,13 @@ impl LiveKitEngine {
                 soundboard_source: Mutex::new(None),
                 soundboard: Mutex::new(None),
                 soundboard_ops: tokio::sync::Mutex::new(()),
+                soundboard_publish: tokio::sync::Mutex::new(()),
+                soundboard_generation: AtomicU64::new(0),
                 next_sound: AtomicU64::new(1),
                 last_totals: Mutex::new(None),
+                server_muted: AtomicBool::new(false),
+                input_test: Mutex::new(None),
+                mic_asked_muted: AtomicBool::new(false),
             }),
             runtime: Some(runtime),
         }
@@ -453,11 +473,29 @@ impl LiveKitEngine {
         self.inner.snapshot.subscribe()
     }
 
+    /// The user's mute. Unmuting is also how a lifted server mute ends here (`set_server_muted`):
+    /// as on the web, the user unmutes themselves once the server lets them.
     pub fn set_muted(&self, muted: bool) {
         let _enter = self.inner.runtime.enter();
-        lock(&self.inner.wanted).muted = muted;
+        let unmuting = {
+            let mut wanted = lock(&self.inner.wanted);
+            let unmuting = wanted.muted && !muted;
+            wanted.muted = muted;
+            unmuting
+        };
+        if unmuting {
+            self.inner.server_muted.store(false, Ordering::SeqCst);
+        }
         self.inner.apply_mic_state();
         self.inner.publish_snapshot();
+    }
+
+    /// What core knows of a server mute (presence's `isServerMuted`), for when LiveKit's own mute
+    /// event isn't seen. On, the mic is muted and stays so whatever else is set; off, it stays
+    /// muted until the user unmutes, as on the web.
+    pub fn set_server_muted(&self, server_muted: bool) {
+        let _enter = self.inner.runtime.enter();
+        self.inner.apply_server_mute(server_muted);
     }
 
     /// Deafening mutes the mic too, and undeafening restores what it was, like the web client.
@@ -502,6 +540,7 @@ impl LiveKitEngine {
     /// sends nothing. 0, the default, is no gate. Push-to-talk mode ignores it. Remembered across
     /// calls, and a live call follows at once.
     pub fn set_vad_threshold(&self, threshold: u8) {
+        let _enter = self.inner.runtime.enter();
         lock(&self.inner.wanted).vad_threshold = threshold.min(100);
         self.inner.apply_mic_state();
     }
@@ -601,6 +640,14 @@ impl LiveKitEngine {
             *lock(&self.inner.processing),
             self.inner.input_stream_open() || self.inner.current_room().is_some(),
         )
+    }
+
+    /// Remembers the mic test now running, stopping any older one.
+    pub(crate) fn track_input_test(&self, test: &Arc<TestShared>) {
+        let older = lock(&self.inner.input_test).replace(Arc::downgrade(test));
+        if let Some(older) = older.and_then(|older| older.upgrade()) {
+            older.stop();
+        }
     }
 
     pub fn output_latency_ms(&self) -> u32 {
@@ -749,9 +796,11 @@ impl MediaEngine for LiveKitEngine {
 
     async fn play_soundboard(&self, sound_id: String, bytes: Vec<u8>) -> Result<(), CoreError> {
         let inner = self.inner.clone();
+        // Taken now, so a stop that comes right after this call cancels it.
+        let generation = self.inner.soundboard_generation();
         self.inner
             .runtime
-            .spawn(async move { inner.play_soundboard(sound_id, bytes).await })
+            .spawn(async move { inner.play_soundboard(generation, sound_id, bytes).await })
             .await
             .map_err(failed)?
             .map_err(failed)
@@ -817,7 +866,9 @@ impl Inner {
             .runtime
             .spawn(pump_system_audio(source.clone(), frames_rx));
         let sid = Arc::new(Mutex::new(None));
+        let id = self.next_capture.fetch_add(1, Ordering::Relaxed);
         *lock(&self.system_audio) = Some(SystemAudioShare {
+            id,
             source: source.clone(),
             sid: sid.clone(),
             _capture: capture,
@@ -829,21 +880,40 @@ impl Inner {
             self.runtime.spawn(async move {
                 let published = publish_system_audio(&room, source, &sid).await;
                 if let Some(inner) = weak.upgrade() {
-                    inner.system_audio_published(published);
+                    inner.system_audio_published(id, &room, published).await;
                 }
             });
         }
         Ok(())
     }
 
-    /// The share's audio track went out, or the room refused it: then the capture is pointless,
-    /// and the report says why.
-    fn system_audio_published(&self, published: Result<(), String>) {
-        if let Err(error) = published {
-            log::warn!("system audio publish failed: {error}");
-            self.stop_system_audio();
-            *lock(&self.screen_audio_failed) =
-                Some(format!("the call refused the screen's audio: {error}"));
+    /// Share `id`'s audio track went out, or the room refused it: then the capture is pointless,
+    /// and the report says why. A result for a share that has since stopped or been replaced
+    /// touches nothing of the current one, and a track that went out for it comes down again.
+    async fn system_audio_published(
+        &self,
+        id: u64,
+        room: &Room,
+        published: Result<TrackSid, String>,
+    ) {
+        let current = lock(&self.system_audio)
+            .as_ref()
+            .is_some_and(|share| share.id == id);
+        match (published, current) {
+            (Ok(_), true) => {}
+            (Ok(sid), false) => {
+                log::info!("taking down screen audio {sid} published for a share that's gone");
+                if let Err(error) = room.local_participant().unpublish_track(&sid).await {
+                    log::warn!("unpublishing stale screen audio failed: {error}");
+                }
+            }
+            (Err(error), false) => log::debug!("a gone share's audio wasn't published: {error}"),
+            (Err(error), true) => {
+                log::warn!("system audio publish failed: {error}");
+                self.stop_system_audio();
+                *lock(&self.screen_audio_failed) =
+                    Some(format!("the call refused the screen's audio: {error}"));
+            }
         }
         self.publish_snapshot();
     }
@@ -875,6 +945,11 @@ impl Inner {
     }
 
     async fn join(self: Arc<Self>, url: String, token: String, call: u64) -> Result<(), CoreError> {
+        // The call takes the mic: a settings-page test still running stops first.
+        let test = lock(&self.input_test).take();
+        if let Some(test) = test.and_then(|test| test.upgrade()) {
+            test.stop();
+        }
         // Whatever the last call reports on its way out is still stamped with its own number.
         self.clone().leave().await;
         self.update_snapshot(|snapshot| snapshot.call = call);
@@ -949,6 +1024,9 @@ impl Inner {
     /// Publishes our mic and subscribes to what's there. Run for each new `Room`.
     async fn setup_room(self: &Arc<Self>, room: &Arc<Room>) -> Result<(), String> {
         lock(&self.applied_quality).clear();
+        // A new room: a new mic publication, which no server has muted yet.
+        self.server_muted.store(false, Ordering::SeqCst);
+        self.mic_asked_muted.store(false, Ordering::SeqCst);
         let source = lock(&self.mic_source).clone();
         if let Some(source) = source {
             let track =
@@ -973,14 +1051,14 @@ impl Inner {
         self.apply_mic_state();
         let system_audio = lock(&self.system_audio)
             .as_ref()
-            .map(|share| (share.source.clone(), share.sid.clone()));
-        if let Some((source, sid)) = system_audio {
+            .map(|share| (share.id, share.source.clone(), share.sid.clone()));
+        if let Some((id, source, sid)) = system_audio {
             let published = publish_system_audio(room, source, &sid).await;
-            self.system_audio_published(published);
+            self.system_audio_published(id, room, published).await;
         }
         let soundboard = lock(&self.soundboard_source).clone();
         if let Some(source) = soundboard
-            && let Err(error) = publish_soundboard(room, source).await
+            && let Err(error) = self.ensure_soundboard_track(room, source).await
         {
             log::warn!("republishing the soundboard failed: {error}");
         }
@@ -1212,6 +1290,16 @@ impl Inner {
                         .map(|speaker| speaker.identity().to_string())
                         .collect();
                 }
+                RoomEvent::TrackMuted {
+                    participant: Participant::Local(_),
+                    publication,
+                }
+                | RoomEvent::TrackUnmuted {
+                    participant: Participant::Local(_),
+                    publication,
+                } if publication.source() == TrackSource::Microphone => {
+                    self.on_local_mic_mute(publication.is_muted());
+                }
                 RoomEvent::TokenRefreshed { token: fresh } => *token = fresh,
                 RoomEvent::Reconnecting => self.set_status(VoiceStatus::Reconnecting, None),
                 RoomEvent::Reconnected => {
@@ -1285,10 +1373,8 @@ impl Inner {
 
     /// Everything tied to the room's tracks, but not the devices or what the user wants.
     fn clear_media(&self) {
-        // A sound playing goes with the room it played into.
-        if let Some(playing) = lock(&self.soundboard).take() {
-            playing.task.abort();
-        }
+        // A sound playing goes with the room it played into, and one starting doesn't start.
+        self.cancel_soundboard();
         self.mixer.clear_inputs();
         for (_, task) in lock(&self.audio_tasks).drain() {
             task.abort();
@@ -1303,7 +1389,13 @@ impl Inner {
 
     /// Mutes the publication, for the SFU and other people's UIs, and closes the gate in front of
     /// the encoder, so a muted mic's audio isn't even handed to WebRTC.
+    ///
+    /// While the server has muted us (`server_muted`), the publication is never unmuted here and
+    /// the gate stays shut: only the server's own unmute lifts it.
     fn apply_mic_state(&self) {
+        // The SDK's mute and unmute spawn on the ambient runtime, and callers can be UI threads.
+        let _enter = self.runtime.enter();
+        let server_muted = self.server_muted.load(Ordering::SeqCst);
         let (open, threshold) = {
             let wanted = lock(&self.wanted);
             let threshold = if wanted.ptt_mode {
@@ -1313,21 +1405,63 @@ impl Inner {
             };
             (wanted.mic_open(), threshold)
         };
-        self.mic_gate.store(open, Ordering::Relaxed);
+        self.mic_gate
+            .store(open && !server_muted, Ordering::Relaxed);
         self.vad_threshold
             .store(u32::from(threshold), Ordering::Relaxed);
         let Some(room) = self.current_room() else {
             return;
         };
+        let want_muted = !open || server_muted;
+        // Recorded first, so `run_room` can tell our changes (and a state we hold, such as during
+        // a server mute) from the server's.
+        self.mic_asked_muted.store(want_muted, Ordering::SeqCst);
         for publication in room.local_participant().track_publications().values() {
-            if publication.source() == TrackSource::Microphone && publication.is_muted() == open {
-                if open {
-                    publication.unmute();
-                } else {
+            if publication.source() == TrackSource::Microphone
+                && publication.is_muted() != want_muted
+            {
+                if want_muted {
                     publication.mute();
+                } else {
+                    publication.unmute();
                 }
             }
         }
+    }
+
+    /// A mute or unmute of our mic's publication that we didn't ask for is the server's (the
+    /// backend's `mutePublishedTrack`): the SDK applies it to the publication and reports it like
+    /// ours. So: the publication is muted now but we last asked for it unmuted, or the other way
+    /// round. (The SDK reports each of our changes more than once, and a late copy of ours finds
+    /// the publication already changed back, so neither is mistaken for the server.) A server mute
+    /// while we have it muted anyway isn't seen here; core's presence covers it
+    /// (`set_server_muted`). LiveKit refuses a server *unmute* unless `room.enable_remote_unmute`
+    /// is set, so usually only the mute is seen.
+    fn on_local_mic_mute(&self, now_muted: bool) {
+        let asked_muted = self.mic_asked_muted.load(Ordering::SeqCst);
+        if now_muted == asked_muted {
+            return;
+        }
+        log::info!(
+            "the server {} our mic",
+            if now_muted { "muted" } else { "unmuted" }
+        );
+        self.apply_server_mute(now_muted);
+    }
+
+    /// A server mute mutes the mic as the user's mute does (the web's `setMicrophoneEnabled(false)`)
+    /// and holds the publication muted and the gate shut until it's lifted. Lifting it leaves the
+    /// mic muted: the user unmutes.
+    fn apply_server_mute(&self, server_muted: bool) {
+        self.server_muted.store(server_muted, Ordering::SeqCst);
+        if server_muted {
+            let mut wanted = lock(&self.wanted);
+            wanted.muted = true;
+            // Undeafening mustn't bring back a mic the server shut.
+            wanted.muted_before_deafen = true;
+        }
+        self.apply_mic_state();
+        self.publish_snapshot();
     }
 
     /// `{ isDeafened }` in the participant metadata is what the web client's tiles read.
@@ -1646,8 +1780,8 @@ impl Inner {
                 camera: own_camera,
                 screen_share: own_screen,
                 quality: quality_view(local.connection_quality()),
-                // Presence knows a server mute; core merges it.
-                server_muted: false,
+                // Presence knows a server mute and core merges it; the engine also sees its own.
+                server_muted: self.server_muted.load(Ordering::SeqCst),
                 volume_percent: 100,
             }];
             snapshot.local_quality = quality_view(local.connection_quality());
@@ -1795,7 +1929,7 @@ async fn publish_system_audio(
     room: &Room,
     source: NativeAudioSource,
     sid: &Mutex<Option<String>>,
-) -> Result<(), String> {
+) -> Result<TrackSid, String> {
     *lock(sid) = None;
     let track =
         LocalAudioTrack::create_audio_track("screen_share_audio", RtcAudioSource::Native(source));
@@ -1816,7 +1950,7 @@ async fn publish_system_audio(
         .await
         .map_err(|error| error.to_string())?;
     *lock(sid) = Some(publication.sid().to_string());
-    Ok(())
+    Ok(publication.sid())
 }
 
 /// The web's soundboard track: `Source.Unknown`, found by its name; no DTX or RED, as there.
@@ -1869,8 +2003,40 @@ async fn pump_track_audio(track: RemoteAudioTrack, mut input: MixerInput) {
 
 /// The soundboard, and what the debug panel reads.
 impl Inner {
+    fn soundboard_generation(&self) -> u64 {
+        let _playing = lock(&self.soundboard);
+        self.soundboard_generation.load(Ordering::SeqCst)
+    }
+
+    /// Publishes the `soundboard` track into `room` unless it's there already.
+    async fn ensure_soundboard_track(
+        &self,
+        room: &Room,
+        source: NativeAudioSource,
+    ) -> Result<(), String> {
+        let _once = self.soundboard_publish.lock().await;
+        if soundboard_published(room) {
+            return Ok(());
+        }
+        publish_soundboard(room, source).await
+    }
+
+    /// Stops what plays and cancels a play still starting. True if one was playing.
+    fn cancel_soundboard(&self) -> bool {
+        let mut playing = lock(&self.soundboard);
+        self.soundboard_generation.fetch_add(1, Ordering::SeqCst);
+        let Some(stopped) = playing.take() else {
+            return false;
+        };
+        stopped.task.abort();
+        self.mixer.remove_input(SOUNDBOARD_MONITOR);
+        true
+    }
+
+    /// `generation` is `soundboard_generation()` when the play was asked for.
     async fn play_soundboard(
         self: Arc<Self>,
+        generation: u64,
         sound_id: String,
         bytes: Vec<u8>,
     ) -> Result<(), String> {
@@ -1896,23 +2062,30 @@ impl Inner {
                 NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 100)
             })
             .clone();
-        if !soundboard_published(&room) {
-            publish_soundboard(&room, source.clone())
-                .await
-                .map_err(|error| format!("the call refused the soundboard: {error}"))?;
-        }
-        if self
-            .current_room()
-            .is_none_or(|current| !Arc::ptr_eq(&current, &room))
+        self.ensure_soundboard_track(&room, source.clone())
+            .await
+            .map_err(|error| format!("the call refused the soundboard: {error}"))?;
         {
-            return Err("the call ended while the sound was starting".into());
-        }
-        self.stop_soundboard_quietly();
-        let id = self.next_sound.fetch_add(1, Ordering::Relaxed);
-        let monitor = self.mixer.add_input(SOUNDBOARD_MONITOR, SOUNDBOARD_MONITOR);
-        {
-            // Held while spawning, so a sound that ends at once can't end before it's recorded.
+            // The checks, the start and the record all under this lock, which a stop and a leave
+            // (`clear_media`) take too: either they see this sound and stop it, or it sees them.
+            // Held while spawning, too, so a sound that ends at once can't end before it's
+            // recorded.
             let mut playing = lock(&self.soundboard);
+            if self
+                .current_room()
+                .is_none_or(|current| !Arc::ptr_eq(&current, &room))
+            {
+                return Err("the call ended while the sound was starting".into());
+            }
+            if self.soundboard_generation.load(Ordering::SeqCst) != generation {
+                // Stopped before it started: that's what was asked for.
+                return Ok(());
+            }
+            if let Some(previous) = playing.take() {
+                previous.task.abort();
+            }
+            let id = self.next_sound.fetch_add(1, Ordering::Relaxed);
+            let monitor = self.mixer.add_input(SOUNDBOARD_MONITOR, SOUNDBOARD_MONITOR);
             let weak = self.me.clone();
             let task = self.runtime.spawn(async move {
                 soundboard::play(source, sound, monitor).await;
@@ -1926,18 +2099,8 @@ impl Inner {
         Ok(())
     }
 
-    /// Stops what plays, without a report.
-    fn stop_soundboard_quietly(&self) -> bool {
-        let Some(playing) = lock(&self.soundboard).take() else {
-            return false;
-        };
-        playing.task.abort();
-        self.mixer.remove_input(SOUNDBOARD_MONITOR);
-        true
-    }
-
     fn stop_soundboard(&self) {
-        if self.stop_soundboard_quietly() {
+        if self.cancel_soundboard() {
             self.publish_snapshot();
         }
     }

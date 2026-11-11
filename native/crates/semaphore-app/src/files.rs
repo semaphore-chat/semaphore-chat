@@ -478,6 +478,19 @@ impl MediaSource for AppMedia {
     }
 }
 
+/// Creates `directory` (and its parents) for this user only: mode 0700 on Unix. Used for files
+/// the app writes on the user's behalf outside a save dialog.
+pub fn create_private_dir(directory: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(directory)
+}
+
 /// A server's file name, made safe to suggest in a save dialog: the last path component only, no
 /// leading dots, no control characters, at most 100 characters.
 pub fn safe_file_name(name: &str) -> String {

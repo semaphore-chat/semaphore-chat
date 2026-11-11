@@ -86,8 +86,8 @@ impl Decoder {
     pub(super) fn new(head: Head) -> Result<Self, DecodeError> {
         let mut error: c_int = 0;
         // SAFETY: plain values in, and `error` outlives the call.
-        let state =
-            unsafe { opus_decoder_create(RATE as i32, c_int::from(head.channels), &mut error) };
+        // Always to mono: libopus mixes a stereo stream down itself, so no stereo copy is made.
+        let state = unsafe { opus_decoder_create(RATE as i32, 1, &mut error) };
         if state.is_null() || error != 0 {
             if !state.is_null() {
                 // SAFETY: as in `drop`.
@@ -100,7 +100,7 @@ impl Decoder {
         Ok(Self {
             state,
             head,
-            pcm: vec![0; MAX_FRAME * usize::from(head.channels)],
+            pcm: vec![0; MAX_FRAME],
             out: Vec::new(),
             skip: usize::from(head.pre_skip),
         })
@@ -122,12 +122,11 @@ impl Decoder {
         if frames <= 0 || frames as usize > MAX_FRAME {
             return Err(DecodeError::Invalid("an Opus packet is damaged".into()));
         }
-        let channels = usize::from(self.head.channels);
-        if (self.out.len() / channels) + frames as usize > MAX_SECONDS as usize * RATE as usize {
+        if self.out.len() + frames as usize > MAX_SECONDS as usize * RATE as usize {
             return Err(DecodeError::TooLong);
         }
-        // SAFETY: `pcm` holds `MAX_FRAME * channels` samples, the most `frame_size = MAX_FRAME`
-        // lets libopus write, and `packet` is valid for `len` bytes.
+        // SAFETY: `pcm` holds `MAX_FRAME` mono samples, the most `frame_size = MAX_FRAME` lets a
+        // one-channel decoder write, and `packet` is valid for `len` bytes.
         let decoded = unsafe {
             opus_decode(
                 self.state,
@@ -146,28 +145,25 @@ impl Decoder {
         self.skip -= drop_front;
         let gain = self.head.gain;
         self.out.extend(
-            self.pcm[drop_front * channels..decoded * channels]
+            self.pcm[drop_front..decoded]
                 .iter()
                 .map(|&sample| f32::from(sample) / 32_768.0 * gain),
         );
         Ok(())
     }
 
-    /// The sound, cut to `total` samples per channel when the container says where it ends.
+    /// The sound, in mono, cut to `total` samples when the container says where it ends.
     pub(super) fn finish(mut self, total: Option<u64>) -> Result<Pcm, DecodeError> {
-        let channels = usize::from(self.head.channels);
         if let Some(total) = total {
-            let keep = usize::try_from(total)
-                .unwrap_or(usize::MAX)
-                .saturating_mul(channels);
-            self.out.truncate(keep);
+            self.out
+                .truncate(usize::try_from(total).unwrap_or(usize::MAX));
         }
         if self.out.is_empty() {
             return Err(DecodeError::Invalid("it has no audio".into()));
         }
         Ok(Pcm {
             sample_rate: RATE,
-            channels: self.head.channels,
+            channels: 1,
             samples: std::mem::take(&mut self.out),
         })
     }
