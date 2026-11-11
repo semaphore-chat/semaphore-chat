@@ -477,9 +477,14 @@ pub(crate) fn flush(inner: &Inner, emits: Vec<Emit>) {
 
 /// The `friend_request_as` control: `from` asks the signed-in user to be friends, as their own
 /// client's `sendFriendRequest` would. Like the backend, nothing goes over the socket: the request
-/// shows when the friends list is read next. `Err` if `from` isn't a user, is `me`, or a row
+/// shows when the friends list is read next. `id`, when given, is the readable id the row is served
+/// as (`entity_uuid`), so a script can name it. `Err` if `from` isn't a user, is `me`, or a row
 /// between them exists already.
-pub(crate) fn friend_request_as(inner: &Inner, from: &str) -> Result<String, &'static str> {
+pub(crate) fn friend_request_as(
+    inner: &Inner,
+    from: &str,
+    id: Option<&str>,
+) -> Result<String, &'static str> {
     let me = inner.scenario.me.clone();
     let Some(other) = inner.scenario.user(from).cloned() else {
         return Err("fromId is not a user of the scenario");
@@ -496,7 +501,10 @@ pub(crate) fn friend_request_as(inner: &Inner, from: &str) -> Result<String, &'s
     if exists {
         return Err("a friendship or request between them exists already");
     }
-    let id = data.social.new_id("friendship");
+    let id = match id {
+        Some(readable) => entity_uuid(readable),
+        None => data.social.new_id("friendship"),
+    };
     data.social.friendships.push(FriendshipWithUsersDto {
         created_at: now,
         id: id.clone(),

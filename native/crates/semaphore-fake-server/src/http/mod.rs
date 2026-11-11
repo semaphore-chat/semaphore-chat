@@ -318,7 +318,8 @@ async fn control(
             let Some(from) = request.get("fromId").and_then(Value::as_str) else {
                 return invalid("fromId is required");
             };
-            return match crate::social::friend_request_as(&inner, from) {
+            let id = request.get("id").and_then(Value::as_str);
+            return match crate::social::friend_request_as(&inner, from, id) {
                 Ok(id) => json_response(StatusCode::OK, json!({ "id": id })),
                 Err(message) => invalid(message),
             };

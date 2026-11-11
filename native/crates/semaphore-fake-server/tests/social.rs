@@ -1587,10 +1587,11 @@ async fn control_friend_request_as_is_a_received_request_me_can_accept() {
         &client,
         &base,
         "/__control/friend_request_as",
-        json!({ "fromId": id("u-zara") }),
+        json!({ "fromId": id("u-zara"), "id": "w2-zara" }),
     )
     .await;
     assert_eq!(status, 200, "{made}");
+    assert_eq!(made["id"], id("w2-zara"), "served as the readable id given");
     // As the backend: no socket event; the list shows it.
     let heard = settle(&server, &mut [&mut me]).await;
     assert!(heard[0].is_empty(), "{:?}", heard[0]);
