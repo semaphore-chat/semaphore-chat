@@ -1,0 +1,131 @@
+# W4: calls in the real app, against the showcase scenario (alexk), with no LiveKit: rings,
+# declining and expiring them, the DM header's call buttons, the voice debug panel, the settings
+# mic test and voice activity. Voice itself is in voice-w4.steps (`slice-e2e.sh --voice`).
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+# The app holds no sleep inhibitor outside a call.
+expect core keep-awake off
+
+# 1. Priya calls: the banner, and the ring until it's declined. Declining tells nobody.
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing yes
+wait core element incoming-call
+wait core ring looping
+expect core cue ring-start 1
+wait idle
+shot 01-ringing
+click incoming-decline
+wait core ringing no
+wait core ring stopped
+wait core no-element incoming-call
+expect core cue ring-stop 1
+expect core voice room none
+
+# 2. She gives up before anyone answers: the ring stops with her.
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing yes
+wait core ring looping
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing no
+wait core ring stopped
+
+# 3. Nobody answers: 30 s later it stops by itself (the app's timer, by core's clock). The last
+# ring's presence reads settle first.
+wait idle
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing yes
+tick 29000
+expect core ringing yes
+tick 1500
+wait core ringing no
+wait core ring stopped
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+
+# 4. A group calls, then Priya: one ring at a time, the newest. The group's banner says so.
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-launch)\", \"userId\": \"$ID(u-samira)\"}"
+wait core ringing $ID(dm-launch)
+wait core element incoming-call
+wait idle
+shot 02-ringing-group
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing $ID(dm-priya)
+wait core ring looping
+
+# 5. Answering opens her conversation and asks for the DM's call token. There's no LiveKit here,
+# so the join itself fails; the ring has stopped all the same.
+click incoming-accept
+wait core ringing no
+wait core ring stopped
+wait core route dm/$ID(dm-priya)
+wait core requests LivekitController_generateDmToken >= 1
+wait core voice disconnected within 30
+expect core keep-awake off
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-launch)\", \"userId\": \"$ID(u-samira)\"}"
+
+# 6. The DM header's call buttons, out of a call.
+wait core element dm-call-voice
+wait core element dm-call-video
+wait idle
+shot 03-dm-header-call
+
+# 7. The voice debug panel (Ctrl+Shift+D): the last join's failure, a report to copy, closed again.
+press ctrl-shift-d
+wait core dialog debug open
+wait idle
+shot 04-live-debug-panel
+click voice-debug-copy
+expect clipboard "Semaphore voice diagnostics"
+click voice-debug-close
+wait core dialog debug closed
+press ctrl-shift-d
+wait core dialog debug open
+press ctrl-shift-d
+wait core dialog debug closed
+
+# 8. Settings, voice: the mic test's meter follows the (virtual) mic, and stops with the test.
+# Voice activity's threshold reaches the engine.
+click rail-account
+click account-settings
+click settings-tab-voice
+wait core route settings/voice
+wait core engine vad 0
+mic tone on
+click voice-mic-test
+wait core mic-test running
+wait core mic-level heard
+wait idle
+shot 05-live-mic-test
+click voice-mic-test
+wait core mic-test stopped
+mic tone off
+# Leaving the tab ends a test left running.
+click voice-mic-test
+wait core mic-test running
+click settings-tab-notifications
+wait core mic-test stopped
+
+# 9. Signing out while it rings: the ring stops, and the banner goes with the session.
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ring looping
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core ring stopped
+wait core no-element incoming-call

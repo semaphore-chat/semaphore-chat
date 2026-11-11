@@ -1,9 +1,10 @@
 //! The channel sidebar: `CommunityPage`'s header, `ChannelList` and `ChannelRow`.
 
 use super::{Load, Shell, ShellEvent, community_avatar, error_state, user_avatar};
-use crate::kit::{Badge, Icon, IconButton, Skeleton, Variant, spacing, text};
+use crate::kit::{Badge, Icon, IconButton, Skeleton, Variant, spacing, text, with_tip};
 use crate::nav::Route;
 use crate::theme::{SemTheme, color::hsla_of};
+use crate::voice::{VoiceBadgeKind, voice_badges};
 use gpui_kit::base;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
@@ -535,16 +536,25 @@ fn voice_user_row(
         .display_name
         .clone()
         .unwrap_or_else(|| user.username.clone());
-    let (muted, deafened) = participant.map_or((false, false), |p| (p.muted, p.deafened));
+    // The tiles' badges (`voice_badges`): a moderator's mute wins over a self-mute.
+    let badges = participant.map(voice_badges).unwrap_or_default();
+    let has = |kind: VoiceBadgeKind| badges.iter().any(|badge| badge.kind == kind);
+    let deafened = has(VoiceBadgeKind::Deafened);
+    let server_muted = has(VoiceBadgeKind::ServerMuted);
+    let muted = server_muted || has(VoiceBadgeKind::Muted);
     let hover = sem.action_hover;
     let (negative, primary, secondary) = (sem.negative, sem.text_primary, sem.text_secondary);
     let id = ElementId::Name(format!("voice-user-{channel_id}-{}", user.id).into());
     let mut label = name.clone();
-    if deafened {
-        label.push_str(", deafened");
-    } else if muted {
-        label.push_str(", muted");
+    for badge in &badges {
+        label.push_str(", ");
+        label.push_str(&badge.label.to_lowercase());
     }
+    let user_id = user.id.clone();
+    let mark_tip = badges
+        .iter()
+        .find(|badge| badge.kind != VoiceBadgeKind::Muted || badges.len() == 1)
+        .map(|badge| badge.label);
     base::Button::new(id)
         .accessibility_label(label)
         .relative()
@@ -601,14 +611,33 @@ fn voice_user_row(
                 ),
         )
         .when(deafened || muted, |row| {
-            row.child(
-                Icon::new(if deafened {
-                    IconName::VolumeOff
-                } else {
-                    IconName::MicOff
-                })
-                .size(16.)
-                .color(negative),
-            )
+            let mark = div()
+                .id(ElementId::Name(
+                    format!(
+                        "voice-user-{}-{}",
+                        if server_muted {
+                            "server-muted"
+                        } else {
+                            "muted"
+                        },
+                        user_id
+                    )
+                    .into(),
+                ))
+                .test_support()
+                .flex_shrink_0()
+                .child(
+                    Icon::new(if deafened && !server_muted {
+                        IconName::VolumeOff
+                    } else {
+                        IconName::MicOff
+                    })
+                    .size(16.)
+                    .color(negative),
+                );
+            match mark_tip {
+                Some(tip) => row.child(with_tip(mark, tip)),
+                None => row.child(mark),
+            }
         })
 }

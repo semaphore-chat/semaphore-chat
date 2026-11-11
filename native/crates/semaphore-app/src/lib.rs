@@ -135,6 +135,7 @@ pub fn init(cx: &mut App) {
     gpui_kit::init(cx);
     semaphore_ui::theme::init(cx);
     semaphore_ui::messages::init(cx);
+    root::calls::init(cx);
 }
 
 /// What every window that shows the app needs: lists and video are read in unfocused windows, so

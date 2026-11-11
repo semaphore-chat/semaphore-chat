@@ -9,6 +9,7 @@ use crate::dms::face::user_face;
 use crate::dms::names::user_name;
 use crate::kit::{Action, Icon, Spinner, Variant, reduced_motion, text, with_tip};
 use crate::theme::SemTheme;
+use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{IncomingCallView, VoiceRoom, VoiceStatus, VoiceView};
@@ -55,6 +56,7 @@ fn round_action(
 ) -> impl IntoElement {
     let button = div()
         .id(id)
+        .test_support()
         .size(px(size))
         .flex_shrink_0()
         .rounded_full()
@@ -99,6 +101,7 @@ pub fn incoming_call_banner(
     let busy = props.accepting;
     let banner = div()
         .id("incoming-call")
+        .test_support()
         .role(Role::Alert)
         .aria_label(format!(
             "{name}: {}",
@@ -243,6 +246,7 @@ fn call_button(
     let primary = sem.primary;
     let button = div()
         .id(id)
+        .test_support()
         .size(px(34.))
         .flex_shrink_0()
         .rounded_full()

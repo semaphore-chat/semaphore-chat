@@ -11,7 +11,7 @@ use super::theme::{self, alpha};
 use crate::kit::{Icon, with_tip};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::VoiceStatus;
+use semaphore_core::model::{ReplayState, VoiceStatus};
 use semaphore_design::Icon as IconName;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -122,6 +122,51 @@ fn share_button(
         button = button.border_2().border_color(theme::error_main());
     }
     button.role(Role::Button).aria_label(label).test_support()
+}
+
+/// W4: the replay buffer's recording dot over a button's top-right corner (the web's pulsing
+/// `FiberManualRecord` badge, held still here).
+fn with_recording_dot(button: impl IntoElement, recording: bool) -> impl IntoElement {
+    div()
+        .relative()
+        .flex_shrink_0()
+        .child(button)
+        .when(recording, |wrap| {
+            wrap.child(
+                div()
+                    .id("voice-recording-dot")
+                    .test_support()
+                    .absolute()
+                    .top(px(4.))
+                    .right(px(4.))
+                    .size(px(8.))
+                    .rounded_full()
+                    .bg(theme::positive()),
+            )
+        })
+}
+
+/// W4: Capture, while the replay buffer records (the web's success-coloured `MovieCreation`).
+fn capture_button(controller: Arc<dyn VoiceController>) -> impl IntoElement {
+    let label = "Capture Replay";
+    with_tip(
+        round_button(
+            "voice-capture",
+            icons::MOVIE_CREATION,
+            ButtonStyle {
+                icon: theme::positive(),
+                fill: None,
+                hover: alpha(theme::positive(), 0.25),
+                disabled: false,
+            },
+            false,
+            move |_, _, _| controller.open_capture(),
+        )
+        .role(Role::Button)
+        .aria_label(label)
+        .test_support(),
+        label,
+    )
 }
 
 fn vertical_divider() -> impl IntoElement {
@@ -448,6 +493,9 @@ pub(super) fn voice_bar(
         move || screen_controller.toggle_screen_share(),
     );
 
+    let recording = matches!(voice.replay, ReplayState::Recording { .. });
+    let sharing = screen_look == ShareLook::On;
+
     let leave_controller = controller.clone();
     let leave = round_button(
         "voice-leave",
@@ -493,7 +541,8 @@ pub(super) fn voice_bar(
         controls = controls.children(soundboard);
         // Screen share lives in "more" here: there's no room for it on a phone-width bar.
         let more_controller = controller.clone();
-        controls = controls.child(
+        // The dot says the share (and its replay) is in "more", as the web's badge does.
+        controls = controls.child(with_recording_dot(
             round_button(
                 "voice-more",
                 icons::MORE_HORIZ,
@@ -504,10 +553,16 @@ pub(super) fn voice_bar(
             .role(Role::Button)
             .aria_label("More call options")
             .test_support(),
-        );
+            sharing || recording,
+        ));
     } else {
         controls = controls
-            .child(screen)
+            .child(with_recording_dot(screen, recording))
+            .when(recording, |controls| {
+                controls
+                    .child(vertical_divider())
+                    .child(capture_button(controller.clone()))
+            })
             .children(soundboard)
             .child(vertical_divider())
             .child(

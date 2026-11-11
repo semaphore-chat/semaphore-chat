@@ -55,7 +55,13 @@
 //! reached the window) and `players-open N` (players holding an open file).
 //!
 //! W4's conditions: `replay off|starting|recording|failed`, `clips N` (the open profile page's
-//! library), `dialog capture|share|participant-menu|kick|debug open|closed`. `tick N` also moves
+//! library), `dialog capture|share|participant-menu|kick|debug open|closed`, `ringing yes|no|DM_ID`,
+//! `ring looping|stopped` (the ring's sound), `cue NAME N` (core asked for the cue at least N
+//! times: joined, left, connected, disconnected, ring-start, ring-stop, call-ended), `voice room
+//! none|dm ID|channel ID`, `voice server-muted yes|no`, `keep-awake on|off` (the rig's inhibitor),
+//! `mic-test running|stopped`, `mic-level heard`, `engine vad N`, `soundboard playing ID|none`,
+//! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `float shown|hidden`. The step
+//! `mic tone on|off` makes the virtual mic play a tone. `tick N` also moves
 //! the scenario clock core reads by N, so the app's timers for core's deadlines fire due.
 //!
 //! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
@@ -293,6 +299,64 @@ enum W4 {
     Clips(usize),
     /// `dialog capture|share|participant-menu|debug|kick open|closed`.
     Dialog(String, bool),
+    /// `ringing yes|no`: core has a call ringing for me; `ringing ID`: this DM's.
+    Ringing(bool),
+    RingingFor(String),
+    /// `ring looping|stopped`: the app's ring sound.
+    RingSound(bool),
+    /// `cue NAME N`: core asked for this sound cue at least N times
+    /// (`joined|left|connected|disconnected|ring-start|ring-stop|call-ended`).
+    Cue(String, usize),
+    /// `voice room none|dm ID|channel ID`.
+    Room(String, Option<String>),
+    /// `voice server-muted yes|no`: a moderator muted me.
+    ServerMuted(bool),
+    /// `keep-awake on|off`: what the app last asked of the (recording) inhibitor.
+    KeepAwake(bool),
+    /// `mic-test running|stopped`, and `mic-level heard`: the test's meter is above silence.
+    MicTest(bool),
+    MicLevelHeard,
+    /// `engine vad N`: the voice-activity threshold the app gave the engine.
+    EngineVad(u8),
+    /// `soundboard playing ID|none`: the engine's sound in my call (`LocalMediaView::soundboard`).
+    SoundboardPlaying(Option<String>),
+    /// `livekit track ROOM IDENTITY NAME`: LiveKit's server lists that participant publishing a
+    /// track by that name (needs --livekit-http).
+    LiveKitTrack {
+        room: String,
+        identity: String,
+        name: String,
+    },
+    /// `float shown|hidden`: the float card over the middle column.
+    Float(bool),
+}
+
+/// The sound cue a `cue NAME` names.
+fn cue_named(name: &str) -> Result<semaphore_core::model::SoundCue> {
+    use semaphore_core::model::SoundCue;
+    Ok(match name {
+        "joined" => SoundCue::UserJoined,
+        "left" => SoundCue::UserLeft,
+        "connected" => SoundCue::Connected,
+        "disconnected" => SoundCue::Disconnected,
+        "ring-start" => SoundCue::IncomingRingStart,
+        "ring-stop" => SoundCue::IncomingRingStop,
+        "call-ended" => SoundCue::CallEnded,
+        _ => bail!("unknown sound cue {name}"),
+    })
+}
+
+/// The inhibitor in the rig: it only remembers. Never the machine's.
+#[derive(Default)]
+struct RigKeepAwake {
+    on: std::sync::atomic::AtomicBool,
+}
+
+impl semaphore_core::platform::KeepAwake for RigKeepAwake {
+    fn set(&self, on: bool) -> Result<(), CoreError> {
+        self.on.store(on, std::sync::atomic::Ordering::Relaxed);
+        Ok(())
+    }
 }
 
 /// The element each `dialog NAME` is drawn as.
@@ -402,6 +466,8 @@ enum Step {
         value: String,
     },
     ExpectLinkRegistrations(usize),
+    /// W4: `mic tone on|off`.
+    MicTone(bool),
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -510,6 +576,40 @@ fn condition(words: &[&str]) -> Result<Condition> {
             state @ ("off" | "starting" | "recording" | "failed"),
         ] => Condition::W4(W4::Replay((*state).into())),
         ["clips", count] => Condition::W4(W4::Clips(number(count)?)),
+        ["ringing", yes @ ("yes" | "no")] => Condition::W4(W4::Ringing(*yes == "yes")),
+        ["ringing", dm] => Condition::W4(W4::RingingFor((*dm).into())),
+        ["ring", state @ ("looping" | "stopped")] => {
+            Condition::W4(W4::RingSound(*state == "looping"))
+        }
+        ["cue", name, count] => {
+            cue_named(name)?;
+            Condition::W4(W4::Cue((*name).into(), number(count)?))
+        }
+        ["voice", "room", "none"] => Condition::W4(W4::Room("none".into(), None)),
+        ["voice", "room", kind @ ("dm" | "channel"), id] => {
+            Condition::W4(W4::Room((*kind).into(), Some((*id).into())))
+        }
+        ["voice", "server-muted", yes @ ("yes" | "no")] => {
+            Condition::W4(W4::ServerMuted(*yes == "yes"))
+        }
+        ["keep-awake", on @ ("on" | "off")] => Condition::W4(W4::KeepAwake(*on == "on")),
+        ["mic-test", state @ ("running" | "stopped")] => {
+            Condition::W4(W4::MicTest(*state == "running"))
+        }
+        ["mic-level", "heard"] => Condition::W4(W4::MicLevelHeard),
+        ["engine", "vad", threshold] => Condition::W4(W4::EngineVad(
+            threshold
+                .parse()
+                .map_err(|_| anyhow!("{threshold} is not a threshold"))?,
+        )),
+        ["soundboard", "playing", "none"] => Condition::W4(W4::SoundboardPlaying(None)),
+        ["soundboard", "playing", id] => Condition::W4(W4::SoundboardPlaying(Some((*id).into()))),
+        ["livekit", "track", room, identity, name] => Condition::W4(W4::LiveKitTrack {
+            room: (*room).into(),
+            identity: (*identity).into(),
+            name: (*name).into(),
+        }),
+        ["float", state @ ("shown" | "hidden")] => Condition::W4(W4::Float(*state == "shown")),
         ["dialog", name, state @ ("open" | "closed")] => {
             dialog_element(name)?;
             Condition::W4(W4::Dialog((*name).into(), *state == "open"))
@@ -610,6 +710,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
             ["link", url] => Step::Link((*url).into()),
             ["forget", "sounds"] => Step::ForgetSounds,
+            ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
             ["browser", "approve"] => Step::BrowserApprove,
@@ -808,6 +909,10 @@ struct Rig {
     links: Arc<RigLinks>,
     /// What `tick` has added to the scenario clock, kept across restarts.
     ticked_ms: Arc<std::sync::atomic::AtomicU64>,
+    /// What the app asked of the system's sleep inhibitor, instead of the system.
+    keep_awake: Arc<RigKeepAwake>,
+    /// `mic tone on`: the virtual mic plays a tone instead of silence.
+    tone: Arc<std::sync::atomic::AtomicBool>,
 }
 
 /// The link handler in the rig: not registered until asked, then registered. Touches nothing.
@@ -953,6 +1058,8 @@ impl Rig {
             picks: Rc::default(),
             links: Arc::default(),
             ticked_ms: Arc::default(),
+            keep_awake: Arc::default(),
+            tone: Arc::default(),
         }
     }
 
@@ -1068,8 +1175,8 @@ impl Rig {
                 })
             }),
             links: Some(self.links.clone()),
-            // Never the machine's sleep inhibitor. W4-app adds the recorder.
-            keep_awake: None,
+            // Never the machine's sleep inhibitor: one that only remembers.
+            keep_awake: Some(self.keep_awake.clone()),
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
@@ -1104,6 +1211,20 @@ impl Rig {
             let loud = frame.iter().filter(|&&sample| sample != 0).count();
             heard.fetch_add(loud, std::sync::atomic::Ordering::Relaxed);
         }));
+        // `mic tone on`: 440 Hz at a third of full scale, for the mic test and voice activity.
+        let tone = self.tone.clone();
+        let mut phase = 0f32;
+        io.set_mic(Box::new(move |frame: &mut [i16]| {
+            let on = tone.load(std::sync::atomic::Ordering::Relaxed);
+            for sample in frame.iter_mut() {
+                *sample = if on {
+                    (phase.sin() * 10_000.) as i16
+                } else {
+                    0
+                };
+                phase = (phase + std::f32::consts::TAU * 440. / 48_000.) % std::f32::consts::TAU;
+            }
+        }));
         io
     }
 
@@ -1132,6 +1253,32 @@ impl Rig {
             let found = self.driver.query(|window| window.try_find(id).is_some())?;
             return Ok(found == *open);
         }
+        if let W4::LiveKitTrack {
+            room,
+            identity,
+            name,
+        } = condition
+        {
+            return self.livekit_has_track(room, identity, name);
+        }
+        if let W4::KeepAwake(on) = condition {
+            return Ok(self
+                .keep_awake
+                .on
+                .load(std::sync::atomic::Ordering::Relaxed)
+                == *on);
+        }
+        if let W4::Float(shown) = condition {
+            let found = self.driver.query(|window| {
+                window
+                    .try_find(ElementId::Name("float-card".into()))
+                    .is_some()
+                    || window
+                        .try_find(ElementId::Name("float-pill".into()))
+                        .is_some()
+            })?;
+            return Ok(found == *shown);
+        }
         let app = self.app()?.clone();
         self.driver.cx.update(|cx| {
             let root = app.read(cx);
@@ -1139,6 +1286,30 @@ impl Rig {
                 return Ok(false);
             };
             Ok(match condition {
+                W4::Ringing(yes) => core.incoming_call().is_some() == *yes,
+                W4::RingingFor(dm) => core
+                    .incoming_call()
+                    .is_some_and(|call| call.dm_group_id == *dm),
+                W4::RingSound(looping) => root.ringing() == *looping,
+                W4::Cue(name, count) => root.cue_played(cue_named(name)?) >= *count,
+                W4::Room(kind, id) => {
+                    use semaphore_core::model::VoiceRoom;
+                    match (kind.as_str(), core.voice().room) {
+                        ("none", None) => true,
+                        ("dm", Some(VoiceRoom::Dm { dm_group_id })) => Some(dm_group_id) == *id,
+                        ("channel", Some(VoiceRoom::Channel { channel_id, .. })) => {
+                            Some(channel_id) == *id
+                        }
+                        _ => false,
+                    }
+                }
+                W4::ServerMuted(yes) => core.voice().server_muted == *yes,
+                W4::MicTest(running) => root.mic_test_level().is_some() == *running,
+                W4::MicLevelHeard => root.mic_test_level().is_some_and(|level| level > 0.),
+                W4::EngineVad(threshold) => root.app_voice().is_some_and(|voice| {
+                    voice.vad_applied.load(std::sync::atomic::Ordering::Relaxed) == *threshold
+                }),
+                W4::SoundboardPlaying(id) => core.voice().local.soundboard == *id,
                 W4::Replay(state) => {
                     let now = core.voice().replay;
                     match state.as_str() {
@@ -1167,7 +1338,9 @@ impl Rig {
                     };
                     view.clips.len() == *count
                 }
-                W4::Dialog(..) => unreachable!("answered above"),
+                W4::Dialog(..) | W4::LiveKitTrack { .. } | W4::KeepAwake(_) | W4::Float(_) => {
+                    unreachable!("answered above")
+                }
             })
         })
     }
@@ -1839,6 +2012,30 @@ impl Rig {
         Ok(())
     }
 
+    /// LiveKit's server API: does `identity` in `room` publish a track named `name`?
+    fn livekit_has_track(&self, room: &str, identity: &str, name: &str) -> Result<bool> {
+        let livekit = self
+            .livekit
+            .as_ref()
+            .ok_or_else(|| anyhow!("--livekit-http is needed for livekit conditions"))?;
+        let token = livekit.admin_token(room);
+        let body = serde_json::json!({ "room": room }).to_string();
+        let listed = http_with(
+            &livekit.url,
+            "POST",
+            "/twirp/livekit.RoomService/ListParticipants",
+            &body,
+            Some(&token),
+        )?;
+        Ok(listed["participants"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|participant| participant["identity"] == identity)
+            .flat_map(|participant| participant["tracks"].as_array().into_iter().flatten())
+            .any(|track| track["name"] == name))
+    }
+
     fn livekit_remove(&self, room: &str, identity: &str) -> Result<()> {
         let livekit = self
             .livekit
@@ -1983,6 +2180,10 @@ impl Rig {
                     Ok(())
                 }
                 Step::Restart => self.restart(),
+                Step::MicTone(on) => {
+                    self.tone.store(*on, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }
                 Step::Tick(ms) => {
                     // Core's clock moves with GPUI's, so a timer the app set for core fires due.
                     self.ticked_ms

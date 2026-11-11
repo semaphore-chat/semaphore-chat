@@ -1,9 +1,12 @@
 //! The app's own sounds: the notification sounds the web plays (`useSound.ts`'s `channelMessage`,
-//! `directMessage` and `mention`), from the same WAV files.
+//! `directMessage` and `mention`) and W4's call cues core decides (`CoreEvent::Sound`: joins,
+//! leaves, connected, disconnected, the ring, call ended), from the same WAV files.
 //!
 //! - **Where they go:** through the call's [`AudioIo`] (cpal in the app, the rig's virtual device in
 //!   rigs and tests, so nothing there reaches a real speaker), on the output the voice settings
 //!   chose. Mono 48 kHz, as every `AudioIo` takes it.
+//! - **The ring** loops on a stream of its own, every 3.5 s as on the web, until core stops it, so
+//!   the other sounds neither cut it nor wait for it.
 //! - **One at a time:** a new sound stops the one playing. A stream is opened per sound and dropped
 //!   once it has played, so no device stays open between sounds.
 //! - **Never in the way:** [`Sounds::play`] only queues for the sounds' own thread (opening a device
@@ -12,14 +15,21 @@
 //! The WAV reader is ours and small: RIFF with a `fmt ` chunk of 16-bit integer PCM, any rate and
 //! channel count (mixed down, resampled linearly), which is what the bundled files are.
 
-use semaphore_core::model::NotifySound;
+use semaphore_core::model::{NotifySound, SoundCue};
 use semaphore_media_livekit::audio::{AudioIo, AudioStream, SAMPLE_RATE};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 const CHANNEL_MESSAGE: &[u8] = include_bytes!("../assets/sounds/pluck.wav");
 const DIRECT_MESSAGE: &[u8] = include_bytes!("../assets/sounds/asc-minor-third.wav");
 const MENTION: &[u8] = include_bytes!("../assets/sounds/asc-triad.wav");
+const USER_JOINED: &[u8] = include_bytes!("../assets/sounds/asc-fourth.wav");
+const USER_LEFT: &[u8] = include_bytes!("../assets/sounds/desc-fourth.wav");
+const CONNECTED: &[u8] = include_bytes!("../assets/sounds/asc-fifth.wav");
+const DISCONNECTED: &[u8] = include_bytes!("../assets/sounds/desc-fifth.wav");
+const INCOMING_CALL: &[u8] = include_bytes!("../assets/sounds/asc-arpeggio.wav");
+const CALL_ENDED: &[u8] = include_bytes!("../assets/sounds/desc-arpeggio.wav");
 
 /// The file a notification sound plays, as the web maps them.
 pub fn file_for(sound: NotifySound) -> &'static [u8] {
@@ -114,9 +124,50 @@ pub fn resample(samples: &[i16], from: u32, to: u32) -> Vec<i16> {
         .collect()
 }
 
+/// What the sounds' thread plays: a notification's sound or one of core's cues.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Sound {
+    Notify(NotifySound),
+    Cue(SoundCue),
+}
+
+/// Every sound with a file, for decoding once at the thread's start.
+const ALL: [Sound; 9] = [
+    Sound::Notify(NotifySound::Default),
+    Sound::Notify(NotifySound::Dm),
+    Sound::Notify(NotifySound::Mention),
+    Sound::Cue(SoundCue::UserJoined),
+    Sound::Cue(SoundCue::UserLeft),
+    Sound::Cue(SoundCue::Connected),
+    Sound::Cue(SoundCue::Disconnected),
+    Sound::Cue(SoundCue::IncomingRingStart),
+    Sound::Cue(SoundCue::CallEnded),
+];
+
+/// The file a sound plays, as the web's `useSound.ts` maps them. `IncomingRingStop` has none: it
+/// stops the ring.
+pub fn sound_file(sound: Sound) -> Option<&'static [u8]> {
+    Some(match sound {
+        Sound::Notify(sound) => file_for(sound),
+        Sound::Cue(SoundCue::UserJoined) => USER_JOINED,
+        Sound::Cue(SoundCue::UserLeft) => USER_LEFT,
+        Sound::Cue(SoundCue::Connected) => CONNECTED,
+        Sound::Cue(SoundCue::Disconnected) => DISCONNECTED,
+        Sound::Cue(SoundCue::IncomingRingStart) => INCOMING_CALL,
+        Sound::Cue(SoundCue::CallEnded) => CALL_ENDED,
+        Sound::Cue(SoundCue::IncomingRingStop) => return None,
+    })
+}
+
+/// How often the ring starts again while a call rings: the web's `RING_INTERVAL_MS`.
+pub const RING_PERIOD_MS: u64 = 3_500;
+
 /// A bundled sound, ready for an `AudioIo`.
-fn clip(sound: NotifySound) -> Arc<[i16]> {
-    match read_wav(file_for(sound)) {
+fn clip(sound: Sound) -> Arc<[i16]> {
+    let Some(bytes) = sound_file(sound) else {
+        return Arc::from(Vec::new());
+    };
+    match read_wav(bytes) {
         Ok((rate, samples)) => resample(&samples, rate, SAMPLE_RATE).into(),
         Err(error) => {
             log::warn!("sounds: the bundled {sound:?} sound can't be read: {error}");
@@ -127,9 +178,14 @@ fn clip(sound: NotifySound) -> Arc<[i16]> {
 
 enum Command {
     Play {
-        sound: NotifySound,
+        sound: Sound,
         device: Option<String>,
     },
+    /// The ring, again every `RING_PERIOD_MS` until `StopRing`, beside whatever else plays.
+    Ring {
+        device: Option<String>,
+    },
+    StopRing,
     /// The stream of this play has given all its samples.
     Done(u64),
     Quit,
@@ -138,6 +194,9 @@ enum Command {
 /// Plays the app's sounds. See the module docs.
 pub struct Sounds {
     commands: mpsc::Sender<Command>,
+    /// Core's cues as they were asked for, for the rig: (cue, times).
+    played: Mutex<Vec<(SoundCue, usize)>>,
+    ringing: AtomicBool,
 }
 
 impl Sounds {
@@ -150,12 +209,67 @@ impl Sounds {
         if let Err(error) = spawned {
             log::warn!("sounds: cannot start their thread: {error}");
         }
-        Self { commands }
+        Self {
+            commands,
+            played: Mutex::default(),
+            ringing: AtomicBool::new(false),
+        }
     }
 
     /// Plays `sound` on `device` (`None`: the default output), stopping any sound playing.
     pub fn play(&self, sound: NotifySound, device: Option<String>) {
-        let _ = self.commands.send(Command::Play { sound, device });
+        let _ = self.commands.send(Command::Play {
+            sound: Sound::Notify(sound),
+            device,
+        });
+    }
+
+    /// Core's cue (`CoreEvent::Sound`): a one-shot sound, or the ring started or stopped. The ring
+    /// plays beside the one-shot sounds, so a message's sound doesn't cut it.
+    pub fn cue(&self, cue: SoundCue, device: Option<String>) {
+        {
+            let mut played = self.played.lock().unwrap_or_else(|p| p.into_inner());
+            match played.iter_mut().find(|(seen, _)| *seen == cue) {
+                Some((_, times)) => *times += 1,
+                None => played.push((cue, 1)),
+            }
+        }
+        let command = match cue {
+            SoundCue::IncomingRingStart => {
+                self.ringing.store(true, Ordering::Relaxed);
+                Command::Ring { device }
+            }
+            SoundCue::IncomingRingStop => {
+                self.ringing.store(false, Ordering::Relaxed);
+                Command::StopRing
+            }
+            cue => Command::Play {
+                sound: Sound::Cue(cue),
+                device,
+            },
+        };
+        let _ = self.commands.send(command);
+    }
+
+    /// Stops the ring whatever core said last: signed out.
+    pub fn stop_ring(&self) {
+        self.ringing.store(false, Ordering::Relaxed);
+        let _ = self.commands.send(Command::StopRing);
+    }
+
+    /// How often `cue` was asked for.
+    pub fn played(&self, cue: SoundCue) -> usize {
+        self.played
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .iter()
+            .find(|(seen, _)| *seen == cue)
+            .map_or(0, |(_, times)| *times)
+    }
+
+    /// The ring is looping.
+    pub fn ringing(&self) -> bool {
+        self.ringing.load(Ordering::Relaxed)
     }
 }
 
@@ -166,14 +280,34 @@ impl Drop for Sounds {
 }
 
 fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Receiver<Command>) {
-    let clips: Vec<(NotifySound, Arc<[i16]>)> =
-        [NotifySound::Default, NotifySound::Dm, NotifySound::Mention]
-            .into_iter()
-            .map(|sound| (sound, clip(sound)))
-            .collect();
+    let clips: Vec<(Sound, Arc<[i16]>)> =
+        ALL.into_iter().map(|sound| (sound, clip(sound))).collect();
+    let samples_of = |sound: Sound| {
+        clips
+            .iter()
+            .find(|(kind, _)| *kind == sound)
+            .map(|(_, samples)| samples.clone())
+            .filter(|samples| !samples.is_empty())
+    };
     let mut playing: Option<(u64, AudioStream)> = None;
+    let mut ring: Option<AudioStream> = None;
     let mut plays = 0u64;
     let mut warned = false;
+    let on_error: semaphore_media_livekit::audio::ErrorCallback =
+        Arc::new(|error| log::debug!("sounds: the output stopped: {error}"));
+    let mut open =
+        |device: Option<&str>, feed: semaphore_media_livekit::audio::OutputCallback| match io
+            .open_output(device, feed, on_error.clone())
+        {
+            Ok(stream) => Some(stream),
+            Err(error) => {
+                if !warned {
+                    warned = true;
+                    log::warn!("sounds: no output for the app's sounds: {error}");
+                }
+                None
+            }
+        };
     for command in receiver {
         match command {
             Command::Quit => break,
@@ -185,17 +319,31 @@ fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Re
                     playing = None;
                 }
             }
+            Command::StopRing => drop(ring.take()),
+            Command::Ring { device } => {
+                drop(ring.take());
+                let Some(samples) = samples_of(Sound::Cue(SoundCue::IncomingRingStart)) else {
+                    continue;
+                };
+                let period = (SAMPLE_RATE as u64 * RING_PERIOD_MS / 1000) as usize;
+                let period = period.max(samples.len());
+                let mut position = 0usize;
+                let feed = Box::new(move |out: &mut [i16], _ahead: u32| {
+                    for sample in out.iter_mut() {
+                        *sample = samples.get(position).copied().unwrap_or(0);
+                        position = (position + 1) % period;
+                    }
+                });
+                if let Some(stream) = open(device.as_deref(), feed) {
+                    drop(ring.replace(stream));
+                }
+            }
             Command::Play { sound, device } => {
                 // One at a time: the last one stops first.
                 playing = None;
                 plays += 1;
                 let play = plays;
-                let Some(samples) = clips
-                    .iter()
-                    .find(|(kind, _)| *kind == sound)
-                    .map(|(_, samples)| samples.clone())
-                    .filter(|samples| !samples.is_empty())
-                else {
+                let Some(samples) = samples_of(sound) else {
                     continue;
                 };
                 let done = commands.clone();
@@ -211,16 +359,8 @@ fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Re
                         let _ = done.send(Command::Done(play));
                     }
                 });
-                let on_error: semaphore_media_livekit::audio::ErrorCallback =
-                    Arc::new(|error| log::debug!("sounds: the output stopped: {error}"));
-                match io.open_output(device.as_deref(), feed, on_error) {
-                    Ok(stream) => playing = Some((play, stream)),
-                    Err(error) => {
-                        if !warned {
-                            warned = true;
-                            log::warn!("sounds: no output for the app's sounds: {error}");
-                        }
-                    }
+                if let Some(stream) = open(device.as_deref(), feed) {
+                    playing = Some((play, stream));
                 }
             }
         }
@@ -270,6 +410,44 @@ mod tests {
             assert_eq!(samples.len(), bytes / 2, "{sound:?}");
             assert!(samples.iter().any(|&s| s != 0), "{sound:?} is silent");
         }
+    }
+
+    #[test]
+    fn every_cue_but_the_ring_stop_has_a_readable_sound() {
+        for sound in ALL {
+            let (_, samples) = read_wav(sound_file(sound).unwrap()).unwrap();
+            assert!(samples.iter().any(|&s| s != 0), "{sound:?} is silent");
+        }
+        assert!(sound_file(Sound::Cue(SoundCue::IncomingRingStop)).is_none());
+    }
+
+    /// The ring has a stream of its own: a message's sound beside it opens another, and the ring
+    /// keeps going (it gives sound again after its period) until it's stopped.
+    #[test]
+    fn the_ring_loops_beside_other_sounds_until_stopped() {
+        let io = Arc::new(VirtualIo::new());
+        let heard = Arc::new(Mutex::new(0usize));
+        let counter = heard.clone();
+        io.set_speaker(Box::new(move |frame: &[i16]| {
+            *counter.lock().unwrap() += frame.iter().filter(|&&s| s != 0).count();
+        }));
+        let sounds = Sounds::start(io.clone());
+        sounds.cue(SoundCue::IncomingRingStart, None);
+        sounds.play(NotifySound::Dm, None);
+        assert!(sounds.ringing());
+        assert_eq!(sounds.played(SoundCue::IncomingRingStart), 1);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while io.opened_outputs().len() < 2 {
+            assert!(
+                Instant::now() < deadline,
+                "the ring and the sound didn't both open"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        sounds.cue(SoundCue::IncomingRingStop, None);
+        assert!(!sounds.ringing());
+        assert_eq!(sounds.played(SoundCue::IncomingRingStop), 1);
+        assert_eq!(sounds.played(SoundCue::Connected), 0);
     }
 
     #[test]

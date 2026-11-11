@@ -92,7 +92,7 @@ click voice-noise-suppression
 expect settings /voice/input_mode/mode push_to_talk
 expect settings /voice/noise_suppression false
 wait core element voice-ptt-limit
-wait core element voice-mic-test-limit
+wait core element voice-mic-test
 wait idle
 shot 07-settings-voice-ptt
 

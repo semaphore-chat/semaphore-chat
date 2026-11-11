@@ -81,7 +81,8 @@ impl Services {
     pub fn shutdown(&mut self) {
         // Closing the window during a call leaves it, so the server drops this client from the
         // roster now rather than when presence expires.
-        if self.core.voice().channel_id.is_some()
+        // Any call, a DM's too.
+        if self.core.voice().room.is_some()
             && let Some(runtime) = &self.runtime
         {
             // Leaving stops the camera and the screen share with it.
