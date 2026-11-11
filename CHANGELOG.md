@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
+
 ### Fixed
 
 - `GET /notifications?unreadOnly=false` now returns read notifications too, instead of treating `false` as `true`. (#657)
