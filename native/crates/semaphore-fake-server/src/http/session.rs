@@ -214,16 +214,19 @@ async fn user_by_id(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> 
 }
 
 /// What the sign-in screen asks before anyone signs in. The name says which scenario this is.
-async fn public_settings(State(_inner): State<Arc<Inner>>) -> Response {
-    json_response(
-        StatusCode::OK,
-        json!({
-            "name": "Semaphore fake server",
-            "registrationMode": "INVITE_ONLY",
-            "maxFileSizeBytes": 10 * 1024 * 1024,
-            "gifSearchEnabled": false,
-            "passwordResetEnabled": false,
-            "desktopBrowserLogin": true,
-        }),
-    )
+async fn public_settings(State(inner): State<Arc<Inner>>) -> Response {
+    let mut settings = json!({
+        "name": "Semaphore fake server",
+        "registrationMode": "INVITE_ONLY",
+        "maxFileSizeBytes": 10 * 1024 * 1024,
+        "gifSearchEnabled": false,
+        "passwordResetEnabled": false,
+        "desktopBrowserLogin": true,
+    });
+    if let Some(object) = settings.as_object_mut() {
+        for (key, value) in &crate::lock(&inner.accounts).public_settings {
+            object.insert(key.clone(), value.clone());
+        }
+    }
+    json_response(StatusCode::OK, settings)
 }
