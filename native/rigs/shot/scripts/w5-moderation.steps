@@ -1,0 +1,337 @@
+# W5 moderation: the member menu on every kind of target, each dialog empty/filled/busy/refused and
+# following its own op entry, the Moderation tab's list and log states and permission sets, and the
+# removal notice for each cause. Desktop dark and phone light for all, desktop light for the main ones.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w5-moderation.steps
+story moderation-menu-admin 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-admin-desktop
+story moderation-menu-admin 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-admin-phone
+story moderation-menu-outranked 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-outranked-desktop
+story moderation-menu-outranked 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-outranked-phone
+story moderation-menu-self 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-self-desktop
+story moderation-menu-self 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-self-phone
+story moderation-menu-member 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-member-desktop
+story moderation-menu-member 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-member-phone
+story moderation-menu-mixed 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-mixed-desktop
+story moderation-menu-mixed 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-mixed-phone
+story moderation-menu-timed-out 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-timed-out-desktop
+story moderation-menu-timed-out 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-timed-out-phone
+story moderation-menu-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-loading-desktop
+story moderation-menu-loading 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-loading-phone
+story moderation-menu-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-failed-desktop
+story moderation-menu-failed 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-failed-phone
+story moderation-menu-long-name 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-long-name-desktop
+story moderation-menu-long-name 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-long-name-phone
+story moderation-menu-ban-running-timeout-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-menu-ban-running-timeout-failed-desktop
+story moderation-menu-ban-running-timeout-failed 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-menu-ban-running-timeout-failed-phone
+story moderation-ban-running-beside-failed-timeout 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-running-beside-failed-timeout-desktop
+story moderation-ban-running-beside-failed-timeout 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-running-beside-failed-timeout-phone
+story moderation-timeout-refused-by-core 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-timeout-refused-by-core-desktop
+story moderation-timeout-refused-by-core 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-timeout-refused-by-core-phone
+story moderation-ban-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-empty-desktop
+story moderation-ban-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-empty-phone
+story moderation-ban-filled 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-filled-desktop
+story moderation-ban-filled 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-filled-phone
+story moderation-ban-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-busy-desktop
+story moderation-ban-busy 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-busy-phone
+story moderation-ban-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-error-desktop
+story moderation-ban-error 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-error-phone
+story moderation-ban-over-limit 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-ban-over-limit-desktop
+story moderation-ban-over-limit 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-ban-over-limit-phone
+story moderation-kick-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-kick-empty-desktop
+story moderation-kick-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-kick-empty-phone
+story moderation-kick-filled 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-kick-filled-desktop
+story moderation-kick-filled 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-kick-filled-phone
+story moderation-kick-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-kick-busy-desktop
+story moderation-kick-busy 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-kick-busy-phone
+story moderation-kick-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-kick-error-desktop
+story moderation-kick-error 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-kick-error-phone
+story moderation-timeout-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-timeout-empty-desktop
+story moderation-timeout-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-timeout-empty-phone
+story moderation-timeout-filled 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-timeout-filled-desktop
+story moderation-timeout-filled 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-timeout-filled-phone
+story moderation-timeout-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-timeout-busy-desktop
+story moderation-timeout-busy 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-timeout-busy-phone
+story moderation-timeout-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-timeout-error-desktop
+story moderation-timeout-error 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-timeout-error-phone
+story moderation-unban-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-unban-empty-desktop
+story moderation-unban-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-unban-empty-phone
+story moderation-unban-filled 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-unban-filled-desktop
+story moderation-unban-filled 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-unban-filled-phone
+story moderation-unban-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-unban-busy-desktop
+story moderation-unban-busy 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-unban-busy-phone
+story moderation-unban-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-unban-error-desktop
+story moderation-unban-error 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-unban-error-phone
+story moderation-remove-timeout-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-empty-desktop
+story moderation-remove-timeout-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-empty-phone
+story moderation-remove-timeout-filled 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-filled-desktop
+story moderation-remove-timeout-filled 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-filled-phone
+story moderation-remove-timeout-busy 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-busy-desktop
+story moderation-remove-timeout-busy 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-busy-phone
+story moderation-remove-timeout-error 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-error-desktop
+story moderation-remove-timeout-error 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-remove-timeout-error-phone
+story moderation-tab 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-desktop
+story moderation-tab 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-phone
+story moderation-tab-lifting 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-lifting-desktop
+story moderation-tab-lifting 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-lifting-phone
+story moderation-tab-loading 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-loading-desktop
+story moderation-tab-loading 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-loading-phone
+story moderation-tab-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-empty-desktop
+story moderation-tab-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-empty-phone
+story moderation-tab-failed 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-failed-desktop
+story moderation-tab-failed 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-failed-phone
+story moderation-tab-long 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-long-desktop
+story moderation-tab-long 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-long-phone
+story moderation-tab-log-filtered-empty 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-log-filtered-empty-desktop
+story moderation-tab-log-filtered-empty 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-log-filtered-empty-phone
+story moderation-tab-log-filtered 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-log-filtered-desktop
+story moderation-tab-log-filtered 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-log-filtered-phone
+story moderation-tab-log-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-log-loading-more-desktop
+story moderation-tab-log-loading-more 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-log-loading-more-phone
+story moderation-tab-log-end 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-log-end-desktop
+story moderation-tab-log-end 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-log-end-phone
+story moderation-tab-logs-only 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-logs-only-desktop
+story moderation-tab-logs-only 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-logs-only-phone
+story moderation-tab-lists-only 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-lists-only-desktop
+story moderation-tab-lists-only 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-lists-only-phone
+story moderation-tab-no-access 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-tab-no-access-desktop
+story moderation-tab-no-access 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-tab-no-access-phone
+story moderation-removed-kicked 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-kicked-desktop
+story moderation-removed-kicked 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-kicked-phone
+story moderation-removed-kicked-no-reason 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-kicked-no-reason-desktop
+story moderation-removed-kicked-no-reason 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-kicked-no-reason-phone
+story moderation-removed-banned-permanent 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-banned-permanent-desktop
+story moderation-removed-banned-permanent 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-banned-permanent-phone
+story moderation-removed-banned-temporary 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-banned-temporary-desktop
+story moderation-removed-banned-temporary 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-banned-temporary-phone
+story moderation-removed-deleted 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-deleted-desktop
+story moderation-removed-deleted 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-deleted-phone
+story moderation-removed-no-name 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-no-name-desktop
+story moderation-removed-no-name 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-no-name-phone
+story moderation-removed-long-name 1280 800 dark-blue-balanced
+wait idle
+shot w5-moderation-removed-long-name-desktop
+story moderation-removed-long-name 390 844 light-blue-balanced
+wait idle
+shot w5-moderation-removed-long-name-phone
+story moderation-menu-admin 1280 800 light-blue-balanced
+wait idle
+shot w5-moderation-menu-admin-desktop-light
+story moderation-ban-filled 1280 800 light-blue-balanced
+wait idle
+shot w5-moderation-ban-filled-desktop-light
+story moderation-tab 1280 800 light-blue-balanced
+wait idle
+shot w5-moderation-tab-desktop-light
+story moderation-removed-banned-temporary 1280 800 light-blue-balanced
+wait idle
+shot w5-moderation-removed-banned-temporary-desktop-light
+story moderation-tab-lifting 1280 800 light-blue-balanced
+wait idle
+shot w5-moderation-tab-lifting-desktop-light
