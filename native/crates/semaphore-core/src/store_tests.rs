@@ -665,3 +665,63 @@ fn a_page_that_repeats_a_row_holds_it_once() {
 }
 
 // --- end bug:duplicates ---
+
+// --- bug:tombstones ---
+
+#[test]
+fn a_delete_that_arrives_before_its_message_wins() {
+    let mut window = window(1, 3);
+    assert!(!window.delete(&id(4)), "nothing to delete yet");
+    assert!(!window.reconcile_echo(dto(4)), "the late message came back");
+    assert!(!window.prepend(StoredMessage::from_server(dto(4))));
+    assert_eq!(ids(&window), [1, 2, 3].map(id));
+
+    // The usual order still works.
+    window.reconcile_echo(dto(5));
+    assert!(window.delete(&id(5)));
+    assert!(
+        !window.reconcile_echo(dto(5)),
+        "nor does a repeat after the delete"
+    );
+    assert_eq!(ids(&window), [1, 2, 3].map(id));
+}
+
+#[test]
+fn a_delete_during_a_fetch_still_wins_over_the_replay() {
+    let mut window = window(1, 3);
+    window.begin_fetch();
+    window.note_delete(&id(4));
+    window.delete(&id(4));
+    window.note_upsert(&id(4), Some(dto(4)));
+    window.reconcile_echo(dto(4));
+    window.apply_live_page(page(&[3, 2, 1]), None);
+    window.end_fetch();
+    assert_eq!(ids(&window), [1, 2, 3].map(id));
+}
+
+#[test]
+fn tombstones_are_bounded_and_the_oldest_go_first() {
+    let mut window = window(1, 3);
+    for n in 0..(TOMBSTONES as u32 + 10) {
+        window.delete(&format!("gone-{n}"));
+    }
+    assert_eq!(window.tombstones.len(), TOMBSTONES);
+    // The first deletes were forgotten; the last are still held.
+    assert!(window.reconcile_echo(named("gone-0", "back")));
+    assert!(!window.reconcile_echo(named(&format!("gone-{}", TOMBSTONES as u32 + 9), "x")));
+    // Deleting the same id again doesn't use another place.
+    let held = window.tombstones.len();
+    window.delete(&format!("gone-{}", TOMBSTONES as u32 + 9));
+    assert_eq!(window.tombstones.len(), held);
+}
+
+#[test]
+fn a_page_from_the_server_is_not_filtered_by_tombstones() {
+    // Pages are the server's word; a tombstone only stops a live event that came late.
+    let mut window = window(1, 3);
+    window.delete(&id(2));
+    window.apply_live_page(page(&[3, 2, 1]), None);
+    assert_eq!(ids(&window), [1, 2, 3].map(id));
+}
+
+// --- end bug:tombstones ---

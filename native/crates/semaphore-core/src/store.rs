@@ -23,6 +23,8 @@ pub const THREAD_PAGE_SIZE: i64 = 50;
 /// The web client's `MESSAGE_MAX_PAGES`: 40 pages of 25.
 pub const MAX_ROWS: usize = 1000;
 const SEQ_STEP: i64 = 1 << 20;
+/// How many deleted ids a window remembers, so a message that arrives after its delete stays gone.
+pub const TOMBSTONES: usize = 128;
 
 /// Where a local row stands. Absent on the web, where it's `sendStatus`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -123,6 +125,9 @@ pub struct Window {
     /// can slot a missed row at the seq of a row it just deleted, and the UI tells rows apart by
     /// `(seq, revision)`, so a fresh row must never repeat a pair the UI holds.
     revisions: u64,
+    /// Ids deleted lately, newest last, at most [`TOMBSTONES`]. A delete can overtake its message
+    /// (the echo of a send, a reply), and the late message must not bring the row back.
+    tombstones: VecDeque<String>,
 }
 
 impl Window {
@@ -235,7 +240,11 @@ impl Window {
     /// `prependMessageToInfinite`.
     pub fn prepend(&mut self, message: StoredMessage) -> bool {
         // Never insert into a detached window: the newest row loaded isn't the newest there is.
-        if !self.loaded || self.detached || self.by_id.contains_key(&message.dto.id) {
+        if !self.loaded
+            || self.detached
+            || self.by_id.contains_key(&message.dto.id)
+            || self.is_tombstoned(&message.dto.id)
+        {
             return false;
         }
         self.push_back(message);
@@ -259,8 +268,15 @@ impl Window {
         true
     }
 
-    /// `deleteMessageFromInfinite`.
+    /// `deleteMessageFromInfinite`. The id is remembered either way, so the message can't come
+    /// back if it arrives after its delete.
     pub fn delete(&mut self, id: &str) -> bool {
+        if !self.is_tombstoned(id) {
+            if self.tombstones.len() == TOMBSTONES {
+                self.tombstones.pop_front();
+            }
+            self.tombstones.push_back(id.to_owned());
+        }
         let Some(index) = self.index_of(id) else {
             return false;
         };
@@ -272,7 +288,7 @@ impl Window {
     /// optimistic row with its nonce, or else is a new row. Never swaps a row out and back, so no
     /// list can show both.
     pub fn reconcile_echo(&mut self, dto: MessageDto) -> bool {
-        if !self.loaded || self.detached {
+        if !self.loaded || self.detached || self.is_tombstoned(&dto.id) {
             return false;
         }
         if let Some(index) = self.index_of(&dto.id) {
@@ -314,6 +330,10 @@ impl Window {
             None => self.push_back(StoredMessage::from_server(dto)),
         }
         true
+    }
+
+    fn is_tombstoned(&self, id: &str) -> bool {
+        self.tombstones.iter().any(|gone| gone == id)
     }
 
     /// The row still waiting under `client_id`. A row that settled keeps its `client_id`, so this
