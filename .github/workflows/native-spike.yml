@@ -148,3 +148,9 @@ jobs:
             native/target/release/rig-sysaudio.exe
             native/scripts/desk/t11-sysaudio-windows.ps1
           if-no-files-found: error
+      # For a real Windows GPU: the hosted runner only has the software adapter.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rig-surface-smoke-windows
+          path: native/target/release/rig-surface-smoke.exe
+          if-no-files-found: error
