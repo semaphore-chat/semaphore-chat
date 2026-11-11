@@ -7,7 +7,8 @@ use crate::dms::rig::rig;
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
 use semaphore_core::model::{
-    ErrorView, ImageChange, LoadState, ProfilePatch, UploadView, UserView,
+    ErrorView, ImageChange, LoadState, ProfileImage, ProfilePatch, ProfileUpload, UploadView,
+    UserView,
 };
 
 fn user(id: &str, username: &str, display: Option<&str>) -> UserView {
@@ -349,11 +350,14 @@ fn a_busy_form_waits_and_a_finished_edit_drops_the_picks(cx: &mut TestAppContext
             form.set_edit(
                 ProfileEditView {
                     saving: true,
-                    upload: Some(UploadView {
-                        name: "a.png".into(),
-                        size_bytes: 10,
-                        sent_bytes: 4,
-                        failed: None,
+                    upload: Some(ProfileUpload {
+                        image: ProfileImage::Banner,
+                        upload: UploadView {
+                            name: "a.png".into(),
+                            size_bytes: 10,
+                            sent_bytes: 4,
+                            failed: None,
+                        },
                     }),
                     error: None,
                 },

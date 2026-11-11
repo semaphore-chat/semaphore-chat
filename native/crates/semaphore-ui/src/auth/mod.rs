@@ -1,6 +1,27 @@
 //! Auth screens: server URL (`ConnectionWizard`'s details step), sign-in (`LoginPage`), and the entry
 //! to browser sign-in (`BrowserLoginPanel`). The flow only draws and reports: [`AuthEvent`] goes to
 //! the owner, who calls `Core::sign_in` and sets [`AuthScreen::set_session`] from what comes back.
+//!
+//! W3-ui-auth adds, each its own view the owner swaps in like `AuthScreen`:
+//! - `RegisterScreen` (`RegisterPage.tsx`): by the server's `RegistrationMode`, always with an
+//!   invite code; a "registration is closed" card when it's closed.
+//! - `ForgotPasswordScreen` (`ForgotPasswordPage.tsx`): the email form only; the reset itself
+//!   finishes in the web app the email opens.
+//! - `InviteScreen` (`JoinInvitePage.tsx`): an invite link's preview, usable or invalid, and the message
+//!   for one opened while signed in.
+
+mod forgot;
+mod invite;
+mod register;
+#[cfg(test)]
+mod tests;
+
+pub use forgot::{ForgotEvent, ForgotPasswordScreen};
+pub use invite::{InviteEvent, InviteScreen};
+pub use register::{
+    PASSWORD_MAX, PASSWORD_MIN, RegisterEvent, RegisterField, RegisterScreen, USERNAME_MAX,
+    USERNAME_MIN, validate_register,
+};
 
 use crate::kit::{
     Alert, Button, ButtonSize, Icon, Severity, Spinner, TextField, Variant, link, spacing, text,
@@ -11,7 +32,9 @@ use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::SessionState;
+use semaphore_core::model::{
+    BrowserSignInFailure, BrowserSignInView, RegistrationMode, SessionState,
+};
 use semaphore_design::Icon as IconName;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -49,6 +72,28 @@ pub enum BrowserLogin {
     Failed,
 }
 
+impl BrowserLogin {
+    /// What the sign-in screen shows for `Core::browser_sign_in`, on a server that offers it
+    /// (`ServerInfo::browser_sign_in`) or not.
+    pub fn from_view(view: &BrowserSignInView, offered: bool) -> Self {
+        if !offered {
+            return Self::Unavailable;
+        }
+        match view {
+            BrowserSignInView::Idle => Self::Idle,
+            BrowserSignInView::Waiting { .. } => Self::Waiting,
+            BrowserSignInView::Redeeming => Self::Finishing,
+            BrowserSignInView::Failed { reason } => match reason {
+                BrowserSignInFailure::Denied => Self::Denied,
+                BrowserSignInFailure::TimedOut => Self::TimedOut,
+                BrowserSignInFailure::NotOffered => Self::Unavailable,
+                BrowserSignInFailure::Refused { .. }
+                | BrowserSignInFailure::ListenFailed { .. } => Self::Failed,
+            },
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AuthStep {
     ServerUrl {
@@ -69,6 +114,7 @@ pub enum AuthStep {
 pub struct AuthScreen {
     step: AuthStep,
     session: SessionState,
+    registration: RegistrationMode,
     server_url: Entity<InputState>,
     server_name: Entity<InputState>,
     username: Entity<InputState>,
@@ -84,6 +130,7 @@ impl AuthScreen {
         Self {
             step,
             session: SessionState::SignedOut,
+            registration: RegistrationMode::default(),
             server_url: text_state(window, cx, false),
             server_name: text_state(window, cx, false),
             username: text_state(window, cx, false),
@@ -108,6 +155,12 @@ impl AuthScreen {
 
     pub fn set_session(&mut self, session: SessionState, cx: &mut Context<Self>) {
         self.session = session;
+        cx.notify();
+    }
+
+    /// `ServerInfo::registration`: "Register here" shows unless it's `Closed`.
+    pub fn set_registration(&mut self, mode: RegistrationMode, cx: &mut Context<Self>) {
+        self.registration = mode;
         cx.notify();
     }
 
@@ -254,6 +307,7 @@ impl AuthScreen {
         };
         let reset_view = view.clone();
         let register_view = view.clone();
+        let can_register = self.registration != RegistrationMode::Closed;
 
         card(
             sem.background_default,
@@ -336,27 +390,29 @@ impl AuthScreen {
                         },
                     )))
                 })
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .justify_center()
-                        .gap_x(px(4.))
-                        .text_color(sem.text_secondary)
-                        .child(text(Variant::Body2, "Don't have an account?"))
-                        .child(link("auth-register", "Register here", cx, move |_, cx| {
-                            register_view
-                                .update(cx, |_, cx| cx.emit(AuthEvent::Register))
-                                .ok();
-                        })),
-                ),
+                .when(can_register, |form| {
+                    form.child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .justify_center()
+                            .gap_x(px(4.))
+                            .text_color(sem.text_secondary)
+                            .child(text(Variant::Body2, "Don't have an account?"))
+                            .child(link("auth-register", "Register here", cx, move |_, cx| {
+                                register_view
+                                    .update(cx, |_, cx| cx.emit(AuthEvent::Register))
+                                    .ok();
+                            })),
+                    )
+                }),
         )
     }
 }
 
 /// The login card: `boxShadow: 3` and the page's own colour. GPUI paints a shadow as a filled shape
 /// under the element, so with CSS's "no fill" the card would show the shadow through it.
-fn card(surface: Hsla, child: impl IntoElement) -> Div {
+pub(super) fn card(surface: Hsla, child: impl IntoElement) -> Div {
     div()
         .w_full()
         .max_w(px(400.))
@@ -365,6 +421,54 @@ fn card(surface: Hsla, child: impl IntoElement) -> Div {
         .bg(surface)
         .shadow_lg()
         .child(child)
+}
+
+/// A link that emits `event` from the view it's drawn in.
+pub(super) fn event_link<V, E>(
+    id: &'static str,
+    label: &'static str,
+    event: E,
+    cx: &mut Context<V>,
+) -> AnyElement
+where
+    V: EventEmitter<E> + 'static,
+    E: Clone + 'static,
+{
+    let view = cx.weak_entity();
+    link(id, label, cx, move |_, cx| {
+        view.update(cx, |_, cx| cx.emit(event.clone())).ok();
+    })
+    .into_any_element()
+}
+
+/// The auth screens' page: the default background, the card centred, scrolling when it's taller.
+pub(super) fn page(
+    id: &'static str,
+    sem: &crate::theme::Sem,
+    body: impl IntoElement,
+) -> Stateful<Div> {
+    div()
+        .id(id)
+        .size_full()
+        .font_family(FONT_FAMILY)
+        .text_color(sem.text_primary)
+        .bg(sem.background_default)
+        .overflow_y_scroll()
+        .flex()
+        .flex_col()
+        .items_center()
+        .p(spacing(2.))
+        .child(
+            // Centred when it fits; from the top, scrolling, when it doesn't.
+            div()
+                .w_full()
+                .flex_grow(1.)
+                .flex()
+                .flex_col()
+                .items_center()
+                .justify_center()
+                .child(body),
+        )
 }
 
 fn or_divider(sem: &crate::theme::Sem) -> impl IntoElement + use<> {
@@ -622,6 +726,32 @@ pub fn stories() -> Vec<crate::stories::Story> {
                 cx,
             )
         }),
+        Story::new("auth-browser-failed", |_, window, cx| {
+            screen(
+                sign_in(
+                    BrowserLogin::from_view(
+                        &semaphore_core::model::BrowserSignInView::Failed {
+                            reason: semaphore_core::model::BrowserSignInFailure::ListenFailed {
+                                message: "address in use".into(),
+                            },
+                        },
+                        true,
+                    ),
+                    None,
+                ),
+                SessionState::SignedOut,
+                window,
+                cx,
+            )
+        }),
+        Story::new("auth-registration-closed", |_, window, cx| {
+            cx.new(|cx| {
+                let mut screen = AuthScreen::new(sign_in(BrowserLogin::Idle, None), window, cx);
+                screen.registration = RegistrationMode::Closed;
+                screen
+            })
+            .into()
+        }),
         Story::new("auth-browser-timed-out", |_, window, cx| {
             screen(
                 sign_in(BrowserLogin::TimedOut, None),
@@ -631,4 +761,9 @@ pub fn stories() -> Vec<crate::stories::Story> {
             )
         }),
     ]
+    .into_iter()
+    .chain(register::stories())
+    .chain(forgot::stories())
+    .chain(invite::stories())
+    .collect()
 }

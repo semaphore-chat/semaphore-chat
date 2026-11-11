@@ -6,7 +6,8 @@ use crate::stories::Story;
 use gpui_kit::*;
 use image::{Frame, RgbaImage};
 use semaphore_core::model::{
-    DraftFile, ErrorView, LoadState, Profile, ProfileEditView, ProfileView, UploadView, UserView,
+    DraftFile, ErrorView, LoadState, Profile, ProfileEditView, ProfileImage, ProfileUpload,
+    ProfileView, UploadView, UserView,
 };
 use std::sync::Arc;
 
@@ -309,11 +310,14 @@ pub fn stories() -> Vec<Story> {
                 form.set_edit(
                     ProfileEditView {
                         saving: true,
-                        upload: Some(UploadView {
-                            name: "mountains.png".into(),
-                            size_bytes: 4096,
-                            sent_bytes: 1638,
-                            failed: None,
+                        upload: Some(ProfileUpload {
+                            image: ProfileImage::Banner,
+                            upload: UploadView {
+                                name: "mountains.png".into(),
+                                size_bytes: 4096,
+                                sent_bytes: 1638,
+                                failed: None,
+                            },
                         }),
                         error: None,
                     },

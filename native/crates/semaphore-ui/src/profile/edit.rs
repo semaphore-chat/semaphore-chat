@@ -15,7 +15,8 @@ use gpui_kit::component::input::{Textarea, TextareaState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    DraftFile, ImageChange, LoadState, Profile, ProfileEditView, ProfilePatch, ProfileView,
+    DraftFile, ImageChange, LoadState, Profile, ProfileEditView, ProfileImage, ProfilePatch,
+    ProfileView,
 };
 use semaphore_design::Icon as DesignIcon;
 use std::sync::Arc;
@@ -508,7 +509,16 @@ impl ProfileEditForm {
 
     fn progress(&self, cx: &App) -> Option<impl IntoElement + use<>> {
         let sem = cx.sem();
-        let upload = self.edit.upload.as_ref()?;
+        let current = self.edit.upload.as_ref()?;
+        let upload = &current.upload;
+        let label = format!(
+            "Uploading {} · {}",
+            match current.image {
+                ProfileImage::Avatar => "avatar",
+                ProfileImage::Banner => "banner",
+            },
+            upload.name
+        );
         let percent = if upload.size_bytes == 0 {
             0.
         } else {
@@ -529,19 +539,11 @@ impl ProfileEditForm {
                         .justify_between()
                         .gap(spacing(1.))
                         .text_color(sem.text_secondary)
-                        .child(
-                            text(Variant::Caption, format!("Uploading {}", upload.name))
-                                .min_w_0()
-                                .truncate(),
-                        )
+                        .child(text(Variant::Caption, label.clone()).min_w_0().truncate())
                         .child(text(Variant::Caption, format!("{percent:.0}%")).flex_shrink_0()),
                 )
                 .child(div().w_full().rounded(px(2.)).overflow_hidden().child(
-                    LinearProgress::new(
-                        "profile-upload-bar",
-                        Some(percent),
-                        format!("Uploading {}", upload.name),
-                    ),
+                    LinearProgress::new("profile-upload-bar", Some(percent), label),
                 )),
         )
     }
@@ -585,7 +587,7 @@ impl Render for ProfileEditForm {
                         .edit
                         .upload
                         .as_ref()
-                        .is_some_and(|upload| upload.failed.is_some());
+                        .is_some_and(|current| current.upload.failed.is_some());
                     let message = if upload_failed {
                         format!("File upload failed: {}", error.message)
                     } else if error.message.is_empty() {
