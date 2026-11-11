@@ -189,6 +189,7 @@ struct Options {
     members_open: bool,
     messages: bool,
     phone_content: bool,
+    side_panel: bool,
 }
 
 impl Default for Options {
@@ -202,6 +203,7 @@ impl Default for Options {
             members_open: false,
             messages: true,
             phone_content: false,
+            side_panel: false,
         }
     }
 }
@@ -250,21 +252,38 @@ fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
     );
     cx.set_global(GlobalStub(stub));
 
-    let (connection, expanded, members_open, phone_content) = (
+    let (connection, expanded, members_open, phone_content, side_panel) = (
         options.connection,
         options.expanded,
         options.members_open,
         options.phone_content,
+        options.side_panel,
     );
+    let panel: Option<AnyView> = side_panel.then(|| cx.new(|_| PlaceholderPanel).into());
     cx.new(|cx| {
         let mut shell = Shell::new(source, route, Rc::new(stub_rows), connection, cx);
         shell.rail_expanded = expanded;
         shell.members_open = members_open;
         shell.phone_content = phone_content;
         shell.pinned_count = 1;
+        shell.side_panel = panel;
         shell
     })
     .into()
+}
+
+/// Stands in for the pins, search or thread panel, which draw their own stories.
+struct PlaceholderPanel;
+
+impl Render for PlaceholderPanel {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem();
+        div()
+            .size_full()
+            .p(px(16.))
+            .bg(sem.paper)
+            .child(crate::kit::text(crate::kit::Variant::H6, "Side panel"))
+    }
 }
 
 /// Mirrors `unreadCommunityScenario`: `resources` unread, and two mentions in `help-desk`.
@@ -347,6 +366,7 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-rail-expanded", expanded: true),
         shell_story!("shell-members-open", members_open: true, phone_content: true),
         shell_story!("shell-channel-pane", phone_content: true),
+        shell_story!("shell-side-panel", side_panel: true, phone_content: true),
         shell_story!("shell-long-content", edit: long_names),
         shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),

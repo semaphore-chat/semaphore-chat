@@ -41,6 +41,11 @@ pub const MEMBER_LIST_WIDTH: f32 = 240.;
 pub const NARROW_DESKTOP: f32 = 1024.;
 /// `DEVICE_BREAKPOINTS.PHONE`: under this, one pane at a time.
 pub const PHONE: f32 = 600.;
+/// `SIDE_PANEL_WIDTH`: the docked pins, search and thread panel.
+pub const SIDE_PANEL_WIDTH: f32 = 400.;
+/// `DEVICE_BREAKPOINTS.DESKTOP`: from here up the side panel docks beside the messages; narrower
+/// desktop windows draw it as a drawer, and the phone layout as a full-screen layer.
+pub const DOCKED_PANEL: f32 = 1200.;
 
 /// Draws the middle column for a route. Messages (U9) and the composer (U10) arrive here.
 pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyElement>;
@@ -71,6 +76,12 @@ pub enum ShellEvent {
     CreateCommunity,
     /// The user asked to retry a failed list.
     Retry,
+    /// The header's pin button: the owner shows the pins panel with [`Shell::set_side_panel`].
+    OpenPins,
+    /// The header's search button: likewise for the search panel.
+    OpenSearch,
+    /// The drawer's scrim was clicked: the owner closes the side panel.
+    CloseSidePanel,
 }
 
 pub struct Shell {
@@ -96,6 +107,8 @@ pub struct Shell {
     pub(crate) voice_bar: Option<VoiceBarSlot>,
     /// How many pinned messages the header's badge shows. Fed by the owner.
     pub pinned_count: u32,
+    /// Pins, search or a thread, beside the messages. Set by the owner.
+    pub(crate) side_panel: Option<AnyView>,
 }
 
 impl EventEmitter<ShellEvent> for Shell {}
@@ -126,6 +139,7 @@ impl Shell {
             content,
             voice_bar: None,
             pinned_count: 0,
+            side_panel: None,
         };
         shell.settle_route();
         shell
@@ -134,6 +148,65 @@ impl Shell {
     pub fn with_voice_bar(mut self, slot: VoiceBarSlot) -> Self {
         self.voice_bar = Some(slot);
         self
+    }
+
+    /// Shows `panel` beside the messages (docked, a drawer, or a full-screen layer on a phone,
+    /// by window width), or closes it. While open it takes the members panel's place.
+    pub fn set_side_panel(&mut self, panel: Option<AnyView>, cx: &mut Context<Self>) {
+        self.side_panel = panel;
+        cx.notify();
+    }
+
+    pub fn side_panel_open(&self) -> bool {
+        self.side_panel.is_some()
+    }
+
+    /// The side panel over a scrim that asks the owner to close it.
+    pub(crate) fn side_panel_drawer(
+        &self,
+        full_screen: bool,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let panel = self.side_panel.clone()?;
+        let view = cx.entity().downgrade();
+        let sem = cx.sem();
+        let paper = sem.paper;
+        Some(
+            div()
+                .absolute()
+                .inset_0()
+                .child(
+                    div()
+                        .id("side-panel-scrim")
+                        .test_support()
+                        .absolute()
+                        .inset_0()
+                        .occlude()
+                        .bg(hsla(0., 0., 0., 0.5))
+                        .on_click(move |_, _, cx| {
+                            view.update(cx, |_, cx| cx.emit(ShellEvent::CloseSidePanel))
+                                .ok();
+                        }),
+                )
+                .child(
+                    div()
+                        .id("side-panel")
+                        .test_support()
+                        .absolute()
+                        .top_0()
+                        .bottom_0()
+                        .right_0()
+                        .when(full_screen, |this| this.left_0())
+                        .when(!full_screen, |this| {
+                            this.w(px(SIDE_PANEL_WIDTH)).max_w_full()
+                        })
+                        .occlude()
+                        .shadow_lg()
+                        .bg(paper)
+                        .child(panel),
+                )
+                .into_any_element(),
+        )
     }
 
     pub fn nav(&self) -> &NavModel {
@@ -319,7 +392,10 @@ impl Shell {
                                         format!("Pinned messages ({pinned})"),
                                     )
                                     .tiny()
-                                    .color(icon_color),
+                                    .color(icon_color)
+                                    .on_click(
+                                        cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenPins)),
+                                    ),
                                 )
                                 .when(pinned > 0, |this| {
                                     this.child(
@@ -342,7 +418,10 @@ impl Shell {
                         .child(
                             IconButton::new("header-search", IconName::Search, "Search messages")
                                 .tiny()
-                                .color(icon_color),
+                                .color(icon_color)
+                                .on_click(
+                                    cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
+                                ),
                         )
                         .child(
                             IconButton::new(
@@ -470,8 +549,16 @@ impl Render for Shell {
 
         let narrow = width < NARROW_DESKTOP;
         let in_community = self.nav.current().community_id().is_some();
-        let show_members = in_community && !narrow;
-        let overlay_members = in_community && narrow && self.members_open;
+        let docked = self.side_panel.clone().filter(|_| width >= DOCKED_PANEL);
+        let drawer = if docked.is_none() {
+            self.side_panel_drawer(false, cx)
+        } else {
+            None
+        };
+        let panel_open = self.side_panel.is_some();
+        let show_members = in_community && !narrow && !panel_open;
+        let overlay_members = in_community && narrow && self.members_open && !panel_open;
+        let divider = cx.sem().divider;
 
         let sidebar = self.sidebar(cx);
         let content = self.content_element(window, cx);
@@ -490,7 +577,20 @@ impl Render for Shell {
                     .min_h_0()
                     .flex()
                     .child(div().flex_1().min_w_0().h_full().child(content))
-                    .when(show_members, |row| row.child(self.members_panel(cx))),
+                    .when(show_members, |row| row.child(self.members_panel(cx)))
+                    .when_some(docked, |row, panel| {
+                        row.child(
+                            div()
+                                .id("side-panel")
+                                .test_support()
+                                .w(px(SIDE_PANEL_WIDTH))
+                                .flex_shrink_0()
+                                .h_full()
+                                .border_l_1()
+                                .border_color(divider)
+                                .child(panel),
+                        )
+                    }),
             );
 
         let columns = match sidebar {
@@ -520,6 +620,7 @@ impl Render for Shell {
                     .child(self.rail(cx))
                     .child(div().flex_1().min_w_0().h_full().child(columns))
                     .when(overlay_members, |this| this.child(self.members_drawer(cx)))
+                    .children(drawer)
                     // In here, so it always clears the voice bar, as `BottomChromeContext` does.
                     .children(self.connection_banner(cx)),
             )
