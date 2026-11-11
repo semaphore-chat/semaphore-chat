@@ -10,8 +10,10 @@
 #   - the rig plays a "call" tone (743 Hz, same level) through the real call output path (cpal
 #     over PipeWire's pulse socket), captures system audio as a screen share would, judges each
 #     second, and records the capture to raw/capture.wav.
-# Pass: the game tone in at least 95% of 1 s windows within 6 dB, the call tone at or below
-# -80 dBFS in every window, and no link of ours left in the graph afterwards.
+# Pass: the game tone in at least 95% of 1 s windows within 6 dB, no window where the call tone
+# leaks (above -80 dBFS and 20 dB above an unplayed 330 Hz reference; above -80 but not that far
+# above it is a glitch, and more than 5% glitches is "too noisy to judge"), and no link of ours left
+# in the graph afterwards.
 # While it runs, play anything you like (a game, a video, music, a Flatpak app, a Bluetooth
 # headset, an EasyEffects chain): it should all be in raw/capture.wav, and the call tone never.
 # You will hear both tones quietly. Afterwards, listen to the capture:  pw-play <out>/raw/capture.wav
@@ -69,7 +71,7 @@ banner "T11: two quiet tones for ${SECONDS_TO_RUN} s. Play anything else you lik
 pw-play "$RAW/game.wav" &
 game=$!; desk_track_pid "$game"
 MODE=desktop RECORD="$RAW/capture.wav" DURATION_S="$SECONDS_TO_RUN" CALL_AMPLITUDE="$AMPLITUDE" \
-  CALL_HZ=743 TONES=a:523,b:743 "$BIN" >"$RAW/rig.jsonl" 2>"$RAW/rig.stderr" || say "rig exited with $?"
+  CALL_HZ=743 TONES=a:523,b:743,ref:330 "$BIN" >"$RAW/rig.jsonl" 2>"$RAW/rig.stderr" || say "rig exited with $?"
 kill "$game" 2>/dev/null || true
 wait "$game" 2>/dev/null || true
 

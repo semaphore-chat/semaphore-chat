@@ -17,9 +17,13 @@ import threading
 import time
 import wave
 
+import t11_judge
+
 AMPLITUDE = 0.25
 TONES = {"a": 523, "a2": 659, "a3": 1013, "d": 880, "mono": 587, "fc": 1109, "m": 440, "b": 743}
-TONES_ARG = ",".join(f"{k}:{v}" for k, v in TONES.items())
+# Measured in every window, played by nobody: the absent verdict's reference (t11_judge.REF_HZ).
+MEASURED = {**TONES, t11_judge.REF: t11_judge.REF_HZ}
+TONES_ARG = ",".join(f"{k}:{v}" for k, v in MEASURED.items())
 CALL_HZ = TONES["b"]
 LOCK = threading.Lock()
 

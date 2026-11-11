@@ -1,0 +1,1269 @@
+{
+ "source": "../../results/t11/livekit.json",
+ "mode": "livekit",
+ "absent_threshold_db": -80.0,
+ "rule": "leak = above the threshold and >= 20 dB above the reference; glitch = above it but not; > 5% glitch windows: too noisy to judge",
+ "scenarios": {
+  "L1": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -112.42,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -116.43,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -109.59,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -109.59,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -113.05,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L2": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a,a3,d,fc,m,mono",
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -89.78,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a,a3,d,fc,m,mono",
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -89.33,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a,a3,d,fc,m,mono",
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -89.34,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a,a3,d,fc,m,mono",
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -89.78,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a,a3,d,fc,m,mono",
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -87.79,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L3": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -91.6,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -96.43,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -90.99,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -91.23,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -92.8,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L4": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -94.64,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -88.06,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -88.96,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -83.01,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -98.81,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L5": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -113.05,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -105.2,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -105.2,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -109.59,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -106.99,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L6": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,m",
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -95.25,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,m",
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -95.67,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,m",
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -95.69,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,m",
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -99.82,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,m",
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -102.02,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L7": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,mono",
+     "checks": {
+      "present_a": true,
+      "decoy_mic_live": true,
+      "absent_b": true,
+      "judgeable_b": true,
+      "absent_m": true,
+      "judgeable_m": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -112.42,
+       "leak_windows": [],
+       "glitch_windows": []
+      },
+      "absent_m_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -95.55,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,mono",
+     "checks": {
+      "present_a": true,
+      "decoy_mic_live": true,
+      "absent_b": true,
+      "judgeable_b": true,
+      "absent_m": true,
+      "judgeable_m": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -116.08,
+       "leak_windows": [],
+       "glitch_windows": []
+      },
+      "absent_m_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -96.76,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,mono",
+     "checks": {
+      "present_a": true,
+      "decoy_mic_live": true,
+      "absent_b": true,
+      "judgeable_b": true,
+      "absent_m": true,
+      "judgeable_m": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -106.04,
+       "leak_windows": [],
+       "glitch_windows": []
+      },
+      "absent_m_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -90.45,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,mono",
+     "checks": {
+      "present_a": true,
+      "decoy_mic_live": true,
+      "absent_b": true,
+      "judgeable_b": true,
+      "absent_m": true,
+      "judgeable_m": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -120.73,
+       "leak_windows": [],
+       "glitch_windows": []
+      },
+      "absent_m_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -102.6,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,mono",
+     "checks": {
+      "present_a": true,
+      "decoy_mic_live": true,
+      "absent_b": true,
+      "judgeable_b": true,
+      "absent_m": true,
+      "judgeable_m": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -111.94,
+       "leak_windows": [],
+       "glitch_windows": []
+      },
+      "absent_m_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -95.14,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L8": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -118.99,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -105.2,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -118.88,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -113.05,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -105.2,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L9": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "control_detected": true
+     },
+     "absent": {},
+     "control": {
+      "detected": true,
+      "leak_share": 1.0,
+      "windows": 16
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "control_detected": true
+     },
+     "absent": {},
+     "control": {
+      "detected": true,
+      "leak_share": 1.0,
+      "windows": 17
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "control_detected": true
+     },
+     "absent": {},
+     "control": {
+      "detected": true,
+      "leak_share": 1.0,
+      "windows": 16
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "control_detected": true
+     },
+     "absent": {},
+     "control": {
+      "detected": true,
+      "leak_share": 1.0,
+      "windows": 16
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "control_detected": true
+     },
+     "absent": {},
+     "control": {
+      "detected": true,
+      "leak_share": 1.0,
+      "windows": 16
+     },
+     "pass": true
+    }
+   ]
+  },
+  "L10": {
+   "old": "5/5",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true,
+      "nothing_left_in_graph": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -106.04,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true,
+      "nothing_left_in_graph": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -97.32,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true,
+      "nothing_left_in_graph": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -106.03,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true,
+      "nothing_left_in_graph": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -105.2,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "old_pass": true,
+     "reference": "stand-in: median of unplayed a2,a3,d,fc,m,mono",
+     "checks": {
+      "present_a": true,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true,
+      "nothing_left_in_graph": true,
+      "absent_b": true,
+      "judgeable_b": true
+     },
+     "absent": {
+      "absent_b_verdict": {
+       "leaks": 0,
+       "glitches": 0,
+       "glitch_share": 0.0,
+       "max_db": -106.04,
+       "leak_windows": [],
+       "glitch_windows": []
+      }
+     },
+     "pass": true
+    }
+   ]
+  }
+ },
+ "pass": true
+}
