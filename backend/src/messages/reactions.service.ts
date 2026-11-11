@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { Message, MessageReaction } from '@prisma/client';
 
 type MessageWithReactions = Message & { reactions: MessageReaction[] };
@@ -47,6 +49,17 @@ export class ReactionsService {
     try {
       const message = await this.findMessageOrThrow(messageId);
 
+      // Same rule as sending and editing: a block stops new activity in a
+      // 1:1 DM (a group DM and channels are unaffected). Removing one's own
+      // reaction stays allowed.
+      if (message.directMessageGroupId) {
+        await assertNotBlockedInDm(
+          this.databaseService,
+          userId,
+          message.directMessageGroupId,
+        );
+      }
+
       if (emoji.startsWith(CUSTOM_REACTION_PREFIX)) {
         await this.validateCustomReaction(message, emoji, userId);
       }
@@ -61,7 +74,10 @@ export class ReactionsService {
 
       return await this.findMessageWithReactionsOrThrow(messageId);
     } catch (error) {
-      if (error instanceof NotFoundException) {
+      if (
+        error instanceof NotFoundException ||
+        error instanceof ForbiddenException
+      ) {
         throw error;
       }
       this.logger.error(`Error adding reaction to message ${messageId}`, error);

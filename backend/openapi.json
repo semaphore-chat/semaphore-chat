@@ -7040,7 +7040,9 @@
             "name": "unreadOnly",
             "required": false,
             "in": "query",
+            "description": "Only return unread notifications. Absent means all of them.",
             "schema": {
+              "default": false,
               "type": "boolean"
             }
           }

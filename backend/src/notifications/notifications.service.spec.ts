@@ -1313,6 +1313,37 @@ describe('NotificationsService', () => {
     });
   });
 
+  describe('countUserNotifications', () => {
+    it('counts every matching row, ignoring limit and offset', async () => {
+      mockDatabase.notification.count.mockResolvedValue(137);
+
+      const total = await service.countUserNotifications('user-1', {
+        unreadOnly: true,
+        limit: 10,
+        offset: 20,
+      });
+
+      expect(total).toBe(137);
+      expect(mockDatabase.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1', read: false },
+      });
+    });
+
+    it('counts read and unread rows when unreadOnly is false', async () => {
+      mockDatabase.notification.count.mockResolvedValue(3);
+
+      await service.countUserNotifications('user-1', {
+        unreadOnly: false,
+        limit: 50,
+        offset: 0,
+      });
+
+      expect(mockDatabase.notification.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1' },
+      });
+    });
+  });
+
   describe('getUnreadCount', () => {
     it('should return unread notification count', async () => {
       const userId = 'user-1';

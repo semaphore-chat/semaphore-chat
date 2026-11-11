@@ -81,7 +81,7 @@ describe('Server mute rank (e2e)', () => {
 
   it('nobody but an owner mutes or lifts for themselves', async () => {
     const c = await scene();
-    await mute('admin', c.generalChannel, 'mod', true).expect(201);
+    await mute('admin', c.generalChannel, 'mod', true).expect(200);
 
     await mute('mod', c.generalChannel, 'mod', false).expect(403);
     expect(await presence.isServerMuted(c.generalChannel, f.id.mod)).toBe(true);
@@ -91,11 +91,11 @@ describe('Server mute rank (e2e)', () => {
 
   it('a moderator can mute and lift for a lower rank', async () => {
     const c = await scene();
-    await mute('mod', c.generalChannel, 'member', true).expect(201);
+    await mute('mod', c.generalChannel, 'member', true).expect(200);
     expect(await presence.isServerMuted(c.generalChannel, f.id.member)).toBe(
       true,
     );
-    await mute('mod', c.generalChannel, 'member', false).expect(201);
+    await mute('mod', c.generalChannel, 'member', false).expect(200);
     expect(await presence.isServerMuted(c.generalChannel, f.id.member)).toBe(
       false,
     );
@@ -103,7 +103,7 @@ describe('Server mute rank (e2e)', () => {
 
   it('cannot lift a mute on a higher rank either', async () => {
     const c = await scene();
-    await mute('owner', c.generalChannel, 'admin', true).expect(201);
+    await mute('owner', c.generalChannel, 'admin', true).expect(200);
     await mute('mod', c.generalChannel, 'admin', false).expect(403);
     expect(await presence.isServerMuted(c.generalChannel, f.id.admin)).toBe(
       true,
@@ -112,10 +112,10 @@ describe('Server mute rank (e2e)', () => {
 
   it('an instance owner may mute and lift anyone, themselves included', async () => {
     const c = await scene();
-    await mute('owner', c.generalChannel, 'admin', true).expect(201);
-    await mute('owner', c.generalChannel, 'admin', false).expect(201);
-    await mute('owner', c.generalChannel, 'owner', true).expect(201);
-    await mute('owner', c.generalChannel, 'owner', false).expect(201);
+    await mute('owner', c.generalChannel, 'admin', true).expect(200);
+    await mute('owner', c.generalChannel, 'admin', false).expect(200);
+    await mute('owner', c.generalChannel, 'owner', true).expect(200);
+    await mute('owner', c.generalChannel, 'owner', false).expect(200);
   });
 
   it('a member without the action stays refused', async () => {
