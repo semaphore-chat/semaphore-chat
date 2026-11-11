@@ -61,7 +61,8 @@
 //! none|dm ID|channel ID`, `voice server-muted yes|no`, `keep-awake on|off` (the rig's inhibitor),
 //! `mic-test running|stopped`, `mic-level heard`, `engine vad N`, `soundboard playing ID|none`,
 //! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `float shown|hidden`. The step
-//! `mic tone on|off` makes the virtual mic play a tone. `tick N` also moves
+//! `mic tone on|off` makes the virtual mic play a tone; `clock hold|run` stops the scenario clock
+//! counting real time (only `tick` moves it), and starts it again. `tick N` also moves
 //! the scenario clock core reads by N, so the app's timers for core's deadlines fire due.
 //!
 //! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
@@ -147,15 +148,65 @@ impl SecretStore for MemorySecrets {
 struct ScenarioClock {
     start_ms: i64,
     started: Instant,
-    /// What `tick` has moved GPUI's clock by: core's timers (a ring's 30 s, the replay buffer's
-    /// audio wait) are due by this clock, and the app's timers for them by GPUI's.
-    ticked_ms: Arc<std::sync::atomic::AtomicU64>,
+    /// `tick` and `clock hold|run`, kept across restarts.
+    moves: Arc<ClockMoves>,
+}
+
+/// How the scenario clock departs from real time.
+/// - `tick N` adds N ms, as it moves GPUI's clock: core's timers (a ring's 30 s, the replay
+///   buffer's audio wait) are due by this clock, and the app's timers for them by GPUI's.
+/// - `clock hold` stops real time counting until `clock run`, so a step that ticks to just before
+///   a deadline isn't pushed past it by a slow machine.
+#[derive(Default)]
+struct ClockMoves {
+    state: Mutex<ClockState>,
+}
+
+#[derive(Default)]
+struct ClockState {
+    ticked_ms: i64,
+    /// Real time not counted: the holds so far.
+    held_ms: i64,
+    /// While held: the real elapsed time it was held at.
+    holding_since: Option<i64>,
+}
+
+impl ClockMoves {
+    fn tick(&self, ms: u64) {
+        self.state.lock().unwrap().ticked_ms += ms as i64;
+    }
+
+    fn hold(&self, elapsed_ms: i64) {
+        let mut state = self.state.lock().unwrap();
+        state.holding_since.get_or_insert(elapsed_ms);
+    }
+
+    fn run(&self, elapsed_ms: i64) {
+        let mut state = self.state.lock().unwrap();
+        if let Some(since) = state.holding_since.take() {
+            state.held_ms += elapsed_ms - since;
+        }
+    }
+
+    /// A new app's clock: real time from its start again, not held; the ticks stay.
+    fn restart(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.held_ms = 0;
+        state.holding_since = None;
+    }
+
+    /// Real elapsed time as the clock counts it, plus the ticks.
+    fn counted(&self, elapsed_ms: i64) -> i64 {
+        let state = self.state.lock().unwrap();
+        let real = state.holding_since.unwrap_or(elapsed_ms) - state.held_ms;
+        real + state.ticked_ms
+    }
 }
 
 impl Clock for ScenarioClock {
     fn now_ms(&self) -> u64 {
-        let ticked = self.ticked_ms.load(std::sync::atomic::Ordering::Relaxed) as i64;
-        (self.start_ms + self.started.elapsed().as_millis() as i64 + ticked) as u64
+        let elapsed = self.started.elapsed().as_millis() as i64;
+        (self.start_ms + self.moves.counted(elapsed)) as u64
     }
 }
 
@@ -468,6 +519,8 @@ enum Step {
     ExpectLinkRegistrations(usize),
     /// W4: `mic tone on|off`.
     MicTone(bool),
+    /// W4: `clock hold|run`: the scenario clock stops counting real time, or counts it again.
+    ClockHold(bool),
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -711,6 +764,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["link", url] => Step::Link((*url).into()),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
+            ["clock", state @ ("hold" | "run")] => Step::ClockHold(*state == "hold"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
             ["browser", "approve"] => Step::BrowserApprove,
@@ -907,8 +961,10 @@ struct Rig {
     picks: Rc<RefCell<VecDeque<PathBuf>>>,
     /// Who opens semaphore:// links, instead of the OS.
     links: Arc<RigLinks>,
-    /// What `tick` has added to the scenario clock, kept across restarts.
-    ticked_ms: Arc<std::sync::atomic::AtomicU64>,
+    /// What `tick` and `clock hold|run` did to the scenario clock, kept across restarts; and
+    /// the real time the current app's clock started at, for holds.
+    clock_moves: Arc<ClockMoves>,
+    clock_started: Instant,
     /// What the app asked of the system's sleep inhibitor, instead of the system.
     keep_awake: Arc<RigKeepAwake>,
     /// `mic tone on`: the virtual mic plays a tone instead of silence.
@@ -1057,7 +1113,8 @@ impl Rig {
             opened: Rc::default(),
             picks: Rc::default(),
             links: Arc::default(),
-            ticked_ms: Arc::default(),
+            clock_moves: Arc::default(),
+            clock_started: Instant::now(),
             keep_awake: Arc::default(),
             tone: Arc::default(),
         }
@@ -1154,11 +1211,16 @@ impl Rig {
                 }
                 store
             },
-            clock: Arc::new(ScenarioClock {
-                start_ms: self.now_ms,
-                started: Instant::now(),
-                ticked_ms: self.ticked_ms.clone(),
-            }),
+            clock: {
+                // A (re)start counts real time from now, as before; the ticks stay.
+                self.clock_started = Instant::now();
+                self.clock_moves.restart();
+                Arc::new(ScenarioClock {
+                    start_ms: self.now_ms,
+                    started: self.clock_started,
+                    moves: self.clock_moves.clone(),
+                })
+            },
             server_url: Some(self.server.clone()),
             time: TimeFormat::fixed(self.now_ms),
             scrollbar: false,
@@ -2180,14 +2242,22 @@ impl Rig {
                     Ok(())
                 }
                 Step::Restart => self.restart(),
+                Step::ClockHold(hold) => {
+                    let elapsed = self.clock_started.elapsed().as_millis() as i64;
+                    if *hold {
+                        self.clock_moves.hold(elapsed);
+                    } else {
+                        self.clock_moves.run(elapsed);
+                    }
+                    Ok(())
+                }
                 Step::MicTone(on) => {
                     self.tone.store(*on, std::sync::atomic::Ordering::Relaxed);
                     Ok(())
                 }
                 Step::Tick(ms) => {
                     // Core's clock moves with GPUI's, so a timer the app set for core fires due.
-                    self.ticked_ms
-                        .fetch_add(*ms, std::sync::atomic::Ordering::Relaxed);
+                    self.clock_moves.tick(*ms);
                     self.driver.cx.advance_clock(Duration::from_millis(*ms));
                     self.driver.settle()
                 }

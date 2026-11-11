@@ -129,14 +129,14 @@ impl AppRoot {
         let Some(core) = self.core() else {
             return overlays;
         };
+        let narrow = f32::from(window.viewport_size().width) < 600.;
         if let Some(call) = core.incoming_call() {
-            overlays.push(self.incoming_banner(&call, cx));
+            overlays.push(self.incoming_banner(&call, narrow, cx));
         }
         if let Some((menu, _)) = &self.calls.menu {
             overlays.push(menu.clone().into_any_element());
         }
         if self.calls.debug.is_some() {
-            let narrow = f32::from(window.viewport_size().width) < 600.;
             overlays.push(self.debug_panel(narrow, cx));
         }
         overlays
@@ -191,14 +191,20 @@ impl AppRoot {
         }
     }
 
-    fn incoming_banner(&self, call: &IncomingCallView, cx: &mut Context<Self>) -> AnyElement {
+    /// `touch`: a phone-width window, with the larger buttons.
+    fn incoming_banner(
+        &self,
+        call: &IncomingCallView,
+        touch: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let root = cx.entity().downgrade();
         let decline = root.clone();
         let props = IncomingProps {
             is_group: call.is_group,
             accepting: self.calls.accepting,
             error: self.calls.incoming_error.clone(),
-            touch: false,
+            touch,
         };
         let banner = incoming_call_banner(
             call,
