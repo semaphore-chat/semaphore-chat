@@ -63,6 +63,9 @@ pub struct Services {
     pub frames: Arc<FramesSink>,
     /// Who picks what to share, and what there is.
     pub screens: Arc<dyn ScreenCapture>,
+    /// Where sound goes: the call's, and the app's own sounds (`sounds`). The rig's virtual device
+    /// in rigs and tests.
+    pub audio: Arc<dyn AudioIo>,
     realtime: Arc<SocketRealtime>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -156,6 +159,7 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             if let Some(audio) = audio {
                 engine_options.audio_io = audio;
             }
+            let audio = engine_options.audio_io.clone();
             if let Some(sources) = video_sources {
                 engine_options.video_sources = sources;
             }
@@ -190,6 +194,7 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
                 engine,
                 frames,
                 screens,
+                audio,
                 realtime,
                 runtime: Some(runtime),
             };

@@ -37,6 +37,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+pub mod inbox;
+
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
 
@@ -93,6 +95,9 @@ pub struct AppRoot {
     viewer: Option<AttachmentView>,
     viewer_focus: FocusHandle,
     images: Option<Entity<LruImageCache>>,
+    /// W2: DMs, friends, notifications, links and idle (`inbox`).
+    inbox: inbox::Inbox,
+    window: AnyWindowHandle,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -146,6 +151,8 @@ impl AppRoot {
             }
         });
         let settings = config.settings.clone();
+        // Any key in the window is input, for idle.
+        let keys = cx.observe_keystrokes(|this, _, _, cx| this.input_seen(cx));
         Self {
             settings,
             more_open: false,
@@ -171,7 +178,9 @@ impl AppRoot {
             viewer: None,
             viewer_focus: cx.focus_handle(),
             images: None,
-            _subscriptions: vec![activation],
+            inbox: inbox::Inbox::default(),
+            window: window.window_handle(),
+            _subscriptions: vec![activation, keys],
         }
     }
 
@@ -204,14 +213,16 @@ impl AppRoot {
         }
     }
 
-    /// A `semaphore://` link the OS handed over, already parsed. The app-wiring unit routes it.
-    pub fn open_link(&mut self, link: semaphore_ui::nav::DeepLink, _cx: &mut Context<Self>) {
-        log::info!("deep link received, not routed yet: {link:?}");
+    /// A `semaphore://` link the OS handed over, already parsed: routed now, or kept until
+    /// sign-in.
+    pub fn open_link(&mut self, link: semaphore_ui::nav::DeepLink, cx: &mut Context<Self>) {
+        self.route_link(link, cx);
     }
 
-    /// The user clicked the OS notification with this tag. The app-wiring unit routes it.
-    pub fn open_notification(&mut self, tag: &str, _cx: &mut Context<Self>) {
-        log::info!("notification clicked, not routed yet: {tag}");
+    /// The user clicked the OS notification with this tag: it's marked read, and what it's about
+    /// opens.
+    pub fn open_notification(&mut self, tag: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.notification_clicked(tag, window, cx);
     }
 
     /// Ends core and the socket. The stored session stays.
@@ -310,7 +321,9 @@ impl AppRoot {
         self.stage = Some(cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx)));
         self.voice = Some(voice);
         self.pane = Some(pane);
+        let audio = services.audio.clone();
         self.services = Some(services);
+        self.start_inbox(audio, cx);
         if self.config.watch_os {
             let handle = self.services.as_ref().map(|services| services.exec.clone());
             if let (Some(exec), Some(core)) = (handle, self.core()) {
@@ -611,6 +624,7 @@ impl AppRoot {
             } => self.refresh_stage(cx),
             _ => {}
         }
+        self.inbox_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -660,7 +674,8 @@ impl AppRoot {
                 self.remember_server();
                 if self.shell.is_none() {
                     self.shell = Some(self.build_shell(core.clone(), window, cx));
-                    self.landed = false;
+                    // A link that came before sign-in is where this session lands.
+                    self.landed = self.route_pending_link(cx);
                     self.land(cx);
                 }
             }
@@ -673,6 +688,7 @@ impl AppRoot {
                 }
                 self.viewer = None;
                 self.shell = None;
+                self.drop_inbox();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -815,6 +831,7 @@ impl AppRoot {
             },
         );
         let connection = core.connection();
+        let route_sidebar = self.build_inbox(window, cx);
         let bar_root = cx.entity().downgrade();
         let shell = cx.new(|cx| {
             // The call's bar under the columns, wherever the user is but the call's own channel.
@@ -843,7 +860,10 @@ impl AppRoot {
                 cx,
             )
             .with_voice_bar(bar)
+            .with_route_sidebar(route_sidebar)
         });
+        let level = self.level_menu();
+        shell.update(cx, |shell, cx| shell.set_header_accessory(level, cx));
         self._subscriptions
             .push(cx.subscribe_in(&shell, window, Self::on_shell_event));
         shell
@@ -862,8 +882,13 @@ impl AppRoot {
         };
         match event.clone() {
             PaneEvent::SidePanel(panel) => {
-                shell.update(cx, |shell, cx| shell.set_side_panel(panel, cx));
+                if self.pane_side_panel(panel.is_some()) {
+                    shell.update(cx, |shell, cx| shell.set_side_panel(panel, cx));
+                }
             }
+            PaneEvent::OpenDm { dm_id } => shell.update(cx, |shell, cx| {
+                shell.navigate(Route::DirectMessage { dm_group_id: dm_id }, cx)
+            }),
             PaneEvent::Navigate {
                 community_id,
                 channel_id,
@@ -899,7 +924,8 @@ impl AppRoot {
                 self.account_open = true;
                 cx.notify();
             }
-            ShellEvent::Navigated(_) => {}
+            ShellEvent::Navigated(route) => self.inbox_navigated(route, cx),
+            ShellEvent::OpenNotifications => self.toggle_centre(cx),
             ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
             ShellEvent::OpenPins => {
                 if let Some(pane) = &self.pane {
@@ -912,7 +938,9 @@ impl AppRoot {
                 }
             }
             ShellEvent::CloseSidePanel => {
-                if let Some(pane) = &self.pane {
+                if self.centre_open() {
+                    self.close_centre(cx);
+                } else if let Some(pane) = &self.pane {
                     pane.update(cx, |pane, cx| pane.close_side(cx));
                 }
             }
@@ -944,11 +972,24 @@ impl AppRoot {
         let close = cx.entity().downgrade();
         let cancel = close.clone();
         let sign_out = close.clone();
+        let notifications = close.clone();
         Dialog::new(format!("Signed in as {name}"))
             .body(text(
                 Variant::Body2,
                 "Signing out forgets this session on this computer.",
             ))
+            .action(
+                Button::new("account-notifications", "Notification settings").on_click(
+                    move |_, window, cx| {
+                        notifications
+                            .update(cx, |this, cx| {
+                                this.account_open = false;
+                                this.open_notification_settings(window, cx);
+                            })
+                            .ok();
+                    },
+                ),
+            )
             .action(
                 Button::new("account-cancel", "Cancel").on_click(move |_, _, cx| {
                     cancel
@@ -1424,9 +1465,13 @@ fn content(
                 )
                 .into_any_element()
         }
-        (Route::DirectMessages | Route::DirectMessage { .. }, _) => placeholder(
-            "Direct messages".into(),
-            "Direct messages arrive in a later build.",
+        (Route::DirectMessage { dm_group_id }, _) => root
+            .upgrade()
+            .and_then(|root| inbox::dm_conversation(&root, dm_group_id, false, window, cx))
+            .unwrap_or_else(|| placeholder("Loading".into(), "")),
+        (Route::DirectMessages, _) => placeholder(
+            "Your messages".into(),
+            "Pick a conversation, or start a new one.",
         ),
         (route, None) if route.community_id().is_some() => match &props.community {
             Some(community) => placeholder(
@@ -1459,9 +1504,16 @@ impl Render for AppRoot {
                 .justify_center()
                 .child(Spinner::new("app-restoring"));
         }
+        // Input anywhere in the window, for idle.
+        let root = root
+            .capture_any_mouse_down(cx.listener(|this, _, _, cx| this.input_seen(cx)))
+            .on_mouse_move(cx.listener(|this, _, _, cx| this.input_seen(cx)))
+            .on_scroll(cx.listener(|this, _, _, cx| this.input_seen(cx)));
         if let Some(shell) = &self.shell {
+            let overlays = self.inbox_overlays(cx);
             return root
                 .child(shell.clone())
+                .children(overlays)
                 .when(self.account_open, |root| {
                     root.child(self.account_dialog(cx))
                 })

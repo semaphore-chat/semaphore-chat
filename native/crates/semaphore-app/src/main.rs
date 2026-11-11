@@ -171,6 +171,7 @@ fn main() -> ExitCode {
                 video_sources: None,
                 screen_capture: None,
                 heartbeat: semaphore_app::voice::HEARTBEAT,
+                notifier: desktop.notifier.clone(),
             };
             let bounds =
                 semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);

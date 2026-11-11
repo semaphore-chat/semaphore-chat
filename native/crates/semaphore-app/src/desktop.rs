@@ -256,6 +256,7 @@ pub fn attach(services: DesktopServices, app: &Entity<AppRoot>, window: &mut Win
             && window.set_window_visible(false)
         {
             close_hidden.set(true);
+            close_app.update(cx, |root, cx| root.check_idle(cx)).ok();
             return false;
         }
         true
@@ -334,12 +335,14 @@ fn handle(event: DesktopEvent, cx: &mut App) {
             tag,
             activation_token,
         } => {
-            let _ = window.update(cx, |_, window, _| {
+            let _ = window.update(cx, |_, window, cx| {
                 show(window, &hidden, activation_token.as_deref());
+                app.update(cx, |root, cx| root.open_notification(&tag, window, cx))
             });
-            let _ = app.update(cx, |root, cx| root.open_notification(&tag, cx));
         }
     }
+    // Shown or hidden: whether the user counts as idle may have changed.
+    let _ = app.update(cx, |root, cx| root.check_idle(cx));
 }
 
 impl AppRoot {

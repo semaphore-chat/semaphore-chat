@@ -16,6 +16,7 @@ pub mod root;
 pub mod runtime;
 pub mod services;
 pub mod settings;
+pub mod sounds;
 pub mod voice;
 
 use gpui_kit::component::Root;
@@ -55,6 +56,9 @@ pub struct AppConfig {
     /// `link_preview_images` is read so far: it decides whether link previews load their images
     /// from the sites they're on.
     pub settings: settings::SettingsStore,
+    /// OS notifications for what core raises: the desktop's (`DesktopServices::notifier`) in the
+    /// app, a recorder in the rig, `None` for none.
+    pub notifier: Option<Arc<dyn semaphore_core::platform::Notifier>>,
 }
 
 /// Once per process, before the first window.
