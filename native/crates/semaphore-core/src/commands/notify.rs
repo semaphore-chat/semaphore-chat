@@ -68,3 +68,7 @@ impl Core {
         0
     }
 }
+
+/// What W2's commands keep between calls. Forgotten at sign-out.
+#[derive(Debug, Default)]
+pub(crate) struct W2State {}

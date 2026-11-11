@@ -12,8 +12,13 @@ use crate::resync::{failed, unavailable};
 
 impl Core {
     pub(crate) async fn fetch_query(&self, key: QueryKey) {
+        let epoch = self.read(|state| state.session_epoch);
         let result = self.fetch_value(&key).await;
         self.write(|state, now| {
+            // A session has ended since: this answer, and the `fetching` mark, aren't the next one's.
+            if state.session_epoch != epoch {
+                return;
+            }
             // Gone means the session it belonged to is over: sign-out clears these.
             let Some(dirty) = state.fetching.remove(&key) else {
                 return;

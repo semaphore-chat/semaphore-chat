@@ -90,6 +90,14 @@ pub(crate) struct State {
     pub actions: crate::commands::actions::ActionsState,
     /// Threads, search, the unread divider and links: `commands/reading.rs`.
     pub reading: crate::commands::reading::ReadingState,
+    /// W2's DMs, friends and notifications.
+    pub w2: crate::commands::notify::W2State,
+    /// Numbers each session: bumped at sign-out, so work begun in one session can tell, when it
+    /// finishes, that the session it belonged to is over.
+    pub session_epoch: u64,
+    /// Numbers every optimistic change, across sessions: never reset, so a change of one session
+    /// can't be taken for a change of the next.
+    next_change: u64,
     pub session: SessionState,
     pub me: Option<UserView>,
     pub voice: VoiceView,
@@ -137,6 +145,9 @@ impl State {
             mention_notifications: HashMap::new(),
             actions: Default::default(),
             reading: Default::default(),
+            w2: Default::default(),
+            session_epoch: 0,
+            next_change: 0,
             session: SessionState::SignedOut,
             me: None,
             voice: VoiceView::default(),
@@ -158,6 +169,12 @@ impl State {
             delivering: false,
             has_services,
         }
+    }
+
+    /// A new change number, unique for the life of this core.
+    pub fn next_change(&mut self) -> u64 {
+        self.next_change += 1;
+        self.next_change
     }
 
     pub fn me_id(&self) -> &str {

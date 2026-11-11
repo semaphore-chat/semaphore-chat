@@ -120,6 +120,8 @@ impl State {
         self.mention_notifications.clear();
         self.actions = Default::default();
         self.reading = Default::default();
+        self.w2 = Default::default();
+        self.session_epoch += 1;
         self.effects.clear();
         self.main_conversation = None;
         self.thread_conversation = None;
