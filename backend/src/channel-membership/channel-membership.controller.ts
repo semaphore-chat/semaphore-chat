@@ -116,8 +116,13 @@ export class ChannelMembershipController {
   remove(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('channelId', ParseUUIDPipe) channelId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.channelMembershipService.remove(userId, channelId);
+    return this.channelMembershipService.removeByActor(
+      req.user,
+      userId,
+      channelId,
+    );
   }
 
   @Delete('/leave/:channelId')

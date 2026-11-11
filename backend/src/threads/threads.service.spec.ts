@@ -1,5 +1,13 @@
+import { WebsocketService } from '@/websocket/websocket.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { LinkPreviewsService } from '@/link-previews/link-previews.service';
+import { ServerEvents } from '@semaphore-chat/shared';
 import { TestBed } from '@suites/unit';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ThreadsService } from './threads.service';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
@@ -9,10 +17,16 @@ import { createMockDatabase, MessageFactory } from '@/test-utils';
 describe('ThreadsService', () => {
   let service: ThreadsService;
   let mockDatabase: ReturnType<typeof createMockDatabase>;
+  let websocketService: Mocked<WebsocketService>;
+  let notificationsService: Mocked<NotificationsService>;
+  let linkPreviewsService: Mocked<LinkPreviewsService>;
   let channelAccessService: Mocked<ChannelAccessService>;
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+      id: 'member-1',
+    });
 
     const { unit, unitRef } = await TestBed.solitary(ThreadsService)
       .mock(DatabaseService)
@@ -21,6 +35,13 @@ describe('ThreadsService', () => {
 
     service = unit;
     channelAccessService = unitRef.get(ChannelAccessService);
+    websocketService = unitRef.get(WebsocketService);
+    notificationsService = unitRef.get(NotificationsService);
+    linkPreviewsService = unitRef.get(LinkPreviewsService);
+    notificationsService.processThreadReplyNotifications.mockResolvedValue(
+      undefined,
+    );
+    linkPreviewsService.processMessageLinkPreviews.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -59,6 +80,155 @@ describe('ThreadsService', () => {
       await expect(service.getParentMessage(reply.id)).rejects.toThrow(
         BadRequestException,
       );
+    });
+  });
+
+  describe('sendThreadReply', () => {
+    const nonce = '0b4d1f9e-3b0a-4c7e-9d55-0f6a7a1b2c3d';
+    const parent = {
+      id: 'parent-1',
+      channelId: 'channel-1',
+      directMessageGroupId: null,
+      parentMessageId: null,
+    };
+    const dto = {
+      parentMessageId: 'parent-1',
+      spans: [],
+      clientNonce: nonce,
+    } as any;
+
+    beforeEach(() => {
+      (mockDatabase as any).messageNonceTombstone = {
+        findUnique: jest.fn().mockResolvedValue(null),
+      };
+    });
+
+    describe('a new reply', () => {
+      const reply = {
+        id: 'reply-1',
+        spans: [],
+        attachments: [],
+        reactions: [],
+      } as any;
+      const counts = { replyCount: 3, lastReplyAt: new Date() };
+      const newReply = { ...dto, clientNonce: undefined };
+
+      beforeEach(() => {
+        mockDatabase.message.findUnique
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce({
+            channelId: 'channel-1',
+            directMessageGroupId: null,
+            ...counts,
+          });
+        jest.spyOn(service, 'createThreadReply').mockResolvedValue(reply);
+      });
+
+      it('announces the reply and the new count to the room', async () => {
+        await expect(
+          service.sendThreadReply(newReply, 'user-1'),
+        ).resolves.toEqual(reply);
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'channel-1',
+          ServerEvents.NEW_THREAD_REPLY,
+          expect.objectContaining({ parentMessageId: 'parent-1' }),
+        );
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'channel-1',
+          ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+          {
+            parentMessageId: 'parent-1',
+            replyCount: 3,
+            lastReplyAt: counts.lastReplyAt.toISOString(),
+            channelId: 'channel-1',
+            directMessageGroupId: null,
+          },
+        );
+      });
+
+      it('uses the group room for a DM thread', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce({ ...parent, channelId: null })
+          .mockResolvedValueOnce({
+            channelId: null,
+            directMessageGroupId: 'dm-1',
+            ...counts,
+          });
+
+        await service.sendThreadReply(newReply, 'user-1');
+
+        expect(websocketService.sendToRoom).toHaveBeenCalledWith(
+          'dm:dm-1',
+          ServerEvents.NEW_THREAD_REPLY,
+          expect.any(Object),
+        );
+      });
+
+      it('skips the room for an orphaned parent, but still notifies', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce({
+            channelId: null,
+            directMessageGroupId: null,
+            ...counts,
+          });
+
+        await service.sendThreadReply(newReply, 'user-1');
+
+        expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+        expect(
+          notificationsService.processThreadReplyNotifications,
+        ).toHaveBeenCalled();
+      });
+
+      it('notifies without waiting, and survives its failure', async () => {
+        notificationsService.processThreadReplyNotifications.mockRejectedValue(
+          new Error('notification failure'),
+        );
+
+        await expect(service.sendThreadReply(newReply, 'user-1')).resolves.toBe(
+          reply,
+        );
+        expect(
+          notificationsService.processThreadReplyNotifications,
+        ).toHaveBeenCalledWith(reply, 'parent-1', 'user-1');
+      });
+
+      it('fails if the parent is gone by then', async () => {
+        mockDatabase.message.findUnique
+          .mockReset()
+          .mockResolvedValueOnce(parent)
+          .mockResolvedValueOnce(null);
+
+        await expect(
+          service.sendThreadReply(newReply, 'user-1'),
+        ).rejects.toThrow('Parent message not found');
+      });
+    });
+
+    it('returns the earlier reply, without creating another', async () => {
+      mockDatabase.message.findUnique
+        .mockResolvedValueOnce(parent)
+        .mockResolvedValueOnce({
+          id: 'reply-1',
+          channelId: 'channel-1',
+          directMessageGroupId: null,
+          parentMessageId: 'parent-1',
+          deletedAt: null,
+          sentAt: new Date(),
+          spans: [],
+          reactions: [],
+          attachments: [],
+        });
+
+      const reply = await service.sendThreadReply(dto, 'user-1');
+
+      expect(reply.id).toBe('reply-1');
+      expect(mockDatabase.$transaction).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
   });
 
@@ -168,7 +338,12 @@ describe('ThreadsService', () => {
 
       const result = await service.createThreadReply(dto, authorId);
 
-      expect(result).toMatchObject(reply);
+      expect(result).toMatchObject({
+        id: reply.id,
+        authorId,
+        parentMessageId,
+        sentAt: reply.sentAt.toISOString(),
+      });
       expect(result).toHaveProperty('spans');
       expect(result).toHaveProperty('reactions');
       expect(result).toHaveProperty('attachments');
@@ -208,7 +383,29 @@ describe('ThreadsService', () => {
         authorId,
       );
 
-      expect(result).toMatchObject(reply);
+      expect(result).toMatchObject({
+        id: reply.id,
+        authorId,
+        parentMessageId,
+        sentAt: reply.sentAt.toISOString(),
+      });
+    });
+
+    it('refuses a DM thread reply from someone not in the group', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue(
+        MessageFactory.build({
+          id: parentMessageId,
+          channelId: null,
+          directMessageGroupId: 'dm-group-123',
+          parentMessageId: null,
+        }),
+      );
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createThreadReply({ ...dto, parentMessageId }, authorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.message.create).not.toHaveBeenCalled();
     });
 
     it('should auto-subscribe the replier to the thread', async () => {
@@ -261,7 +458,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(dtoWithExtraFields as any, authorId);
+      await service.createThreadReply(dtoWithExtraFields, authorId);
 
       const createCall = mockDatabase.message.create.mock.calls[0][0];
       const spans = createCall.data.spans.create;
@@ -305,7 +502,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;
@@ -336,7 +533,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;
@@ -370,7 +567,7 @@ describe('ThreadsService', () => {
       mockDatabase.message.update.mockResolvedValue(parent);
       mockDatabase.threadSubscriber.upsert.mockResolvedValue({});
 
-      await service.createThreadReply(emojiDto as any, authorId);
+      await service.createThreadReply(emojiDto, authorId);
 
       const spans =
         mockDatabase.message.create.mock.calls[0][0].data.spans.create;
@@ -693,20 +890,6 @@ describe('ThreadsService', () => {
       await expect(service.getThreadMetadata('nonexistent')).rejects.toThrow(
         NotFoundException,
       );
-    });
-  });
-
-  describe('decrementReplyCount', () => {
-    it('should decrement parent reply count', async () => {
-      const parentMessageId = 'parent-msg-123';
-      mockDatabase.message.update.mockResolvedValue({});
-
-      await service.decrementReplyCount(parentMessageId);
-
-      expect(mockDatabase.message.update).toHaveBeenCalledWith({
-        where: { id: parentMessageId },
-        data: { replyCount: { decrement: 1 } },
-      });
     });
   });
 });

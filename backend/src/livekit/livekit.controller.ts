@@ -11,12 +11,16 @@ import {
   Query,
   Param,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { LivekitService } from './livekit.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { LivekitAccessService } from './livekit-access.service';
+import { DatabaseService } from '@/database/database.service';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { FULL_PUBLISH_GRANT, publishGrantFor } from './publish-grant.util';
 import { LivekitReplayService } from './livekit-replay.service';
 import { ClipLibraryService } from './clip-library.service';
@@ -72,7 +76,22 @@ export class LivekitController {
     private readonly voicePresenceService: VoicePresenceService,
     private readonly jwtService: JwtService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly livekitAccessService: LivekitAccessService,
+    private readonly databaseService: DatabaseService,
   ) {}
+
+  /**
+   * The participant in a token is who's asking, with their account's name.
+   * Neither comes from the request: other participants see that name on their
+   * tile, so a client-chosen one could pose as anybody.
+   */
+  private participantOf(dto: CreateTokenDto, req: AuthenticatedRequest) {
+    return {
+      ...dto,
+      identity: req.user.id,
+      name: req.user.displayName || req.user.username,
+    };
+  }
 
   /**
    * The auth session (`sid`) of the access token JwtAuthGuard authenticated
@@ -98,21 +117,28 @@ export class LivekitController {
     @Body() createTokenDto: CreateTokenDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<TokenResponseDto> {
-    // Always use the authenticated user's ID to prevent identity spoofing
-    const tokenDto = {
-      ...createTokenDto,
-      identity: req.user.id,
-    };
+    const tokenDto = this.participantOf(createTokenDto, req);
     // What they may publish follows their channel voice capabilities
-    // (SPEAK/VIDEO/SCREEN_SHARE overwrites, community timeouts)
+    // (SPEAK/VIDEO/SCREEN_SHARE overwrites, community timeouts) and any
+    // server mute a moderator set
     const caps = await this.channelAccessService.channelCapabilities(
       req.user.id,
       createTokenDto.roomId,
     );
+    // No such channel: only an instance owner gets here (the guard stops
+    // everyone else), and a DM id is what dm-token and its membership check
+    // are for.
+    if (!caps) throw new NotFoundException('Channel not found');
     return this.livekitService.generateToken(
       tokenDto,
       this.sessionIdOf(req),
-      caps ? publishGrantFor(caps) : { canPublish: false },
+      publishGrantFor(
+        caps,
+        await this.voicePresenceService.isServerMuted(
+          createTokenDto.roomId,
+          req.user.id,
+        ),
+      ),
     );
   }
 
@@ -128,11 +154,17 @@ export class LivekitController {
     @Body() createTokenDto: CreateTokenDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<TokenResponseDto> {
-    // Always use the authenticated user's ID to prevent identity spoofing
-    const tokenDto = {
-      ...createTokenDto,
-      identity: req.user.id,
-    };
+    // The guard lets instance owners through; a DM call is for its members
+    await this.livekitAccessService.assertDmMember(
+      req.user.id,
+      createTokenDto.roomId,
+    );
+    await assertNotBlockedInDm(
+      this.databaseService,
+      req.user.id,
+      createTokenDto.roomId,
+    );
+    const tokenDto = this.participantOf(createTokenDto, req);
     // DM calls: timeouts are community-scoped, so DMs publish freely
     return this.livekitService.generateToken(
       tokenDto,
@@ -152,11 +184,41 @@ export class LivekitController {
   async muteParticipant(
     @Param('channelId') channelId: string,
     @Body() dto: MuteParticipantDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<{ success: boolean }> {
-    await this.livekitService.muteParticipant(
+    await this.livekitAccessService.assertMayServerMute(
+      req.user,
+      channelId,
+      dto.participantIdentity,
+    );
+
+    // Lifting a mute never touches tracks: LiveKit won't turn someone's mic back
+    // on for them, and they may have left since (a mute outlives the call). It
+    // gives the microphone back; the user unmutes when they want to.
+    if (dto.mute) {
+      await this.livekitService.muteParticipant(
+        channelId,
+        dto.participantIdentity,
+        true,
+      );
+    }
+
+    // Muting the track alone doesn't hold: the client can unmute it, or
+    // publish a new one. The mute is remembered and takes the microphone out
+    // of what they may publish, now and on every later join.
+    await this.voicePresenceService.setServerMuted(
       channelId,
       dto.participantIdentity,
       dto.mute,
+    );
+    const caps = await this.channelAccessService.channelCapabilities(
+      dto.participantIdentity,
+      channelId,
+    );
+    await this.livekitService.updatePublishPermissions(
+      channelId,
+      dto.participantIdentity,
+      caps ? publishGrantFor(caps, dto.mute) : { canPublish: false },
     );
     await this.voicePresenceService.updateServerMuteState(
       channelId,
@@ -186,7 +248,7 @@ export class LivekitController {
    * Start replay buffer egress for screen share
    */
   @Post('replay/start')
-  @RequiredActions(RbacActions.JOIN_CHANNEL)
+  @RequiredActions(RbacActions.JOIN_CHANNEL, RbacActions.CAPTURE_REPLAY)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
@@ -200,10 +262,8 @@ export class LivekitController {
     return this.livekitReplayService.startReplayBuffer({
       userId: req.user.id,
       channelId: dto.channelId,
-      roomName: dto.roomName,
       videoTrackId: dto.videoTrackId,
       audioTrackId: dto.audioTrackId,
-      participantIdentity: dto.participantIdentity,
     });
   }
 
@@ -223,6 +283,12 @@ export class LivekitController {
    * Creates a temporary file, streams it, and deletes it after streaming completes
    */
   @Get('replay/stream')
+  @ApiOkResponse({
+    description: 'MP4 replay clip download',
+    content: {
+      'video/mp4': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   async streamReplay(
     @Query() query: StreamReplayDto,
     @Req() req: AuthenticatedRequest,
@@ -295,6 +361,12 @@ export class LivekitController {
    * Returns the playlist file for the user's active session
    */
   @Get('replay/preview/playlist.m3u8')
+  @ApiOkResponse({
+    description: 'HLS playlist (m3u8) for the active preview session',
+    content: {
+      'application/vnd.apple.mpegurl': { schema: { type: 'string' } },
+    },
+  })
   async getPreviewPlaylist(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -314,6 +386,12 @@ export class LivekitController {
    * for HLS.js compatibility (LiveKit egress creates HDMV-style TS)
    */
   @Get('replay/preview/segment/:segmentFile')
+  @ApiOkResponse({
+    description: 'Remuxed MPEG-TS segment',
+    content: {
+      'video/mp2t': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   async getPreviewSegment(
     @Param('segmentFile') segmentFile: string,
     @Req() req: AuthenticatedRequest,

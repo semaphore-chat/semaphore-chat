@@ -1,9 +1,9 @@
-import { FileType, Prisma, SpanType } from '@prisma/client';
+import { FileType, SpanType } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SpanTypeValues, FileTypeValues } from '@/common/enums/swagger-enums';
 
 export class SpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
+  @ApiProperty({ enum: SpanTypeValues, enumName: 'SpanType' })
   type: SpanType;
   text: string | null;
   userId: string | null;
@@ -30,12 +30,13 @@ export class ReactionDto {
   userIds: string[];
 }
 
-export class EnrichedAttachment {
+export class AttachmentDto {
   id: string;
   filename: string;
   mimeType: string;
-  @ApiProperty({ enum: FileTypeValues })
+  @ApiProperty({ enum: FileTypeValues, enumName: 'FileType' })
   fileType: FileType;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
   hasThumbnail: boolean;
 }
@@ -51,9 +52,10 @@ export class ReplyToPreviewDto {
   id: string;
   authorId: string | null;
   spans: SpanDto[];
-  sentAt: Date;
-  @ApiPropertyOptional()
-  deletedAt: Date | null;
+  @ApiProperty({ type: String, format: 'date-time' })
+  sentAt: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  deletedAt: string | null;
 }
 
 export class LinkPreviewDto {
@@ -72,69 +74,77 @@ export class LinkPreviewDto {
   authorName?: string;
 }
 
-export class EnrichedMessageDto {
-  id: string;
-  channelId: string | null;
-  directMessageGroupId: string | null;
-  authorId: string | null;
-  spans: SpanDto[];
-  attachments: EnrichedAttachment[];
-  pendingAttachments: number | null;
-  reactions: ReactionDto[];
-  @ApiPropertyOptional({ type: [LinkPreviewDto] })
-  linkPreviews?: LinkPreviewDto[] | Prisma.JsonValue | null;
-  replyCount: number;
-  lastReplyAt: Date | null;
-  pinned: boolean;
-  pinnedAt: Date | null;
-  pinnedBy: string | null;
-  sentAt: Date;
-  editedAt: Date | null;
-  deletedAt: Date | null;
-  @ApiPropertyOptional()
-  replyToId?: string | null;
-  @ApiPropertyOptional({ type: ReplyToPreviewDto })
-  replyTo?: ReplyToPreviewDto | null;
-  @ApiPropertyOptional({ type: WebhookInfoDto })
-  webhook?: WebhookInfoDto | null;
-}
-
+/**
+ * The one message shape, on REST and on the socket. Built by toMessageDto().
+ * Every field is always present, null when it has no value, except the optional
+ * ones below.
+ */
 export class MessageDto {
   id: string;
   channelId: string | null;
   directMessageGroupId: string | null;
+  /** Null for a deleted user's messages and for webhook messages. */
   authorId: string | null;
   spans: SpanDto[];
-  attachments: string[];
+  attachments: AttachmentDto[];
+  @ApiProperty({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
   reactions: ReactionDto[];
-  @ApiPropertyOptional({ type: [LinkPreviewDto] })
-  linkPreviews?: LinkPreviewDto[] | Prisma.JsonValue | null;
+  @ApiProperty({ type: [LinkPreviewDto], nullable: true })
+  linkPreviews: LinkPreviewDto[] | null;
+  @ApiProperty({ type: 'integer' })
   replyCount: number;
-  lastReplyAt: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  lastReplyAt: string | null;
   pinned: boolean;
-  pinnedAt: Date | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  pinnedAt: string | null;
   pinnedBy: string | null;
-  sentAt: Date;
-  editedAt: Date | null;
-  deletedAt: Date | null;
-  searchText: string | null;
-  deletedBy: string | null;
-  deletedByReason: string | null;
+  @ApiProperty({ type: String, format: 'date-time' })
+  sentAt: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  editedAt: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  deletedAt: string | null;
   parentMessageId: string | null;
-  @ApiPropertyOptional()
-  replyToId?: string | null;
-  @ApiPropertyOptional({ type: WebhookInfoDto })
-  webhook?: WebhookInfoDto | null;
+  replyToId: string | null;
+  @ApiProperty({ type: ReplyToPreviewDto, nullable: true })
+  replyTo: ReplyToPreviewDto | null;
+  @ApiProperty({ type: WebhookInfoDto, nullable: true })
+  webhook: WebhookInfoDto | null;
+  /** Who removed the message. Null unless the reader may see removed messages. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  deletedBy?: string | null;
+  /** Why it was removed. Null unless the reader may see removed messages. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  deletedByReason?: string | null;
+  /** The id the sender gave this send, if any, to recognise its own message. */
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
+}
+
+/** What the reaction endpoints answer: where the message is and its reactions. */
+export class MessageReactionsDto {
+  id: string;
+  channelId: string | null;
+  directMessageGroupId: string | null;
+  parentMessageId: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  deletedAt: string | null;
+  reactions: ReactionDto[];
+}
+
+export class CommunitySearchResultDto extends MessageDto {
+  channelName: string;
 }
 
 export class PaginatedMessagesResponseDto {
-  messages: EnrichedMessageDto[];
+  messages: MessageDto[];
   continuationToken?: string;
 }
 
 export class AnchoredMessagesResponseDto {
-  messages: EnrichedMessageDto[];
+  messages: MessageDto[];
   olderContinuationToken?: string;
   newerContinuationToken?: string;
 }

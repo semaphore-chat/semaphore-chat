@@ -21,6 +21,7 @@ import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '@/auth/optional-jwt-auth.guard';
 import { Public } from '@/auth/public.decorator';
 import { FileMetadataResponseDto } from './dto/file-metadata-response.dto';
+import { SignedUrlResponseDto } from './dto/signed-url-response.dto';
 import { AuthenticatedRequest } from '@/types';
 
 @Controller('file')
@@ -33,6 +34,7 @@ export class FileController {
 
   @Get(':id/signed-url')
   @UseGuards(JwtAuthGuard, FileAccessGuard)
+  @ApiOkResponse({ type: SignedUrlResponseDto })
   async getSignedUrl(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: AuthenticatedRequest,
@@ -76,6 +78,12 @@ export class FileController {
   @Public()
   @Get(':id/thumbnail')
   @UseGuards(OptionalJwtAuthGuard, FileAuthGuard, FileAccessGuard)
+  @ApiOkResponse({
+    description: 'JPEG thumbnail bytes',
+    content: {
+      'image/jpeg': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   async getFileThumbnail(
     @Param('id', ParseUUIDPipe) id: string,
     @Res({ passthrough: true }) res: Response,
@@ -106,6 +114,15 @@ export class FileController {
   @Public()
   @Get(':id')
   @UseGuards(OptionalJwtAuthGuard, FileAuthGuard, FileAccessGuard)
+  @ApiOkResponse({
+    description:
+      'Raw file bytes; Content-Type is the stored file MIME type and supports Range requests',
+    content: {
+      'application/octet-stream': {
+        schema: { type: 'string', format: 'binary' },
+      },
+    },
+  })
   async getFile(
     @Param('id', ParseUUIDPipe) id: string,
     @Req() req: Request,

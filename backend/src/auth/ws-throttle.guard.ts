@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { WsException } from '@nestjs/websockets';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { Socket } from 'socket.io';
 import Redis from 'ioredis';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
@@ -91,7 +92,11 @@ export class WsThrottleGuard implements CanActivate {
       this.logger.warn(
         `WebSocket rate limit exceeded for socket ${client.id} (${count}/${this.maxEventsPerWindow} in ${this.windowMs}ms)`,
       );
-      throw new WsException('Rate limit exceeded. Please slow down.');
+      throw new WsException({
+        status: 'error',
+        message: 'Rate limit exceeded. Please slow down.',
+        errorCode: ErrorCode.RATE_LIMITED,
+      });
     }
 
     return true;

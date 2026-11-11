@@ -51,9 +51,12 @@ nav:
   - Architecture:
       - Overview: architecture/overview.md
       - Backend: architecture/backend.md
+      - Auth Clients: architecture/auth-clients.md
       - Frontend: architecture/frontend.md
       - Database Schema: architecture/database.md
       - WebSocket Patterns: architecture/websocket-patterns.md
+      - Wire Contract: architecture/wire-contract.md
+      - Error Handling: architecture/error-handling.md
       - Replay Buffer: architecture/replay-buffer.md
       - Voice & Screen Share Quality: architecture/voice-video-quality.md
   - Operations:

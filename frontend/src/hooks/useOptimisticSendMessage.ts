@@ -27,7 +27,8 @@ import {
   pendingAttachmentCount,
   startAttachmentUploads,
 } from "../utils/attachmentSend";
-import type { Message } from "../types/message.type";
+import { EMPTY_MESSAGE_FIELDS, type Message } from "../types/message.type";
+import { isDeletedWhileSending, newSendIdentity } from "../utils/sendAck";
 
 // reconcileAfterSend and the in-flight guard live in utils/optimisticSend.ts,
 // shared with the attachment sender (utils/attachmentSend.ts).
@@ -79,26 +80,29 @@ export function useOptimisticSendMessage(
       // edge (prependMessageToInfinite would no-op anyway, but skipping here
       // also avoids creating a 'pending'/'failed' row that would never be
       // visible until a reset — see the doc comment above).
+      const { clientNonce, clientId } = newSendIdentity(OPTIMISTIC_ID_PREFIX);
+      const wirePayload: NewMessagePayload = { ...payload, clientNonce };
+
       if (isDetachedFromLiveEdge(existing)) {
-        return rawSendMessage(payload);
+        return rawSendMessage(wirePayload);
       }
 
-      const clientId = `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`;
       const optimisticMessage: Message = {
-        ...payload,
+        ...EMPTY_MESSAGE_FIELDS,
+        ...wirePayload,
         authorId,
         id: clientId,
         clientId,
         sendStatus: "pending",
-      } as Message;
+      };
 
-      queryClient.setQueryData(queryKey, (old: unknown) =>
-        prependMessageToInfinite(old as never, optimisticMessage),
+      queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+        prependMessageToInfinite(old, optimisticMessage),
       );
 
       inFlightClientIds.add(clientId);
       try {
-        const result = await rawSendMessage(payload);
+        const result = await rawSendMessage(wirePayload);
         reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
         return result;
       } finally {
@@ -130,6 +134,9 @@ function buildRetryPayload(message: Message, sentAt: string, pendingAttachments:
     pendingAttachments,
     reactions: message.reactions,
     sentAt,
+    // The same nonce as the first attempt: if that one reached the server after
+    // all, this gets its message instead of creating a second.
+    clientNonce: message.clientNonce,
     ...(message.replyToId ? { replyToId: message.replyToId } : {}),
   };
 }
@@ -166,7 +173,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
     const retryPayload = buildRetryPayload(message, sentAt, pendingAttachmentCount(clientId));
     const optimisticMessage: Message = { ...message, sentAt, sendStatus: "pending" };
 
-    queryClient.setQueryData(queryKey, (old: unknown) => markOptimisticPending(old as never, clientId));
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => markOptimisticPending(old, clientId));
 
     inFlightClientIds.add(clientId);
     try {
@@ -176,6 +183,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
       if (result.success && result.messageId && hasAttachmentSend(clientId)) {
         startAttachmentUploads(clientId, result.messageId);
       }
+      if (isDeletedWhileSending(result.error)) discardAttachmentSend(clientId);
     } finally {
       inFlightClientIds.delete(clientId);
     }
@@ -185,7 +193,7 @@ export function useOptimisticMessageRetry(message: Message): UseOptimisticMessag
     const clientId = message.clientId;
     if (!clientId) return;
     discardAttachmentSend(clientId);
-    queryClient.setQueryData(queryKey, (old: unknown) => removeOptimisticMessage(old as never, clientId));
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => removeOptimisticMessage(old, clientId));
   }, [message, queryClient, queryKey]);
 
   return { retry, remove };

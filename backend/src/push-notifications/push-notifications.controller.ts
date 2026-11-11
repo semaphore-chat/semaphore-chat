@@ -4,6 +4,8 @@ import {
   Post,
   Delete,
   Body,
+  Param,
+  ParseUUIDPipe,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -20,6 +22,7 @@ import { SubscribePushDto, UnsubscribePushDto } from './dto/subscribe.dto';
 import {
   VapidPublicKeyResponseDto,
   PushStatusResponseDto,
+  PushSubscriptionInfoDto,
   TestPushResponseDto,
 } from './dto/push-notifications-response.dto';
 import { InstanceRole } from '@prisma/client';
@@ -99,6 +102,32 @@ export class PushNotificationsController {
       enabled: this.pushNotificationsService.isEnabled(),
       subscriptionCount: subscriptions.length,
     };
+  }
+
+  /**
+   * The current user's push subscriptions, so they can see what still
+   * receives their notifications.
+   */
+  @Get('subscriptions')
+  @ApiOkResponse({ type: [PushSubscriptionInfoDto] })
+  listSubscriptions(
+    @Req() req: AuthenticatedRequest,
+  ): Promise<PushSubscriptionInfoDto[]> {
+    return this.pushNotificationsService.listUserSubscriptions(req.user.id);
+  }
+
+  /**
+   * Revoke one of the current user's push subscriptions
+   */
+  @Delete('subscriptions/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOkResponse({ type: SuccessMessageDto })
+  async revokeSubscription(
+    @Req() req: AuthenticatedRequest,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<SuccessMessageDto> {
+    await this.pushNotificationsService.revokeSubscription(req.user.id, id);
+    return { success: true, message: 'Push subscription revoked' };
   }
 
   /**

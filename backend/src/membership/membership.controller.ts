@@ -14,7 +14,7 @@ import {
   DefaultValuePipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { MembershipService } from './membership.service';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import {
@@ -32,6 +32,7 @@ import {
 } from '@/auth/rbac-resource.decorator';
 
 import { AuthenticatedRequest } from '@/types';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 @Controller('membership')
 @UseGuards(JwtAuthGuard, RbacGuard)
@@ -54,6 +55,7 @@ export class MembershipController {
 
   @Get('/community/:communityId')
   @ApiOkResponse({ type: PaginatedMembershipsResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MEMBER)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
@@ -65,7 +67,7 @@ export class MembershipController {
     @Query('limit', new DefaultValuePipe(100), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
   ): Promise<PaginatedMembershipsResponseDto> {
-    limit = Math.min(limit, 500);
+    limit = clampLimit(limit, 500);
     return this.membershipService.findAllForCommunity(
       communityId,
       limit,
@@ -74,6 +76,7 @@ export class MembershipController {
   }
 
   @Get('/community/:communityId/search')
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MEMBER)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
@@ -135,8 +138,9 @@ export class MembershipController {
   remove(
     @Param('userId', ParseUUIDPipe) userId: string,
     @Param('communityId', ParseUUIDPipe) communityId: string,
+    @Req() req: AuthenticatedRequest,
   ): Promise<void> {
-    return this.membershipService.remove(userId, communityId);
+    return this.membershipService.removeByActor(req.user, userId, communityId);
   }
 
   @Delete('/leave/:communityId')

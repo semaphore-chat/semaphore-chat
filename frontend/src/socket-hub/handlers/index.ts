@@ -58,14 +58,11 @@ export const handlerRegistry: {
 
   // Threads (replies cache)
   [ServerEvents.NEW_THREAD_REPLY]: [threadHandlers.handleNewThreadReply],
-  [ServerEvents.UPDATE_THREAD_REPLY]: [threadHandlers.handleUpdateThreadReply],
-  [ServerEvents.DELETE_THREAD_REPLY]: [threadHandlers.handleDeleteThreadReply],
 
   // DM Voice
   [ServerEvents.DM_VOICE_CALL_STARTED]: [voiceHandlers.handleDmVoiceCallStarted],
   [ServerEvents.DM_VOICE_USER_JOINED]: [voiceHandlers.handleDmVoiceUserJoined],
   [ServerEvents.DM_VOICE_USER_LEFT]: [voiceHandlers.handleDmVoiceUserLeft],
-  [ServerEvents.DM_VOICE_USER_UPDATED]: [voiceHandlers.handleDmVoiceUserUpdated],
 
   // Moderation
   [ServerEvents.USER_BANNED]: [moderationHandlers.handleUserBanned],

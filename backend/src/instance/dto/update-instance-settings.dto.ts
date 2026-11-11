@@ -8,7 +8,7 @@ import {
 } from 'class-validator';
 import { RegistrationMode } from '@prisma/client';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { RegistrationModeValues } from '@/common/enums/swagger-enums';
 
 export class UpdateInstanceSettingsDto {
@@ -22,7 +22,11 @@ export class UpdateInstanceSettingsDto {
   @MaxLength(500)
   description?: string;
 
-  @ApiProperty({ enum: RegistrationModeValues, required: false })
+  @ApiProperty({
+    enum: RegistrationModeValues,
+    enumName: 'RegistrationMode',
+    required: false,
+  })
   @IsOptional()
   @IsEnum(RegistrationMode)
   registrationMode?: RegistrationMode;
@@ -36,6 +40,7 @@ export class UpdateInstanceSettingsDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   defaultStorageQuotaBytes?: number;
 
   /**
@@ -47,5 +52,6 @@ export class UpdateInstanceSettingsDto {
   @Type(() => Number)
   @IsNumber()
   @Min(0)
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   maxFileSizeBytes?: number;
 }

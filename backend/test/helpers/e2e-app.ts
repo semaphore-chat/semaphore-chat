@@ -4,8 +4,8 @@
  * Boots the full AppModule with the same global prefix / pipes / interceptors
  * as src/main.ts, so e2e specs exercise the exact request pipeline production
  * uses: global JwtAuthGuard, RBAC guard chain, ValidationPipe whitelist and
- * ClassSerializerInterceptor (helmet/CORS/Swagger/WS-adapter are omitted —
- * they don't affect route behavior under supertest).
+ * ClassSerializerInterceptor (helmet/Swagger/WS-adapter are omitted, and CORS
+ * unless asked for: they don't affect route behavior under supertest).
  *
  * NODE_ENV is forced to 'test' in helpers/setup-env.ts (jest setupFiles)
  * before AppModule is imported; this disables the ThrottlerGuard per
@@ -21,6 +21,7 @@ import { Test } from '@nestjs/testing';
 import { AppValidationPipe } from '@/common/pipes/app-validation.pipe';
 import { pinClientAddress } from '@/common/http/pin-client-address';
 import { configureBodyParsers } from '@/common/http/body-parsers';
+import { buildCorsOptions } from '@/common/http/cors-options';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import * as cookieParser from 'cookie-parser';
 import type { Application } from 'express';
@@ -53,6 +54,8 @@ export async function createE2eApp(options?: {
    * clients through an X-Forwarded-For header (req.ip).
    */
   trustProxy?: boolean | number | string;
+  /** Apply src/main.ts's CORS policy, for a suite that tests preflights. */
+  corsOrigin?: string;
 }): Promise<E2eApp> {
   const moduleFixture = await Test.createTestingModule({
     imports: [AppModule],
@@ -70,6 +73,9 @@ export async function createE2eApp(options?: {
       'trust proxy',
       options.trustProxy,
     );
+  }
+  if (options?.corsOrigin !== undefined) {
+    app.enableCors(buildCorsOptions(options.corsOrigin));
   }
   app.use(pinClientAddress);
   // E2eApp is the generic INestApplication; the Express adapter (and

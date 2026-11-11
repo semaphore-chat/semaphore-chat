@@ -4,8 +4,9 @@
  * Pass these as generics to Socket<ServerToClientEvents, ClientToServerEvents>.
  */
 
+import type { SendAck } from '../errors';
 import { ClientEvents } from '../events/client-events.enum';
-import { Span, FileMetadata } from '../types/message.types';
+import type { CreateMessageDto } from '../generated';
 import {
   ServerEventPayloads,
   ReauthenticateResult,
@@ -35,22 +36,14 @@ export type ClientToServerEvents = {
 
   // Messaging: Channels
   [ClientEvents.SEND_MESSAGE]: (
-    data: {
-      channelId: string;
-      spans: Span[];
-      attachments: FileMetadata[];
-    },
-    callback?: (messageId: string) => void
+    data: CreateMessageDto & { channelId: string },
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Messaging: Direct Messages
   [ClientEvents.SEND_DM]: (
-    data: {
-      directMessageGroupId: string;
-      spans: Span[];
-      attachments: FileMetadata[];
-    },
-    callback?: (messageId: string) => void
+    data: CreateMessageDto & { directMessageGroupId: string },
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Message Reactions
@@ -68,11 +61,11 @@ export type ClientToServerEvents = {
   [ClientEvents.SEND_THREAD_REPLY]: (
     data: {
       parentMessageId: string;
-      spans: Span[];
+      spans: CreateMessageDto['spans'];
       attachments?: string[];
       pendingAttachments?: number;
     },
-    callback?: (replyId: string) => void
+    callback?: (ack: string | SendAck) => void
   ) => void;
 
   // Presence & Typing
@@ -86,14 +79,4 @@ export type ClientToServerEvents = {
   }) => void;
 
   // Voice Channels
-  [ClientEvents.VOICE_CHANNEL_JOIN]: (data: { channelId: string }) => void;
-  [ClientEvents.VOICE_CHANNEL_LEAVE]: (data: { channelId: string }) => void;
-  [ClientEvents.VOICE_STATE_UPDATE]: (data: {
-    channelId: string;
-    isVideoEnabled?: boolean;
-    isScreenSharing?: boolean;
-    isMuted?: boolean;
-    isDeafened?: boolean;
-  }) => void;
-  [ClientEvents.VOICE_PRESENCE_REFRESH]: (data: { channelId: string }) => void;
 };

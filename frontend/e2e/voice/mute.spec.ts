@@ -73,11 +73,13 @@ test.describe('Mute matrix — local mute vs moderator mute', () => {
     // is the truth; the flag is incidental.
     await expectNoAudioGrowth(a, b);
 
-    // Restore by having B unmute THEMSELVES. A server-side mute can only be
-    // lifted by the publisher: LiveKit's RoomServiceClient.mutePublishedTrack
-    // cannot force-unmute (the backend returns 500 "Failed to unmute"), by
-    // design — a moderator can silence someone but cannot turn their mic back on
-    // without consent. So the realistic recovery is the user un-muting.
+    // B can't undo it: the microphone isn't theirs to publish until it's lifted.
+    await setMicEnabled(b, true).catch(() => {});
+    await expectNoAudioGrowth(a, b);
+
+    // A moderator lifts the mute but doesn't turn B's mic back on (LiveKit won't
+    // force-unmute, by design: no mic without consent). B unmutes themselves.
+    await moderatorMute(admin, b.identity, false, admin.channelId);
     await setMicEnabled(b, true);
     await waitForAudioFlow(a, b, { timeout: 30_000 });
   });

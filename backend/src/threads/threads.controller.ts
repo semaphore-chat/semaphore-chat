@@ -7,15 +7,20 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Req,
   DefaultValuePipe,
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { ThreadsService } from './threads.service';
-import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
+import {
+  CreateThreadReplyBodyDto,
+  CreateThreadReplyDto,
+} from './dto/create-thread-reply.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { RequiredActions } from '@/auth/rbac-action.decorator';
@@ -28,10 +33,10 @@ import {
 
 import { AuthenticatedRequest } from '@/types';
 import {
-  ThreadReplyDto,
   ThreadRepliesResponseDto,
   ThreadMetadataDto,
 } from './dto/thread-response.dto';
+import { MessageDto } from '@/messages/dto/message-response.dto';
 
 /**
  * Controller for thread operations.
@@ -39,6 +44,7 @@ import {
  */
 @Controller('threads')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class ThreadsController {
   constructor(private readonly threadsService: ThreadsService) {}
 
@@ -54,17 +60,17 @@ export class ThreadsController {
     idKey: 'parentMessageId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiCreatedResponse({ type: ThreadReplyDto })
+  @ApiCreatedResponse({ type: MessageDto })
   async createReply(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
-    @Body() body: Omit<CreateThreadReplyDto, 'parentMessageId'>,
+    @Body() body: CreateThreadReplyBodyDto,
     @Req() req: AuthenticatedRequest,
-  ): Promise<ThreadReplyDto> {
+  ): Promise<MessageDto> {
     const dto: CreateThreadReplyDto = {
       ...body,
       parentMessageId,
     };
-    return this.threadsService.createThreadReply(dto, req.user.id);
+    return this.threadsService.sendThreadReply(dto, req.user.id);
   }
 
   /**
@@ -78,9 +84,11 @@ export class ThreadsController {
     source: ResourceIdSource.PARAM,
   })
   @ApiOkResponse({ type: ThreadRepliesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   async getReplies(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
+    @Req() req: AuthenticatedRequest,
     @Query('continuationToken') continuationToken?: string,
   ): Promise<ThreadRepliesResponseDto> {
     limit = Math.min(limit, 100);
@@ -88,6 +96,7 @@ export class ThreadsController {
       parentMessageId,
       limit,
       continuationToken,
+      req.user.id,
     );
   }
 

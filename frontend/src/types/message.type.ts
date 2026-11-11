@@ -1,12 +1,18 @@
-export { SpanType, type Span, type Reaction, type FileMetadata, type LinkPreview } from '@semaphore-chat/shared';
-import type { Message as SharedMessage } from '@semaphore-chat/shared';
+export { SpanType, type Reaction, type FileMetadata, type LinkPreview } from '@semaphore-chat/shared';
+import type { CreateMessageSpanDto, Message as WireMessage, ReplyToPreviewDto } from '@semaphore-chat/shared';
+
+/**
+ * A span as the client holds it. Spans from the server carry every field, but
+ * a message being composed or sent optimistically only has the ones it set.
+ */
+export type Span = CreateMessageSpanDto;
 
 /** Lifecycle status for an optimistically-sent message (PR-13). */
 export type SendStatus = 'pending' | 'failed';
 
 /**
- * Frontend message type. Extends the shared wire type (`@semaphore-chat/shared`)
- * with two fields used for optimistic sending:
+ * Frontend message type: the wire `Message` (@semaphore-chat/shared), where
+ * spans may be drafts, plus two fields used for optimistic sending:
  *
  * - `sendStatus`: `'pending'` while a locally-created message is waiting for
  *   the server ack/echo, `'failed'` if the send timed out or errored.
@@ -21,7 +27,30 @@ export type SendStatus = 'pending' | 'failed';
  * and are never included in an outgoing socket payload. `NewMessagePayload`
  * (hooks/useSendMessage.ts) explicitly omits them from the wire type.
  */
-export interface Message extends SharedMessage {
+export interface Message extends Omit<WireMessage, 'spans' | 'replyTo'> {
+  spans: Span[];
+  replyTo: (Omit<ReplyToPreviewDto, 'spans'> & { spans: Span[] }) | null;
   sendStatus?: SendStatus;
+  /** Why the send failed, for the sender to read. Cache-local, like the others. */
+  sendError?: string;
   clientId?: string;
 }
+
+/** The fields a message has before anything has happened to it. */
+export const EMPTY_MESSAGE_FIELDS = {
+  channelId: null,
+  directMessageGroupId: null,
+  pendingAttachments: 0,
+  linkPreviews: null,
+  replyCount: 0,
+  lastReplyAt: null,
+  pinned: false,
+  pinnedAt: null,
+  pinnedBy: null,
+  editedAt: null,
+  deletedAt: null,
+  parentMessageId: null,
+  replyToId: null,
+  replyTo: null,
+  webhook: null,
+} satisfies Partial<Message>;

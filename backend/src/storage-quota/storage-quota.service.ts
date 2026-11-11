@@ -127,6 +127,22 @@ export class StorageQuotaService {
   }
 
   /**
+   * Whether `bytes` more fit the user's quota. For files the server itself
+   * writes (replay clips): those answer to the quota, not to the upload size
+   * limit that canUploadFile also applies.
+   */
+  async fitsQuota(userId: string, bytes: number): Promise<boolean> {
+    const user = await this.db.user.findUnique({
+      where: { id: userId },
+      select: { storageQuotaBytes: true, storageUsedBytes: true },
+    });
+    if (!user) return false;
+    const used = Number(user.storageUsedBytes);
+    const quota = Number(user.storageQuotaBytes);
+    return bytes === 0 ? used < quota : used + bytes <= quota;
+  }
+
+  /**
    * Increment user's storage usage after successful upload
    */
   async incrementUserStorage(userId: string, bytes: number): Promise<void> {

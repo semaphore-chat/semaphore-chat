@@ -48,7 +48,7 @@ export const useMessages = (type: 'channel' | 'dm', id: string | undefined) => {
   const queryClient = useQueryClient();
 
   const messages: Message[] = useMemo(
-    () => data?.pages.flatMap(page => page.messages) as unknown as Message[] ?? [],
+    () => data?.pages.flatMap(page => page.messages) ?? [],
     [data],
   );
 

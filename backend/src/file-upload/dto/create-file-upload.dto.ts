@@ -4,7 +4,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { ResourceTypeValues } from '@/common/enums/swagger-enums';
 
 export class CreateFileUploadDto {
-  @ApiProperty({ enum: ResourceTypeValues })
+  @ApiProperty({ enum: ResourceTypeValues, enumName: 'ResourceType' })
   @IsEnum(ResourceType)
   resourceType: ResourceType;
 

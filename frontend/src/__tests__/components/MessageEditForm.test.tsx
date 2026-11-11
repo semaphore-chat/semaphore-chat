@@ -109,6 +109,7 @@ describe('MessageEditForm', () => {
       mimeType: 'image/png',
       fileType: 'IMAGE',
       size: 1024,
+      hasThumbnail: false,
     };
     const props = defaultProps({ editText: '', editAttachments: [attachment] });
     renderWithProviders(<MessageEditForm {...props} />);
@@ -120,8 +121,8 @@ describe('MessageEditForm', () => {
 
   it('renders attachment chips with filenames', () => {
     const attachments: FileMetadata[] = [
-      { id: 'att-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
-      { id: 'att-2', filename: 'doc.pdf', mimeType: 'application/pdf', fileType: 'DOCUMENT', size: 2048 },
+      { id: 'att-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
+      { id: 'att-2', filename: 'doc.pdf', mimeType: 'application/pdf', fileType: 'DOCUMENT', size: 2048, hasThumbnail: false },
     ];
     const props = defaultProps({ editAttachments: attachments });
     renderWithProviders(<MessageEditForm {...props} />);
@@ -138,6 +139,7 @@ describe('MessageEditForm', () => {
       mimeType: 'image/png',
       fileType: 'IMAGE',
       size: 1024,
+      hasThumbnail: false,
     };
     const props = defaultProps({ editAttachments: [attachment], onRemoveAttachment });
     const { user } = renderWithProviders(<MessageEditForm {...props} />);

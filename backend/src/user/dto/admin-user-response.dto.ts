@@ -11,7 +11,7 @@ export class AdminUserEntity implements User {
   username: string;
   email: string | null;
   verified: boolean;
-  @ApiProperty({ enum: InstanceRoleValues })
+  @ApiProperty({ enum: InstanceRoleValues, enumName: 'InstanceRole' })
   role: $Enums.InstanceRole;
   createdAt: Date;
   avatarUrl: string | null;

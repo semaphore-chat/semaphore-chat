@@ -1,5 +1,5 @@
 import { IsNumber, IsOptional, Min, Max } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * User storage stats response
@@ -7,9 +7,12 @@ import { ApiProperty } from '@nestjs/swagger';
 export class UserStorageStatsDto {
   userId: string;
   username: string;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   usedBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   quotaBytes: number;
   percentUsed: number;
+  @ApiProperty({ type: 'integer' })
   fileCount: number;
 }
 
@@ -19,6 +22,7 @@ export class UserStorageStatsDto {
 export class UserStorageListResponseDto {
   @ApiProperty({ type: [UserStorageStatsDto] })
   users: UserStorageStatsDto[];
+  @ApiProperty({ type: 'integer' })
   total: number;
 }
 
@@ -27,19 +31,26 @@ export class UserStorageListResponseDto {
  */
 export class ServerStatsDto {
   // Memory
+  @ApiProperty({ type: 'integer', format: 'int64' })
   memoryTotalBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   memoryUsedBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   memoryFreeBytes: number;
   memoryUsedPercent: number;
 
   // CPU
+  @ApiProperty({ type: 'integer' })
   cpuCores: number;
   cpuModel: string;
   loadAverage: number[]; // 1, 5, 15 minute averages
 
   // Disk (root filesystem)
+  @ApiProperty({ type: 'integer', format: 'int64' })
   diskTotalBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   diskUsedBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   diskFreeBytes: number;
   diskUsedPercent: number;
 
@@ -53,10 +64,15 @@ export class ServerStatsDto {
  * Storage distribution by usage percentage
  */
 export class StorageDistributionDto {
+  @ApiProperty({ type: 'integer' })
   under25Percent: number;
+  @ApiProperty({ type: 'integer' })
   under50Percent: number;
+  @ApiProperty({ type: 'integer' })
   under75Percent: number;
+  @ApiProperty({ type: 'integer' })
   under90Percent: number;
+  @ApiProperty({ type: 'integer' })
   over90Percent: number;
 }
 
@@ -65,7 +81,9 @@ export class StorageDistributionDto {
  */
 export class StorageByTypeDto {
   type: string;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   bytes: number;
+  @ApiProperty({ type: 'integer' })
   count: number;
 }
 
@@ -74,11 +92,15 @@ export class StorageByTypeDto {
  */
 export class InstanceStorageStatsDto {
   // Totals
+  @ApiProperty({ type: 'integer', format: 'int64' })
   totalStorageUsedBytes: number;
+  @ApiProperty({ type: 'integer' })
   totalFileCount: number;
+  @ApiProperty({ type: 'integer' })
   totalUserCount: number;
 
   // Averages
+  @ApiProperty({ type: 'integer', format: 'int64' })
   averageStoragePerUserBytes: number;
 
   // Distribution (aggregate, not individual)
@@ -88,11 +110,15 @@ export class InstanceStorageStatsDto {
   storageByType: StorageByTypeDto[];
 
   // Instance settings
+  @ApiProperty({ type: 'integer', format: 'int64' })
   defaultQuotaBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   maxFileSizeBytes: number;
 
   // Health indicators
+  @ApiProperty({ type: 'integer' })
   usersApproachingQuota: number; // > 75%
+  @ApiProperty({ type: 'integer' })
   usersOverQuota: number; // > 90%
 
   // Server hardware stats
@@ -105,6 +131,7 @@ export class InstanceStorageStatsDto {
 export class UpdateUserQuotaDto {
   @IsNumber()
   @Min(0)
+  @ApiProperty({ type: 'integer', format: 'int64' })
   quotaBytes: number;
 }
 
@@ -115,12 +142,14 @@ export class UpdateStorageSettingsDto {
   @IsOptional()
   @IsNumber()
   @Min(1073741824) // Minimum 1GB
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   defaultStorageQuotaBytes?: number;
 
   @IsOptional()
   @IsNumber()
   @Min(1048576) // Minimum 1MB
   @Max(1073741824) // Maximum 1GB per file
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   maxFileSizeBytes?: number;
 }
 
@@ -129,9 +158,13 @@ export class UpdateStorageSettingsDto {
  */
 export class QuotaCheckResultDto {
   canUpload: boolean;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   currentUsedBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   quotaBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   requestedBytes: number;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   remainingBytes: number;
   message?: string;
 }

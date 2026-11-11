@@ -42,6 +42,8 @@ export enum RoomEvents {
   USER_PROFILE_UPDATED = 'user.profile-updated',
   AUTH_SESSIONS_REVOKED = 'auth.sessions-revoked',
   AUTH_USER_SESSIONS_ENDED = 'auth.user-sessions-ended',
+  /** A desktop app signed in through a browser approval. */
+  AUTH_DESKTOP_SIGN_IN = 'auth.desktop-sign-in',
 }
 
 // =============================================================================
@@ -65,6 +67,11 @@ export interface AuthSessionsRevokedEvent {
  * Every session of a user ended (password reset, instance ban, account
  * deletion): end all of the user's sockets.
  */
+export interface AuthDesktopSignInEvent {
+  userId: string;
+  ipAddress: string | null;
+}
+
 export interface AuthUserSessionsEndedEvent {
   userId: string;
   reason: SessionTerminatedReason;

@@ -3,7 +3,7 @@ import type { Mocked } from '@suites/doubles.jest';
 import { LinkPreviewsService } from './link-previews.service';
 import { DatabaseService } from '@/database/database.service';
 import { WebsocketService } from '@/websocket/websocket.service';
-import { createMockDatabase } from '@/test-utils';
+import { createMockDatabase, MessageFactory } from '@/test-utils';
 import * as linkPreviewUtils from './link-preview.utils';
 import { ServerEvents } from '@semaphore-chat/shared';
 
@@ -87,6 +87,48 @@ describe('LinkPreviewsService', () => {
 
       expect(mockFetchLinkMetadata).not.toHaveBeenCalled();
       expect(mockDatabase.message.update).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('should not broadcast a removed message when clearing its previews', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        linkPreviews: [{ url: 'https://old.example' }],
+        deletedAt: new Date(),
+      });
+
+      await service.processMessageLinkPreviews(
+        messageId,
+        [{ text: 'edited, no links' }],
+        roomId,
+        serverEvent,
+      );
+
+      expect(mockDatabase.message.update).not.toHaveBeenCalled();
+      expect(websocketService.sendToRoom).not.toHaveBeenCalled();
+    });
+
+    it('should not broadcast a message removed while its previews were stored', async () => {
+      mockFetchLinkMetadata.mockResolvedValue({
+        url: 'https://example.com',
+        title: 'Example',
+      });
+      mockDatabase.message.findUnique
+        .mockResolvedValueOnce({ id: messageId, deletedAt: null })
+        .mockResolvedValueOnce({
+          id: messageId,
+          deletedAt: new Date(),
+          spans: [],
+          reactions: [],
+          attachments: [],
+        });
+
+      await service.processMessageLinkPreviews(
+        messageId,
+        [{ text: 'see https://example.com' }],
+        roomId,
+        serverEvent,
+      );
+
       expect(websocketService.sendToRoom).not.toHaveBeenCalled();
     });
 
@@ -191,6 +233,7 @@ describe('LinkPreviewsService', () => {
 
       // Second findUnique: re-read with includes for broadcast
       const updatedMessage = {
+        ...MessageFactory.build(),
         id: messageId,
         channelId: 'ch-1',
         authorId: 'user-1',
@@ -255,6 +298,7 @@ describe('LinkPreviewsService', () => {
       });
       mockDatabase.message.update.mockResolvedValue({});
       mockDatabase.message.findUnique.mockResolvedValueOnce({
+        ...MessageFactory.build(),
         id: messageId,
         linkPreviews: [successPreview],
         spans: [],
@@ -292,6 +336,7 @@ describe('LinkPreviewsService', () => {
       mockDatabase.message.update.mockResolvedValue({});
 
       const updatedMessage = {
+        ...MessageFactory.build(),
         id: messageId,
         linkPreviews: [preview],
         spans: [],

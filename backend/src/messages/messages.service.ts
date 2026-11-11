@@ -1,4 +1,6 @@
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import {
+  BadRequestException,
   Injectable,
   Logger,
   NotFoundException,
@@ -13,46 +15,10 @@ import { FileService } from '@/file/file.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
-import { FileType, Prisma, SpanType } from '@prisma/client';
-import { groupReactions } from '@/common/utils/reactions.utils';
-
-/** Prisma select shape for file metadata sent to clients */
-const FILE_METADATA_SELECT = {
-  id: true,
-  filename: true,
-  mimeType: true,
-  fileType: true,
-  size: true,
-  thumbnailPath: true,
-} as const;
-
-/** Prisma select shape for the webhook attribution sent to clients */
-const WEBHOOK_METADATA_SELECT = {
-  id: true,
-  name: true,
-  avatarUrl: true,
-} as const;
-
-/** Standard includes for loading a message with its relations */
-const MESSAGE_INCLUDE = {
-  spans: { orderBy: { position: 'asc' as const } },
-  reactions: true,
-  attachments: {
-    include: { file: { select: FILE_METADATA_SELECT } },
-    orderBy: { position: 'asc' as const },
-  },
-  webhook: { select: WEBHOOK_METADATA_SELECT },
-} as const;
-
-/** MESSAGE_INCLUDE plus the replyToMessage relation for inline quote preview */
-const MESSAGE_INCLUDE_WITH_REPLY = {
-  ...MESSAGE_INCLUDE,
-  replyToMessage: {
-    include: {
-      spans: { orderBy: { position: 'asc' as const } },
-    },
-  },
-} as const;
+import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
+import { Prisma, SpanType } from '@prisma/client';
+import { MESSAGE_INCLUDE_WITH_REPLY, toMessageDto } from './message.mapper';
+import { ErrorCode } from '@semaphore-chat/shared';
 
 @Injectable()
 export class MessagesService {
@@ -78,6 +44,29 @@ export class MessagesService {
       webhookId?: string | null;
     },
   ) {
+    // A message lives in exactly one place. Callers authorize one target, so
+    // a second one in the payload would be written without any check.
+    if (
+      !createMessageDto.channelId === !createMessageDto.directMessageGroupId
+    ) {
+      throw new BadRequestException(
+        'Must provide exactly one of channelId or directMessageGroupId',
+        {
+          description: 'Bad Request',
+          errorCode: ErrorCode.MESSAGE_TARGET_INVALID,
+        },
+      );
+    }
+
+    // Block between the two people in a 1:1 DM: no new messages, either way
+    if (createMessageDto.directMessageGroupId && createMessageDto.authorId) {
+      await assertNotBlockedInDm(
+        this.databaseService,
+        createMessageDto.authorId,
+        createMessageDto.directMessageGroupId,
+      );
+    }
+
     // Validate replyToId references a message in the same channel/DM group
     if (createMessageDto.replyToId) {
       const replyTarget = await this.databaseService.message.findUnique({
@@ -85,7 +74,10 @@ export class MessagesService {
         select: { channelId: true, directMessageGroupId: true },
       });
       if (!replyTarget) {
-        throw new NotFoundException('Quoted message not found');
+        throw new NotFoundException('Quoted message not found', {
+          description: 'Not Found',
+          errorCode: ErrorCode.QUOTE_NOT_FOUND,
+        });
       }
       const sameContext =
         (createMessageDto.channelId &&
@@ -96,6 +88,10 @@ export class MessagesService {
       if (!sameContext) {
         throw new ForbiddenException(
           'Cannot quote a message from a different channel',
+          {
+            description: 'Forbidden',
+            errorCode: ErrorCode.QUOTE_OTHER_CONTEXT,
+          },
         );
       }
     }
@@ -113,6 +109,12 @@ export class MessagesService {
       await this.permissionsService.assertCanAttachFiles(
         createMessageDto.authorId,
         createMessageDto.channelId,
+      );
+    }
+    if (createMessageDto.authorId && !createMessageDto.webhookId) {
+      await this.assertFilesAttachable(
+        createMessageDto.authorId,
+        createMessageDto.attachments ?? [],
       );
     }
 
@@ -160,7 +162,90 @@ export class MessagesService {
       include: MESSAGE_INCLUDE_WITH_REPLY,
     });
 
-    return this.formatMessageWithReply(message);
+    return toMessageDto(message);
+  }
+
+  assertFilesAttachable(userId: string, fileIds: readonly unknown[]) {
+    return assertFilesAttachable(this.databaseService, userId, fileIds);
+  }
+
+  /**
+   * Files leave with a message only when its author uploaded them. Older rows
+   * can carry someone else's file, which stays for its own message.
+   */
+  private async markAuthorFilesForDeletion(
+    tx: Prisma.TransactionClient,
+    authorId: string | null,
+    fileIds: string[],
+  ) {
+    if (fileIds.length === 0) return;
+    const files = await tx.file.findMany({
+      where: { id: { in: fileIds }, uploadedById: authorId },
+      select: { id: true },
+    });
+    for (const { id } of files) {
+      await this.fileService.markForDeletion(id, tx);
+    }
+  }
+
+  /**
+   * After a reply is deleted: one fewer, and the latest is whichever is left.
+   *
+   * The decrement goes first because it takes the parent's row lock. A reply
+   * that arrives meanwhile increments the count and sets lastReplyAt while
+   * holding that lock, so it has committed by the read below and counts as the
+   * latest. Reading first would let such a reply land between the read and the
+   * lock, and this write would then put back a lastReplyAt older than it.
+   */
+  private async recountReplies(
+    tx: Prisma.TransactionClient,
+    parentMessageId: string,
+  ) {
+    // Never below zero: older rows can have a count that's already wrong.
+    await tx.message.updateMany({
+      where: { id: parentMessageId, replyCount: { gt: 0 } },
+      data: { replyCount: { decrement: 1 } },
+    });
+    const latest = await tx.message.findFirst({
+      where: { parentMessageId },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    });
+    // updateMany, not update: a parent deleted meanwhile is no row to update,
+    // not a P2025 that would undo this delete.
+    await tx.message.updateMany({
+      where: { id: parentMessageId },
+      data: { lastReplyAt: latest?.sentAt ?? null },
+    });
+  }
+
+  /** What a thread's badge shows. */
+  findThreadCounts(parentMessageId: string) {
+    return this.databaseService.message.findUnique({
+      where: { id: parentMessageId },
+      select: {
+        channelId: true,
+        directMessageGroupId: true,
+        replyCount: true,
+        lastReplyAt: true,
+      },
+    });
+  }
+
+  /**
+   * Keeps a deleted message's nonce, so a client still retrying that send
+   * (it never got the ack) can't bring the message back.
+   */
+  private async rememberDeletedNonces(
+    tx: Prisma.TransactionClient,
+    messages: { authorId: string | null; clientNonce: string | null }[],
+  ) {
+    const data = messages.flatMap(({ authorId, clientNonce }) =>
+      authorId && clientNonce ? [{ authorId, clientNonce }] : [],
+    );
+    if (data.length > 0) {
+      await tx.messageNonceTombstone.createMany({ data, skipDuplicates: true });
+    }
   }
 
   /**
@@ -246,9 +331,13 @@ export class MessagesService {
     );
 
     if (remainingSeconds > 0) {
-      throw new ForbiddenException(
-        `Slowmode is enabled. Please wait ${remainingSeconds} seconds before sending another message.`,
-      );
+      throw new ForbiddenException({
+        statusCode: 403,
+        message: `Slowmode is enabled. Please wait ${remainingSeconds} seconds before sending another message.`,
+        error: 'Forbidden',
+        errorCode: ErrorCode.SLOWMODE,
+        retryAfterMs: remainingSeconds * 1000,
+      });
     }
   }
 
@@ -262,7 +351,7 @@ export class MessagesService {
       throw new NotFoundException('Message not found');
     }
 
-    return this.formatMessageWithReply(message);
+    return toMessageDto(message);
   }
 
   async update(
@@ -353,10 +442,16 @@ export class MessagesService {
             const removedAttachments = originalAttachments.filter(
               (oldId) => !newAttachmentIds.includes(oldId),
             );
-            for (const fileId of removedAttachments) {
-              await this.fileService.markForDeletion(fileId, tx);
-            }
             if (removedAttachments.length > 0) {
+              const { authorId } = await tx.message.findUniqueOrThrow({
+                where: { id },
+                select: { authorId: true },
+              });
+              await this.markAuthorFilesForDeletion(
+                tx,
+                authorId,
+                removedAttachments,
+              );
               this.logger.debug(
                 `Marked ${removedAttachments.length} removed attachments for deletion`,
               );
@@ -364,18 +459,17 @@ export class MessagesService {
           }
         }
 
-        // Remove spans and attachments from the update data passed to message.update
-        // (they're handled above via junction tables)
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { spans: _s, attachments: _a, ...restDto } = updateMessageDto;
-
+        // Only spans and attachments are editable, both handled above. The DTO
+        // also allows the create-time fields (target, quote, pending count),
+        // and old clients may repeat them, so they're ignored rather than
+        // rejected: nothing has authorized them for this message.
         const updatedMessage = await tx.message.update({
           where: { id },
-          data: { ...restDto, ...dataToUpdate },
+          data: dataToUpdate,
           include: MESSAGE_INCLUDE_WITH_REPLY,
         });
 
-        return this.formatMessageWithReply(updatedMessage);
+        return toMessageDto(updatedMessage);
       },
     );
   }
@@ -390,10 +484,14 @@ export class MessagesService {
         });
 
         for (const reply of threadReplies) {
-          for (const attachment of reply.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
+          await this.markAuthorFilesForDeletion(
+            tx,
+            reply.authorId,
+            reply.attachments.map((attachment) => attachment.file.id),
+          );
         }
+
+        await this.rememberDeletedNonces(tx, threadReplies);
 
         // Delete all thread replies (thread subscribers cascade-delete with the parent)
         await tx.message.deleteMany({ where: { parentMessageId: id } });
@@ -404,20 +502,25 @@ export class MessagesService {
           include: MESSAGE_INCLUDE_WITH_REPLY,
         });
 
+        await this.rememberDeletedNonces(tx, [deletedMessage]);
+
+        if (deletedMessage.parentMessageId) {
+          await this.recountReplies(tx, deletedMessage.parentMessageId);
+        }
+
         // Mark parent's attachments for deletion
         if (
           deletedMessage.attachments &&
           deletedMessage.attachments.length > 0
         ) {
-          for (const attachment of deletedMessage.attachments) {
-            await this.fileService.markForDeletion(attachment.file.id, tx);
-          }
-          this.logger.debug(
-            `Marked ${deletedMessage.attachments.length} attachments for deletion`,
+          await this.markAuthorFilesForDeletion(
+            tx,
+            deletedMessage.authorId,
+            deletedMessage.attachments.map((attachment) => attachment.file.id),
           );
         }
 
-        return this.formatMessageWithReply(deletedMessage);
+        return toMessageDto(deletedMessage);
       },
     );
   }
@@ -511,10 +614,12 @@ export class MessagesService {
         });
         if (count === 0) {
           // Already attached: nothing to add, no slot to release.
-          return tx.message.findUniqueOrThrow({
-            where: { id: messageId },
-            include: MESSAGE_INCLUDE_WITH_REPLY,
-          });
+          return toMessageDto(
+            await tx.message.findUniqueOrThrow({
+              where: { id: messageId },
+              include: MESSAGE_INCLUDE_WITH_REPLY,
+            }),
+          );
         }
       }
 
@@ -523,55 +628,18 @@ export class MessagesService {
         select: { pendingAttachments: true },
       });
 
-      return tx.message.update({
-        where: { id: messageId },
-        data: {
-          ...(msg && (msg.pendingAttachments ?? 0) > 0
-            ? { pendingAttachments: { decrement: 1 } }
-            : {}),
-        },
-        include: MESSAGE_INCLUDE_WITH_REPLY,
-      });
+      return toMessageDto(
+        await tx.message.update({
+          where: { id: messageId },
+          data: {
+            ...(msg && (msg.pendingAttachments ?? 0) > 0
+              ? { pendingAttachments: { decrement: 1 } }
+              : {}),
+          },
+          include: MESSAGE_INCLUDE_WITH_REPLY,
+        }),
+      );
     });
-  }
-
-  enrichMessageWithFileMetadata<T extends { attachments?: unknown[] }>(
-    message: T,
-  ) {
-    if (!message.attachments || message.attachments.length === 0) {
-      return { ...message, attachments: [] };
-    }
-
-    const first = message.attachments[0];
-    if (typeof first !== 'object' || first === null) {
-      return { ...message, attachments: [] };
-    }
-
-    // Already enriched by formatMessage (has id, filename, hasThumbnail) — pass through
-    if ('hasThumbnail' in (first as Record<string, unknown>)) {
-      return message;
-    }
-
-    // Raw Prisma attachment with nested file — transform
-    if ('file' in (first as Record<string, unknown>)) {
-      return {
-        ...message,
-        attachments: (
-          message.attachments as Array<{
-            file: {
-              id: string;
-              filename: string;
-              mimeType: string;
-              fileType: FileType;
-              size: number;
-              thumbnailPath: string | null;
-            };
-          }>
-        ).map((a) => MessagesService.toFileMetadata(a.file)),
-      };
-    }
-
-    return { ...message, attachments: [] };
   }
 
   private async findAllByField(
@@ -611,7 +679,7 @@ export class MessagesService {
     }
 
     const messagesWithMetadata = messages.map((message) =>
-      this.formatMessageWithReply(message),
+      toMessageDto(message),
     );
 
     return { messages: messagesWithMetadata, continuationToken: nextToken };
@@ -674,7 +742,7 @@ export class MessagesService {
 
     // Combine in newest-first order: [...newerReversed, anchor, ...older]
     const combined = [...[...newer].reverse(), anchor, ...older];
-    const messages = combined.map((m) => this.formatMessageWithReply(m));
+    const messages = combined.map((m) => toMessageDto(m));
 
     return { messages, olderContinuationToken, newerContinuationToken };
   }
@@ -721,7 +789,7 @@ export class MessagesService {
       `Found ${ordered.length} messages matching query "${query}"`,
     );
 
-    return ordered.map((m) => this.formatMessageWithReply(m));
+    return ordered.map((m) => toMessageDto(m));
   }
 
   /**
@@ -762,7 +830,7 @@ export class MessagesService {
       .map((id) => messageMap.get(id))
       .filter(Boolean) as typeof messages;
 
-    return ordered.map((m) => this.formatMessageWithReply(m));
+    return ordered.map((m) => toMessageDto(m));
   }
 
   /**
@@ -824,115 +892,8 @@ export class MessagesService {
       .filter(Boolean) as typeof messages;
 
     return ordered.map((msg) => ({
-      ...this.formatMessageWithReply(msg),
+      ...toMessageDto(msg),
       channelName: channelMap.get(msg.channelId ?? '') ?? 'Unknown',
     }));
-  }
-
-  /**
-   * Format a message with included relations into the shape expected by clients.
-   * Converts MessageReaction[] to { emoji, userIds[] }[] and
-   * MessageAttachment[] to file metadata objects.
-   */
-  private formatMessage<
-    T extends {
-      spans?: {
-        position: number;
-        type: string;
-        text: string | null;
-        userId: string | null;
-        specialKind: string | null;
-        communityId: string | null;
-        aliasId: string | null;
-        emojiId: string | null;
-        bold: boolean | null;
-        italic: boolean | null;
-        strikethrough: boolean | null;
-        code: boolean | null;
-      }[];
-      reactions?: { emoji: string; userId: string }[];
-      attachments?: {
-        file: {
-          id: string;
-          filename: string;
-          mimeType: string;
-          fileType: FileType;
-          size: number;
-          thumbnailPath: string | null;
-        };
-      }[];
-    },
-  >(message: T) {
-    return {
-      ...message,
-      spans: message.spans ?? [],
-      reactions: message.reactions ? groupReactions(message.reactions) : [],
-      attachments: message.attachments
-        ? message.attachments.map((a) => MessagesService.toFileMetadata(a.file))
-        : [],
-    };
-  }
-
-  /**
-   * Format a message and enrich it with the replyTo preview.
-   * Strips the raw replyToMessage Prisma relation from the output.
-   */
-  private formatMessageWithReply(
-    message: Prisma.MessageGetPayload<{ include: typeof MESSAGE_INCLUDE }> & {
-      replyToMessage: Prisma.MessageGetPayload<{
-        include: { spans: true };
-      }> | null;
-    },
-  ) {
-    const { replyToMessage, ...messageWithoutReply } = message;
-    const formatted = this.formatMessage(messageWithoutReply);
-    return {
-      ...formatted,
-      replyTo: replyToMessage
-        ? {
-            id: replyToMessage.id,
-            authorId: replyToMessage.authorId,
-            spans: replyToMessage.deletedAt
-              ? []
-              : replyToMessage.spans.map((s) => ({
-                  type: s.type,
-                  text: s.text,
-                  userId: s.userId,
-                  specialKind: s.specialKind,
-                  communityId: s.communityId,
-                  aliasId: s.aliasId,
-                  emojiId: s.emojiId,
-                  bold: s.bold,
-                  italic: s.italic,
-                  strikethrough: s.strikethrough,
-                  code: s.code,
-                })),
-            sentAt: replyToMessage.sentAt,
-            deletedAt: replyToMessage.deletedAt,
-          }
-        : null,
-    };
-  }
-
-  /**
-   * Transform a Prisma file select result into the FileMetadata shape
-   * sent to clients. Converts `thumbnailPath` (internal) to `hasThumbnail` (boolean).
-   */
-  private static toFileMetadata(file: {
-    id: string;
-    filename: string;
-    mimeType: string;
-    fileType: FileType;
-    size: number;
-    thumbnailPath: string | null;
-  }) {
-    return {
-      id: file.id,
-      filename: file.filename,
-      mimeType: file.mimeType,
-      fileType: file.fileType,
-      size: file.size,
-      hasThumbnail: !!file.thumbnailPath,
-    };
   }
 }

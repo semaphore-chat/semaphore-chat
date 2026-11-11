@@ -11,19 +11,20 @@ export class FileUploadResponseDto {
   id: string;
   filename: string;
   mimeType: string;
-  @ApiProperty({ enum: FileTypeValues })
+  @ApiProperty({ enum: FileTypeValues, enumName: 'FileType' })
   fileType: FileType;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   size: number;
   checksum: string;
   uploadedById: string | null;
   uploadedAt: Date;
   deletedAt: Date | null;
-  @ApiProperty({ enum: ResourceTypeValues })
+  @ApiProperty({ enum: ResourceTypeValues, enumName: 'ResourceType' })
   resourceType: ResourceType;
   fileUserId: string | null;
   fileCommunityId: string | null;
   fileMessageId: string | null;
-  @ApiProperty({ enum: StorageTypeValues })
+  @ApiProperty({ enum: StorageTypeValues, enumName: 'StorageType' })
   storageType: StorageType;
 
   @Exclude()

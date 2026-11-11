@@ -67,8 +67,9 @@ if any check failed.
   desktop Chromium doesn't know (`--desktop Hyprland`), the app itself asks
   for `gnome-libsecret` because a Secret Service is on the bus (#549), and the
   `safeStorage: keyring used` check expects encryption to be available.
-- The backend runs with `CORS_ORIGIN=null`: the packaged app is a `file://`
-  page, so its requests carry `Origin: null`.
+- The backend runs with `CORS_ORIGIN=null`, which is left over: the packaged
+  app is a `file://` page, and with Electron 44 its requests carry no `Origin`
+  and get no preflight (the "do not read as a web page" check reports them).
 - `--use-fake-device-for-media-stream` provides a microphone and camera. The
   fake-UI switch is deliberately not used: it would auto-grant
   `getDisplayMedia` inside Chromium and bypass main's handlers.

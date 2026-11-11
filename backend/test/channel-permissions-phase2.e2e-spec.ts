@@ -346,7 +346,7 @@ describe('Channel permissions phase 2 (e2e)', () => {
         },
       });
       const res = await as('owner')
-        .post('/api/messages', {
+        .post('/api/messages/dm', {
           directMessageGroupId: dm.id,
           spans: [mention(generalId, '#p2-general')],
           attachments: [],

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
+import type { UserEvent } from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../msw/server';
 import { renderWithProviders } from '../test-utils';
@@ -19,6 +20,11 @@ vi.mock('../../utils/clipboard', () => ({ copyToClipboard: mockCopy }));
 vi.mock('../../config/env', () => ({ getInstanceUrl: () => 'https://chat.example' }));
 vi.mock('../../utils/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn(), log: vi.fn() } }));
 
+let mockUser: { id: string; role: string } = { id: 'me', role: 'USER' };
+vi.mock('../../hooks/useCurrentUser', () => ({
+  useCurrentUser: () => ({ user: mockUser, isLoading: false }),
+}));
+
 let mockPerms: Record<string, boolean> = {};
 vi.mock('../../features/roles/useUserPermissions', () => ({
   useUserPermissions: ({ actions }: { actions: string[] }) => ({
@@ -35,6 +41,17 @@ const community = (id: string, name: string): CommunityResponseDto => ({
   banner: null,
   createdAt: '2026-01-01T00:00:00.000Z',
 });
+
+/** What GET /roles/my/community/:id answers: the actions held per community. */
+let heldActions: Record<string, string[]> = {};
+const rolesHandler = http.get('http://localhost:3000/api/roles/my/community/:communityId', ({ params }) =>
+  HttpResponse.json({
+    userId: 'me',
+    resourceId: params.communityId,
+    resourceType: 'COMMUNITY',
+    roles: [{ id: 'r', name: 'Role', actions: heldActions[params.communityId as string] ?? [] }],
+  }),
+);
 
 let createdBodies: CreateInviteDto[] = [];
 const inviteCreated = (code: string) =>
@@ -57,10 +74,19 @@ const inviteCreated = (code: string) =>
     );
   });
 
+/** The button is disabled until the community roles have arrived. */
+const clickQuickInvite = async (user: UserEvent) => {
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Quick invite' })).toBeEnabled());
+  await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+};
+
 describe('HomeInviteCard', () => {
   beforeEach(() => {
     mockPerms = { CREATE_INSTANCE_INVITE: true };
     createdBodies = [];
+    mockUser = { id: 'me', role: 'USER' };
+    heldActions = { c1: ['CREATE_INVITE'], c2: ['CREATE_INVITE'], c9: ['CREATE_INVITE'] };
+    server.use(rolesHandler);
     mockCopy.mockReset();
     mockCopy.mockResolvedValue(undefined);
     localStorage.clear();
@@ -73,7 +99,7 @@ describe('HomeInviteCard', () => {
       <HomeInviteCard communities={[community('c1', 'Gaming'), community('c2', 'Work')]} />,
     );
 
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
 
     expect(await screen.findByText('Invite link copied to clipboard!')).toBeInTheDocument();
     expect(mockCopy).toHaveBeenCalledWith('https://chat.example/#/join/ABC123');
@@ -91,15 +117,85 @@ describe('HomeInviteCard', () => {
     const { user } = renderWithProviders(
       <HomeInviteCard communities={[community('c1', 'Gaming'), community('c9', 'Default')]} />,
     );
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
     await screen.findByText('Invite link copied to clipboard!');
     expect(createdBodies[0].communityIds).toEqual(['c9']);
+  });
+
+  describe('target communities', () => {
+    it('leaves out communities where the user lacks CREATE_INVITE', async () => {
+      heldActions = { c1: ['READ_MESSAGE'], c2: ['CREATE_INVITE'] };
+      server.use(inviteCreated('ABC123'));
+      const { user } = renderWithProviders(
+        <HomeInviteCard communities={[community('c1', 'Gaming'), community('c2', 'Work')]} />,
+      );
+      await clickQuickInvite(user);
+      await screen.findByText('Invite link copied to clipboard!');
+      expect(createdBodies[0].communityIds).toEqual(['c2']);
+    });
+
+    it('does not prefer a "default" community the user cannot invite to', async () => {
+      heldActions = { c1: ['CREATE_INVITE'], c9: ['READ_MESSAGE'] };
+      server.use(inviteCreated('ABC123'));
+      const { user } = renderWithProviders(
+        <HomeInviteCard communities={[community('c1', 'Gaming'), community('c9', 'Default')]} />,
+      );
+      await clickQuickInvite(user);
+      await screen.findByText('Invite link copied to clipboard!');
+      expect(createdBodies[0].communityIds).toEqual(['c1']);
+    });
+
+    it('falls back to an invite with no communities for a plain Member', async () => {
+      heldActions = { c1: ['READ_MESSAGE'], c2: ['READ_MESSAGE'] };
+      server.use(inviteCreated('ABC123'));
+      const { user } = renderWithProviders(
+        <HomeInviteCard communities={[community('c1', 'Gaming'), community('c2', 'Work')]} />,
+      );
+      await clickQuickInvite(user);
+      await screen.findByText('Invite link copied to clipboard!');
+      expect(createdBodies[0].communityIds).toEqual([]);
+    });
+
+    it('treats a community whose roles failed to load as one it cannot invite to', async () => {
+      server.use(
+        http.get('http://localhost:3000/api/roles/my/community/c1', () =>
+          HttpResponse.json({ message: 'nope' }, { status: 500 }),
+        ),
+        inviteCreated('ABC123'),
+      );
+      const { user } = renderWithProviders(
+        <HomeInviteCard communities={[community('c1', 'Gaming'), community('c2', 'Work')]} />,
+      );
+      await clickQuickInvite(user);
+      await screen.findByText('Invite link copied to clipboard!');
+      expect(createdBodies[0].communityIds).toEqual(['c2']);
+    });
+
+    it('an instance owner holds it everywhere, without any community role', async () => {
+      heldActions = {};
+      mockUser = { id: 'me', role: 'OWNER' };
+      server.use(inviteCreated('ABC123'));
+      const { user } = renderWithProviders(
+        <HomeInviteCard communities={[community('c1', 'Gaming'), community('c2', 'Work')]} />,
+      );
+      await clickQuickInvite(user);
+      await screen.findByText('Invite link copied to clipboard!');
+      expect(createdBodies[0].communityIds).toEqual(['c1', 'c2']);
+    });
+
+    it('holds Quick invite back while the roles load', async () => {
+      server.use(
+        http.get('http://localhost:3000/api/roles/my/community/:communityId', () => new Promise(() => {})),
+      );
+      renderWithProviders(<HomeInviteCard communities={[community('c1', 'Gaming')]} />);
+      expect(screen.getByRole('button', { name: 'Quick invite' })).toBeDisabled();
+    });
   });
 
   it('Copy copies the last invite link again', async () => {
     server.use(inviteCreated('ABC123'));
     const { user } = renderWithProviders(<HomeInviteCard communities={[community('c1', 'Gaming')]} />);
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
     await screen.findByText('ABC123');
     mockCopy.mockClear();
 
@@ -118,7 +214,7 @@ describe('HomeInviteCard', () => {
     );
     const { user } = renderWithProviders(<HomeInviteCard communities={[community('c1', 'Gaming')]} />);
 
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
 
     expect(await screen.findByText("Couldn't create an invite link. Try again.")).toBeInTheDocument();
     expect(mockCopy).not.toHaveBeenCalled();
@@ -131,7 +227,7 @@ describe('HomeInviteCard', () => {
     mockCopy.mockRejectedValue(new Error('denied'));
     const { user } = renderWithProviders(<HomeInviteCard communities={[community('c1', 'Gaming')]} />);
 
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
 
     expect(
       await screen.findByText("Invite created, but it couldn't be copied. Use the copy button."),
@@ -142,7 +238,7 @@ describe('HomeInviteCard', () => {
   it('reports a failed Copy', async () => {
     server.use(inviteCreated('ABC123'));
     const { user } = renderWithProviders(<HomeInviteCard communities={[community('c1', 'Gaming')]} />);
-    await user.click(screen.getByRole('button', { name: 'Quick invite' }));
+    await clickQuickInvite(user);
     await screen.findByText('ABC123');
     mockCopy.mockRejectedValue(new Error('denied'));
 

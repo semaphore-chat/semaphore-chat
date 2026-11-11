@@ -68,12 +68,8 @@ export class MessageDispatchService {
     message: DispatchableMessage,
     opts: MessageDispatchOptions,
   ): Promise<void> {
-    // Enrich message with file metadata before emitting
-    const enrichedMessage =
-      this.messagesService.enrichMessageWithFileMetadata(message);
-
     this.websocketService.sendToRoom(opts.room, opts.event, {
-      message: toWireMessage(enrichedMessage),
+      message: toWireMessage(message),
     });
 
     // Fire-and-forget: the message-send ack (this method's resolution) must

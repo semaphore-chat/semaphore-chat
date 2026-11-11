@@ -87,23 +87,23 @@ describe('InviteController', () => {
         maxUses: 50,
       };
 
-      service.getInviteByCode.mockResolvedValue(invite as any);
+      service.getPublicInvite.mockResolvedValue(invite as any);
 
       const result = await controller.getPublicInvite(code);
 
       expect(result).toEqual(invite);
-      expect(service.getInviteByCode).toHaveBeenCalledWith(code);
+      expect(service.getPublicInvite).toHaveBeenCalledWith(code);
     });
 
     it('should return null when invite not found', async () => {
       const code = 'NOTFOUND';
 
-      service.getInviteByCode.mockResolvedValue(null);
+      service.getPublicInvite.mockResolvedValue(null);
 
       const result = await controller.getPublicInvite(code);
 
       expect(result).toBeNull();
-      expect(service.getInviteByCode).toHaveBeenCalledWith(code);
+      expect(service.getPublicInvite).toHaveBeenCalledWith(code);
     });
   });
 

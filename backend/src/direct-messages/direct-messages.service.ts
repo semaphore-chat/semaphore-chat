@@ -1,3 +1,4 @@
+import { SpanColumns, toSpanDto } from '@/messages/message.mapper';
 import {
   Injectable,
   Logger,
@@ -8,9 +9,36 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DatabaseService } from '@/database/database.service';
 import { CreateDmGroupDto } from './dto/create-dm-group.dto';
 import { AddMembersDto } from './dto/add-members.dto';
-import { DmGroupResponseDto } from './dto/dm-group-response.dto';
+import {
+  DmGroupLastMessageDto,
+  DmGroupMemberDto,
+  DmGroupResponseDto,
+} from './dto/dm-group-response.dto';
 import { RoomEvents } from '@/rooms/room-subscription.events';
-import { SpanDto } from '@/messages/dto/message-response.dto';
+import { isBlockedWithAny } from '@/common/utils/user-block.utils';
+
+function toDmMember(member: DmGroupMemberDto): DmGroupMemberDto {
+  return {
+    id: member.id,
+    userId: member.userId,
+    joinedAt: member.joinedAt,
+    user: member.user,
+  };
+}
+
+function toDmLastMessage(message: {
+  id: string;
+  authorId: string | null;
+  spans: SpanColumns[];
+  sentAt: Date;
+}): DmGroupLastMessageDto {
+  return {
+    id: message.id,
+    authorId: message.authorId,
+    spans: message.spans.map(toSpanDto),
+    sentAt: message.sentAt,
+  };
+}
 
 @Injectable()
 export class DirectMessagesService {
@@ -101,8 +129,8 @@ export class DirectMessagesService {
         name: group.name,
         isGroup: group.isGroup,
         createdAt: group.createdAt,
-        members: membersByGroupId.get(group.id) || [],
-        lastMessage,
+        members: (membersByGroupId.get(group.id) || []).map(toDmMember),
+        lastMessage: lastMessage ? toDmLastMessage(lastMessage) : null,
       };
     });
 
@@ -130,6 +158,12 @@ export class DirectMessagesService {
     // Include the creator in the user list if not already present
     const allUserIds = Array.from(
       new Set([creatorId, ...createDmGroupDto.userIds]),
+    );
+
+    // A block in either direction stops opening a DM between the two
+    await this.assertNoBlocks(
+      creatorId,
+      allUserIds.filter((id) => id !== creatorId),
     );
 
     // Determine if it's a group (more than 2 users) or 1:1 DM
@@ -267,6 +301,9 @@ export class DirectMessagesService {
       throw new ForbiddenException('Cannot add members to a 1:1 DM');
     }
 
+    // Nobody adds someone who blocked them, or whom they blocked
+    await this.assertNoBlocks(userId, addMembersDto.userIds);
+
     // Add new members (check for duplicates manually to avoid errors)
     for (const newUserId of addMembersDto.userIds) {
       try {
@@ -303,6 +340,11 @@ export class DirectMessagesService {
       },
     });
 
+    // Thread subscriptions in the group end with the membership
+    await this.databaseService.threadSubscriber.deleteMany({
+      where: { userId, parentMessage: { directMessageGroupId: groupId } },
+    });
+
     // Emit domain event — the RoomSubscriptionHandler will remove sockets
     this.eventEmitter.emit(RoomEvents.DM_GROUP_MEMBER_LEFT, {
       groupId,
@@ -310,23 +352,26 @@ export class DirectMessagesService {
     });
   }
 
+  private async assertNoBlocks(userId: string, others: string[]) {
+    if (await isBlockedWithAny(this.databaseService, userId, others)) {
+      throw new ForbiddenException('You cannot start a conversation with them');
+    }
+  }
+
+  /**
+   * The 1:1 DM of exactly these two users. A group one of them left, or that
+   * lost a deleted account, is not it: `every` and `none` alone also match
+   * those, which would hand the group to someone who isn't in it.
+   */
   private async findExisting1on1Dm(userId1: string, userId2: string) {
     return this.databaseService.directMessageGroup.findFirst({
       where: {
         isGroup: false,
-        members: {
-          every: {
-            userId: { in: [userId1, userId2] },
-          },
-        },
-        // Ensure we have exactly 2 members
-        AND: {
-          members: {
-            none: {
-              userId: { notIn: [userId1, userId2] },
-            },
-          },
-        },
+        AND: [
+          { members: { some: { userId: userId1 } } },
+          { members: { some: { userId: userId2 } } },
+          { members: { none: { userId: { notIn: [userId1, userId2] } } } },
+        ],
       },
       include: {
         members: {
@@ -377,7 +422,7 @@ export class DirectMessagesService {
       // Prisma relation (MessageSpan[]), not the shared `Span[]` DTO shape —
       // SpanDto already models Prisma's nullable-column convention (see
       // DmGroupLastMessageDto, which this feeds directly).
-      spans: SpanDto[];
+      spans: SpanColumns[];
       sentAt: Date;
     }[];
   }): DmGroupResponseDto {
@@ -386,8 +431,10 @@ export class DirectMessagesService {
       name: dmGroup.name,
       isGroup: dmGroup.isGroup,
       createdAt: dmGroup.createdAt,
-      members: dmGroup.members,
-      lastMessage: dmGroup.messages[0] || null,
+      members: dmGroup.members.map(toDmMember),
+      lastMessage: dmGroup.messages[0]
+        ? toDmLastMessage(dmGroup.messages[0])
+        : null,
     };
   }
 }

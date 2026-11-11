@@ -3,7 +3,6 @@ import type { Mocked } from '@suites/doubles.jest';
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { MessageDispatchService } from './message-dispatch.service';
-import { MessagesService } from './messages.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import {
   MESSAGE_FANOUT_QUEUE,
@@ -13,7 +12,6 @@ import { ServerEvents } from '@semaphore-chat/shared';
 
 describe('MessageDispatchService', () => {
   let service: MessageDispatchService;
-  let messagesService: Mocked<MessagesService>;
   let websocketService: Mocked<WebsocketService>;
   let messageFanoutQueue: Mocked<Queue>;
   let linkPreviewsQueue: Mocked<Queue>;
@@ -32,14 +30,10 @@ describe('MessageDispatchService', () => {
     ).compile();
 
     service = unit;
-    messagesService = unitRef.get(MessagesService);
     websocketService = unitRef.get(WebsocketService);
     messageFanoutQueue = unitRef.get(getQueueToken(MESSAGE_FANOUT_QUEUE));
     linkPreviewsQueue = unitRef.get(getQueueToken(LINK_PREVIEWS_QUEUE));
 
-    messagesService.enrichMessageWithFileMetadata.mockReturnValue(
-      enrichedMessage,
-    );
     (messageFanoutQueue.add as jest.Mock).mockResolvedValue(undefined);
     (linkPreviewsQueue.add as jest.Mock).mockResolvedValue(undefined);
   });
@@ -48,17 +42,7 @@ describe('MessageDispatchService', () => {
     jest.clearAllMocks();
   });
 
-  it('enriches the message before broadcasting it', async () => {
-    const callOrder: string[] = [];
-    messagesService.enrichMessageWithFileMetadata.mockImplementation((m) => {
-      callOrder.push('enrich');
-      return { ...(m as any), attachments: [] };
-    });
-    websocketService.sendToRoom.mockImplementation(() => {
-      callOrder.push('sendToRoom');
-      return true;
-    });
-
+  it('broadcasts the message to the given room/event', async () => {
     await service.dispatch(rawMessage as any, {
       room: 'channel-1',
       event: ServerEvents.NEW_MESSAGE,
@@ -66,20 +50,6 @@ describe('MessageDispatchService', () => {
       linkPreviews: false,
     });
 
-    expect(callOrder).toEqual(['enrich', 'sendToRoom']);
-  });
-
-  it('broadcasts the enriched message to the given room/event', async () => {
-    await service.dispatch(rawMessage as any, {
-      room: 'channel-1',
-      event: ServerEvents.NEW_MESSAGE,
-      notifications: false,
-      linkPreviews: false,
-    });
-
-    expect(messagesService.enrichMessageWithFileMetadata).toHaveBeenCalledWith(
-      rawMessage,
-    );
     expect(websocketService.sendToRoom).toHaveBeenCalledWith(
       'channel-1',
       ServerEvents.NEW_MESSAGE,

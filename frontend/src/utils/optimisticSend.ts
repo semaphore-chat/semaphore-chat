@@ -3,7 +3,7 @@
  * (hooks/useOptimisticSendMessage.ts) and messages with attachments
  * (utils/attachmentSend.ts).
  */
-import type { InfiniteData, QueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import { VoiceSessionType } from "../contexts/VoiceContext";
 import { channelMessagesQueryKey, dmMessagesQueryKey } from "./messageQueryKeys";
 import {
@@ -12,11 +12,12 @@ import {
   removeOptimisticMessage,
   replaceOptimisticMessage,
 } from "./messageCacheUpdaters";
+import type { MessagesInfiniteData } from "./messageCacheUpdaters";
+import { describeSendFailure, isDeletedWhileSending } from "./sendAck";
 import type { Message } from "../types/message.type";
-import type { PaginatedMessagesResponseDto } from "../api-client";
 import type { MessageContext, SendMessageResult } from "../hooks/useSendMessage";
 
-export type MessagesInfiniteData = InfiniteData<PaginatedMessagesResponseDto>;
+export type { MessagesInfiniteData };
 export type MessageQueryKey =
   | ReturnType<typeof channelMessagesQueryKey>
   | ReturnType<typeof dmMessagesQueryKey>;
@@ -38,7 +39,7 @@ export function messagesQueryKeyFor(contextType: MessageContext, contextId: stri
  * This does NOT prevent multiple DIFFERENT optimistic rows from being in
  * flight concurrently for the same author (composer send + a retry of an
  * older failed row, or two sequential composer sends) — that's expected
- * and handled by the content-based echo correlation in
+ * and handled by the clientNonce each row's echo carries, in
  * `prependOrReconcileOptimistic`, not by this guard.
  *
  * Module-level (not component/hook-instance state) because it must be
@@ -62,7 +63,9 @@ export const inFlightClientIds = new Set<string>();
  *   MERGES the echo into this row instead of no-op'ing on the id-already-
  *   present check — so any richer content the echo carries (e.g. a resolved
  *   `replyTo`) still lands (fix round 1; previously permanently dropped).
- * - failure: mark 'failed' for the retry/delete UI.
+ * - failure: mark 'failed' for the retry/delete UI, with the reason.
+ * - the message was deleted before we heard it was sent: drop the row, since
+ *   there's nothing to retry.
  *
  * This is a no-op against a clientId that's already gone (the echo-first
  * case above already reconciled it via `prependOrReconcileOptimistic`).
@@ -74,8 +77,7 @@ export function reconcileAfterSend(
   optimisticMessage: Message,
   result: SendMessageResult,
 ): void {
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const typedOld = old as MessagesInfiniteData | undefined;
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (typedOld) => {
     if (result.success && result.messageId) {
       const echoAlreadyInserted = !!findMessageInInfinite(typedOld, result.messageId);
       if (echoAlreadyInserted) {
@@ -88,6 +90,9 @@ export function reconcileAfterSend(
       };
       return replaceOptimisticMessage(typedOld, clientId, promoted);
     }
-    return markOptimisticFailed(typedOld, clientId);
+    if (isDeletedWhileSending(result.error)) {
+      return removeOptimisticMessage(typedOld, clientId);
+    }
+    return markOptimisticFailed(typedOld, clientId, describeSendFailure(result.error));
   });
 }

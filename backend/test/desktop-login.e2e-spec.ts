@@ -9,6 +9,8 @@ import {
   E2eApp,
   E2E_INVITE_CODE,
 } from './helpers/e2e-app';
+import { ServerEvents } from '@semaphore-chat/shared';
+import { WebsocketService } from '@/websocket/websocket.service';
 
 /**
  * Sign in with browser (desktop app) against real Postgres + Redis: the
@@ -54,7 +56,11 @@ describe('Desktop sign-in with browser (e2e)', () => {
     request(server())
       .post('/api/auth/desktop/authorize')
       .set('Authorization', `Bearer ${accessToken}`)
-      .send({ codeChallenge, codeChallengeMethod: 'S256' });
+      .send({
+        codeChallenge,
+        codeChallengeMethod: 'S256',
+        password: creds.password,
+      });
 
   const redeem = (
     code: string,
@@ -159,8 +165,57 @@ describe('Desktop sign-in with browser (e2e)', () => {
     await request(server())
       .post('/api/auth/desktop/authorize')
       .set('Cookie', `access_token=${browser.accessToken}`)
-      .send({ codeChallenge: pkce().challenge, codeChallengeMethod: 'S256' })
+      .send({
+        codeChallenge: pkce().challenge,
+        codeChallengeMethod: 'S256',
+        password: creds.password,
+      })
       .expect(401);
+  });
+
+  it('needs the account password as well as the session', async () => {
+    const browser = await browserSignIn();
+    const approve = (password?: string) =>
+      request(server())
+        .post('/api/auth/desktop/authorize')
+        .set('Authorization', `Bearer ${browser.accessToken}`)
+        .send({
+          codeChallenge: pkce().challenge,
+          codeChallengeMethod: 'S256',
+          ...(password === undefined ? {} : { password }),
+        });
+
+    await approve().expect(400);
+    await approve('not-the-password').expect(403);
+    await approve(creds.password).expect(200);
+  });
+
+  it("tells the user's other sessions when a desktop app signs in", async () => {
+    const browser = await browserSignIn();
+    const { verifier, challenge } = pkce();
+    const sendToRoom = jest.spyOn(app.get(WebsocketService), 'sendToRoom');
+    try {
+      const approved = await authorize(browser.accessToken, challenge).expect(
+        200,
+      );
+      expect(sendToRoom).not.toHaveBeenCalledWith(
+        expect.anything(),
+        ServerEvents.DESKTOP_SIGN_IN,
+        expect.anything(),
+      );
+
+      await redeem((approved.body as { code: string }).code, verifier).expect(
+        200,
+      );
+
+      expect(sendToRoom).toHaveBeenCalledWith(
+        expect.stringMatching(/^user:/),
+        ServerEvents.DESKTOP_SIGN_IN,
+        expect.objectContaining({ signedInAt: expect.any(String) as string }),
+      );
+    } finally {
+      sendToRoom.mockRestore();
+    }
   });
 
   it('refuses a garbage bearer token even with a valid cookie', async () => {
@@ -169,7 +224,11 @@ describe('Desktop sign-in with browser (e2e)', () => {
       .post('/api/auth/desktop/authorize')
       .set('Authorization', 'Bearer garbage')
       .set('Cookie', `access_token=${browser.accessToken}`)
-      .send({ codeChallenge: pkce().challenge, codeChallengeMethod: 'S256' })
+      .send({
+        codeChallenge: pkce().challenge,
+        codeChallengeMethod: 'S256',
+        password: creds.password,
+      })
       .expect(401);
   });
 
@@ -179,7 +238,11 @@ describe('Desktop sign-in with browser (e2e)', () => {
     await request(server())
       .post('/api/auth/desktop/authorize')
       .set('Authorization', `Bearer ${browser.accessToken}`)
-      .send({ codeChallenge: pkce().challenge, codeChallengeMethod: 'plain' })
+      .send({
+        codeChallenge: pkce().challenge,
+        codeChallengeMethod: 'plain',
+        password: creds.password,
+      })
       .expect(400);
     await redeem('x'.repeat(43), 'not a verifier').expect(400);
   });

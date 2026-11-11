@@ -15,6 +15,7 @@ import { InviteService } from './invite.service';
 import { RbacActions } from '@prisma/client';
 import { CreateInviteDto } from './dto/create-invite.dto';
 import { InviteResponseDto } from './dto/invite-response.dto';
+import { PublicInviteDto } from './dto/public-invite.dto';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { Public } from '@/auth/public.decorator';
 import { RbacGuard } from '@/auth/rbac.guard';
@@ -57,11 +58,11 @@ export class InviteController {
   @Get('public/:code')
   @Public()
   @Throttle({ short: { limit: 5, ttl: 1000 }, long: { limit: 20, ttl: 60000 } })
-  @ApiOkResponse({ type: InviteResponseDto })
+  @ApiOkResponse({ type: PublicInviteDto })
   async getPublicInvite(
     @Param('code') code: string,
-  ): Promise<InviteResponseDto | null> {
-    return this.inviteService.getInviteByCode(code);
+  ): Promise<PublicInviteDto | null> {
+    return this.inviteService.getPublicInvite(code);
   }
 
   @Get(':code')

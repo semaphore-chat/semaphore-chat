@@ -5,10 +5,10 @@ export class PublicSettingsResponseDto {
   @ApiProperty()
   name: string;
 
-  @ApiProperty({ enum: RegistrationModeValues })
+  @ApiProperty({ enum: RegistrationModeValues, enumName: 'RegistrationMode' })
   registrationMode: string;
 
-  @ApiProperty()
+  @ApiProperty({ type: 'integer', format: 'int64' })
   maxFileSizeBytes: number;
 
   /** Whether the Giphy GIF picker is available (GIPHY_API_KEY configured). */
@@ -28,10 +28,16 @@ export class PublicSettingsResponseDto {
 }
 
 export class InstanceStatsResponseDto {
+  @ApiProperty({ type: 'integer' })
   totalUsers: number;
+  @ApiProperty({ type: 'integer' })
   totalCommunities: number;
+  @ApiProperty({ type: 'integer' })
   totalChannels: number;
+  @ApiProperty({ type: 'integer' })
   totalMessages: number;
+  @ApiProperty({ type: 'integer' })
   activeInvites: number;
+  @ApiProperty({ type: 'integer' })
   bannedUsers: number;
 }

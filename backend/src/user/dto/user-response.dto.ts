@@ -15,7 +15,7 @@ export class UserEntity implements User {
   @Exclude()
   @ApiHideProperty()
   verified: boolean;
-  @ApiProperty({ enum: InstanceRoleValues })
+  @ApiProperty({ enum: InstanceRoleValues, enumName: 'InstanceRole' })
   role: $Enums.InstanceRole;
 
   @Exclude()

@@ -8,6 +8,7 @@
  * else is passed through by reference so unrelated stories built from the
  * same base scenario are unaffected.
  */
+import type { FileMetadata } from '../../types/message.type';
 import { createMessage, createSpan, createFileMetadata } from '../../__tests__/test-utils/factories';
 import type { Message } from '../../types/message.type';
 import type { Scenario, ScenarioUser } from './types';
@@ -112,7 +113,7 @@ export function withThread(scenario: Scenario, channelId: string, parentMessageI
 
 export type AttachmentKind = 'image' | 'video' | 'audio' | 'document';
 
-const ATTACHMENT_PRESETS: Record<AttachmentKind, { mimeType: string; fileType: string; filename: string }> = {
+const ATTACHMENT_PRESETS: Record<AttachmentKind, { mimeType: string; fileType: FileMetadata['fileType']; filename: string }> = {
   image: { mimeType: 'image/png', fileType: 'IMAGE', filename: 'photo.png' },
   video: { mimeType: 'video/mp4', fileType: 'VIDEO', filename: 'clip.mp4' },
   audio: { mimeType: 'audio/mpeg', fileType: 'AUDIO', filename: 'voice-note.mp3' },

@@ -20,7 +20,7 @@ import {
   userControllerRegisterMutation,
   authControllerLoginMutation,
 } from "../api-client/@tanstack/react-query.gen";
-import { InstanceInvite } from "../types/invite.type";
+import type { PublicInviteDto } from "../api-client/types.gen";
 
 const FormContainer = styled(Box)({
   display: "flex",
@@ -86,12 +86,12 @@ const JoinInvitePage: React.FC = () => {
     }
   };
 
-  const isInviteExpired = (invite: InstanceInvite) => {
+  const isInviteExpired = (invite: PublicInviteDto) => {
     if (!invite?.validUntil) return false;
     return new Date() > new Date(invite.validUntil);
   };
 
-  const isInviteMaxedOut = (invite: InstanceInvite) => {
+  const isInviteMaxedOut = (invite: PublicInviteDto) => {
     if (!invite?.maxUses) return false;
     return invite.uses >= invite.maxUses;
   };
@@ -117,7 +117,8 @@ const JoinInvitePage: React.FC = () => {
     );
   }
 
-  if (inviteError || !invite) {
+  // An unusable or unknown code answers an empty 200, which the client gives us as {}.
+  if (inviteError || !invite?.code) {
     return (
       <FormContainer>
         <FormBox>

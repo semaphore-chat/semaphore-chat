@@ -156,6 +156,28 @@ describe('WebSocket gateways (e2e)', () => {
     ).resolves.toBe('ACK');
   });
 
+  it('ignores events it has no handler for, as old clients may still send', async () => {
+    socket = await connect({ token });
+    const exceptions: unknown[] = [];
+    socket.on('exception', (e: unknown) => exceptions.push(e));
+
+    for (const removed of [
+      'voice_channel_join',
+      'voice_channel_leave',
+      'voice_state_update',
+      'voice_presence_refresh',
+    ]) {
+      socket.emit(removed, { channelId: randomUUID() });
+    }
+
+    // Answered in order, so the socket got past the unhandled ones and is alive.
+    await expect(
+      socket.timeout(5000).emitWithAck(ClientEvents.PRESENCE_ONLINE, {}),
+    ).resolves.toBe('ACK');
+    expect(socket.connected).toBe(true);
+    expect(exceptions).toEqual([]);
+  });
+
   it('answers an invalid payload with the validation errors, not "Internal server error"', async () => {
     socket = await connect({ token });
 

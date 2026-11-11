@@ -5,27 +5,11 @@ import {
   IsInt,
   IsUUID,
   Min,
+  ValidateNested,
 } from 'class-validator';
-import { $Enums } from '@prisma/client';
-import { ApiProperty } from '@nestjs/swagger';
-import { SpanTypeValues } from '@/common/enums/swagger-enums';
-
-class SendThreadReplySpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
-  type: $Enums.SpanType;
-  text: string | null;
-  userId: string | null;
-  specialKind: string | null;
-  communityId: string | null;
-
-  /** For CHANNEL_MENTION (text is ignored and stored as null). */
-  @ApiProperty({ type: String, required: false, nullable: true })
-  @IsOptional()
-  @IsUUID()
-  channelId?: string | null;
-
-  aliasId: string | null;
-}
+import { Type } from 'class-transformer';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
  * DTO for sending a thread reply via WebSocket.
@@ -34,9 +18,11 @@ export class SendThreadReplyDto {
   @IsString()
   parentMessageId: string;
 
-  @ApiProperty({ type: [SendThreadReplySpanDto] })
+  @ApiProperty({ type: [CreateMessageSpanDto] })
   @IsArray()
-  spans: SendThreadReplySpanDto[];
+  @ValidateNested({ each: true })
+  @Type(() => CreateMessageSpanDto)
+  spans: CreateMessageSpanDto[];
 
   @IsArray()
   @IsOptional()
@@ -45,5 +31,15 @@ export class SendThreadReplyDto {
   @IsInt()
   @Min(0)
   @IsOptional()
+  @ApiPropertyOptional({ type: 'integer' })
   pendingAttachments?: number;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }

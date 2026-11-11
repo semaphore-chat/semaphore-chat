@@ -3,10 +3,14 @@ import type { Mocked } from '@suites/doubles.jest';
 import { MessagesService } from './messages.service';
 import { DatabaseService } from '@/database/database.service';
 import { FileService } from '@/file/file.service';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChannelAccessService } from '@/roles/channel-access.service';
 import { PermissionsService } from '@/roles/permissions.service';
-import { SpanType, FileType } from '@prisma/client';
+import { Prisma, SpanType, FileType } from '@prisma/client';
 import { createMockDatabase, MessageFactory } from '@/test-utils';
 
 /** Helper to build a message with included relations in the shape returned by Prisma */
@@ -50,6 +54,19 @@ describe('MessagesService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    // Files in these tests were uploaded by the message's author, unless a
+    // test says otherwise.
+    mockDatabase.file.count.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.length),
+    );
+    mockDatabase.file.findMany.mockImplementation(
+      ({ where }: { where: { id: { in: string[] } } }) =>
+        Promise.resolve(where.id.in.map((id) => ({ id }))),
+    );
+    mockDatabase.message.findUniqueOrThrow.mockResolvedValue({
+      authorId: 'user-123',
+    });
 
     const { unit, unitRef } = await TestBed.solitary(MessagesService)
       .mock(DatabaseService)
@@ -67,6 +84,34 @@ describe('MessagesService', () => {
   });
 
   describe('create', () => {
+    describe('target', () => {
+      const base = { authorId: 'user-123', spans: [], attachments: [] };
+
+      it.each([
+        ['both', { channelId: 'channel-1', directMessageGroupId: 'group-1' }],
+        ['neither', {}],
+        ['only nulls', { channelId: null, directMessageGroupId: null }],
+      ])('rejects %s before writing anything', async (_label, target) => {
+        await expect(
+          service.create({ ...base, ...target } as any),
+        ).rejects.toThrow(BadRequestException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a channel', { channelId: 'channel-1', directMessageGroupId: null }],
+        ['a DM group', { channelId: null, directMessageGroupId: 'group-1' }],
+      ])('accepts %s', async (_label, target) => {
+        mockDatabase.message.create.mockResolvedValue(
+          buildMessageWithIncludes({ ...base, ...target }),
+        );
+
+        await service.create({ ...base, ...target } as any);
+
+        expect(mockDatabase.message.create).toHaveBeenCalledTimes(1);
+      });
+    });
+
     describe('ATTACH_FILES', () => {
       const base = {
         channelId: 'channel-123',
@@ -99,6 +144,15 @@ describe('MessagesService', () => {
         await expect(
           service.create({ ...base, attachments: ['file-1'] } as any),
         ).rejects.toThrow(ForbiddenException);
+        expect(mockDatabase.message.create).not.toHaveBeenCalled();
+      });
+
+      it("rejects a file the author didn't upload", async () => {
+        mockDatabase.file.count.mockResolvedValue(0);
+
+        await expect(
+          service.create({ ...base, attachments: ['file-1'] } as any),
+        ).rejects.toThrow('You can only attach files you uploaded');
         expect(mockDatabase.message.create).not.toHaveBeenCalled();
       });
 
@@ -487,7 +541,7 @@ describe('MessagesService', () => {
       );
       await service.update('m1', {
         spans: [mention('visible'), mention('hidden')],
-      } as any);
+      });
 
       expect(channelAccessService.canViewChannel).toHaveBeenCalledWith(
         'author',
@@ -506,6 +560,32 @@ describe('MessagesService', () => {
   });
 
   describe('update', () => {
+    it('writes only what an edit may change', async () => {
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', {
+        channelId: 'other-channel',
+        directMessageGroupId: 'other-group',
+        replyToId: 'other-message',
+        pendingAttachments: 9,
+        spans: [
+          {
+            type: SpanType.PLAINTEXT,
+            text: 'Edited',
+            userId: null,
+            specialKind: null,
+            communityId: null,
+            aliasId: null,
+          },
+        ],
+      });
+
+      const { data } = mockDatabase.message.update.mock.calls[0][0];
+      expect(Object.keys(data).sort()).toEqual(['editedAt', 'searchText']);
+    });
+
     it('should update a message and set editedAt', async () => {
       const messageId = 'msg-123';
       const updateDto = {
@@ -556,6 +636,32 @@ describe('MessagesService', () => {
       expect(updateCall.where).toEqual({ id: messageId });
       expect(updateCall.data.searchText).toBe('updated text');
       expect(updateCall.data.editedAt).toBeInstanceOf(Date);
+    });
+
+    it('only marks files the author uploaded for deletion', async () => {
+      mockDatabase.file.findMany.mockResolvedValue([{ id: 'own-file' }]);
+      mockDatabase.messageAttachment.findMany.mockResolvedValue([]);
+      mockDatabase.message.update.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-123' }),
+      );
+
+      await service.update('msg-123', { attachments: [] }, [
+        'own-file',
+        'foreign-file',
+      ]);
+
+      expect(mockDatabase.file.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['own-file', 'foreign-file'] },
+          uploadedById: 'user-123',
+        },
+        select: { id: true },
+      });
+      expect(fileService.markForDeletion).toHaveBeenCalledTimes(1);
+      expect(fileService.markForDeletion).toHaveBeenCalledWith(
+        'own-file',
+        expect.any(Object),
+      );
     });
 
     it('should mark removed attachments for deletion', async () => {
@@ -664,6 +770,82 @@ describe('MessagesService', () => {
   });
 
   describe('remove', () => {
+    it('recounts the thread when a reply is deleted', async () => {
+      const sentAt = new Date('2026-01-01T00:00:00Z');
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.findFirst.mockResolvedValue({ sentAt });
+
+      await service.remove('reply-1');
+
+      expect(mockDatabase.message.updateMany).toHaveBeenCalledWith({
+        where: { id: 'parent-1', replyCount: { gt: 0 } },
+        data: { replyCount: { decrement: 1 } },
+      });
+      expect(mockDatabase.message.updateMany).toHaveBeenCalledWith({
+        where: { id: 'parent-1' },
+        data: { lastReplyAt: sentAt },
+      });
+    });
+
+    it("takes the parent's row lock before reading the latest reply", async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.findFirst.mockResolvedValue({ sentAt: new Date() });
+
+      await service.remove('reply-1');
+
+      // The decrement locks the parent row, so a reply that arrives meanwhile
+      // commits before the read: its sentAt is the latest, not a stale one.
+      const decrement =
+        mockDatabase.message.updateMany.mock.invocationCallOrder[0];
+      const latestRead =
+        mockDatabase.message.findFirst.mock.invocationCallOrder[0];
+      expect(decrement).toBeLessThan(latestRead);
+    });
+
+    it('does not fail the delete when the parent was deleted meanwhile', async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({
+          id: 'reply-1',
+          parentMessageId: 'parent-1',
+        }),
+      );
+      mockDatabase.message.update.mockRejectedValue(
+        new Prisma.PrismaClientKnownRequestError('Record to update not found', {
+          code: 'P2025',
+          clientVersion: 'test',
+        }),
+      );
+      mockDatabase.message.updateMany.mockResolvedValue({ count: 0 });
+      mockDatabase.message.findFirst.mockResolvedValue(null);
+
+      await expect(service.remove('reply-1')).resolves.toBeDefined();
+      expect(mockDatabase.message.update).not.toHaveBeenCalled();
+    });
+
+    it('recounts nothing for an ordinary message', async () => {
+      mockDatabase.message.findMany.mockResolvedValue([]);
+      mockDatabase.message.delete.mockResolvedValue(
+        buildMessageWithIncludes({ id: 'msg-1' }),
+      );
+
+      await service.remove('msg-1');
+
+      expect(mockDatabase.message.updateMany).not.toHaveBeenCalled();
+    });
+
     beforeEach(() => {
       // Default: no thread replies
       mockDatabase.message.findMany.mockResolvedValue([]);
@@ -1201,7 +1383,7 @@ describe('MessagesService', () => {
 
       const result = await service.addAttachment(messageId, fileId);
 
-      expect(result).toBe(message);
+      expect(result.id).toBe(messageId);
       expect(mockDatabase.messageAttachment.createMany).toHaveBeenCalledWith({
         data: [{ messageId, fileId, position: 1 }],
         skipDuplicates: true,
@@ -1214,91 +1396,6 @@ describe('MessagesService', () => {
         }),
       });
       expect(mockDatabase.message.update).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('enrichMessageWithFileMetadata', () => {
-    it('should format message with included file metadata', async () => {
-      const file1 = {
-        id: 'file-1',
-        filename: 'test.jpg',
-        mimeType: 'image/jpeg',
-        fileType: FileType.IMAGE,
-        size: 1024,
-        thumbnailPath: null,
-      };
-      const file2 = {
-        id: 'file-2',
-        filename: 'doc.pdf',
-        mimeType: 'application/pdf',
-        fileType: FileType.DOCUMENT,
-        size: 2048,
-        thumbnailPath: null,
-      };
-      const message = buildMessageWithIncludes({}, [file1, file2]);
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      // toFileMetadata strips thumbnailPath and adds hasThumbnail
-      expect(result.attachments).toEqual([
-        {
-          id: file1.id,
-          filename: file1.filename,
-          mimeType: file1.mimeType,
-          fileType: file1.fileType,
-          size: file1.size,
-          hasThumbnail: false,
-        },
-        {
-          id: file2.id,
-          filename: file2.filename,
-          mimeType: file2.mimeType,
-          fileType: file2.fileType,
-          size: file2.size,
-          hasThumbnail: false,
-        },
-      ]);
-      // No file.findMany needed - data comes from includes
-      expect(mockDatabase.file.findMany).not.toHaveBeenCalled();
-    });
-
-    it('should return empty attachments when message has no files', async () => {
-      const message = buildMessageWithIncludes({});
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      expect(result.attachments).toEqual([]);
-      expect(mockDatabase.file.findMany).not.toHaveBeenCalled();
-    });
-
-    it('should set hasThumbnail to true when file has thumbnailPath', async () => {
-      const videoFile = {
-        id: 'vid-1',
-        filename: 'video.mp4',
-        mimeType: 'video/mp4',
-        fileType: FileType.VIDEO,
-        size: 5000,
-        thumbnailPath: '/uploads/thumbnails/vid-1.jpg',
-      };
-      const imageFile = {
-        id: 'img-1',
-        filename: 'photo.jpg',
-        mimeType: 'image/jpeg',
-        fileType: FileType.IMAGE,
-        size: 2000,
-        thumbnailPath: null,
-      };
-      const message = buildMessageWithIncludes({}, [videoFile, imageFile]);
-
-      const result = await service.enrichMessageWithFileMetadata(message);
-
-      expect(result.attachments).toHaveLength(2);
-      expect(
-        (result.attachments[0] as { hasThumbnail: boolean }).hasThumbnail,
-      ).toBe(true);
-      expect(
-        (result.attachments[1] as { hasThumbnail: boolean }).hasThumbnail,
-      ).toBe(false);
     });
   });
 

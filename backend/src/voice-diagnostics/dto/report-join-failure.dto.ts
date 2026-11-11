@@ -41,7 +41,10 @@ const truncate =
  * permission or server problem.
  */
 export class ReportJoinFailureDto {
-  @ApiProperty({ enum: VOICE_JOIN_ERROR_CLASSES })
+  @ApiProperty({
+    enum: VOICE_JOIN_ERROR_CLASSES,
+    enumName: 'VoiceJoinErrorClass',
+  })
   @IsIn(VOICE_JOIN_ERROR_CLASSES)
   errorClass: VoiceJoinErrorClass;
 
@@ -51,20 +54,30 @@ export class ReportJoinFailureDto {
   @MaxLength(JOIN_FAILURE_MESSAGE_MAX)
   message: string;
 
-  @ApiProperty({ description: 'How long the attempt took, in ms' })
+  @ApiProperty({
+    description: 'How long the attempt took, in ms',
+    type: 'integer',
+  })
   @IsInt()
   @Min(0)
   @Max(10 * 60 * 1000)
   durationMs: number;
 
-  @ApiPropertyOptional({ enum: ICE_CANDIDATE_TYPES, isArray: true })
+  @ApiPropertyOptional({
+    enum: ICE_CANDIDATE_TYPES,
+    enumName: 'IceCandidateType',
+    isArray: true,
+  })
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(ICE_CANDIDATE_TYPES.length)
   @IsIn(ICE_CANDIDATE_TYPES, { each: true })
   candidateTypes?: (typeof ICE_CANDIDATE_TYPES)[number][];
 
-  @ApiProperty({ enum: VOICE_CLIENT_PLATFORMS })
+  @ApiProperty({
+    enum: VOICE_CLIENT_PLATFORMS,
+    enumName: 'VoiceClientPlatform',
+  })
   @IsIn(VOICE_CLIENT_PLATFORMS)
   platform: (typeof VOICE_CLIENT_PLATFORMS)[number];
 

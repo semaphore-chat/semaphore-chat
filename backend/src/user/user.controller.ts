@@ -14,8 +14,9 @@ import {
   UseInterceptors,
   ClassSerializerInterceptor,
   ParseUUIDPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import {
@@ -103,12 +104,15 @@ export class UserController {
   @Get('search')
   @UseGuards(JwtAuthGuard)
   @ApiOkResponse({ type: [UserEntity] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
+  @ApiQuery({ name: 'communityId', required: false })
   searchUsers(
+    @Req() req: AuthenticatedRequest,
     @Query('q') query: string,
     @Query('communityId') communityId?: string,
-    @Query('limit', ParseIntPipe) limit?: number,
+    @Query('limit', new DefaultValuePipe(25), ParseIntPipe) limit?: number,
   ): Promise<UserEntity[]> {
-    return this.userService.searchUsers(query, communityId, limit);
+    return this.userService.searchUsers(query, communityId, limit, req.user);
   }
 
   @Get()
@@ -118,6 +122,7 @@ export class UserController {
     type: RbacResourceType.INSTANCE,
   })
   @ApiOkResponse({ type: UserListResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllUsers(
     @Query('limit', ParseIntPipe) limit?: number,
     @Query('continuationToken') continuationToken?: string,

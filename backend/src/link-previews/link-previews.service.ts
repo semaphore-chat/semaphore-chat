@@ -7,36 +7,13 @@ import {
   fetchLinkMetadata,
   LinkPreviewData,
 } from './link-preview.utils';
-import { groupReactions } from '@/common/utils/reactions.utils';
 import { Prisma } from '@prisma/client';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
-
-/** Full includes for re-reading a message before broadcast */
-const MESSAGE_INCLUDE = {
-  spans: { orderBy: { position: 'asc' as const } },
-  reactions: true,
-  attachments: {
-    include: {
-      file: {
-        select: {
-          id: true,
-          filename: true,
-          mimeType: true,
-          fileType: true,
-          size: true,
-          thumbnailPath: true,
-        },
-      },
-    },
-    orderBy: { position: 'asc' as const },
-  },
-  replyToMessage: {
-    include: {
-      spans: { orderBy: { position: 'asc' as const } },
-    },
-  },
-} as const;
+import {
+  MESSAGE_INCLUDE_WITH_REPLY,
+  toMessageDto,
+} from '@/messages/message.mapper';
 
 @Injectable()
 export class LinkPreviewsService {
@@ -116,11 +93,12 @@ export class LinkPreviewsService {
   ): Promise<void> {
     const existing = await this.databaseService.message.findUnique({
       where: { id: messageId },
-      select: { linkPreviews: true },
+      select: { linkPreviews: true, deletedAt: true },
     });
 
-    // Only update + broadcast if there were previews to clear
-    if (!existing?.linkPreviews) return;
+    // Only update + broadcast if there were previews to clear. A message
+    // removed since the job was queued stays out of the room.
+    if (!existing?.linkPreviews || existing.deletedAt) return;
 
     await this.databaseService.message.update({
       where: { id: messageId },
@@ -143,53 +121,14 @@ export class LinkPreviewsService {
   ): Promise<void> {
     const msg = await this.databaseService.message.findUnique({
       where: { id: messageId },
-      include: MESSAGE_INCLUDE,
+      include: MESSAGE_INCLUDE_WITH_REPLY,
     });
 
-    if (!msg) return;
-
-    const { replyToMessage, ...rest } = msg;
-
-    const formatted = {
-      ...rest,
-      linkPreviews:
-        (rest.linkPreviews as LinkPreviewData[] | null) ?? undefined,
-      reactions: groupReactions(msg.reactions),
-      attachments: msg.attachments.map((a) => ({
-        id: a.file.id,
-        filename: a.file.filename,
-        mimeType: a.file.mimeType,
-        fileType: a.file.fileType,
-        size: a.file.size,
-        hasThumbnail: !!a.file.thumbnailPath,
-      })),
-      replyTo: replyToMessage
-        ? {
-            id: replyToMessage.id,
-            authorId: replyToMessage.authorId,
-            spans: replyToMessage.deletedAt
-              ? []
-              : replyToMessage.spans.map((s) => ({
-                  type: s.type,
-                  text: s.text,
-                  userId: s.userId,
-                  specialKind: s.specialKind,
-                  communityId: s.communityId,
-                  aliasId: s.aliasId,
-                  emojiId: s.emojiId ?? null,
-                  bold: s.bold ?? null,
-                  italic: s.italic ?? null,
-                  strikethrough: s.strikethrough ?? null,
-                  code: s.code ?? null,
-                })),
-            sentAt: replyToMessage.sentAt,
-            deletedAt: replyToMessage.deletedAt,
-          }
-        : null,
-    };
+    // Removed between the job's checks and this read: never broadcast its text
+    if (!msg || msg.deletedAt) return;
 
     this.websocketService.sendToRoom(roomId, serverEvent, {
-      message: toWireMessage(formatted),
+      message: toWireMessage(toMessageDto(msg)),
     });
   }
 }

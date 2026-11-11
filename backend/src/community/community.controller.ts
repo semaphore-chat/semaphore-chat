@@ -19,6 +19,7 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 
 import { CommunityService } from './community.service';
@@ -39,6 +40,7 @@ import {
   ResourceIdSource,
 } from '@/auth/rbac-resource.decorator';
 import { AuthenticatedRequest } from '@/types';
+import { clampLimit } from '@/common/utils/clamp-limit.util';
 
 @ApiTags('Community')
 @ApiBearerAuth()
@@ -87,8 +89,9 @@ export class CommunityController {
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateCommunityDto: UpdateCommunityDto,
+    @Req() req: AuthenticatedRequest,
   ): Promise<CommunityResponseDto> {
-    return this.communityService.update(id, updateCommunityDto);
+    return this.communityService.update(id, updateCommunityDto, req.user.id);
   }
 
   @Delete(':id')
@@ -114,13 +117,14 @@ export class CommunityController {
   @RequiredActions(RbacActions.READ_ALL_COMMUNITIES)
   @RbacResource({ type: RbacResourceType.INSTANCE })
   @ApiOkResponse({ type: CommunityStatsListResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllWithStats(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,
     @Query('search') search?: string,
   ): Promise<CommunityStatsListResponseDto> {
     return this.communityService.findAllWithStats(
-      limit,
+      clampLimit(limit, 100),
       continuationToken,
       search,
     );

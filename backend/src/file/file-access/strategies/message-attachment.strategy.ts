@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
+import { PermissionsService } from '@/roles/permissions.service';
 import { IFileAccessStrategy } from './file-access-strategy.interface';
 
 /**
@@ -19,6 +20,7 @@ export class MessageAttachmentStrategy implements IFileAccessStrategy {
   constructor(
     private readonly databaseService: DatabaseService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly permissionsService: PermissionsService,
   ) {}
 
   async checkAccess(
@@ -33,12 +35,27 @@ export class MessageAttachmentStrategy implements IFileAccessStrategy {
         id: true,
         channelId: true,
         directMessageGroupId: true,
+        deletedAt: true,
       },
     });
 
     if (!message) {
       this.logger.debug(`Message ${messageId} not found for file ${fileId}`);
       throw new NotFoundException('Message not found');
+    }
+
+    // A removed message's files go only to those who may still see it
+    if (
+      message.deletedAt &&
+      !(
+        message.channelId &&
+        (await this.permissionsService.canSeeRemovedMessages(
+          userId,
+          message.channelId,
+        ))
+      )
+    ) {
+      throw new ForbiddenException('Access denied');
     }
 
     // Check channel message access

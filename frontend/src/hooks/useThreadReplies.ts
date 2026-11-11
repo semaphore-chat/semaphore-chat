@@ -17,7 +17,7 @@ export function useThreadReplies(parentMessageId: string) {
   );
 
   return {
-    replies: (data?.replies as Message[] | undefined) ?? [],
+    replies: (data?.replies satisfies Message[] | undefined) ?? [],
     continuationToken: data?.continuationToken,
     isLoading,
     isFetched,

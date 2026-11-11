@@ -7,6 +7,8 @@ export enum ServerEvents {
   TOKEN_EXPIRING = 'tokenExpiring',
   /** Sent right before the server disconnects the socket, with the reason. */
   SESSION_TERMINATED = 'sessionTerminated',
+  /** A desktop app was signed in to this account through a browser approval. */
+  DESKTOP_SIGN_IN = 'desktopSignIn',
 
   // Messaging: Channels
   NEW_MESSAGE = 'newMessage',
@@ -41,7 +43,6 @@ export enum ServerEvents {
   DM_VOICE_CALL_STARTED = 'dmVoiceCallStarted',
   DM_VOICE_USER_JOINED = 'dmVoiceUserJoined',
   DM_VOICE_USER_LEFT = 'dmVoiceUserLeft',
-  DM_VOICE_USER_UPDATED = 'dmVoiceUserUpdated',
 
   // Replay Buffer (Screen Recording)
   REPLAY_BUFFER_STOPPED = 'replayBufferStopped',
@@ -60,8 +61,6 @@ export enum ServerEvents {
 
   // Thread Events
   NEW_THREAD_REPLY = 'newThreadReply',
-  UPDATE_THREAD_REPLY = 'updateThreadReply',
-  DELETE_THREAD_REPLY = 'deleteThreadReply',
   THREAD_REPLY_COUNT_UPDATED = 'threadReplyCountUpdated',
 
   // Community Membership
@@ -89,9 +88,4 @@ export enum ServerEvents {
   USER_PROFILE_UPDATED = 'userProfileUpdated',
 
   // Egress
-  EGRESS_SEGMENTS_READY = 'egressSegmentsReady',
-
-  // Acknowledgments & Errors
-  ACK = 'ack',
-  ERROR = 'error',
-}
+  EGRESS_SEGMENTS_READY = 'egressSegmentsReady',}

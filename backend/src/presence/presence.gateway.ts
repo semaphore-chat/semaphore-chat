@@ -1,3 +1,4 @@
+import type { PresenceOnlineDto } from '@/websocket/dto/socket-events.dto';
 import { RbacGuard } from '@/auth/rbac.guard';
 import { UserEntity } from '@/user/dto/user-response.dto';
 import { Logger, UseFilters, UseGuards } from '@nestjs/common';
@@ -54,7 +55,7 @@ export class PresenceGateway
   @SubscribeMessage(ClientEvents.PRESENCE_ONLINE)
   async handleMessage(
     @ConnectedSocket() client: Socket & { handshake: { user: UserEntity } },
-    @MessageBody() data?: { idle?: boolean },
+    @MessageBody() data?: PresenceOnlineDto,
   ): Promise<string> {
     const userId = client.handshake.user.id;
     const connectionId = client.id;

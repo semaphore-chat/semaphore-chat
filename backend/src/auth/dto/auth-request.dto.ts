@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
 } from 'class-validator';
 
 export class LoginRequestDto {
@@ -18,14 +19,17 @@ export class LoginRequestDto {
 }
 
 export class RefreshRequestDto {
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({
+    description:
+      'The refresh token, for a client that stores its own. Takes precedence over the refresh_token cookie; if it is invalid the request fails, without trying the cookie. The answer has the new refresh token in its body only when the token was presented here.',
+  })
   refreshToken?: string;
 }
 
 export class LogoutRequestDto {
   @ApiPropertyOptional({
     description:
-      'Refresh token (required for Electron clients that cannot use cookies)',
+      'Refresh token, for a client that stores its own instead of using the refresh_token cookie',
   })
   @IsString()
   @IsOptional()
@@ -41,9 +45,18 @@ export class AuthorizeDesktopLoginRequestDto {
   @Matches(/^[A-Za-z0-9_-]{43}$/)
   codeChallenge: string;
 
-  @ApiProperty({ enum: ['S256'] })
+  @ApiProperty({ enum: ['S256'], enumName: 'CodeChallengeMethod' })
   @IsIn(['S256'])
   codeChallengeMethod: 'S256';
+
+  @ApiProperty({
+    description:
+      "The account's password: approving a new device needs more than a session.",
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(128)
+  password: string;
 }
 
 export class DesktopLoginTokenRequestDto {

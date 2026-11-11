@@ -1,4 +1,5 @@
-import { Injectable, Logger, Inject } from '@nestjs/common';
+import type { VoicePresenceUser as VoicePresenceUserDto } from '@semaphore-chat/shared';
+import { ForbiddenException, Injectable, Logger, Inject } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
 import Redis from 'ioredis';
@@ -42,6 +43,23 @@ export interface VoicePresenceUser {
   sid?: string;
 }
 
+/**
+ * A voice user as it goes out on the socket: without `sid`, which is only for
+ * matching webhooks, and with `joinedAt` as a string whether it came fresh or
+ * back from Redis.
+ */
+function toWireVoiceUser(user: VoicePresenceUser): VoicePresenceUserDto {
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    joinedAt: new Date(user.joinedAt).toISOString(),
+    isDeafened: user.isDeafened,
+    isServerMuted: user.isServerMuted,
+  };
+}
+
 @Injectable()
 export class VoicePresenceService {
   private readonly logger = new Logger(VoicePresenceService.name);
@@ -58,6 +76,9 @@ export class VoicePresenceService {
   private readonly DM_VOICE_PRESENCE_USER_DMS_PREFIX =
     'dm_voice_presence:user_dms';
   private readonly VOICE_PRESENCE_TTL = 90; // 90 seconds (3 missed heartbeats at 30s interval)
+  // A moderator's server mute, per channel and user: it outlives the call
+  private readonly VOICE_SERVER_MUTE_PREFIX = 'voice_server_mute';
+  private readonly VOICE_SERVER_MUTE_TTL = 30 * 24 * 60 * 60; // 30 days
 
   constructor(
     @Inject(REDIS_CLIENT) private readonly redis: Redis,
@@ -65,6 +86,39 @@ export class VoicePresenceService {
     private readonly databaseService: DatabaseService,
     private readonly eventEmitter: EventEmitter2,
   ) {}
+
+  /** Remember (or lift) a moderator's server mute of a user in a channel. */
+  async setServerMuted(
+    channelId: string,
+    userId: string,
+    muted: boolean,
+  ): Promise<void> {
+    const key = `${this.VOICE_SERVER_MUTE_PREFIX}:${channelId}:${userId}`;
+    if (muted) {
+      await this.redis.set(key, '1', 'EX', this.VOICE_SERVER_MUTE_TTL);
+    } else {
+      await this.redis.del(key);
+    }
+  }
+
+  /**
+   * Whether a moderator's server mute stands. Fails open on a Redis blip, like
+   * the rest of the voice checks: nobody's call breaks over it.
+   */
+  async isServerMuted(channelId: string, userId: string): Promise<boolean> {
+    try {
+      const value = await this.redis.get(
+        `${this.VOICE_SERVER_MUTE_PREFIX}:${channelId}:${userId}`,
+      );
+      return value === '1';
+    } catch (error) {
+      this.logger.error(
+        `Could not read the server mute of ${userId} in ${channelId}`,
+        error,
+      );
+      return false;
+    }
+  }
 
   /**
    * Join a voice channel directly - called by frontend as belt-and-suspenders
@@ -142,7 +196,7 @@ export class VoicePresenceService {
         {
           channelId,
           userId,
-          user: userData,
+          user: toWireVoiceUser(userData),
         },
       );
 
@@ -471,6 +525,8 @@ export class VoicePresenceService {
       }
     }
 
+    const isServerMuted = await this.isServerMuted(channelId, userId);
+
     const voiceUser: VoicePresenceUser = {
       id: user.id,
       username: user.username,
@@ -478,7 +534,7 @@ export class VoicePresenceService {
       avatarUrl: user.avatarUrl ?? undefined,
       joinedAt: new Date(),
       isDeafened,
-      isServerMuted: false,
+      isServerMuted,
       ...(sid ? { sid } : {}),
     };
 
@@ -511,9 +567,23 @@ export class VoicePresenceService {
       ServerEvents.VOICE_CHANNEL_USER_JOINED,
       {
         channelId,
-        user: voiceUser,
+        user: toWireVoiceUser(voiceUser),
       },
     );
+
+    // The client learns its own server mute from this event (rejoining a
+    // channel where a mute still stands)
+    if (isServerMuted) {
+      this.websocketService.sendToRoom(
+        channelId,
+        ServerEvents.VOICE_CHANNEL_USER_UPDATED,
+        {
+          channelId,
+          userId,
+          user: toWireVoiceUser(voiceUser),
+        },
+      );
+    }
 
     this.logger.log(
       `[Webhook] User ${userId} joined voice channel ${channelId}`,
@@ -648,7 +718,7 @@ export class VoicePresenceService {
         ServerEvents.DM_VOICE_USER_JOINED,
         {
           dmGroupId,
-          user: voiceUser,
+          user: toWireVoiceUser(voiceUser),
         },
       );
       this.logger.log(
@@ -692,7 +762,7 @@ export class VoicePresenceService {
       {
         channelId,
         userId,
-        user: userData,
+        user: toWireVoiceUser(userData),
       },
     );
 
@@ -736,7 +806,7 @@ export class VoicePresenceService {
       {
         channelId,
         userId,
-        user: userData,
+        user: toWireVoiceUser(userData),
       },
     );
 
@@ -838,7 +908,7 @@ export class VoicePresenceService {
         {
           dmGroupId,
           userId,
-          user: userData,
+          user: toWireVoiceUser(userData),
         },
       );
 
@@ -849,6 +919,18 @@ export class VoicePresenceService {
         error,
       );
       throw error;
+    }
+  }
+
+  /** Throws unless the user is in the DM group, instance owners included. */
+  async assertDmMember(dmGroupId: string, userId: string): Promise<void> {
+    const member =
+      await this.databaseService.directMessageGroupMember.findFirst({
+        where: { groupId: dmGroupId, userId },
+        select: { id: true },
+      });
+    if (!member) {
+      throw new ForbiddenException('You are not a member of this DM group');
     }
   }
 

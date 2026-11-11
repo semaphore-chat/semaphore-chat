@@ -17,6 +17,7 @@ export class AdminUserListQueryDto {
     minimum: 1,
     maximum: 100,
     default: 50,
+    type: 'integer',
   })
   @IsOptional()
   @IsInt()
@@ -30,12 +31,12 @@ export class AdminUserListQueryDto {
   @IsString()
   continuationToken?: string;
 
-  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @ApiPropertyOptional({ enum: ['true', 'false'], enumName: 'BooleanString' })
   @IsOptional()
   @IsIn(['true', 'false'])
   banned?: 'true' | 'false';
 
-  @ApiPropertyOptional({ enum: InstanceRoleValues })
+  @ApiPropertyOptional({ enum: InstanceRoleValues, enumName: 'InstanceRole' })
   @IsOptional()
   @IsEnum(InstanceRole)
   role?: InstanceRole;

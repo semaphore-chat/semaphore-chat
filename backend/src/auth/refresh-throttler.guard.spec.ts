@@ -86,11 +86,25 @@ describe('RefreshThrottlerGuard', () => {
       ).resolves.toBe('refresh-jti:jti-a');
     });
 
-    it("keys an Electron client's body token by its token id", async () => {
+    it("keys a client's body token by its token id, whatever its user agent", async () => {
       await expect(
         tracker({
           ip: '203.0.113.1',
-          headers: { 'user-agent': 'Electron/25.0.0' },
+          headers: { 'user-agent': 'SemaphoreChat-Desktop/0.1' },
+          body: {
+            refreshToken: refreshToken('user-2', refreshSecret, 'jti-b'),
+          },
+        }),
+      ).resolves.toBe('refresh-jti:jti-b');
+    });
+
+    it('keys by the body token when a cookie comes with it, like the controller', async () => {
+      await expect(
+        tracker({
+          ip: '203.0.113.1',
+          cookies: {
+            refresh_token: refreshToken('user-1', refreshSecret, 'jti-a'),
+          },
           body: {
             refreshToken: refreshToken('user-2', refreshSecret, 'jti-b'),
           },
@@ -106,8 +120,11 @@ describe('RefreshThrottlerGuard', () => {
       ],
       ['garbage', { cookies: { refresh_token: 'not-a-jwt' } }],
       [
-        'a body token from a browser (only Electron sends one)',
-        { body: { refreshToken: refreshToken('user-1') } },
+        'a malformed body token, with a good cookie',
+        {
+          cookies: { refresh_token: refreshToken('user-1') },
+          body: { refreshToken: 123 },
+        },
       ],
       [
         'an expired token',

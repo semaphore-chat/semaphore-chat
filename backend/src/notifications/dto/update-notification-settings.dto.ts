@@ -5,6 +5,11 @@ import {
   IsIn,
   Matches,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  NotificationLevelValues,
+  NotificationSoundTypeValues,
+} from '@/common/enums/swagger-enums';
 
 export class UpdateNotificationSettingsDto {
   @IsOptional()
@@ -18,6 +23,10 @@ export class UpdateNotificationSettingsDto {
   @IsOptional()
   @IsString()
   @IsIn(['default', 'mention', 'dm'])
+  @ApiPropertyOptional({
+    enum: NotificationSoundTypeValues,
+    enumName: 'NotificationSoundType',
+  })
   soundType?: string;
 
   @IsOptional()
@@ -48,6 +57,10 @@ export class UpdateNotificationSettingsDto {
   @IsOptional()
   @IsString()
   @IsIn(['all', 'mentions', 'none'])
+  @ApiPropertyOptional({
+    enum: NotificationLevelValues,
+    enumName: 'NotificationLevel',
+  })
   defaultChannelLevel?: string;
 
   @IsOptional()

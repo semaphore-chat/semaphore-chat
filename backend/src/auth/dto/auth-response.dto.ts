@@ -1,5 +1,11 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
 export class LoginResponseDto {
   accessToken: string;
+  @ApiPropertyOptional({
+    description:
+      'Only for a client that gets body delivery (see the X-Client-Type header) or presented its refresh token in the body. Web clients get an httpOnly refresh_token cookie instead. A native client that gets no refreshToken is talking to a server too old for it.',
+  })
   refreshToken?: string;
 }
 
@@ -33,6 +39,7 @@ export class RevokeSessionResponseDto {
 
 export class RevokeAllSessionsResponseDto {
   message: string;
+  @ApiProperty({ type: 'integer' })
   revokedCount: number;
 }
 
@@ -48,5 +55,6 @@ export class AuthorizeDesktopLoginResponseDto {
   /** Single-use code for the desktop app to redeem at POST /auth/desktop/token */
   code: string;
   /** How long the code can be redeemed */
+  @ApiProperty({ type: 'integer' })
   expiresInSeconds: number;
 }

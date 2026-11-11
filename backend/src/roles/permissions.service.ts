@@ -1,3 +1,4 @@
+import { ErrorCode } from '@semaphore-chat/shared';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { DatabaseService } from '@/database/database.service';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
@@ -91,6 +92,26 @@ export class PermissionsService {
     }
 
     return actions;
+  }
+
+  /**
+   * Whether the resource is a DM group, or a message in one. Membership is the
+   * only way into those: RbacGuard doesn't let an instance owner skip the check
+   * for them. A missing id or message is not a DM resource (the route answers
+   * for it as before).
+   */
+  async isDirectMessageResource(
+    resourceType: RbacResourceType | undefined,
+    resourceId: string | undefined,
+  ): Promise<boolean> {
+    if (!resourceId) return false;
+    if (resourceType === RbacResourceType.DM_GROUP) return true;
+    if (resourceType !== RbacResourceType.MESSAGE) return false;
+    const message = await this.databaseService.message.findUnique({
+      where: { id: resourceId },
+      select: { directMessageGroupId: true },
+    });
+    return !!message?.directMessageGroupId;
   }
 
   async verifyActionsForUserAndResource(
@@ -370,6 +391,22 @@ export class PermissionsService {
   }
 
   /**
+   * Moderation's rule: the actor holds a role and strictly outranks the
+   * target. A user with no roles ranks below everyone.
+   */
+  async outranks(
+    actorId: string,
+    targetId: string,
+    communityId: string,
+  ): Promise<boolean> {
+    const [actor, target] = await Promise.all([
+      this.getRank(actorId, communityId),
+      this.getRank(targetId, communityId),
+    ]);
+    return actor.best !== Number.MAX_SAFE_INTEGER && actor.best < target.best;
+  }
+
+  /**
    * Every other community member holding a role ranked at or above
    * `position`, with ALL their community roles (their real role set).
    */
@@ -424,6 +461,7 @@ export class PermissionsService {
     if (!allowed) {
       throw new ForbiddenException(
         "You don't have permission to attach files in this channel",
+        { description: 'Forbidden', errorCode: ErrorCode.ATTACH_NOT_ALLOWED },
       );
     }
   }
@@ -432,6 +470,19 @@ export class PermissionsService {
    * Channel check for code paths without a guard (e.g. attachments added to
    * an existing message). Applies the instance OWNER bypass like RbacGuard.
    */
+  /**
+   * Whether a reader may see what a moderator removed from this channel: those
+   * who can remove messages there.
+   */
+  async canSeeRemovedMessages(
+    userId: string,
+    channelId: string,
+  ): Promise<boolean> {
+    return this.userHasChannelActions(userId, channelId, [
+      RbacActions.DELETE_ANY_MESSAGE,
+    ]);
+  }
+
   async userHasChannelActions(
     userId: string,
     channelId: string,

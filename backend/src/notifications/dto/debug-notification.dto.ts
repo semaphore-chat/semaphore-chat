@@ -8,7 +8,7 @@ import { NotificationTypeValues } from '@/common/enums/swagger-enums';
  * Used by admin users to test notification delivery
  */
 export class SendTestNotificationDto {
-  @ApiProperty({ enum: NotificationTypeValues })
+  @ApiProperty({ enum: NotificationTypeValues, enumName: 'NotificationType' })
   @IsEnum(NotificationType)
   type: NotificationType;
 

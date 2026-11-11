@@ -28,6 +28,8 @@ vi.mock('../../utils/tokenService', async (importOriginal) => {
 });
 
 import { configureApiClient } from '../../api-client-config';
+import { setElectronAPIOverride } from '../../utils/electronBridge';
+import { createFakeElectronAPI } from '../test-utils';
 import { authControllerLogin } from '../../api-client/sdk.gen';
 import { getDeviceId } from '../../utils/deviceId';
 import { client } from '../../api-client/client.gen';
@@ -355,5 +357,56 @@ describe('device id on auth requests (#563)', () => {
     await client.get({ url: PROTECTED });
 
     expect(seen).toBeNull();
+  });
+});
+
+describe('client type on auth requests', () => {
+  beforeAll(() => {
+    configureApiClient();
+  });
+
+  const clientTypeOfSignIn = async () => {
+    let seen: string | null = 'unset';
+    server.use(
+      http.post(`${API}/api/auth/login`, ({ request }) => {
+        seen = request.headers.get('X-Client-Type');
+        return HttpResponse.json({ accessToken: 'token' });
+      }),
+    );
+    await authControllerLogin({ body: { username: 'a', password: 'b' } });
+    return seen;
+  };
+
+  it('says nothing from a web browser', async () => {
+    setElectronAPIOverride(null);
+    expect(await clientTypeOfSignIn()).toBeNull();
+  });
+
+  it('declares electron with a sign-in from the desktop app', async () => {
+    setElectronAPIOverride(createFakeElectronAPI());
+    expect(await clientTypeOfSignIn()).toBe('electron');
+  });
+
+  it('declares electron with a session refresh from the desktop app', async () => {
+    setElectronAPIOverride(
+      createFakeElectronAPI({ getRefreshToken: vi.fn().mockResolvedValue('stored') }),
+    );
+    let seen: { clientType: string | null; body: unknown } | undefined;
+    server.use(
+      http.post(`${API}/api/auth/refresh`, async ({ request }) => {
+        seen = {
+          clientType: request.headers.get('X-Client-Type'),
+          body: await request.json(),
+        };
+        return HttpResponse.json({ accessToken: 'fresh' });
+      }),
+    );
+
+    const actual = await vi.importActual<typeof import('../../utils/tokenService')>(
+      '../../utils/tokenService',
+    );
+    await actual.refreshToken();
+
+    expect(seen).toEqual({ clientType: 'electron', body: { refreshToken: 'stored' } });
   });
 });

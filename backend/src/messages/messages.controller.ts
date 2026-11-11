@@ -7,6 +7,7 @@ import {
   Param,
   Delete,
   UseGuards,
+  UseInterceptors,
   HttpCode,
   Logger,
   Query,
@@ -17,6 +18,7 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse, ApiCreatedResponse, ApiQuery } from '@nestjs/swagger';
 import { MessagesService } from './messages.service';
+import { MessageSendService } from './message-send.service';
 import { ReactionsService } from './reactions.service';
 import { CreateMessageDto } from './dto/create-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
@@ -40,13 +42,16 @@ import { ServerEvents } from '@semaphore-chat/shared';
 import { AuthenticatedRequest } from '@/types';
 import {
   AnchoredMessagesResponseDto,
-  EnrichedMessageDto,
+  CommunitySearchResultDto,
   MessageDto,
+  MessageReactionsDto,
   PaginatedMessagesResponseDto,
 } from './dto/message-response.dto';
 import { groupReactions } from '@/common/utils/reactions.utils';
+import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import { RoomName } from '@/common/utils/room-name.util';
 import { toWireMessage } from '@/common/utils/message-wire.utils';
+import { toMessageReactionsDto } from './message.mapper';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'crypto';
@@ -55,11 +60,13 @@ import { LinkPreviewJobData } from '@/jobs/jobs.types';
 
 @Controller('messages')
 @UseGuards(JwtAuthGuard, RbacGuard)
+@UseInterceptors(RemovedMessageVisibilityInterceptor)
 export class MessagesController {
   private readonly logger = new Logger(MessagesController.name);
 
   constructor(
     private readonly messagesService: MessagesService,
+    private readonly messageSendService: MessageSendService,
     private readonly reactionsService: ReactionsService,
     private readonly websocketService: WebsocketService,
     private readonly permissionsService: PermissionsService,
@@ -69,24 +76,37 @@ export class MessagesController {
 
   @Post()
   @HttpCode(201)
-  @ApiCreatedResponse({ type: EnrichedMessageDto })
+  @ApiCreatedResponse({ type: MessageDto })
   @RequiredActions(RbacActions.CREATE_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
     idKey: 'channelId',
     source: ResourceIdSource.BODY,
   })
-  async create(
+  create(
     @Req() req: AuthenticatedRequest,
     @Body() createMessageDto: CreateMessageDto,
-  ): Promise<EnrichedMessageDto> {
-    const message = await this.messagesService.create({
-      ...createMessageDto,
-      authorId: req.user.id,
-      sentAt: new Date(),
-    });
-    // Enrich with file metadata for consistent response shape
-    return this.messagesService.enrichMessageWithFileMetadata(message);
+  ): Promise<MessageDto> {
+    return this.messageSendService.sendToChannel(req.user.id, createMessageDto);
+  }
+
+  @Post('dm')
+  @HttpCode(201)
+  @ApiCreatedResponse({ type: MessageDto })
+  @RequiredActions(RbacActions.CREATE_MESSAGE)
+  @RbacResource({
+    type: RbacResourceType.DM_GROUP,
+    idKey: 'directMessageGroupId',
+    source: ResourceIdSource.BODY,
+  })
+  createDirectMessage(
+    @Req() req: AuthenticatedRequest,
+    @Body() createMessageDto: CreateMessageDto,
+  ): Promise<MessageDto> {
+    return this.messageSendService.sendToDirectMessageGroup(
+      req.user.id,
+      createMessageDto,
+    );
   }
 
   @Get('/group/:groupId')
@@ -97,7 +117,13 @@ export class MessagesController {
     idKey: 'groupId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    enum: ['older', 'newer'],
+    enumName: 'MessagePageDirection',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllForGroup(
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -122,7 +148,13 @@ export class MessagesController {
     idKey: 'channelId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiQuery({ name: 'direction', required: false, enum: ['older', 'newer'] })
+  @ApiQuery({
+    name: 'direction',
+    required: false,
+    enum: ['older', 'newer'],
+    enumName: 'MessagePageDirection',
+  })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllForChannel(
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
@@ -141,6 +173,7 @@ export class MessagesController {
 
   @Get('/channel/:channelId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
@@ -162,6 +195,7 @@ export class MessagesController {
 
   @Get('/group/:groupId/around/:messageId')
   @ApiOkResponse({ type: AnchoredMessagesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.DM_GROUP,
@@ -182,7 +216,8 @@ export class MessagesController {
   }
 
   @Get('search/channel/:channelId')
-  @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiOkResponse({ type: [MessageDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.CHANNEL,
@@ -193,13 +228,14 @@ export class MessagesController {
     @Param('channelId', ParseUUIDPipe) channelId: string,
     @Query('q') query: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-  ): Promise<EnrichedMessageDto[]> {
+  ): Promise<MessageDto[]> {
     limit = Math.min(limit, 100);
     return this.messagesService.searchChannelMessages(channelId, query, limit);
   }
 
   @Get('search/group/:groupId')
-  @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiOkResponse({ type: [MessageDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.DM_GROUP,
@@ -210,13 +246,14 @@ export class MessagesController {
     @Param('groupId', ParseUUIDPipe) groupId: string,
     @Query('q') query: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-  ): Promise<EnrichedMessageDto[]> {
+  ): Promise<MessageDto[]> {
     limit = Math.min(limit, 100);
     return this.messagesService.searchDirectMessages(groupId, query, limit);
   }
 
   @Get('search/community/:communityId')
-  @ApiOkResponse({ type: [EnrichedMessageDto] })
+  @ApiOkResponse({ type: [CommunitySearchResultDto] })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
@@ -228,7 +265,7 @@ export class MessagesController {
     @Query('q') query: string,
     @Req() req: AuthenticatedRequest,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
-  ): Promise<EnrichedMessageDto[]> {
+  ): Promise<CommunitySearchResultDto[]> {
     limit = Math.min(limit, 100);
     return this.messagesService.searchCommunityMessages(
       communityId,
@@ -239,7 +276,7 @@ export class MessagesController {
   }
 
   @Post('reactions')
-  @ApiCreatedResponse({ type: MessageDto })
+  @ApiCreatedResponse({ type: MessageReactionsDto })
   @RequiredActions(RbacActions.CREATE_REACTION)
   @RbacResource({
     type: RbacResourceType.MESSAGE,
@@ -249,7 +286,7 @@ export class MessagesController {
   async addReaction(
     @Body() addReactionDto: AddReactionDto,
     @Req() req: AuthenticatedRequest,
-  ) {
+  ): Promise<MessageReactionsDto> {
     const result = await this.reactionsService.addReaction(
       addReactionDto.messageId,
       addReactionDto.emoji,
@@ -276,14 +313,11 @@ export class MessagesController {
       });
     }
 
-    return {
-      ...result,
-      reactions: groupedReactions,
-    };
+    return toMessageReactionsDto(result);
   }
 
   @Delete('reactions')
-  @ApiOkResponse({ type: MessageDto })
+  @ApiOkResponse({ type: MessageReactionsDto })
   @RequiredActions(RbacActions.DELETE_REACTION)
   @RbacResource({
     type: RbacResourceType.MESSAGE,
@@ -293,7 +327,7 @@ export class MessagesController {
   async removeReaction(
     @Body() removeReactionDto: RemoveReactionDto,
     @Req() req: AuthenticatedRequest,
-  ) {
+  ): Promise<MessageReactionsDto> {
     const result = await this.reactionsService.removeReaction(
       removeReactionDto.messageId,
       removeReactionDto.emoji,
@@ -316,14 +350,11 @@ export class MessagesController {
       });
     }
 
-    return {
-      ...result,
-      reactions: groupedReactions,
-    };
+    return toMessageReactionsDto(result);
   }
 
   @Post(':id/attachments')
-  @ApiCreatedResponse({ type: EnrichedMessageDto })
+  @ApiCreatedResponse({ type: MessageDto })
   @UseGuards(JwtAuthGuard, MessageOwnershipGuard)
   async addAttachment(
     @Param('id', ParseUUIDPipe) id: string,
@@ -342,6 +373,12 @@ export class MessagesController {
       );
     }
 
+    if (addAttachmentDto.fileId) {
+      await this.messagesService.assertFilesAttachable(req.user.id, [
+        addAttachmentDto.fileId,
+      ]);
+    }
+
     // Add the attachment and decrement pendingAttachments
     // If fileId is omitted (upload failed), just decrements counter
     const updatedMessage = await this.messagesService.addAttachment(
@@ -349,47 +386,39 @@ export class MessagesController {
       addAttachmentDto.fileId,
     );
 
-    // Enrich message with file metadata before emitting
-    const enrichedMessage =
-      this.messagesService.enrichMessageWithFileMetadata(updatedMessage);
-
     // Emit WebSocket event to the room
     const roomId = originalMessage.directMessageGroupId
       ? RoomName.dmGroup(originalMessage.directMessageGroupId)
       : originalMessage.channelId;
     if (roomId) {
       this.websocketService.sendToRoom(roomId, ServerEvents.UPDATE_MESSAGE, {
-        message: toWireMessage(enrichedMessage),
+        message: toWireMessage(updatedMessage),
       });
     }
 
-    return enrichedMessage;
+    return updatedMessage;
   }
 
   @Get(':id')
-  @ApiOkResponse({ type: EnrichedMessageDto })
+  @ApiOkResponse({ type: MessageDto })
   @RequiredActions(RbacActions.READ_MESSAGE)
   @RbacResource({
     type: RbacResourceType.MESSAGE,
     idKey: 'id',
     source: ResourceIdSource.PARAM,
   })
-  async findOne(
-    @Param('id', ParseUUIDPipe) id: string,
-  ): Promise<EnrichedMessageDto> {
-    const message = await this.messagesService.findOne(id);
-    // Enrich with file metadata for consistent response shape
-    return this.messagesService.enrichMessageWithFileMetadata(message);
+  async findOne(@Param('id', ParseUUIDPipe) id: string): Promise<MessageDto> {
+    return this.messagesService.findOne(id);
   }
 
   @Patch(':id')
-  @ApiOkResponse({ type: EnrichedMessageDto })
+  @ApiOkResponse({ type: MessageDto })
   @UseGuards(JwtAuthGuard, MessageOwnershipGuard)
   async update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() updateMessageDto: UpdateMessageDto,
     @Req() req: AuthenticatedRequest,
-  ): Promise<EnrichedMessageDto> {
+  ): Promise<MessageDto> {
     // First get the original message to know which channel to notify
     const originalMessage = await this.messagesService.findOne(id);
 
@@ -399,10 +428,11 @@ export class MessagesController {
     );
 
     // Adding files in an edit needs ATTACH_FILES like sending them
-    const addsFiles = (updateMessageDto.attachments ?? []).some(
+    const newFileIds = (updateMessageDto.attachments ?? []).filter(
       (fileId) => !originalFileIds.includes(fileId),
     );
-    if (addsFiles && originalMessage.channelId) {
+    await this.messagesService.assertFilesAttachable(req.user.id, newFileIds);
+    if (newFileIds.length > 0 && originalMessage.channelId) {
       await this.permissionsService.assertCanAttachFiles(
         req.user.id,
         originalMessage.channelId,
@@ -414,17 +444,13 @@ export class MessagesController {
       originalFileIds,
     );
 
-    // Enrich with file metadata for consistent response shape
-    const enrichedMessage =
-      this.messagesService.enrichMessageWithFileMetadata(updatedMessage);
-
     // Emit WebSocket event to the channel room
     const roomId = originalMessage.directMessageGroupId
       ? RoomName.dmGroup(originalMessage.directMessageGroupId)
       : originalMessage.channelId;
     if (roomId) {
       this.websocketService.sendToRoom(roomId, ServerEvents.UPDATE_MESSAGE, {
-        message: toWireMessage(enrichedMessage),
+        message: toWireMessage(updatedMessage),
       });
 
       // Re-process link previews if spans changed. Enqueued with a
@@ -451,7 +477,7 @@ export class MessagesController {
       }
     }
 
-    return enrichedMessage;
+    return updatedMessage;
   }
 
   @HttpCode(204)
@@ -474,6 +500,25 @@ export class MessagesController {
         channelId: messageToDelete.channelId,
         directMessageGroupId: messageToDelete.directMessageGroupId,
       });
+
+      if (messageToDelete.parentMessageId) {
+        const counts = await this.messagesService.findThreadCounts(
+          messageToDelete.parentMessageId,
+        );
+        if (counts) {
+          this.websocketService.sendToRoom(
+            roomId,
+            ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+            {
+              parentMessageId: messageToDelete.parentMessageId,
+              replyCount: counts.replyCount,
+              lastReplyAt: counts.lastReplyAt?.toISOString() ?? null,
+              channelId: counts.channelId,
+              directMessageGroupId: counts.directMessageGroupId,
+            },
+          );
+        }
+      }
     }
   }
 }

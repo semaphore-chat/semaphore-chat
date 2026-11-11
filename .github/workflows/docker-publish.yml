@@ -48,12 +48,12 @@ env:
 #   (pnpm store, Playwright browsers). (GitHub already confines PR-written
 #   entries to the PR's own ref, so this is about churn, not trust.) Tag
 #   pushes don't write either: tag-ref entries are unusable by any other run.
-# - Publishing builds (anything but a PR) never reuse a cached `production`
-#   stage (no-cache-filters): its first step is `RUN apk upgrade`, and a
-#   stable per-image scope would otherwise keep serving that layer — with
-#   stale Alpine packages — until the base image digest changes. The builder
-#   stage (the expensive part) is still cached. The rebuilt layers are
-#   exported from main, so PR builds reuse main's latest production stage.
+# - No build reuses a cached `production` stage (no-cache-filters): its first
+#   step is `RUN apk upgrade`, and a stable per-image scope would otherwise
+#   keep serving that layer — with stale Alpine packages — until the base
+#   image digest changes. PRs too: their scan should see what a tag would
+#   publish, not packages as old as main's last push. The builder stage (the
+#   expensive part) is still cached.
 # - mode=max, not min: the expensive work (pnpm install incl. dev deps,
 #   prisma generate, nest/vite build) lives in the `builder` stage, and
 #   mode=min exports only the final stage's layers, so every build would redo
@@ -206,7 +206,7 @@ jobs:
           tags: scan-target-backend:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=backend-prod
-          no-cache-filters: ${{ github.event_name != 'pull_request' && 'production' || '' }}
+          no-cache-filters: production
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}
@@ -323,7 +323,7 @@ jobs:
           tags: scan-target-frontend:latest
           platforms: linux/amd64
           cache-from: type=gha,scope=frontend-prod
-          no-cache-filters: ${{ github.event_name != 'pull_request' && 'production' || '' }}
+          no-cache-filters: production
           build-args: |
             GITHUB_REPOSITORY=${{ github.repository }}
             BUILD_DATE=${{ steps.meta.outputs.created }}

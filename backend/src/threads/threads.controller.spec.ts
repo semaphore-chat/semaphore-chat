@@ -35,7 +35,7 @@ describe('ThreadsController', () => {
       };
       const mockReply = { id: 'reply-123', authorId: userId } as any;
 
-      threadsService.createThreadReply.mockResolvedValue(mockReply);
+      threadsService.sendThreadReply.mockResolvedValue(mockReply);
 
       const result = await controller.createReply(
         parentMessageId,
@@ -44,7 +44,7 @@ describe('ThreadsController', () => {
       );
 
       expect(result).toEqual(mockReply);
-      expect(threadsService.createThreadReply).toHaveBeenCalledWith(
+      expect(threadsService.sendThreadReply).toHaveBeenCalledWith(
         { ...body, parentMessageId },
         userId,
       );
@@ -60,13 +60,15 @@ describe('ThreadsController', () => {
         mockResponse,
       );
 
-      const result = await controller.getReplies(parentMessageId, 50);
+      const req = { user: { id: 'viewer-1' } } as never;
+      const result = await controller.getReplies(parentMessageId, 50, req);
 
       expect(result).toEqual(mockResponse);
       expect(threadsService.getThreadRepliesWithMetadata).toHaveBeenCalledWith(
         parentMessageId,
         50,
         undefined,
+        'viewer-1',
       );
     });
 
@@ -79,12 +81,14 @@ describe('ThreadsController', () => {
         mockResponse,
       );
 
-      await controller.getReplies(parentMessageId, 20, token);
+      const req = { user: { id: 'viewer-1' } } as never;
+      await controller.getReplies(parentMessageId, 20, req, token);
 
       expect(threadsService.getThreadRepliesWithMetadata).toHaveBeenCalledWith(
         parentMessageId,
         20,
         token,
+        'viewer-1',
       );
     });
   });

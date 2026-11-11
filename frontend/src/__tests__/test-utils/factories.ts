@@ -1,6 +1,6 @@
 import type { InfiniteData } from '@tanstack/react-query';
-import type { PaginatedMessagesResponseDto, ThreadRepliesResponseDto, EnrichedThreadReplyDto, FriendshipWithUsersDto, UserEntity } from '../../api-client/types.gen';
-import type { Message, Reaction, Span } from '../../types/message.type';
+import type { PaginatedMessagesResponseDto, ThreadRepliesResponseDto, MessageDto, FriendshipWithUsersDto, UserEntity } from '../../api-client/types.gen';
+import type { FileMetadata, Message, Reaction, Span } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import type { DirectMessageGroup } from '../../types/direct-message.type';
 import type { DmGroupMemberDto } from '../../api-client/types.gen';
@@ -26,27 +26,35 @@ export function createMessage(overrides: Partial<Message> = {}): Message {
     attachments: [],
     reactions: [],
     sentAt: new Date().toISOString(),
+    directMessageGroupId: null,
+    pendingAttachments: 0,
+    linkPreviews: null,
+    replyCount: 0,
+    lastReplyAt: null,
+    pinned: false,
+    pinnedAt: null,
+    pinnedBy: null,
+    editedAt: null,
+    deletedAt: null,
+    parentMessageId: null,
+    replyToId: null,
+    replyTo: null,
+    webhook: null,
     ...overrides,
   };
 }
 
 /**
- * Creates a message that satisfies both Message and EnrichedMessageDto at runtime.
+ * Creates a message that satisfies both Message and MessageDto at runtime.
  * Use `as never` when inserting into typed caches (same pattern as production code).
  */
 export function createEnrichedMessage(overrides: Partial<Message> = {}): Message {
   return createMessage({
-    pinned: false,
-    pinnedAt: undefined,
-    pinnedBy: undefined,
-    replyCount: 0,
-    lastReplyAt: undefined,
-    pendingAttachments: 0,
     ...overrides,
   });
 }
 
-export function createThreadReply(overrides: Partial<EnrichedThreadReplyDto> = {}): EnrichedThreadReplyDto {
+export function createThreadReply(overrides: Partial<MessageDto> = {}): MessageDto {
   const id = overrides.id ?? nextId();
   return {
     id,
@@ -66,8 +74,12 @@ export function createThreadReply(overrides: Partial<EnrichedThreadReplyDto> = {
     replyCount: 0,
     lastReplyAt: null,
     parentMessageId: 'parent-1',
+    linkPreviews: null,
+    replyToId: null,
+    replyTo: null,
+    webhook: null,
     ...overrides,
-  } as EnrichedThreadReplyDto;
+  };
 }
 
 export function createReaction(overrides: Partial<Reaction> = {}): Reaction {
@@ -115,7 +127,7 @@ export function createFlatData(
 
 /** ThreadRepliesResponseDto */
 export function createThreadRepliesData(
-  replies: EnrichedThreadReplyDto[],
+  replies: MessageDto[],
   continuationToken?: string,
 ): ThreadRepliesResponseDto {
   return {
@@ -213,15 +225,16 @@ export function createFileMetadata(overrides: Partial<{
   id: string;
   filename: string;
   mimeType: string;
-  fileType: string;
+  fileType: FileMetadata['fileType'];
   size: number;
-}> = {}) {
+}> = {}): FileMetadata {
   return {
     id: overrides.id ?? `file-${++counter}`,
     filename: overrides.filename ?? 'test-file.png',
     mimeType: overrides.mimeType ?? 'image/png',
     fileType: overrides.fileType ?? 'IMAGE',
     size: overrides.size ?? 1024,
+    hasThumbnail: false,
   };
 }
 

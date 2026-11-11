@@ -21,6 +21,12 @@ import {
   slowModeChannel,
   useInjectOptimisticMessages,
 } from '../../fixtures/edge/chat';
+import { MEMBER_ACTIONS } from '../../fixtures/edge/voice';
+import {
+  capsFromActions,
+  channelPermissionsHandler,
+  timedOutCaps,
+} from '../../fixtures/channelPermissions';
 import type { Channel } from '../../../types/channel.type';
 
 function channelStory(channel: Channel, overlay?: React.ReactNode): LadleStoryComponent {
@@ -61,6 +67,64 @@ const SendStatesDriver: React.FC = () => {
 
 /** Optimistic rows: one failed-to-send (retry/delete), one still pending (clock icon). */
 export const SendStates = channelStory(sendStatesChannel, <SendStatesDriver />);
+
+const SendFailureReasonsDriver: React.FC = () => {
+  useInjectOptimisticMessages({ channelId: sendStatesChannel.id }, [
+    {
+      text: 'sent a little too soon after the last one',
+      status: 'failed',
+      sendError: 'Slowmode is enabled. Please wait 42 seconds before sending another message.',
+    },
+    {
+      text: 'in a channel I lost access to',
+      status: 'failed',
+      sendError: "You can't send messages here",
+    },
+    {
+      text: 'a long reason has to wrap instead of pushing Retry and Delete off a phone screen',
+      status: 'failed',
+      sendError:
+        "You don't have permission to attach files in this channel, so this message wasn't sent. Ask a moderator if you think that's wrong.",
+    },
+    { text: 'timed out waiting for an answer', status: 'failed' },
+  ]);
+  return null;
+};
+
+/** Failed sends saying why, from the server's error: short, long, and no reason known. */
+export const SendFailureReasons = channelStory(sendStatesChannel, <SendFailureReasonsDriver />);
+
+const SendRefusedDriver: React.FC = () => {
+  useInjectOptimisticMessages({ channelId: sendStatesChannel.id }, [
+    {
+      text: 'sent just as a moderator timed me out',
+      status: 'failed',
+      sendError: "You can't send messages here",
+    },
+  ]);
+  return null;
+};
+
+/**
+ * A send that raced a timeout: the row says until when (from the channel
+ * capabilities), and the composer shows its countdown instead of an input.
+ */
+export const SendFailedWhileTimedOut = defineScreen(
+  edgeChatScenario,
+  channelPath(sendStatesChannel),
+  {
+    extraHandlers: [
+      channelPermissionsHandler(edgeChatScenario, sendStatesChannel.communityId, () =>
+        timedOutCaps(
+          new Date(Date.now() + 12 * 60_000).toISOString(),
+          capsFromActions(MEMBER_ACTIONS),
+        ),
+      ),
+      ...chatHandlers(),
+    ],
+    overlay: <SendRefusedDriver />,
+  },
+);
 
 /** Channel with slowmodeSeconds=60 — the backend enforces it, the UI shows nothing. */
 export const SlowMode = channelStory(slowModeChannel);

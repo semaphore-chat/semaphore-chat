@@ -1,38 +1,29 @@
+import { findSentMessage, isNonceCollision } from '@/messages/message-nonce';
 import {
   Injectable,
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
+import { WebsocketService } from '@/websocket/websocket.service';
+import { NotificationsService } from '@/notifications/notifications.service';
+import { LinkPreviewsService } from '@/link-previews/link-previews.service';
+import { RoomName } from '@/common/utils/room-name.util';
+import { toWireMessage } from '@/common/utils/message-wire.utils';
+import { ServerEvents } from '@semaphore-chat/shared';
+import type { MessageDto } from '@/messages/dto/message-response.dto';
 import { PermissionsService } from '@/roles/permissions.service';
 import { flattenSpansToText } from '@/common/utils/text.utils';
 import { sanitizeEmojiSpans } from '@/common/utils/emoji-span.utils';
+import { assertFilesAttachable } from '@/common/utils/attachable-files.utils';
+import { assertNotBlockedInDm } from '@/common/utils/user-block.utils';
 import { sanitizeChannelMentionSpans } from '@/common/utils/channel-mention-span.utils';
 import { ChannelAccessService } from '@/roles/channel-access.service';
-import { groupReactions } from '@/common/utils/reactions.utils';
 import { CreateThreadReplyDto } from './dto/create-thread-reply.dto';
-import { Message, $Enums, FileType } from '@prisma/client';
-
-/** Prisma select shape for file metadata sent to clients */
-const FILE_METADATA_SELECT = {
-  id: true,
-  filename: true,
-  mimeType: true,
-  fileType: true,
-  size: true,
-  thumbnailPath: true,
-} as const;
-
-/** Standard includes for loading a message with its relations */
-const MESSAGE_INCLUDE = {
-  spans: { orderBy: { position: 'asc' as const } },
-  reactions: true,
-  attachments: {
-    include: { file: { select: FILE_METADATA_SELECT } },
-    orderBy: { position: 'asc' as const },
-  },
-} as const;
+import { MESSAGE_INCLUDE, toMessageDto } from '@/messages/message.mapper';
+import { Message, $Enums } from '@prisma/client';
 
 /**
  * Service for managing message threads.
@@ -46,6 +37,9 @@ export class ThreadsService {
     private readonly databaseService: DatabaseService,
     private readonly permissionsService: PermissionsService,
     private readonly channelAccessService: ChannelAccessService,
+    private readonly websocketService: WebsocketService,
+    private readonly notificationsService: NotificationsService,
+    private readonly linkPreviewsService: LinkPreviewsService,
   ) {}
 
   /**
@@ -93,7 +87,8 @@ export class ThreadsService {
       where: { id: parentMessageId },
     });
 
-    if (!parent) {
+    // A moderator-removed message takes no new replies or subscribers
+    if (!parent || parent.deletedAt) {
       throw new NotFoundException('Parent message not found');
     }
 
@@ -106,14 +101,150 @@ export class ThreadsService {
   }
 
   /**
+   * A reply from a client, on any transport: the write and its announcement. A
+   * retry with the same clientNonce gets the reply it already created, and
+   * nothing is announced twice.
+   */
+  async sendThreadReply(dto: CreateThreadReplyDto, authorId: string) {
+    const target = { ...(await this.replyTarget(dto.parentMessageId)) };
+    const sent = await findSentMessage(
+      this.databaseService,
+      authorId,
+      dto.clientNonce,
+      target,
+    );
+    if (sent) return toMessageDto(sent);
+
+    try {
+      const reply = await this.createThreadReply(dto, authorId);
+      await this.announceReply(reply, dto.parentMessageId, authorId);
+      return reply;
+    } catch (error) {
+      const raced = isNonceCollision(error)
+        ? await findSentMessage(
+            this.databaseService,
+            authorId,
+            dto.clientNonce,
+            target,
+          )
+        : null;
+      if (!raced) throw error;
+      return toMessageDto(raced);
+    }
+  }
+
+  /** Tells the room, then queues what can happen after the response. */
+  private async announceReply(
+    reply: MessageDto,
+    parentMessageId: string,
+    authorId: string,
+  ) {
+    const parentMessage = await this.databaseService.message.findUnique({
+      where: { id: parentMessageId },
+      select: {
+        channelId: true,
+        directMessageGroupId: true,
+        replyCount: true,
+        lastReplyAt: true,
+      },
+    });
+
+    if (!parentMessage) {
+      throw new NotFoundException('Parent message not found');
+    }
+
+    const roomId = parentMessage.directMessageGroupId
+      ? RoomName.dmGroup(parentMessage.directMessageGroupId)
+      : parentMessage.channelId;
+
+    if (roomId) {
+      this.websocketService.sendToRoom(roomId, ServerEvents.NEW_THREAD_REPLY, {
+        reply: toWireMessage(reply),
+        parentMessageId,
+      });
+
+      // The parent's badge
+      this.websocketService.sendToRoom(
+        roomId,
+        ServerEvents.THREAD_REPLY_COUNT_UPDATED,
+        {
+          parentMessageId,
+          replyCount: parentMessage.replyCount,
+          lastReplyAt: parentMessage.lastReplyAt?.toISOString() ?? null,
+          channelId: parentMessage.channelId ?? null,
+          directMessageGroupId: parentMessage.directMessageGroupId ?? null,
+        },
+      );
+    }
+
+    this.notificationsService
+      .processThreadReplyNotifications(reply, parentMessageId, authorId)
+      .catch((error) =>
+        this.logger.error(
+          'Failed to process notifications for thread reply',
+          error,
+        ),
+      );
+
+    if (roomId) {
+      this.linkPreviewsService
+        .processMessageLinkPreviews(
+          reply.id,
+          reply.spans,
+          roomId,
+          ServerEvents.UPDATE_MESSAGE,
+        )
+        .catch((error) =>
+          this.logger.error(
+            'Failed to process link previews for thread reply',
+            error,
+          ),
+        );
+    }
+  }
+
+  private replyTarget(parentMessageId: string) {
+    return this.getParentMessage(parentMessageId).then((parent) => ({
+      channelId: parent.channelId,
+      directMessageGroupId: parent.directMessageGroupId,
+      parentMessageId,
+    }));
+  }
+
+  /**
    * Create a thread reply message.
    * Also increments the parent's replyCount and auto-subscribes the user.
    */
   async createThreadReply(dto: CreateThreadReplyDto, authorId: string) {
-    const { parentMessageId, spans, attachments, pendingAttachments } = dto;
+    const {
+      parentMessageId,
+      spans,
+      attachments,
+      pendingAttachments,
+      clientNonce,
+    } = dto;
 
     // Validate parent message exists and isn't a thread reply itself
     const parent = await this.getParentMessage(parentMessageId);
+
+    // Same as a new DM message: only current members may reply, whatever their
+    // instance role (RbacGuard lets an instance owner through), and a 1:1 DM
+    // with a block between the two is closed
+    if (parent.directMessageGroupId) {
+      const member =
+        await this.databaseService.directMessageGroupMember.findFirst({
+          where: { groupId: parent.directMessageGroupId, userId: authorId },
+          select: { id: true },
+        });
+      if (!member) {
+        throw new ForbiddenException('You are not a member of this DM group');
+      }
+      await assertNotBlockedInDm(
+        this.databaseService,
+        authorId,
+        parent.directMessageGroupId,
+      );
+    }
 
     // Attaching files in a channel thread needs ATTACH_FILES
     if (
@@ -125,6 +256,11 @@ export class ThreadsService {
         parent.channelId,
       );
     }
+    await assertFilesAttachable(
+      this.databaseService,
+      authorId,
+      attachments ?? [],
+    );
 
     // Sanitize spans to only include valid Prisma fields
     const fieldSanitizedSpans = this.sanitizeSpans(spans);
@@ -173,6 +309,7 @@ export class ThreadsService {
               }
             : {}),
           pendingAttachments: pendingAttachments || 0,
+          clientNonce,
         },
         include: MESSAGE_INCLUDE,
       });
@@ -208,7 +345,7 @@ export class ThreadsService {
       `Created thread reply ${result.id} for parent ${parentMessageId}`,
     );
 
-    return this.formatMessage(result);
+    return toMessageDto(result);
   }
 
   /**
@@ -218,15 +355,32 @@ export class ThreadsService {
     parentMessageId: string,
     limit = 50,
     continuationToken?: string,
+    viewerId?: string,
   ) {
     // Verify parent exists
     const parent = await this.databaseService.message.findUnique({
       where: { id: parentMessageId },
-      select: { id: true },
+      select: { id: true, deletedAt: true, channelId: true },
     });
 
     if (!parent) {
       throw new NotFoundException('Parent message not found');
+    }
+
+    // The thread of a moderator-removed message goes with it, for those who
+    // may not see what was removed
+    if (
+      parent.deletedAt &&
+      !(
+        parent.channelId &&
+        viewerId &&
+        (await this.permissionsService.canSeeRemovedMessages(
+          viewerId,
+          parent.channelId,
+        ))
+      )
+    ) {
+      return { replies: [], continuationToken: undefined };
     }
 
     const replies = await this.databaseService.message.findMany({
@@ -253,14 +407,18 @@ export class ThreadsService {
     parentMessageId: string,
     limit = 50,
     continuationToken?: string,
+    viewerId?: string,
   ) {
     const { replies, continuationToken: nextToken } =
-      await this.getThreadReplies(parentMessageId, limit, continuationToken);
+      await this.getThreadReplies(
+        parentMessageId,
+        limit,
+        continuationToken,
+        viewerId,
+      );
 
     // Transform replies: group reactions and convert attachments to file metadata
-    const repliesWithMetadata = replies.map((reply) =>
-      this.formatMessage(reply),
-    );
+    const repliesWithMetadata = replies.map(toMessageDto);
 
     return { replies: repliesWithMetadata, continuationToken: nextToken };
   }
@@ -379,68 +537,6 @@ export class ThreadsService {
       replyCount: parent.replyCount,
       lastReplyAt: parent.lastReplyAt,
       isSubscribed,
-    };
-  }
-
-  /**
-   * Decrement reply count when a thread reply is deleted.
-   */
-  async decrementReplyCount(parentMessageId: string): Promise<void> {
-    await this.databaseService.message.update({
-      where: { id: parentMessageId },
-      data: {
-        replyCount: { decrement: 1 },
-      },
-    });
-  }
-
-  /**
-   * Format a message with included relations into the shape expected by clients.
-   * Converts MessageReaction[] to { emoji, userIds[] }[] and
-   * MessageAttachment[] to file metadata objects.
-   */
-  private formatMessage<
-    T extends {
-      spans?: {
-        position: number;
-        type: string;
-        text: string | null;
-        userId: string | null;
-        specialKind: string | null;
-        communityId: string | null;
-        aliasId: string | null;
-        bold: boolean | null;
-        italic: boolean | null;
-        strikethrough: boolean | null;
-        code: boolean | null;
-      }[];
-      reactions?: { emoji: string; userId: string }[];
-      attachments?: {
-        file: {
-          id: string;
-          filename: string;
-          mimeType: string;
-          fileType: FileType;
-          size: number;
-          thumbnailPath: string | null;
-        };
-      }[];
-    },
-  >(message: T) {
-    return {
-      ...message,
-      spans: message.spans ?? [],
-      reactions: message.reactions ? groupReactions(message.reactions) : [],
-      attachments: message.attachments
-        ? message.attachments.map((a) => ({
-            id: a.file.id,
-            filename: a.file.filename,
-            mimeType: a.file.mimeType,
-            fileType: a.file.fileType,
-            size: a.file.size,
-            hasThumbnail: !!a.file.thumbnailPath,
-          }))
-        : [],
     };
   }
 }
