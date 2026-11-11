@@ -241,6 +241,15 @@ async fn a_screen_share_goes_out_scaled_with_its_audio_and_stops_with_it() {
     viewer.watch(&sid);
     // A 1920x1080 screen at the 720p setting goes out at 1280x720.
     decodes(&viewer, &sid, (1280, 720), 15).await;
+    // The replay buffer's ids: the video the viewer sees, and the audio once it's out.
+    eventually("the report has both sids", WAIT, || {
+        me.snapshot()
+            .voice
+            .local
+            .screen_tracks
+            .is_some_and(|tracks| tracks.video_sid == sid && tracks.audio_sid.is_some())
+    })
+    .await;
 
     me.engine.stop_screen_share().await;
     let local = me.snapshot().voice.local;
@@ -248,6 +257,7 @@ async fn a_screen_share_goes_out_scaled_with_its_audio_and_stops_with_it() {
         (local.screen, local.screen_audio),
         (LocalShare::Off, LocalShare::Off)
     );
+    assert_eq!(local.screen_tracks, None);
     assert!(me.sources.last_screen().unwrap().stopped());
     eventually("the viewer sees it go", WAIT, || {
         viewer.person("sender").screen_share.is_none()
@@ -269,14 +279,26 @@ async fn audio_that_fails_leaves_the_screen_shared() {
         .await
         .expect("the screen is shared anyway");
     assert_eq!(started.audio, Some(Err("PipeWire isn't running".into())));
-    assert_eq!(me.snapshot().voice.local.screen_audio, LocalShare::Off);
+    // Said, so the replay buffer starts with the video alone at once.
+    let local = me.snapshot().voice.local;
+    assert_eq!(
+        local.screen_audio,
+        LocalShare::Failed {
+            message: "PipeWire isn't running".into()
+        }
+    );
+    let tracks = local.screen_tracks.expect("the video's sid");
+    assert_eq!(tracks.audio_sid, None);
     eventually("the viewer sees our screen", WAIT, || {
         viewer.person("sender").screen_share.is_some()
     })
     .await;
     let sid = viewer.person("sender").screen_share.unwrap().track_sid;
+    assert_eq!(tracks.video_sid, sid);
     viewer.watch(&sid);
     decodes(&viewer, &sid, (1920, 1080), 10).await;
+    me.engine.stop_screen_share().await;
+    assert_eq!(me.snapshot().voice.local.screen_audio, LocalShare::Off);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -407,4 +429,13 @@ async fn a_rejoin_republishes_the_camera_and_the_screen() {
         (local.camera, local.screen, local.screen_audio),
         (LocalShare::On, LocalShare::On, LocalShare::On)
     );
+    // The report moves to the new room's sids.
+    eventually("the new sids are reported", WAIT, || {
+        me.snapshot()
+            .voice
+            .local
+            .screen_tracks
+            .is_some_and(|tracks| tracks.video_sid == sid && tracks.audio_sid.is_some())
+    })
+    .await;
 }

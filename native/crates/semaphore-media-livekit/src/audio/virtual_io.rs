@@ -6,7 +6,7 @@ use super::{
     AudioDevice, AudioDevices, AudioIo, AudioStream, ErrorCallback, FRAME_SAMPLES, InputCallback,
     OutputCallback,
 };
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -26,6 +26,8 @@ struct State {
 #[derive(Clone, Default)]
 pub struct VirtualIo {
     state: Arc<Mutex<State>>,
+    /// Device clocks still running: a dropped stream's ends at its next tick.
+    running: Arc<AtomicUsize>,
 }
 
 fn device(id: &str, is_default: bool) -> AudioDevice {
@@ -93,6 +95,11 @@ impl VirtualIo {
         self.lock().opened_outputs.clone()
     }
 
+    /// Streams whose clocks still run.
+    pub fn open_streams(&self) -> usize {
+        self.running.load(Ordering::SeqCst)
+    }
+
     fn resolve(&self, device: Option<&str>, input: bool) -> Result<String, String> {
         let state = self.lock();
         let list = if input {
@@ -108,7 +115,9 @@ impl VirtualIo {
         .ok_or_else(|| format!("no such device: {device:?}"))
     }
 
-    fn clock(stop: Arc<AtomicBool>, mut tick: impl FnMut() + Send + 'static) {
+    fn clock(&self, stop: Arc<AtomicBool>, mut tick: impl FnMut() + Send + 'static) {
+        let running = self.running.clone();
+        running.fetch_add(1, Ordering::SeqCst);
         std::thread::spawn(move || {
             let period = Duration::from_millis(10);
             let mut next = Instant::now() + period;
@@ -121,6 +130,7 @@ impl VirtualIo {
                 }
                 next += period;
             }
+            running.fetch_sub(1, Ordering::SeqCst);
         });
     }
 }
@@ -151,7 +161,7 @@ impl AudioIo for VirtualIo {
         }
         let stop = Arc::new(AtomicBool::new(false));
         let me = self.clone();
-        Self::clock(stop.clone(), move || {
+        self.clock(stop.clone(), move || {
             let mut frame = [0i16; FRAME_SAMPLES];
             if let Some(mic) = me.lock().mic.as_mut() {
                 mic(&mut frame);
@@ -188,7 +198,7 @@ impl AudioIo for VirtualIo {
         let stop = Arc::new(AtomicBool::new(false));
         let me = self.clone();
         let mut frame = vec![0i16; FRAME_SAMPLES * channels];
-        Self::clock(stop.clone(), move || {
+        self.clock(stop.clone(), move || {
             frame.fill(0);
             on_audio(&mut frame, 0);
             if let Some(speaker) = me.lock().speaker.as_mut() {
