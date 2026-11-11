@@ -2,15 +2,18 @@
 # U13: the real app, headless on lavapipe, against semaphore-fake-server, twice.
 #
 #   native/scripts/in-image.sh scripts/slice-e2e.sh [out-dir] [steps-file]
+#     no steps-file: every rigs/slice/scripts/*.steps except voice.steps, in sorted order, each
+#     with a fresh fake server per run. text.steps writes <out-dir>/run-N (as it always did);
+#     any other file writes <out-dir>/<name>/run-N. A steps-file argument runs just that file.
 #   native/scripts/slice-e2e.sh --voice [out-dir]          # on the host: brings up LiveKit too
 #
 # --voice starts lk-stack's LiveKit and a demo publisher (`demo-peer`, video) in Squad Up, then runs
 # rigs/slice/scripts/voice.steps the same way, with the fake server minting real tokens for it.
 #
 # Each run starts a fresh fake server (scenario showcase) on 127.0.0.1 inside this container and
-# drives rig-slice through the steps: state checks, and screenshots into <out-dir>/run-N. The
+# drives rig-slice through the steps: state checks, and screenshots into <run dir>/run-N. The
 # second run must give the same pixels for every static shot, the ones not named *-live-*.
-# Exits non-zero on any failed step or differing shot.
+# Exits non-zero on any failed step or differing shot, after running every steps file.
 set -euo pipefail
 
 LK_NAME="${SLICE_LK_NAME:-u13-voice-livekit}"
@@ -51,10 +54,18 @@ if [ "${1:-}" = "--voice-inner" ]; then
   shift
 fi
 out_dir="${1:-results/slice/e2e}"
+# Each entry is "steps-file|run-dir". text.steps keeps the original <out-dir>/run-N layout.
+suites=()
 if $voice; then
-  steps=rigs/slice/scripts/voice.steps
+  suites=("rigs/slice/scripts/voice.steps|$out_dir")
+elif [ -n "${2:-}" ]; then
+  suites=("$2|$out_dir")
 else
-  steps="${2:-rigs/slice/scripts/text.steps}"
+  for f in rigs/slice/scripts/*.steps; do
+    name="$(basename "$f" .steps)"
+    [ "$name" = voice ] && continue
+    if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
+  done
 fi
 scenario=showcase
 port="${SLICE_PORT:-3999}"
@@ -100,37 +111,48 @@ start_server() {
   return 1
 }
 
-for run in 1 2; do
-  dir="$out_dir/run-$run"
-  rm -rf "$dir"
-  mkdir -p "$dir"
-  start_server "$dir/fake-server.log"
-  echo "== run $run" >&2
-  run_started="$(date +%s%3N)"
-  "$target/rig-slice" \
-    --server "http://127.0.0.1:$port" \
-    --scenario "fixtures/scenarios/$scenario.json" \
-    --script "$steps" \
-    --out "$dir" ${rig_args[@]+"${rig_args[@]}"} | tee "$dir/steps.log" >&2
-  echo "run $run: $(( $(date +%s%3N) - run_started )) ms" >&2
-  stop_server
-done
+total_different=0
+total_compared=0
+for suite in "${suites[@]}"; do
+  steps="${suite%%|*}"
+  suite_dir="${suite#*|}"
+  echo "== $steps" >&2
+  for run in 1 2; do
+    dir="$suite_dir/run-$run"
+    rm -rf "$dir"
+    mkdir -p "$dir"
+    start_server "$dir/fake-server.log"
+    echo "== run $run" >&2
+    run_started="$(date +%s%3N)"
+    "$target/rig-slice" \
+      --server "http://127.0.0.1:$port" \
+      --scenario "fixtures/scenarios/$scenario.json" \
+      --script "$steps" \
+      --out "$dir" ${rig_args[@]+"${rig_args[@]}"} | tee "$dir/steps.log" >&2
+    echo "run $run: $(( $(date +%s%3N) - run_started )) ms" >&2
+    stop_server
+  done
 
-different=0
-compared=0
-for first in "$out_dir"/run-1/*.png; do
-  name="$(basename "$first")"
-  case "$name" in *-live-*) continue ;; esac
-  second="$out_dir/run-2/$name"
-  compared=$((compared + 1))
-  if [ ! -f "$second" ]; then
-    echo "slice-e2e: run 2 has no $name" >&2
-    different=$((different + 1))
-  elif ! cmp -s "$first" "$second"; then
-    echo "slice-e2e: $name differs between runs" >&2
-    different=$((different + 1))
-  fi
+  different=0
+  compared=0
+  for first in "$suite_dir"/run-1/*.png; do
+    name="$(basename "$first")"
+    case "$name" in *-live-*) continue ;; esac
+    second="$suite_dir/run-2/$name"
+    compared=$((compared + 1))
+    if [ ! -f "$second" ]; then
+      echo "slice-e2e: $steps: run 2 has no $name" >&2
+      different=$((different + 1))
+    elif ! cmp -s "$first" "$second"; then
+      echo "slice-e2e: $steps: $name differs between runs" >&2
+      different=$((different + 1))
+    fi
+  done
+  (cd "$suite_dir/run-1" && sha256sum ./*.png) >"$suite_dir/shots.sha256"
+  echo "slice-e2e: $steps: $compared static shots compared, $different differ" >&2
+  total_different=$((total_different + different))
+  [ "$compared" -gt 0 ] || total_different=$((total_different + 1))
+  total_compared=$((total_compared + compared))
 done
-(cd "$out_dir/run-1" && sha256sum ./*.png) >"$out_dir/shots.sha256"
-echo "slice-e2e: $compared static shots compared, $different differ; build $(( built_ms - started_ms )) ms, total $(( $(date +%s%3N) - started_ms )) ms" >&2
-[ "$different" -eq 0 ] && [ "$compared" -gt 0 ]
+echo "slice-e2e: $total_compared static shots compared, $total_different differ; build $(( built_ms - started_ms )) ms, total $(( $(date +%s%3N) - started_ms )) ms" >&2
+[ "$total_different" -eq 0 ] && [ "$total_compared" -gt 0 ]
