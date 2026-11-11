@@ -11,6 +11,7 @@
 //!   runs on the wall clock.
 //! - [`Exclusive`]: one player plays at a time, app-wide; starting another pauses it.
 
+use std::ops::Range;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -86,12 +87,16 @@ pub struct Metadata {
     pub height: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PlayerEvent {
     State(PlaybackState),
     Metadata(Metadata),
     /// The playback position, a few times a second while playing and after each seek.
     Position(Duration),
+    /// The fetched parts of the file, as fractions of its bytes (`0.0..=1.0`, sorted, not
+    /// overlapping), sent when they change and at most a few times a second. A file read from
+    /// memory sends `[0.0..1.0]` once. The state machine ignores it.
+    Buffered(Vec<Range<f32>>),
 }
 
 /// Where a player reports to. Called from the player's own thread.
@@ -133,7 +138,7 @@ pub enum Input {
 }
 
 /// What the machine asks of its player.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Effect {
     StartOutput,
     StopOutput,

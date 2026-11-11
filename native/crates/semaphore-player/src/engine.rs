@@ -20,6 +20,7 @@
 //! - **Output.** Mono or stereo at 48 kHz (`AudioIo::open_output_channels`); more channels are
 //!   cut to the first two. Volume and mute apply in the callback.
 
+use crate::buffered::BufferedReport;
 use crate::resample::Resampler;
 use crate::{Error, Frame, Kind, Media, Nv12Image, Source};
 use rtrb::{Consumer, Producer, RingBuffer};
@@ -59,8 +60,15 @@ pub trait VideoSink: Send + Sync {
 /// Opens the bytes of an attachment: [`crate::range::http_opener`] in the app, bytes in tests.
 /// Runs on the player's thread, so it may block; the [`Cancel`] is set when the player goes away,
 /// and a source should give up its reads then.
-pub type Opener =
-    Arc<dyn Fn(&PlaybackSource, &Cancel) -> Result<Box<dyn Source>, PlayerError> + Send + Sync>;
+///
+/// The [`BufferedReport`] is where the source says which parts of the file it holds: a range
+/// source after each block lands or is evicted ([`crate::range::RangeSource::with_buffered`]),
+/// a source in memory once with [`BufferedReport::full`].
+pub type Opener = Arc<
+    dyn Fn(&PlaybackSource, &Cancel, &BufferedReport) -> Result<Box<dyn Source>, PlayerError>
+        + Send
+        + Sync,
+>;
 
 /// Set when a player is dropped: its source stops waiting for the network.
 #[derive(Debug, Clone, Default)]
@@ -296,7 +304,8 @@ fn player_error(error: Error) -> PlayerError {
 
 fn run(context: Context, commands: mpsc::Receiver<Command>) {
     let sink = context.sink.clone();
-    let opened = (context.shared.opener)(&context.source, &context.cancel)
+    let buffered = BufferedReport::new(context.events.clone());
+    let opened = (context.shared.opener)(&context.source, &context.cancel, &buffered)
         .and_then(|source| Media::open(source).map_err(player_error));
     match opened {
         Ok(media) => Engine::new(context, media).run(&commands),
