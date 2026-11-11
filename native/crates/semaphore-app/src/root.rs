@@ -22,8 +22,7 @@ use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep};
 use semaphore_ui::kit::{
-    Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event,
-    on_core_event, text,
+    Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event, on_core_event, text,
 };
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
@@ -266,7 +265,9 @@ impl AppRoot {
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         let core = services.core.clone();
         // Browser sign-in's listener on 127.0.0.1.
-        core.set_loopback(Arc::new(semaphore_platform_desktop::loopback::DesktopLoopback));
+        core.set_loopback(Arc::new(
+            semaphore_platform_desktop::loopback::DesktopLoopback,
+        ));
         // Files: one store for the process, redrawn into whenever a fetch lands.
         let (arrived, landed) = async_channel::unbounded();
         cx.spawn(async move |_, cx| {
@@ -788,7 +789,8 @@ impl AppRoot {
                                     .unwrap_or_else(|| info.url.clone());
                                 this.server = Some((info.url.clone(), shown.clone()));
                                 let mode = info.registration;
-                                auth.update(cx, |auth, cx| auth.set_registration(mode, cx)).ok();
+                                auth.update(cx, |auth, cx| auth.set_registration(mode, cx))
+                                    .ok();
                                 this.sign_in_step(info.url, shown, None)
                             }
                             Err(error) => AuthStep::ServerUrl {
@@ -834,8 +836,15 @@ impl AppRoot {
     /// The conversation pane for this session. Built per session: nothing of the last one (its
     /// conversation, rows, drafts, threads, unread marker) may reach the next, and a conversation
     /// shown again must be opened in core again, since signing out forgot it there.
-    fn build_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<ConversationPane> {
-        let services = self.services.as_ref().expect("the pane is built once core is");
+    fn build_pane(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<ConversationPane> {
+        let services = self
+            .services
+            .as_ref()
+            .expect("the pane is built once core is");
         let media = self.media.clone().expect("media is set up with core");
         let opener = cx.entity().downgrade();
         let open_attachment: crate::conversation::OpenAttachment =
@@ -1383,10 +1392,9 @@ fn content(
             | Route::Home
             | Route::Invite { .. }),
             _,
-        )
-            if let Some(element) = root
-                .upgrade()
-                .and_then(|root| root.read(cx).account_content(route, cx)) =>
+        ) if let Some(element) = root
+            .upgrade()
+            .and_then(|root| root.read(cx).account_content(route, cx)) =>
         {
             element
         }

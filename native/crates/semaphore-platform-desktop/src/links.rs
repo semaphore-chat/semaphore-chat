@@ -412,8 +412,15 @@ mod windows {
             let subkey_w = wide(&subkey);
             let mut key: HKEY = std::ptr::null_mut();
             // SAFETY: a valid string, and `key` is closed below.
-            let status =
-                unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, subkey_w.as_ptr(), 0, KEY_QUERY_VALUE, &mut key) };
+            let status = unsafe {
+                RegOpenKeyExW(
+                    HKEY_CURRENT_USER,
+                    subkey_w.as_ptr(),
+                    0,
+                    KEY_QUERY_VALUE,
+                    &mut key,
+                )
+            };
             if status != ERROR_SUCCESS {
                 return Ok(LinkStatus::NotOurs);
             }
@@ -504,7 +511,8 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn status_reads_what_register_writes_and_writes_nothing() {
-        let dir = std::env::temp_dir().join(format!("semaphore-links-status-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("semaphore-links-status-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let target = RegisterTarget {
             exe: dir.join("bin/semaphore-app"),
@@ -523,7 +531,9 @@ mod tests {
         };
         assert_eq!(status(&moved).unwrap(), LinkStatus::NotOurs);
         // A package's entry owns it.
-        let packaged = dir.join("system/applications").join(format!("{APP_ID}.desktop"));
+        let packaged = dir
+            .join("system/applications")
+            .join(format!("{APP_ID}.desktop"));
         std::fs::create_dir_all(packaged.parent().unwrap()).unwrap();
         std::fs::write(&packaged, "[Desktop Entry]\n").unwrap();
         assert_eq!(status(&target).unwrap(), LinkStatus::Packaged(packaged));

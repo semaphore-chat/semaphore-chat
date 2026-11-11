@@ -97,10 +97,10 @@ use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
 use std::io::{Read as _, Write as _};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -445,9 +445,11 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["dms", count] => Condition::Dms(number(count)?),
         ["route", route] => Condition::Route((*route).into()),
         ["theme", name] => Condition::Theme((*name).into()),
-        ["engine", key @ ("ptt" | "preset" | "input" | "output" | "camera"), value] => {
-            Condition::Engine((*key).into(), (*value).into())
-        }
+        [
+            "engine",
+            key @ ("ptt" | "preset" | "input" | "output" | "camera"),
+            value,
+        ] => Condition::Engine((*key).into(), (*value).into()),
         ["profile-open", id] => Condition::ProfileOpen((*id).into()),
         ["desktop-sign-in", "shown"] => Condition::DesktopSignIn(true),
         ["desktop-sign-in", "gone"] => Condition::DesktopSignIn(false),
@@ -555,9 +557,9 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                 pointer: (*pointer).into(),
                 value: (*value).into(),
             },
-            ["expect", "link-registrations", count] => Step::ExpectLinkRegistrations(
-                count.parse().map_err(|_| at(anyhow!("count")))?,
-            ),
+            ["expect", "link-registrations", count] => {
+                Step::ExpectLinkRegistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
+            }
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
@@ -788,7 +790,9 @@ fn desktop_login_params(url: &str) -> Result<(String, String, u16)> {
             .map(str::to_owned)
             .ok_or_else(|| anyhow!("{url} has no {name}"))
     };
-    let port = field("port")?.parse().map_err(|_| anyhow!("a bad port in {url}"))?;
+    let port = field("port")?
+        .parse()
+        .map_err(|_| anyhow!("a bad port in {url}"))?;
     Ok((field("challenge")?, field("state")?, port))
 }
 
@@ -1349,7 +1353,6 @@ impl Rig {
         }))
     }
 
-
     /// Plays the browser for the last desktop-login URL the app opened: the signed-in user approves
     /// in the browser (the fake server's `approve_desktop`), and the browser follows the redirect to
     /// the app's loopback listener with the code and the state.
@@ -1396,9 +1399,9 @@ impl Rig {
         Ok(self.driver.cx.update(|cx| {
             let root = app.read(cx);
             Some(match condition {
-                Condition::Route(prefix) => root
-                    .shell()
-                    .is_some_and(|shell| route_name(shell.read(cx).nav().current()).starts_with(prefix.as_str())),
+                Condition::Route(prefix) => root.shell().is_some_and(|shell| {
+                    route_name(shell.read(cx).nav().current()).starts_with(prefix.as_str())
+                }),
                 Condition::Theme(name) => cx
                     .try_global::<semaphore_ui::theme::Sem>()
                     .is_some_and(|sem| sem.choice.name() == *name),
@@ -1856,7 +1859,9 @@ impl Rig {
                     let last = self.opened.borrow().last().cloned();
                     match last {
                         Some(url) if url.contains(text.as_str()) => Ok(()),
-                        other => Err(anyhow!("the last URL opened is {other:?}, not one with {text:?}")),
+                        other => Err(anyhow!(
+                            "the last URL opened is {other:?}, not one with {text:?}"
+                        )),
                     }
                 }
                 Step::ExpectSettings { pointer, value } => {
@@ -1869,7 +1874,9 @@ impl Rig {
                         serde_json::from_str(value).unwrap_or_else(|_| Value::from(value.as_str()));
                     match saved.pointer(pointer) {
                         Some(found) if *found == wanted => Ok(()),
-                        found => Err(anyhow!("settings.json {pointer} is {found:?}, not {wanted}")),
+                        found => Err(anyhow!(
+                            "settings.json {pointer} is {found:?}, not {wanted}"
+                        )),
                     }
                 }
                 Step::ExpectLinkRegistrations(count) => {

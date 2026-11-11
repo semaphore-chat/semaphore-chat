@@ -174,11 +174,9 @@ impl ConversationPane {
                 }
             }
             MessageListEvent::OpenLink { url } => self.open_link(url, window, cx),
-            MessageListEvent::OpenProfile { user_id } => {
-                cx.emit(PaneEvent::OpenProfile {
-                    user_id: user_id.clone(),
-                })
-            }
+            MessageListEvent::OpenProfile { user_id } => cx.emit(PaneEvent::OpenProfile {
+                user_id: user_id.clone(),
+            }),
             MessageListEvent::OpenReply { message_id } => {
                 let Some(conversation) = self.conversation.clone() else {
                     return;

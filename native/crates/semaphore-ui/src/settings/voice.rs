@@ -5,8 +5,8 @@
 use super::key_capture::{Capture, ptt_key_from, ptt_key_label};
 use super::shell::{caption, section, segmented, switch_row, tab_page};
 use super::{
-    DeviceLists, DeviceOption, InputMode, MicQuality, VoiceLimits, VoiceSettingsEvent, VoiceVideoSettings,
-    VoiceVideoState,
+    DeviceLists, DeviceOption, InputMode, MicQuality, VoiceLimits, VoiceSettingsEvent,
+    VoiceVideoSettings, VoiceVideoState,
 };
 use crate::kit::{Button, ButtonSize, Radio, SelectField, Skeleton, Slider, Switch, Variant};
 use crate::kit::{select_state, spacing, text};

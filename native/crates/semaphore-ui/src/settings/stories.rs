@@ -470,7 +470,9 @@ pub fn stories() -> Vec<Story> {
         Story::new("settings-desktop-links-blocked", |_, _, cx| {
             desktop_story(
                 DesktopAppState {
-                    links_blocked: Some("Turned off for this computer (SEMAPHORE_REGISTER_SCHEME=0).".into()),
+                    links_blocked: Some(
+                        "Turned off for this computer (SEMAPHORE_REGISTER_SCHEME=0).".into(),
+                    ),
                     ..sample_desktop(LinkHandler::NotRegistered)
                 },
                 cx,

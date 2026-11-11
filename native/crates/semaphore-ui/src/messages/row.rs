@@ -619,7 +619,12 @@ fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoEle
 }
 
 /// A click here opens the author's profile; nothing for a row with no known author.
-fn opens_profile(shared: &Rc<Shared>, row: &MessageRow, id: &'static str, element: Div) -> AnyElement {
+fn opens_profile(
+    shared: &Rc<Shared>,
+    row: &MessageRow,
+    id: &'static str,
+    element: Div,
+) -> AnyElement {
     if row.author.id.is_empty() {
         return element.into_any_element();
     }

@@ -355,6 +355,93 @@ impl AppRoot {
     }
 }
 
+// ---- semaphore:// links: who opens them, and registering for them from the settings. ----
+
+/// Who opens `semaphore://` links, and making it this app. Both touch the OS (files under the
+/// user's XDG directories, or the registry), so they run off the UI thread; the rig fakes them.
+pub trait LinkRegistrar: Send + Sync {
+    fn status(&self) -> semaphore_ui::settings::LinkHandler;
+    /// Registers this app for the links. `Err` says why not, in the user's words.
+    fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String>;
+    /// Why registering is turned off here, if it is.
+    fn blocked(&self) -> Option<String>;
+    /// What registering would do that the user should know first.
+    fn note(&self) -> Option<String>;
+}
+
+/// The OS's registration, for this executable (`links::RegisterTarget::from_env`).
+pub struct DesktopLinks {
+    target: Option<semaphore_platform_desktop::links::RegisterTarget>,
+    /// Built with `SEMAPHORE_PACKAGED=1`: registers itself on every start.
+    packaged: bool,
+    /// `SEMAPHORE_REGISTER_SCHEME=0`: never register.
+    forbidden: bool,
+}
+
+impl DesktopLinks {
+    pub fn from_env() -> Self {
+        Self {
+            target: semaphore_platform_desktop::links::RegisterTarget::from_env(),
+            packaged: option_env!("SEMAPHORE_PACKAGED") == Some("1"),
+            forbidden: std::env::var("SEMAPHORE_REGISTER_SCHEME").as_deref() == Ok("0"),
+        }
+    }
+}
+
+/// The settings' words for what the OS says.
+pub fn link_handler(
+    status: Result<
+        semaphore_platform_desktop::links::LinkStatus,
+        semaphore_core::platform::CoreError,
+    >,
+) -> semaphore_ui::settings::LinkHandler {
+    use semaphore_platform_desktop::links::LinkStatus;
+    use semaphore_ui::settings::LinkHandler;
+    match status {
+        Ok(LinkStatus::Ours) => LinkHandler::Registered,
+        Ok(LinkStatus::Packaged(_)) => LinkHandler::PackageOwned,
+        Ok(LinkStatus::NotOurs) => LinkHandler::NotRegistered,
+        Err(error) => {
+            log::info!("who opens semaphore:// links: {error}");
+            LinkHandler::Unknown
+        }
+    }
+}
+
+impl LinkRegistrar for DesktopLinks {
+    fn status(&self) -> semaphore_ui::settings::LinkHandler {
+        match &self.target {
+            Some(target) => link_handler(semaphore_platform_desktop::links::status(target)),
+            None => semaphore_ui::settings::LinkHandler::Unknown,
+        }
+    }
+
+    fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        if let Some(why) = self.blocked() {
+            return Err(why);
+        }
+        let target = self
+            .target
+            .as_ref()
+            .ok_or_else(|| "Couldn't find this program to register it.".to_owned())?;
+        semaphore_platform_desktop::links::register(target).map_err(|error| error.to_string())?;
+        Ok(self.status())
+    }
+
+    fn blocked(&self) -> Option<String> {
+        self.forbidden
+            .then(|| "Turned off on this computer (SEMAPHORE_REGISTER_SCHEME=0).".to_owned())
+    }
+
+    fn note(&self) -> Option<String> {
+        (!self.packaged).then(|| {
+            "This is a development build: registering takes semaphore:// links away from an \
+             installed Semaphore app until it registers again."
+                .to_owned()
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's glob brings its own `test` attribute.
@@ -468,89 +555,5 @@ mod tests {
         assert!(!hides_on_close(false, true, true));
         assert!(!hides_on_close(true, false, true));
         assert!(!hides_on_close(true, true, false));
-    }
-}
-
-// ---- semaphore:// links: who opens them, and registering for them from the settings. ----
-
-/// Who opens `semaphore://` links, and making it this app. Both touch the OS (files under the
-/// user's XDG directories, or the registry), so they run off the UI thread; the rig fakes them.
-pub trait LinkRegistrar: Send + Sync {
-    fn status(&self) -> semaphore_ui::settings::LinkHandler;
-    /// Registers this app for the links. `Err` says why not, in the user's words.
-    fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String>;
-    /// Why registering is turned off here, if it is.
-    fn blocked(&self) -> Option<String>;
-    /// What registering would do that the user should know first.
-    fn note(&self) -> Option<String>;
-}
-
-/// The OS's registration, for this executable (`links::RegisterTarget::from_env`).
-pub struct DesktopLinks {
-    target: Option<semaphore_platform_desktop::links::RegisterTarget>,
-    /// Built with `SEMAPHORE_PACKAGED=1`: registers itself on every start.
-    packaged: bool,
-    /// `SEMAPHORE_REGISTER_SCHEME=0`: never register.
-    forbidden: bool,
-}
-
-impl DesktopLinks {
-    pub fn from_env() -> Self {
-        Self {
-            target: semaphore_platform_desktop::links::RegisterTarget::from_env(),
-            packaged: option_env!("SEMAPHORE_PACKAGED") == Some("1"),
-            forbidden: std::env::var("SEMAPHORE_REGISTER_SCHEME").as_deref() == Ok("0"),
-        }
-    }
-}
-
-/// The settings' words for what the OS says.
-pub fn link_handler(
-    status: Result<semaphore_platform_desktop::links::LinkStatus, semaphore_core::platform::CoreError>,
-) -> semaphore_ui::settings::LinkHandler {
-    use semaphore_platform_desktop::links::LinkStatus;
-    use semaphore_ui::settings::LinkHandler;
-    match status {
-        Ok(LinkStatus::Ours) => LinkHandler::Registered,
-        Ok(LinkStatus::Packaged(_)) => LinkHandler::PackageOwned,
-        Ok(LinkStatus::NotOurs) => LinkHandler::NotRegistered,
-        Err(error) => {
-            log::info!("who opens semaphore:// links: {error}");
-            LinkHandler::Unknown
-        }
-    }
-}
-
-impl LinkRegistrar for DesktopLinks {
-    fn status(&self) -> semaphore_ui::settings::LinkHandler {
-        match &self.target {
-            Some(target) => link_handler(semaphore_platform_desktop::links::status(target)),
-            None => semaphore_ui::settings::LinkHandler::Unknown,
-        }
-    }
-
-    fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
-        if let Some(why) = self.blocked() {
-            return Err(why);
-        }
-        let target = self
-            .target
-            .as_ref()
-            .ok_or_else(|| "Couldn't find this program to register it.".to_owned())?;
-        semaphore_platform_desktop::links::register(target).map_err(|error| error.to_string())?;
-        Ok(self.status())
-    }
-
-    fn blocked(&self) -> Option<String> {
-        self.forbidden
-            .then(|| "Turned off on this computer (SEMAPHORE_REGISTER_SCHEME=0).".to_owned())
-    }
-
-    fn note(&self) -> Option<String> {
-        (!self.packaged).then(|| {
-            "This is a development build: registering takes semaphore:// links away from an \
-             installed Semaphore app until it registers again."
-                .to_owned()
-        })
     }
 }

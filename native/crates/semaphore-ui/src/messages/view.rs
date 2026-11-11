@@ -1182,7 +1182,9 @@ impl Render for MessageList {
         {
             let palette = Palette::for_theme(sem.choice);
             let old = self.shared.palette.get();
-            if (old.text, old.background, old.primary) != (palette.text, palette.background, palette.primary) {
+            if (old.text, old.background, old.primary)
+                != (palette.text, palette.background, palette.primary)
+            {
                 // The rows' text was shaped in the old colours.
                 self.shared.palette.set(palette);
                 self.shared.prepared.borrow_mut().clear();

@@ -140,9 +140,7 @@ impl Route {
                     tab: crate::settings::SettingsTab::default(),
                 },
                 "/profile/edit" => Route::ProfileEdit,
-                "/profile/:userId" => Route::Profile {
-                    user_id: param(0),
-                },
+                "/profile/:userId" => Route::Profile { user_id: param(0) },
                 "/community/:communityId" => Route::Community {
                     community_id: param(0),
                 },

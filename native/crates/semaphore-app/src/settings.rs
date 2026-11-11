@@ -723,13 +723,18 @@ mod tests {
         assert_eq!(voice.camera_device, None);
         assert!(!store.get().close_to_tray);
         // Off in v1 is voice activity at the most sensitive threshold.
-        let off = migrate(1, serde_json::json!({"version": 1, "voice": {"push_to_talk": false}}));
+        let off = migrate(
+            1,
+            serde_json::json!({"version": 1, "voice": {"push_to_talk": false}}),
+        );
         assert_eq!(
             off["voice"]["input_mode"],
             serde_json::json!({"mode": "voice_activity", "threshold": 0})
         );
         // Saved back as v2, with no v1 switch left.
-        store.update(|s| s.voice.mic_quality = MicQuality::Standard).unwrap();
+        store
+            .update(|s| s.voice.mic_quality = MicQuality::Standard)
+            .unwrap();
         let saved: Value =
             serde_json::from_str(&std::fs::read_to_string(dir.file()).unwrap()).unwrap();
         assert_eq!(saved["version"], 2);

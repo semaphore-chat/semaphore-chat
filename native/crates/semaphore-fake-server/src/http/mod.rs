@@ -406,9 +406,11 @@ async fn control(
             let Some(fields) = request.as_object() else {
                 return invalid("an object of public settings is required");
             };
-            lock(&inner.accounts)
-                .public_settings
-                .extend(fields.iter().map(|(key, value)| (key.clone(), value.clone())));
+            lock(&inner.accounts).public_settings.extend(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
         }
         "drop_connections" => {
             inner.close_connections();

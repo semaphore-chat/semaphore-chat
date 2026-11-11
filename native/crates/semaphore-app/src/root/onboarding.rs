@@ -302,7 +302,12 @@ impl AppRoot {
     // ---- Invites. ----
 
     /// An invite's page while signed out.
-    pub(super) fn open_invite(&mut self, code: String, window: &mut Window, cx: &mut Context<Self>) {
+    pub(super) fn open_invite(
+        &mut self,
+        code: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let screen = cx.new(InviteScreen::new);
         self.onboarding
             .subscriptions
@@ -354,7 +359,10 @@ impl AppRoot {
             return;
         };
         let mut screens = Vec::new();
-        if let Page::Invite { code: shown, screen } = &self.onboarding.page
+        if let Page::Invite {
+            code: shown,
+            screen,
+        } = &self.onboarding.page
             && shown == code
         {
             screens.push(screen.clone());

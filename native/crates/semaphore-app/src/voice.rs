@@ -304,7 +304,9 @@ impl VoiceController for AppVoice {
 }
 
 /// What the engine should hold for these settings.
-pub fn engine_choices(voice: &crate::settings::VoiceSettings) -> semaphore_media_livekit::EngineChoices {
+pub fn engine_choices(
+    voice: &crate::settings::VoiceSettings,
+) -> semaphore_media_livekit::EngineChoices {
     use crate::settings::{InputMode, MicQuality};
     use semaphore_media_livekit::MicPreset;
     semaphore_media_livekit::EngineChoices {

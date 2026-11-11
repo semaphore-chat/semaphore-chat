@@ -31,12 +31,12 @@ use semaphore_ui::kit::{Alert, Button, Severity};
 use semaphore_ui::nav::Route;
 use semaphore_ui::panel::PanelClock;
 use semaphore_ui::profile::{
-    FriendAction, ProfileActions, ProfileEditEvent, ProfileEditForm, ProfileEvent,
-    ProfileModal, ProfilePage,
+    FriendAction, ProfileActions, ProfileEditEvent, ProfileEditForm, ProfileEvent, ProfileModal,
+    ProfilePage,
 };
 use semaphore_ui::settings::{
-    AppearanceEvent, AppearanceSettings, DesktopAppEvent, DesktopAppState, DeviceLists,
-    DeviceOption, DesktopAppSettings, LinkHandler, Processing, SessionsEvent, SessionsSettings,
+    AppearanceEvent, AppearanceSettings, DesktopAppEvent, DesktopAppSettings, DesktopAppState,
+    DeviceLists, DeviceOption, LinkHandler, Processing, SessionsEvent, SessionsSettings,
     SettingsScreen, SettingsShellEvent, SettingsTab, ShareQuality, VoiceLimits, VoiceSettingsEvent,
     VoiceVideoSettings, VoiceVideoState,
 };
@@ -200,9 +200,11 @@ impl AppRoot {
                     .is_none_or(|page| page.read(cx).user_id() != user_id)
                 {
                     let page = cx.new(|cx| ProfilePage::new(user_id.clone(), cx));
-                    self.account
-                        .subscriptions
-                        .push(cx.subscribe_in(&page, window, Self::on_profile));
+                    self.account.subscriptions.push(cx.subscribe_in(
+                        &page,
+                        window,
+                        Self::on_profile,
+                    ));
                     self.account.page = Some(page);
                 }
                 self.refresh_profile(user_id, cx);
@@ -210,10 +212,16 @@ impl AppRoot {
             Route::Invite { invite_code } => self.signed_in_invite(invite_code, window, cx),
             Route::ProfileEdit => {
                 let form = cx.new(|cx| ProfileEditForm::new(window, cx));
-                self.account
-                    .subscriptions
-                    .push(cx.subscribe_in(&form, window, Self::on_profile_edit));
-                if let Some(max) = self.server_info.as_ref().and_then(|info| info.max_file_bytes) {
+                self.account.subscriptions.push(cx.subscribe_in(
+                    &form,
+                    window,
+                    Self::on_profile_edit,
+                ));
+                if let Some(max) = self
+                    .server_info
+                    .as_ref()
+                    .and_then(|info| info.max_file_bytes)
+                {
                     form.update(cx, |form, cx| form.set_max_file_bytes(Some(max), cx));
                 }
                 self.account.edit = Some(form);
@@ -468,13 +476,10 @@ impl AppRoot {
                 );
                 let form = form.downgrade();
                 cx.spawn_in(window, async move |_, cx| {
-                    let Some(path) = picked.await.and_then(|paths| paths.into_iter().next())
-                    else {
+                    let Some(path) = picked.await.and_then(|paths| paths.into_iter().next()) else {
                         return;
                     };
-                    let read = cx
-                        .background_spawn(async move { read_image(&path) })
-                        .await;
+                    let read = cx.background_spawn(async move { read_image(&path) }).await;
                     form.update(cx, |form, cx| match read {
                         Ok(file) => form.set_picked(slot, file, cx),
                         Err(message) => form.set_pick_error(slot, message, cx),
@@ -511,7 +516,9 @@ impl AppRoot {
             SettingsShellEvent::TabChanged(tab) => {
                 if let Some(shell) = self.shell.clone() {
                     let tab = *tab;
-                    shell.update(cx, |shell, cx| shell.replace_route(Route::Settings { tab }, cx));
+                    shell.update(cx, |shell, cx| {
+                        shell.replace_route(Route::Settings { tab }, cx)
+                    });
                 }
             }
             SettingsShellEvent::Close => self.shell_back(cx),
@@ -662,9 +669,10 @@ impl AppRoot {
 
     /// Only while the settings page is open: the list is a request of its own.
     fn refresh_sessions(&mut self, cx: &mut Context<Self>) {
-        let on_settings = self.shell.as_ref().is_some_and(|shell| {
-            matches!(shell.read(cx).nav().current(), Route::Settings { .. })
-        });
+        let on_settings = self
+            .shell
+            .as_ref()
+            .is_some_and(|shell| matches!(shell.read(cx).nav().current(), Route::Settings { .. }));
         let (Some(core), Some(tab)) = (self.core(), self.sessions_tab(cx)) else {
             return;
         };
@@ -695,9 +703,12 @@ impl AppRoot {
                 cx,
                 async move { core.revoke_session(session_id).await },
                 move |_, result, _, cx| {
-                    let notice = result
-                        .err()
-                        .map(|error| (Severity::Error, failure("Couldn't sign that device out", &error)));
+                    let notice = result.err().map(|error| {
+                        (
+                            Severity::Error,
+                            failure("Couldn't sign that device out", &error),
+                        )
+                    });
                     tab.update(cx, |tab, cx| tab.set_notice(notice, cx)).ok();
                 },
             ),
@@ -719,7 +730,8 @@ impl AppRoot {
                             failure("Couldn't sign the other devices out", &error),
                         ),
                     };
-                    tab.update(cx, |tab, cx| tab.set_notice(Some(notice), cx)).ok();
+                    tab.update(cx, |tab, cx| tab.set_notice(Some(notice), cx))
+                        .ok();
                 },
             ),
             SessionsEvent::Retry => core.retry_failed(),
@@ -809,8 +821,7 @@ impl AppRoot {
                 cx.refresh_windows();
             }
             DesktopAppEvent::RegisterLinkHandler => {
-                let (Some(registrar), Some(services)) =
-                    (self.config.links.clone(), &self.services)
+                let (Some(registrar), Some(services)) = (self.config.links.clone(), &self.services)
                 else {
                     return;
                 };
@@ -1023,13 +1034,19 @@ impl AppRoot {
 
     // ---- The desktop sign-in banner. ----
 
-    fn desktop_sign_in_banner(&self, signed_in: &DesktopSignIn, cx: &mut Context<Self>) -> AnyElement {
+    fn desktop_sign_in_banner(
+        &self,
+        signed_in: &DesktopSignIn,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let message = match &signed_in.ip_address {
             Some(ip) => format!(
                 "A desktop app signed in to your account from {ip}. If this wasn't you, change your password."
             ),
-            None => "A desktop app signed in to your account. If this wasn't you, change your password."
-                .to_owned(),
+            None => {
+                "A desktop app signed in to your account. If this wasn't you, change your password."
+                    .to_owned()
+            }
         };
         let review = cx.entity().downgrade();
         let dismiss = review.clone();
