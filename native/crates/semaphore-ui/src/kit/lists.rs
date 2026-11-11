@@ -124,7 +124,8 @@ impl RenderOnce for ListRow {
     }
 }
 
-/// MuiTabs: labels with a 2px accent underline on the selected one.
+/// MuiTabs: labels with a 2px accent underline on the selected one. With a named id, each tab is
+/// `<id>-<index>` ("friends-tabs-1"), so a test or a rig can click it.
 #[derive(IntoElement)]
 pub struct Tabs {
     id: ElementId,
@@ -156,6 +157,18 @@ impl RenderOnce for Tabs {
         let (selected_color, other_color, line) =
             (sem.tab_selected, sem.text_secondary, sem.primary);
         let on_select = self.on_select;
+        let tab_id = {
+            let name = match &self.id {
+                ElementId::Name(name) => Some(name.clone()),
+                _ => None,
+            };
+            move |index: usize| -> ElementId {
+                match &name {
+                    Some(name) => ElementId::Name(format!("{name}-{index}").into()),
+                    None => ("tab", index).into(),
+                }
+            }
+        };
         base::Tabs::new(self.id)
             .flex()
             .border_b_1()
@@ -167,7 +180,7 @@ impl RenderOnce for Tabs {
                     .map(move |(index, label)| {
                         let selected = index == selected_index;
                         let on_select = on_select.clone();
-                        base::Tab::new(("tab", index))
+                        base::Tab::new(tab_id(index))
                             .selected(selected)
                             .set_position(index, count)
                             .accessibility_label(label.clone())

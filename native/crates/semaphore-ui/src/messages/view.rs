@@ -94,6 +94,13 @@ pub fn with_list_frame_policy(options: WindowOptions) -> WindowOptions {
     }
 }
 
+/// What a press in the text landed on: released in place, it opens.
+#[derive(Debug, Clone)]
+enum Pressed {
+    Link(String),
+    User(String),
+}
+
 /// What the list asks of the app.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MessageListEvent {
@@ -103,6 +110,10 @@ pub enum MessageListEvent {
     HoldRows(Option<(i64, i64)>),
     OpenLink {
         url: String,
+    },
+    /// An author's name or avatar, or an @mention, was clicked: the owner opens their profile.
+    OpenProfile {
+        user_id: String,
     },
     OpenAttachment {
         file_id: String,
@@ -191,6 +202,8 @@ pub struct ListData {
 pub struct ListOptions {
     pub time: TimeFormat,
     pub palette: Palette,
+    /// Draw in the app's theme as it is at each frame (`crate::theme::Sem`), instead of `palette`.
+    pub follow_theme: bool,
     /// Off for stories: the kit's scrollbar fades on a real clock, so with it two renders of the
     /// same frame differ, and T10 needs them identical.
     pub scrollbar: bool,
@@ -201,6 +214,7 @@ impl Default for ListOptions {
         Self {
             time: TimeFormat::default(),
             palette: Palette::dark(),
+            follow_theme: false,
             scrollbar: true,
         }
     }
@@ -212,12 +226,13 @@ pub struct MessageList {
     focus: FocusHandle,
     status: ListStatus,
     scrollbar: bool,
+    follow_theme: bool,
     auto: AutoScroll,
     dragging: bool,
     moved: bool,
     drag: Option<UnitDrag>,
     pressed_at: Point<Pixels>,
-    pressed_link: Option<String>,
+    pressed_link: Option<Pressed>,
     pointer: Point<Pixels>,
     /// Where keyboard extension starts when nothing is selected: the last press.
     caret: Option<Pos>,
@@ -253,7 +268,7 @@ impl MessageList {
             visible: RefCell::new(BTreeMap::new()),
             selection: Cell::new(None),
             hovered_link: Cell::new(None),
-            palette: options.palette,
+            palette: Cell::new(options.palette),
             fonts: Fonts::pick(cx),
             me_id: data.me_id,
             time: options.time,
@@ -291,6 +306,7 @@ impl MessageList {
             focus: cx.focus_handle(),
             status: data.status,
             scrollbar: options.scrollbar,
+            follow_theme: options.follow_theme,
             auto: AutoScroll::default(),
             dragging: false,
             moved: false,
@@ -925,7 +941,11 @@ impl MessageList {
             }
         };
         if drag.unit == Unit::Char && !event.modifiers.shift {
-            self.pressed_link = text::link_at(&row, hit.byte).map(str::to_owned);
+            self.pressed_link = text::link_at(&row, hit.byte)
+                .map(|url| Pressed::Link(url.to_owned()))
+                .or_else(|| {
+                    text::mention_at(&row, hit.byte).map(|id| Pressed::User(id.to_owned()))
+                });
         }
         self.set_selection(Some(selection), cx);
         self.dragging = true;
@@ -967,8 +987,16 @@ impl MessageList {
         let link = self.pressed_link.take();
         if self.moved {
             self.update_drag(cx);
-        } else if let Some(url) = link.filter(|url| text::is_openable_url(url)) {
-            cx.emit(MessageListEvent::OpenLink { url });
+        } else {
+            match link {
+                Some(Pressed::Link(url)) if text::is_openable_url(&url) => {
+                    cx.emit(MessageListEvent::OpenLink { url });
+                }
+                Some(Pressed::User(user_id)) => {
+                    cx.emit(MessageListEvent::OpenProfile { user_id });
+                }
+                _ => {}
+            }
         }
         if self
             .shared
@@ -1149,7 +1177,21 @@ impl Render for MessageList {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.shared.visible.borrow_mut().clear();
         self.release_frozen_decor();
-        let palette = self.shared.palette;
+        if self.follow_theme
+            && let Some(sem) = cx.try_global::<crate::theme::Sem>()
+        {
+            let palette = Palette::for_theme(sem.choice);
+            let old = self.shared.palette.get();
+            if (old.text, old.background, old.primary)
+                != (palette.text, palette.background, palette.primary)
+            {
+                // The rows' text was shaped in the old colours.
+                self.shared.palette.set(palette);
+                self.shared.prepared.borrow_mut().clear();
+                self.list.remeasure();
+            }
+        }
+        let palette = self.shared.palette.get();
 
         let root = div()
             .id("message-list")

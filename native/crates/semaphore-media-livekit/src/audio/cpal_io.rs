@@ -171,9 +171,13 @@ where
     )
 }
 
+/// `source` channels come from `on_audio` (1 for calls). Mono goes to every device channel, as it
+/// always has; wider audio goes channel for channel, the device's extra channels get the mix,
+/// and a mono device gets the mix alone.
 fn build_output<T>(
     device: &cpal::Device,
     config: StreamConfig,
+    source: usize,
     mut on_audio: OutputCallback,
     on_error: ErrorCallback,
 ) -> Result<cpal::Stream, cpal::Error>
@@ -181,10 +185,14 @@ where
     T: SizedSample + FromSample<i16>,
 {
     let channels = usize::from(config.channels.max(1));
+    let source = source.max(1);
     let rate = config.sample_rate;
-    let mut resampler = Resampler::new(SAMPLE_RATE, rate);
-    let mut mono: Vec<i16> = Vec::new();
+    let mut resamplers: Vec<Resampler> = (0..source)
+        .map(|_| Resampler::new(SAMPLE_RATE, rate))
+        .collect();
+    let mut wide: Vec<i16> = Vec::new();
     let mut raw: Vec<f64> = Vec::new();
+    let mut lanes: Vec<Vec<i16>> = vec![Vec::new(); source];
     let mut resampled: std::collections::VecDeque<i16> = Default::default();
     device.build_output_stream::<T, _, _>(
         config,
@@ -196,24 +204,52 @@ where
                 .duration_since(timestamp.callback)
                 .as_millis() as u32;
             if rate == SAMPLE_RATE {
-                mono.clear();
-                mono.resize(frames, 0);
-                on_audio(&mut mono, latency);
+                wide.clear();
+                wide.resize(frames * source, 0);
+                on_audio(&mut wide, latency);
             } else {
-                while resampled.len() < frames {
-                    mono.clear();
-                    mono.resize(super::FRAME_SAMPLES, 0);
-                    on_audio(&mut mono, latency);
-                    raw.clear();
-                    raw.extend(mono.iter().map(|sample| f64::from(*sample)));
-                    resampler.run(&raw, |sample| resampled.push_back(sample as i16));
+                while resampled.len() < frames * source {
+                    wide.clear();
+                    wide.resize(super::FRAME_SAMPLES * source, 0);
+                    on_audio(&mut wide, latency);
+                    for (lane, (resampler, out)) in
+                        resamplers.iter_mut().zip(lanes.iter_mut()).enumerate()
+                    {
+                        raw.clear();
+                        raw.extend(
+                            wide.iter()
+                                .skip(lane)
+                                .step_by(source)
+                                .map(|s| f64::from(*s)),
+                        );
+                        out.clear();
+                        resampler.run(&raw, |sample| out.push(sample as i16));
+                    }
+                    let made = lanes.iter().map(Vec::len).min().unwrap_or(0);
+                    for i in 0..made {
+                        resampled.extend(lanes.iter().map(|lane| lane[i]));
+                    }
                 }
-                mono.clear();
-                mono.extend(resampled.drain(..frames));
+                wide.clear();
+                wide.extend(resampled.drain(..frames * source));
             }
-            for (frame, sample) in data.chunks_exact_mut(channels).zip(mono.iter()) {
-                let converted = T::from_sample(*sample);
-                frame.fill(converted);
+            for (frame, input) in data
+                .chunks_exact_mut(channels)
+                .zip(wide.chunks_exact(source))
+            {
+                if source == 1 {
+                    frame.fill(T::from_sample(input[0]));
+                    continue;
+                }
+                let mix = (input.iter().map(|&s| i32::from(s)).sum::<i32>() / source as i32) as i16;
+                for (i, out) in frame.iter_mut().enumerate() {
+                    let sample = if channels == 1 {
+                        mix
+                    } else {
+                        input.get(i).copied().unwrap_or(mix)
+                    };
+                    *out = T::from_sample(sample);
+                }
             }
         },
         move |error| on_error(error.to_string()),
@@ -324,7 +360,18 @@ impl AudioIo for CpalIo {
         on_audio: OutputCallback,
         on_error: ErrorCallback,
     ) -> Result<AudioStream, String> {
+        self.open_output_channels(device, 1, on_audio, on_error)
+    }
+
+    fn open_output_channels(
+        &self,
+        device: Option<&str>,
+        channels: u16,
+        on_audio: OutputCallback,
+        on_error: ErrorCallback,
+    ) -> Result<AudioStream, String> {
         let device = device.map(str::to_owned);
+        let source = usize::from(channels.max(1));
         on_stream_thread(move || {
             let host = cpal::default_host();
             let device = pick(&host, device.as_deref(), false)?;
@@ -334,9 +381,15 @@ impl AudioIo for CpalIo {
                 .map_err(|e| e.to_string())?;
             let (config, format) = stream_config(default, ranges);
             match format {
-                SampleFormat::F32 => build_output::<f32>(&device, config, on_audio, on_error),
-                SampleFormat::I16 => build_output::<i16>(&device, config, on_audio, on_error),
-                SampleFormat::I32 => build_output::<i32>(&device, config, on_audio, on_error),
+                SampleFormat::F32 => {
+                    build_output::<f32>(&device, config, source, on_audio, on_error)
+                }
+                SampleFormat::I16 => {
+                    build_output::<i16>(&device, config, source, on_audio, on_error)
+                }
+                SampleFormat::I32 => {
+                    build_output::<i32>(&device, config, source, on_audio, on_error)
+                }
                 other => return Err(format!("unsupported sample format {other:?}")),
             }
             .map_err(|e| e.to_string())

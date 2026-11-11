@@ -59,6 +59,70 @@ pub struct AppConfig {
     /// OS notifications for what core raises: the desktop's (`DesktopServices::notifier`) in the
     /// app, a recorder in the rig, `None` for none.
     pub notifier: Option<Arc<dyn semaphore_core::platform::Notifier>>,
+    /// Opens a web address in the system's browser (browser sign-in): `cx.open_url` when `None`,
+    /// a recorder in the rig.
+    pub open_url: Option<OpenUrl>,
+    /// The system's file picker (the portal's on Linux, the common dialog on Windows) when `None`;
+    /// the rig answers from a queue.
+    pub pick_files: Option<PickFiles>,
+    /// Who opens `semaphore://` links, and registering for them: the desktop's
+    /// (`desktop::DesktopLinks`) in the app, a fake in the rig, `None` for "can't tell".
+    pub links: Option<Arc<dyn desktop::LinkRegistrar>>,
+}
+
+/// `AppConfig::open_url`.
+pub type OpenUrl = std::rc::Rc<dyn Fn(&str, &mut App)>;
+
+/// What a file pick is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PickRequest {
+    pub multiple: bool,
+    /// The dialog's button: "Attach", "Choose".
+    pub prompt: &'static str,
+}
+
+/// `AppConfig::pick_files`: the paths picked, or `None` when cancelled.
+pub type PickFiles = std::rc::Rc<dyn Fn(PickRequest, &mut App) -> Task<Option<Vec<PathBuf>>>>;
+
+/// The process's file picker and browser, from the config: `AppRoot::new` installs them.
+pub struct Seams {
+    pub pick_files: PickFiles,
+    pub open_url: OpenUrl,
+}
+
+impl Global for Seams {}
+
+/// Opens the file picker the config chose.
+pub fn pick_files(request: PickRequest, cx: &mut App) -> Task<Option<Vec<PathBuf>>> {
+    let pick = cx
+        .try_global::<Seams>()
+        .map(|seams| seams.pick_files.clone())
+        .unwrap_or_else(system_pick_files);
+    pick(request, cx)
+}
+
+/// Opens `url` in the browser the config chose.
+pub fn open_url(url: &str, cx: &mut App) {
+    match cx.try_global::<Seams>().map(|seams| seams.open_url.clone()) {
+        Some(open) => open(url, cx),
+        None => cx.open_url(url),
+    }
+}
+
+/// The system's file picker, through GPUI.
+pub fn system_pick_files() -> PickFiles {
+    std::rc::Rc::new(|request: PickRequest, cx: &mut App| {
+        let picked = cx.prompt_for_paths(PathPromptOptions {
+            files: true,
+            directories: false,
+            multiple: request.multiple,
+            prompt: Some(request.prompt.into()),
+        });
+        cx.spawn(async move |_| match picked.await {
+            Ok(Ok(paths)) => paths,
+            _ => None,
+        })
+    })
 }
 
 /// Once per process, before the first window.

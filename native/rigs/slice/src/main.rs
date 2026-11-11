@@ -12,7 +12,7 @@
 //! wait core text "hello" within 5     # a row on screen contains it
 //! expect core count "hello" 1         # checks once, after settling
 //! server drop_connections             # POST /__control/drop_connections
-//! server post_as {"channelId": "cc-general", "authorId": "pri", "text": "hi"}
+//! server post_as {"channelId": "$ID(cc-general)", "authorId": "pri", "text": "hi"}
 //! expect requests typingStart >= 1    # what the fake server saw, by operation or socket event
 //! expect clipboard "some text"        # what the last copy put there contains this
 //! os suspend                          # also resume, network-down, network-up
@@ -21,7 +21,7 @@
 //! snap name                           # one frame, no waiting for stillness (live video)
 //! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
 //! link-images on                      # the next start loads link previews' images
-//! livekit remove vc-squad me          # LiveKit's server API removes someone (needs --livekit-http)
+//! livekit remove $ID(vc-squad) me    # LiveKit's server API removes someone (needs --livekit-http)
 //! wait core voice connected           # also frames, muted, deafened, participant ID
 //! wait core voice camera on            # camera|screen|screen-audio off|starting|on|failed
 //! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
@@ -37,12 +37,23 @@
 //! server friend_request_as {"fromId": "…"}  # another user asks to be friends
 //! notification click "dm:…"           # the OS notification with that tag is clicked
 //! link "semaphore://…"                # the OS hands over a link, as a second launch would
-//! link-channel COMMUNITY CHANNEL      # likewise, already parsed: the showcase's channel ids aren't
-//!                                     # UUIDs, which `parse_deep_link` (unit-tested) requires
 //! forget sounds                       # what the speaker heard so far no longer counts
 //! window activate                     # the window comes to the front, as a user's click would:
 //!                                     # the pane marks what it shows read only then
+//! core revoke-other-sessions          # W3: Core::revoke_other_sessions; fails if refused
+//! pick-file rigs/slice/fixtures/a.png   # the next file picker answers with this file
+//! browser approve                     # plays the browser for the last desktop-login URL opened:
+//!                                     # the fake server's approve_desktop, then the loopback callback
+//! expect opened-url "desktop-login"   # the last URL the app opened contains this
+//! expect settings /voice/mic_quality "music"   # settings.json at that JSON pointer (JSON value)
+//! expect link-registrations 1         # the fake link handler was asked to register this often
 //! ```
+//!
+//! W3's conditions: `route PREFIX` (the shell's route, as `settings/voice`, `profile/ID`,
+//! `profile-edit`, `home`, `community/ID`, `channel/ID`, `dms`), `theme NAME` (the theme drawn,
+//! `light-teal-minimal`), `engine ptt on|off`, `engine preset standard|high|music`, `engine
+//! input|output|camera ID|default` (what the voice engine holds), `profile-open ID`, `desktop-sign-in
+//! shown|gone`.
 //!
 //! W2's conditions: `dm ID` (the pane is on that DM), `notified TAG` (the rig's notifier shows
 //! it), `withdrawn TAG` (shown, then taken down), `notifications-shown N` (shows since the start),
@@ -67,7 +78,7 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
 use rig_shot::driver::Driver;
 use rig_shot::script;
-use semaphore_app::settings::{Settings, SettingsStore};
+use semaphore_app::settings::SettingsStore;
 use semaphore_app::{AppConfig, AppRoot, OsEvent};
 use semaphore_core::model::OsNotification;
 use semaphore_core::model::{
@@ -84,10 +95,12 @@ use semaphore_media_livekit::testing::FakeVideoSources;
 use semaphore_ui::kit::set_reduced_motion;
 use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read as _, Write as _};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -240,6 +253,12 @@ enum Condition {
     Dms(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
+    /// W3's.
+    Route(String),
+    Theme(String),
+    Engine(String, String),
+    ProfileOpen(String),
+    DesktopSignIn(bool),
 }
 
 /// What a row step does to the element it finds.
@@ -316,13 +335,25 @@ enum Step {
     /// The fake camera or screen refuses its next start with this reason.
     NotificationClick(String),
     Link(String),
-    LinkChannel(String, String),
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
         screen: bool,
         why: String,
     },
+    /// W3: `Core::revoke_other_sessions`, as the sessions tab's "Sign out other sessions" will.
+    /// Fails the script if the server refuses.
+    RevokeOtherSessions,
+    /// The next file picker answers with this file.
+    PickFile(PathBuf),
+    /// Plays the browser for the last desktop-login URL the app opened.
+    BrowserApprove,
+    ExpectOpenedUrl(String),
+    ExpectSettings {
+        pointer: String,
+        value: String,
+    },
+    ExpectLinkRegistrations(usize),
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -412,6 +443,16 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["incoming", count] => Condition::Incoming(number(count)?),
         ["friend", id] => Condition::Friend((*id).into()),
         ["dms", count] => Condition::Dms(number(count)?),
+        ["route", route] => Condition::Route((*route).into()),
+        ["theme", name] => Condition::Theme((*name).into()),
+        [
+            "engine",
+            key @ ("ptt" | "preset" | "input" | "output" | "camera"),
+            value,
+        ] => Condition::Engine((*key).into(), (*value).into()),
+        ["profile-open", id] => Condition::ProfileOpen((*id).into()),
+        ["desktop-sign-in", "shown"] => Condition::DesktopSignIn(true),
+        ["desktop-sign-in", "gone"] => Condition::DesktopSignIn(false),
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
@@ -507,10 +548,18 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["exec", command] => Step::Exec((*command).into()),
             ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
             ["link", url] => Step::Link((*url).into()),
-            ["link-channel", community, channel] => {
-                Step::LinkChannel((*community).into(), (*channel).into())
-            }
             ["forget", "sounds"] => Step::ForgetSounds,
+            ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
+            ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
+            ["browser", "approve"] => Step::BrowserApprove,
+            ["expect", "opened-url", text] => Step::ExpectOpenedUrl((*text).into()),
+            ["expect", "settings", pointer, value] => Step::ExpectSettings {
+                pointer: (*pointer).into(),
+                value: (*value).into(),
+            },
+            ["expect", "link-registrations", count] => {
+                Step::ExpectLinkRegistrations(count.parse().map_err(|_| at(anyhow!("count")))?)
+            }
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
@@ -690,6 +739,61 @@ struct Rig {
     notifier: Arc<RigNotifier>,
     /// Samples the virtual speaker played that weren't silence, since `forget sounds`.
     heard: Arc<std::sync::atomic::AtomicUsize>,
+    /// The URLs the app asked the browser to open, instead of a browser.
+    opened: Rc<RefCell<Vec<String>>>,
+    /// What the next file pickers answer, instead of the system's.
+    picks: Rc<RefCell<VecDeque<PathBuf>>>,
+    /// Who opens semaphore:// links, instead of the OS.
+    links: Arc<RigLinks>,
+}
+
+/// The link handler in the rig: not registered until asked, then registered. Touches nothing.
+#[derive(Default)]
+struct RigLinks {
+    registered: std::sync::atomic::AtomicUsize,
+}
+
+impl semaphore_app::desktop::LinkRegistrar for RigLinks {
+    fn status(&self) -> semaphore_ui::settings::LinkHandler {
+        if self.registered.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+            semaphore_ui::settings::LinkHandler::Registered
+        } else {
+            semaphore_ui::settings::LinkHandler::NotRegistered
+        }
+    }
+
+    fn register(&self) -> Result<semaphore_ui::settings::LinkHandler, String> {
+        self.registered
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Ok(self.status())
+    }
+
+    fn blocked(&self) -> Option<String> {
+        None
+    }
+
+    fn note(&self) -> Option<String> {
+        Some("This is a development build: registering takes semaphore:// links away from an installed Semaphore app until it registers again.".into())
+    }
+}
+
+/// `challenge`, `state` and `port` from a `/#/desktop-login?…` URL.
+fn desktop_login_params(url: &str) -> Result<(String, String, u16)> {
+    let query = url
+        .split_once("desktop-login?")
+        .map(|(_, query)| query)
+        .ok_or_else(|| anyhow!("not a desktop-login URL: {url}"))?;
+    let field = |name: &str| {
+        query
+            .split('&')
+            .find_map(|pair| pair.strip_prefix(&format!("{name}=")))
+            .map(str::to_owned)
+            .ok_or_else(|| anyhow!("{url} has no {name}"))
+    };
+    let port = field("port")?
+        .parse()
+        .map_err(|_| anyhow!("a bad port in {url}"))?;
+    Ok((field("challenge")?, field("state")?, port))
 }
 
 /// The app's `Notifier` in the rig: records, shows nothing.
@@ -782,6 +886,9 @@ impl Rig {
             remembered: None,
             notifier: Arc::default(),
             heard: Arc::default(),
+            opened: Rc::default(),
+            picks: Rc::default(),
+            links: Arc::default(),
         }
     }
 
@@ -867,11 +974,15 @@ impl Rig {
             video_sources: Some(self.video.clone()),
             screen_capture: Some(self.screens.clone()),
             heartbeat: self.heartbeat,
-            // Never read from or written to disk: only this switch is set, as before.
-            settings: SettingsStore::ephemeral(Settings {
-                link_preview_images: self.link_images,
-                ..Settings::default()
-            }),
+            // On disk in the run's data directory, so a restart reads what the settings saved.
+            settings: {
+                let mut store = SettingsStore::load(&self.data_dir);
+                if store.get().link_preview_images != self.link_images {
+                    let on = self.link_images;
+                    store.update(|settings| settings.link_preview_images = on)?;
+                }
+                store
+            },
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),
@@ -880,6 +991,18 @@ impl Rig {
             time: TimeFormat::fixed(self.now_ms),
             scrollbar: false,
             notifier: Some(self.notifier.clone()),
+            open_url: Some({
+                let opened = self.opened.clone();
+                Rc::new(move |url: &str, _: &mut App| opened.borrow_mut().push(url.to_owned()))
+            }),
+            pick_files: Some({
+                let picks = self.picks.clone();
+                Rc::new(move |_, _: &mut App| {
+                    let picked = picks.borrow_mut().pop_front().map(|path| vec![path]);
+                    Task::ready(picked)
+                })
+            }),
+            links: Some(self.links.clone()),
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
@@ -1005,6 +1128,9 @@ impl Rig {
         if let Some(answer) = self.w2_holds(condition)? {
             return Ok(answer);
         }
+        if let Some(answer) = self.w3_holds(condition)? {
+            return Ok(answer);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -1094,7 +1220,12 @@ impl Rig {
             | Condition::Incoming(_)
             | Condition::Friend(_)
             | Condition::Dms(_)
-            | Condition::Element(..) => unreachable!("answered above"),
+            | Condition::Element(..)
+            | Condition::Route(_)
+            | Condition::Theme(_)
+            | Condition::Engine(..)
+            | Condition::ProfileOpen(_)
+            | Condition::DesktopSignIn(_) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -1153,8 +1284,10 @@ impl Rig {
         Ok(self.driver.cx.update(|cx| {
             let root = app.read(cx);
             let core = root.core();
+            // Signed out there's no pane (it's built per session): the conditions on it are
+            // false, the rest are someone else's to answer.
             let Some(pane) = root.pane() else {
-                return Some(false);
+                return w1_condition(condition).then_some(false);
             };
             let pane = pane.read(cx);
             let newest = |text: &str| {
@@ -1218,6 +1351,145 @@ impl Rig {
                 _ => return None,
             })
         }))
+    }
+
+    /// Plays the browser for the last desktop-login URL the app opened: the signed-in user approves
+    /// in the browser (the fake server's `approve_desktop`), and the browser follows the redirect to
+    /// the app's loopback listener with the code and the state.
+    fn browser_approve(&mut self) -> Result<()> {
+        let url = self
+            .opened
+            .borrow()
+            .iter()
+            .rev()
+            .find(|url| url.contains("desktop-login"))
+            .cloned()
+            .ok_or_else(|| anyhow!("the app opened no desktop-login URL"))?;
+        let (challenge, state, port) = desktop_login_params(&url)?;
+        let approved = http(
+            &self.server,
+            "POST",
+            "/__control/approve_desktop",
+            &serde_json::json!({ "challenge": challenge }).to_string(),
+        )?;
+        let code = approved["code"]
+            .as_str()
+            .ok_or_else(|| anyhow!("approve_desktop gave no code: {approved}"))?;
+        let mut stream = TcpStream::connect(("127.0.0.1", port))
+            .with_context(|| format!("the app's loopback listener on {port}"))?;
+        stream.set_read_timeout(Some(Duration::from_secs(10)))?;
+        write!(
+            stream,
+            "GET /callback?code={code}&state={state} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+        )?;
+        let mut answer = String::new();
+        stream.read_to_string(&mut answer)?;
+        if !answer.starts_with("HTTP/1.1 200") {
+            bail!(
+                "the loopback listener answered {}",
+                answer.lines().next().unwrap_or("")
+            );
+        }
+        self.driver.settle()
+    }
+
+    /// W3's conditions.
+    fn w3_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
+        let app = self.app()?.clone();
+        Ok(self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            Some(match condition {
+                Condition::Route(prefix) => root.shell().is_some_and(|shell| {
+                    route_name(shell.read(cx).nav().current()).starts_with(prefix.as_str())
+                }),
+                Condition::Theme(name) => cx
+                    .try_global::<semaphore_ui::theme::Sem>()
+                    .is_some_and(|sem| sem.choice.name() == *name),
+                Condition::Engine(key, value) => {
+                    let Some(voice) = root.app_voice() else {
+                        return Some(false);
+                    };
+                    let choices = voice.engine.choices();
+                    let device = |device: &Option<String>| {
+                        device.clone().unwrap_or_else(|| "default".to_owned()) == *value
+                    };
+                    match key.as_str() {
+                        "ptt" => choices.ptt_mode == (value == "on"),
+                        "preset" => format!("{:?}", choices.preset).to_lowercase() == *value,
+                        "input" => device(&choices.input_device),
+                        "output" => device(&choices.output_device),
+                        _ => device(&choices.camera_device),
+                    }
+                }
+                Condition::ProfileOpen(id) => root.profile_open(cx).as_deref() == Some(id.as_str()),
+                Condition::DesktopSignIn(shown) => root.desktop_sign_in().is_some() == *shown,
+                _ => return None,
+            })
+        }))
+    }
+}
+
+/// A route as `route` conditions name it.
+fn route_name(route: &semaphore_ui::nav::Route) -> String {
+    use semaphore_ui::nav::Route;
+    match route {
+        Route::Home => "home".into(),
+        Route::Settings { tab } => format!("settings/{}", tab.key()),
+        Route::Profile { user_id } => format!("profile/{user_id}"),
+        Route::ProfileEdit => "profile-edit".into(),
+        Route::Community { community_id } => format!("community/{community_id}"),
+        Route::Channel { channel_id, .. } => format!("channel/{channel_id}"),
+        Route::DirectMessages => "dms".into(),
+        Route::DirectMessage { dm_group_id } => format!("dm/{dm_group_id}"),
+        other => other.path(),
+    }
+}
+
+/// The conditions `w1_holds` reads off the pane.
+fn w1_condition(condition: &Condition) -> bool {
+    matches!(
+        condition,
+        Condition::SidePanel(_)
+            | Condition::Editing(_)
+            | Condition::Picker(_)
+            | Condition::Pinned(..)
+            | Condition::Edited(_)
+            | Condition::Removed(_)
+            | Condition::Reaction(..)
+            | Condition::ThreadRows(_)
+            | Condition::ThreadSent(_)
+            | Condition::Subscribed(_)
+            | Condition::UnreadAfter(_)
+            | Condition::Notice(_)
+            | Condition::NoNotice
+            | Condition::ComposerText(_)
+            | Condition::ComposerPlaceholder(_)
+            | Condition::SearchHits(_)
+            | Condition::PinnedCount(_)
+    )
+}
+
+impl Rig {
+    fn revoke_other_sessions(&mut self) -> Result<()> {
+        let app = self.app()?.clone();
+        let core = self
+            .driver
+            .cx
+            .update(|cx| app.read(cx).core())
+            .ok_or_else(|| anyhow!("no core: not signed in"))?;
+        // On a runtime of its own, so the rig's thread can wait for it while the app's runs on.
+        let revoked = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| anyhow!("a runtime for the command: {error}"))?
+                .block_on(core.revoke_other_sessions())
+                .map_err(|error| anyhow!("revoke_other_sessions failed: {error}"))
+        })
+        .join()
+        .map_err(|_| anyhow!("revoke_other_sessions panicked"))??;
+        eprintln!("rig-slice: revoke_other_sessions ended {revoked} session(s)");
+        self.driver.settle()
     }
 
     fn voice_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
@@ -1571,19 +1843,53 @@ impl Rig {
                     self.driver
                         .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
                 }
-                Step::LinkChannel(community_id, channel_id) => {
-                    let link = semaphore_ui::nav::DeepLink::Channel {
-                        community_id: community_id.clone(),
-                        channel_id: channel_id.clone(),
-                    };
-                    let app = self.app()?.clone();
-                    self.driver
-                        .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
-                }
                 Step::ActivateWindow => self
                     .driver
                     .update(|window, _| window.activate_window())
                     .and_then(|()| self.driver.settle()),
+                Step::RevokeOtherSessions => self.revoke_other_sessions(),
+                Step::PickFile(path) => {
+                    let path = std::fs::canonicalize(path)
+                        .with_context(|| format!("no file {}", path.display()))?;
+                    self.picks.borrow_mut().push_back(path);
+                    Ok(())
+                }
+                Step::BrowserApprove => self.browser_approve(),
+                Step::ExpectOpenedUrl(text) => {
+                    let last = self.opened.borrow().last().cloned();
+                    match last {
+                        Some(url) if url.contains(text.as_str()) => Ok(()),
+                        other => Err(anyhow!(
+                            "the last URL opened is {other:?}, not one with {text:?}"
+                        )),
+                    }
+                }
+                Step::ExpectSettings { pointer, value } => {
+                    let path = self.data_dir.join(semaphore_app::settings::SETTINGS_FILE);
+                    let saved: Value = serde_json::from_str(
+                        &std::fs::read_to_string(&path)
+                            .with_context(|| format!("reading {}", path.display()))?,
+                    )?;
+                    let wanted: Value =
+                        serde_json::from_str(value).unwrap_or_else(|_| Value::from(value.as_str()));
+                    match saved.pointer(pointer) {
+                        Some(found) if *found == wanted => Ok(()),
+                        found => Err(anyhow!(
+                            "settings.json {pointer} is {found:?}, not {wanted}"
+                        )),
+                    }
+                }
+                Step::ExpectLinkRegistrations(count) => {
+                    let done = self
+                        .links
+                        .registered
+                        .load(std::sync::atomic::Ordering::Relaxed);
+                    if done == *count {
+                        Ok(())
+                    } else {
+                        Err(anyhow!("{done} link registrations, not {count}"))
+                    }
+                }
                 Step::ForgetSounds => {
                     self.heard.store(0, std::sync::atomic::Ordering::Relaxed);
                     Ok(())

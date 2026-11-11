@@ -54,6 +54,8 @@ pub enum PaneEvent {
     OpenDm { dm_id: String },
     /// The header's pin badge.
     PinnedCount(u32),
+    /// An author or a mention was clicked: their profile.
+    OpenProfile { user_id: String },
 }
 
 /// Which of the pane's lists something happened in.
@@ -102,6 +104,8 @@ pub struct ConversationPane {
     conversation: Option<Conversation>,
     community_id: Option<String>,
     channel: Option<ChannelRow>,
+    /// The DM's composer placeholder ("Message @Ava"), once its row is known.
+    dm_placeholder: Option<String>,
     list: Option<Entity<MessageList>>,
     composer: Option<Entity<Composer>>,
     drafts: Entity<DraftStore>,
@@ -167,6 +171,7 @@ impl ConversationPane {
             conversation: None,
             community_id: None,
             channel: None,
+            dm_placeholder: None,
             list: None,
             composer: None,
             drafts: cx.new(|_| DraftStore::default()),
@@ -359,6 +364,7 @@ impl ConversationPane {
                 ListOptions {
                     time,
                     scrollbar,
+                    follow_theme: true,
                     ..ListOptions::default()
                 },
                 cx,
@@ -427,7 +433,11 @@ impl ConversationPane {
                     max_file_bytes: None,
                     mode: semaphore_ui::composer::ComposerMode::Send,
                 };
-                let composer = cx.new(|cx| Composer::new(config, window, cx));
+                let composer = cx.new(|cx| {
+                    let mut composer = Composer::new(config, window, cx);
+                    composer.follow_theme(cx);
+                    composer
+                });
                 self._subscriptions.push(cx.subscribe_in(
                     &composer,
                     window,
@@ -463,9 +473,29 @@ impl ConversationPane {
     }
 
     fn placeholder(&self) -> SharedString {
-        match &self.channel {
-            Some(channel) => format!("Message #{}", channel.name).into(),
-            None => "Type a message...".into(),
+        match (&self.channel, &self.conversation, &self.dm_placeholder) {
+            (Some(channel), _, _) => format!("Message #{}", channel.name).into(),
+            (None, Some(Conversation::DirectMessage { .. }), Some(name)) => name.clone().into(),
+            _ => "Type a message...".into(),
+        }
+    }
+
+    /// The DM on screen's placeholder, from its row (`None` while the row loads).
+    pub fn set_dm_placeholder(
+        &mut self,
+        placeholder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.dm_placeholder == placeholder {
+            return;
+        }
+        self.dm_placeholder = placeholder;
+        let placeholder = self.placeholder();
+        if let Some(composer) = &self.composer {
+            composer.update(cx, |composer, cx| {
+                composer.set_placeholder(placeholder, window, cx)
+            });
         }
     }
 
@@ -802,7 +832,10 @@ pub fn mime_for(name: &str) -> String {
 
 impl Render for ConversationPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = semaphore_ui::messages::palette::Palette::dark();
+        let palette = cx
+            .try_global::<semaphore_ui::theme::Sem>()
+            .map(|sem| semaphore_ui::messages::palette::Palette::for_theme(sem.choice))
+            .unwrap_or_else(semaphore_ui::messages::palette::Palette::dark);
         let typing = self.typing_line();
         let notice = self.notice_element(cx);
         let picker = self.picker_element(cx);

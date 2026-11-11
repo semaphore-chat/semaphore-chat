@@ -366,7 +366,11 @@ impl ConversationPane {
             max_file_bytes: None,
             mode: ComposerMode::Thread,
         };
-        let composer = cx.new(|cx| Composer::new(config, window, cx));
+        let composer = cx.new(|cx| {
+            let mut composer = Composer::new(config, window, cx);
+            composer.follow_theme(cx);
+            composer
+        });
         let info = self.core.thread_info(parent_id.clone());
         let clock = self.panel_clock;
         let pane = {

@@ -1,0 +1,152 @@
+# W3 profile: the modal (own, other, no images, long, loading, failed, not found), the page, and the edit form in each state.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-profile.steps
+story profile-modal-own 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-own-desktop
+story profile-modal-own 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-own-phone
+story profile-modal-other 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-other-desktop
+story profile-modal-other 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-other-phone
+story profile-modal-add-friend 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-add-friend-desktop
+story profile-modal-add-friend 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-add-friend-phone
+story profile-modal-no-images 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-no-images-desktop
+story profile-modal-no-images 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-no-images-phone
+story profile-modal-long 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-long-desktop
+story profile-modal-long 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-long-phone
+story profile-modal-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-loading-desktop
+story profile-modal-loading 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-loading-phone
+story profile-modal-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-failed-desktop
+story profile-modal-failed 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-failed-phone
+story profile-modal-not-found 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-modal-not-found-desktop
+story profile-modal-not-found 390 844 light-blue-balanced
+wait idle
+shot w3-profile-modal-not-found-phone
+story profile-page-own 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-own-desktop
+story profile-page-own 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-own-phone
+story profile-page-other 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-other-desktop
+story profile-page-other 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-other-phone
+story profile-page-no-images 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-no-images-desktop
+story profile-page-no-images 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-no-images-phone
+story profile-page-long 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-long-desktop
+story profile-page-long 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-long-phone
+story profile-page-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-loading-desktop
+story profile-page-loading 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-loading-phone
+story profile-page-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-failed-desktop
+story profile-page-failed 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-failed-phone
+story profile-page-not-found 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-not-found-desktop
+story profile-page-not-found 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-not-found-phone
+story profile-edit 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-desktop
+story profile-edit 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-phone
+story profile-edit-no-images 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-no-images-desktop
+story profile-edit-no-images 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-no-images-phone
+story profile-edit-picked 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-picked-desktop
+story profile-edit-picked 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-picked-phone
+story profile-edit-errors 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-errors-desktop
+story profile-edit-errors 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-errors-phone
+story profile-edit-image-rejected 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-image-rejected-desktop
+story profile-edit-image-rejected 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-image-rejected-phone
+story profile-edit-uploading 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-uploading-desktop
+story profile-edit-uploading 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-uploading-phone
+story profile-edit-saving 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-saving-desktop
+story profile-edit-saving 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-saving-phone
+story profile-edit-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-failed-desktop
+story profile-edit-failed 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-failed-phone
+story profile-edit-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-loading-desktop
+story profile-edit-loading 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-loading-phone
+story profile-edit-load-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-edit-load-failed-desktop
+story profile-edit-load-failed 390 844 light-blue-balanced
+wait idle
+shot w3-profile-edit-load-failed-phone

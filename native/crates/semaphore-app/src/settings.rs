@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 /// The settings file's name inside the data directory.
 pub const SETTINGS_FILE: &str = "settings.json";
 /// The schema version this build reads and writes.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 2;
 /// A user's volume, in percent, is clamped to this.
 pub const MAX_USER_VOLUME: u8 = 200;
 
@@ -28,11 +28,45 @@ pub struct VoiceSettings {
     pub noise_suppression: bool,
     pub echo_cancellation: bool,
     pub auto_gain: bool,
-    pub push_to_talk: bool,
+    /// Voice activity (with its threshold) or push to talk. v1's `push_to_talk` switch.
+    pub input_mode: InputMode,
+    /// A GPUI key name, lowercase (`"f13"`, `"space"`): `semaphore_ui::settings::key_capture`.
     pub push_to_talk_key: Option<String>,
+    pub mic_quality: MicQuality,
+    /// The camera's device id; `None` is the system's default.
+    pub camera_device: Option<String>,
     /// How screen shares are sent. Wayland's portal starts straight from these, with no dialog of
     /// ours in between.
     pub screen_share: ShareSettings,
+}
+
+/// How the microphone opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum InputMode {
+    /// Open while unmuted, gated below `threshold` (0..=100; 0 = most sensitive, the default).
+    VoiceActivity {
+        #[serde(default)]
+        threshold: u8,
+    },
+    /// Open while the push-to-talk key (or the bar's button) is held.
+    PushToTalk,
+}
+
+impl Default for InputMode {
+    fn default() -> Self {
+        Self::VoiceActivity { threshold: 0 }
+    }
+}
+
+/// The microphone's encoding preset: `MicPreset` in the engine. High is the default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MicQuality {
+    Standard,
+    #[default]
+    High,
+    Music,
 }
 
 /// The box a screen share is scaled to fit, as the settings file spells it.
@@ -135,8 +169,10 @@ impl Default for VoiceSettings {
             noise_suppression: true,
             echo_cancellation: true,
             auto_gain: true,
-            push_to_talk: false,
+            input_mode: InputMode::default(),
             push_to_talk_key: None,
+            mic_quality: MicQuality::default(),
+            camera_device: None,
             screen_share: ShareSettings::default(),
         }
     }
@@ -164,6 +200,9 @@ pub struct Settings {
     /// Load link previews' images from the sites they're on. Off by default: each one tells that
     /// site the viewer's address.
     pub link_preview_images: bool,
+    /// The last appearance this app showed (`ThemeChoice::name`), so a start draws in it before
+    /// the server's appearance arrives, and the signed-out screens keep it.
+    pub theme: Option<String>,
 }
 
 impl Default for Settings {
@@ -177,6 +216,7 @@ impl Default for Settings {
             window: None,
             last_channel: None,
             link_preview_images: false,
+            theme: None,
         }
     }
 }
@@ -271,6 +311,10 @@ impl SettingsStore {
                 settings.version = CURRENT_VERSION;
                 for percent in settings.user_volumes.values_mut() {
                     *percent = (*percent).min(MAX_USER_VOLUME);
+                }
+                // Keys are GPUI's lowercase names; an older build stored "F13".
+                if let Some(key) = &mut settings.voice.push_to_talk_key {
+                    *key = key.to_lowercase();
                 }
                 store.settings = settings;
             }
@@ -373,6 +417,7 @@ fn migrate(from_version: u32, mut value: Value) -> Value {
     while version < CURRENT_VERSION {
         value = match version {
             0 => migrate_v0_to_v1(value),
+            1 => migrate_v1_to_v2(value),
             _ => value,
         };
         version += 1;
@@ -399,6 +444,24 @@ fn migrate_v0_to_v1(mut value: Value) -> Value {
         }
         object.insert("voice".to_owned(), Value::Object(voice));
         object.insert("version".to_owned(), Value::from(1));
+    }
+    value
+}
+
+/// v1 had a `push_to_talk` switch; v2 has `input_mode`, plus the mic quality, the camera and the
+/// last theme (all defaulted when absent).
+fn migrate_v1_to_v2(mut value: Value) -> Value {
+    if let Some(object) = value.as_object_mut() {
+        if let Some(Value::Object(voice)) = object.get_mut("voice") {
+            let push_to_talk = matches!(voice.remove("push_to_talk"), Some(Value::Bool(true)));
+            let mode = if push_to_talk {
+                serde_json::json!({ "mode": "push_to_talk" })
+            } else {
+                serde_json::json!({ "mode": "voice_activity", "threshold": 0 })
+            };
+            voice.entry("input_mode").or_insert(mode);
+        }
+        object.insert("version".to_owned(), Value::from(2));
     }
     value
 }
@@ -454,7 +517,7 @@ mod tests {
         assert!(request.audio);
         assert_eq!(request.source_id, None);
         // An older file has no screen_share at all; a hand-edited one may have odd values.
-        let old: VoiceSettings = serde_json::from_str(r#"{"push_to_talk":true}"#).unwrap();
+        let old: VoiceSettings = serde_json::from_str(r#"{"auto_gain":true}"#).unwrap();
         assert_eq!(old.screen_share, defaults);
         let edited: ShareSettings =
             serde_json::from_str(r#"{"resolution":"2160p","fps":7}"#).unwrap();
@@ -473,8 +536,11 @@ mod tests {
         store
             .update(|s| {
                 s.voice.input_device = Some("mic".into());
-                s.voice.push_to_talk = true;
-                s.voice.push_to_talk_key = Some("F13".into());
+                s.voice.input_mode = InputMode::PushToTalk;
+                s.voice.push_to_talk_key = Some("f13".into());
+                s.voice.mic_quality = MicQuality::Music;
+                s.voice.camera_device = Some("cam-2".into());
+                s.theme = Some("light-teal-balanced".into());
                 s.voice.screen_share = ShareSettings {
                     resolution: ShareSize::P2160,
                     fps: 60,
@@ -615,11 +681,13 @@ mod tests {
             "push_to_talk_key": "F13",
             "close_to_tray": true
         });
-        let migrated = migrate(0, v0);
-        let settings: Settings = serde_json::from_value(migrated).unwrap();
-        assert_eq!(settings.version, 1);
+        let migrated = migrate_v0_to_v1(v0);
+        assert_eq!(migrated["version"], 1);
+        assert_eq!(migrated["voice"]["push_to_talk"], true);
+        let settings: Settings = serde_json::from_value(migrate(1, migrated)).unwrap();
+        assert_eq!(settings.version, 2);
         assert_eq!(settings.voice.input_device.as_deref(), Some("old-mic"));
-        assert!(settings.voice.push_to_talk);
+        assert_eq!(settings.voice.input_mode, InputMode::PushToTalk);
         assert_eq!(settings.voice.push_to_talk_key.as_deref(), Some("F13"));
         assert!(settings.close_to_tray);
     }
@@ -634,8 +702,45 @@ mod tests {
         .unwrap();
         let store = SettingsStore::load(&dir.0);
         assert_eq!(store.get().version, CURRENT_VERSION);
-        assert!(store.get().voice.push_to_talk);
+        assert_eq!(store.get().voice.input_mode, InputMode::PushToTalk);
         assert_eq!(store.get().voice.input_device.as_deref(), Some("old-mic"));
+    }
+
+    #[test]
+    fn migrates_a_v1_file_to_v2() {
+        let dir = TempDir::new();
+        std::fs::write(
+            dir.file(),
+            r#"{"version":1,"close_to_tray":false,"voice":{"push_to_talk":true,"push_to_talk_key":"F13","auto_gain":false}}"#,
+        )
+        .unwrap();
+        let mut store = SettingsStore::load(&dir.0);
+        let voice = &store.get().voice;
+        assert_eq!(voice.input_mode, InputMode::PushToTalk);
+        assert_eq!(voice.push_to_talk_key.as_deref(), Some("f13"), "lowercased");
+        assert!(!voice.auto_gain);
+        assert_eq!(voice.mic_quality, MicQuality::High);
+        assert_eq!(voice.camera_device, None);
+        assert!(!store.get().close_to_tray);
+        // Off in v1 is voice activity at the most sensitive threshold.
+        let off = migrate(
+            1,
+            serde_json::json!({"version": 1, "voice": {"push_to_talk": false}}),
+        );
+        assert_eq!(
+            off["voice"]["input_mode"],
+            serde_json::json!({"mode": "voice_activity", "threshold": 0})
+        );
+        // Saved back as v2, with no v1 switch left.
+        store
+            .update(|s| s.voice.mic_quality = MicQuality::Standard)
+            .unwrap();
+        let saved: Value =
+            serde_json::from_str(&std::fs::read_to_string(dir.file()).unwrap()).unwrap();
+        assert_eq!(saved["version"], 2);
+        assert_eq!(saved["voice"]["input_mode"]["mode"], "push_to_talk");
+        assert_eq!(saved["voice"]["mic_quality"], "standard");
+        assert!(saved["voice"].get("push_to_talk").is_none());
     }
 
     #[test]

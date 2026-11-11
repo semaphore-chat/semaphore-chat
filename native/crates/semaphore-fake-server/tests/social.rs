@@ -807,7 +807,7 @@ async fn settings_start_at_the_defaults_and_update_only_what_is_named() {
 #[tokio::test]
 async fn channel_overrides_are_empty_until_set_and_deleting_is_idempotent() {
     let (_server, client, base) = showcase().await;
-    let general = "/api/notifications/channels/cc-general/override";
+    let general = &format!("/api/notifications/channels/{}/override", id("cc-general"));
     let response = client
         .get(format!("{base}{general}"))
         .header("Authorization", TOKEN)
@@ -824,7 +824,7 @@ async fn channel_overrides_are_empty_until_set_and_deleting_is_idempotent() {
     let (status, seeded) = get(
         &client,
         &base,
-        "/api/notifications/channels/tr-general/override",
+        &format!("/api/notifications/channels/{}/override", id("tr-general")),
     )
     .await;
     assert_eq!(status, 200, "{seeded}");
@@ -835,7 +835,7 @@ async fn channel_overrides_are_empty_until_set_and_deleting_is_idempotent() {
     let (status, set) = put(&client, &base, general, json!({ "level": "all" })).await;
     assert_eq!(status, 200, "{set}");
     assert_eq!(set["level"], "all");
-    assert_eq!(set["channelId"], "cc-general");
+    assert_eq!(set["channelId"], id("cc-general"));
     server_time_check(&set);
     let (_, changed) = put(&client, &base, general, json!({ "level": "mentions" })).await;
     assert_eq!(changed["id"], set["id"], "an upsert keeps the row");
@@ -895,7 +895,7 @@ fn dm_text(group: &str, text: &str, nonce: u128) -> Value {
 
 fn channel_mention(channel: &str, user: &str, nonce: u128) -> Value {
     json!({
-        "channelId": channel,
+        "channelId": id(channel),
         "spans": [
             { "type": "USER_MENTION", "text": "@them", "userId": user },
             { "type": "PLAINTEXT", "text": " look" },
@@ -1009,7 +1009,7 @@ async fn a_channel_mention_notifies_the_mentioned_user_never_the_author() {
     assert_eq!(names(&heard[0]), vec!["newMessage", "newNotification"]);
     let payload = &heard[0][1].1;
     assert_eq!(payload["type"], "USER_MENTION");
-    assert_eq!(payload["channelId"], "cc-general");
+    assert_eq!(payload["channelId"], id("cc-general"));
     assert_eq!(payload["channelName"], "general");
     assert_eq!(payload["communityId"], id("c-couch"));
     assert_eq!(payload["authorId"], id("u-priya"));
@@ -1061,7 +1061,7 @@ async fn a_mention_is_skipped_when_the_level_for_the_channel_is_none() {
     put(
         &client,
         &base,
-        "/api/notifications/channels/cc-general/override",
+        &format!("/api/notifications/channels/{}/override", id("cc-general")),
         json!({ "level": "none" }),
     )
     .await;
@@ -1098,7 +1098,7 @@ async fn a_mention_is_skipped_when_the_level_for_the_channel_is_none() {
     put(
         &client,
         &base,
-        "/api/notifications/channels/cc-clips/override",
+        &format!("/api/notifications/channels/{}/override", id("cc-clips")),
         json!({ "level": "all" }),
     )
     .await;
@@ -1165,17 +1165,22 @@ async fn mark_as_read_reads_the_contexts_notifications_silently_and_sends_the_re
     );
 
     // A channel: its mention is read, and only the self receipt goes out.
-    let (_, page) = get(&client, &base, "/api/messages/channel/ch-design?limit=1").await;
+    let (_, page) = get(
+        &client,
+        &base,
+        &format!("/api/messages/channel/{}?limit=1", id("ch-design")),
+    )
+    .await;
     let last = page["messages"][0]["id"].as_str().unwrap().to_owned();
     let (events, _) = emit_event(
         &mut me,
         2,
         "markAsRead",
-        json!({ "channelId": "ch-design", "lastReadMessageId": last }),
+        json!({ "channelId": id("ch-design"), "lastReadMessageId": last }),
     )
     .await;
     assert_eq!(names(&events), vec!["readReceiptUpdated"]);
-    assert_eq!(events[0].1["channelId"], "ch-design");
+    assert_eq!(events[0].1["channelId"], id("ch-design"));
     let (_, count) = get(&client, &base, "/api/notifications/unread-count").await;
     assert_eq!(count["count"], 3);
     let heard = settle(&server, &mut [&mut me]).await;
@@ -1188,7 +1193,7 @@ async fn mark_as_read_with_no_context_or_a_foreign_message_is_refused() {
     let mut me = connect_as(&base, &id("me")).await;
     for payload in [
         json!({ "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
-        json!({ "channelId": "ch-design", "directMessageGroupId": id("dm-priya"), "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
+        json!({ "channelId": id("ch-design"), "directMessageGroupId": id("dm-priya"), "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
         json!({ "directMessageGroupId": id("dm-launch"), "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
     ] {
         me.send(&format!("42{}", json!(["markAsRead", payload])))
@@ -1230,13 +1235,18 @@ async fn rest_mark_read_reads_notifications_and_sends_the_receipts_like_the_sock
     );
 
     // A channel: only the self receipt, and its mention is read.
-    let (_, page) = get(&client, &base, "/api/messages/channel/ch-design?limit=1").await;
+    let (_, page) = get(
+        &client,
+        &base,
+        &format!("/api/messages/channel/{}?limit=1", id("ch-design")),
+    )
+    .await;
     let last = page["messages"][0]["id"].clone();
     post(
         &client,
         &base,
         "/api/read-receipts/mark-read",
-        json!({ "channelId": "ch-design", "lastReadMessageId": last }),
+        json!({ "channelId": id("ch-design"), "lastReadMessageId": last }),
     )
     .await;
     let heard = settle(&server, &mut [&mut me, &mut priya]).await;
@@ -1250,7 +1260,7 @@ async fn rest_mark_read_reads_notifications_and_sends_the_receipts_like_the_sock
         &client,
         &base,
         "/api/read-receipts/mark-read",
-        json!({ "channelId": "ch-design", "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
+        json!({ "channelId": id("ch-design"), "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
     )
     .await;
     assert_eq!(
@@ -1558,7 +1568,7 @@ async fn control_post_as_with_a_mention_notifies_the_mentioned_user() {
         &base,
         "/__control/post_as",
         json!({
-            "channelId": "cc-general",
+            "channelId": id("cc-general"),
             "authorId": id("u-priya"),
             "text": "look at this ",
             "mentionUserId": id("me"),

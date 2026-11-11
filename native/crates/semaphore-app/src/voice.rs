@@ -156,6 +156,33 @@ pub struct AppVoice {
 }
 
 impl AppVoice {
+    /// Hands the engine the saved voice settings: devices, processing, push to talk and the mic
+    /// preset. At start, on every change, and again on each join (the preset applies from a join).
+    pub fn apply_settings(&self, voice: &crate::settings::VoiceSettings) {
+        let wanted = engine_choices(voice);
+        let now = self.engine.choices();
+        if now.input_device != wanted.input_device {
+            self.engine.select_input(wanted.input_device.clone());
+        }
+        if now.output_device != wanted.output_device {
+            self.engine.select_output(wanted.output_device.clone());
+        }
+        if now.camera_device != wanted.camera_device {
+            self.engine.select_camera(wanted.camera_device.clone());
+        }
+        if now.processing != wanted.processing {
+            self.engine.set_processing(wanted.processing);
+        }
+        if now.ptt_mode != wanted.ptt_mode {
+            self.engine.set_ptt_mode(wanted.ptt_mode);
+        }
+        self.engine.set_mic_preset(wanted.preset);
+        *self
+            .share_settings
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = voice.screen_share;
+    }
+
     pub fn devices(&self) -> AudioDevices {
         self.engine.devices()
     }
@@ -273,5 +300,65 @@ impl VoiceController for AppVoice {
                 }
             },
         }
+    }
+}
+
+/// What the engine should hold for these settings.
+pub fn engine_choices(
+    voice: &crate::settings::VoiceSettings,
+) -> semaphore_media_livekit::EngineChoices {
+    use crate::settings::{InputMode, MicQuality};
+    use semaphore_media_livekit::MicPreset;
+    semaphore_media_livekit::EngineChoices {
+        input_device: voice.input_device.clone(),
+        output_device: voice.output_device.clone(),
+        camera_device: voice.camera_device.clone(),
+        ptt_mode: voice.input_mode == InputMode::PushToTalk,
+        preset: match voice.mic_quality {
+            MicQuality::Standard => MicPreset::Standard,
+            MicQuality::High => MicPreset::High,
+            MicQuality::Music => MicPreset::Music,
+        },
+        processing: semaphore_media_livekit::audio::apm::AudioProcessing {
+            echo_cancellation: voice.echo_cancellation,
+            noise_suppression: voice.noise_suppression,
+            auto_gain_control: voice.auto_gain,
+            ..Default::default()
+        },
+    }
+}
+
+#[cfg(test)]
+mod settings_tests {
+    use super::engine_choices;
+    use crate::settings::{InputMode, MicQuality, VoiceSettings};
+    use semaphore_media_livekit::MicPreset;
+
+    #[test]
+    fn the_saved_voice_settings_map_onto_the_engine() {
+        let defaults = engine_choices(&VoiceSettings::default());
+        assert!(!defaults.ptt_mode);
+        assert_eq!(defaults.preset, MicPreset::High);
+        assert!(defaults.processing.echo_cancellation && defaults.processing.auto_gain_control);
+        let chosen = engine_choices(&VoiceSettings {
+            input_device: Some("mic-2".into()),
+            output_device: Some("spk-2".into()),
+            camera_device: Some("cam-2".into()),
+            input_mode: InputMode::PushToTalk,
+            mic_quality: MicQuality::Music,
+            noise_suppression: false,
+            ..VoiceSettings::default()
+        });
+        assert_eq!(chosen.input_device.as_deref(), Some("mic-2"));
+        assert_eq!(chosen.output_device.as_deref(), Some("spk-2"));
+        assert_eq!(chosen.camera_device.as_deref(), Some("cam-2"));
+        assert!(chosen.ptt_mode);
+        assert_eq!(chosen.preset, MicPreset::Music);
+        assert!(!chosen.processing.noise_suppression);
+        // High-pass stays as the engine's default has it.
+        assert_eq!(
+            chosen.processing.high_pass_filter,
+            semaphore_media_livekit::audio::apm::AudioProcessing::default().high_pass_filter
+        );
     }
 }

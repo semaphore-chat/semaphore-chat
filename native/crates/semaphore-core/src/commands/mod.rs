@@ -5,11 +5,15 @@
 //! and fetch what's missing or stale, as `useQuery` does: `CoreEvent::ViewChanged` says when to read
 //! again.
 
+pub mod account;
 pub(crate) mod actions;
+pub mod browser_sign_in;
 mod communities;
 mod dms;
 mod messages;
 pub(crate) mod notify;
+pub mod onboarding;
+mod profile;
 mod queries;
 pub(crate) mod reading;
 mod session;
@@ -77,6 +81,10 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::NOTIFICATIONS => Some(ViewKey::Notifications),
         keys::NOTIFY_SETTINGS => Some(ViewKey::NotificationSettings),
         keys::CHANNEL_LEVEL => Some(ViewKey::ChannelNotifyLevel { channel_id: id() }),
+        keys::SESSIONS => Some(ViewKey::Sessions),
+        keys::APPEARANCE => Some(ViewKey::Appearance),
+        keys::INSTANCE_ROLES => Some(ViewKey::InstancePermissions),
+        keys::USER => Some(ViewKey::Profile { user_id: id() }),
         _ => None,
     }
 }
@@ -98,6 +106,9 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::ChannelNotifyLevel { channel_id } => {
             Some(keys::scoped(keys::CHANNEL_LEVEL, channel_id))
         }
+        ViewKey::Sessions => Some(keys::op(keys::SESSIONS)),
+        ViewKey::Appearance => Some(keys::op(keys::APPEARANCE)),
+        ViewKey::InstancePermissions => Some(keys::op(keys::INSTANCE_ROLES)),
         _ => None,
     }
 }
@@ -133,6 +144,7 @@ impl State {
         self.actions = Default::default();
         self.reading = Default::default();
         self.w2 = Default::default();
+        self.w3 = Default::default();
         self.session_epoch += 1;
         self.effects.clear();
         self.main_conversation = None;
@@ -206,11 +218,17 @@ impl State {
                     self.session = SessionState::SignedIn {
                         me: user_view(profile),
                     };
+                    let user_id = profile.id.clone();
                     self.w2_signed_in();
+                    self.view_changed(ViewKey::Profile { user_id });
+                    self.view_changed(ViewKey::InstancePermissions);
                 }
                 self.view_changed(ViewKey::Session);
             }
             keys::USER => {
+                self.view_changed(ViewKey::Profile {
+                    user_id: id.clone(),
+                });
                 for window in self.windows.values_mut() {
                     window.touch_author(&id);
                 }
@@ -259,6 +277,9 @@ impl State {
             keys::CHANNEL_LEVEL => {
                 self.view_changed(ViewKey::ChannelNotifyLevel { channel_id: id })
             }
+            keys::SESSIONS => self.view_changed(ViewKey::Sessions),
+            keys::APPEARANCE => self.view_changed(ViewKey::Appearance),
+            keys::INSTANCE_ROLES => self.view_changed(ViewKey::InstancePermissions),
             keys::THREAD_META => self.reading_meta_arrived(id),
             keys::UNREAD => {
                 self.reading_counts_arrived();

@@ -358,6 +358,7 @@ impl State {
         }
         self.blank_for_reader(&mut dto);
         self.edit_pins(&id, |pinned| *pinned = dto.clone());
+        self.w2_dm_message_changed(&dto);
         let targets = [
             context(&dto.channel_id, &dto.direct_message_group_id),
             dto.parent_message_id
@@ -386,6 +387,10 @@ impl State {
     /// The row goes, wherever it's loaded. The payload doesn't say if this was a reply, so threads
     /// are checked too.
     pub(crate) fn remove_message(&mut self, payload: &wire::DeleteMessagePayloadDto) {
+        self.w2_dm_message_gone(
+            payload.direct_message_group_id.as_deref(),
+            &payload.message_id,
+        );
         let thread = Conversation::Thread {
             parent_message_id: payload.message_id.clone(),
         };
@@ -726,8 +731,14 @@ impl State {
             | ServerEvent::EgressSegmentsReady(_)
             | ServerEvent::ReplayBufferFailed(_)
             | ServerEvent::ReplayBufferStopped(_) => {}
-            // "Your account signed in on a desktop app": a notice, which W3's sessions work shows.
-            ServerEvent::DesktopSignIn(_) => {}
+            // "Your account signed in on a desktop app": a warning, and a new row in the sessions.
+            ServerEvent::DesktopSignIn(event) => {
+                self.push_event(crate::platform::CoreEvent::DesktopSignedIn {
+                    ip_address: event.ip_address.clone().filter(|ip| !ip.is_empty()),
+                    at_ms: event.signed_in_at.timestamp_millis(),
+                });
+                self.invalidate(&keys::op(keys::SESSIONS));
+            }
             // Who's listed changed. The rules hold the web's keys, and this read has its own.
             ServerEvent::MemberAddedToCommunity(_)
             | ServerEvent::UserBanned(_)

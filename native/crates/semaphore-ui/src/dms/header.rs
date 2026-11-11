@@ -40,12 +40,36 @@ impl Render for DmHeader {
                 .text_color(sem.text_primary)
                 .truncate()
                 .into_any_element(),
-            DmHeaderState::Ready(row) => text(Variant::H6, dm_title(row))
-                .font_weight(FontWeight(600.))
-                .text_color(sem.text_primary)
-                .min_w_0()
-                .truncate()
-                .into_any_element(),
+            DmHeaderState::Ready(row) => {
+                let title = text(Variant::H6, dm_title(row))
+                    .font_weight(FontWeight(600.))
+                    .text_color(sem.text_primary)
+                    .min_w_0()
+                    .truncate();
+                match row.members.first().filter(|_| !row.is_group) {
+                    Some(other) => {
+                        let user_id = other.id.clone();
+                        div()
+                            .id("dm-header-title")
+                            .test_support()
+                            .role(Role::Button)
+                            .aria_label(SharedString::from(format!(
+                                "View {}'s profile",
+                                dm_title(row)
+                            )))
+                            .min_w_0()
+                            .cursor_pointer()
+                            .child(title)
+                            .on_click(cx.listener(move |_, _, _, cx| {
+                                cx.emit(DmHeaderEvent::OpenProfile {
+                                    user_id: user_id.clone(),
+                                })
+                            }))
+                            .into_any_element()
+                    }
+                    None => title.into_any_element(),
+                }
+            }
         };
         let ready = matches!(self.state, DmHeaderState::Ready(_));
         let call = (ready && self.can_call).then(|| {

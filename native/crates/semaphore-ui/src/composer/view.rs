@@ -79,6 +79,8 @@ pub struct Composer {
     source: Rc<dyn MentionSource>,
     drafts: Entity<DraftStore>,
     palette: Palette,
+    /// Draw in the app's theme as it is at each frame, instead of the web's default dark.
+    follow_theme: bool,
     availability: Availability,
     max_file_bytes: u64,
 
@@ -153,6 +155,7 @@ impl Composer {
             source: config.source,
             drafts: config.drafts,
             palette: Palette::dark(),
+            follow_theme: false,
             availability: Availability::default(),
             max_file_bytes: config.max_file_bytes.unwrap_or(MAX_FILE_BYTES),
             attachments: Vec::new(),
@@ -313,6 +316,12 @@ impl Composer {
     }
 
     /// What the empty field shows ("Message #general"). The owner sets it with each conversation.
+    /// Draw in the app's theme (`crate::theme::Sem`) from now on.
+    pub fn follow_theme(&mut self, cx: &mut Context<Self>) {
+        self.follow_theme = true;
+        cx.notify();
+    }
+
     pub fn set_placeholder(
         &mut self,
         placeholder: impl Into<SharedString>,
@@ -1542,6 +1551,11 @@ impl Composer {
 
 impl Render for Composer {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if self.follow_theme
+            && let Some(sem) = cx.try_global::<crate::theme::Sem>()
+        {
+            self.palette = Palette::for_theme(sem.choice);
+        }
         let p = self.palette;
         let viewport = window.viewport_size();
         let narrow = viewport.width < px(NARROW_BELOW);

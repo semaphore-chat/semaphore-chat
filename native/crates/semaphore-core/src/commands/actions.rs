@@ -138,6 +138,9 @@ impl State {
             }
         }
         self.edit_pins(id, &change);
+        if let Some(dto) = self.find_message(id) {
+            self.w2_dm_message_changed(&dto);
+        }
     }
 
     /// Replaces a message wherever it's loaded, with what the server sent.
@@ -147,6 +150,7 @@ impl State {
             window.update(dto.clone(), None);
         }
         self.edit_pins(&dto.id, |pinned| *pinned = dto.clone());
+        self.w2_dm_message_changed(dto);
     }
 
     /// Changes a message in any cached pins list that holds it, keeping what only a pin carries
@@ -202,7 +206,7 @@ impl State {
         }
     }
 
-    fn is_instance_owner(&self) -> bool {
+    pub(crate) fn is_instance_owner(&self) -> bool {
         self.cache
             .profile(&keys::op(keys::PROFILE))
             .is_some_and(|profile| profile.role == InstanceRole::Owner)

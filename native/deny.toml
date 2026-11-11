@@ -36,6 +36,7 @@ exceptions = [
     { crate = "semaphore-wire", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-net", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-media-livekit", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-player", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-platform-desktop", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-sysaudio", allow = ["AGPL-3.0-only"] },
     { crate = "semaphore-ui", allow = ["AGPL-3.0-only"] },

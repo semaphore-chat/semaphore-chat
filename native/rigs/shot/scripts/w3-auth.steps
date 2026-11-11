@@ -1,0 +1,140 @@
+# W3 auth: sign-in with registration closed and browser sign-in failed, register in each mode, forgot password, and the invite page in each state.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-auth.steps
+story auth-sign-in 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-sign-in-desktop
+story auth-sign-in 390 844 light-blue-balanced
+wait idle
+shot w3-auth-sign-in-phone
+story auth-registration-closed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-registration-closed-desktop
+story auth-registration-closed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-registration-closed-phone
+story auth-browser-waiting 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-browser-waiting-desktop
+story auth-browser-waiting 390 844 light-blue-balanced
+wait idle
+shot w3-auth-browser-waiting-phone
+story auth-browser-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-browser-failed-desktop
+story auth-browser-failed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-browser-failed-phone
+story auth-browser-timed-out 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-browser-timed-out-desktop
+story auth-browser-timed-out 390 844 light-blue-balanced
+wait idle
+shot w3-auth-browser-timed-out-phone
+story auth-register-open 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-open-desktop
+story auth-register-open 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-open-phone
+story auth-register-invite-only 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-invite-only-desktop
+story auth-register-invite-only 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-invite-only-phone
+story auth-register-closed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-closed-desktop
+story auth-register-closed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-closed-phone
+story auth-register-errors 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-errors-desktop
+story auth-register-errors 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-errors-phone
+story auth-register-invite-code 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-invite-code-desktop
+story auth-register-invite-code 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-invite-code-phone
+story auth-register-busy 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-busy-desktop
+story auth-register-busy 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-busy-phone
+story auth-register-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-register-failed-desktop
+story auth-register-failed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-register-failed-phone
+story auth-forgot 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-forgot-desktop
+story auth-forgot 390 844 light-blue-balanced
+wait idle
+shot w3-auth-forgot-phone
+story auth-forgot-empty 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-forgot-empty-desktop
+story auth-forgot-empty 390 844 light-blue-balanced
+wait idle
+shot w3-auth-forgot-empty-phone
+story auth-forgot-busy 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-forgot-busy-desktop
+story auth-forgot-busy 390 844 light-blue-balanced
+wait idle
+shot w3-auth-forgot-busy-phone
+story auth-forgot-sent 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-forgot-sent-desktop
+story auth-forgot-sent 390 844 light-blue-balanced
+wait idle
+shot w3-auth-forgot-sent-phone
+story auth-forgot-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-forgot-failed-desktop
+story auth-forgot-failed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-forgot-failed-phone
+story auth-invite-usable 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-usable-desktop
+story auth-invite-usable 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-usable-phone
+story auth-invite-long 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-long-desktop
+story auth-invite-long 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-long-phone
+story auth-invite-invalid 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-invalid-desktop
+story auth-invite-invalid 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-invalid-phone
+story auth-invite-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-loading-desktop
+story auth-invite-loading 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-loading-phone
+story auth-invite-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-failed-desktop
+story auth-invite-failed 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-failed-phone
+story auth-invite-signed-in 1280 800 dark-blue-balanced
+wait idle
+shot w3-auth-invite-signed-in-desktop
+story auth-invite-signed-in 390 844 light-blue-balanced
+wait idle
+shot w3-auth-invite-signed-in-phone

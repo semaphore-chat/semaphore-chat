@@ -174,6 +174,9 @@ impl ConversationPane {
                 }
             }
             MessageListEvent::OpenLink { url } => self.open_link(url, window, cx),
+            MessageListEvent::OpenProfile { user_id } => cx.emit(PaneEvent::OpenProfile {
+                user_id: user_id.clone(),
+            }),
             MessageListEvent::OpenReply { message_id } => {
                 let Some(conversation) = self.conversation.clone() else {
                     return;
@@ -342,6 +345,7 @@ impl ConversationPane {
         let attachments = row.attachments.clone();
         let composer = cx.new(|cx| {
             let mut composer = Composer::new(config, window, cx);
+            composer.follow_theme(cx);
             composer.set_edit_content(draft, attachments, window, cx);
             composer
         });
@@ -488,15 +492,16 @@ impl ConversationPane {
                 composer.update(cx, |composer, cx| composer.set_emoji_picker_open(true, cx));
             }
             ComposerEvent::OpenFilePicker => {
-                let picked = cx.prompt_for_paths(PathPromptOptions {
-                    files: true,
-                    directories: false,
-                    multiple: true,
-                    prompt: Some("Attach".into()),
-                });
+                let picked = crate::pick_files(
+                    crate::PickRequest {
+                        multiple: true,
+                        prompt: "Attach",
+                    },
+                    cx,
+                );
                 let composer = composer.downgrade();
                 cx.spawn_in(window, async move |_, cx| {
-                    let Ok(Ok(Some(paths))) = picked.await else {
+                    let Some(paths) = picked.await else {
                         return;
                     };
                     let files: Vec<PendingAttachment> = paths
@@ -660,7 +665,7 @@ impl ConversationPane {
         let ours = (self.server_url)()
             .and_then(|server| semaphore_core::links::parse_message_link(&server, &url));
         let Some(link) = ours else {
-            cx.open_url(&url);
+            crate::open_url(&url, cx);
             return;
         };
         let core = self.core.clone();

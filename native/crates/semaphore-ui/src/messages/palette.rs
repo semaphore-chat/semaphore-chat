@@ -112,6 +112,37 @@ impl Palette {
         }
     }
 
+    /// The palette for a theme: `dark()` exactly for the web's default, the theme's tokens for
+    /// any other.
+    pub fn for_theme(choice: crate::theme::ThemeChoice) -> Self {
+        if choice == crate::theme::ThemeChoice::default() {
+            return Self::dark();
+        }
+        let t = semaphore_design::tokens(choice.mode, choice.accent, choice.intensity);
+        let color = |token: semaphore_design::Rgba| -> Hsla { rgba(token.0).into() };
+        let primary = color(t.primary_main);
+        let text = color(t.text_primary);
+        Self {
+            background: color(t.background_default),
+            paper: color(t.background_paper),
+            text,
+            text_secondary: color(t.text_secondary),
+            text_disabled: color(t.text_disabled),
+            divider: color(t.divider),
+            hover: color(t.action_hover),
+            overlay_medium: color(t.semantic_overlay_medium),
+            overlay_heavy: color(t.semantic_overlay_heavy),
+            primary,
+            primary_light: color(t.primary_light),
+            positive: color(t.semantic_status_positive),
+            warning: color(t.warning_main),
+            error: color(t.error_main),
+            avatar_bg: color(t.grey_600),
+            skeleton: Hsla { a: 0.11, ..text },
+            selection: Hsla { a: 0.35, ..primary },
+        }
+    }
+
     pub fn tint(&self, color: Hsla, a: f32) -> Hsla {
         Hsla { a, ..color }
     }

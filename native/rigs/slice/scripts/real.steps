@@ -87,3 +87,35 @@ wait core session signed-out within 60
 expect stored-session no
 wait idle
 shot 07-revoked
+
+# 10. W3: "sign out other sessions" never takes the app's own. Sign in again; web sign-ins elsewhere
+# are other sessions; the app revokes the others; only the app's is left (besides the checking
+# call's own), and the app stays signed in: its socket stays up, and a restart restores the session
+# with its refresh token, which the server would refuse had it been revoked.
+wait core label "Username" within 15
+click auth-username
+type "testuser"
+click auth-password
+type "Test123!@#"
+click auth-login
+wait core session signed-in within 20
+wait core connection connected within 20
+exec "python3 scripts/real-api.py $SERVER others testuser \"Semaphore Desktop on Linux\" some"
+core revoke-other-sessions
+exec "python3 scripts/real-api.py $SERVER others testuser \"Semaphore Desktop on Linux\" only"
+expect core session signed-in
+expect core connection connected
+wait core element community-{{COMMUNITY}}
+click community-{{COMMUNITY}}
+wait core element channel-{{CH_GENERAL}}
+click channel-{{CH_GENERAL}}
+wait core channel {{CH_GENERAL}}
+wait idle
+shot 08-after-revoke-others
+restart
+wait core session signed-in within 20
+wait core connection connected within 20
+expect stored-session yes
+exec "python3 scripts/real-api.py $SERVER expect-device testuser \"Semaphore Desktop on Linux\""
+wait idle
+shot 09-restored-after-revoke-others

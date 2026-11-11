@@ -1,11 +1,11 @@
 //! Communities, channels, permissions, members, presence, counters and custom emoji.
 
-use super::{invalid, json_response};
+use super::{bearer_token, invalid, json_response};
 use crate::messages;
 use crate::{Inner, lock};
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use semaphore_wire::enums::ChannelType;
@@ -77,19 +77,26 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
     })
 }
 
-async fn communities_mine(State(inner): State<Arc<Inner>>) -> Response {
-    let communities: Vec<Value> = inner
-        .scenario
-        .communities
+async fn communities_mine(State(inner): State<Arc<Inner>>, headers: HeaderMap) -> Response {
+    let user = inner.user_of(bearer_token(&headers));
+    // A registered account has none of the scenario's: only what it made.
+    let scenario: &[crate::scenario::Community] = if inner.is_registered(&user) {
+        &[]
+    } else {
+        &inner.scenario.communities
+    };
+    let communities: Vec<Value> = scenario
         .iter()
+        .cloned()
+        .chain(inner.created_communities_of(&user))
         .map(|community| {
             serde_json::to_value(CommunityResponseDto {
-                avatar: community.avatar.clone(),
-                banner: community.banner.clone(),
+                avatar: community.avatar,
+                banner: community.banner,
                 created_at: community.created_at,
-                description: community.description.clone(),
-                id: community.id.clone(),
-                name: community.name.clone(),
+                description: community.description,
+                id: community.id,
+                name: community.name,
             })
             .expect("a community serializes")
         })
@@ -101,7 +108,7 @@ async fn channels_for_community(
     State(inner): State<Arc<Inner>>,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.scenario.community(&community_id) else {
+    let Some(community) = inner.find_community(&community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
     let channels: Vec<Value> = community
@@ -116,7 +123,7 @@ async fn mentionable_channels(
     State(inner): State<Arc<Inner>>,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.scenario.community(&community_id) else {
+    let Some(community) = inner.find_community(&community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
     let channels: Vec<Value> = community
@@ -132,7 +139,7 @@ async fn channel_permissions(
     State(inner): State<Arc<Inner>>,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.scenario.community(&community_id) else {
+    let Some(community) = inner.find_community(&community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
     let channels: Vec<ChannelCapabilitiesDto> = community
@@ -181,11 +188,16 @@ async fn members_of_community(
         },
         None => 100,
     };
-    let all = inner
-        .scenario
-        .memberships
-        .get(&community_id)
-        .map(Vec::as_slice)
+    let created = inner.created_members(&community_id);
+    let all = created
+        .as_deref()
+        .or_else(|| {
+            inner
+                .scenario
+                .memberships
+                .get(&community_id)
+                .map(Vec::as_slice)
+        })
         .unwrap_or(&[]);
     let start = match query.get("continuationToken") {
         Some(token) => match all.iter().position(|member| member.id == *token) {

@@ -46,6 +46,13 @@ pub enum CoreEvent {
     WithdrawNotifications {
         tag: String,
     },
+    /// A desktop app signed in to this account through a browser approval (`desktopSignIn`): warn,
+    /// as the web does, "If this wasn't you, change your password". `ip_address` is the new
+    /// session's, when the server knew it.
+    DesktopSignedIn {
+        ip_address: Option<String>,
+        at_ms: i64,
+    },
 }
 
 pub trait EventSink: Send + Sync {
@@ -187,4 +194,71 @@ pub trait MediaEngine: Send + Sync {
 
     /// Stops the screen share and its audio, if one runs.
     async fn stop_screen_share(&self) {}
+}
+
+/// Sign in with browser's one-shot HTTP listener on the loopback interface (RFC 8252 section 7.3).
+/// The listener only moves bytes: core decides what each request gets (`Core::start_browser_sign_in`
+/// checks the method, Host, path, `state` and the code). Desktop: `semaphore-platform-desktop`'s
+/// `loopback`. Set with `Core::set_loopback`.
+#[async_trait]
+pub trait Loopback: Send + Sync {
+    /// Starts listening on `127.0.0.1`, on a port the OS picks. Never `localhost` (some resolve it
+    /// to `::1` first) and never another interface.
+    async fn bind(&self) -> Result<std::sync::Arc<dyn LoopbackListener>, CoreError>;
+}
+
+/// One bound listener, for one attempt.
+#[async_trait]
+pub trait LoopbackListener: Send + Sync {
+    fn port(&self) -> u16;
+
+    /// The next request's head, once one has fully arrived. `None` once `timeout_ms` has passed or
+    /// `close` was called. A connection that is slow to send its head, or sends more than a few KiB
+    /// of it, gets `LoopbackPage::BadRequest` from the listener itself and never shows up here, so
+    /// it can't hold up the real callback.
+    async fn next(&self, timeout_ms: u64) -> Option<LoopbackRequest>;
+
+    /// Answers request `id` with `page` and closes its connection. Nothing else is ever served: no
+    /// files, no other paths.
+    fn reply(&self, id: u64, page: LoopbackPage);
+
+    /// Stops listening. A waiting `next` returns `None`; requests not yet answered get
+    /// `LoopbackPage::BadRequest`.
+    fn close(&self);
+}
+
+/// A request's head, as it came. `target` holds the code and `state`, so `Debug` shows only its
+/// path, and nothing may log it.
+#[derive(Clone, PartialEq, Eq)]
+pub struct LoopbackRequest {
+    /// For `LoopbackListener::reply`.
+    pub id: u64,
+    pub method: String,
+    /// The `Host` header, if there was exactly one.
+    pub host: Option<String>,
+    /// The request target, such as `/callback?code=...&state=...`.
+    pub target: String,
+}
+
+impl std::fmt::Debug for LoopbackRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let path = self.target.split(['?', '#']).next().unwrap_or("");
+        f.debug_struct("LoopbackRequest")
+            .field("id", &self.id)
+            .field("method", &self.method)
+            .field("host", &self.host)
+            .field("path", &path)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The fixed pages the listener writes. None of them carries the code, `state` or a token.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LoopbackPage {
+    /// 200 "You're signed in. You can close this tab."
+    SignedIn,
+    /// 200 "Sign-in cancelled."
+    Denied,
+    /// 400 "This link doesn't work. Start again from the app."
+    BadRequest,
 }

@@ -6,12 +6,14 @@
 // parse helper would only make the handlers harder to read.
 #![allow(clippy::result_large_err)]
 
+mod account;
 mod communities;
 mod dms;
 mod files;
 mod messages;
 mod moderation;
 mod notify;
+mod onboarding;
 mod search;
 mod session;
 mod social;
@@ -45,6 +47,8 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(dms::routes())
         .merge(social::routes())
         .merge(notify::routes())
+        .merge(account::routes())
+        .merge(onboarding::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -64,6 +68,8 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| dms::operation_id(method, route))
         .or_else(|| social::operation_id(method, route))
         .or_else(|| notify::operation_id(method, route))
+        .or_else(|| account::operation_id(method, route))
+        .or_else(|| onboarding::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -89,6 +95,10 @@ fn is_public(operation: Option<&str>) -> bool {
         Some(
             "AuthController_login"
                 | "AuthController_refresh"
+                | "AuthController_redeemDesktopLogin"
+                | "AuthController_forgotPassword"
+                | "UserController_register"
+                | "InviteController_getPublicInvite"
                 | "InstanceController_getPublicSettings"
                 | "Fixture_image"
         )
@@ -143,6 +153,22 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         && bearer_token(request.headers()) != Some(required.as_str())
     {
         let response = inner.error(401, "UNAUTHENTICATED", "Access token expired", false);
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    // A session that was revoked: its tokens fail, as the backend's blacklist makes them.
+    if operation.is_some()
+        && !is_public(operation)
+        && let Some(token) = bearer_token(request.headers())
+        && inner.token_revoked(token)
+    {
+        let response = inner.error(401, "UNAUTHENTICATED", "Session revoked", false);
         inner.record_http(
             method.as_str(),
             &path,
@@ -323,6 +349,68 @@ async fn control(
                 Ok(id) => json_response(StatusCode::OK, json!({ "id": id })),
                 Err(message) => invalid(message),
             };
+        }
+        // W3's account hooks, as `Server::approve_desktop` and the rest do them for tests.
+        "approve_desktop" => {
+            let Some(challenge) = request.get("challenge").and_then(Value::as_str) else {
+                return invalid("challenge is required");
+            };
+            let me = inner.scenario.me.id.clone();
+            let code = lock(&inner.accounts).approve(challenge, &me, inner.now(), false);
+            return json_response(StatusCode::OK, json!({ "code": code }));
+        }
+        "emit_desktop_sign_in" => {
+            let me = inner.scenario.me.id.clone();
+            let ip = request.get("ipAddress").and_then(Value::as_str);
+            inner.emit_to_user(
+                &me,
+                "desktopSignIn",
+                json!({ "ipAddress": ip, "signedInAt": inner.now() }),
+            );
+        }
+        "seed_invite" => {
+            let Some(code) = request.get("code").and_then(Value::as_str) else {
+                return invalid("code is required");
+            };
+            let mut invite = crate::InviteSeed::new(code);
+            if let Some(max) = request.get("maxUses").and_then(Value::as_i64) {
+                invite.max_uses = Some(max);
+            }
+            lock(&inner.accounts).invites.push(crate::accounts::Invite {
+                code: invite.code,
+                uses: invite.uses,
+                max_uses: invite.max_uses,
+                valid_until: invite.valid_until,
+                disabled: invite.disabled,
+                created_by: invite.created_by,
+            });
+        }
+        "add_session" => {
+            let device = request
+                .get("deviceName")
+                .and_then(Value::as_str)
+                .unwrap_or("Another device");
+            let ip = request.get("ipAddress").and_then(Value::as_str);
+            let me = inner.scenario.me.id.clone();
+            let now = inner.now();
+            let mut accounts = lock(&inner.accounts);
+            let index = accounts.start_session(&me, Some(device), ip, now, None, false);
+            // A script names the session it'll click on.
+            if let Some(id) = request.get("id").and_then(Value::as_str) {
+                accounts.sessions[index].id = id.to_owned();
+            }
+            let id = accounts.sessions[index].id.clone();
+            return json_response(StatusCode::OK, json!({ "id": id }));
+        }
+        "public_settings" => {
+            let Some(fields) = request.as_object() else {
+                return invalid("an object of public settings is required");
+            };
+            lock(&inner.accounts).public_settings.extend(
+                fields
+                    .iter()
+                    .map(|(key, value)| (key.clone(), value.clone())),
+            );
         }
         "drop_connections" => {
             inner.close_connections();

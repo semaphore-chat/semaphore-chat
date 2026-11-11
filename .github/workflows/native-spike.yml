@@ -176,6 +176,14 @@ jobs:
           name: capture-probe-windows
           path: native/target/release/examples/capture_probe.exe
           if-no-files-found: error
+      # W3-player spike: the shim against webrtc.lib's FFmpeg, whose symbols keep their plain names
+      # on Windows (Linux has LiveKit's LK_ prefix), libvpx and dav1d, on the committed fixtures.
+      # The Linux image can't build this C for MSVC, so this is its only Windows proof.
+      - name: Player fixtures decode (FFmpeg, libvpx, dav1d in libwebrtc)
+        shell: bash
+        run: |
+          cargo test --locked --release -p semaphore-player
+          cargo test --locked --release -p semaphore-player --features aac
       # For a real Windows GPU: the hosted runner only has the software adapter.
       - uses: actions/upload-artifact@v7
         with:

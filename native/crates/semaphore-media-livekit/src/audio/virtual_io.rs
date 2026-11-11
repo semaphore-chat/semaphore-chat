@@ -164,9 +164,21 @@ impl AudioIo for VirtualIo {
     fn open_output(
         &self,
         device: Option<&str>,
+        on_audio: OutputCallback,
+        on_error: ErrorCallback,
+    ) -> Result<AudioStream, String> {
+        self.open_output_channels(device, 1, on_audio, on_error)
+    }
+
+    /// The speaker sees each 10 ms frame interleaved, `channels` wide.
+    fn open_output_channels(
+        &self,
+        device: Option<&str>,
+        channels: u16,
         mut on_audio: OutputCallback,
         on_error: ErrorCallback,
     ) -> Result<AudioStream, String> {
+        let channels = usize::from(channels.max(1));
         let id = self.resolve(device, false)?;
         {
             let mut state = self.lock();
@@ -175,8 +187,9 @@ impl AudioIo for VirtualIo {
         }
         let stop = Arc::new(AtomicBool::new(false));
         let me = self.clone();
+        let mut frame = vec![0i16; FRAME_SAMPLES * channels];
         Self::clock(stop.clone(), move || {
-            let mut frame = [0i16; FRAME_SAMPLES];
+            frame.fill(0);
             on_audio(&mut frame, 0);
             if let Some(speaker) = me.lock().speaker.as_mut() {
                 speaker(&frame);
