@@ -50,7 +50,9 @@ if [ "${1:-}" = "--voice" ]; then
     fi
     sleep 0.5
   done
-  "$NATIVE_DIR/scripts/in-image.sh" scripts/slice-e2e.sh --voice-inner "${1:-results/slice/e2e-voice}"
+  # The inner half reaches LiveKit by the same name (SLICE_LK_NAME), so it goes along.
+  NATIVE_DOCKER_ARGS="${NATIVE_DOCKER_ARGS:-} -e SLICE_LK_NAME=$LK_NAME" \
+    "$NATIVE_DIR/scripts/in-image.sh" scripts/slice-e2e.sh --voice-inner "${1:-results/slice/e2e-voice}"
   exit $?
 fi
 
