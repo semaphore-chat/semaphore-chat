@@ -13,6 +13,11 @@ path = "src/lib.rs"
 name = "semaphore-app"
 path = "src/main.rs"
 
+# W3-player spike (docs/player.md): off until W3-app wires the player in.
+[features]
+player = ["dep:semaphore-player"]
+player-aac = ["player", "semaphore-player/aac"]
+
 [dependencies]
 async-channel = "2"
 futures-util.workspace = true
@@ -27,6 +32,7 @@ semaphore-core.workspace = true
 semaphore-media-livekit.workspace = true
 semaphore-net.workspace = true
 semaphore-platform-desktop.workspace = true
+semaphore-player = { path = "../semaphore-player", optional = true }
 semaphore-sysaudio.workspace = true
 semaphore-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
