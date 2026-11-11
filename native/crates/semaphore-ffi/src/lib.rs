@@ -11,19 +11,18 @@
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
-    ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView, ErrorView,
-    LinkPreviewView, ListOp, LocalMediaView, LocalShare, MemberList, MemberView, MentionCandidate,
-    MentionKind, MessageDraft, MessageRow, ParticipantView, RailCounts, ReactionView, ReplyToView,
-    ScreenShareRequest, SegKind, SendState, SessionState, ShareResolution, TextSeg, TextStyle,
-    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
-    WebhookView,
+    AttachmentKind, AttachmentView, ChannelKind, ChannelModeration, ChannelPermissions, ChannelRow, CommunityRow, ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView, ErrorView, LinkPreviewView, ListOp, LoadState, LocalMediaView, LocalShare, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts, ReactionUsers, ReactionView, ReplyToView, ScreenShareRequest, SearchHit, SearchScope, SegKind, SendState, SessionState, ShareResolution, TextSeg, TextStyle, ThreadInfo, UnreadMarker, UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
 use std::sync::Arc;
 
 uniffi::setup_scaffolding!("semaphore");
+
+// W1: each part exports its commands in an `#[uniffi::export] impl SemaphoreCore` block of its own
+// file. UniFFI takes any number of such blocks for one object.
+mod actions;
+mod reading;
 
 #[uniffi::remote(Enum)]
 pub enum Conversation {
@@ -156,6 +155,8 @@ pub struct ReactionView {
     pub emoji: String,
     pub count: u32,
     pub me: bool,
+    pub user_ids: Vec<String>,
+    pub custom_emoji_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -199,7 +200,11 @@ pub struct MessageRow {
     pub author: UserView,
     pub sent_at_ms: i64,
     pub edited: bool,
+    pub mine: bool,
+    pub edit_pending: bool,
     pub removed: bool,
+    pub removed_by: Option<UserView>,
+    pub removed_reason: Option<String>,
     pub display: String,
     pub segs: Vec<TextSeg>,
     pub attachments: Vec<AttachmentView>,
@@ -209,6 +214,8 @@ pub struct MessageRow {
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
     pub pinned: bool,
+    pub pinned_by: Option<UserView>,
+    pub pinned_at_ms: Option<i64>,
     pub webhook: Option<WebhookView>,
     pub send_state: SendState,
     pub pending_attachments: u32,
@@ -245,6 +252,8 @@ pub enum MentionKind {
     Special,
     Alias,
     Channel,
+    Community,
+    Emoji,
 }
 
 #[uniffi::remote(Record)]
@@ -407,6 +416,81 @@ pub enum ViewKey {
     Rail,
     Voice,
     Typing { conversation: Conversation },
+    Pins { channel_id: String },
+    ReactionUsers { message_id: String, emoji: String },
+    Thread { parent_message_id: String },
+    UnreadMarker { conversation: Conversation },
+    ChannelModeration { channel_id: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct ChannelModeration {
+    pub pin: bool,
+    pub unpin: bool,
+    pub remove_any: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LoadState {
+    Loading,
+    Ready,
+    Failed { error: ErrorView },
+}
+
+#[uniffi::remote(Record)]
+pub struct ReactionUsers {
+    pub users: Vec<UserView>,
+    pub more: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct PinnedRow {
+    pub row: MessageRow,
+    pub parent_message_id: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct PinnedList {
+    pub state: LoadState,
+    pub rows: Vec<PinnedRow>,
+}
+
+#[uniffi::remote(Record)]
+pub struct ThreadInfo {
+    pub state: LoadState,
+    pub subscribed: bool,
+    pub reply_count: u32,
+    pub last_reply_at_ms: Option<i64>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum SearchScope {
+    Channel { id: String },
+    DirectMessage { id: String },
+    Community { id: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct SearchHit {
+    pub row: MessageRow,
+    pub conversation: Conversation,
+    pub parent_message_id: Option<String>,
+    pub channel_name: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct UnreadMarker {
+    pub after_message_id: String,
+    pub after_seq: Option<i64>,
+    pub unread_count: u32,
+    pub mention_count: u32,
+}
+
+#[uniffi::remote(Record)]
+pub struct MessageLink {
+    pub community_id: Option<String>,
+    pub conversation: Conversation,
+    pub message_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -646,22 +730,6 @@ impl SemaphoreCore {
 
     pub async fn file(&self, file_id: String, thumbnail: bool) -> Result<Vec<u8>, CoreError> {
         self.core.file(file_id, thumbnail).await
-    }
-
-    pub async fn toggle_reaction(
-        &self,
-        message_id: String,
-        emoji: String,
-    ) -> Result<(), CoreError> {
-        self.core.toggle_reaction(message_id, emoji).await
-    }
-
-    pub async fn mark_read(
-        &self,
-        conversation: Conversation,
-        message_id: String,
-    ) -> Result<(), CoreError> {
-        self.core.mark_read(conversation, message_id).await
     }
 
     pub async fn join_voice(&self, channel_id: String) -> Result<(), CoreError> {

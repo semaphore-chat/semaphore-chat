@@ -5,6 +5,7 @@
 //! `native/fixtures/scenarios/` over HTTP and Socket.IO framing, from an in-memory state
 //! with a settable clock, and exposes faults for tests.
 
+mod actions;
 mod http;
 pub mod livekit;
 mod messages;
@@ -427,6 +428,19 @@ impl FakeServer {
     /// `http://127.0.0.1:<port>`.
     pub fn base_url(&self) -> String {
         self.inner.base_url.clone()
+    }
+
+    /// Gives a stored message a new id, in place. The scenarios' ids are readable, and a few
+    /// routes type the id as a UUID, so a test that calls them renames its messages first.
+    pub fn rename_message(&self, id: &str, new_id: &str) -> bool {
+        let mut data = lock(&self.inner.data);
+        match messages::find_message_mut(&mut data, id) {
+            Some(message) => {
+                message.id = new_id.to_owned();
+                true
+            }
+            None => false,
+        }
     }
 
     /// Send a server event to every connected socket.

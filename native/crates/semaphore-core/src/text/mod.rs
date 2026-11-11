@@ -153,6 +153,8 @@ pub fn draft_to_spans(draft: &MessageDraft) -> Vec<SpanInput> {
             MentionKind::Special => ("SPECIAL_MENTION", label),
             MentionKind::Alias => ("ALIAS_MENTION", label),
             MentionKind::Channel => ("CHANNEL_MENTION", None),
+            MentionKind::Community => ("COMMUNITY_MENTION", label),
+            MentionKind::Emoji => ("EMOJI", label),
         };
         spans.push(SpanInput {
             kind: kind.into(),
@@ -160,6 +162,8 @@ pub fn draft_to_spans(draft: &MessageDraft) -> Vec<SpanInput> {
             user_id: id.clone().filter(|_| m.kind == MentionKind::User),
             special_kind: id.clone().filter(|_| m.kind == MentionKind::Special),
             alias_id: id.clone().filter(|_| m.kind == MentionKind::Alias),
+            community_id: id.clone().filter(|_| m.kind == MentionKind::Community),
+            emoji_id: id.clone().filter(|_| m.kind == MentionKind::Emoji),
             channel_id: id.filter(|_| m.kind == MentionKind::Channel),
             ..SpanInput::default()
         });

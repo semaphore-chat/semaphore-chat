@@ -9,7 +9,10 @@
 mod communities;
 mod files;
 mod messages;
+mod moderation;
+mod search;
 mod session;
+mod threads;
 mod voice;
 
 use crate::messages::SendFailure;
@@ -33,6 +36,9 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(messages::routes())
         .merge(voice::routes())
         .merge(files::routes())
+        .merge(moderation::routes())
+        .merge(threads::routes())
+        .merge(search::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -46,6 +52,9 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| messages::operation_id(method, route))
         .or_else(|| voice::operation_id(method, route))
         .or_else(|| files::operation_id(method, route))
+        .or_else(|| moderation::operation_id(method, route))
+        .or_else(|| threads::operation_id(method, route))
+        .or_else(|| search::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {

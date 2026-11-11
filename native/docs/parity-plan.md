@@ -273,6 +273,14 @@ identical static shots). "Stories" means the unit's stories render in `rigs/shot
 | W1-ui-panels | Docked side panel container, pins panel, search panel and results, thread pane | new `ui/src/panel`, new `ui/src/thread` | W1 model freeze | L | stories: each panel loading/empty/error/long; phone-width overlay |
 | W1-app | Wire all of the above; `Route` for search; thread pane opens from `OpenThread` | `semaphore-app/src/{root,conversation}.rs`, `rigs/slice/scripts/w1.steps` | W1-core, all W1-ui | M | `slice-e2e.sh` with `w1.steps`: edit, delete, pin, react, thread reply, search hit, both runs identical |
 
+**W1 defaults** (chosen for the owner, who may overrule; 2026-11-10):
+
+- A moderator deleting someone else's message soft-removes it (`DELETE /moderation/message/{id}`), so moderators keep its text and reason. The author's own delete stays a hard delete (`DELETE /messages/{id}`). The web hard-deletes in both cases.
+- The unread divider stays where it was when the conversation opened. It doesn't move as messages are read, as the web's does.
+- No "Copy message link" and no `semaphore://` message link in this wave. `parse_message_link` reads the web's `?highlight=` paths.
+- Editing may remove attachments, as on the web.
+- Moderator permissions (pin, remove, see removed) come from `rolesControllerGetMyRolesForChannel` until the backend adds capability flags (section 4, "Asks from W1").
+
 ### Wave 2: DMs, friends, notifications, desktop integration
 
 | Unit | Delivers | Touches | Depends on | Size | Done when |
@@ -378,3 +386,16 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 | Password reset link | `mailer.service.ts` builds `${publicAppUrl}/reset-password?token=...`, a web URL | The email always opens the web app; `semaphore://` has no reset route | web flow is acceptable unless native should handle it (decide) |
 | Third-party media | Link-preview images and GIF media (`gifs` returns Giphy URLs) are loaded by the browser straight from third parties | Native must fetch them directly (exposes the viewer's IP) or the backend needs a proxy | pending Mike's decision |
 | Browser sign-in | `auth/desktop/authorize` + `auth/desktop/token` (PKCE, loopback) exist and are in the native pin | Usable, but the issued session's token delivery depends on the client-type contract above | `security/release` |
+
+### Asks from W1 for the backend lane
+
+Things the contract makes awkward for a non-web client, found while designing W1-core (2026-11-10). None blocks W1; each has a workaround in core.
+
+| Ask | Why | Native's workaround meanwhile |
+|---|---|---|
+| `pin`, `deleteAny` and `seeRemoved` flags on `ChannelCapabilitiesDto` | The web decides pin and moderator delete from RBAC actions (`useCanPerformAction`); native already reads channel capabilities for everything else | Reads `rolesControllerGetMyRolesForChannel` and checks the role actions |
+| Say soft or hard in the `deleteMessage` payload | A moderator's soft removal and a hard delete send the same payload, so a client can't tell whether moderators should keep the row | A reader with DELETE_ANY_MESSAGE refetches `GET /messages/{id}`: a removed row stays, a 404 goes |
+| A specific `ErrorCode` for a blocked 1:1 DM | `assertNotBlockedInDm` throws a plain FORBIDDEN ("You cannot message this user") for sends, thread replies and edits | Shows the server's message; the composer can't lock itself |
+| A block check on reactions in 1:1 DMs | `reactions.service` has none, so a blocked user can still react | none (server gap) |
+| Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit |
+

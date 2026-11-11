@@ -201,6 +201,10 @@ fn reaction_view(value: &Value, me_id: &str) -> ReactionView {
         me: user_ids
             .iter()
             .any(|user_id| user_id.as_str() == Some(me_id)),
+        user_ids: user_ids.iter().filter_map(string).collect(),
+        custom_emoji_id: string(get(value, "emoji"))
+            .as_deref()
+            .and_then(crate::store::custom_emoji_id),
     }
 }
 
@@ -306,6 +310,7 @@ fn message_row(
                 .collect(),
         )
     };
+    let mine = !me_id.is_empty() && author.id == me_id;
     Ok(MessageRow {
         seq: 0,
         id: string(get(message, "id")),
@@ -313,7 +318,11 @@ fn message_row(
         author,
         sent_at_ms: sent_at_ms(message)?,
         edited: !get(message, "editedAt").is_null(),
+        mine,
+        edit_pending: false,
         removed,
+        removed_by: None,
+        removed_reason: None,
         display,
         segs,
         attachments,
@@ -334,6 +343,8 @@ fn message_row(
                 .collect()
         },
         pinned: flag(get(message, "pinned")),
+        pinned_by: None,
+        pinned_at_ms: time_ms(get(message, "pinnedAt")),
         webhook: webhook_view(get(message, "webhook")),
         send_state: SendState::Sent,
         pending_attachments: 0,

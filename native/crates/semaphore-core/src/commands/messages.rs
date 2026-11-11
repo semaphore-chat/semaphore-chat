@@ -9,7 +9,6 @@ use crate::send::is_optimistic_id;
 use crate::store::SendStatus;
 use semaphore_wire::enums::MessagePageDirection;
 use semaphore_wire::events::{MARK_AS_READ, TYPING_START, TYPING_STOP};
-use semaphore_wire::types as wire;
 use serde_json::json;
 
 impl Core {
@@ -272,52 +271,18 @@ impl Core {
         Ok(())
     }
 
-    /// Adds my reaction, or removes it if it's there. The contract types this request's id as a
-    /// UUID, so unlike a send it can't carry a scenario's readable id.
+    /// Adds my reaction, or removes it if it's there: [`Core::add_reaction`] or
+    /// [`Core::remove_reaction`].
     pub async fn toggle_reaction(
         &self,
         message_id: String,
         emoji: String,
     ) -> Result<(), CoreError> {
-        let services = self.services().ok_or_else(|| unavailable("reactions"))?;
-        let parsed = message_id.parse().map_err(|error| CoreError::Failed {
-            message: format!("message id {message_id}: {error}"),
-        })?;
-        let mine = self.read(|state| {
-            state
-                .windows
-                .values()
-                .find_map(|window| window.find(&message_id))
-                .is_some_and(|message| {
-                    message.dto.reactions.iter().any(|reaction| {
-                        reaction.emoji == emoji
-                            && reaction.user_ids.iter().any(|id| id == state.me_id())
-                    })
-                })
-        });
-        // Its event updates the row: this client's own reaction comes back like anyone's.
-        if mine {
-            let body = wire::RemoveReactionDto {
-                emoji,
-                message_id: parsed,
-            };
-            services
-                .backend
-                .messages_controller_remove_reaction(body)
-                .await
-                .map_err(|error| self.backend_failed(error))?;
+        if self.reacted(&message_id, &emoji) {
+            self.remove_reaction(message_id, emoji).await
         } else {
-            let body = wire::AddReactionDto {
-                emoji,
-                message_id: parsed,
-            };
-            services
-                .backend
-                .messages_controller_add_reaction(body)
-                .await
-                .map_err(|error| self.backend_failed(error))?;
+            self.add_reaction(message_id, emoji).await
         }
-        Ok(())
     }
 
     /// Over the socket, as the web's visible-range marks are, because the REST path types the id

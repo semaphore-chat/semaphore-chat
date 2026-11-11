@@ -135,6 +135,8 @@ pub fn menu_heading(candidates: &[MentionCandidate]) -> &'static str {
         MentionKind::Alias => "Mention Groups",
         MentionKind::Special => "Special Mentions",
         MentionKind::Channel => "Channels",
+        MentionKind::Community => "Communities",
+        MentionKind::Emoji => "Emoji",
     }
 }
 

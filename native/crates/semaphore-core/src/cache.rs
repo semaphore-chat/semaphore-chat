@@ -54,6 +54,9 @@ pub mod keys {
     pub const CHANNEL_MESSAGES: &str = "messagesControllerFindAllForChannel";
     pub const DM_MESSAGES: &str = "messagesControllerFindAllForGroup";
     pub const THREAD_REPLIES: &str = "threadsControllerGetReplies";
+    pub const PINS: &str = "moderationControllerGetPinnedMessages";
+    pub const THREAD_META: &str = "threadsControllerGetMetadata";
+    pub const CHANNEL_ROLES: &str = "rolesControllerGetMyRolesForChannel";
 
     pub fn scoped(op: &str, id: &str) -> QueryKey {
         QueryKey::new(&[op, id])
@@ -80,6 +83,12 @@ pub enum CacheValue {
     Members(MemberPages),
     Presence(HashMap<String, bool>),
     NotificationCount(i64),
+    /// A channel's pins, keyed by channel.
+    Pins(Vec<wire::PinnedMessageDto>),
+    /// Keyed by parent message.
+    ThreadMeta(wire::ThreadMetadataDto),
+    /// This user's roles in a channel, keyed by channel: their actions decide pin and remove.
+    ChannelRoles(wire::UserRolesResponseDto),
 }
 
 /// As many pages of a community's members as core reads.
@@ -122,6 +131,19 @@ macro_rules! typed_read {
 }
 
 impl QueryCache {
+    typed_read!(pins, pins_mut, Pins, Vec<wire::PinnedMessageDto>);
+    typed_read!(
+        thread_meta,
+        thread_meta_mut,
+        ThreadMeta,
+        wire::ThreadMetadataDto
+    );
+    typed_read!(
+        channel_roles,
+        channel_roles_mut,
+        ChannelRoles,
+        wire::UserRolesResponseDto
+    );
     typed_read!(user, user_mut, User, wire::UserEntity);
     typed_read!(profile, profile_mut, Profile, wire::UserEntity);
     typed_read!(

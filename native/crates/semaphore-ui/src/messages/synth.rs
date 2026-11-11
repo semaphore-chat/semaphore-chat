@@ -362,6 +362,7 @@ pub fn row(seq: i64) -> MessageRow {
             emoji: "\u{1F44D}".into(),
             count: 1 + reactions_rng.below(9) as u32,
             me: reactions_rng.below(4) == 0,
+            ..ReactionView::default()
         }]
     } else {
         Vec::new()

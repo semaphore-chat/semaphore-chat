@@ -228,7 +228,7 @@ fn span_type(kind: &str) -> SpanType {
     SpanType::Unknown(kind.to_owned())
 }
 
-fn span_from(send: &SendSpan) -> SpanDto {
+pub(crate) fn span_from(send: &SendSpan) -> SpanDto {
     SpanDto {
         alias_id: send.alias_id.clone(),
         bold: send.bold,
@@ -618,7 +618,7 @@ pub(crate) fn emojis_in_use(inner: &Inner, community_id: &str) -> Vec<serde_json
         .collect()
 }
 
-fn find_message(data: &crate::Data, id: &str) -> Option<MessageDto> {
+pub(crate) fn find_message(data: &crate::Data, id: &str) -> Option<MessageDto> {
     data.channel_messages
         .values()
         .chain(data.dm_messages.values())
@@ -628,7 +628,10 @@ fn find_message(data: &crate::Data, id: &str) -> Option<MessageDto> {
         .cloned()
 }
 
-fn find_message_mut<'a>(data: &'a mut crate::Data, id: &str) -> Option<&'a mut MessageDto> {
+pub(crate) fn find_message_mut<'a>(
+    data: &'a mut crate::Data,
+    id: &str,
+) -> Option<&'a mut MessageDto> {
     data.channel_messages
         .values_mut()
         .chain(data.dm_messages.values_mut())

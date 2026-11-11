@@ -449,13 +449,20 @@ async fn a_row_carries_its_reply_pin_webhook_last_reply_and_previews() {
     );
 }
 
+/// The server blanks a removed message for readers who may not see it, and sends it whole to
+/// moderators: a row shows what was sent either way.
 #[tokio::test]
-async fn a_removed_row_has_no_reply_or_previews_and_a_removed_parent_has_no_text() {
-    let mut removed = rich_message("removed");
-    removed["deletedAt"] = json!("2026-09-22T19:30:00.000Z");
+async fn a_removed_row_shows_what_the_server_sent_and_a_removed_parent_has_no_text() {
+    let mut blanked = rich_message("removed");
+    blanked["deletedAt"] = json!("2026-09-22T19:30:00.000Z");
+    blanked["replyTo"] = Value::Null;
+    blanked["linkPreviews"] = Value::Null;
+    blanked["spans"] = json!([]);
+    let mut whole = rich_message("whole");
+    whole["deletedAt"] = json!("2026-09-22T19:30:00.000Z");
     let mut replying = rich_message("replying");
     replying["replyTo"]["deletedAt"] = json!("2026-09-22T19:30:00.000Z");
-    let rows = [removed, replying]
+    let rows = [blanked, whole, replying]
         .into_iter()
         .map(|row| serde_json::from_value(row).unwrap())
         .collect();
@@ -463,8 +470,15 @@ async fn a_removed_row_has_no_reply_or_previews_and_a_removed_parent_has_no_text
     rig.settle().await;
 
     let row = rig.row("removed");
+    assert!(row.removed);
     assert!(row.reply_to.is_none());
     assert!(row.link_previews.is_empty());
+    assert_eq!(row.display, "");
+    let row = rig.row("whole");
+    assert!(row.removed);
+    assert!(row.reply_to.is_some());
+    assert_eq!(row.link_previews.len(), 1);
+    assert!(!row.display.is_empty());
     let reply = rig.row("replying").reply_to.clone().unwrap();
     assert!(reply.deleted);
     assert_eq!(reply.text, "");
