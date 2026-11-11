@@ -531,3 +531,41 @@ async fn overrides_are_replaced_whole_and_checked_like_the_backend() {
     assert_eq!(status, 200);
     assert_eq!(body["overwrites"], json!([]));
 }
+
+#[tokio::test]
+async fn overrides_work_on_a_channel_made_at_runtime() {
+    let (_server, client, base) = showcase().await;
+    let couch = id("c-couch");
+    let (status, made) = post(
+        &client,
+        &base,
+        "/api/channels",
+        json!({ "name": "fresh", "communityId": couch, "type": "TEXT", "isPrivate": false }),
+    )
+    .await;
+    assert!(status == 201 || status == 200, "{made}");
+    let channel = made["id"].as_str().unwrap().to_owned();
+    let path = format!("/api/channels/{channel}/overwrites");
+    let (status, body) = get(&client, &base, &path).await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["channelId"], channel.as_str());
+    let (status, body) = put(
+        &client,
+        &base,
+        &path,
+        json!({ "preset": "ANNOUNCEMENT", "overwrites": [
+            { "targetType": "EVERYONE", "allow": [], "deny": ["CREATE_MESSAGE", "ATTACH_FILES"] }
+        ] }),
+    )
+    .await;
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(body["preset"], "ANNOUNCEMENT");
+    // A channel nobody made.
+    let (status, _) = get(
+        &client,
+        &base,
+        "/api/channels/00000000-0000-4000-8000-00000000dead/overwrites",
+    )
+    .await;
+    assert_eq!(status, 404);
+}

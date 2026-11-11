@@ -24,6 +24,8 @@ mod queries;
 pub(crate) mod reading;
 mod replay;
 mod roles;
+/// W5-B: the channel preset port (`shared/src/permissions/channel-presets.ts`).
+pub use roles::presets;
 mod session;
 pub mod social;
 mod soundboard;

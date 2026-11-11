@@ -6,7 +6,7 @@
 //! user's community roles; moderating someone needs a role that strictly outranks theirs (lower
 //! position ranks higher). The server stays the judge: a refusal shows its message.
 
-use super::{LoadState, UserView};
+use super::{AdminOp, LoadState, UserView};
 
 /// The web's timeout lengths (`TimeoutDialog.tsx`), in seconds.
 pub const TIMEOUT_PRESETS_SECONDS: [u32; 6] = [60, 300, 600, 3_600, 86_400, 604_800];
@@ -92,8 +92,15 @@ pub struct ModerationTargetView {
     pub can_timeout: bool,
     pub can_remove_timeout: bool,
     pub can_change_roles: bool,
-    /// Why ban, kick and timeout aren't offered, when they aren't.
+    /// Why ban, kick and timeout aren't offered, when none is.
     pub not_allowed: Option<NotAllowed>,
+    /// Why each one isn't offered, when it isn't.
+    pub ban_not_allowed: Option<NotAllowed>,
+    pub kick_not_allowed: Option<NotAllowed>,
+    pub timeout_not_allowed: Option<NotAllowed>,
+    pub roles_not_allowed: Option<NotAllowed>,
+    /// Ban, kick, timeout and lifting it, each with its own state.
+    pub op: AdminOp,
     /// The member's active timeout, if any.
     pub timed_out_until_ms: Option<i64>,
 }
@@ -136,6 +143,8 @@ pub struct BanListView {
     pub state: LoadState,
     pub community_id: String,
     pub bans: Vec<BanRow>,
+    /// Unban, per member.
+    pub op: AdminOp,
 }
 
 /// An active timeout.
@@ -155,6 +164,8 @@ pub struct TimeoutListView {
     pub state: LoadState,
     pub community_id: String,
     pub timeouts: Vec<TimeoutRow>,
+    /// Lifting, per member.
+    pub op: AdminOp,
 }
 
 /// What a moderation log entry records.
@@ -181,6 +192,9 @@ pub struct ModerationLogRow {
     pub created_at_ms: i64,
     /// A timeout's or ban's length, when the entry has one.
     pub duration_seconds: Option<u32>,
+    /// The message a delete, pin or unpin entry is about. The contract doesn't carry it yet
+    /// (`ModerationLogDto` lacks `targetMessageId`): `None` until it does.
+    pub target_message_id: Option<String>,
 }
 
 /// `Core::moderation_log`, newest first, a page at a time. `ViewKey::ModerationLog
