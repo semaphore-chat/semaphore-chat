@@ -1285,21 +1285,39 @@ fn vs_poly_sprite(@builtin(vertex_index) vertex_id: u32, @builtin(instance_index
 
     var out = PolySpriteVarying();
     out.position = to_device_position(unit_vertex, sprite.bounds);
-    out.tile_position = to_tile_position(unit_vertex, sprite.tile);
+    // In the tile's own texels, not the atlas's: see `sample_tile`.
+    out.tile_position = unit_vertex * vec2<f32>(sprite.tile.bounds.size);
     out.sprite_id = instance_id;
     out.clip_distances = distance_from_clip_rect(unit_vertex, sprite.bounds, sprite.content_mask);
     return out;
 }
 
+// Bilinear filtering done here from tile-local coordinates, clamped to the tile. Sampling an
+// atlas-wide coordinate made the result depend on where the atlas put the tile (the float precision
+// left for the fraction shrinks as the origin grows, so a row whose weight sits on a rounding step
+// came out one level different), and let an edge read its neighbouring tile.
+fn sample_tile(tile: AtlasTile, local: vec2<f32>) -> vec4<f32> {
+    let last = tile.bounds.size - vec2<i32>(1);
+    let p = local - vec2<f32>(0.5);
+    let base = floor(p);
+    let f = p - base;
+    let i0 = clamp(vec2<i32>(base), vec2<i32>(0), last) + tile.bounds.origin;
+    let i1 = clamp(vec2<i32>(base) + vec2<i32>(1), vec2<i32>(0), last) + tile.bounds.origin;
+    let a = textureLoad(t_sprite, vec2<i32>(i0.x, i0.y), 0);
+    let b = textureLoad(t_sprite, vec2<i32>(i1.x, i0.y), 0);
+    let c = textureLoad(t_sprite, vec2<i32>(i0.x, i1.y), 0);
+    let d = textureLoad(t_sprite, vec2<i32>(i1.x, i1.y), 0);
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
 @fragment
 fn fs_poly_sprite(input: PolySpriteVarying) -> @location(0) vec4<f32> {
-    let sample = textureSample(t_sprite, s_sprite, input.tile_position);
-    // Alpha clip after using the derivatives.
     if (any(input.clip_distances < vec4<f32>(0.0))) {
         return vec4<f32>(0.0);
     }
 
     let sprite = load_poly_sprite(input.sprite_id);
+    let sample = sample_tile(sprite.tile, input.tile_position);
     let distance = quad_sdf(input.position.xy, sprite.bounds, sprite.corner_radii);
 
     var color = sample;
