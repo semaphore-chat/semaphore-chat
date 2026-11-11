@@ -1,0 +1,283 @@
+# W3 settings: the shell on each tab and the phone list, then each tab's states (voice and video,
+# appearance, sessions, desktop app), push-to-talk key capture and the sign-out-others confirm.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-settings.steps
+story settings-shell-notifications 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-notifications-desktop
+story settings-shell-notifications 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-notifications-phone
+story settings-shell-voice 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-voice-desktop
+story settings-shell-voice 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-voice-phone
+story settings-shell-appearance 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-appearance-desktop
+story settings-shell-appearance 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-appearance-phone
+story settings-shell-sessions 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-sessions-desktop
+story settings-shell-sessions 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-sessions-phone
+story settings-shell-desktop 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-desktop-desktop
+story settings-shell-desktop 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-desktop-phone
+story settings-shell-phone-list 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-shell-phone-list-desktop
+story settings-shell-phone-list 390 844 light-blue-balanced
+wait idle
+shot w3-settings-shell-phone-list-phone
+click settings-tab-appearance
+wait idle
+shot w3-settings-shell-phone-open-phone
+story settings-voice-transmitting 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-transmitting-desktop
+story settings-voice-transmitting 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-transmitting-phone
+story settings-voice-gated 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-gated-desktop
+story settings-voice-gated 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-gated-phone
+story settings-voice-ptt 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-desktop
+click voice-ptt-change
+wait idle
+shot w3-settings-voice-ptt-capturing-desktop
+press f13
+wait idle
+shot w3-settings-voice-ptt-captured-desktop
+story settings-voice-ptt 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-phone
+click voice-ptt-change
+wait idle
+shot w3-settings-voice-ptt-capturing-phone
+press f13
+wait idle
+shot w3-settings-voice-ptt-captured-phone
+story settings-voice-ptt-key 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-key-desktop
+story settings-voice-ptt-key 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-key-phone
+story settings-voice-devices-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-devices-loading-desktop
+story settings-voice-devices-loading 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-devices-loading-phone
+story settings-voice-devices-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-devices-failed-desktop
+story settings-voice-devices-failed 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-devices-failed-phone
+story settings-voice-no-devices 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-no-devices-desktop
+story settings-voice-no-devices 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-no-devices-phone
+story settings-voice-long-devices 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-long-devices-desktop
+story settings-voice-long-devices 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-long-devices-phone
+story settings-appearance-dark 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-dark-desktop
+story settings-appearance-dark 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-dark-phone
+story settings-appearance-light 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-light-desktop
+story settings-appearance-light 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-light-phone
+story settings-appearance-balanced 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-balanced-desktop
+story settings-appearance-balanced 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-balanced-phone
+story settings-appearance-vibrant 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-vibrant-desktop
+story settings-appearance-vibrant 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-vibrant-phone
+story settings-appearance-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-loading-desktop
+story settings-appearance-loading 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-loading-phone
+story settings-appearance-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-failed-desktop
+story settings-appearance-failed 390 844 light-blue-balanced
+wait idle
+shot w3-settings-appearance-failed-phone
+story settings-sessions-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-loading-desktop
+story settings-sessions-loading 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-loading-phone
+story settings-sessions-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-failed-desktop
+story settings-sessions-failed 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-failed-phone
+story settings-sessions-empty 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-empty-desktop
+story settings-sessions-empty 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-empty-phone
+story settings-sessions-only-current 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-only-current-desktop
+story settings-sessions-only-current 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-only-current-phone
+story settings-sessions-list 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-list-desktop
+click sessions-revoke-others
+wait idle
+shot w3-settings-sessions-confirm-desktop
+story settings-sessions-list 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-list-phone
+click sessions-revoke-others
+wait idle
+shot w3-settings-sessions-confirm-phone
+story settings-sessions-many 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-many-desktop
+story settings-sessions-many 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-many-phone
+story settings-sessions-busy 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-busy-desktop
+story settings-sessions-busy 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-busy-phone
+story settings-sessions-revoking 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-revoking-desktop
+story settings-sessions-revoking 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-revoking-phone
+story settings-sessions-notice 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-notice-desktop
+story settings-sessions-notice 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-notice-phone
+story settings-sessions-notice-failed 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-notice-failed-desktop
+story settings-sessions-notice-failed 390 844 light-blue-balanced
+wait idle
+shot w3-settings-sessions-notice-failed-phone
+story settings-desktop-registered 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-registered-desktop
+story settings-desktop-registered 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-registered-phone
+story settings-desktop-not-registered 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-not-registered-desktop
+story settings-desktop-not-registered 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-not-registered-phone
+story settings-desktop-package-owned 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-package-owned-desktop
+story settings-desktop-package-owned 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-package-owned-phone
+story settings-desktop-unknown 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-unknown-desktop
+story settings-desktop-unknown 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-unknown-phone
+# Whole pages, taller than a screen, so the sections below the fold are reviewed too.
+story settings-voice-transmitting 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-transmitting-full-desktop
+story settings-voice-transmitting 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-transmitting-full-phone
+story settings-voice-ptt-key 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-key-full-desktop
+story settings-voice-ptt-key 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-ptt-key-full-phone
+story settings-voice-devices-loading 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-devices-loading-full-desktop
+story settings-voice-devices-loading 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-devices-loading-full-phone
+story settings-voice-devices-failed 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-devices-failed-full-desktop
+story settings-voice-devices-failed 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-devices-failed-full-phone
+story settings-voice-no-devices 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-no-devices-full-desktop
+story settings-voice-no-devices 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-no-devices-full-phone
+story settings-voice-long-devices 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-voice-long-devices-full-desktop
+story settings-voice-long-devices 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-voice-long-devices-full-phone
+story settings-appearance-light 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-appearance-light-full-desktop
+story settings-appearance-light 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-appearance-light-full-phone
+story settings-sessions-many 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-sessions-many-full-desktop
+story settings-sessions-many 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-sessions-many-full-phone
+story settings-desktop-unknown 1280 1900 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-unknown-full-desktop
+story settings-desktop-unknown 390 2600 light-blue-balanced
+wait idle
+shot w3-settings-desktop-unknown-full-phone
