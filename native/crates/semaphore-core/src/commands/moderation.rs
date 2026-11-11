@@ -12,126 +12,836 @@
 //! `Core::timeout_elapsed` at `ChannelPermissions::timed_out_until_ms`. Kicking is W4's
 //! `Core::kick_member` (the moderation endpoint, with a reason).
 
-use crate::cache::{CacheValue, QueryKey};
-use crate::client::{Core, State};
+use std::collections::{HashMap, HashSet};
+
+use crate::cache::{CacheValue, QueryKey, keys as shared};
+use crate::client::{Core, Effect, State};
 use crate::model::{
-    BanListView, BanRequest, ModerationActionKind, ModerationLogView, TimeoutListView,
-    TimeoutRequest, ViewKey,
+    AdminOp, BanDuration, BanListView, BanRequest, BanRow, ErrorView, ModerationActionKind,
+    ModerationLogRow, ModerationLogView, RemovalCause, TimeoutListView, TimeoutRequest, TimeoutRow,
+    UserView, ViewKey, VoiceRoom, VoiceView,
 };
-use crate::platform::CoreError;
+use crate::platform::{CoreError, CoreEvent};
 use crate::resync::unavailable;
 use semaphore_wire::events::ServerEvent;
+use semaphore_wire::types as wire;
+
+/// W5-B's query `_id`s. A key is `[op, community]`, or `[op, community, user/role]`, or
+/// `[op, channel]` for the overrides.
+pub(crate) mod keys {
+    pub const MY_ROLES: &str = "rolesControllerGetMyRolesForCommunity";
+    pub const ROLES: &str = "rolesControllerGetCommunityRoles";
+    pub const USER_ROLES: &str = "rolesControllerGetUserRolesForCommunity";
+    pub const ROLE_USERS: &str = "rolesControllerGetUsersForRole";
+    pub const OVERWRITES: &str = "channelPermissionsControllerGetOverwrites";
+    pub const BANS: &str = "moderationControllerGetBanList";
+    pub const TIMEOUTS: &str = "moderationControllerGetTimeoutList";
+    pub const TIMEOUT_STATUS: &str = "moderationControllerGetTimeoutStatus";
+    pub const LOGS: &str = "moderationControllerGetModerationLogs";
+
+    pub(crate) const ALL: [&str; 9] = [
+        MY_ROLES,
+        ROLES,
+        USER_ROLES,
+        ROLE_USERS,
+        OVERWRITES,
+        BANS,
+        TIMEOUTS,
+        TIMEOUT_STATUS,
+        LOGS,
+    ];
+}
+
+/// How many moderation log entries a page asks for.
+pub(crate) const LOG_PAGE: i64 = 50;
+/// A second `userKicked`/`userBanned` for the same community within this long is the same removal
+/// (#673: the user's room and the community's room both carry it).
+const REMOVAL_DEDUP_MS: u64 = 30_000;
 
 /// W5-B's state: changes on their way, the removals already announced, the log's paging. Gone at
 /// sign-out.
 #[derive(Default)]
-pub struct W5bState {}
+pub struct W5bState {
+    /// Each view's change on its way, by view.
+    pub(crate) ops: HashMap<ViewKey, AdminOp>,
+    /// The views a UI has read, by community, so a change there says which to read again.
+    pub(crate) watched: HashMap<String, HashSet<ViewKey>>,
+    /// When each community's removal was announced.
+    pub(crate) removed: HashMap<String, u64>,
+    /// The moderation log's filter, by community.
+    pub(crate) log_filter: HashMap<String, ModerationActionKind>,
+    /// A log page on its way, by community.
+    pub(crate) log_loading: HashSet<String>,
+}
 
-/// W5-B's cached responses, inside `CacheValue::W5b`. W5-B adds a variant per query it caches.
+/// The moderation log's pages read so far.
 #[derive(Debug, Clone)]
-pub enum W5bValue {}
+pub struct LogPages {
+    pub rows: Vec<wire::ModerationLogDto>,
+    pub total: i64,
+}
 
-/// The view a W5-B query feeds.
-pub(crate) fn view_for(_key: &QueryKey) -> Option<ViewKey> {
-    None
+/// W5-B's cached responses, inside `CacheValue::W5b`.
+#[derive(Debug, Clone)]
+pub enum W5bValue {
+    /// `roles/my/community`, or another member's roles (`roles/user/../community/..`).
+    UserRoles(wire::UserRolesResponseDto),
+    Roles(wire::CommunityRolesResponseDto),
+    RoleUsers(Vec<wire::RoleUserDto>),
+    Overwrites(wire::ChannelOverwritesDto),
+    Bans(Vec<wire::CommunityBanDto>),
+    Timeouts(Vec<wire::CommunityTimeoutDto>),
+    TimeoutStatus(wire::TimeoutStatusResponseDto),
+    Logs(LogPages),
+}
+
+pub(crate) fn key2(op: &str, a: &str, b: &str) -> QueryKey {
+    QueryKey::new(&[op, a, b])
+}
+
+fn segment(key: &QueryKey, index: usize) -> String {
+    key.segments.get(index).cloned().unwrap_or_default()
+}
+
+/// The view a W5-B query feeds (the one shown loading or failed).
+pub(crate) fn view_for(key: &QueryKey) -> Option<ViewKey> {
+    let community_id = || segment(key, 1);
+    Some(match key.op() {
+        keys::MY_ROLES => ViewKey::CommunityPermissions {
+            community_id: community_id(),
+        },
+        keys::ROLES => ViewKey::Roles {
+            community_id: community_id(),
+        },
+        keys::USER_ROLES => ViewKey::ModerationTarget {
+            community_id: community_id(),
+            user_id: segment(key, 2),
+        },
+        keys::ROLE_USERS => ViewKey::RoleMembers {
+            community_id: community_id(),
+            role_id: segment(key, 2),
+        },
+        keys::OVERWRITES => ViewKey::ChannelOverwrites {
+            channel_id: community_id(),
+        },
+        keys::BANS => ViewKey::Bans {
+            community_id: community_id(),
+        },
+        keys::TIMEOUTS => ViewKey::Timeouts {
+            community_id: community_id(),
+        },
+        keys::LOGS => ViewKey::ModerationLog {
+            community_id: community_id(),
+        },
+        _ => return None,
+    })
 }
 
 /// The query behind a W5-B view, the reverse of [`view_for`].
-pub(crate) fn key_for(_view: &ViewKey) -> Option<QueryKey> {
-    None
+pub(crate) fn key_for(view: &ViewKey) -> Option<QueryKey> {
+    Some(match view {
+        ViewKey::CommunityPermissions { community_id } => {
+            shared::scoped(keys::MY_ROLES, community_id)
+        }
+        ViewKey::Roles { community_id } => shared::scoped(keys::ROLES, community_id),
+        ViewKey::ModerationTarget {
+            community_id,
+            user_id,
+        }
+        | ViewKey::MemberRoles {
+            community_id,
+            user_id,
+        } => key2(keys::USER_ROLES, community_id, user_id),
+        ViewKey::RoleMembers {
+            community_id,
+            role_id,
+        } => key2(keys::ROLE_USERS, community_id, role_id),
+        ViewKey::ChannelOverwrites { channel_id } => shared::scoped(keys::OVERWRITES, channel_id),
+        ViewKey::Bans { community_id } => shared::scoped(keys::BANS, community_id),
+        ViewKey::Timeouts { community_id } => shared::scoped(keys::TIMEOUTS, community_id),
+        ViewKey::ModerationLog { community_id } => shared::scoped(keys::LOGS, community_id),
+        _ => return None,
+    })
+}
+
+fn ms(at: &chrono::DateTime<chrono::Utc>) -> i64 {
+    at.timestamp_millis()
+}
+
+pub(crate) fn moderation_user(user: &Option<wire::ModerationUserDto>, id: &str) -> UserView {
+    match user {
+        Some(user) => UserView {
+            id: user.id.clone(),
+            username: user.username.clone(),
+            display_name: user.display_name.clone(),
+            avatar_file_id: user.avatar_url.clone(),
+        },
+        None => UserView {
+            id: id.to_owned(),
+            ..UserView::default()
+        },
+    }
+}
+
+pub(crate) fn action_kind(action: &str) -> ModerationActionKind {
+    match action {
+        "BAN_USER" => ModerationActionKind::Ban,
+        "UNBAN_USER" => ModerationActionKind::Unban,
+        "KICK_USER" => ModerationActionKind::Kick,
+        "TIMEOUT_USER" => ModerationActionKind::Timeout,
+        "REMOVE_TIMEOUT" => ModerationActionKind::RemoveTimeout,
+        "DELETE_MESSAGE" => ModerationActionKind::DeleteMessage,
+        "PIN_MESSAGE" => ModerationActionKind::PinMessage,
+        "UNPIN_MESSAGE" => ModerationActionKind::UnpinMessage,
+        _ => ModerationActionKind::Unknown,
+    }
+}
+
+fn action_name(kind: ModerationActionKind) -> Option<&'static str> {
+    Some(match kind {
+        ModerationActionKind::Ban => "BAN_USER",
+        ModerationActionKind::Unban => "UNBAN_USER",
+        ModerationActionKind::Kick => "KICK_USER",
+        ModerationActionKind::Timeout => "TIMEOUT_USER",
+        ModerationActionKind::RemoveTimeout => "REMOVE_TIMEOUT",
+        ModerationActionKind::DeleteMessage => "DELETE_MESSAGE",
+        ModerationActionKind::PinMessage => "PIN_MESSAGE",
+        ModerationActionKind::UnpinMessage => "UNPIN_MESSAGE",
+        ModerationActionKind::Unknown => return None,
+    })
 }
 
 impl State {
+    pub(crate) fn w5b_value(&self, key: &QueryKey) -> Option<&W5bValue> {
+        match self.cache.get(key).map(|entry| &entry.value) {
+            Some(CacheValue::W5b(value)) => Some(value),
+            _ => None,
+        }
+    }
+
+    /// Records that a UI shows this view of the community, so changes there reach it.
+    pub(crate) fn w5b_watch(&mut self, community_id: &str, view: ViewKey) {
+        self.w5b
+            .watched
+            .entry(community_id.to_owned())
+            .or_default()
+            .insert(view);
+    }
+
+    /// Every watched view of the community should be read again: they all hang on its roles.
+    pub(crate) fn w5b_community_changed(&mut self, community_id: &str) {
+        let views: Vec<ViewKey> = self
+            .w5b
+            .watched
+            .get(community_id)
+            .map(|views| views.iter().cloned().collect())
+            .unwrap_or_default();
+        for view in views {
+            self.view_changed(view);
+        }
+        self.view_changed(ViewKey::CommunityPermissions {
+            community_id: community_id.to_owned(),
+        });
+    }
+
+    pub(crate) fn w5b_op(&self, view: &ViewKey) -> AdminOp {
+        self.w5b.ops.get(view).cloned().unwrap_or_default()
+    }
+
+    pub(crate) fn w5b_set_op(&mut self, view: ViewKey, busy: bool, error: Option<ErrorView>) {
+        self.w5b.ops.insert(
+            view.clone(),
+            AdminOp {
+                busy,
+                upload: None,
+                error,
+            },
+        );
+        self.view_changed(view);
+    }
+
     /// A W5-B query's data changed: say which views to read again. False when it isn't W5-B's.
-    pub(crate) fn w5b_query_changed(&mut self, _key: &QueryKey) -> bool {
-        false
+    pub(crate) fn w5b_query_changed(&mut self, key: &QueryKey) -> bool {
+        if !keys::ALL.contains(&key.op()) {
+            return false;
+        }
+        let first = segment(key, 1);
+        let community_id = if key.op() == keys::OVERWRITES {
+            self.view_changed(ViewKey::ChannelOverwrites {
+                channel_id: first.clone(),
+            });
+            self.community_of_channel(&first)
+        } else {
+            Some(first)
+        };
+        if let Some(view) = view_for(key) {
+            self.view_changed(view);
+        }
+        if let Some(community_id) = community_id {
+            self.w5b_community_changed(&community_id);
+        }
+        true
+    }
+
+    /// Everything of this community core holds, gone: this user lost it.
+    fn w5b_drop_community(&mut self, community_id: &str) {
+        for op in [
+            shared::CHANNELS,
+            shared::CAPABILITIES,
+            shared::MEMBERS,
+            shared::MEMBER_SEARCH,
+            shared::MENTIONABLE,
+            shared::EMOJIS,
+            shared::SOUNDBOARD,
+        ]
+        .into_iter()
+        .chain(keys::ALL)
+        {
+            self.cache.remove_prefix(&shared::scoped(op, community_id));
+        }
+        let communities = shared::op(shared::COMMUNITIES);
+        if let Some(list) = self.cache.communities_mut(&communities) {
+            list.retain(|community| community.id != community_id);
+        }
+        self.note_direct_update(&communities);
+        self.invalidate(&communities);
+        self.w5b.watched.remove(community_id);
+        self.view_changed(ViewKey::Communities);
+        self.view_changed(ViewKey::Rail);
+    }
+
+    /// Leaves the call if it is in this community: the server has already taken us out of it.
+    fn w5b_leave_call_in(&mut self, community_id: &str) {
+        let in_community = match &self.voice.room {
+            Some(VoiceRoom::Channel {
+                channel_id,
+                community_id: room_community,
+            }) => {
+                room_community.as_deref() == Some(community_id)
+                    || self.community_of_channel(channel_id).as_deref() == Some(community_id)
+            }
+            _ => false,
+        };
+        if in_community {
+            self.voice = VoiceView::default();
+            self.media = None;
+            self.view_changed(ViewKey::Voice);
+            self.push_effect(Effect::EndCall);
+        }
+    }
+
+    /// This user lost the community: announced once, however many times the server says so.
+    fn w5b_removed(&mut self, community_id: &str, cause: RemovalCause, now: u64) {
+        if self
+            .w5b
+            .removed
+            .get(community_id)
+            .is_some_and(|at| now.saturating_sub(*at) < REMOVAL_DEDUP_MS)
+        {
+            return;
+        }
+        self.w5b.removed.insert(community_id.to_owned(), now);
+        let name = self
+            .cache
+            .communities(&shared::op(shared::COMMUNITIES))
+            .and_then(|list| list.iter().find(|c| c.id == community_id))
+            .map(|community| community.name.clone())
+            .unwrap_or_default();
+        self.w5b_leave_call_in(community_id);
+        self.w5b_drop_community(community_id);
+        self.push_event(CoreEvent::CommunityRemoved {
+            community_id: community_id.to_owned(),
+            name,
+            cause,
+        });
+    }
+
+    /// Another member was moderated: the lists and the log may have changed.
+    fn w5b_moderated(&mut self, community_id: &str, user_id: &str) {
+        for op in [keys::BANS, keys::TIMEOUTS, keys::LOGS] {
+            self.invalidate(&shared::scoped(op, community_id));
+        }
+        self.invalidate(&key2(keys::USER_ROLES, community_id, user_id));
+        self.invalidate(&key2(keys::TIMEOUT_STATUS, community_id, user_id));
     }
 
     /// W5-B's handling of a socket event, before the shared rules (role and moderation events,
     /// `communityDeleted`).
-    pub(crate) fn w5b_event(&mut self, _event: &ServerEvent, _now: u64) {}
+    pub(crate) fn w5b_event(&mut self, event: &ServerEvent, now: u64) {
+        let me = self.me_id().to_owned();
+        match event {
+            ServerEvent::UserKicked(event) if event.user_id == me => {
+                self.w5b_removed(
+                    &event.community_id,
+                    RemovalCause::Kicked {
+                        reason: event.reason.clone().filter(|r| !r.is_empty()),
+                    },
+                    now,
+                );
+            }
+            ServerEvent::UserBanned(event) if event.user_id == me => {
+                let until_ms = event.expires_at.map(|at| at.timestamp_millis());
+                self.w5b_removed(
+                    &event.community_id,
+                    RemovalCause::Banned {
+                        reason: event.reason.clone().filter(|r| !r.is_empty()),
+                        until_ms,
+                    },
+                    now,
+                );
+            }
+            ServerEvent::CommunityDeleted(event) => {
+                self.w5b_removed(&event.community_id, RemovalCause::Deleted, now);
+            }
+            ServerEvent::UserKicked(event) => {
+                self.w5b_moderated(&event.community_id, &event.user_id);
+            }
+            ServerEvent::UserBanned(event) => {
+                self.w5b_moderated(&event.community_id, &event.user_id);
+            }
+            ServerEvent::UserTimedOut(event) => {
+                self.w5b_moderated(&event.community_id, &event.user_id);
+            }
+            ServerEvent::TimeoutRemoved(event) => {
+                self.w5b_moderated(&event.community_id, &event.user_id);
+            }
+            ServerEvent::RoleAssigned(event) => {
+                self.invalidate(&key2(keys::USER_ROLES, &event.community_id, &event.user_id));
+                self.invalidate(&shared::scoped(keys::ROLE_USERS, &event.community_id));
+            }
+            ServerEvent::RoleUnassigned(event) => {
+                self.invalidate(&key2(keys::USER_ROLES, &event.community_id, &event.user_id));
+                self.invalidate(&shared::scoped(keys::ROLE_USERS, &event.community_id));
+            }
+            ServerEvent::RoleCreated(event) => {
+                self.invalidate(&shared::scoped(keys::ROLES, &event.community_id));
+            }
+            ServerEvent::RoleUpdated(event) => {
+                // A role's actions or position: everyone's rank and actions may have moved.
+                self.invalidate(&shared::scoped(keys::USER_ROLES, &event.community_id));
+                self.invalidate(&shared::scoped(keys::ROLE_USERS, &event.community_id));
+            }
+            ServerEvent::RoleDeleted(event) => {
+                self.invalidate(&shared::scoped(keys::USER_ROLES, &event.community_id));
+                self.invalidate(&shared::scoped(keys::ROLE_USERS, &event.community_id));
+            }
+            _ => {}
+        }
+    }
 }
 
 impl Core {
     /// Fetches a W5-B query, or `None` when the key isn't W5-B's.
-    pub(crate) async fn w5b_fetch(&self, _key: &QueryKey) -> Option<Result<CacheValue, CoreError>> {
-        None
+    pub(crate) async fn w5b_fetch(&self, key: &QueryKey) -> Option<Result<CacheValue, CoreError>> {
+        if !keys::ALL.contains(&key.op()) {
+            return None;
+        }
+        let Some(services) = self.services().cloned() else {
+            return Some(Err(unavailable("the backend")));
+        };
+        let backend = &services.backend;
+        let (a, b) = (segment(key, 1), segment(key, 2));
+        let value = match key.op() {
+            keys::MY_ROLES => backend
+                .roles_controller_get_my_roles_for_community(a)
+                .await
+                .map(W5bValue::UserRoles),
+            keys::ROLES => backend
+                .roles_controller_get_community_roles(a)
+                .await
+                .map(W5bValue::Roles),
+            keys::USER_ROLES => backend
+                .roles_controller_get_user_roles_for_community(b, a)
+                .await
+                .map(W5bValue::UserRoles),
+            keys::ROLE_USERS => backend
+                .roles_controller_get_users_for_role(a, b)
+                .await
+                .map(W5bValue::RoleUsers),
+            keys::OVERWRITES => backend
+                .channel_permissions_controller_get_overwrites(a)
+                .await
+                .map(W5bValue::Overwrites),
+            keys::BANS => backend
+                .moderation_controller_get_ban_list(a)
+                .await
+                .map(W5bValue::Bans),
+            keys::TIMEOUTS => backend
+                .moderation_controller_get_timeout_list(a)
+                .await
+                .map(W5bValue::Timeouts),
+            keys::TIMEOUT_STATUS => backend
+                .moderation_controller_get_timeout_status(a, b)
+                .await
+                .map(W5bValue::TimeoutStatus),
+            keys::LOGS => {
+                let filter = self.read(|state| {
+                    state
+                        .w5b
+                        .log_filter
+                        .get(&a)
+                        .and_then(|kind| action_name(*kind))
+                        .map(str::to_owned)
+                });
+                backend
+                    .moderation_controller_get_moderation_logs(a, filter, Some(LOG_PAGE), Some(0))
+                    .await
+                    .map(|page| {
+                        W5bValue::Logs(LogPages {
+                            rows: page.logs,
+                            total: page.total,
+                        })
+                    })
+            }
+            _ => return None,
+        };
+        Some(
+            value
+                .map(CacheValue::W5b)
+                .map_err(|error| self.backend_failed(error)),
+        )
+    }
+
+    /// After a change of mine: read these again.
+    fn w5b_refresh(&self, keys: &[QueryKey]) {
+        self.write(|state, _| {
+            for key in keys {
+                state.invalidate(key);
+            }
+        });
+    }
+
+    fn after_moderating(&self, community_id: &str, user_id: &str) {
+        self.w5b_refresh(&[
+            shared::scoped(keys::BANS, community_id),
+            shared::scoped(keys::TIMEOUTS, community_id),
+            shared::scoped(keys::LOGS, community_id),
+            key2(keys::USER_ROLES, community_id, user_id),
+            key2(keys::TIMEOUT_STATUS, community_id, user_id),
+            shared::scoped(shared::MEMBERS, community_id),
+        ]);
     }
 
     pub async fn ban_member(
         &self,
-        _community_id: String,
-        _user_id: String,
-        _request: BanRequest,
+        community_id: String,
+        user_id: String,
+        request: BanRequest,
     ) -> Result<(), CoreError> {
-        Err(unavailable("banning a member"))
+        let (services, _) = self.begin("banning a member")?;
+        let now_ms = self.write(|_, now| now);
+        let expires_at = match request.duration {
+            BanDuration::Permanent => None,
+            BanDuration::Seconds { seconds } => {
+                chrono::DateTime::from_timestamp_millis(now_ms as i64 + i64::from(seconds) * 1000)
+                    .map(|at| at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
+            }
+        };
+        services
+            .backend
+            .moderation_controller_ban_user(
+                community_id.clone(),
+                user_id.clone(),
+                wire::ModerationBanUserDto {
+                    expires_at,
+                    reason: request.reason.filter(|r| !r.trim().is_empty()),
+                },
+            )
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        self.after_moderating(&community_id, &user_id);
+        Ok(())
     }
 
     pub async fn unban_member(
         &self,
-        _community_id: String,
-        _user_id: String,
-        _reason: Option<String>,
+        community_id: String,
+        user_id: String,
+        reason: Option<String>,
     ) -> Result<(), CoreError> {
-        Err(unavailable("lifting a ban"))
+        let (services, _) = self.begin("lifting a ban")?;
+        services
+            .backend
+            .moderation_controller_unban_user(
+                community_id.clone(),
+                user_id.clone(),
+                wire::UnbanUserDto {
+                    reason: reason.filter(|r| !r.trim().is_empty()),
+                },
+            )
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        self.after_moderating(&community_id, &user_id);
+        Ok(())
     }
 
     pub async fn timeout_member(
         &self,
-        _community_id: String,
-        _user_id: String,
-        _request: TimeoutRequest,
+        community_id: String,
+        user_id: String,
+        request: TimeoutRequest,
     ) -> Result<(), CoreError> {
-        Err(unavailable("timing out a member"))
+        let (services, _) = self.begin("timing out a member")?;
+        services
+            .backend
+            .moderation_controller_timeout_user(
+                community_id.clone(),
+                user_id.clone(),
+                wire::TimeoutUserDto {
+                    duration_seconds: i64::from(request.seconds),
+                    reason: request.reason.filter(|r| !r.trim().is_empty()),
+                },
+            )
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        self.after_moderating(&community_id, &user_id);
+        Ok(())
     }
 
     pub async fn remove_timeout(
         &self,
-        _community_id: String,
-        _user_id: String,
-        _reason: Option<String>,
+        community_id: String,
+        user_id: String,
+        reason: Option<String>,
     ) -> Result<(), CoreError> {
-        Err(unavailable("lifting a timeout"))
+        let (services, _) = self.begin("lifting a timeout")?;
+        services
+            .backend
+            .moderation_controller_remove_timeout(
+                community_id.clone(),
+                user_id.clone(),
+                wire::RemoveTimeoutDto {
+                    reason: reason.filter(|r| !r.trim().is_empty()),
+                },
+            )
+            .await
+            .map_err(|error| self.backend_failed(error))?;
+        self.after_moderating(&community_id, &user_id);
+        Ok(())
     }
 
-    /// Active bans (`ViewKey::Bans`).
+    /// Active bans (`ViewKey::Bans`), newest first. Each row says whether this user may lift it.
     pub fn bans(&self, community_id: String) -> BanListView {
-        BanListView {
-            community_id,
-            ..Default::default()
-        }
+        self.write(|state, _| {
+            let key = shared::scoped(keys::BANS, &community_id);
+            state.w5b_watch(
+                &community_id,
+                ViewKey::Bans {
+                    community_id: community_id.clone(),
+                },
+            );
+            state.ensure_query(key.clone());
+            let rows: Vec<wire::CommunityBanDto> = match state.w5b_value(&key) {
+                Some(W5bValue::Bans(rows)) => rows.clone(),
+                _ => Vec::new(),
+            };
+            let bans = rows
+                .iter()
+                .map(|ban| BanRow {
+                    user: moderation_user(&ban.user, &ban.user_id),
+                    can_lift: state.w5b_may_lift(
+                        &community_id,
+                        &ban.user_id,
+                        ban.moderator_id.as_deref(),
+                        "UNBAN_USER",
+                    ),
+                    moderator: moderation_user(
+                        &ban.moderator,
+                        ban.moderator_id.as_deref().unwrap_or_default(),
+                    ),
+                    reason: ban.reason.clone().filter(|r| !r.is_empty()),
+                    created_at_ms: ms(&ban.created_at),
+                    expires_at_ms: ban.expires_at.as_ref().map(ms),
+                })
+                .collect();
+            BanListView {
+                state: state.load_of(&key),
+                community_id,
+                bans,
+            }
+        })
     }
 
-    /// Active timeouts (`ViewKey::Timeouts`).
+    /// Active timeouts (`ViewKey::Timeouts`), newest first.
     pub fn timeouts(&self, community_id: String) -> TimeoutListView {
-        TimeoutListView {
-            community_id,
-            ..Default::default()
-        }
+        self.write(|state, _| {
+            let key = shared::scoped(keys::TIMEOUTS, &community_id);
+            state.w5b_watch(
+                &community_id,
+                ViewKey::Timeouts {
+                    community_id: community_id.clone(),
+                },
+            );
+            state.ensure_query(key.clone());
+            let rows: Vec<wire::CommunityTimeoutDto> = match state.w5b_value(&key) {
+                Some(W5bValue::Timeouts(rows)) => rows.clone(),
+                _ => Vec::new(),
+            };
+            let timeouts = rows
+                .iter()
+                .map(|timeout| TimeoutRow {
+                    user: moderation_user(&timeout.user, &timeout.user_id),
+                    can_lift: state.w5b_may_lift(
+                        &community_id,
+                        &timeout.user_id,
+                        timeout.moderator_id.as_deref(),
+                        "TIMEOUT_USER",
+                    ),
+                    moderator: moderation_user(
+                        &timeout.moderator,
+                        timeout.moderator_id.as_deref().unwrap_or_default(),
+                    ),
+                    reason: timeout.reason.clone().filter(|r| !r.is_empty()),
+                    created_at_ms: ms(&timeout.created_at),
+                    expires_at_ms: ms(&timeout.expires_at),
+                })
+                .collect();
+            TimeoutListView {
+                state: state.load_of(&key),
+                community_id,
+                timeouts,
+            }
+        })
     }
 
-    /// The moderation log's first pages (`ViewKey::ModerationLog`).
+    /// The moderation log's pages read so far (`ViewKey::ModerationLog`), newest first.
     pub fn moderation_log(&self, community_id: String) -> ModerationLogView {
-        ModerationLogView {
-            community_id,
-            ..Default::default()
-        }
+        self.write(|state, _| {
+            let key = shared::scoped(keys::LOGS, &community_id);
+            state.w5b_watch(
+                &community_id,
+                ViewKey::ModerationLog {
+                    community_id: community_id.clone(),
+                },
+            );
+            state.ensure_query(key.clone());
+            let (rows, total) = match state.w5b_value(&key) {
+                Some(W5bValue::Logs(pages)) => (pages.rows.clone(), pages.total),
+                _ => (Vec::new(), 0),
+            };
+            let rows = rows
+                .iter()
+                .map(|entry| ModerationLogRow {
+                    id: entry.id.clone(),
+                    action: action_kind(&entry.action.as_str()),
+                    moderator: entry
+                        .moderator_id
+                        .as_deref()
+                        .map(|id| moderation_user(&entry.moderator, id)),
+                    target: entry
+                        .target_user_id
+                        .as_deref()
+                        .map(|id| moderation_user(&entry.target_user, id)),
+                    reason: entry.reason.clone().filter(|r| !r.is_empty()),
+                    created_at_ms: ms(&entry.created_at),
+                    duration_seconds: entry
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("durationSeconds"))
+                        .and_then(serde_json::Value::as_u64)
+                        .map(|seconds| seconds as u32),
+                })
+                .collect();
+            ModerationLogView {
+                state: state.load_of(&key),
+                filter: state.w5b.log_filter.get(&community_id).copied(),
+                loading_more: state.w5b.log_loading.contains(&community_id),
+                community_id,
+                rows,
+                total: total.max(0) as u32,
+            }
+        })
     }
 
     /// Shows only one kind of entry, or all; reads from the first page again.
     pub fn set_moderation_log_filter(
         &self,
-        _community_id: String,
-        _filter: Option<ModerationActionKind>,
+        community_id: String,
+        filter: Option<ModerationActionKind>,
     ) {
+        self.write(|state, _| {
+            match filter.filter(|kind| *kind != ModerationActionKind::Unknown) {
+                Some(kind) => state.w5b.log_filter.insert(community_id.clone(), kind),
+                None => state.w5b.log_filter.remove(&community_id),
+            };
+            let key = shared::scoped(keys::LOGS, &community_id);
+            state.cache.remove_prefix(&key);
+            state.failed_queries.remove(&key);
+            state.ensure_query(key);
+            state.view_changed(ViewKey::ModerationLog { community_id });
+        });
     }
 
-    /// Reads the log's next page.
-    pub async fn more_moderation_log(&self, _community_id: String) -> Result<(), CoreError> {
-        Err(unavailable("the moderation log"))
+    /// Reads the log's next page. Nothing to do when all are read, or while a page is on its way.
+    pub async fn more_moderation_log(&self, community_id: String) -> Result<(), CoreError> {
+        let (services, epoch) = self.begin("the moderation log")?;
+        let key = shared::scoped(keys::LOGS, &community_id);
+        let start = self.write(|state, _| {
+            if state.w5b.log_loading.contains(&community_id) {
+                return None;
+            }
+            let Some(W5bValue::Logs(pages)) = state.w5b_value(&key) else {
+                return None;
+            };
+            if pages.rows.len() as i64 >= pages.total {
+                return None;
+            }
+            let offset = pages.rows.len() as i64;
+            let filter = state
+                .w5b
+                .log_filter
+                .get(&community_id)
+                .and_then(|kind| action_name(*kind))
+                .map(str::to_owned);
+            state.w5b.log_loading.insert(community_id.clone());
+            state.view_changed(ViewKey::ModerationLog {
+                community_id: community_id.clone(),
+            });
+            Some((offset, filter))
+        });
+        let Some((offset, filter)) = start else {
+            return Ok(());
+        };
+        let page = services
+            .backend
+            .moderation_controller_get_moderation_logs(
+                community_id.clone(),
+                filter,
+                Some(LOG_PAGE),
+                Some(offset),
+            )
+            .await;
+        self.write(|state, _| {
+            if state.session_epoch != epoch {
+                return;
+            }
+            state.w5b.log_loading.remove(&community_id);
+            state.view_changed(ViewKey::ModerationLog {
+                community_id: community_id.clone(),
+            });
+            if let (Ok(page), Some(CacheValue::W5b(W5bValue::Logs(pages)))) = (
+                &page,
+                state.cache.get_mut(&key).map(|entry| &mut entry.value),
+            ) {
+                // A page that overlaps what is shown (an entry arrived meanwhile) adds what's new.
+                for row in &page.logs {
+                    if !pages.rows.iter().any(|known| known.id == row.id) {
+                        pages.rows.push(row.clone());
+                    }
+                }
+                pages.total = page.total;
+            }
+        });
+        page.map(|_| ()).map_err(|error| self.backend_failed(error))
     }
 
     /// The host's call at `ChannelPermissions::timed_out_until_ms`: the server says nothing when a
     /// timeout runs out, so core reads the community's capabilities again.
-    pub fn timeout_elapsed(&self, _community_id: String) {}
+    pub fn timeout_elapsed(&self, community_id: String) {
+        self.write(|state, _| {
+            state.invalidate(&shared::scoped(shared::CAPABILITIES, &community_id));
+            state.invalidate(&shared::scoped(keys::TIMEOUT_STATUS, &community_id));
+            state.invalidate(&shared::scoped(keys::TIMEOUTS, &community_id));
+        });
+    }
 }

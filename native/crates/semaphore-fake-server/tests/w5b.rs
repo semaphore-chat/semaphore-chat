@@ -274,7 +274,11 @@ async fn roles_are_managed_below_your_own_with_only_what_you_hold() {
 async fn assigning_needs_the_role_below_you_and_a_member_you_outrank() {
     let (server, client, base) = showcase().await;
     let couch = id("c-couch");
-    server.act_as(&couch, Some(&id("u-marcus")), &["role-moderator-c-couch", "role-member-c-couch"]);
+    server.act_as(
+        &couch,
+        Some(&id("u-marcus")),
+        &["role-moderator-c-couch", "role-member-c-couch"],
+    );
     let marcus = bearer_for(&client, &base, "dropbear", &id("u-marcus")).await;
     let mut priya = connect_as(&base, &id("u-priya")).await;
     let assign = |user: &str, role_id: &str| {

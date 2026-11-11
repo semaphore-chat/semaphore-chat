@@ -323,6 +323,11 @@ impl QueryCache {
         self.entries.get(key)
     }
 
+    /// W5: a direct update to an entry whose variant the lanes own (`CacheValue::W5a`/`W5b`).
+    pub fn get_mut(&mut self, key: &QueryKey) -> Option<&mut CacheEntry> {
+        self.entries.get_mut(key)
+    }
+
     /// Marks matching entries stale, keeping their data so a UI can show it while a
     /// refetch runs. Returns the keys it marked.
     pub fn invalidate_prefix(&mut self, prefix: &QueryKey) -> Vec<QueryKey> {
