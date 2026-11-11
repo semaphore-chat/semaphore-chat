@@ -1,0 +1,199 @@
+# W4 replay: the capture dialog in each buffer state and destination, the trim timeline at its
+# limits, the clip library (loading, failed, empty, mine, another user's, delete confirm) and the
+# share dialog. Desktop dark and phone light for all, desktop light for the main ones.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w4-replay.steps
+story replay-capture 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-desktop
+story replay-capture 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-phone
+story replay-capture 1280 800 light-blue-balanced
+wait idle
+shot w4-replay-capture-desktop-light
+story replay-capture-not-recording 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-not-recording-desktop
+story replay-capture-not-recording 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-not-recording-phone
+story replay-capture-starting 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-starting-desktop
+story replay-capture-starting 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-starting-phone
+story replay-capture-warming-up 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-warming-up-desktop
+story replay-capture-warming-up 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-warming-up-phone
+story replay-capture-failed 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-failed-desktop
+story replay-capture-failed 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-failed-phone
+story replay-capture-failed 1280 800 light-blue-balanced
+wait idle
+shot w4-replay-capture-failed-desktop-light
+story replay-capture-channel 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-channel-desktop
+story replay-capture-channel 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-channel-phone
+story replay-capture-channel-loading 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-channel-loading-desktop
+story replay-capture-channel-loading 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-channel-loading-phone
+story replay-capture-dm-unpicked 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-dm-unpicked-desktop
+story replay-capture-dm-unpicked 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-dm-unpicked-phone
+story replay-capture-busy 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-busy-desktop
+story replay-capture-busy 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-busy-phone
+story replay-capture-error 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-capture-error-desktop
+story replay-capture-error 390 844 light-blue-balanced
+wait idle
+shot w4-replay-capture-error-phone
+story replay-trim 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-desktop
+story replay-trim 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-phone
+story replay-trim 1280 800 light-blue-balanced
+wait idle
+shot w4-replay-trim-desktop-light
+story replay-trim-limits 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-limits-desktop
+story replay-trim-limits 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-limits-phone
+story replay-trim-shortest 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-shortest-desktop
+story replay-trim-shortest 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-shortest-phone
+story replay-trim-long-buffer 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-long-buffer-desktop
+story replay-trim-long-buffer 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-long-buffer-phone
+story replay-trim-loading 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-loading-desktop
+story replay-trim-loading 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-loading-phone
+story replay-trim-download 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-trim-download-desktop
+story replay-trim-download 390 844 light-blue-balanced
+wait idle
+shot w4-replay-trim-download-phone
+story replay-library-loading 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-loading-desktop
+story replay-library-loading 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-loading-phone
+story replay-library-failed 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-failed-desktop
+story replay-library-failed 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-failed-phone
+story replay-library-empty 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-empty-desktop
+story replay-library-empty 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-empty-phone
+story replay-library-empty-other 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-empty-other-desktop
+story replay-library-empty-other 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-empty-other-phone
+story replay-library-mine 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-mine-desktop
+story replay-library-mine 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-mine-phone
+story replay-library-mine 1280 800 light-blue-balanced
+wait idle
+shot w4-replay-library-mine-desktop-light
+story replay-library-other 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-other-desktop
+story replay-library-other 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-other-phone
+story replay-library-delete 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-delete-desktop
+story replay-library-delete 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-delete-phone
+story replay-library-deleting 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-library-deleting-desktop
+story replay-library-deleting 390 844 light-blue-balanced
+wait idle
+shot w4-replay-library-deleting-phone
+story replay-share 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-desktop
+story replay-share 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-phone
+story replay-share-loading 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-loading-desktop
+story replay-share-loading 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-loading-phone
+story replay-share-channel 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-channel-desktop
+story replay-share-channel 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-channel-phone
+story replay-share-channel 1280 800 light-blue-balanced
+wait idle
+shot w4-replay-share-channel-desktop-light
+story replay-share-no-channels 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-no-channels-desktop
+story replay-share-no-channels 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-no-channels-phone
+story replay-share-dm 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-dm-desktop
+story replay-share-dm 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-dm-phone
+story replay-share-failed 1280 800 dark-blue-balanced
+wait idle
+shot w4-replay-share-failed-desktop
+story replay-share-failed 390 844 light-blue-balanced
+wait idle
+shot w4-replay-share-failed-phone
