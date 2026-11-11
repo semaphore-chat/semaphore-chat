@@ -15,7 +15,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use rcgen::{BasicConstraints, CertificateParams, DnType, IsCa, Issuer, KeyPair, SanType};
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use semaphore_core::backend::Backend;
+use semaphore_core::backend::SessionBackend;
 use semaphore_fake_server::{FakeServer, ScenarioSource};
 use semaphore_net::socket::{Refresh, SocketClient, SocketConfig, SocketEvent, TokenSource};
 use semaphore_net::{HttpBackend, open_websocket};

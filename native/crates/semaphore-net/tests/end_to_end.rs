@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use semaphore_core::backend::Backend;
+use semaphore_core::backend::SessionBackend;
 use semaphore_core::lifecycle::ConnectionState;
 use semaphore_core::model::{
     Conversation, ListOp, MessageDraft, MessageRow, SendState, SessionState,

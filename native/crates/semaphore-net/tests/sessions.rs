@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use common::*;
-use semaphore_core::backend::Backend;
+use semaphore_core::backend::{CommunitiesBackend, SessionBackend};
 use semaphore_net::HttpBackend;
 
 fn backend() -> (HttpBackend, Arc<Secrets>) {
