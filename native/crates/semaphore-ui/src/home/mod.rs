@@ -1,4 +1,4 @@
-//! W3-ui-auth: the home sections and the zero-community gate, from `pages/HomePage.tsx` and
+//! Home (built with W3-ui-profile): the home sections and the zero-community gate, from `pages/HomePage.tsx` and
 //! `components/Home/`, and the create community form (`pages/CreateCommunityPage.tsx`).
 //!
 //! - `HomeScreen`: "Home" with Mentions, Unread messages and In voice now, side by side where

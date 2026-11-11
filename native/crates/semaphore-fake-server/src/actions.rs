@@ -195,7 +195,8 @@ pub(crate) fn pins(inner: &Inner, channel_id: &str) -> Value {
     )
 }
 
-/// `GET /roles/my/channel/{channelId}`: a moderator role, everywhere.
+/// `GET /roles/my/instance`: the signed-in user's instance roles; the default one may create
+/// communities.
 pub(crate) fn my_instance_roles(inner: &Inner) -> Value {
     json!({
         "userId": inner.scenario.me.id,
