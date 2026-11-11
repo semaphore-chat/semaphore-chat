@@ -1,0 +1,793 @@
+{
+ "scenario": "netkill",
+ "args": {
+  "scenario": "netkill",
+  "runs": 10,
+  "out": "results/t7/netkill",
+  "outage_s": 30,
+  "deadline_s": 90,
+  "rejoin": false
+ },
+ "runs": [
+  {
+   "run": 1,
+   "scenario": "netkill",
+   "room": "t7-netkill-1-f481f75f",
+   "load_start": "42.09 32.31 33.89 4/2365 4026534",
+   "started_at": 1793906462501,
+   "pre_fault_audible": true,
+   "fault_at": 1793906466104,
+   "healed_at": 1793906496320,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "35.01 31.68 33.60 16/2645 4037952",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 1141,
+    "a<-c": 1141,
+    "b<-a": 1171,
+    "c<-a": 1171
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 1171,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_jYcioTFuNy8Y",
+      "PA_NVBLnWBSPztS"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_JpxaCj8nioeB"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_DRTaiCcG3Ffx"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 34.421
+  },
+  {
+   "run": 2,
+   "scenario": "netkill",
+   "room": "t7-netkill-2-bfd22dd1",
+   "load_start": "35.01 31.68 33.60 4/2595 4038528",
+   "started_at": 1793906502905,
+   "pre_fault_audible": true,
+   "fault_at": 1793906506511,
+   "healed_at": 1793906536876,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "33.70 31.33 33.38 53/3092 4045665",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 240,
+    "a<-c": 239,
+    "b<-a": 314,
+    "c<-a": 327
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 327,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_JPE4xs6gDNtv",
+      "PA_ABnhxJtBYJZ3"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_tx27VCoQLEut"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_Sn2zvo7S6RKz"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 33.78
+  },
+  {
+   "run": 3,
+   "scenario": "netkill",
+   "room": "t7-netkill-3-879bce06",
+   "load_start": "33.70 31.33 33.38 53/2891 4046011",
+   "started_at": 1793906542583,
+   "pre_fault_audible": true,
+   "fault_at": 1793906546998,
+   "healed_at": 1793906577480,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "41.76 34.09 34.25 7/2766 4052992",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 1047,
+    "a<-c": 1047,
+    "b<-a": 1076,
+    "c<-a": 1079
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 1079,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_7NVnNg3nPNUe",
+      "PA_B3gzre6AzTcE"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_J2rs9EtFanMY"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_ZMQnEF56oQpu"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 34.686
+  },
+  {
+   "run": 4,
+   "scenario": "netkill",
+   "room": "t7-netkill-4-b2b5599a",
+   "load_start": "39.37 33.73 34.13 5/2517 4053394",
+   "started_at": 1793906585063,
+   "pre_fault_audible": true,
+   "fault_at": 1793906588667,
+   "healed_at": 1793906619128,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "33.43 32.73 33.77 75/2983 4059658",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 3918,
+    "a<-c": 3918,
+    "b<-a": 4026,
+    "c<-a": 4022
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 4026,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_BxvL95SwwkxR",
+      "PA_F6MMeHswahXS"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 5,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_WU9WK25S3ayn"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_hXBcVEf5NAJR"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 37.491
+  },
+  {
+   "run": 5,
+   "scenario": "netkill",
+   "room": "t7-netkill-5-3ca28f2f",
+   "load_start": "37.72 33.64 34.05 79/2771 4059957",
+   "started_at": 1793906628543,
+   "pre_fault_audible": true,
+   "fault_at": 1793906632989,
+   "healed_at": 1793906663531,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "37.34 34.49 34.35 14/3072 4065891",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 243,
+    "a<-c": 263,
+    "b<-a": 275,
+    "c<-a": 272
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 275,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_rogjQ4woFdwt",
+      "PA_k7ihBmqCxCBH"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_5Cjx5ZA35GSi"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_dWf8RuwdRWyR"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 33.946
+  },
+  {
+   "run": 6,
+   "scenario": "netkill",
+   "room": "t7-netkill-6-42b3b4ad",
+   "load_start": "37.34 34.49 34.35 7/2809 4066153",
+   "started_at": 1793906667569,
+   "pre_fault_audible": true,
+   "fault_at": 1793906671174,
+   "healed_at": 1793906701650,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "49.79 37.86 35.48 53/3307 4073773",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 636,
+    "a<-c": 629,
+    "b<-a": 743,
+    "c<-a": 746
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 746,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_LJVun8M5kbFK",
+      "PA_KGEdHCoBP3GS"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_GMwYycGziAec"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_z5tG3MRB5zSb"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 34.286
+  },
+  {
+   "run": 7,
+   "scenario": "netkill",
+   "room": "t7-netkill-7-de53b6d9",
+   "load_start": "49.79 37.86 35.48 62/3150 4074324",
+   "started_at": 1793906707599,
+   "pre_fault_audible": true,
+   "fault_at": 1793906712018,
+   "healed_at": 1793906742392,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "54.90 40.71 36.55 64/3050 4081549",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 4711,
+    "a<-c": 4612,
+    "b<-a": 4675,
+    "c<-a": 4672
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 4711,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_yNwXVbTodebk",
+      "PA_LVC9kjpKEybu"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 5,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_rgs3WHS9p5tb"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_xQdf2hM7zkWq"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 38.206
+  },
+  {
+   "run": 8,
+   "scenario": "netkill",
+   "room": "t7-netkill-8-c1e9b912",
+   "load_start": "54.90 40.71 36.55 55/2845 4081980",
+   "started_at": 1793906752224,
+   "pre_fault_audible": true,
+   "fault_at": 1793906756644,
+   "healed_at": 1793906787160,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "45.49 40.58 36.71 5/3109 4089333",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 967,
+    "a<-c": 967,
+    "b<-a": 995,
+    "c<-a": 994
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 995,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_GcSRDAgibpaN",
+      "PA_Hed3qMyGtshS"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_8vY3DqHcKQ32"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_KjMMxMewV9B2"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 34.521
+  },
+  {
+   "run": 9,
+   "scenario": "netkill",
+   "room": "t7-netkill-9-8a9d9a99",
+   "load_start": "45.49 40.58 36.71 10/2909 4089511",
+   "started_at": 1793906791894,
+   "pre_fault_audible": true,
+   "fault_at": 1793906795498,
+   "healed_at": 1793906825734,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "44.80 40.74 36.91 50/3156 4104465",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 526,
+    "a<-c": 506,
+    "b<-a": 539,
+    "c<-a": 537
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 539,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_sHeT54ktJ2zT",
+      "PA_T6urCbvonYwL"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_beQdWvziihvH"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_houB74ydidU4"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 33.88
+  },
+  {
+   "run": 10,
+   "scenario": "netkill",
+   "room": "t7-netkill-10-47fc8c81",
+   "load_start": "39.49 39.77 36.66 13/2862 4106117",
+   "started_at": 1793906844366,
+   "pre_fault_audible": true,
+   "fault_at": 1793906851175,
+   "healed_at": 1793906881371,
+   "mid_fault_missing": [
+    "a<-b",
+    "a<-c",
+    "b<-a",
+    "c<-a"
+   ],
+   "load_end": "35.25 38.80 36.47 3/2975 4112214",
+   "ok_audible": true,
+   "recover_ms": {
+    "a<-b": 397,
+    "a<-c": 397,
+    "b<-a": 427,
+    "c<-a": 427
+   },
+   "unbroken_pairs": [
+    "b<-c",
+    "c<-b"
+   ],
+   "worst_recover_ms": 427,
+   "evidence": {
+    "a": {
+     "sids": [
+      "PA_PdiUDDLBTwoS",
+      "PA_E7Y9CQqPhBd7"
+     ],
+     "new_sid": true,
+     "track_subscribed_after_fault": 2,
+     "reconnecting": 1,
+     "reconnected": 1,
+     "disconnected": 0,
+     "local_republished": 1,
+     "restart_attempts": 3,
+     "resume_attempts": 2,
+     "rejoined": 0
+    },
+    "b": {
+     "sids": [
+      "PA_M3PGBtutaYRZ"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    },
+    "c": {
+     "sids": [
+      "PA_fZxcUPiSjpkD"
+     ],
+     "new_sid": false,
+     "track_subscribed_after_fault": 1,
+     "reconnecting": 0,
+     "reconnected": 0,
+     "disconnected": 0,
+     "local_republished": 0,
+     "restart_attempts": 0,
+     "resume_attempts": 0,
+     "rejoined": 0
+    }
+   },
+   "full_reconnect_seen": true,
+   "resubscribed": true,
+   "ok": true,
+   "duration_to_verdict_s": 33.8
+  }
+ ]
+}

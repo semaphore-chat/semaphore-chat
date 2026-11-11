@@ -1,0 +1,979 @@
+{
+ "schema_version": 1,
+ "client": "native",
+ "generated_at": "2026-11-06T02:22:28.737089+00:00",
+ "provisional": false,
+ "provisional_reasons": [],
+ "build": {
+  "version": "0.0.0-spike",
+  "commit": "ae1fd727",
+  "stripped": false
+ },
+ "window_scale": 1,
+ "env": {
+  "platform": "linux",
+  "display": "xvfb",
+  "mode": "container",
+  "cpus": 32,
+  "sandbox": false,
+  "window": {
+   "width": 0,
+   "height": 0,
+   "device_scale_factor": 1
+  },
+  "renderer": {
+   "name": "none: headless protocol rig, no window",
+   "icd": null
+  }
+ },
+ "disk": {
+  "unpacked_bytes": 29124448,
+  "file_count": 1,
+  "top_level": [
+   {
+    "path": "rig-sio",
+    "bytes": 29124448
+   }
+  ],
+  "binary": {
+   "bytes": 29124448,
+   "stripped": false
+  },
+  "artifacts": []
+ },
+ "cold_start_ms": null,
+ "comparability_notes": [
+  "T8 pass bar: auth refresh works; 1,000 disconnect cycles with events flowing, no lost or duplicated events beyond web-client behaviour, by transcript diff against socket.io-client in a container; plus suspend and resume.",
+  "The backend ran with WS_CONNECTION_RATE_LIMIT raised: the default of 10 per minute per address refuses most of 1,000 reconnects, for both clients.",
+  "The 1,000 cycle run used a 100 ms reconnect base for both clients to fit the time box; the 100 cycle run uses the web's 1,000 ms.",
+  "cpu_pct_core and memory_mb are one 30 s sample of the Rust client receiving 16 msg/s, on a loaded host, because the schema requires them. Never compare them.",
+  "The bars cover newMessage. Presence is compared separately in results/t8/presence.json, since the server broadcasts it only on a change, to whoever is connected at that moment.",
+  "results/t8/pre-fix holds the runs before the TCP_NODELAY and resume fixes, kept as the comparison.",
+  "Refresh in the rig replays the login's refresh cookie. No special User-Agent. Never in a real client.",
+  "env.display and env.window are placeholders the schema requires: there is no window."
+ ],
+ "scenarios": {
+  "t8_cycles": {
+   "title": "1,000 disconnect cycles, events flowing, against socket.io-client",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "3.50 7.68 7.97 6/1974 670835",
+    "end": "25.46 18.54 12.50 57/2183 705822",
+    "peak_load1": 25.46,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 25.5; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 0.37,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 3.5,
+    "rss": 10.1,
+    "anon": 1.9,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "cycles_done": 1000,
+    "stuck": [],
+    "modes": {
+     "kill": 805,
+     "close": 195
+    },
+    "messages_acked": 5155,
+    "send_failed": 0,
+    "send_failed_errors": [],
+    "duration_s": 352.257,
+    "load_start": "3.50 7.68 7.97 6/1974 670835",
+    "load_end": "25.46 18.54 12.50 57/2183 705822",
+    "clients": {
+     "rust": {
+      "connections": 1001,
+      "received_unique": 3661,
+      "duplicates": 0,
+      "missing": 1494,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 805,
+       "io client disconnect": 195
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 485,
+       "userOffline": 22
+      },
+      "reconnect_ms": {
+       "p50": 93,
+       "p95": 150,
+       "max": 530
+      },
+      "connect_to_first_message_ms": {
+       "p50": 32,
+       "p95": 61,
+       "max": 93
+      }
+     },
+     "ref": {
+      "connections": 1001,
+      "received_unique": 3600,
+      "duplicates": 0,
+      "missing": 1555,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 805,
+       "io client disconnect": 195
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 450,
+       "userOffline": 8
+      },
+      "reconnect_ms": {
+       "p50": 98,
+       "p95": 151,
+       "max": 518
+      },
+      "connect_to_first_message_ms": {
+       "p50": 35,
+       "p95": 60,
+       "max": 137
+      }
+     }
+    },
+    "diff": {
+     "received_by_both": 3417,
+     "only_rust": 244,
+     "only_ref": 183,
+     "payload_mismatches": 0,
+     "mismatch_sample": []
+    },
+    "bars": {
+     "no_stuck_cycles": true,
+     "all_cycles_done": true,
+     "no_duplicates_beyond_ref": true,
+     "no_holes_beyond_ref": true,
+     "every_loss_in_own_gap": true,
+     "gap_loss_within_ref": true,
+     "payloads_identical": true
+    },
+    "pass": true,
+    "raw": "results/t8/cycles/"
+   }
+  },
+  "t8_cycles_web_delay": {
+   "title": "100 cycles with the web's 1 s reconnect delay and 2-4 s up",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "32.01 20.45 13.23 5/2054 711203",
+    "end": "12.40 19.47 15.68 3/1948 777319",
+    "peak_load1": 32.01,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 32.0; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 0.37,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 3.5,
+    "rss": 10.1,
+    "anon": 1.9,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "cycles_done": 100,
+    "stuck": [],
+    "modes": {
+     "kill": 81,
+     "close": 19
+    },
+    "messages_acked": 6532,
+    "send_failed": 0,
+    "send_failed_errors": [],
+    "duration_s": 423.223,
+    "load_start": "32.01 20.45 13.23 5/2054 711203",
+    "load_end": "12.40 19.47 15.68 3/1948 777319",
+    "clients": {
+     "rust": {
+      "connections": 101,
+      "received_unique": 5241,
+      "duplicates": 0,
+      "missing": 1291,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 81,
+       "io client disconnect": 19
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 51
+      },
+      "reconnect_ms": {
+       "p50": 802,
+       "p95": 1460,
+       "max": 1495
+      },
+      "connect_to_first_message_ms": {
+       "p50": 31,
+       "p95": 62,
+       "max": 65
+      }
+     },
+     "ref": {
+      "connections": 101,
+      "received_unique": 5166,
+      "duplicates": 0,
+      "missing": 1366,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 81,
+       "io client disconnect": 19
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 42
+      },
+      "reconnect_ms": {
+       "p50": 977,
+       "p95": 1406,
+       "max": 1515
+      },
+      "connect_to_first_message_ms": {
+       "p50": 35,
+       "p95": 68,
+       "max": 78
+      }
+     }
+    },
+    "diff": {
+     "received_by_both": 4985,
+     "only_rust": 256,
+     "only_ref": 181,
+     "payload_mismatches": 0,
+     "mismatch_sample": []
+    },
+    "bars": {
+     "no_stuck_cycles": true,
+     "all_cycles_done": true,
+     "no_duplicates_beyond_ref": true,
+     "no_holes_beyond_ref": true,
+     "every_loss_in_own_gap": true,
+     "gap_loss_within_ref": true,
+     "payloads_identical": true
+    },
+    "pass": true,
+    "raw": "results/t8/cycles-web-delay/"
+   }
+  },
+  "t8_cycles_ref_first": {
+   "title": "200 cycles, cutting socket.io-client first",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "11.80 19.23 15.63 3/2072 779130",
+    "end": "14.82 20.89 16.75 1/1860 786097",
+    "peak_load1": 14.82,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 14.8; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 0.37,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 3.5,
+    "rss": 10.1,
+    "anon": 1.9,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "cycles_done": 200,
+    "stuck": [],
+    "modes": {
+     "kill": 159,
+     "close": 41
+    },
+    "messages_acked": 1039,
+    "send_failed": 0,
+    "send_failed_errors": [],
+    "duration_s": 95.0,
+    "load_start": "11.80 19.23 15.63 3/2072 779130",
+    "load_end": "14.82 20.89 16.75 1/1860 786097",
+    "clients": {
+     "rust": {
+      "connections": 201,
+      "received_unique": 754,
+      "duplicates": 0,
+      "missing": 285,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 159,
+       "io client disconnect": 41
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 105,
+       "userOffline": 8
+      },
+      "reconnect_ms": {
+       "p50": 95,
+       "p95": 149,
+       "max": 180
+      },
+      "connect_to_first_message_ms": {
+       "p50": 34,
+       "p95": 62,
+       "max": 105
+      }
+     },
+     "ref": {
+      "connections": 201,
+      "received_unique": 726,
+      "duplicates": 0,
+      "missing": 313,
+      "holes_inside_a_connection": 0,
+      "holes_sample": [],
+      "losses_outside_own_gap": 0,
+      "unexplained_sample": [],
+      "order_violations": 0,
+      "unparsed_newMessage": 0,
+      "disconnect_reasons": {
+       "transport close": 159,
+       "io client disconnect": 41
+      },
+      "connect_errors": {},
+      "other_events": {
+       "userOnline": 81,
+       "userOffline": 5
+      },
+      "reconnect_ms": {
+       "p50": 103,
+       "p95": 158,
+       "max": 179
+      },
+      "connect_to_first_message_ms": {
+       "p50": 35,
+       "p95": 68,
+       "max": 108
+      }
+     }
+    },
+    "diff": {
+     "received_by_both": 696,
+     "only_rust": 58,
+     "only_ref": 30,
+     "payload_mismatches": 0,
+     "mismatch_sample": []
+    },
+    "bars": {
+     "no_stuck_cycles": true,
+     "all_cycles_done": true,
+     "no_duplicates_beyond_ref": true,
+     "no_holes_beyond_ref": true,
+     "every_loss_in_own_gap": true,
+     "gap_loss_within_ref": true,
+     "payloads_identical": true
+    },
+    "pass": true,
+    "raw": "results/t8/cycles-ref-first/"
+   }
+  },
+  "t8_auth": {
+   "title": "Acks, refresh, reauthenticate, expiry, logout",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "14.82 20.89 16.75 3/1756 786783",
+    "end": "17.79 16.35 15.55 10/2259 818644",
+    "peak_load1": 17.79,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 17.8; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 0.37,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 3.5,
+    "rss": 10.1,
+    "anon": 1.9,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "scenarios": [
+     {
+      "name": "acks_on_every_acked_event",
+      "load_start": "14.82 20.89 16.75 3/1756 786783",
+      "checks": {
+       "presenceOnline": {
+        "rust": true,
+        "ref": true,
+        "ack_rust": [
+         "ACK"
+        ],
+        "ack_ref": [
+         "ACK"
+        ]
+       },
+       "sendMessage": {
+        "rust": true,
+        "ref": true,
+        "ack_rust": [
+         "d22b765c-a110-4b03-b596-3f7ddd6c249b"
+        ],
+        "ack_ref": [
+         "68613ed4-87dd-4c6c-b385-e063f0faeb54"
+        ]
+       },
+       "sendDirectMessage": {
+        "rust": true,
+        "ref": true,
+        "ack_rust": [
+         "4351ee9a-0af8-4427-8104-c4590b7c98a6"
+        ],
+        "ack_ref": [
+         "4bcfe2b6-ba59-4aa9-a588-daafa1515e52"
+        ]
+       },
+       "sendThreadReply": {
+        "rust": true,
+        "ref": true,
+        "ack_rust": [
+         "51b97aa8-eb4a-4406-9705-206a494e8152"
+        ],
+        "ack_ref": [
+         "241ddf50-4f0e-47c8-8cf6-cfbed71e08d8"
+        ]
+       },
+       "reauthenticate_bad": {
+        "rust": true,
+        "ref": true,
+        "ack_rust": [
+         {
+          "error": "AUTH_FAILED",
+          "ok": false
+         }
+        ],
+        "ack_ref": [
+         {
+          "ok": false,
+          "error": "AUTH_FAILED"
+         }
+        ]
+       },
+       "reauthenticate_good": {
+        "rust": true,
+        "ref": true
+       },
+       "event_newThreadReply": {
+        "rust": true,
+        "ref": true
+       },
+       "event_newDirectMessage": {
+        "rust": true,
+        "ref": true
+       }
+      },
+      "ok": true,
+      "duration_s": 1.8,
+      "load_end": "14.82 20.89 16.75 1/1746 787653"
+     },
+     {
+      "name": "refresh_and_reauthenticate_real_margin",
+      "load_start": "14.82 20.89 16.75 2/1746 787653",
+      "checks": {
+       "reauthenticated_ok": {
+        "rust": true,
+        "ref": true
+       },
+       "no_disconnect_past_old_expiry": {
+        "rust": true,
+        "ref": true
+       },
+       "warned_at_ms": {
+        "rust": 1793917620013,
+        "ref": 1793917620014
+       }
+      },
+      "ok": true,
+      "duration_s": 133.2,
+      "load_end": "4.99 14.96 15.12 3/2192 798763"
+     },
+     {
+      "name": "refresh_and_reauthenticate_3x",
+      "load_start": "4.99 14.96 15.12 4/2192 798763",
+      "checks": {
+       "round0": {
+        "rust": true,
+        "ref": true
+       },
+       "round1": {
+        "rust": true,
+        "ref": true
+       },
+       "round2": {
+        "rust": true,
+        "ref": true
+       }
+      },
+      "ok": true,
+      "duration_s": 34.0,
+      "load_end": "9.68 14.80 15.05 17/2188 805365"
+     },
+     {
+      "name": "expiry_refresh_reconnect",
+      "load_start": "9.68 14.80 15.05 16/2188 805365",
+      "checks": {
+       "terminated_token_expired": {
+        "rust": true,
+        "ref": true
+       },
+       "reason_io_server_disconnect": {
+        "rust": true,
+        "ref": true
+       },
+       "refreshed": {
+        "rust": true,
+        "ref": true
+       }
+      },
+      "ok": true,
+      "duration_s": 3.8,
+      "load_end": "12.35 15.27 15.20 44/2386 808015"
+     },
+     {
+      "name": "expired_token_at_connect",
+      "load_start": "12.35 15.27 15.20 41/2386 808015",
+      "checks": {
+       "auth_failed_then_connected": {
+        "rust": true,
+        "ref": true
+       }
+      },
+      "ok": true,
+      "duration_s": 14.8,
+      "load_end": "17.79 16.35 15.55 17/2247 817576"
+     },
+     {
+      "name": "logout_ends_for_good",
+      "load_start": "17.79 16.35 15.55 17/2247 817576",
+      "checks": {
+       "logged_out": {
+        "rust": true,
+        "ref": true
+       },
+       "refresh_rejected": {
+        "rust": true,
+        "ref": true
+       },
+       "stays_down": {
+        "rust": true,
+        "ref": true
+       }
+      },
+      "ok": true,
+      "duration_s": 2.8,
+      "load_end": "17.79 16.35 15.55 10/2259 818644"
+     }
+    ],
+    "raw": "results/t8/auth/"
+   }
+  },
+  "t8_suspend": {
+   "title": "Suspend, freeze and stall, then resync",
+   "ok": true,
+   "provisional": false,
+   "load": {
+    "start": "17.79 16.35 15.55 19/2247 818942",
+    "end": "21.69 18.23 16.23 4/2967 923032",
+    "peak_load1": 21.69,
+    "threshold_load1": 16.0,
+    "provisional": false,
+    "reason": "load1 peaked at 21.7; not a CPU test, recorded for timing failures only"
+   },
+   "errors": [],
+   "cpu_pct_core": {
+    "avg": 0.37,
+    "p95": 1.0
+   },
+   "memory_mb": {
+    "primary_metric": "pss",
+    "pss": 3.5,
+    "rss": 10.1,
+    "anon": 1.9,
+    "private_working_set": null,
+    "pss_peak": null
+   },
+   "aux": {
+    "scenarios": [
+     {
+      "name": "suspend-graceful",
+      "load_start": "17.79 16.35 15.55 19/2247 818942",
+      "gap_s": 30,
+      "witness_saw": {
+       "newMessage": 9,
+       "updateMessage": 1,
+       "deleteMessage": 1,
+       "reactionAdded": 1,
+       "userTyping": 1,
+       "userOnline": 2
+      },
+      "rest_after_resync": {
+       "new_messages_present": true,
+       "edit_visible": true,
+       "delete_applied": true,
+       "reaction_visible": true
+      },
+      "recovered_ms_after_gap": {
+       "rust": 20,
+       "ref": 20
+      },
+      "clients": {
+       "rust": {
+        "saw": {
+         "newMessage": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 8,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 2
+        },
+        "disconnect_reasons": [
+         "io client disconnect"
+        ],
+        "resync_plans": [
+         {
+          "k": "resync_plan",
+          "reconnect": true,
+          "refresh": false,
+          "stale": [
+           "QueryKey { segments: [\"messages\", \"channel\"] }"
+          ],
+          "t": 1793917838673
+         }
+        ]
+       },
+       "ref": {
+        "saw": {
+         "newMessage": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 8,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 2
+        },
+        "disconnect_reasons": [
+         "io client disconnect"
+        ],
+        "resync_plans": []
+       }
+      },
+      "ok": true,
+      "load_end": "14.24 15.73 15.38 1/2117 826565"
+     },
+     {
+      "name": "freeze-short",
+      "load_start": "14.24 15.73 15.38 2/2117 826565",
+      "gap_s": 40,
+      "witness_saw": {
+       "newMessage": 9,
+       "updateMessage": 1,
+       "deleteMessage": 1,
+       "reactionAdded": 1,
+       "userTyping": 1,
+       "userOnline": 1
+      },
+      "rest_after_resync": {
+       "new_messages_present": true,
+       "edit_visible": true,
+       "delete_applied": true,
+       "reaction_visible": true
+      },
+      "recovered_ms_after_gap": {
+       "rust": 43,
+       "ref": 43
+      },
+      "clients": {
+       "rust": {
+        "saw": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {},
+        "disconnect_reasons": [],
+        "resync_plans": []
+       },
+       "ref": {
+        "saw": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {},
+        "disconnect_reasons": [],
+        "resync_plans": []
+       }
+      },
+      "ok": true,
+      "load_end": "8.38 13.97 14.80 3/2079 833544"
+     },
+     {
+      "name": "freeze-short-resume",
+      "load_start": "8.38 13.97 14.80 4/2079 833544",
+      "gap_s": 40,
+      "witness_saw": {
+       "newMessage": 9,
+       "updateMessage": 1,
+       "deleteMessage": 1,
+       "reactionAdded": 1,
+       "userTyping": 1,
+       "userOnline": 1
+      },
+      "rest_after_resync": {
+       "new_messages_present": true,
+       "edit_visible": true,
+       "delete_applied": true,
+       "reaction_visible": true
+      },
+      "recovered_ms_after_gap": {
+       "rust": 213,
+       "ref": 237
+      },
+      "clients": {
+       "rust": {
+        "saw": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {},
+        "disconnect_reasons": [],
+        "resync_plans": [
+         {
+          "k": "resync_plan",
+          "reconnect": true,
+          "refresh": false,
+          "stale": [
+           "QueryKey { segments: [\"messages\", \"channel\"] }"
+          ],
+          "t": 1793917927573
+         }
+        ]
+       },
+       "ref": {
+        "saw": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {},
+        "disconnect_reasons": [],
+        "resync_plans": []
+       }
+      },
+      "ok": true,
+      "load_end": "11.48 13.86 14.72 22/2129 849338"
+     },
+     {
+      "name": "freeze-long",
+      "load_start": "11.48 13.86 14.72 22/2129 849338",
+      "gap_s": 95,
+      "witness_saw": {
+       "newMessage": 10,
+       "updateMessage": 1,
+       "deleteMessage": 1,
+       "reactionAdded": 1,
+       "userTyping": 1,
+       "userOnline": 4
+      },
+      "rest_after_resync": {
+       "new_messages_present": true,
+       "edit_visible": true,
+       "delete_applied": true,
+       "reaction_visible": true
+      },
+      "recovered_ms_after_gap": {
+       "rust": 1121,
+       "ref": 1121
+      },
+      "clients": {
+       "rust": {
+        "saw": {
+         "newMessage": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 4
+        },
+        "disconnect_reasons": [
+         "ping timeout"
+        ],
+        "resync_plans": [
+         {
+          "k": "resync_plan",
+          "reconnect": true,
+          "refresh": false,
+          "stale": [
+           "QueryKey { segments: [\"messages\", \"channel\"] }"
+          ],
+          "t": 1793918027801
+         }
+        ]
+       },
+       "ref": {
+        "saw": {
+         "newMessage": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 9,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 4
+        },
+        "disconnect_reasons": [
+         "ping timeout"
+        ],
+        "resync_plans": []
+       }
+      },
+      "ok": true,
+      "load_end": "19.66 15.42 15.16 9/2103 880303"
+     },
+     {
+      "name": "stall-past-ping-timeout",
+      "load_start": "19.66 15.42 15.16 11/2102 880303",
+      "gap_s": 95,
+      "witness_saw": {
+       "newMessage": 100,
+       "updateMessage": 1,
+       "deleteMessage": 1,
+       "reactionAdded": 1,
+       "userTyping": 1,
+       "userOnline": 5
+      },
+      "rest_after_resync": {
+       "new_messages_present": true,
+       "edit_visible": true,
+       "delete_applied": true,
+       "reaction_visible": true
+      },
+      "recovered_ms_after_gap": {
+       "rust": 10449,
+       "ref": 35025
+      },
+      "clients": {
+       "rust": {
+        "saw": {
+         "newMessage": 98,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 2,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 4
+        },
+        "disconnect_reasons": [
+         "ping timeout"
+        ],
+        "resync_plans": []
+       },
+       "ref": {
+        "saw": {
+         "newMessage": 98,
+         "userOnline": 1
+        },
+        "missed_vs_witness": {
+         "newMessage": 2,
+         "updateMessage": 1,
+         "deleteMessage": 1,
+         "reactionAdded": 1,
+         "userTyping": 1,
+         "userOnline": 4
+        },
+        "disconnect_reasons": [
+         "ping timeout"
+        ],
+        "resync_plans": []
+       }
+      },
+      "ok": true,
+      "load_end": "21.69 18.23 16.23 4/2967 923032"
+     }
+    ],
+    "raw": "results/t8/suspend/"
+   }
+  }
+ },
+ "ok": true
+}

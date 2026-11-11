@@ -1,0 +1,2 @@
+# Keep vendored source byte-for-byte on every platform: vendor.sh --check compares it exactly.
+vendor/** -text

@@ -1,0 +1,17 @@
+app 1280 800
+wait idle
+shot 00-server
+click auth-connect
+wait core session signed-out within 5
+wait idle
+shot 01-signin
+click auth-username
+type "alexk"
+click auth-password
+type "pw"
+click auth-login
+wait core session signed-in
+wait core channel cc-general
+wait core rows >= 5
+wait idle
+shot 02-channel

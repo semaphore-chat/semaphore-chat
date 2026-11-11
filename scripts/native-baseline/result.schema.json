@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "semaphore-native-baseline-result-v1",
+  "title": "Desktop client resource baseline",
+  "description": "Emitted by the Electron baseline (scripts/native-baseline) and the native spike's harness, so one file per client compares field by field. On Windows, memory_mb.primary_metric is private_working_set and PSS, RSS and anon are null.",
+  "type": "object",
+  "required": ["schema_version", "client", "ok", "provisional", "provisional_reasons", "build", "env", "disk", "scenarios", "comparability_notes"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "client": { "enum": ["electron", "native"] },
+    "generated_at": { "type": "string" },
+    "ok": { "type": "boolean", "description": "False if any non-best-effort scenario or the cold start failed." },
+    "provisional": { "type": "boolean", "description": "True if the machine wasn't quiet: timing numbers can't stand as the baseline. Independent of ok." },
+    "provisional_reasons": { "type": "array", "items": { "type": "string" } },
+    "build": {
+      "type": "object",
+      "required": ["version", "commit", "stripped"],
+      "properties": {
+        "version": { "type": "string" },
+        "commit": { "type": "string" },
+        "stripped": { "type": ["boolean", "null"] }
+      }
+    },
+    "history_messages": { "type": ["integer", "null"] },
+    "seed": { "type": "object" },
+    "window_scale": { "type": "number", "description": "1 for a real baseline; below 1 is a shortened dev run." },
+    "env": {
+      "type": "object",
+      "required": ["platform", "display", "mode", "cpus", "sandbox", "window", "renderer"],
+      "properties": {
+        "platform": { "enum": ["linux", "windows"] },
+        "display": { "enum": ["xvfb", "wayland", "x11", "windows"] },
+        "mode": { "enum": ["container", "host", "runner"] },
+        "cpus": { "type": "integer" },
+        "sandbox": { "type": "boolean" },
+        "window": {
+          "type": "object",
+          "required": ["width", "height", "device_scale_factor"],
+          "properties": {
+            "width": { "type": "number" },
+            "height": { "type": "number" },
+            "device_scale_factor": { "type": "number" }
+          }
+        },
+        "renderer": { "type": "object", "description": "What really rendered: GPU, or the software rasterizer's name." },
+        "packages": { "type": "object" }
+      }
+    },
+    "disk": {
+      "type": "object",
+      "required": ["unpacked_bytes", "top_level", "binary", "artifacts"],
+      "properties": {
+        "unpacked_bytes": { "type": "integer" },
+        "file_count": { "type": "integer" },
+        "top_level": { "$ref": "#/$defs/ranked" },
+        "largest_files": { "$ref": "#/$defs/ranked" },
+        "binary": {
+          "type": "object",
+          "required": ["bytes", "stripped"],
+          "properties": { "bytes": { "type": "integer" }, "stripped": { "type": ["boolean", "null"] } }
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "bytes"],
+            "properties": { "name": { "type": "string" }, "bytes": { "type": "integer" }, "source": { "type": "string" } }
+          }
+        },
+        "app_asar": {
+          "type": "object",
+          "description": "Electron only.",
+          "required": ["bytes", "top_groups", "top_files"],
+          "properties": {
+            "bytes": { "type": "integer" },
+            "top_groups": { "$ref": "#/$defs/ranked" },
+            "by_extension": { "$ref": "#/$defs/ranked" }
+          }
+        }
+      }
+    },
+    "cold_start_ms": {
+      "type": ["object", "null"],
+      "required": ["ok", "variants", "load"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "load": { "$ref": "#/$defs/load" },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "variants": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["interactive_ms", "runs"],
+            "properties": {
+              "interactive_ms": { "$ref": "#/$defs/runSummary" },
+              "window_mapped_ms": { "$ref": "#/$defs/runSummary" },
+              "first_contentful_paint_ms": { "$ref": "#/$defs/runSummary" },
+              "runs": { "type": "array" }
+            }
+          }
+        }
+      }
+    },
+    "scenarios": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/scenario" }
+    },
+    "comparability_notes": { "type": "array", "items": { "type": "string" } }
+  },
+  "$defs": {
+    "ranked": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "bytes"],
+        "properties": { "path": { "type": "string" }, "bytes": { "type": "integer" } }
+      }
+    },
+    "load": {
+      "type": "object",
+      "required": ["start", "end", "peak_load1", "threshold_load1", "provisional", "reason"],
+      "properties": {
+        "start": { "type": ["string", "null"], "description": "Raw /proc/loadavg at the start." },
+        "end": { "type": ["string", "null"], "description": "Raw /proc/loadavg at the end." },
+        "peak_load1": { "type": ["number", "null"] },
+        "threshold_load1": { "type": "number" },
+        "provisional": { "type": "boolean" },
+        "reason": { "type": ["string", "null"] }
+      }
+    },
+    "runSummary": {
+      "type": ["object", "null"],
+      "required": ["median", "min", "max", "p90", "n"],
+      "properties": {
+        "median": { "type": "number" }, "min": { "type": "number" }, "max": { "type": "number" },
+        "p90": { "type": "number" }, "n": { "type": "integer" }
+      }
+    },
+    "cpu": {
+      "type": "object",
+      "required": ["avg", "p95"],
+      "properties": {
+        "avg": { "type": "number", "description": "Percent of one core, across the process tree." },
+        "p95": { "type": ["number", "null"] }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "required": ["primary_metric", "pss", "rss", "anon", "private_working_set"],
+      "properties": {
+        "primary_metric": { "enum": ["pss", "private_working_set"] },
+        "pss": { "type": ["number", "null"], "description": "MiB across the tree. Linux." },
+        "rss": { "type": ["number", "null"], "description": "MiB, summed: double counts shared pages." },
+        "anon": { "type": ["number", "null"] },
+        "private_working_set": { "type": ["number", "null"], "description": "MiB. Windows, in place of PSS." },
+        "pss_peak": { "type": ["number", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "primary_metric": { "const": "pss" } } },
+          "then": { "properties": { "pss": { "type": "number" } } }
+        },
+        {
+          "if": { "properties": { "primary_metric": { "const": "private_working_set" } } },
+          "then": { "properties": { "private_working_set": { "type": "number" } } }
+        }
+      ]
+    },
+    "scenario": {
+      "type": "object",
+      "required": ["title", "ok", "provisional", "load", "errors", "cpu_pct_core", "memory_mb"],
+      "properties": {
+        "title": { "type": "string" },
+        "ok": { "type": "boolean" },
+        "provisional": { "type": "boolean" },
+        "load": { "$ref": "#/$defs/load" },
+        "best_effort": { "type": "boolean" },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "window_s": { "type": ["number", "null"] },
+        "readings": { "type": "array" },
+        "series": { "type": "array" },
+        "by_type": { "type": "object" },
+        "aux": { "type": "object" },
+        "stream_specs": { "type": "object", "description": "Scenario d: requested against measured." },
+        "invalid_measurements": { "type": "object", "description": "A failed scenario's numbers, for debugging only." }
+      },
+      "if": { "properties": { "ok": { "const": true } } },
+      "then": {
+        "properties": {
+          "errors": { "maxItems": 0 },
+          "cpu_pct_core": { "$ref": "#/$defs/cpu" },
+          "memory_mb": { "$ref": "#/$defs/memory" },
+          "invalid_measurements": false
+        }
+      },
+      "else": {
+        "description": "A failed scenario has no metrics: it can't be read as a result.",
+        "properties": {
+          "errors": { "minItems": 1 },
+          "cpu_pct_core": { "type": "null" },
+          "memory_mb": { "type": "null" },
+          "pss_slope_mb_per_hour": { "type": "null" },
+          "readings": { "maxItems": 0 }
+        }
+      }
+    }
+  }
+}

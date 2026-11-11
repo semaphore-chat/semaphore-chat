@@ -1,0 +1,14 @@
+[
+{"name":"hello `code` world","input":{"text":"hello `code` world"},"expected":[[6,12]]},
+{"name":"before ```\ncode\n``` after","input":{"text":"before ```\ncode\n``` after"},"expected":[[7,19]]},
+{"name":"no code here","input":{"text":"no code here"},"expected":[]},
+{"name":"``````","input":{"text":"``````"},"expected":[[0,6]]},
+{"name":"```","input":{"text":"```"},"expected":[]},
+{"name":"``","input":{"text":"``"},"expected":[]},
+{"name":"`a``b`","input":{"text":"`a``b`"},"expected":[[0,3],[3,6]]},
+{"name":"```a``` `b`","input":{"text":"```a``` `b`"},"expected":[[0,7],[8,11]]},
+{"name":"","input":{"text":""},"expected":[]},
+{"name":"a ```\nunclosed","input":{"text":"a ```\nunclosed"},"expected":[]},
+{"name":"`a\nb`","input":{"text":"`a\nb`"},"expected":[[0,5]]},
+{"name":"````x````","input":{"text":"````x````"},"expected":[[0,8]]}
+]

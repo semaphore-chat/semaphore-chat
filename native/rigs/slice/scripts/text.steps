@@ -1,0 +1,237 @@
+# U13: the text client end to end against semaphore-fake-server (scenario showcase), with the
+# OS's sleep and network events, and restarts that resume, can't reach, or are refused a session.
+# Shots named *-live-* can differ between runs and aren't compared.
+
+# 1. Probe the server, then sign in.
+app 1280 800
+wait idle
+expect label "Server URL"
+shot 01-server-url
+click auth-connect
+wait core label "Username" within 5
+wait idle
+shot 02-sign-in
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+expect requests AuthController_login >= 1
+expect requests InstanceController_getPublicSettings >= 1
+
+# 2. Lists: communities, the first one's channels, its first text channel's first page.
+wait core channel cc-general
+wait core rows >= 14
+wait core connection connected
+expect label "Couch Co-op"
+expect label "Members"
+wait idle
+shot 03-general
+
+# 3. Select across rows and copy.
+drag 420 168 575 322
+press ctrl-c
+expect clipboard "are we doing friday or not"
+expect clipboard "yeah i'll bring it friday"
+wait idle
+shot 04-selection
+press escape
+
+# 4. A mention from the picker.
+click channel-cc-lfg
+wait core channel cc-lfg
+wait core rows >= 3
+click channel-cc-general
+wait core channel cc-general
+wait core rows >= 14
+type "on it @drop"
+wait idle
+shot 05-mention-menu
+press enter
+type "thanks"
+expect requests typingStart >= 1
+
+# 5. Send: a pending row, acked by its nonce, exactly once.
+press enter
+wait core sent "on it @dropbear thanks"
+expect core count "on it @dropbear thanks" 1
+expect requests sendMessage >= 1
+wait idle
+shot 06-sent
+
+# 7. A send the server refuses: shown failed, retried with the same nonce, then one discarded.
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "second try works"
+press enter
+wait core failed "second try works" within 3
+wait idle
+shot 07-failed
+click-row retry "second try works"
+wait core sent "second try works"
+expect core count "second try works" 1
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "this one goes away"
+press enter
+wait core failed "this one goes away" within 3
+click-row discard "this one goes away"
+wait core no-text "this one goes away"
+
+# 8. A message from someone else arrives live.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"live from pri\"}"
+wait core text "live from pri"
+wait idle
+shot 08-incoming
+
+# 9. The socket drops; a message posted meanwhile reaches nobody; reconnecting resyncs it in.
+server refuse_connections "{\"refuse\": true}"
+server drop_connections
+wait core connection disconnected
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-samira\", \"text\": \"missed while away\", \"broadcast\": false}"
+wait idle
+shot 09-live-reconnecting
+expect core no-text "missed while away"
+server refuse_connections "{\"refuse\": false}"
+wait core connection connected within 40
+wait core text "missed while away"
+expect core count "missed while away" 1
+expect core count "on it @dropbear thanks" 1
+wait idle
+shot 10-resynced
+
+# 10. The OS: a sleep the socket doesn't survive, the network gone and back, then a network change.
+os suspend
+wait core connection suspended
+server drop_connections
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-aiko\", \"text\": \"posted while asleep\", \"broadcast\": false}"
+os resume
+wait core connection connected within 40
+wait core text "posted while asleep"
+expect core count "posted while asleep" 1
+os network-down
+wait core connection offline
+wait idle
+shot 11-offline
+os network-up
+wait core connection connected within 40
+# Wi-Fi to cellular, say: the socket is replaced and the new connection resyncs.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-diego\", \"text\": \"sent as the network moved\", \"broadcast\": false}"
+os network-up
+wait core text "sent as the network moved" within 40
+expect core count "sent as the network moved" 1
+
+# 11. Restart: the stored session resumes with no password.
+expect stored-session yes
+restart
+wait core session signed-in
+wait core channel cc-general
+wait core rows >= 14
+wait core connection connected
+expect requests AuthController_refresh >= 1
+wait idle
+shot 12-restored
+# The server doesn't answer at start: the session is kept and a retry offered.
+server fail_route "{\"operationId\": \"AuthController_refresh\", \"status\": 503, \"code\": \"SERVICE_UNAVAILABLE\"}"
+restart
+wait core label "Try again"
+expect core session signed-out
+expect stored-session yes
+wait idle
+shot 13-unreachable
+click restore-retry
+wait core session signed-in
+wait core channel cc-general
+
+# 13. Media: avatars and images drawn, files sent after their message, a refused upload retried and
+# one removed, the image viewer, a custom emoji, and a link preview with its image off, then on.
+wait core file-ready sc-avatar-u-priya within 10
+wait core file-ready sc-img-pit within 10
+wait idle
+shot 18-media
+attach rigs/slice/fixtures/sketch.png
+attach rigs/slice/fixtures/notes.txt
+wait idle
+shot 19-composer-files
+type "two files"
+press enter
+wait core sent "two files"
+wait core attachments "two files" 2 within 15
+wait core uploads "two files" 0
+wait core pending-files "two files" 0
+expect requests FileUploadController_uploadFile >= 2
+expect requests MessagesController_addAttachment >= 2
+wait idle
+shot 20-files-sent
+server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
+attach rigs/slice/fixtures/notes.txt
+type "too big at first"
+press enter
+wait core upload-failed "too big at first" within 15
+wait idle
+shot 21-upload-failed
+click-row upload-retry "too big at first" 0
+wait core attachments "too big at first" 1 within 15
+wait core uploads "too big at first" 0
+server fail_route "{\"operationId\": \"FileUploadController_uploadFile\", \"status\": 413, \"code\": \"PAYLOAD_TOO_LARGE\"}"
+attach rigs/slice/fixtures/notes.txt
+type "never mind the file"
+press enter
+wait core upload-failed "never mind the file" within 15
+click-row upload-remove "never mind the file" 0
+wait core uploads "never mind the file" 0
+wait core pending-files "never mind the file" 0 within 15
+click-row image "two files" 0
+wait core viewer open
+wait idle
+shot 22-viewer
+press escape
+wait core viewer closed
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"look at this \", \"emoji\": {\"id\": \"emoji-party\", \"name\": \"party\"}, \"linkPreview\": {\"url\": \"https://example.invalid/article\", \"title\": \"An article with a picture\", \"description\": \"The picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/preview.png\"}}"
+wait core text "look at this"
+wait core file-ready emoji-party within 10
+wait idle
+shot 23-preview-image-off
+expect core requests Fixture_image == 0
+link-images on
+restart
+wait core session signed-in
+wait core channel cc-general
+wait core text "look at this"
+wait core requests Fixture_image >= 1 within 10
+wait idle
+shot 24-preview-image-on
+link-images off
+
+# 12. Sign out from the account menu: the stored session goes, the server is remembered.
+click rail-account
+wait core label "Sign out"
+wait idle
+shot 14-account
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+expect requests AuthController_logout >= 1
+expect stored-session no
+wait idle
+shot 15-signed-out
+restart
+wait core label "Username"
+expect core session signed-out
+wait idle
+shot 16-restart-signed-out
+
+# 11, refused: the server refuses the stored session at start. Signed out, told why, token gone.
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+expect stored-session yes
+server fail_route "{\"operationId\": \"AuthController_refresh\", \"status\": 401, \"code\": \"UNAUTHENTICATED\"}"
+restart
+wait core label "Your session has expired. Please sign in again."
+expect core session signed-out
+expect stored-session no
+wait idle
+shot 17-expired

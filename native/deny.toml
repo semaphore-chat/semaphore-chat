@@ -1,0 +1,81 @@
+# cargo-deny policy for everything we ship. scripts/test-policy.sh proves it rejects GPL.
+#
+# Licenses are an allow list, so GPL, LGPL and AGPL of any version fail unless named.
+# Semaphore is AGPL plus a commercial license: a GPL dependency would block the commercial
+# edition. Our own crates are the only AGPL allowed, each named below.
+
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+all-features = false
+
+[licenses]
+confidence-threshold = 0.9
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+exceptions = [
+    { crate = "semaphore-api", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-core", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-design", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-fake-server", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-ffi", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-wire", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-net", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-media-livekit", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-platform-desktop", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-sysaudio", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-ui", allow = ["AGPL-3.0-only"] },
+    { crate = "gpui-video-rig", allow = ["AGPL-3.0-only"] },
+    { crate = "semaphore-app", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-shot", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-list", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-reconnect", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-sio", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-surface-smoke", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-slice", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-sysaudio", allow = ["AGPL-3.0-only"] },
+    { crate = "rig-fake-camera", allow = ["AGPL-3.0-only"] },
+]
+
+[licenses.private]
+# Our crates are checked like any other, so an unlisted one fails rather than passing.
+ignore = false
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+[advisories]
+yanked = "warn"
+# Each is an "unmaintained" notice, not a vulnerability, and arrives through gpui-kit,
+# gpui-pre or ashpd with no safe upgrade today. Named individually so that any new advisory
+# still fails. Recorded in docs/spike-results.md; revisit all of them at the go decision.
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "instant, via gpui-kit" },
+    { id = "RUSTSEC-2024-0436", reason = "paste, via gpui-kit" },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser, via cosmic-text in gpui-pre" },
+    { id = "RUSTSEC-2026-0206", reason = "rustybuzz, text shaping via gpui-pre" },
+    { id = "RUSTSEC-2026-0370", reason = "zvariant, via ashpd in gpui-pre-linux" },
+    { id = "RUSTSEC-2026-0371", reason = "zbus_names, via ashpd in gpui-pre-linux" },
+    { id = "RUSTSEC-2026-0372", reason = "zvariant_derive, via ashpd in gpui-pre-linux" },
+]

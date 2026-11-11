@@ -1,0 +1,66 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "rigs/shot", "rigs/list", "rigs/reconnect", "rigs/sio", "rigs/surface-smoke", "rigs/slice", "rigs/sysaudio", "rigs/fake-camera"]
+# Fallback-framework rigs keep their own lockfile so Iced's dependency tree never
+# unifies with GPUI's. Nothing lives there in Phase 0.
+exclude = ["rigs/video-iced", "rigs/video", "third_party", "tools"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "AGPL-3.0-only"
+publish = false
+
+[workspace.dependencies]
+semaphore-api = { path = "crates/semaphore-api" }
+semaphore-core = { path = "crates/semaphore-core" }
+semaphore-design = { path = "crates/semaphore-design" }
+semaphore-media-livekit = { path = "crates/semaphore-media-livekit" }
+semaphore-net = { path = "crates/semaphore-net" }
+semaphore-platform-desktop = { path = "crates/semaphore-platform-desktop" }
+semaphore-sysaudio = { path = "crates/semaphore-sysaudio" }
+semaphore-ui = { path = "crates/semaphore-ui" }
+semaphore-wire = { path = "crates/semaphore-wire" }
+
+# UI. gpui-kit pins `gpui-pre =0.3.11` itself, so this one exact version (plus the
+# committed Cargo.lock) fixes GPUI too. Never add Zed's git gpui next to it: that is
+# a second, incompatible GPUI. A renderer fork goes through [patch.crates-io].
+gpui-kit = "=0.9.0"
+
+# Media.
+# glib-main-loop: libwebrtc's Wayland screen capture talks to the xdg portal over GDBus, which
+# needs a running glib main loop (the feature runs one per capture).
+livekit = { version = "=0.10.1", features = ["rustls-tls-native-roots", "glib-main-loop"] }
+
+# Everything else.
+anyhow = "1"
+async-trait = "0.1"
+directories = "6"
+futures-util = "0.3"
+log = "0.4"
+# 0.13 because that is what progenitor-client 0.15 needs. No TLS here: semaphore-api
+# sends JSON over whatever client it is given, and semaphore-net picks the backend.
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["sync"] }
+# rustls with no roots: semaphore-net hands every connection its OS-trust config, so forgetting it
+# is a refused connection and not a second trust store.
+tokio-tungstenite = { version = "0.26", features = ["__rustls-tls"] }
+
+# The NV12 video surface, and the capture options and camera module libwebrtc doesn't expose. Built
+# from crates.io source and our patches: see third_party/README.md and third_party/PATCHES.md.
+[patch.crates-io]
+gpui-pre = { path = "third_party/vendor/gpui-pre" }
+gpui-pre-wgpu = { path = "third_party/vendor/gpui-pre-wgpu" }
+gpui-pre-windows = { path = "third_party/vendor/gpui-pre-windows" }
+libwebrtc = { path = "third_party/vendor/libwebrtc" }
+webrtc-sys = { path = "third_party/vendor/webrtc-sys" }
+
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.release]
+strip = "symbols"
+lto = "thin"

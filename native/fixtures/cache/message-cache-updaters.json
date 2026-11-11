@@ -1,0 +1,4837 @@
+{
+  "calls": [
+    {
+      "args": [
+        null,
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": null,
+      "sameRef": false,
+      "test": "prependMessageToInfinite > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "existing-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "new-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "new-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "existing-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependMessageToInfinite > prepends a message to the first page"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "dup-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "dup-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "dup-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": true,
+      "test": "prependMessageToInfinite > deduplicates — returns unchanged data when message already exists"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "existing-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "new-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "new-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "existing-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependMessageToInfinite > does not mutate the original data"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": []
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "first",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "first",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependMessageToInfinite > handles empty first page"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [],
+          "pages": []
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-2",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [],
+        "pages": []
+      },
+      "sameRef": true,
+      "test": "prependMessageToInfinite > returns unchanged when pages array has no pages"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            "cursor-uuid"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "old-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "new-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependMessageToInfinite",
+      "result": {
+        "pageParams": [
+          "cursor-uuid"
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "old-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": true,
+      "test": "prependMessageToInfinite > does not insert when the window is detached from the live edge"
+    },
+    {
+      "args": [
+        null
+      ],
+      "op": "isDetachedFromLiveEdge",
+      "result": false,
+      "sameRef": false,
+      "test": "isDetachedFromLiveEdge > is false for undefined data"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-3",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "op": "isDetachedFromLiveEdge",
+      "result": false,
+      "sameRef": false,
+      "test": "isDetachedFromLiveEdge > is false when the first page param is undefined (factory default)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            ""
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-4",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "op": "isDetachedFromLiveEdge",
+      "result": false,
+      "sameRef": false,
+      "test": "isDetachedFromLiveEdge > is false when the first page param is the empty string (live initialPageParam)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            "cursor-uuid"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-5",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "op": "isDetachedFromLiveEdge",
+      "result": true,
+      "sameRef": false,
+      "test": "isDetachedFromLiveEdge > is true when the first page param is a cursor (newest page was evicted)"
+    },
+    {
+      "args": [
+        null,
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-6",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "updateMessageInInfinite",
+      "result": null,
+      "sameRef": false,
+      "test": "updateMessageInInfinite > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "old-author",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "new-author",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "updateMessageInInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "new-author",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "msg-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "updateMessageInInfinite > replaces the matching message in a single page"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null,
+            "token-1"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p1-msg",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            },
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "old",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p2-msg",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "new",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "p2-msg",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "updateMessageInInfinite",
+      "result": {
+        "pageParams": [
+          null,
+          "token-1"
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "p1-msg",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          },
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "new",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "p2-msg",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "updateMessageInInfinite > updates a message in the second page of multi-page data"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [
+            {
+              "filename": "a.png",
+              "fileType": "IMAGE",
+              "hasThumbnail": false,
+              "id": "file-1",
+              "mimeType": "image/png",
+              "size": 1
+            }
+          ],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "updateMessageInInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [
+                  {
+                    "filename": "a.png",
+                    "fileType": "IMAGE",
+                    "hasThumbnail": false,
+                    "id": "file-1",
+                    "mimeType": "image/png",
+                    "size": 1
+                  }
+                ],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "msg-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "updateMessageInInfinite > keeps the clientId of a row that was sent optimistically (stable React key)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "nonexistent",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "updateMessageInInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "msg-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "updateMessageInInfinite > leaves data unchanged when message ID not found"
+    },
+    {
+      "args": [
+        null,
+        "any"
+      ],
+      "op": "deleteMessageFromInfinite",
+      "result": null,
+      "sameRef": false,
+      "test": "deleteMessageFromInfinite > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "keep",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "remove",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "remove"
+      ],
+      "op": "deleteMessageFromInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "keep",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "deleteMessageFromInfinite > removes the matching message"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null,
+            "token-1"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            },
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p2-keep",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p2-remove",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "p2-remove"
+      ],
+      "op": "deleteMessageFromInfinite",
+      "result": {
+        "pageParams": [
+          null,
+          "token-1"
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "p1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          },
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "p2-keep",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "deleteMessageFromInfinite > removes from the correct page in multi-page data"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "nonexistent"
+      ],
+      "op": "deleteMessageFromInfinite",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "msg-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "deleteMessageFromInfinite > leaves data unchanged when message ID not found"
+    },
+    {
+      "args": [
+        null,
+        "any"
+      ],
+      "op": "findMessageInInfinite",
+      "result": null,
+      "sameRef": false,
+      "test": "findMessageInInfinite > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "target",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "other",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "target"
+      ],
+      "op": "findMessageInInfinite",
+      "result": {
+        "attachments": [],
+        "authorId": "user-1",
+        "channelId": "channel-1",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "target",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [],
+        "webhook": null
+      },
+      "sameRef": false,
+      "test": "findMessageInInfinite > finds a message in the first page"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null,
+            "token-1"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "p1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            },
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "target",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "target"
+      ],
+      "op": "findMessageInInfinite",
+      "result": {
+        "attachments": [],
+        "authorId": "user-1",
+        "channelId": "channel-1",
+        "deletedAt": null,
+        "directMessageGroupId": null,
+        "editedAt": null,
+        "id": "target",
+        "lastReplyAt": null,
+        "linkPreviews": null,
+        "parentMessageId": null,
+        "pendingAttachments": 0,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "reactions": [],
+        "replyCount": 0,
+        "replyTo": null,
+        "replyToId": null,
+        "sentAt": "2026-09-22T18:00:00.000Z",
+        "spans": [],
+        "webhook": null
+      },
+      "sameRef": false,
+      "test": "findMessageInInfinite > finds a message across pages"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "msg-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "nonexistent"
+      ],
+      "op": "findMessageInInfinite",
+      "result": null,
+      "sameRef": false,
+      "test": "findMessageInInfinite > returns undefined when message not found"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "clientNonce": "nonce-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "hello",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-2",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "other-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-abc",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "hello",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "hello",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-2",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "other-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > reconciles in place when a pending row from the same author has the nonce (echo-first)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "clientNonce": "nonce-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "hello",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-abc",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "hello",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "hello",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > reconciles a failed row too (late echo after a timed-out ack)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-2",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "existing-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-2",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "existing-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > falls back to a plain prepend when no matching optimistic row exists"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-2",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "clientNonce": "nonce-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-abc",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-2",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-abc",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > does not reconcile against a pending row from a DIFFERENT author"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > deduplicates when the real message id is already present"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "clientNonce": "nonce-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": "parent-1",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "hello",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": {
+            "authorId": "user-2",
+            "deletedAt": null,
+            "id": "parent-1",
+            "spans": []
+          },
+          "replyToId": "parent-1",
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "hello",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": {
+                  "authorId": "user-2",
+                  "deletedAt": null,
+                  "id": "parent-1",
+                  "spans": []
+                },
+                "replyToId": "parent-1",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "hello",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > MERGES the echo into an existing id-matched row instead of dropping it (ack-first enrichment)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            "cursor-uuid"
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "old-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "new-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          "cursor-uuid"
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "old-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": true,
+      "test": "prependOrReconcileOptimistic > does not insert into a detached window"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-b",
+                  "clientNonce": "nonce-b",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-b",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "same",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "same",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-a",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-a",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "same",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-b",
+                "clientNonce": "nonce-b",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-b",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "same",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "same",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > two sends with identical text: each echo reconciles its own row"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "clientNonce": "nonce-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "hello",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "hello",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "hello",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "clientNonce": "nonce-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-abc",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "hello",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > an echo without a nonce (an older server) never matches by content"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-b",
+                  "clientNonce": "nonce-b",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-b",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 1,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 2,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-b",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-b",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 1,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-b",
+                "clientNonce": "nonce-b",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-b",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 1,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 2,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "failed",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > multi-pending disambiguation > two captionless sends with files: the echo reconciles its own row"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-b",
+                  "clientNonce": "nonce-b",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-b",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "message B",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "message A",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-b",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-b",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "message B",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-b",
+                "clientNonce": "nonce-b",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-b",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "message B",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "failed",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "message A",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > multi-pending disambiguation > failed-A + pending-B: B's echo reconciles B, leaves A (failed) UNTOUCHED"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-b",
+                  "clientNonce": "nonce-b",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-b",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "message B",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "message A",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-a",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-a",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "message A",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-b",
+                "clientNonce": "nonce-b",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-b",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "message B",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "message A",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > multi-pending disambiguation > failed-A + pending-B: a LATE echo for A replaces the failed row (prevents double-post via retry) and does not touch B"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "first",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-b",
+                  "clientNonce": "nonce-b",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-b",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "second",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-b",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-b",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "second",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "first",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-b",
+                "clientNonce": "nonce-b",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-b",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "second",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > multi-pending disambiguation > two PENDING rows, same author: the echo reconciles its own row"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-a",
+                  "clientNonce": "nonce-a",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-a",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [
+                    {
+                      "text": "first",
+                      "type": "PLAINTEXT"
+                    }
+                  ],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "clientNonce": "nonce-x",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-x",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [
+            {
+              "text": "totally different",
+              "type": "PLAINTEXT"
+            }
+          ],
+          "webhook": null
+        }
+      ],
+      "op": "prependOrReconcileOptimistic",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientNonce": "nonce-x",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-x",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "totally different",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-a",
+                "clientNonce": "nonce-a",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-a",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [
+                  {
+                    "text": "first",
+                    "type": "PLAINTEXT"
+                  }
+                ],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "prependOrReconcileOptimistic > multi-pending disambiguation > same author, no nonce match: falls through to plain insert, both optimistic rows untouched"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc",
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "replaceOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "replaceOptimisticMessage > replaces the optimistic row matched by clientId with the real message"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc",
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "replaceOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": true,
+      "test": "replaceOptimisticMessage > is a no-op when no row with that clientId is found (already reconciled by the echo)"
+    },
+    {
+      "args": [
+        null,
+        "pending-abc",
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "msg-7",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "replaceOptimisticMessage",
+      "result": null,
+      "sameRef": false,
+      "test": "replaceOptimisticMessage > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc",
+        {
+          "attachments": [],
+          "authorId": "user-1",
+          "channelId": "channel-1",
+          "deletedAt": null,
+          "directMessageGroupId": null,
+          "editedAt": null,
+          "id": "real-1-different",
+          "lastReplyAt": null,
+          "linkPreviews": null,
+          "parentMessageId": null,
+          "pendingAttachments": 0,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "reactions": [],
+          "replyCount": 0,
+          "replyTo": null,
+          "replyToId": null,
+          "sentAt": "2026-09-22T18:00:00.000Z",
+          "spans": [],
+          "webhook": null
+        }
+      ],
+      "op": "replaceOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": true,
+      "test": "replaceOptimisticMessage > is a no-op against an already-reconciled row (id changed, clientId retained) — does not overwrite it again"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "keep-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "removeOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "keep-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "removeOptimisticMessage > removes the row matched by clientId"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "keep-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "nonexistent"
+      ],
+      "op": "removeOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "keep-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "removeOptimisticMessage > leaves data unchanged when clientId not found"
+    },
+    {
+      "args": [
+        null,
+        "pending-abc"
+      ],
+      "op": "removeOptimisticMessage",
+      "result": null,
+      "sameRef": false,
+      "test": "removeOptimisticMessage > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "removeOptimisticMessage",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "removeOptimisticMessage > does NOT remove a row whose clientId is retained but whose id has already been reconciled (fix round 1 guard)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "markOptimisticFailed",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-abc",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "failed",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "markOptimisticFailed > sets sendStatus to 'failed' on the row matched by clientId"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "pending",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                },
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "other-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "markOptimisticFailed",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-abc",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "failed",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              },
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "other-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "markOptimisticFailed > leaves other rows untouched"
+    },
+    {
+      "args": [
+        null,
+        "pending-abc"
+      ],
+      "op": "markOptimisticFailed",
+      "result": null,
+      "sameRef": false,
+      "test": "markOptimisticFailed > returns undefined when given undefined"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "real-1",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "markOptimisticFailed",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "real-1",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "markOptimisticFailed > does NOT flip an already-reconciled real message back to failed (lost-ack-after-echo guard, fix round 1)"
+    },
+    {
+      "args": [
+        {
+          "pageParams": [
+            null
+          ],
+          "pages": [
+            {
+              "messages": [
+                {
+                  "attachments": [],
+                  "authorId": "user-1",
+                  "channelId": "channel-1",
+                  "clientId": "pending-abc",
+                  "deletedAt": null,
+                  "directMessageGroupId": null,
+                  "editedAt": null,
+                  "id": "pending-abc",
+                  "lastReplyAt": null,
+                  "linkPreviews": null,
+                  "parentMessageId": null,
+                  "pendingAttachments": 0,
+                  "pinned": false,
+                  "pinnedAt": null,
+                  "pinnedBy": null,
+                  "reactions": [],
+                  "replyCount": 0,
+                  "replyTo": null,
+                  "replyToId": null,
+                  "sendStatus": "failed",
+                  "sentAt": "2026-09-22T18:00:00.000Z",
+                  "spans": [],
+                  "webhook": null
+                }
+              ]
+            }
+          ]
+        },
+        "pending-abc"
+      ],
+      "op": "markOptimisticPending",
+      "result": {
+        "pageParams": [
+          null
+        ],
+        "pages": [
+          {
+            "messages": [
+              {
+                "attachments": [],
+                "authorId": "user-1",
+                "channelId": "channel-1",
+                "clientId": "pending-abc",
+                "deletedAt": null,
+                "directMessageGroupId": null,
+                "editedAt": null,
+                "id": "pending-abc",
+                "lastReplyAt": null,
+                "linkPreviews": null,
+                "parentMessageId": null,
+                "pendingAttachments": 0,
+                "pinned": false,
+                "pinnedAt": null,
+                "pinnedBy": null,
+                "reactions": [],
+                "replyCount": 0,
+                "replyTo": null,
+                "replyToId": null,
+                "sendStatus": "pending",
+                "sentAt": "2026-09-22T18:00:00.000Z",
+                "spans": [],
+                "webhook": null
+              }
+            ]
+          }
+        ]
+      },
+      "sameRef": false,
+      "test": "markOptimisticPending > resets a 'failed' row back to 'pending', keeping the same id"
+    },
+    {
+      "args": [
+        null,
+        "pending-abc"
+      ],
+      "op": "markOptimisticPending",
+      "result": null,
+      "sameRef": false,
+      "test": "markOptimisticPending > returns undefined when given undefined"
+    }
+  ],
+  "source": "frontend/src/__tests__/utils/messageCacheUpdaters.test.ts"
+}

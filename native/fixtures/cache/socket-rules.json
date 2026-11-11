@@ -1,0 +1,473 @@
+{
+  "events": {
+    "channelCreated": {
+      "invalidate": [
+        "channelsControllerFindAllForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "channelDeleted": {
+      "invalidate": [
+        "channelsControllerFindAllForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "channelPermissionsUpdated": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "channelsControllerFindAllForCommunity",
+        "channelsControllerFindOne:id"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "channelsReordered": {
+      "invalidate": [
+        "channelsControllerFindAllForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "channelUpdated": {
+      "invalidate": [
+        "channelsControllerFindAllForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "communityDeleted": {
+      "invalidate": [
+        "communityControllerFindAllMine"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "communityUpdated": {
+      "invalidate": [
+        "communityControllerFindAllMine",
+        "communityControllerFindOne"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "deleteMessage": {
+      "invalidate": [],
+      "remove": [
+        "threadsControllerGetReplies:parentMessageId"
+      ],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId"
+      ]
+    },
+    "dmVoiceCallStarted": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "dmVoiceUserJoined": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "dmVoicePresenceControllerGetDmPresence:dmGroupId"
+      ]
+    },
+    "dmVoiceUserLeft": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "dmVoicePresenceControllerGetDmPresence:dmGroupId"
+      ]
+    },
+    "egressSegmentsReady": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "memberAddedToCommunity": {
+      "invalidate": [
+        "communityControllerFindAllMine"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "messagePinned": {
+      "invalidate": [
+        "moderationControllerGetPinnedMessages:channelId"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId"
+      ]
+    },
+    "messageUnpinned": {
+      "invalidate": [
+        "moderationControllerGetPinnedMessages:channelId"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId"
+      ]
+    },
+    "newDirectMessage": {
+      "invalidate": [
+        "directMessagesControllerFindUserDmGroups"
+      ],
+      "remove": [],
+      "reset": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId"
+      ],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId",
+        "readReceiptsControllerGetUnreadCounts"
+      ]
+    },
+    "newMessage": {
+      "invalidate": [
+        "directMessagesControllerFindUserDmGroups"
+      ],
+      "remove": [],
+      "reset": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId"
+      ],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId",
+        "readReceiptsControllerGetUnreadCounts"
+      ]
+    },
+    "newNotification": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "notificationsControllerGetNotifications",
+        "notificationsControllerGetUnreadCount",
+        "readReceiptsControllerGetUnreadCounts"
+      ]
+    },
+    "newThreadReply": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "threadsControllerGetReplies:parentMessageId"
+      ]
+    },
+    "notificationRead": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "notificationsControllerGetNotifications",
+        "notificationsControllerGetUnreadCount"
+      ]
+    },
+    "reactionAdded": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId",
+        "threadsControllerGetReplies:parentMessageId"
+      ]
+    },
+    "reactionRemoved": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId",
+        "threadsControllerGetReplies:parentMessageId"
+      ]
+    },
+    "readReceiptUpdated": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "readReceiptsControllerGetDmPeerReads:directMessageGroupId",
+        "readReceiptsControllerGetUnreadCounts"
+      ]
+    },
+    "replayBufferFailed": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "replayBufferStopped": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "roleAssigned": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerFindAllForCommunity",
+        "membershipControllerGetMembers",
+        "rolesControllerGetCommunityRoles",
+        "rolesControllerGetMyRolesForChannel",
+        "rolesControllerGetMyRolesForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "roleCreated": {
+      "invalidate": [
+        "membershipControllerFindAllForCommunity",
+        "rolesControllerGetCommunityRoles"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "roleDeleted": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerFindAllForCommunity",
+        "rolesControllerGetCommunityRoles",
+        "rolesControllerGetMyRolesForChannel",
+        "rolesControllerGetMyRolesForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "roleUnassigned": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerFindAllForCommunity",
+        "membershipControllerGetMembers",
+        "rolesControllerGetCommunityRoles",
+        "rolesControllerGetMyRolesForChannel",
+        "rolesControllerGetMyRolesForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "roleUpdated": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerFindAllForCommunity",
+        "rolesControllerGetCommunityRoles",
+        "rolesControllerGetMyRolesForChannel",
+        "rolesControllerGetMyRolesForCommunity"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "sessionTerminated": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "threadReplyCountUpdated": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId"
+      ]
+    },
+    "timeoutRemoved": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerGetMembers",
+        "moderationControllerGetTimeoutStatus"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "tokenExpiring": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "updateMessage": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "messagesControllerFindAllForChannel:channelId",
+        "messagesControllerFindAllForGroup:groupId"
+      ]
+    },
+    "userBanned": {
+      "invalidate": [
+        "communityControllerFindAllMine",
+        "membershipControllerGetMembers"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "userKicked": {
+      "invalidate": [
+        "communityControllerFindAllMine",
+        "membershipControllerGetMembers"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "userOffline": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "presenceControllerGetBulkPresence",
+        "presenceControllerGetUserPresence:userId"
+      ]
+    },
+    "userOnline": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "presenceControllerGetBulkPresence",
+        "presenceControllerGetUserPresence:userId"
+      ]
+    },
+    "userProfileUpdated": {
+      "invalidate": [
+        "userControllerGetProfile",
+        "userControllerGetUserById:id"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "userTimedOut": {
+      "invalidate": [
+        "channelPermissionsControllerGetMyChannelPermissions",
+        "channelPermissionsControllerGetMyCommunityChannelPermissions",
+        "channelPermissionsControllerGetOverwrites",
+        "channelPermissionsControllerListChannelPermissions",
+        "membershipControllerGetMembers",
+        "moderationControllerGetTimeoutStatus"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "userTyping": {
+      "invalidate": [],
+      "remove": [],
+      "reset": [],
+      "set": []
+    },
+    "voiceChannelUserJoined": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "voicePresenceControllerGetChannelPresence:channelId"
+      ]
+    },
+    "voiceChannelUserLeft": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "voicePresenceControllerGetChannelPresence:channelId"
+      ]
+    },
+    "voiceChannelUserUpdated": {
+      "invalidate": [
+        "dmVoicePresenceControllerGetDmPresence",
+        "userVoicePresenceControllerGetMyVoiceChannels",
+        "voicePresenceControllerGetChannelPresence"
+      ],
+      "remove": [],
+      "reset": [],
+      "set": [
+        "voicePresenceControllerGetChannelPresence:channelId"
+      ]
+    }
+  },
+  "reconnect": {
+    "invalidate": [
+      "dmVoicePresenceControllerGetDmPresence",
+      "notificationsControllerGetNotifications",
+      "notificationsControllerGetUnreadCount",
+      "readReceiptsControllerGetDmPeerReads",
+      "readReceiptsControllerGetUnreadCounts",
+      "voicePresenceControllerGetChannelPresence"
+    ],
+    "invalidatedWindows": [
+      "live"
+    ],
+    "resetWindows": [
+      "detached"
+    ]
+  }
+}

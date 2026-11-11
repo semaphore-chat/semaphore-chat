@@ -1,0 +1,15 @@
+[package]
+name = "semaphore-wire"
+description = "Generated from native/contract: REST and socket payload types. Pure Rust, so core can use it."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+# Pure Rust only: no TLS, no HTTP, no C. `scripts/check-core-boundary.py` enforces it.
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+regress = "0.12"
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { version = "1", features = ["serde"] }

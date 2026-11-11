@@ -1,0 +1,30 @@
+[package]
+name = "semaphore-platform-desktop"
+description = "Desktop implementations of core's OS-service traits."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+directories.workspace = true
+log.workspace = true
+keyring = { version = "3", default-features = false, features = ["apple-native", "windows-native", "async-secret-service", "tokio", "crypto-rust"] }
+notify-rust = "4.18"
+semaphore-core.workspace = true
+
+# logind and NetworkManager. async-io only, never `tokio`: see src/lifecycle.rs.
+[target.'cfg(target_os = "linux")'.dependencies]
+futures-util.workspace = true
+libc = "0.2"
+zbus = { version = "5", default-features = false, features = ["async-io"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_System_Power",
+    "Win32_UI_WindowsAndMessaging",
+] }

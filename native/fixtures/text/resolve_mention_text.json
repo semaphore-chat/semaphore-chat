@@ -1,0 +1,12 @@
+[
+{"name":"display name","input":{"span":{"type":"USER_MENTION","text":"@alice","userId":"u1"},"users":[{"id":"u1","username":"alice","displayName":"Alice W"}]},"expected":"@Alice W"},
+{"name":"username only","input":{"span":{"type":"USER_MENTION","text":"@alice","userId":"u1"},"users":[{"id":"u1","username":"alice"}]},"expected":"@alice"},
+{"name":"plaintext","input":{"span":{"type":"PLAINTEXT","text":"hello world"},"users":[]},"expected":"hello world"},
+{"name":"plaintext no text","input":{"span":{"type":"PLAINTEXT"},"users":[]},"expected":""},
+{"name":"user not found uses text","input":{"span":{"type":"USER_MENTION","text":"@ghost","userId":"zz"},"users":[{"id":"u1","username":"alice","displayName":"Alice W"}]},"expected":"@ghost"},
+{"name":"user no text no match","input":{"span":{"type":"USER_MENTION","userId":"zz"},"users":[]},"expected":"@unknown"},
+{"name":"user no id","input":{"span":{"type":"USER_MENTION","text":"@t"},"users":[{"id":"u1","username":"alice","displayName":"Alice W"}]},"expected":"@t"},
+{"name":"special with text","input":{"span":{"type":"SPECIAL_MENTION","text":"@here","specialKind":"here"},"users":[]},"expected":"@here"},
+{"name":"special no text","input":{"span":{"type":"SPECIAL_MENTION","specialKind":"channel"},"users":[]},"expected":"@channel"},
+{"name":"other type","input":{"span":{"type":"CODE_BLOCK","text":"x"},"users":[]},"expected":"x"}
+]

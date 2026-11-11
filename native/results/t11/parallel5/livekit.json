@@ -1,0 +1,2524 @@
+{
+ "test": "T11",
+ "mode": "livekit",
+ "profile": "release",
+ "runs_per_scenario": 5,
+ "generated": "2026-11-10T21:44:22Z",
+ "commit": "5cd43788d9caf78570f42ee1f25a0b66d260d192",
+ "call_reference_db": -12.04,
+ "call_reference_from": "L9 median",
+ "absent_threshold_db": -80.0,
+ "scenarios": {
+  "L1": {
+   "what": "PulseAudio game, our call audio playing",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.2,
+       "median_db": -105.2,
+       "max_fast_db": -92.82
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.09,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 55 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -106.04,
+       "median_db": -106.1,
+       "max_fast_db": -91.33
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.03,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.97,
+       "median_db": -109.97,
+       "max_fast_db": -93.59
+      },
+      "stereo_a_db": {
+       "left": -12.03,
+       "right": -12.03
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.08,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.2,
+       "median_db": -105.2,
+       "max_fast_db": -90.74
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.04,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.97,
+       "median_db": -109.97,
+       "max_fast_db": -94.27
+      },
+      "stereo_a_db": {
+       "left": -12.03,
+       "right": -12.03
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.12,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L2": {
+   "what": "native PipeWire game",
+   "passed": 4,
+   "runs": 5,
+   "pass": false,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": false
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.84,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -63.07,
+       "median_db": -91.28,
+       "max_fast_db": -63.67
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.17,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 pw-play pid ? -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": false
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -97.39,
+       "median_db": -97.39,
+       "max_fast_db": -63.15
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.15,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 pw-play pid ? -> linked",
+      "node 62 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -89.34,
+       "median_db": -89.34,
+       "max_fast_db": -66.28
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.16,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 pw-play pid ? -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -89.78,
+       "median_db": -89.78,
+       "max_fast_db": -64.25
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.16,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 pw-play pid ? -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -97.39,
+       "median_db": -97.39,
+       "max_fast_db": -63.15
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.13,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 pw-play pid ? -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L3": {
+   "what": "a game that starts 6 s into the share",
+   "passed": 3,
+   "runs": 5,
+   "pass": false,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.05,
+       "min_db": -12.05,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 157,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -87.73,
+       "median_db": -88.16,
+       "max_fast_db": -38.1
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.77,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 84 paplay pid 149 -> waiting: not playing to a sink",
+      "node 84 paplay pid 149 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 152,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -90.99,
+       "median_db": -90.99,
+       "max_fast_db": -57.96
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.76,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 84 paplay pid 149 -> waiting: not playing to a sink",
+      "node 84 paplay pid 149 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": false,
+      "present_a3": false,
+      "a3_onset": true,
+      "absent_b": false
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 0.938,
+       "median_db": -12.03,
+       "min_db": -18.37,
+       "max_db": -12.03
+      },
+      "present_a3": {
+       "share_within_6db": 0.909,
+       "median_db": -12.05,
+       "min_db": -18.12,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 163,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -58.58,
+       "median_db": -97.02,
+       "max_fast_db": -40.0
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.81,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 84 paplay pid 149 -> waiting: not playing to a sink",
+      "node 84 paplay pid 149 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": false
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.05,
+       "max_db": -12.03
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.05,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 166,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -89.91,
+       "median_db": -91.23,
+       "max_fast_db": -73.79
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.77,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 84 paplay pid 149 -> waiting: not playing to a sink",
+      "node 84 paplay pid 149 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": false
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -14.24,
+       "max_db": -12.03
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.65,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 157,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -60.84,
+       "median_db": -92.01,
+       "max_fast_db": -38.27
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.8,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 84 paplay pid 149 -> waiting: not playing to a sink",
+      "node 84 paplay pid 149 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": false
+    }
+   ],
+   "a3_onset_ms_median": 157,
+   "onset_median_under_500ms": true,
+   "realtime": false,
+   "parallel": 5
+  },
+  "L4": {
+   "what": "a game on a second sink; our call moved to that sink mid-share",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -88.88,
+       "median_db": -88.88,
+       "max_fast_db": -69.08
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.55,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 59 paplay pid 32 -> linked",
+      "node 68 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -88.87,
+       "median_db": -90.04,
+       "max_fast_db": -69.31
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.53,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 68 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 58 paplay pid 32 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -89.49,
+       "median_db": -89.49,
+       "max_fast_db": -67.96
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.58,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 55 paplay pid 32 -> linked",
+      "node 68 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -86.4,
+       "median_db": -87.49,
+       "max_fast_db": -71.0
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.59,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 68 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 59 paplay pid 32 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -89.29,
+       "median_db": -89.29,
+       "max_fast_db": -69.53
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.6,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 58 paplay pid 32 -> linked",
+      "node 68 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 59 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L5": {
+   "what": "our call output reopened mid-share (local: new stream; share: switched to the second sink)",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.2,
+       "median_db": -105.2,
+       "max_fast_db": -93.1
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.63,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.2,
+       "median_db": -105.2,
+       "max_fast_db": -92.73
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.65,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.59,
+       "median_db": -109.59,
+       "max_fast_db": -47.18
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.64,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.59,
+       "median_db": -109.59,
+       "max_fast_db": -91.32
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.62,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.2,
+       "median_db": -105.2,
+       "max_fast_db": -92.73
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.67,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 32 -> linked",
+      "node 62 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 62 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L6": {
+   "what": "mono game, and a 5.1 game with sound only in the centre channel",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -107.32,
+       "median_db": -107.32,
+       "max_fast_db": -73.23
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.6,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 61 paplay pid 31 -> linked",
+      "node 60 paplay pid 32 -> linked",
+      "node 59 pw-play pid ? -> linked",
+      "node 74 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -103.39,
+       "median_db": -103.4,
+       "max_fast_db": -75.98
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.58,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 60 paplay pid 32 -> linked",
+      "node 74 cpal-pulseaudio-36 pid 36 -> excluded: ours",
+      "node 57 pw-play pid ? -> linked",
+      "node 61 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -99.55,
+       "median_db": -99.75,
+       "max_fast_db": -75.89
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.54,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 61 paplay pid 32 -> linked",
+      "node 59 pw-play pid ? -> linked",
+      "node 60 paplay pid 31 -> linked",
+      "node 74 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -92.73,
+       "median_db": -92.73,
+       "max_fast_db": -74.46
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.56,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 60 paplay pid 32 -> linked",
+      "node 59 pw-play pid ? -> linked",
+      "node 61 paplay pid 31 -> linked",
+      "node 74 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -100.98,
+       "median_db": -101.2,
+       "max_fast_db": -75.57
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.57,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 60 paplay pid 32 -> linked",
+      "node 61 pw-play pid ? -> linked",
+      "node 58 paplay pid 31 -> linked",
+      "node 74 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L7": {
+   "what": "a live microphone (440 Hz test source, being recorded) next to the share",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -106.04,
+       "median_db": -106.1,
+       "max_fast_db": -90.02
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -90.62,
+       "median_db": -90.62,
+       "max_fast_db": -68.74
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.22,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 70 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 59 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -113.39,
+       "median_db": -113.39,
+       "max_fast_db": -91.29
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -88.32,
+       "median_db": -88.32,
+       "max_fast_db": -69.9
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.21,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 59 paplay pid 31 -> linked",
+      "node 70 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -113.39,
+       "median_db": -113.39,
+       "max_fast_db": -91.29
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -88.32,
+       "median_db": -88.32,
+       "max_fast_db": -69.9
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.23,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 54 paplay pid 31 -> linked",
+      "node 70 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -105.97,
+       "median_db": -105.97,
+       "max_fast_db": -91.18
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -90.75,
+       "median_db": -90.75,
+       "max_fast_db": -69.91
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.24,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 59 paplay pid 31 -> linked",
+      "node 70 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -113.39,
+       "median_db": -113.39,
+       "max_fast_db": -90.21
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -88.28,
+       "median_db": -88.28,
+       "max_fast_db": -66.48
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.25,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 70 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 59 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L8": {
+   "what": "our call moved into an effects chain (pw-loopback) mid-share",
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.59,
+       "median_db": -109.59,
+       "max_fast_db": -90.13
+      },
+      "b_max_fast_db_within_1s_of_move": -96.53,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.15,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 32 -> linked",
+      "node 73 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 55 fx-out pid ? -> linked",
+      "node 55 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -113.05,
+       "median_db": -113.38,
+       "max_fast_db": -90.27
+      },
+      "b_max_fast_db_within_1s_of_move": -96.88,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.17,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 60 paplay pid 32 -> linked",
+      "node 73 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 58 fx-out pid ? -> linked",
+      "node 58 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.97,
+       "median_db": -109.97,
+       "max_fast_db": -91.32
+      },
+      "b_max_fast_db_within_1s_of_move": -96.16,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.13,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 58 fx-out pid ? -> linked",
+      "node 73 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 60 paplay pid 32 -> linked",
+      "node 58 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -118.99,
+       "median_db": -118.99,
+       "max_fast_db": -91.25
+      },
+      "b_max_fast_db_within_1s_of_move": -101.56,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.06,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 54 paplay pid 32 -> linked",
+      "node 58 fx-out pid ? -> linked",
+      "node 73 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 58 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -109.59,
+       "median_db": -109.59,
+       "max_fast_db": -91.32
+      },
+      "b_max_fast_db_within_1s_of_move": -96.16,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 3.13,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 55 paplay pid 34 -> linked",
+      "node 58 fx-out pid ? -> linked",
+      "node 73 cpal-pulseaudio-37 pid 37 -> excluded: ours",
+      "node 58 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L9": {
+   "what": "negative control: our own streams included on purpose",
+   "passed": 4,
+   "runs": 5,
+   "pass": false,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": false,
+      "control_valid": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_b": {
+       "share_within_6db": 0.938,
+       "median_db": -12.04,
+       "min_db": -18.32,
+       "max_db": -12.03
+      },
+      "control": {
+       "a_median_db": -12.03,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.92,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 54 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": false
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.07,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.03,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.94,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 55 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.06,
+       "max_db": -12.02
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.06,
+       "max_db": -12.03
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 1.99,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-36 pid 36 -> linked",
+      "node 55 paplay pid 33 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.04,
+       "max_db": -12.03
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.05,
+       "max_db": -12.03
+      },
+      "control": {
+       "a_median_db": -12.03,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.01,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 16,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.03,
+       "max_db": -12.03
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -12.41,
+       "max_db": -12.03
+      },
+      "control": {
+       "a_median_db": -12.03,
+       "b_median_db": -12.03
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 2.01,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> linked",
+      "node 54 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  },
+  "L10": {
+   "what": "10 minute soak of L1",
+   "passed": 0,
+   "runs": 5,
+   "pass": false,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 596,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.03,
+       "min_db": -17.55,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -63.2,
+       "median_db": -118.99,
+       "max_fast_db": -40.73
+      },
+      "cpu": {
+       "wall_s": 600.0,
+       "process_s": 54.64,
+       "capture_s": 1.16,
+       "capture_core_share": 0.0019
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": false
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 596,
+      "present_a": {
+       "share_within_6db": 0.997,
+       "median_db": -12.03,
+       "min_db": -23.38,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -54.99,
+       "median_db": -112.54,
+       "max_fast_db": -39.16
+      },
+      "cpu": {
+       "wall_s": 600.0,
+       "process_s": 55.37,
+       "capture_s": 1.23,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-36 pid 36 -> excluded: ours",
+      "node 54 paplay pid 33 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": false
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 596,
+      "present_a": {
+       "share_within_6db": 0.998,
+       "median_db": -12.04,
+       "min_db": -24.04,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -63.27,
+       "median_db": -116.13,
+       "max_fast_db": -40.6
+      },
+      "cpu": {
+       "wall_s": 600.0,
+       "process_s": 46.66,
+       "capture_s": 1.22,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 55 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": false
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 596,
+      "present_a": {
+       "share_within_6db": 0.997,
+       "median_db": -12.04,
+       "min_db": -22.54,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -62.92,
+       "median_db": -127.25,
+       "max_fast_db": -42.54
+      },
+      "cpu": {
+       "wall_s": 600.0,
+       "process_s": 55.55,
+       "capture_s": 1.22,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 55 paplay pid 31 -> linked"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected"
+     ],
+     "pass": false
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "dropped_per_minute": true,
+      "capture_cpu_provisional": true
+     },
+     "metrics": {
+      "viewer_channels": 2,
+      "windows": 596,
+      "present_a": {
+       "share_within_6db": 0.998,
+       "median_db": -12.03,
+       "min_db": -22.95,
+       "max_db": -12.03
+      },
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -56.94,
+       "median_db": -108.26,
+       "max_fast_db": -42.17
+      },
+      "cpu": {
+       "wall_s": 600.0,
+       "process_s": 54.37,
+       "capture_s": 1.21,
+       "capture_core_share": 0.002
+      },
+      "dropped_frames": 0
+     },
+     "verdicts": [
+      "node 55 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })",
+      "Reactor error: Client disconnected",
+      "Reactor error: Client disconnected",
+      "failed to negotiate the publisher: Rtc(RtcError { error_type: InvalidState, message: \"Failed to set local offer sdp: Called in wrong state: closed\" })"
+     ],
+     "pass": false
+    }
+   ],
+   "realtime": false,
+   "parallel": 5
+  }
+ },
+ "pass": false
+}

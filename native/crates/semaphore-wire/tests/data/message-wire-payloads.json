@@ -1,0 +1,2045 @@
+{
+  "events": [
+    {
+      "event": "newMessage",
+      "payload": {
+        "message": {
+          "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "from the socket",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.722Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "newDirectMessage",
+      "payload": {
+        "message": {
+          "id": "28d8fe67-38ed-41d8-8ced-ff15e32110f8",
+          "channelId": null,
+          "directMessageGroupId": "dde813cc-0a07-421b-8923-7e975c757a3f",
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "a direct message",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.756Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "updateMessage",
+      "payload": {
+        "message": {
+          "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "edited",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.722Z",
+          "editedAt": "2026-11-05T19:16:46.803Z",
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "updateMessage",
+      "payload": {
+        "message": {
+          "id": "8a559b0f-7426-4712-93fb-5fbd3d521840",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "one file coming",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [
+            {
+              "id": "47d59b3f-068d-4e57-a4f9-98e008b8f155",
+              "filename": "a.png",
+              "mimeType": "image/png",
+              "fileType": "IMAGE",
+              "size": 68,
+              "hasThumbnail": false
+            }
+          ],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.825Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "reactionAdded",
+      "payload": {
+        "messageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "reaction": {
+          "emoji": "👍",
+          "userIds": [
+            "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+          ]
+        },
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "parentMessageId": null
+      }
+    },
+    {
+      "event": "reactionRemoved",
+      "payload": {
+        "messageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "emoji": "👍",
+        "reactions": [],
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "parentMessageId": null
+      }
+    },
+    {
+      "event": "reactionAdded",
+      "payload": {
+        "messageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "reaction": {
+          "emoji": "🎉",
+          "userIds": [
+            "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+          ]
+        },
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "parentMessageId": null
+      }
+    },
+    {
+      "event": "newThreadReply",
+      "payload": {
+        "reply": {
+          "id": "8abc10a3-23d7-42c6-bef0-51cea0b43a3e",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "a reply",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.887Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        },
+        "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb"
+      }
+    },
+    {
+      "event": "threadReplyCountUpdated",
+      "payload": {
+        "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "replyCount": 1,
+        "lastReplyAt": "2026-11-05T19:16:46.890Z",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null
+      }
+    },
+    {
+      "event": "updateMessage",
+      "payload": {
+        "message": {
+          "id": "96ca96fe-882e-4491-8dba-59ab9c55da2f",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "see https://example.test",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": [
+            {
+              "url": "https://example.test",
+              "title": "Example"
+            }
+          ],
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.910Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "newMessage",
+      "payload": {
+        "message": {
+          "id": "a7a4a63f-d332-4aec-96dc-56c193c3a551",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "Replay clip - 30s (1MB)",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [
+            {
+              "id": "46be36a9-ce02-439a-ab93-4a0462df80d8",
+              "filename": "clip.png",
+              "mimeType": "image/png",
+              "fileType": "IMAGE",
+              "size": 68,
+              "hasThumbnail": false
+            }
+          ],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.925Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "newMessage",
+      "payload": {
+        "message": {
+          "id": "90041564-1bed-444d-8d21-7ef08abce31a",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": null,
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "from a webhook",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null,
+              "channelId": null
+            }
+          ],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.940Z",
+          "editedAt": null,
+          "deletedAt": null,
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": {
+            "id": "95060744-f3f3-447c-91c0-c33cc9b06bd9",
+            "name": "CI",
+            "avatarUrl": null
+          },
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    },
+    {
+      "event": "messagePinned",
+      "payload": {
+        "messageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "pinnedBy": "2bd8aef9-63c4-4dba-8463-a6cae9176853",
+        "pinnedAt": "2026-11-05T19:16:46.952Z"
+      }
+    },
+    {
+      "event": "messageUnpinned",
+      "payload": {
+        "messageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "unpinnedBy": "2bd8aef9-63c4-4dba-8463-a6cae9176853"
+      }
+    },
+    {
+      "event": "deleteMessage",
+      "payload": {
+        "messageId": "70e9cddf-796b-41e1-99db-ff4d350909c6",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null
+      }
+    },
+    {
+      "event": "deleteMessage",
+      "payload": {
+        "messageId": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null
+      }
+    },
+    {
+      "event": "updateMessage",
+      "payload": {
+        "message": {
+          "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+          "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+          "directMessageGroupId": null,
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [],
+          "attachments": [],
+          "pendingAttachments": 0,
+          "reactions": [],
+          "linkPreviews": null,
+          "replyCount": 0,
+          "lastReplyAt": null,
+          "pinned": false,
+          "pinnedAt": null,
+          "pinnedBy": null,
+          "sentAt": "2026-11-05T19:16:46.982Z",
+          "editedAt": null,
+          "deletedAt": "2026-11-05T19:16:46.988Z",
+          "parentMessageId": null,
+          "replyToId": null,
+          "replyTo": null,
+          "webhook": null,
+          "deletedBy": null,
+          "deletedByReason": null
+        }
+      }
+    }
+  ],
+  "responses": [
+    {
+      "component": "MessageDto",
+      "label": "POST /messages",
+      "body": {
+        "id": "27794d78-6d7f-4746-b653-7a3084baa4e7",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "409c79be-48bb-45a1-9210-b5b534f1b3ec",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "quoting",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.776Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "replyTo": {
+          "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "from the socket",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null
+            }
+          ],
+          "sentAt": "2026-11-05T19:16:46.722Z",
+          "deletedAt": null
+        },
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "GET /messages/:id (quote)",
+      "body": {
+        "id": "27794d78-6d7f-4746-b653-7a3084baa4e7",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "409c79be-48bb-45a1-9210-b5b534f1b3ec",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "quoting",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.776Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "replyTo": {
+          "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+          "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+          "spans": [
+            {
+              "type": "PLAINTEXT",
+              "text": "from the socket",
+              "userId": null,
+              "specialKind": null,
+              "communityId": null,
+              "aliasId": null,
+              "emojiId": null,
+              "bold": null,
+              "italic": null,
+              "strikethrough": null,
+              "code": null
+            }
+          ],
+          "sentAt": "2026-11-05T19:16:46.722Z",
+          "deletedAt": null
+        },
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "PATCH /messages/:id",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "edited",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.722Z",
+        "editedAt": "2026-11-05T19:16:46.803Z",
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST /messages",
+      "body": {
+        "id": "8a559b0f-7426-4712-93fb-5fbd3d521840",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "one file coming",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 1,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.825Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST /messages/:id/attachments",
+      "body": {
+        "id": "8a559b0f-7426-4712-93fb-5fbd3d521840",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "one file coming",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [
+          {
+            "id": "47d59b3f-068d-4e57-a4f9-98e008b8f155",
+            "filename": "a.png",
+            "mimeType": "image/png",
+            "fileType": "IMAGE",
+            "size": 68,
+            "hasThumbnail": false
+          }
+        ],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.825Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageReactionsDto",
+      "label": "POST reactions",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "parentMessageId": null,
+        "deletedAt": null,
+        "reactions": [
+          {
+            "emoji": "👍",
+            "userIds": [
+              "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "component": "MessageReactionsDto",
+      "label": "DELETE reactions",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "parentMessageId": null,
+        "deletedAt": null,
+        "reactions": []
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST thread reply",
+      "body": {
+        "id": "3d7a30fc-2277-4b67-bc41-8a6e79ebff68",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "a REST reply",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.903Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST /messages",
+      "body": {
+        "id": "96ca96fe-882e-4491-8dba-59ab9c55da2f",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "see https://example.test",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.910Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "GET /messages/:id (pinned)",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "edited",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+            ]
+          }
+        ],
+        "linkPreviews": null,
+        "replyCount": 2,
+        "lastReplyAt": "2026-11-05T19:16:46.905Z",
+        "pinned": true,
+        "pinnedAt": "2026-11-05T19:16:46.950Z",
+        "pinnedBy": "2bd8aef9-63c4-4dba-8463-a6cae9176853",
+        "sentAt": "2026-11-05T19:16:46.722Z",
+        "editedAt": "2026-11-05T19:16:46.803Z",
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST /messages",
+      "body": {
+        "id": "70e9cddf-796b-41e1-99db-ff4d350909c6",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "going",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.966Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "POST /messages",
+      "body": {
+        "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "to be removed",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 1,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.982Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "GET removed, as a reader",
+      "body": {
+        "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.982Z",
+        "editedAt": null,
+        "deletedAt": "2026-11-05T19:16:46.988Z",
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "GET removed, as a moderator",
+      "body": {
+        "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "to be removed",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 1,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.982Z",
+        "editedAt": null,
+        "deletedAt": "2026-11-05T19:16:46.988Z",
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": "45f9daf2-96c3-4f30-98f1-73503e4b3c55",
+        "deletedByReason": "off topic"
+      }
+    },
+    {
+      "component": "PaginatedMessagesResponseDto",
+      "label": "/api/messages/channel/c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+      "body": {
+        "messages": [
+          {
+            "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.982Z",
+            "editedAt": null,
+            "deletedAt": "2026-11-05T19:16:46.988Z",
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "90041564-1bed-444d-8d21-7ef08abce31a",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": null,
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "from a webhook",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.940Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": {
+              "id": "95060744-f3f3-447c-91c0-c33cc9b06bd9",
+              "name": "CI",
+              "avatarUrl": null
+            },
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "a7a4a63f-d332-4aec-96dc-56c193c3a551",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "Replay clip - 30s (1MB)",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [
+              {
+                "id": "46be36a9-ce02-439a-ab93-4a0462df80d8",
+                "filename": "clip.png",
+                "mimeType": "image/png",
+                "fileType": "IMAGE",
+                "size": 68,
+                "hasThumbnail": false
+              }
+            ],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.925Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "96ca96fe-882e-4491-8dba-59ab9c55da2f",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "see https://example.test",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": [
+              {
+                "url": "https://example.test",
+                "title": "Example"
+              }
+            ],
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.910Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "8a559b0f-7426-4712-93fb-5fbd3d521840",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "one file coming",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [
+              {
+                "id": "47d59b3f-068d-4e57-a4f9-98e008b8f155",
+                "filename": "a.png",
+                "mimeType": "image/png",
+                "fileType": "IMAGE",
+                "size": 68,
+                "hasThumbnail": false
+              }
+            ],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.825Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "27794d78-6d7f-4746-b653-7a3084baa4e7",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "409c79be-48bb-45a1-9210-b5b534f1b3ec",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "quoting",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.776Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "replyTo": {
+              "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+              "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+              "spans": [
+                {
+                  "type": "PLAINTEXT",
+                  "text": "edited",
+                  "userId": null,
+                  "specialKind": null,
+                  "communityId": null,
+                  "aliasId": null,
+                  "emojiId": null,
+                  "bold": null,
+                  "italic": null,
+                  "strikethrough": null,
+                  "code": null
+                }
+              ],
+              "sentAt": "2026-11-05T19:16:46.722Z",
+              "deletedAt": null
+            },
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "edited",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [
+              {
+                "emoji": "🎉",
+                "userIds": [
+                  "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+                ]
+              }
+            ],
+            "linkPreviews": null,
+            "replyCount": 2,
+            "lastReplyAt": "2026-11-05T19:16:46.905Z",
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.722Z",
+            "editedAt": "2026-11-05T19:16:46.803Z",
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          }
+        ]
+      }
+    },
+    {
+      "component": "PaginatedMessagesResponseDto",
+      "label": "/api/messages/group/dde813cc-0a07-421b-8923-7e975c757a3f",
+      "body": {
+        "messages": [
+          {
+            "id": "28d8fe67-38ed-41d8-8ced-ff15e32110f8",
+            "channelId": null,
+            "directMessageGroupId": "dde813cc-0a07-421b-8923-7e975c757a3f",
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "a direct message",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.756Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          }
+        ]
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "/api/messages/search/channel/c2fae28e-cd7b-4d5c-9b2b-a629dda190bc?q=edited",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "edited",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+            ]
+          }
+        ],
+        "linkPreviews": null,
+        "replyCount": 2,
+        "lastReplyAt": "2026-11-05T19:16:46.905Z",
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.722Z",
+        "editedAt": "2026-11-05T19:16:46.803Z",
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "MessageDto",
+      "label": "/api/messages/search/group/dde813cc-0a07-421b-8923-7e975c757a3f?q=direct",
+      "body": {
+        "id": "28d8fe67-38ed-41d8-8ced-ff15e32110f8",
+        "channelId": null,
+        "directMessageGroupId": "dde813cc-0a07-421b-8923-7e975c757a3f",
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "a direct message",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [],
+        "linkPreviews": null,
+        "replyCount": 0,
+        "lastReplyAt": null,
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.756Z",
+        "editedAt": null,
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null
+      }
+    },
+    {
+      "component": "CommunitySearchResultDto",
+      "label": "/api/messages/search/community/a59b170c-b46c-49be-a272-26143cdbcfd6?q=edited",
+      "body": {
+        "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+        "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+        "directMessageGroupId": null,
+        "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+        "spans": [
+          {
+            "type": "PLAINTEXT",
+            "text": "edited",
+            "userId": null,
+            "specialKind": null,
+            "communityId": null,
+            "aliasId": null,
+            "emojiId": null,
+            "bold": null,
+            "italic": null,
+            "strikethrough": null,
+            "code": null,
+            "channelId": null
+          }
+        ],
+        "attachments": [],
+        "pendingAttachments": 0,
+        "reactions": [
+          {
+            "emoji": "🎉",
+            "userIds": [
+              "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+            ]
+          }
+        ],
+        "linkPreviews": null,
+        "replyCount": 2,
+        "lastReplyAt": "2026-11-05T19:16:46.905Z",
+        "pinned": false,
+        "pinnedAt": null,
+        "pinnedBy": null,
+        "sentAt": "2026-11-05T19:16:46.722Z",
+        "editedAt": "2026-11-05T19:16:46.803Z",
+        "deletedAt": null,
+        "parentMessageId": null,
+        "replyToId": null,
+        "replyTo": null,
+        "webhook": null,
+        "deletedBy": null,
+        "deletedByReason": null,
+        "channelName": "contract"
+      }
+    },
+    {
+      "component": "AnchoredMessagesResponseDto",
+      "label": "around",
+      "body": {
+        "messages": [
+          {
+            "id": "75df0a5f-00b3-454f-8abc-8a45ace31161",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.982Z",
+            "editedAt": null,
+            "deletedAt": "2026-11-05T19:16:46.988Z",
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "90041564-1bed-444d-8d21-7ef08abce31a",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": null,
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "from a webhook",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.940Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": {
+              "id": "95060744-f3f3-447c-91c0-c33cc9b06bd9",
+              "name": "CI",
+              "avatarUrl": null
+            },
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "a7a4a63f-d332-4aec-96dc-56c193c3a551",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "Replay clip - 30s (1MB)",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [
+              {
+                "id": "46be36a9-ce02-439a-ab93-4a0462df80d8",
+                "filename": "clip.png",
+                "mimeType": "image/png",
+                "fileType": "IMAGE",
+                "size": 68,
+                "hasThumbnail": false
+              }
+            ],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.925Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "96ca96fe-882e-4491-8dba-59ab9c55da2f",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "see https://example.test",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": [
+              {
+                "url": "https://example.test",
+                "title": "Example"
+              }
+            ],
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.910Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "8a559b0f-7426-4712-93fb-5fbd3d521840",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "one file coming",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [
+              {
+                "id": "47d59b3f-068d-4e57-a4f9-98e008b8f155",
+                "filename": "a.png",
+                "mimeType": "image/png",
+                "fileType": "IMAGE",
+                "size": 68,
+                "hasThumbnail": false
+              }
+            ],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.825Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "27794d78-6d7f-4746-b653-7a3084baa4e7",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "409c79be-48bb-45a1-9210-b5b534f1b3ec",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "quoting",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.776Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "replyTo": {
+              "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+              "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+              "spans": [
+                {
+                  "type": "PLAINTEXT",
+                  "text": "edited",
+                  "userId": null,
+                  "specialKind": null,
+                  "communityId": null,
+                  "aliasId": null,
+                  "emojiId": null,
+                  "bold": null,
+                  "italic": null,
+                  "strikethrough": null,
+                  "code": null
+                }
+              ],
+              "sentAt": "2026-11-05T19:16:46.722Z",
+              "deletedAt": null
+            },
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "edited",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [
+              {
+                "emoji": "🎉",
+                "userIds": [
+                  "ddb9f0b7-d629-431d-8e14-5de926fcbe5f"
+                ]
+              }
+            ],
+            "linkPreviews": null,
+            "replyCount": 2,
+            "lastReplyAt": "2026-11-05T19:16:46.905Z",
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.722Z",
+            "editedAt": "2026-11-05T19:16:46.803Z",
+            "deletedAt": null,
+            "parentMessageId": null,
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          }
+        ]
+      }
+    },
+    {
+      "component": "ThreadRepliesResponseDto",
+      "label": "thread replies",
+      "body": {
+        "replies": [
+          {
+            "id": "8abc10a3-23d7-42c6-bef0-51cea0b43a3e",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "a reply",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.887Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          },
+          {
+            "id": "3d7a30fc-2277-4b67-bc41-8a6e79ebff68",
+            "channelId": "c2fae28e-cd7b-4d5c-9b2b-a629dda190bc",
+            "directMessageGroupId": null,
+            "authorId": "ddb9f0b7-d629-431d-8e14-5de926fcbe5f",
+            "spans": [
+              {
+                "type": "PLAINTEXT",
+                "text": "a REST reply",
+                "userId": null,
+                "specialKind": null,
+                "communityId": null,
+                "aliasId": null,
+                "emojiId": null,
+                "bold": null,
+                "italic": null,
+                "strikethrough": null,
+                "code": null,
+                "channelId": null
+              }
+            ],
+            "attachments": [],
+            "pendingAttachments": 0,
+            "reactions": [],
+            "linkPreviews": null,
+            "replyCount": 0,
+            "lastReplyAt": null,
+            "pinned": false,
+            "pinnedAt": null,
+            "pinnedBy": null,
+            "sentAt": "2026-11-05T19:16:46.903Z",
+            "editedAt": null,
+            "deletedAt": null,
+            "parentMessageId": "65d0a5c5-0b5b-42a9-861a-df4d287210bb",
+            "replyToId": null,
+            "replyTo": null,
+            "webhook": null,
+            "deletedBy": null,
+            "deletedByReason": null
+          }
+        ]
+      }
+    }
+  ]
+}

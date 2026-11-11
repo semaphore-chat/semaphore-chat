@@ -1,0 +1,108 @@
+# Every story the unit reviews by eye, at desktop and narrow widths, in dark and light.
+# Web references: frontend/scripts/ui-review/ui-review.sh --stories ...
+
+# Shell, states
+story shell-connected 1440 900 dark-blue-balanced
+shot shell-connected-desktop-dark
+story shell-connected 1440 900 light-blue-balanced
+shot shell-connected-desktop-light
+story shell-connected 800 800 dark-blue-balanced
+shot shell-connected-narrow-dark
+story shell-connected 800 800 light-blue-balanced
+shot shell-connected-narrow-light
+story shell-connected 390 844 dark-blue-balanced
+shot shell-connected-phone-dark
+story shell-connected 390 844 light-blue-balanced
+shot shell-connected-phone-light
+story shell-channel-pane 390 844 dark-blue-balanced
+shot shell-channel-pane-phone-dark
+story shell-unread 1440 900 dark-blue-balanced
+shot shell-unread-desktop-dark
+story shell-unread 390 844 dark-blue-balanced
+shot shell-unread-phone-dark
+story shell-rail-expanded 1440 900 dark-blue-balanced
+shot shell-rail-expanded-desktop-dark
+story shell-rail-expanded 1280 800 light-blue-balanced
+shot shell-rail-expanded-desktop-light
+story shell-members-open 800 800 dark-blue-balanced
+shot shell-members-open-narrow-dark
+story shell-members-open 390 844 light-blue-balanced
+shot shell-members-open-phone-light
+story shell-voice-connected 1440 900 dark-blue-balanced
+shot shell-voice-desktop-dark
+story shell-reconnecting 1440 900 dark-blue-balanced
+shot shell-reconnecting-desktop-dark
+story shell-offline 800 800 light-blue-balanced
+shot shell-offline-narrow-light
+story shell-offline 390 844 dark-blue-balanced
+shot shell-offline-phone-dark
+story shell-empty-user 1440 900 dark-blue-balanced
+shot shell-empty-user-desktop-dark
+story shell-empty-user 1440 900 light-blue-balanced
+shot shell-empty-user-desktop-light
+story shell-empty-user 390 844 dark-blue-balanced
+shot shell-empty-user-phone-dark
+story shell-empty-community 1440 900 dark-blue-balanced
+shot shell-empty-community-desktop-dark
+story shell-empty-channel 1440 900 light-blue-balanced
+shot shell-empty-channel-desktop-light
+story shell-loading 1440 900 dark-blue-balanced
+shot shell-loading-desktop-dark
+story shell-loading-channels 1440 900 dark-blue-balanced
+shot shell-loading-channels-desktop-dark
+story shell-loading-channels 800 800 light-blue-balanced
+shot shell-loading-channels-narrow-light
+story shell-error 1440 900 dark-blue-balanced
+shot shell-error-desktop-dark
+story shell-error 800 800 light-blue-balanced
+shot shell-error-narrow-light
+story shell-error 390 844 dark-blue-balanced
+shot shell-error-phone-dark
+story shell-long-content 1440 900 dark-blue-balanced
+shot shell-long-desktop-dark
+story shell-long-content 800 800 light-blue-balanced
+shot shell-long-narrow-light
+story shell-long-content 390 844 dark-blue-balanced
+shot shell-long-phone-dark
+story shell-long-content-expanded 1280 800 dark-blue-balanced
+shot shell-long-expanded-desktop-dark
+
+# Auth, states. The web's own login story is teal minimal in dark; light is blue balanced.
+story auth-sign-in 1440 900 dark-teal-minimal
+shot auth-sign-in-desktop-dark
+story auth-sign-in 1440 900 light-blue-balanced
+shot auth-sign-in-desktop-light
+story auth-sign-in 390 844 dark-teal-minimal
+shot auth-sign-in-phone-dark
+story auth-sign-in-password-only 1440 900 dark-teal-minimal
+shot auth-password-only-desktop-dark
+story auth-signing-in 800 800 dark-teal-minimal
+shot auth-signing-in-narrow-dark
+story auth-sign-in-failed 1440 900 dark-teal-minimal
+shot auth-failed-desktop-dark
+story auth-sign-in-failed 390 844 light-blue-balanced
+shot auth-failed-phone-light
+story auth-signed-out-notice 800 800 light-teal-minimal
+shot auth-notice-narrow-light
+story auth-browser-waiting 1440 900 dark-teal-minimal
+shot auth-browser-waiting-desktop-dark
+story auth-browser-timed-out 1440 900 dark-teal-minimal
+shot auth-browser-timed-out-desktop-dark
+story auth-server-url 1440 900 dark-teal-minimal
+shot auth-server-url-desktop-dark
+story auth-server-testing 800 800 light-teal-minimal
+shot auth-server-testing-narrow-light
+story auth-server-error 390 844 dark-teal-minimal
+shot auth-server-error-phone-dark
+
+# Kit and themes
+story kit-gallery 1440 1100 dark-blue-balanced
+shot kit-gallery-desktop-dark
+story kit-gallery 1440 1100 light-teal-minimal
+shot kit-gallery-desktop-light
+story kit-gallery 1440 1100 dark-rose-vibrant
+shot kit-gallery-desktop-vibrant
+story kit-gallery 390 1500 dark-blue-balanced
+shot kit-gallery-phone-dark
+story theme-swatches 1440 900 dark-teal-minimal
+shot theme-swatches

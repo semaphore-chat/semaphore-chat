@@ -1,0 +1,2081 @@
+{
+ "test": "T11",
+ "mode": "local",
+ "profile": "release",
+ "runs_per_scenario": 5,
+ "generated": "2026-11-10T22:20:40Z",
+ "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+ "call_reference_db": -12.04,
+ "call_reference_from": "L9 median",
+ "absent_threshold_db": -80.0,
+ "scenarios": {
+  "L1": {
+   "what": "PulseAudio game, our call audio playing",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 4,
+   "runs": 5,
+   "pass": false,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 57 paplay pid 33 -> linked",
+      "node 58 cpal-pulseaudio-34 pid 34 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": false,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.78,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.9,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -73.91,
+       "median_db": -143.18,
+       "max_fast_db": -67.96
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 30 -> linked",
+      "node 58 cpal-pulseaudio-31 pid 31 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": false
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.31,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "stereo_a_db": {
+       "left": -12.04,
+       "right": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.27,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -9.9,
+   "realtime": false
+  },
+  "L2": {
+   "what": "native PipeWire game",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -2.01,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -139.94,
+       "median_db": -139.94,
+       "max_fast_db": -60.55
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 pw-play pid ? -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 17,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -2.01,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -139.94,
+       "median_db": -139.94,
+       "max_fast_db": -60.55
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 57 pw-play pid ? -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -2.01,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -139.94,
+       "median_db": -139.94,
+       "max_fast_db": -60.55
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.31,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 56 pw-play pid ? -> linked",
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -2.01,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -139.94,
+       "median_db": -139.94,
+       "max_fast_db": -60.55
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 pw-play pid ? -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a2": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a2": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -2.01,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -139.94,
+       "median_db": -139.94,
+       "max_fast_db": -60.55
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.27,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 pw-play pid ? -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -2.01,
+   "realtime": false
+  },
+  "L3": {
+   "what": "a game that starts 6 s into the share",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 125,
+      "b_above_unplayed_tones_max_db": -6.71,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -121.85,
+       "median_db": -146.19,
+       "max_fast_db": -62.09
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.26,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 76 paplay pid 45 -> waiting: not playing to a sink",
+      "node 76 paplay pid 45 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 118,
+      "b_above_unplayed_tones_max_db": -6.83,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -120.75,
+       "median_db": -143.85,
+       "max_fast_db": -62.09
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 paplay pid 31 -> linked",
+      "node 76 paplay pid 45 -> waiting: not playing to a sink",
+      "node 76 paplay pid 45 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 123,
+      "b_above_unplayed_tones_max_db": -6.71,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -121.85,
+       "median_db": -146.19,
+       "max_fast_db": -62.09
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 paplay pid 31 -> linked",
+      "node 76 paplay pid 45 -> waiting: not playing to a sink",
+      "node 76 paplay pid 45 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 127,
+      "b_above_unplayed_tones_max_db": -7.45,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -112.33,
+       "median_db": -146.15,
+       "max_fast_db": -54.53
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 76 paplay pid 45 -> waiting: not playing to a sink",
+      "node 76 paplay pid 45 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_a3": true,
+      "a3_onset": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_a3": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "a3_onset_ms": 122,
+      "b_above_unplayed_tones_max_db": -6.71,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -121.85,
+       "median_db": -146.19,
+       "max_fast_db": -62.09
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 76 paplay pid 45 -> waiting: not playing to a sink",
+      "node 76 paplay pid 45 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -6.71,
+   "a3_onset_ms_median": 123,
+   "realtime": false
+  },
+  "L4": {
+   "what": "a game on a second sink; our call moved to that sink mid-share",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.66,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -91.77
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 57 paplay pid 32 -> linked",
+      "node 62 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.66,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -91.77
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 57 paplay pid 32 -> linked",
+      "node 62 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.7,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.24,
+       "median_db": -143.24,
+       "max_fast_db": -91.79
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 34 -> linked",
+      "node 64 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 57 paplay pid 33 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.63,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.17,
+       "median_db": -143.17,
+       "max_fast_db": -91.76
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.32,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 57 paplay pid 32 -> linked",
+      "node 64 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_d": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_d": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.66,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -91.77
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 58 paplay pid 32 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -9.63,
+   "realtime": false
+  },
+  "L5": {
+   "what": "our call output reopened mid-share (local: new stream; share: switched to the second sink)",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 57 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 57 paplay pid 31 -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 paplay pid 31 -> linked",
+      "node 62 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours",
+      "node 56 paplay pid 31 -> linked",
+      "node 60 cpal-pulseaudio-32 pid 32 -> excluded: ours"
+     ],
+     "errors": [
+      "Reactor error: Client disconnected"
+     ],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -9.99,
+   "realtime": false
+  },
+  "L6": {
+   "what": "mono game, and a 5.1 game with sound only in the centre channel",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "b_above_unplayed_tones_max_db": 5.36,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -138.86,
+       "median_db": -138.86,
+       "max_fast_db": -78.11
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 59 paplay pid 33 -> linked",
+      "node 58 pw-play pid ? -> linked",
+      "node 60 paplay pid 34 -> linked",
+      "node 64 cpal-pulseaudio-36 pid 36 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "b_above_unplayed_tones_max_db": 5.36,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -138.86,
+       "median_db": -138.86,
+       "max_fast_db": -78.11
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 58 pw-play pid ? -> linked",
+      "node 59 paplay pid 31 -> linked",
+      "node 64 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 60 paplay pid 32 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "b_above_unplayed_tones_max_db": 5.36,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -138.86,
+       "median_db": -138.86,
+       "max_fast_db": -78.11
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.67,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      }
+     },
+     "verdicts": [
+      "node 60 paplay pid 31 -> linked",
+      "node 66 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 59 paplay pid 32 -> linked",
+      "node 58 pw-play pid ? -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "b_above_unplayed_tones_max_db": 5.36,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -138.86,
+       "median_db": -138.86,
+       "max_fast_db": -78.11
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.67,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      }
+     },
+     "verdicts": [
+      "node 58 pw-play pid ? -> linked",
+      "node 59 paplay pid 31 -> linked",
+      "node 64 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 60 paplay pid 32 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_mono": true,
+      "present_fc": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_mono": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_fc": {
+       "share_within_6db": 1.0,
+       "median_db": -15.05,
+       "min_db": -15.05,
+       "max_db": -15.05
+      },
+      "b_above_unplayed_tones_max_db": 5.36,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -138.86,
+       "median_db": -138.86,
+       "max_fast_db": -78.11
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.68,
+       "capture_s": 0.05,
+       "capture_core_share": 0.0025
+      }
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-34 pid 34 -> excluded: ours",
+      "node 59 paplay pid 31 -> linked",
+      "node 60 paplay pid 32 -> linked",
+      "node 58 pw-play pid ? -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": 5.36,
+   "realtime": false
+  },
+  "L7": {
+   "what": "a live microphone (440 Hz test source, being recorded) next to the share",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "m_above_unplayed_tones_max_db": -13.92,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -147.11,
+       "median_db": -147.11,
+       "max_fast_db": -78.83
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.54,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 33 -> linked",
+      "node 60 cpal-pulseaudio-35 pid 35 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "m_above_unplayed_tones_max_db": -13.92,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -147.11,
+       "median_db": -147.11,
+       "max_fast_db": -78.83
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.56,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 66 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "m_above_unplayed_tones_max_db": -13.92,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -147.11,
+       "median_db": -147.11,
+       "max_fast_db": -78.83
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.51,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      }
+     },
+     "verdicts": [
+      "node 64 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 58 paplay pid 31 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "m_above_unplayed_tones_max_db": -14.15,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -147.17,
+       "median_db": -147.17,
+       "max_fast_db": -78.87
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.27,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 58 paplay pid 31 -> linked",
+      "node 64 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "absent_m": true,
+      "decoy_mic_live": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "m_above_unplayed_tones_max_db": -14.15,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "absent_m": {
+       "threshold_db": -80.0,
+       "max_db": -147.17,
+       "median_db": -147.17,
+       "max_fast_db": -78.87
+      },
+      "decoy_mic_db": -0.0,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.27,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 64 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 58 paplay pid 31 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -9.99,
+   "realtime": false
+  },
+  "L8": {
+   "what": "our call moved into an effects chain (pw-loopback) mid-share",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "b_max_fast_db_within_1s_of_move": -122.62,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.02,
+       "capture_core_share": 0.001
+      }
+     },
+     "verdicts": [
+      "node 57 fx-out pid ? -> linked",
+      "node 65 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 59 paplay pid 32 -> linked",
+      "node 57 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "b_max_fast_db_within_1s_of_move": -122.62,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.29,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 56 fx-out pid ? -> linked",
+      "node 64 paplay pid 32 -> linked",
+      "node 65 cpal-pulseaudio-33 pid 33 -> excluded: ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "b_max_fast_db_within_1s_of_move": -122.62,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.3,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 67 cpal-pulseaudio-35 pid 35 -> excluded: ours",
+      "node 63 paplay pid 34 -> linked",
+      "node 56 fx-out pid ? -> linked",
+      "node 56 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -9.99,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.18,
+       "median_db": -143.18,
+       "max_fast_db": -122.62
+      },
+      "b_max_fast_db_within_1s_of_move": -122.62,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.28,
+       "capture_s": 0.01,
+       "capture_core_share": 0.0005
+      }
+     },
+     "verdicts": [
+      "node 57 fx-out pid ? -> linked",
+      "node 59 paplay pid 32 -> linked",
+      "node 61 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 57 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "absent_b": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "b_above_unplayed_tones_max_db": -10.18,
+      "absent_b": {
+       "threshold_db": -80.0,
+       "max_db": -143.2,
+       "median_db": -143.2,
+       "max_fast_db": -123.45
+      },
+      "b_max_fast_db_within_1s_of_move": -123.45,
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.82,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      }
+     },
+     "verdicts": [
+      "node 59 paplay pid 32 -> linked",
+      "node 65 cpal-pulseaudio-33 pid 33 -> excluded: ours",
+      "node 56 fx-out pid ? -> linked",
+      "node 56 fx-out pid ? -> excluded: carries ours"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "b_above_unplayed_tones_max_db": -9.99,
+   "realtime": false
+  },
+  "L9": {
+   "what": "negative control: our own streams included on purpose",
+   "commit": "a800c7a187bb3c4e820f4295a6b46bb34b9b4308",
+   "parallel": 3,
+   "passed": 5,
+   "runs": 5,
+   "pass": true,
+   "detail": [
+    {
+     "run": 1,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.82,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      }
+     },
+     "verdicts": [
+      "node 56 paplay pid 31 -> linked",
+      "node 60 cpal-pulseaudio-32 pid 32 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 2,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 17,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.83,
+       "capture_s": 0.06,
+       "capture_core_share": 0.003
+      }
+     },
+     "verdicts": [
+      "node 62 cpal-pulseaudio-32 pid 32 -> linked",
+      "node 56 paplay pid 31 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 3,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.42,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> linked",
+      "node 56 paplay pid 31 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 4,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.44,
+       "capture_s": 0.04,
+       "capture_core_share": 0.002
+      }
+     },
+     "verdicts": [
+      "node 60 cpal-pulseaudio-32 pid 32 -> linked",
+      "node 56 paplay pid 31 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    },
+    {
+     "run": 5,
+     "exit": 0,
+     "checks": {
+      "present_a": true,
+      "present_b": true,
+      "control_valid": true,
+      "nothing_left_in_graph": true
+     },
+     "metrics": {
+      "windows": 18,
+      "present_a": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "present_b": {
+       "share_within_6db": 1.0,
+       "median_db": -12.04,
+       "min_db": -12.04,
+       "max_db": -12.04
+      },
+      "control": {
+       "a_median_db": -12.04,
+       "b_median_db": -12.04
+      },
+      "cpu": {
+       "wall_s": 20.0,
+       "process_s": 0.43,
+       "capture_s": 0.03,
+       "capture_core_share": 0.0015
+      }
+     },
+     "verdicts": [
+      "node 57 paplay pid 31 -> linked",
+      "node 58 cpal-pulseaudio-32 pid 32 -> linked"
+     ],
+     "errors": [],
+     "pass": true
+    }
+   ],
+   "realtime": false
+  }
+ },
+ "pass": false
+}

@@ -1,0 +1,17 @@
+{
+ "cpu_pct_core": {
+  "avg": 0.37,
+  "p95": 1.0
+ },
+ "memory_mb": {
+  "primary_metric": "pss",
+  "pss": 4.2,
+  "rss": 10.3,
+  "anon": 2.1,
+  "private_working_set": null,
+  "pss_peak": null
+ },
+ "window_s": 30,
+ "container": "t8-rust-f56ae3",
+ "loadavg": "13.47 18.54 24.35 23/2653 273746"
+}

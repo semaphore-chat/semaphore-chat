@@ -1,0 +1,126 @@
+{
+ "scenario": "lkrestart",
+ "outage_s": 90,
+ "runs": [
+  {
+   "run": 1,
+   "scenario": "lkrestart",
+   "room": "u11-lkrestart-1-1fb9a2",
+   "started_at": 1793920532247,
+   "fault_at": 1793920536252,
+   "healed_at": 1793920537467,
+   "worst_recover_ms": 4779,
+   "recover_ms": {
+    "a<-b": 4742,
+    "a<-c": 4742,
+    "b<-a": 4779,
+    "b<-c": 4779,
+    "c<-a": 4744,
+    "c<-b": 4744
+   },
+   "unbroken_pairs": [],
+   "video_back_ms": 7814,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a",
+    "b",
+    "c"
+   ],
+   "ok": true
+  },
+  {
+   "run": 2,
+   "scenario": "lkrestart",
+   "room": "u11-lkrestart-2-cf1b39",
+   "started_at": 1793920557374,
+   "fault_at": 1793920560976,
+   "healed_at": 1793920566151,
+   "worst_recover_ms": 5986,
+   "recover_ms": {
+    "a<-b": 5985,
+    "a<-c": 981,
+    "b<-a": 5984,
+    "b<-c": 5984,
+    "c<-a": 982,
+    "c<-b": 5986
+   },
+   "unbroken_pairs": [],
+   "video_back_ms": 9006,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a",
+    "b",
+    "c"
+   ],
+   "ok": true
+  },
+  {
+   "run": 3,
+   "scenario": "lkrestart",
+   "room": "u11-lkrestart-3-d7ad94",
+   "started_at": 1793920576760,
+   "fault_at": 1793920580563,
+   "healed_at": 1793920580791,
+   "worst_recover_ms": 523,
+   "recover_ms": {
+    "a<-b": 523,
+    "a<-c": 523,
+    "b<-a": 499,
+    "b<-c": 499,
+    "c<-a": 500,
+    "c<-b": 500
+   },
+   "unbroken_pairs": [],
+   "video_back_ms": 3602,
+   "status": {
+    "a": "Connected",
+    "b": "Connected",
+    "c": "Connected"
+   },
+   "rejoins": {
+    "a": 0,
+    "b": 0,
+    "c": 0
+   },
+   "people": {
+    "a": 4,
+    "b": 4,
+    "c": 4
+   },
+   "saw_reconnecting": [
+    "a",
+    "b",
+    "c"
+   ],
+   "ok": true
+  }
+ ]
+}

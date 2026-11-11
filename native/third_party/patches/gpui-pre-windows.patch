@@ -1,0 +1,567 @@
+diff --color -ruN a/build.rs b/build.rs
+--- a/build.rs
++++ b/build.rs
+@@ -40,6 +40,7 @@
+             "monochrome_sprite",
+             "subpixel_sprite",
+             "polychrome_sprite",
++            "surface",
+         ];
+ 
+         let rust_binding_path = format!("{}/shaders_bytes.rs", out_dir);
+diff --color -ruN a/src/directx_atlas.rs b/src/directx_atlas.rs
+--- a/src/directx_atlas.rs
++++ b/src/directx_atlas.rs
+@@ -1,8 +1,12 @@
++use collections::FxHashMap;
+ use etagere::BucketedAtlasAllocator;
+ use parking_lot::Mutex;
++use std::sync::Arc;
++use std::sync::atomic::{AtomicBool, Ordering};
+ use windows::Win32::Graphics::{
+     Direct3D11::{
+-        D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT,
++        D3D11_BIND_SHADER_RESOURCE, D3D11_BOX, D3D11_CPU_ACCESS_WRITE, D3D11_MAP_WRITE_DISCARD,
++        D3D11_MAPPED_SUBRESOURCE, D3D11_TEXTURE2D_DESC, D3D11_USAGE_DEFAULT, D3D11_USAGE_DYNAMIC,
+         ID3D11Device, ID3D11DeviceContext, ID3D11ShaderResourceView, ID3D11Texture2D,
+     },
+     Dxgi::Common::*,
+@@ -13,7 +17,159 @@
+     AtlasTile, Bounds, DevicePixels, PlatformAtlas, Point, Size,
+ };
+ 
+-pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>);
++pub(crate) struct DirectXAtlas(Mutex<AtlasState<DirectXAtlasTextures>>, DirectXVideo);
++
++/// The immediate context is single-threaded, so `VideoUploader::upload` only parks the latest
++/// frame here, and `DirectXAtlas::flush_video` writes it into the textures before each draw.
++#[derive(Default)]
++struct DirectXVideoQueue(Mutex<DirectXVideoQueueState>, AtomicBool);
++
++#[derive(Default)]
++struct DirectXVideoQueueState {
++    pending: FxHashMap<gpui::VideoSurfaceId, PendingVideoFrame>,
++    removed: Vec<gpui::VideoSurfaceId>,
++    spare: Vec<PendingVideoFrame>,
++}
++
++#[derive(Default)]
++struct PendingVideoFrame {
++    width: u32,
++    height: u32,
++    y: Vec<u8>,
++    y_stride: u32,
++    uv: Vec<u8>,
++    uv_stride: u32,
++}
++
++impl gpui::VideoUploader for DirectXVideoQueue {
++    fn upload(&self, id: gpui::VideoSurfaceId, frame: &gpui::Nv12Frame<'_>) {
++        let chroma_height = frame.height.div_ceil(2);
++        if frame.y.len() < (frame.y_stride * frame.height) as usize
++            || frame.uv.len() < (frame.uv_stride * chroma_height) as usize
++            || frame.y_stride < frame.width
++            || frame.uv_stride < frame.width.div_ceil(2) * 2
++        {
++            log::error!("video frame planes are smaller than its dimensions");
++            return;
++        }
++        let mut parked = self.0.lock().spare.pop().unwrap_or_default();
++        parked.width = frame.width;
++        parked.height = frame.height;
++        parked.y_stride = frame.y_stride;
++        parked.uv_stride = frame.uv_stride;
++        parked.y.clear();
++        parked.y.extend_from_slice(frame.y);
++        parked.uv.clear();
++        parked.uv.extend_from_slice(frame.uv);
++        let mut state = self.0.lock();
++        if let Some(superseded) = state.pending.insert(id, parked) {
++            state.spare.push(superseded);
++        }
++    }
++
++    fn remove(&self, id: gpui::VideoSurfaceId) {
++        let mut state = self.0.lock();
++        if let Some(pending) = state.pending.remove(&id) {
++            state.spare.push(pending);
++        }
++        state.removed.push(id);
++    }
++
++    fn failed(&self) -> bool {
++        self.1.load(Ordering::Acquire)
++    }
++}
++
++#[derive(Default)]
++struct DirectXVideo {
++    queue: Arc<DirectXVideoQueue>,
++    textures: Mutex<FxHashMap<gpui::VideoSurfaceId, DirectXVideoTexture>>,
++}
++
++struct DirectXVideoTexture {
++    size: (u32, u32),
++    y: ID3D11Texture2D,
++    uv: ID3D11Texture2D,
++    y_view: [Option<ID3D11ShaderResourceView>; 1],
++    uv_view: [Option<ID3D11ShaderResourceView>; 1],
++}
++
++impl DirectXVideoTexture {
++    fn new(device: &ID3D11Device, width: u32, height: u32) -> anyhow::Result<Self> {
++        let (y, y_view) = Self::plane(device, width, height, DXGI_FORMAT_R8_UNORM)?;
++        let (uv, uv_view) = Self::plane(
++            device,
++            width.div_ceil(2),
++            height.div_ceil(2),
++            DXGI_FORMAT_R8G8_UNORM,
++        )?;
++        Ok(Self {
++            size: (width, height),
++            y,
++            uv,
++            y_view,
++            uv_view,
++        })
++    }
++
++    fn plane(
++        device: &ID3D11Device,
++        width: u32,
++        height: u32,
++        format: DXGI_FORMAT,
++    ) -> anyhow::Result<(ID3D11Texture2D, [Option<ID3D11ShaderResourceView>; 1])> {
++        let desc = D3D11_TEXTURE2D_DESC {
++            Width: width,
++            Height: height,
++            MipLevels: 1,
++            ArraySize: 1,
++            Format: format,
++            SampleDesc: DXGI_SAMPLE_DESC {
++                Count: 1,
++                Quality: 0,
++            },
++            // Dynamic: Map(WRITE_DISCARD) renames the texture, so a draw still using the
++            // previous frame neither stalls nor forces the driver into a staging copy.
++            Usage: D3D11_USAGE_DYNAMIC,
++            BindFlags: D3D11_BIND_SHADER_RESOURCE.0 as u32,
++            CPUAccessFlags: D3D11_CPU_ACCESS_WRITE.0 as u32,
++            MiscFlags: 0,
++        };
++        let mut texture = None;
++        let mut view = None;
++        unsafe {
++            device.CreateTexture2D(&desc, None, Some(&mut texture))?;
++        }
++        let texture = texture.ok_or_else(|| anyhow::anyhow!("CreateTexture2D returned nothing"))?;
++        unsafe {
++            device.CreateShaderResourceView(&texture, None, Some(&mut view))?;
++        }
++        Ok((texture, [view]))
++    }
++
++    fn write_plane(
++        device_context: &ID3D11DeviceContext,
++        texture: &ID3D11Texture2D,
++        source: &[u8],
++        source_stride: u32,
++        row_bytes: u32,
++        rows: u32,
++    ) -> anyhow::Result<()> {
++        let mut mapped = D3D11_MAPPED_SUBRESOURCE::default();
++        unsafe {
++            device_context.Map(texture, 0, D3D11_MAP_WRITE_DISCARD, 0, Some(&mut mapped))?;
++            for row in 0..rows as usize {
++                std::ptr::copy_nonoverlapping(
++                    source.as_ptr().add(row * source_stride as usize),
++                    (mapped.pData as *mut u8).add(row * mapped.RowPitch as usize),
++                    row_bytes as usize,
++                );
++            }
++            device_context.Unmap(texture, 0);
++        }
++        Ok(())
++    }
++}
+ 
+ struct DirectXAtlasTextures {
+     device: ID3D11Device,
+@@ -34,13 +190,95 @@
+ 
+ impl DirectXAtlas {
+     pub(crate) fn new(device: &ID3D11Device, device_context: &ID3D11DeviceContext) -> Self {
+-        DirectXAtlas(Mutex::new(AtlasState::new(DirectXAtlasTextures {
+-            device: device.clone(),
+-            device_context: device_context.clone(),
+-            monochrome_textures: Default::default(),
+-            polychrome_textures: Default::default(),
+-            subpixel_textures: Default::default(),
+-        })))
++        DirectXAtlas(
++            Mutex::new(AtlasState::new(DirectXAtlasTextures {
++                device: device.clone(),
++                device_context: device_context.clone(),
++                monochrome_textures: Default::default(),
++                polychrome_textures: Default::default(),
++                subpixel_textures: Default::default(),
++            })),
++            DirectXVideo::default(),
++        )
++    }
++
++    /// Writes each surface's latest parked frame into its textures. Runs on the render thread. A
++    /// surface that can't be written goes dark and sets `failed`, so it costs the window one tile
++    /// instead of every frame it would have drawn.
++    pub(crate) fn flush_video(&self) {
++        let (pending, removed) = {
++            let mut state = self.1.queue.0.lock();
++            if state.pending.is_empty() && state.removed.is_empty() {
++                return;
++            }
++            (
++                std::mem::take(&mut state.pending),
++                std::mem::take(&mut state.removed),
++            )
++        };
++        let (device, device_context) = {
++            let lock = self.0.lock();
++            (lock.backend.device.clone(), lock.backend.device_context.clone())
++        };
++        let mut textures = self.1.textures.lock();
++        for id in removed {
++            textures.remove(&id);
++        }
++        let mut spare = Vec::with_capacity(pending.len());
++        for (id, frame) in pending {
++            let written = (|| -> anyhow::Result<()> {
++                let current = textures
++                    .get(&id)
++                    .is_some_and(|texture| texture.size == (frame.width, frame.height));
++                if !current {
++                    textures
++                        .insert(id, DirectXVideoTexture::new(&device, frame.width, frame.height)?);
++                }
++                let texture = &textures[&id];
++                DirectXVideoTexture::write_plane(
++                    &device_context,
++                    &texture.y,
++                    &frame.y,
++                    frame.y_stride,
++                    frame.width,
++                    frame.height,
++                )?;
++                DirectXVideoTexture::write_plane(
++                    &device_context,
++                    &texture.uv,
++                    &frame.uv,
++                    frame.uv_stride,
++                    frame.width.div_ceil(2) * 2,
++                    frame.height.div_ceil(2),
++                )
++            })();
++            if let Err(error) = written {
++                textures.remove(&id);
++                self.video_failed(&error);
++            }
++            spare.push(frame);
++        }
++        self.1.queue.0.lock().spare.append(&mut spare);
++    }
++
++    /// Says so once, and from then on `VideoUploader::failed` is true.
++    pub(crate) fn video_failed(&self, error: &anyhow::Error) {
++        if !self.1.queue.1.swap(true, Ordering::AcqRel) {
++            log::error!("video surface failed, callers should stop using surfaces: {error:#}");
++        }
++    }
++
++    /// The luma and chroma views of a surface that has received a frame.
++    pub(crate) fn video_views(
++        &self,
++        id: gpui::VideoSurfaceId,
++    ) -> Option<(
++        [Option<ID3D11ShaderResourceView>; 1],
++        [Option<ID3D11ShaderResourceView>; 1],
++    )> {
++        let textures = self.1.textures.lock();
++        let texture = textures.get(&id)?;
++        Some((texture.y_view.clone(), texture.uv_view.clone()))
+     }
+ 
+     /// Returns the view backing `id`, or `None` once every tile in it has been
+@@ -61,6 +299,8 @@
+         device: &ID3D11Device,
+         device_context: &ID3D11DeviceContext,
+     ) {
++        // Textures died with the old device. The next upload to each surface recreates them.
++        self.1.textures.lock().clear();
+         let mut lock = self.0.lock();
+         lock.clear(|textures| {
+             textures.device = device.clone();
+@@ -73,6 +313,10 @@
+ }
+ 
+ impl PlatformAtlas for DirectXAtlas {
++    fn video_uploader(&self) -> Option<Arc<dyn gpui::VideoUploader>> {
++        Some(self.1.queue.clone())
++    }
++
+     fn get_or_insert_with<'a>(
+         &self,
+         key: AtlasKey,
+diff --color -ruN a/src/directx_renderer.rs b/src/directx_renderer.rs
+--- a/src/directx_renderer.rs
++++ b/src/directx_renderer.rs
+@@ -92,6 +92,18 @@
+     mono_sprites: PipelineState<MonochromeSprite>,
+     subpixel_sprites: PipelineState<SubpixelSprite>,
+     poly_sprites: PipelineState<PolychromeSprite>,
++    surfaces: PipelineState<SurfaceInstance>,
++}
++
++/// `Surface` in shaders.hlsl.
++#[derive(Clone, Copy)]
++#[repr(C)]
++struct SurfaceInstance {
++    bounds: Bounds<ScaledPixels>,
++    content_mask: ContentMask<ScaledPixels>,
++    corner_radii: Corners<ScaledPixels>,
++    opacity: f32,
++    pad: [f32; 3],
+ }
+ 
+ struct DirectXGlobalElements {
+@@ -351,6 +363,7 @@
+         scene: &Scene,
+         background_appearance: WindowBackgroundAppearance,
+     ) -> Result<()> {
++        self.atlas.flush_video();
+         self.pre_draw(&match background_appearance {
+             WindowBackgroundAppearance::Opaque => [1.0f32; 4],
+             _ => [0.0f32; 4],
+@@ -384,7 +397,9 @@
+                 PrimitiveBatch::PolychromeSprites { texture_id, range } => {
+                     self.draw_polychrome_sprites(texture_id, range.start, range.len())
+                 }
+-                PrimitiveBatch::Surfaces(range) => self.draw_surfaces(&scene.surfaces[range]),
++                PrimitiveBatch::Surfaces(range) => {
++                    self.draw_surfaces(&scene.surfaces[range.clone()], range.start)
++                }
+             }
+             .with_context(|| {
+                 format!(
+@@ -577,6 +592,25 @@
+             )?;
+         }
+ 
++        if !scene.surfaces.is_empty() {
++            let surfaces: Vec<SurfaceInstance> = scene
++                .surfaces
++                .iter()
++                .map(|surface| SurfaceInstance {
++                    bounds: surface.bounds,
++                    content_mask: surface.content_mask,
++                    corner_radii: surface.corner_radii,
++                    opacity: surface.opacity,
++                    pad: [0.0; 3],
++                })
++                .collect();
++            self.pipelines.surfaces.update_buffer(
++                &devices.device,
++                &devices.device_context,
++                &surfaces,
++            )?;
++        }
++
+         Ok(())
+     }
+ 
+@@ -813,10 +847,33 @@
+         )
+     }
+ 
+-    fn draw_surfaces(&mut self, surfaces: &[PaintSurface]) -> Result<()> {
++    fn draw_surfaces(&mut self, surfaces: &[PaintSurface], start: usize) -> Result<()> {
+         if surfaces.is_empty() {
+             return Ok(());
+         }
++        let devices = self.devices.as_ref().context("devices missing")?;
++        let batch_params_buffer = self
++            .globals
++            .batch_params_buffer
++            .as_ref()
++            .context("batch params buffer missing")?;
++        for (offset, surface) in surfaces.iter().enumerate() {
++            // No frame has arrived yet: leave whatever is behind it visible.
++            let Some((y_view, uv_view)) = self.atlas.video_views(surface.video) else {
++                continue;
++            };
++            // One tile that won't draw mustn't cost the frame everything after it.
++            if let Err(error) = self.pipelines.surfaces.draw_surface(
++                &devices.device_context,
++                &y_view,
++                &uv_view,
++                batch_params_buffer,
++                slice::from_ref(&self.globals.sampler),
++                (start + offset) as u32,
++            ) {
++                self.atlas.video_failed(&error);
++            }
++        }
+         Ok(())
+     }
+ 
+@@ -997,6 +1054,13 @@
+             16,
+             create_blend_state(device)?,
+         )?;
++        let surfaces = PipelineState::new(
++            device,
++            "surface_pipeline",
++            ShaderModule::Surface,
++            16,
++            create_blend_state(device)?,
++        )?;
+ 
+         Ok(Self {
+             shadow_pipeline,
+@@ -1007,6 +1071,7 @@
+             mono_sprites,
+             subpixel_sprites,
+             poly_sprites,
++            surfaces,
+         })
+     }
+ }
+@@ -1233,6 +1298,38 @@
+         Ok(())
+     }
+ 
++    fn draw_surface(
++        &self,
++        device_context: &ID3D11DeviceContext,
++        y_view: &[Option<ID3D11ShaderResourceView>],
++        uv_view: &[Option<ID3D11ShaderResourceView>],
++        batch_params_buffer: &ID3D11Buffer,
++        sampler: &[Option<ID3D11SamplerState>],
++        instance: u32,
++    ) -> Result<()> {
++        anyhow::ensure!(
++            (instance as usize) < self.buffer_size,
++            "DirectX instance exceeds the {} buffer",
++            self.label
++        );
++        update_batch_start(device_context, batch_params_buffer, instance)?;
++        set_pipeline_state(
++            device_context,
++            slice::from_ref(&self.view),
++            D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP,
++            &self.vertex,
++            &self.fragment,
++            &self.blend_state,
++        );
++        unsafe {
++            device_context.PSSetSamplers(0, Some(sampler));
++            device_context.PSSetShaderResources(0, Some(y_view));
++            device_context.PSSetShaderResources(2, Some(uv_view));
++            device_context.DrawInstanced(4, 1, 0, 0);
++        }
++        Ok(())
++    }
++
+     fn draw_range_with_texture(
+         &self,
+         device_context: &ID3D11DeviceContext,
+@@ -1716,6 +1813,7 @@
+         MonochromeSprite,
+         SubpixelSprite,
+         PolychromeSprite,
++        Surface,
+         EmojiRasterization,
+     }
+ 
+@@ -1790,6 +1888,10 @@
+                     ShaderTarget::Vertex => POLYCHROME_SPRITE_VERTEX_BYTES,
+                     ShaderTarget::Fragment => POLYCHROME_SPRITE_FRAGMENT_BYTES,
+                 },
++                ShaderModule::Surface => match target {
++                    ShaderTarget::Vertex => SURFACE_VERTEX_BYTES,
++                    ShaderTarget::Fragment => SURFACE_FRAGMENT_BYTES,
++                },
+                 ShaderModule::EmojiRasterization => match target {
+                     ShaderTarget::Vertex => EMOJI_RASTERIZATION_VERTEX_BYTES,
+                     ShaderTarget::Fragment => EMOJI_RASTERIZATION_FRAGMENT_BYTES,
+@@ -1880,6 +1982,7 @@
+                 ShaderModule::MonochromeSprite => "monochrome_sprite",
+                 ShaderModule::SubpixelSprite => "subpixel_sprite",
+                 ShaderModule::PolychromeSprite => "polychrome_sprite",
++                ShaderModule::Surface => "surface",
+                 ShaderModule::EmojiRasterization => "emoji_rasterization",
+             }
+         }
+diff --color -ruN a/src/shaders.hlsl b/src/shaders.hlsl
+--- a/src/shaders.hlsl
++++ b/src/shaders.hlsl
+@@ -1266,3 +1266,61 @@
+     color.a *= sprite.opacity * saturate(0.5 - distance);
+     return color;
+ }
++
++/*
++**
++** Surfaces: NV12 video, sampled from two textures that are updated in place.
++**
++*/
++
++struct Surface {
++    Bounds bounds;
++    Bounds content_mask;
++    Corners corner_radii;
++    float opacity;
++    float3 pad;
++};
++
++StructuredBuffer<Surface> surfaces: register(t1);
++Texture2D<float> t_surface_y: register(t0);
++Texture2D<float2> t_surface_cb_cr: register(t2);
++
++struct SurfaceVertexOutput {
++    nointerpolation uint surface_id: TEXCOORD0;
++    float4 position: SV_Position;
++    float2 texture_position: POSITION;
++    float4 clip_distance: SV_ClipDistance;
++};
++
++struct SurfaceFragmentInput {
++    nointerpolation uint surface_id: TEXCOORD0;
++    float4 position: SV_Position;
++    float2 texture_position: POSITION;
++};
++
++SurfaceVertexOutput surface_vertex(uint vertex_id: SV_VertexID) {
++    float2 unit_vertex = float2(float(vertex_id & 1u), 0.5 * float(vertex_id & 2u));
++    Surface surface = surfaces[batch_start_index];
++
++    SurfaceVertexOutput output;
++    output.position = to_device_position(unit_vertex, surface.bounds);
++    output.texture_position = unit_vertex;
++    output.surface_id = batch_start_index;
++    output.clip_distance = distance_from_clip_rect(unit_vertex, surface.bounds, surface.content_mask);
++    return output;
++}
++
++float4 surface_fragment(SurfaceFragmentInput input): SV_Target {
++    Surface surface = surfaces[input.surface_id];
++    float y = t_surface_y.Sample(s_sprite, input.texture_position);
++    float2 cb_cr = t_surface_cb_cr.Sample(s_sprite, input.texture_position);
++
++    // BT.601 limited range, what WebRTC's I420 and libyuv's I420ToARGB use.
++    float3 rgb = float3(
++        1.1644 * y + 1.5960 * cb_cr.y - 0.8742,
++        1.1644 * y - 0.3918 * cb_cr.x - 0.8130 * cb_cr.y + 0.5317,
++        1.1644 * y + 2.0172 * cb_cr.x - 1.0856);
++
++    float distance = quad_sdf(input.position.xy, surface.bounds, surface.corner_radii);
++    return float4(rgb, surface.opacity * saturate(0.5 - distance));
++}

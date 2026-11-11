@@ -1,0 +1,349 @@
+diff -ruN a/src/shaders.wgsl b/src/shaders.wgsl
+--- a/src/shaders.wgsl
++++ b/src/shaders.wgsl
+@@ -1315,6 +1315,11 @@
+ struct SurfaceParams {
+     bounds: Bounds,
+     content_mask: Bounds,
++    corner_radii: Corners,
++    opacity: f32,
++    pad0: f32,
++    pad1: f32,
++    pad2: f32,
+ }
+ 
+ @group(1) @binding(0) var<uniform> surface_locals: SurfaceParams;
+@@ -1322,11 +1327,12 @@
+ @group(1) @binding(2) var t_cb_cr: texture_2d<f32>;
+ @group(1) @binding(3) var s_surface: sampler;
+ 
++// BT.601 limited range, what WebRTC's I420 and libyuv's I420ToARGB use.
+ const ycbcr_to_RGB = mat4x4<f32>(
+-    vec4<f32>( 1.0000f,  1.0000f,  1.0000f, 0.0),
+-    vec4<f32>( 0.0000f, -0.3441f,  1.7720f, 0.0),
+-    vec4<f32>( 1.4020f, -0.7141f,  0.0000f, 0.0),
+-    vec4<f32>(-0.7010f,  0.5291f, -0.8860f, 1.0),
++    vec4<f32>( 1.1644f,  1.1644f,  1.1644f, 0.0),
++    vec4<f32>( 0.0000f, -0.3918f,  2.0172f, 0.0),
++    vec4<f32>( 1.5960f, -0.8130f,  0.0000f, 0.0),
++    vec4<f32>(-0.8742f,  0.5317f, -1.0856f, 1.0),
+ );
+ 
+ struct SurfaceVarying {
+@@ -1358,5 +1364,7 @@
+         textureSampleLevel(t_cb_cr, s_surface, input.texture_position, 0.0).rg,
+         1.0);
+ 
+-    return ycbcr_to_RGB * y_cb_cr;
++    // Rounded corners and opacity through the same SDF sprites use.
++    let distance = quad_sdf(input.position.xy, surface_locals.bounds, surface_locals.corner_radii);
++    return blend_color(ycbcr_to_RGB * y_cb_cr, surface_locals.opacity * saturate(0.5 - distance));
+ }
+diff -ruN a/src/wgpu_atlas.rs b/src/wgpu_atlas.rs
+--- a/src/wgpu_atlas.rs
++++ b/src/wgpu_atlas.rs
+@@ -21,7 +21,128 @@
+     }
+ }
+ 
+-pub struct WgpuAtlas(Mutex<AtlasState<WgpuAtlasTextures>>);
++pub struct WgpuAtlas(Mutex<AtlasState<WgpuAtlasTextures>>, Arc<WgpuVideoStore>);
++
++/// NV12 textures, written in place, keyed by surface.
++pub struct WgpuVideoStore {
++    state: Mutex<WgpuVideoState>,
++    next_generation: std::sync::atomic::AtomicU64,
++}
++
++struct WgpuVideoState {
++    device: Arc<wgpu::Device>,
++    queue: Arc<wgpu::Queue>,
++    surfaces: collections::FxHashMap<gpui::VideoSurfaceId, Arc<WgpuVideoTexture>>,
++}
++
++pub struct WgpuVideoTexture {
++    pub generation: u64,
++    pub size: (u32, u32),
++    pub y: wgpu::Texture,
++    pub uv: wgpu::Texture,
++    pub y_view: wgpu::TextureView,
++    pub uv_view: wgpu::TextureView,
++}
++
++impl WgpuVideoStore {
++    fn new(device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) -> Self {
++        Self {
++            state: Mutex::new(WgpuVideoState {
++                device,
++                queue,
++                surfaces: Default::default(),
++            }),
++            next_generation: Default::default(),
++        }
++    }
++
++    fn create(&self, device: &wgpu::Device, width: u32, height: u32) -> Arc<WgpuVideoTexture> {
++        let plane = |label, width, height, format| {
++            device.create_texture(&wgpu::TextureDescriptor {
++                label: Some(label),
++                size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
++                mip_level_count: 1,
++                sample_count: 1,
++                dimension: wgpu::TextureDimension::D2,
++                format,
++                usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
++                view_formats: &[],
++            })
++        };
++        let y = plane("video_y", width, height, wgpu::TextureFormat::R8Unorm);
++        let uv = plane("video_uv", width.div_ceil(2), height.div_ceil(2), wgpu::TextureFormat::Rg8Unorm);
++        Arc::new(WgpuVideoTexture {
++            generation: self.next_generation.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
++            size: (width, height),
++            y_view: y.create_view(&Default::default()),
++            uv_view: uv.create_view(&Default::default()),
++            y,
++            uv,
++        })
++    }
++
++    pub fn get(&self, id: gpui::VideoSurfaceId) -> Option<Arc<WgpuVideoTexture>> {
++        self.state.lock().surfaces.get(&id).cloned()
++    }
++
++    /// Textures died with the old device. The next upload to each surface recreates them.
++    fn handle_device_lost(&self, device: Arc<wgpu::Device>, queue: Arc<wgpu::Queue>) {
++        let mut state = self.state.lock();
++        state.device = device;
++        state.queue = queue;
++        state.surfaces.clear();
++    }
++
++    fn write(queue: &wgpu::Queue, texture: &wgpu::Texture, width: u32, height: u32, stride: u32, data: &[u8]) {
++        queue.write_texture(
++            wgpu::TexelCopyTextureInfo {
++                texture,
++                mip_level: 0,
++                origin: wgpu::Origin3d::ZERO,
++                aspect: wgpu::TextureAspect::All,
++            },
++            data,
++            wgpu::TexelCopyBufferLayout {
++                offset: 0,
++                bytes_per_row: Some(stride),
++                rows_per_image: None,
++            },
++            wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
++        );
++    }
++}
++
++impl gpui::VideoUploader for WgpuVideoStore {
++    fn upload(&self, id: gpui::VideoSurfaceId, frame: &gpui::Nv12Frame<'_>) {
++        let (texture, queue) = {
++            let mut guard = self.state.lock();
++            let state = &mut *guard;
++            let texture = match state.surfaces.get(&id) {
++                Some(t) if t.size == (frame.width, frame.height) => t.clone(),
++                _ => {
++                    let t = self.create(&state.device, frame.width, frame.height);
++                    state.surfaces.insert(id, t.clone());
++                    t
++                }
++            };
++            (texture, state.queue.clone())
++        };
++        // No lock is held across the staging copy.
++        Self::write(&queue, &texture.y, frame.width, frame.height, frame.y_stride, frame.y);
++        Self::write(
++            &queue,
++            &texture.uv,
++            frame.width.div_ceil(2),
++            frame.height.div_ceil(2),
++            frame.uv_stride,
++            frame.uv,
++        );
++    }
++
++    fn remove(&self, id: gpui::VideoSurfaceId) {
++        self.state.lock().surfaces.remove(&id);
++    }
++}
+ 
+ struct PendingUpload {
+     id: AtlasTextureId,
+@@ -52,6 +173,7 @@
+         color_texture_format: wgpu::TextureFormat,
+     ) -> Self {
+         let max_texture_size = device.limits().max_texture_dimension_2d;
++        let video = Arc::new(WgpuVideoStore::new(device.clone(), queue.clone()));
+         WgpuAtlas(Mutex::new(AtlasState::new(WgpuAtlasTextures {
+             device,
+             queue,
+@@ -60,7 +182,11 @@
+             storage: WgpuAtlasStorage::default(),
+             pending_uploads: Vec::new(),
+             next_texture_generation: 0,
+-        })))
++        })), video)
++    }
++
++    pub fn video_store(&self) -> &Arc<WgpuVideoStore> {
++        &self.1
+     }
+ 
+     pub fn from_context(context: &WgpuContext) -> Self {
+@@ -101,6 +227,7 @@
+     /// Handles device lost by clearing all textures and cached tiles.
+     /// The atlas will lazily recreate textures as needed on subsequent frames.
+     pub fn handle_device_lost(&self, context: &WgpuContext) {
++        self.1.handle_device_lost(context.device.clone(), context.queue.clone());
+         self.0.lock().clear(|textures| {
+             textures.device = context.device.clone();
+             textures.queue = context.queue.clone();
+@@ -112,6 +239,10 @@
+ }
+ 
+ impl PlatformAtlas for WgpuAtlas {
++    fn video_uploader(&self) -> Option<Arc<dyn gpui::VideoUploader>> {
++        Some(self.1.clone())
++    }
++
+     fn get_or_insert_with<'a>(
+         &self,
+         key: AtlasKey,
+diff -ruN a/src/wgpu_renderer.rs b/src/wgpu_renderer.rs
+--- a/src/wgpu_renderer.rs
++++ b/src/wgpu_renderer.rs
+@@ -85,6 +85,16 @@
+ struct SurfaceParams {
+     bounds: PodBounds,
+     content_mask: PodBounds,
++    corner_radii: [f32; 4],
++    opacity: f32,
++    pad: [f32; 3],
++}
++
++/// One per live surface; rebuilt only when the surface's textures are replaced.
++struct SurfaceBinding {
++    generation: u64,
++    params: wgpu::Buffer,
++    bind_group: wgpu::BindGroup,
+ }
+ 
+ #[repr(C)]
+@@ -187,6 +197,7 @@
+     bind_group_layouts: WgpuBindGroupLayouts,
+     atlas_sampler: wgpu::Sampler,
+     atlas_texture_bind_groups: FxHashMap<AtlasTextureId, CachedTextureBindGroup>,
++    surface_bindings: FxHashMap<gpui::VideoSurfaceId, SurfaceBinding>,
+     globals_buffer: wgpu::Buffer,
+     globals_bind_group: wgpu::BindGroup,
+     path_globals_bind_group: wgpu::BindGroup,
+@@ -1370,6 +1381,7 @@
+                 bind_group_layouts,
+                 atlas_sampler,
+                 atlas_texture_bind_groups: FxHashMap::default(),
++                surface_bindings: FxHashMap::default(),
+                 globals_buffer,
+                 globals_bind_group,
+                 path_globals_bind_group,
+@@ -1522,6 +1534,7 @@
+                 )
+             })?;
+         self.prepare_texture_bind_groups(scene);
++        self.prepare_surface_bindings(scene);
+ 
+         let mut encoder =
+             self.resources()
+@@ -1634,9 +1647,19 @@
+                             &mut pass,
+                         )?;
+                     }
+-                    // Surfaces are macOS-only for video playback and are not
+-                    // implemented by the WGPU renderer.
+-                    PrimitiveBatch::Surfaces(_surfaces) => {}
++                    PrimitiveBatch::Surfaces(range) => {
++                        let resources = self.resources();
++                        pass.set_pipeline(&resources.pipelines.surfaces);
++                        pass.set_bind_group(0, &resources.globals_bind_group, &[]);
++                        for surface in &scene.surfaces[range] {
++                            // No frame has arrived yet: leave whatever is behind it visible.
++                            let Some(binding) = resources.surface_bindings.get(&surface.video) else {
++                                continue;
++                            };
++                            pass.set_bind_group(1, &binding.bind_group, &[]);
++                            pass.draw(0..4, 0..1);
++                        }
++                    }
+                 }
+             }
+         }
+@@ -1757,6 +1780,67 @@
+         }
+     }
+ 
++    /// One uniform buffer + bind group per surface in the scene.
++    fn prepare_surface_bindings(&mut self, scene: &Scene) {
++        let store = self.atlas.video_store().clone();
++        let surfaces = &scene.surfaces;
++        let resources = &mut self.resources;
++        resources
++            .surface_bindings
++            .retain(|id, _| surfaces.iter().any(|surface| surface.video == *id));
++        for surface in surfaces {
++            let Some(texture) = store.get(surface.video) else {
++                resources.surface_bindings.remove(&surface.video);
++                continue;
++            };
++            let current = resources
++                .surface_bindings
++                .get(&surface.video)
++                .is_some_and(|binding| binding.generation == texture.generation);
++            if !current {
++                let params = resources.device.create_buffer(&wgpu::BufferDescriptor {
++                    label: Some("surface_params"),
++                    size: std::mem::size_of::<SurfaceParams>() as u64,
++                    usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
++                    mapped_at_creation: false,
++                });
++                let bind_group = resources.device.create_bind_group(&wgpu::BindGroupDescriptor {
++                    label: Some("surface_bind_group"),
++                    layout: &resources.bind_group_layouts.surfaces,
++                    entries: &[
++                        wgpu::BindGroupEntry { binding: 0, resource: params.as_entire_binding() },
++                        wgpu::BindGroupEntry {
++                            binding: 1,
++                            resource: wgpu::BindingResource::TextureView(&texture.y_view),
++                        },
++                        wgpu::BindGroupEntry {
++                            binding: 2,
++                            resource: wgpu::BindingResource::TextureView(&texture.uv_view),
++                        },
++                        wgpu::BindGroupEntry {
++                            binding: 3,
++                            resource: wgpu::BindingResource::Sampler(&resources.atlas_sampler),
++                        },
++                    ],
++                });
++                resources.surface_bindings.insert(
++                    surface.video,
++                    SurfaceBinding { generation: texture.generation, params, bind_group },
++                );
++            }
++            let binding = &resources.surface_bindings[&surface.video];
++            let radii = surface.corner_radii;
++            let params = SurfaceParams {
++                bounds: surface.bounds.into(),
++                content_mask: surface.content_mask.bounds.into(),
++                corner_radii: [radii.top_left.0, radii.top_right.0, radii.bottom_right.0, radii.bottom_left.0],
++                opacity: surface.opacity,
++                pad: [0.0; 3],
++            };
++            resources.queue.write_buffer(&binding.params, 0, bytemuck::bytes_of(&params));
++        }
++    }
++
+     fn draw_instances(
+         &self,
+         instances: &InstanceBinding,

@@ -1,0 +1,39 @@
+# Pinned build and headless-render image for native/.
+#
+# The base tag and the package archive date move together. Mesa, fonts and clang all
+# come from that snapshot, because T10's pixel determinism depends on them. Same ABI
+# as CachyOS, so Hyprland rigs built here run directly on Mike's host.
+FROM archlinux:base-devel-20261101.0.620205
+
+ARG HOST_UID=1000
+
+RUN echo 'Server = https://archive.archlinux.org/repos/2026/11/01/$repo/os/$arch' > /etc/pacman.d/mirrorlist \
+ && pacman -Syyuu --noconfirm \
+ && pacman -S --noconfirm --needed \
+      rustup clang lld pkgconf cmake git jq python python-jsonschema cargo-deny \
+      libx11 libxcb libxkbcommon libxkbcommon-x11 wayland wayland-protocols \
+      libxrandr libxcomposite libxdamage libxfixes libxtst libdrm libva nss \
+      alsa-lib libpulse pipewire glib2 openssl fontconfig freetype2 ttf-dejavu \
+      vulkan-icd-loader vulkan-swrast mesa xorg-server-xvfb \
+ && rm -rf /var/cache/pacman/pkg/*
+
+# Baked in so runs need no network for the toolchain. Keep in step with
+# rust-toolchain.toml (the image tag hashes both files).
+ENV RUSTUP_HOME=/opt/rustup
+COPY rust-toolchain.toml /tmp/rust-toolchain.toml
+RUN channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' /tmp/rust-toolchain.toml)" \
+ && rustup toolchain install "$channel" --profile minimal -c rustfmt -c clippy \
+      -t aarch64-linux-android -t aarch64-apple-ios -t x86_64-pc-windows-msvc \
+ && rustup default "$channel" \
+ && chmod -R a+rX /opt/rustup
+
+# New named volumes inherit this ownership, so runs as the host uid can write to them.
+RUN mkdir -p /cache/cargo /cache/target /cache/home \
+ && chown -R "$HOST_UID" /cache
+
+ENV CARGO_HOME=/cache/cargo \
+    CARGO_TARGET_DIR=/cache/target \
+    HOME=/cache/home \
+    CC=clang \
+    CXX=clang++ \
+    CARGO_TERM_COLOR=never

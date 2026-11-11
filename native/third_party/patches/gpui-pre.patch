@@ -1,0 +1,124 @@
+diff --color -ruN a/src/platform.rs b/src/platform.rs
+--- a/src/platform.rs
++++ b/src/platform.rs
+@@ -1795,6 +1795,11 @@
+ 
+ #[expect(missing_docs)]
+ pub trait PlatformAtlas {
++    /// Off-thread uploader for in-place video surfaces, when the renderer has one.
++    fn video_uploader(&self) -> Option<Arc<dyn VideoUploader>> {
++        None
++    }
++
+     /// The builder runs with the atlas locked and must not re-enter the same atlas.
+     fn get_or_insert_with<'a>(
+         &self,
+@@ -1808,6 +1813,48 @@
+         false
+     }
+ }
++
++/// Identifies one in-place updated video surface.
++#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
++pub struct VideoSurfaceId(pub u64);
++
++impl VideoSurfaceId {
++    /// Allocates a process-unique id.
++    pub fn next() -> Self {
++        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
++        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
++    }
++}
++
++/// One NV12 frame borrowed from the caller.
++pub struct Nv12Frame<'a> {
++    /// Luma width in pixels.
++    pub width: u32,
++    /// Luma height in pixels.
++    pub height: u32,
++    /// Luma plane.
++    pub y: &'a [u8],
++    /// Bytes per luma row.
++    pub y_stride: u32,
++    /// Interleaved CbCr plane, half size in each dimension (rounded up).
++    pub uv: &'a [u8],
++    /// Bytes per CbCr row.
++    pub uv_stride: u32,
++}
++
++/// Uploads frames into a surface's textures in place. Callable from any thread.
++pub trait VideoUploader: Send + Sync {
++    /// Creates the textures on first use or on a size change, then overwrites them.
++    /// Where the renderer cannot touch the GPU off-thread, the latest frame waits for the next draw.
++    fn upload(&self, id: VideoSurfaceId, frame: &Nv12Frame<'_>);
++    /// Frees the textures.
++    fn remove(&self, id: VideoSurfaceId);
++    /// A surface couldn't be written or drawn. It stays failed: a caller should stop using surfaces
++    /// and draw its frames some other way. The rest of the window is unaffected.
++    fn failed(&self) -> bool {
++        false
++    }
++}
+ 
+ #[doc(hidden)]
+ pub trait AtlasBackend {
+diff --color -ruN a/src/scene.rs b/src/scene.rs
+--- a/src/scene.rs
++++ b/src/scene.rs
+@@ -771,6 +771,12 @@
+     pub content_mask: ContentMask<ScaledPixels>,
+     #[cfg(any(target_os = "macos", target_os = "ios"))]
+     pub image_buffer: objc2_core_foundation::CFRetained<objc2_core_video::CVPixelBuffer>,
++    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
++    pub video: crate::VideoSurfaceId,
++    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
++    pub corner_radii: Corners<ScaledPixels>,
++    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
++    pub opacity: f32,
+ }
+ 
+ impl From<PaintSurface> for Primitive {
+diff --color -ruN a/src/window.rs b/src/window.rs
+--- a/src/window.rs
++++ b/src/window.rs
+@@ -5398,6 +5398,40 @@
+         });
+     }
+ 
++    /// The off-thread uploader for video surfaces, when the renderer has one.
++    pub fn video_uploader(&self) -> Option<Arc<dyn crate::VideoUploader>> {
++        self.sprite_atlas.video_uploader()
++    }
++
++    /// Paint a video surface at the current z-index. Clipped by the content mask and rounded
++    /// by `corner_radii` like an image. Draws nothing until a frame has been uploaded.
++    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
++    pub fn paint_video_surface(
++        &mut self,
++        bounds: Bounds<Pixels>,
++        corner_radii: Corners<Pixels>,
++        video: crate::VideoSurfaceId,
++    ) {
++        use crate::PaintSurface;
++
++        self.invalidator.debug_assert_paint();
++
++        let corner_radii = corner_radii
++            .clamp_radii_for_quad_size(bounds.size)
++            .scale(self.scale_factor());
++        let bounds = self.snap_bounds(bounds);
++        let content_mask = self.snapped_content_mask();
++        let opacity = self.element_opacity();
++        self.next_frame.scene.insert_primitive(PaintSurface {
++            order: 0,
++            bounds,
++            content_mask,
++            video,
++            corner_radii,
++            opacity,
++        });
++    }
++
+     /// Removes an image from the sprite atlas.
+     pub fn drop_image(&mut self, data: Arc<RenderImage>) -> Result<()> {
+         for frame_index in 0..data.frame_count() {

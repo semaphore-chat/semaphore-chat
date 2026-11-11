@@ -1,0 +1,36 @@
+[package]
+name = "semaphore-fake-server"
+description = "Dev only: serves scenarios over real HTTP and Socket.IO framing. Never linked by the app."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+axum = { version = "0.8", features = ["multipart", "ws"] }
+base64 = "0.22"
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+futures-util = "0.3"
+hmac = "0.12"
+image = { version = "0.25", default-features = false, features = ["png"] }
+semaphore-wire.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2 = "0.10"
+tokio = { version = "1", default-features = false, features = [
+  "macros",
+  "net",
+  "rt",
+  "rt-multi-thread",
+  "sync",
+  "time",
+] }
+uuid = { version = "1", features = ["serde"] }
+
+[dev-dependencies]
+# Under `cargo test --workspace`, semaphore-net's `rustls-no-provider` feature reaches reqwest here
+# too, and a client then panics with no crypto provider. Install the one semaphore-net uses.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+jsonschema = "0.30"
+reqwest.workspace = true
+tokio-tungstenite.workspace = true
