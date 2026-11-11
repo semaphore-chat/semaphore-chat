@@ -30,7 +30,7 @@ const NAMES: [&str; 12] = [
     "Elena Petrova",
 ];
 
-fn person(index: usize) -> ParticipantView {
+pub(super) fn person(index: usize) -> ParticipantView {
     let name = NAMES[index % NAMES.len()];
     let identity = name.to_lowercase().replace(' ', ".");
     ParticipantView {
@@ -46,7 +46,7 @@ fn person(index: usize) -> ParticipantView {
     }
 }
 
-fn camera(index: usize) -> Option<VideoTrackView> {
+pub(super) fn camera(index: usize) -> Option<VideoTrackView> {
     Some(VideoTrackView {
         track_sid: format!("TR_cam{index}"),
         width: 1280,
@@ -54,7 +54,7 @@ fn camera(index: usize) -> Option<VideoTrackView> {
     })
 }
 
-fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
+pub(super) fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
     VoiceStageModel {
         voice: VoiceView {
             status: VoiceStatus::Connected,
@@ -65,6 +65,7 @@ fn model(people: Vec<ParticipantView>) -> VoiceStageModel {
             local: LocalMediaView {
                 may_camera: true,
                 may_share: true,
+                may_speak: true,
                 ..LocalMediaView::default()
             },
             ..VoiceView::default()
@@ -113,8 +114,8 @@ fn test_card(frames: &VideoFrames, sid: &str, seed: usize, width: u32, height: u
     );
 }
 
-fn stage(model: VoiceStageModel, window: &mut Window, cx: &mut App) -> AnyView {
-    let frames = VideoFrames::for_window(window);
+/// Test cards for every camera and screen in the model.
+pub(super) fn push_cards(frames: &VideoFrames, model: &VoiceStageModel) {
     for participant in &model.voice.participants {
         for (index, track) in [&participant.camera, &participant.screen_share]
             .iter()
@@ -125,13 +126,25 @@ fn stage(model: VoiceStageModel, window: &mut Window, cx: &mut App) -> AnyView {
                     .track_sid
                     .bytes()
                     .fold(index * 7, |acc, byte| acc + usize::from(byte));
-                test_card(&frames, &track.track_sid, seed, track.width, track.height);
+                test_card(frames, &track.track_sid, seed, track.width, track.height);
             }
         }
     }
+}
+
+pub(super) fn stage_entity(
+    model: VoiceStageModel,
+    window: &mut Window,
+    cx: &mut App,
+) -> Entity<VoiceStage> {
+    let frames = VideoFrames::for_window(window);
+    push_cards(&frames, &model);
     let controller = Arc::new(NoController);
     cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx))
-        .into()
+}
+
+fn stage(model: VoiceStageModel, window: &mut Window, cx: &mut App) -> AnyView {
+    stage_entity(model, window, cx).into()
 }
 
 /// `count` people on camera, the first one speaking, the fourth muted.

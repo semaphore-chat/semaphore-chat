@@ -2,12 +2,18 @@
 
 use super::icons::{self, VoiceIcon, icon};
 use super::model::{
-    ShareLook, VoiceController, VoiceStageModel, bar_subtitle, camera_label, screen_label,
+    ShareLook, VoiceController, VoiceStageModel, bar_subtitle, camera_label, mic_blocked_reason,
+    screen_label,
 };
+use super::soundboard::{SoundboardActions, SoundboardBar, soundboard_popover};
 use super::stage::quality_bars;
 use super::theme::{self, alpha};
+use crate::kit::{Icon, with_tip};
+use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::VoiceStatus;
+use semaphore_design::Icon as IconName;
+use std::rc::Rc;
 use std::sync::Arc;
 
 #[derive(Clone, Copy)]
@@ -122,11 +128,101 @@ fn vertical_divider() -> impl IntoElement {
     div().w(px(1.)).h(px(32.)).mx(px(8.)).bg(theme::divider())
 }
 
+/// The soundboard's button, with its popover above it while open. A press while open does nothing:
+/// the popover's press-outside has closed it already.
+fn soundboard_button(
+    soundboard: &SoundboardBar,
+    controller: Arc<dyn VoiceController>,
+    cx: &App,
+) -> Option<AnyElement> {
+    let view = soundboard.view.as_ref()?;
+    let open = soundboard.open;
+    let toggle = controller.clone();
+    let button = div()
+        .id("voice-soundboard")
+        .size(px(40.))
+        .flex_shrink_0()
+        .rounded_full()
+        .flex()
+        .items_center()
+        .justify_center()
+        .cursor_pointer()
+        .hover(|s| s.bg(theme::action_hover()))
+        .when(open, |button| button.bg(theme::action_hover()))
+        .role(Role::Button)
+        .aria_label("Open soundboard")
+        .test_support()
+        .on_click(move |_, _, _| {
+            if !open {
+                toggle.toggle_soundboard(true);
+            }
+        })
+        .child(
+            Icon::new(IconName::LibraryMusic)
+                .size(24.)
+                .color(theme::white()),
+        );
+    let popover = open.then(|| {
+        let play = controller.clone();
+        let retry = controller.clone();
+        let close = controller.clone();
+        deferred(
+            anchored()
+                .anchor(Anchor::BottomRight)
+                .snap_to_window_with_margin(px(8.))
+                .child(div().pb(px(20.)).child(soundboard_popover(
+                    view,
+                    SoundboardActions {
+                        on_play: Rc::new(move |id, _, _| play.play_sound(id)),
+                        on_retry: Rc::new(move |_, _| retry.retry_soundboard()),
+                        on_close: Rc::new(move |_, _| close.toggle_soundboard(false)),
+                    },
+                    cx,
+                ))),
+        )
+        .with_priority(1)
+    });
+    Some(
+        div()
+            .relative()
+            .flex_shrink_0()
+            .child(with_tip(button, "Soundboard"))
+            .children(popover.map(|popover| {
+                // Its bottom-right corner at the button's top-right.
+                div().absolute().top_0().right_0().child(popover)
+            }))
+            .into_any_element(),
+    )
+}
+
+/// The bar as an element that finds the theme when it's drawn.
+#[derive(IntoElement)]
+pub(super) struct VoiceBar {
+    pub model: VoiceStageModel,
+    pub soundboard: SoundboardBar,
+    pub narrow: bool,
+    pub controller: Arc<dyn VoiceController>,
+}
+
+impl RenderOnce for VoiceBar {
+    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        voice_bar(
+            &self.model,
+            &self.soundboard,
+            self.narrow,
+            self.controller,
+            cx,
+        )
+    }
+}
+
 pub(super) fn voice_bar(
     model: &VoiceStageModel,
+    soundboard: &SoundboardBar,
     narrow: bool,
     controller: Arc<dyn VoiceController>,
-) -> impl IntoElement {
+    cx: &App,
+) -> impl IntoElement + use<> {
     let voice = &model.voice;
     let name: SharedString = if model.channel_name.is_empty() {
         if model.is_dm {
@@ -217,7 +313,16 @@ pub(super) fn voice_bar(
                                 .child(name),
                         )
                         .children(if narrow {
-                            None
+                            // No room for the subtitle on a phone, but a server mute must say why
+                            // the mic is greyed: there's no hover to show a tooltip.
+                            voice.server_muted.then(|| {
+                                div()
+                                    .text_xs()
+                                    .text_color(theme::error_main())
+                                    .truncate()
+                                    .child("Muted by a moderator")
+                                    .into_any_element()
+                            })
                         } else {
                             Some(match status {
                                 Some(status) => status.into_any_element(),
@@ -239,8 +344,15 @@ pub(super) fn voice_bar(
             })
         }));
 
-    // Muted reads as red-filled, deafened too; PTT held turns the mic green.
-    let mic_style = if ptt_held {
+    let blocked = mic_blocked_reason(voice);
+    // Muted reads as red-filled, deafened too; PTT held turns the mic green. A server mute can't be
+    // undone here: greyed, and it says why.
+    let mic_style = if blocked.is_some() {
+        ButtonStyle {
+            disabled: true,
+            ..plain()
+        }
+    } else if ptt_held {
         ButtonStyle {
             icon: theme::white(),
             fill: Some(theme::positive()),
@@ -262,7 +374,7 @@ pub(super) fn voice_bar(
     let push_to_talk = model.ptt.is_some();
     let mut mic = round_button(
         "voice-mic",
-        if voice.muted && !ptt_held {
+        if blocked.is_some() || (voice.muted && !ptt_held) {
             icons::MIC_OFF
         } else {
             icons::MIC
@@ -277,7 +389,7 @@ pub(super) fn voice_bar(
         },
     );
     // Hold-to-talk with no keyboard to hold: the web gives touch screens this, and here it's free.
-    if push_to_talk {
+    if push_to_talk && blocked.is_none() {
         let press = controller.clone();
         let release = controller.clone();
         mic = mic
@@ -365,13 +477,20 @@ pub(super) fn voice_bar(
         .items_center()
         .flex_shrink_0()
         .gap(px(if narrow { 2. } else { 8. }))
-        .child(mic.test_support())
+        .child(match blocked {
+            Some(reason) => with_tip(mic.role(Role::Button).aria_label(reason), reason)
+                .test_support()
+                .into_any_element(),
+            None => mic.test_support().into_any_element(),
+        })
         .child(deafen.test_support());
     if !narrow {
         controls = controls.child(vertical_divider());
     }
     controls = controls.child(camera);
+    let soundboard = soundboard_button(soundboard, controller.clone(), cx);
     if narrow {
+        controls = controls.children(soundboard);
         // Screen share lives in "more" here: there's no room for it on a phone-width bar.
         let more_controller = controller.clone();
         controls = controls.child(
@@ -389,6 +508,7 @@ pub(super) fn voice_bar(
     } else {
         controls = controls
             .child(screen)
+            .children(soundboard)
             .child(vertical_divider())
             .child(
                 round_button(
