@@ -45,6 +45,49 @@ describe('PermissionsService', () => {
     jest.clearAllMocks();
   });
 
+  describe('isDirectMessageResource', () => {
+    it('is true for a DM group', async () => {
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.DM_GROUP, 'dm-1'),
+      ).resolves.toBe(true);
+      expect(mockDatabase.message.findUnique).not.toHaveBeenCalled();
+    });
+
+    it('is true for a message in a DM', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        directMessageGroupId: 'dm-1',
+      });
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.MESSAGE, 'msg-1'),
+      ).resolves.toBe(true);
+    });
+
+    it('is false for a message in a channel', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue({
+        directMessageGroupId: null,
+      });
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.MESSAGE, 'msg-1'),
+      ).resolves.toBe(false);
+    });
+
+    it('is false for a missing message, a missing id and other types', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue(null);
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.MESSAGE, 'gone'),
+      ).resolves.toBe(false);
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.DM_GROUP, undefined),
+      ).resolves.toBe(false);
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.CHANNEL, 'ch-1'),
+      ).resolves.toBe(false);
+      await expect(
+        service.isDirectMessageResource(RbacResourceType.COMMUNITY, 'c-1'),
+      ).resolves.toBe(false);
+    });
+  });
+
   describe('verifyActionsForUserAndResource', () => {
     describe('Instance-level permissions', () => {
       it('should verify instance-level permissions when no resourceId provided', async () => {

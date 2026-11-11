@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Two database migrations for message nonces.** `20261105200000_message_client_nonce` adds the nullable `Message.clientNonce` column and the `MessageNonceTombstone` table; `20261105200100_message_client_nonce_index` then builds the unique index on `(authorId, clientNonce)` with `CREATE INDEX CONCURRENTLY` as its only statement. The column is empty for existing messages, so no conflict is possible, and neither migration blocks sending or reading while it runs. Concurrent builds are slower and can fail on their own (a cancelled deploy, a server restart): that leaves an invalid index and marks the migration failed, which blocks the next deploy. Drop the index (`DROP INDEX CONCURRENTLY IF EXISTS "Message_authorId_clientNonce_key";`), mark the migration rolled back (`pnpm exec prisma migrate resolve --rolled-back 20261105200100_message_client_nonce_index`), then deploy again.
 
+### Security
+
+- **Direct messages are members-only, instance owners included.** The instance owner skipped every permission check, which also covered direct messages: an owner could read any DM's messages, search, threads and attachments, or add themselves to the group. A DM now needs membership whatever the instance role. Community and channel access for owners is unchanged.
+
 ## [0.8.0] - 2026-11-10
 
 A security release. An audit found authorization gaps across roles, members, invites, messages, voice and direct messages, including ways for a moderator or user manager to gain admin or owner rights. **Upgrade as soon as you can.**

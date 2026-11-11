@@ -703,10 +703,9 @@ describe('Sending a message (e2e)', () => {
         },
       );
       expect(ack).toBeUndefined();
-      expect(exception).toMatchObject({
-        errorCode: 'FORBIDDEN',
-        message: 'You are not a member of this DM group',
-      });
+      // RbacGuard refuses first now (DM resources take membership, owners
+      // included); MessageSendService's own check stays behind it.
+      expect(exception).toMatchObject({ errorCode: 'FORBIDDEN' });
       expect(await db.message.count({ where: { searchText: text } })).toBe(0);
     });
 
