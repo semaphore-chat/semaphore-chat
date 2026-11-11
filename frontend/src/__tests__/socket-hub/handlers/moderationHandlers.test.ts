@@ -22,7 +22,7 @@ describe('moderationHandlers', () => {
 
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          queryKey: [{ _id: 'membershipControllerGetMembers' }],
+          queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }],
         }),
       );
     });
@@ -49,7 +49,7 @@ describe('moderationHandlers', () => {
 
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          queryKey: [{ _id: 'membershipControllerGetMembers' }],
+          queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }],
         }),
       );
     });
@@ -76,7 +76,7 @@ describe('moderationHandlers', () => {
 
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          queryKey: [{ _id: 'membershipControllerGetMembers' }],
+          queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }],
         }),
       );
     });
@@ -106,7 +106,7 @@ describe('moderationHandlers', () => {
 
       expect(invalidateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          queryKey: [{ _id: 'membershipControllerGetMembers' }],
+          queryKey: [{ _id: 'membershipControllerFindAllForCommunity' }],
         }),
       );
     });

@@ -1,7 +1,11 @@
 import { TestBed } from '@suites/unit';
 import { ReactionsService } from './reactions.service';
 import { DatabaseService } from '@/database/database.service';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 
 describe('ReactionsService', () => {
@@ -28,6 +32,12 @@ describe('ReactionsService', () => {
     membership: {
       findUnique: jest.fn(),
     },
+    directMessageGroup: {
+      findUnique: jest.fn(),
+    },
+    userBlock: {
+      findFirst: jest.fn(),
+    },
   };
 
   beforeEach(async () => {
@@ -39,6 +49,10 @@ describe('ReactionsService', () => {
     service = unit;
 
     jest.clearAllMocks();
+    // No DM group, no block: non-DM tests never reach these, and a DM test
+    // only sees one when it sets them up itself.
+    mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue(null);
+    mockDatabaseService.userBlock.findFirst.mockResolvedValue(null);
   });
 
   describe('addReaction', () => {
@@ -190,6 +204,110 @@ describe('ReactionsService', () => {
       ).rejects.toThrow(NotFoundException);
 
       expect(mockDatabaseService.messageReaction.upsert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('addReaction (block in a 1:1 DM)', () => {
+    const groupId = randomUUID();
+    const authorId = randomUUID();
+
+    const dmMessage = {
+      id: messageId,
+      channelId: null,
+      directMessageGroupId: groupId,
+    };
+    const dmMessageWithReactions = {
+      ...dmMessage,
+      reactions: [{ emoji: '👍', userId: userId1, messageId }],
+    };
+
+    const oneToOneDm = {
+      isGroup: false,
+      members: [{ userId: userId1 }, { userId: authorId }],
+    };
+
+    it('refuses a reaction when the other member blocked the reactor', async () => {
+      mockDatabaseService.message.findUnique.mockResolvedValueOnce(dmMessage);
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValueOnce(
+        oneToOneDm,
+      );
+      mockDatabaseService.userBlock.findFirst.mockResolvedValueOnce({
+        id: randomUUID(),
+      });
+
+      await expect(
+        service.addReaction(messageId, '👍', userId1),
+      ).rejects.toThrow(ForbiddenException);
+
+      expect(mockDatabaseService.messageReaction.upsert).not.toHaveBeenCalled();
+    });
+
+    it('allows a reaction when neither side blocked the other', async () => {
+      mockDatabaseService.message.findUnique
+        .mockResolvedValueOnce(dmMessage)
+        .mockResolvedValueOnce(dmMessageWithReactions);
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValueOnce(
+        oneToOneDm,
+      );
+      mockDatabaseService.messageReaction.upsert.mockResolvedValueOnce({});
+
+      const result = await service.addReaction(messageId, '👍', userId1);
+
+      expect(result.reactions).toHaveLength(1);
+      expect(mockDatabaseService.userBlock.findFirst).toHaveBeenCalled();
+    });
+
+    it('leaves a group DM unaffected by a block', async () => {
+      mockDatabaseService.message.findUnique
+        .mockResolvedValueOnce(dmMessage)
+        .mockResolvedValueOnce(dmMessageWithReactions);
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValueOnce({
+        isGroup: true,
+        members: [{ userId: userId1 }, { userId: authorId }],
+      });
+      mockDatabaseService.messageReaction.upsert.mockResolvedValueOnce({});
+
+      await service.addReaction(messageId, '👍', userId1);
+
+      expect(mockDatabaseService.userBlock.findFirst).not.toHaveBeenCalled();
+      expect(mockDatabaseService.messageReaction.upsert).toHaveBeenCalled();
+    });
+
+    it('leaves a channel message unaffected by a block', async () => {
+      const channelMessage = {
+        id: messageId,
+        channelId: randomUUID(),
+        directMessageGroupId: null,
+      };
+      mockDatabaseService.message.findUnique
+        .mockResolvedValueOnce(channelMessage)
+        .mockResolvedValueOnce({ ...channelMessage, reactions: [] });
+      mockDatabaseService.messageReaction.upsert.mockResolvedValueOnce({});
+
+      await service.addReaction(messageId, '👍', userId1);
+
+      expect(
+        mockDatabaseService.directMessageGroup.findUnique,
+      ).not.toHaveBeenCalled();
+      expect(mockDatabaseService.messageReaction.upsert).toHaveBeenCalled();
+    });
+
+    it('still lets a user remove their own reaction in a blocked 1:1 DM', async () => {
+      mockDatabaseService.message.findUnique
+        .mockResolvedValueOnce(dmMessage)
+        .mockResolvedValueOnce({ ...dmMessage, reactions: [] });
+      mockDatabaseService.messageReaction.deleteMany.mockResolvedValueOnce({
+        count: 1,
+      });
+
+      await service.removeReaction(messageId, '👍', userId1);
+
+      expect(mockDatabaseService.userBlock.findFirst).not.toHaveBeenCalled();
+      expect(
+        mockDatabaseService.messageReaction.deleteMany,
+      ).toHaveBeenCalledWith({
+        where: { messageId, emoji: '👍', userId: userId1 },
+      });
     });
   });
 

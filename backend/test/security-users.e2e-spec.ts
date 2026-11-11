@@ -1162,7 +1162,7 @@ describe('Authorization of voice, DMs, users and push (e2e)', () => {
         .post(`/api/livekit/channels/${voiceChannelId}/mute-participant`)
         .set('Authorization', bearer(owner))
         .send({ participantIdentity: target.id, mute: value })
-        .expect(201);
+        .expect(200);
 
     it('names the participant after the account, not the request', async () => {
       const user = await newUser('named');

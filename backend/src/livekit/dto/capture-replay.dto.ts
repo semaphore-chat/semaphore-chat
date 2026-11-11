@@ -1,14 +1,33 @@
 import {
   IsEnum,
-  IsOptional,
-  IsUUID,
   ValidateIf,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+  IsUUID,
   IsInt,
   Min,
   Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+
+/** Present means "sent": 0 is a valid value, unlike an absent field. */
+const isGiven = (value: unknown): boolean =>
+  value !== undefined && value !== null;
+
+@ValidatorConstraint({ name: 'endAfterStart', async: false })
+class EndAfterStartConstraint implements ValidatorConstraintInterface {
+  validate(endSeconds: number, args: ValidationArguments): boolean {
+    const { startSeconds } = args.object as CaptureReplayDto;
+    return !isGiven(startSeconds) || endSeconds > startSeconds!;
+  }
+
+  defaultMessage(): string {
+    return 'endSeconds must be greater than startSeconds';
+  }
+}
 
 /**
  * DTO for streaming a replay clip (download-only, no persistence)
@@ -47,8 +66,14 @@ export class CaptureReplayDto {
     type: 'integer',
     required: false,
   })
-  @IsOptional()
-  @ValidateIf((o: CaptureReplayDto) => !o.startSeconds && !o.endSeconds)
+  // Required when no complete custom range is sent; validated whenever it is
+  // sent, even next to a range (the service prefers the range, but a bad
+  // value must not pass unnoticed).
+  @ValidateIf(
+    (o: CaptureReplayDto) =>
+      !(isGiven(o.startSeconds) && isGiven(o.endSeconds)) ||
+      isGiven(o.durationMinutes),
+  )
   @IsEnum([1, 2, 5, 10], {
     message: 'Duration must be 1, 2, 5, or 10 minutes',
   })
@@ -58,8 +83,7 @@ export class CaptureReplayDto {
    * Custom clip start time in seconds from buffer start
    * Required if using custom range (no durationMinutes)
    */
-  @IsOptional()
-  @ValidateIf((o: CaptureReplayDto) => !o.durationMinutes)
+  @ValidateIf((o: CaptureReplayDto) => isGiven(o.startSeconds))
   @Type(() => Number)
   @IsInt()
   @Min(0)
@@ -70,11 +94,11 @@ export class CaptureReplayDto {
    * Custom clip end time in seconds from buffer start
    * Required if using custom range (no durationMinutes)
    */
-  @IsOptional()
-  @ValidateIf((o: CaptureReplayDto) => !o.durationMinutes)
+  @ValidateIf((o: CaptureReplayDto) => isGiven(o.endSeconds))
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @Validate(EndAfterStartConstraint)
   @ApiPropertyOptional({ type: 'integer' })
   endSeconds?: number;
 
