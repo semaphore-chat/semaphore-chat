@@ -6,6 +6,7 @@ pub mod icon;
 pub mod instance;
 pub mod lifecycle;
 pub mod links;
+pub mod loopback;
 pub mod notify;
 pub mod tray;
 
