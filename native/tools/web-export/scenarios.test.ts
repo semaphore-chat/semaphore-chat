@@ -253,6 +253,70 @@ function wireScenario(scenario: Scenario): Json {
   };
 }
 
+/**
+ * What the web scenarios don't model but the native client's DM, friends and notification screens
+ * and the fake server need, added to the showcase only (so the other fixtures stay as they were):
+ *
+ * - an outgoing friend request (the scenario has only an incoming one),
+ * - one dismissed notification (read and dismissed, so the list shows a row the client must keep),
+ * - the signed-in user's notification settings, at the server's defaults,
+ * - one per-channel override (the Trail Ridge general channel, muted).
+ *
+ * The ids are readable like the rest; the fake server serves them as UUIDs.
+ */
+function withNotifyData(scenario: Scenario, wire: Json): Json {
+  const epoch = '2026-09-22T18:00:00.000Z';
+  const other = scenario.users.find((user) => user.id === 'u-tomas');
+  if (!other) throw new Error('the showcase has no u-tomas');
+  const dismissId = 'sc-notif-sc-trail-ridge';
+  if (!array(wire.notifications).some((n) => object(n).id === dismissId)) {
+    throw new Error(`the showcase has no ${dismissId}`);
+  }
+  return {
+    ...wire,
+    friendships: [
+      ...array(wire.friendships),
+      {
+        id: 'sc-friend-out-u-tomas',
+        status: 'PENDING',
+        userAId: scenario.me.id,
+        userA: wireUser(scenario.me),
+        userBId: other.id,
+        userB: wireUser(other),
+        createdAt: '2026-08-17T14:00:00.000Z',
+      },
+    ],
+    notifications: array(wire.notifications).map((n) =>
+      object(n).id === dismissId ? { ...object(n), read: true, dismissed: true } : n,
+    ),
+    notificationSettings: {
+      id: 'sc-notif-settings',
+      userId: scenario.me.id,
+      desktopEnabled: true,
+      playSound: true,
+      soundType: 'default',
+      doNotDisturb: false,
+      dndStartTime: null,
+      dndEndTime: null,
+      dndTimezone: null,
+      defaultChannelLevel: 'mentions',
+      dmNotifications: true,
+      createdAt: epoch,
+      updatedAt: epoch,
+    },
+    channelOverrides: [
+      {
+        id: 'sc-notif-override-tr-general',
+        userId: scenario.me.id,
+        channelId: 'tr-general',
+        level: 'none',
+        createdAt: epoch,
+        updatedAt: epoch,
+      },
+    ],
+  };
+}
+
 /** Key-sorted, so a re-export is byte-identical unless the scenario changed. */
 function sorted(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sorted);
@@ -275,9 +339,10 @@ it('exports the web scenarios', () => {
   };
   mkdirSync('native-export-out/scenarios', { recursive: true });
   for (const [name, scenario] of Object.entries(scenarios)) {
+    const wire = wireScenario(scenario);
     writeFileSync(
       `native-export-out/scenarios/${name}.json`,
-      `${JSON.stringify(sorted(wireScenario(scenario)), null, 2)}\n`,
+      `${JSON.stringify(sorted(name === 'showcase' ? withNotifyData(scenario, wire) : wire), null, 2)}\n`,
     );
   }
 });

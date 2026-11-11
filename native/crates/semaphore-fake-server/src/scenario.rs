@@ -7,7 +7,9 @@
 
 use chrono::{DateTime, NaiveDate, Utc};
 use semaphore_wire::types::{
-    ChannelDto, MembershipResponseDto, MessageDto, UserEntity, VoicePresenceUserDto,
+    ChannelDto, ChannelNotificationOverrideDto, DmGroupResponseDto, FriendshipWithUsersDto,
+    MembershipResponseDto, MessageDto, NotificationDto, UserEntity, UserNotificationSettingsDto,
+    VoicePresenceUserDto,
 };
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
@@ -95,12 +97,33 @@ fn uuid_entity_ids(root: &mut serde_json::Value) {
     if let Some(id) = root["me"]["id"].as_str() {
         ids.insert(id.to_owned());
     }
-    for list in ["users", "communities"] {
+    // Communities and users, then the rows of the W2 areas (DMs, friendships, notifications,
+    // their settings and overrides) and the members of each DM: every one an id the backend
+    // issues as a UUID. DM groups and friendships are named in paths, which the backend types as
+    // UUIDs. Channel ids stay readable (the slice scripts and tests name them).
+    for list in [
+        "users",
+        "communities",
+        "dmGroups",
+        "friendships",
+        "notifications",
+        "channelOverrides",
+    ] {
         for entry in root[list].as_array().into_iter().flatten() {
             if let Some(id) = entry["id"].as_str() {
                 ids.insert(id.to_owned());
             }
         }
+    }
+    for group in root["dmGroups"].as_array().into_iter().flatten() {
+        for member in group["members"].as_array().into_iter().flatten() {
+            if let Some(id) = member["id"].as_str() {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    if let Some(id) = root["notificationSettings"]["id"].as_str() {
+        ids.insert(id.to_owned());
     }
     /// `keyed`: the object is a map by id (`membershipsByCommunity`), not a record with fields.
     fn walk(value: &mut Value, ids: &BTreeSet<String>, keyed: bool) {
@@ -182,12 +205,6 @@ pub struct Community {
     pub channels: Vec<ChannelDto>,
 }
 
-/// A DM group, decoded only far enough to know its id.
-#[derive(Clone, Debug, Deserialize)]
-pub struct DmGroup {
-    pub id: String,
-}
-
 #[derive(Clone, Debug, Deserialize)]
 struct RawUnread {
     #[serde(rename = "unreadCount")]
@@ -216,15 +233,16 @@ struct RawScenario {
     #[serde(rename = "unreadByContextId", default)]
     unread_by_context_id: BTreeMap<String, RawUnread>,
     #[serde(rename = "dmGroups", default)]
-    dm_groups: Vec<DmGroup>,
+    dm_groups: Vec<DmGroupResponseDto>,
     #[serde(default)]
-    notifications: Vec<RawNotification>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-struct RawNotification {
+    friendships: Vec<FriendshipWithUsersDto>,
     #[serde(default)]
-    read: bool,
+    notifications: Vec<NotificationDto>,
+    /// The signed-in user's settings, when the scenario sets them; otherwise the defaults.
+    #[serde(rename = "notificationSettings", default)]
+    notification_settings: Option<UserNotificationSettingsDto>,
+    #[serde(rename = "channelOverrides", default)]
+    channel_overrides: Vec<ChannelNotificationOverrideDto>,
 }
 
 /// The immutable part of a loaded scenario.
@@ -240,6 +258,12 @@ pub struct Scenario {
     pub voice: BTreeMap<String, Vec<VoicePresenceUserDto>>,
     pub unread: BTreeMap<String, (i64, i64)>,
     pub dm_ids: BTreeSet<String>,
+    /// The scenario's DMs, as the backend would list them for their members.
+    pub dm_groups: Vec<DmGroupResponseDto>,
+    pub friendships: Vec<FriendshipWithUsersDto>,
+    pub notifications: Vec<NotificationDto>,
+    pub notification_settings: Option<UserNotificationSettingsDto>,
+    pub channel_overrides: Vec<ChannelNotificationOverrideDto>,
     pub unread_notifications: i64,
     pub epoch: DateTime<Utc>,
     /// Its message ids are UUIDs (`message_uuid`), and new messages get UUIDs too.
@@ -287,6 +311,27 @@ impl Scenario {
         // New messages must land after everything the scenario already has.
         epoch += chrono::Duration::seconds(1);
 
+        let mut dm_groups = raw.dm_groups;
+        let mut notifications = raw.notifications;
+        if uuid_ids {
+            // Message ids are `message_uuid` of the readable one, wherever a DM or a
+            // notification names a message.
+            let map = |id: &mut String| *id = message_uuid(id);
+            for last in dm_groups
+                .iter_mut()
+                .filter_map(|group| group.last_message.as_mut())
+            {
+                map(&mut last.id);
+            }
+            for notification in &mut notifications {
+                notification.message_id.as_mut().map(map);
+                notification.parent_message_id.as_mut().map(map);
+                if let Some(message) = notification.message.as_mut() {
+                    map(&mut message.id);
+                }
+            }
+        }
+
         let unread = raw
             .unread_by_context_id
             .into_iter()
@@ -303,12 +348,16 @@ impl Scenario {
             threads,
             voice: raw.voice_presence_by_channel,
             unread,
-            dm_ids: raw.dm_groups.into_iter().map(|group| group.id).collect(),
-            unread_notifications: raw
-                .notifications
+            dm_ids: dm_groups.iter().map(|group| group.id.clone()).collect(),
+            unread_notifications: notifications
                 .iter()
                 .filter(|notification| !notification.read)
                 .count() as i64,
+            dm_groups,
+            friendships: raw.friendships,
+            notifications,
+            notification_settings: raw.notification_settings,
+            channel_overrides: raw.channel_overrides,
             epoch,
             uuid_message_ids: uuid_ids,
         })

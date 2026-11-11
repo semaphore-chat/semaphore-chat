@@ -1,8 +1,8 @@
 //! Communities, channels, permissions, members, presence, counters and custom emoji.
 
 use super::{invalid, json_response};
-use crate::Inner;
 use crate::messages;
+use crate::{Inner, lock};
 use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::{Method, StatusCode};
@@ -221,7 +221,7 @@ async fn bulk_presence(State(inner): State<Arc<Inner>>) -> Response {
 async fn notification_count(State(inner): State<Arc<Inner>>) -> Response {
     json_response(
         StatusCode::OK,
-        json!({ "count": inner.scenario.unread_notifications }),
+        json!({ "count": crate::social::unread_count(&lock(&inner.data), &inner.scenario.me.id) }),
     )
 }
 

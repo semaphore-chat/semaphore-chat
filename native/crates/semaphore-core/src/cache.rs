@@ -57,6 +57,14 @@ pub mod keys {
     pub const PINS: &str = "moderationControllerGetPinnedMessages";
     pub const THREAD_META: &str = "threadsControllerGetMetadata";
     pub const CHANNEL_ROLES: &str = "rolesControllerGetMyRolesForChannel";
+    // W2.
+    pub const DMS: &str = "directMessagesControllerFindUserDmGroups";
+    /// Friends and pending requests, read together: `friendsControllerGetFriends` and
+    /// `friendsControllerGetPendingRequests`.
+    pub const FRIENDS: &str = "friendsControllerGetFriends";
+    pub const NOTIFICATIONS: &str = "notificationsControllerGetNotifications";
+    pub const NOTIFY_SETTINGS: &str = "notificationsControllerGetSettings";
+    pub const CHANNEL_LEVEL: &str = "notificationsControllerGetChannelOverride";
 
     pub fn scoped(op: &str, id: &str) -> QueryKey {
         QueryKey::new(&[op, id])
@@ -89,6 +97,29 @@ pub enum CacheValue {
     ThreadMeta(wire::ThreadMetadataDto),
     /// This user's roles in a channel, keyed by channel: their actions decide pin and remove.
     ChannelRoles(wire::UserRolesResponseDto),
+    /// W2: this user's DMs and groups, newest activity first.
+    DmGroups(Vec<wire::DmGroupResponseDto>),
+    Friends(FriendsData),
+    Notifications(NotificationPages),
+    NotifySettings(wire::UserNotificationSettingsDto),
+    /// A channel's own level, keyed by channel. `None`: it has none.
+    ChannelLevel(Option<wire::ChannelNotificationOverrideDto>),
+}
+
+/// Friends and pending requests, from two calls read as one.
+#[derive(Debug, Clone)]
+pub struct FriendsData {
+    pub friends: Vec<wire::FriendListItemDto>,
+    pub requests: wire::PendingRequestsDto,
+}
+
+/// As many pages of notifications as were read, as the server sent them (dismissed rows too).
+#[derive(Debug, Clone)]
+pub struct NotificationPages {
+    pub rows: Vec<wire::NotificationDto>,
+    /// The last page read was full, so more may follow. The server's `total` is the size of the
+    /// page it sent, not of the list, so it can't say.
+    pub has_more: bool,
 }
 
 /// As many pages of a community's members as core reads.
@@ -145,6 +176,31 @@ impl QueryCache {
         wire::UserRolesResponseDto
     );
     typed_read!(user, user_mut, User, wire::UserEntity);
+    typed_read!(
+        dm_groups,
+        dm_groups_mut,
+        DmGroups,
+        Vec<wire::DmGroupResponseDto>
+    );
+    typed_read!(friends, friends_mut, Friends, FriendsData);
+    typed_read!(
+        notifications,
+        notifications_mut,
+        Notifications,
+        NotificationPages
+    );
+    typed_read!(
+        notify_settings,
+        notify_settings_mut,
+        NotifySettings,
+        wire::UserNotificationSettingsDto
+    );
+    typed_read!(
+        channel_level,
+        channel_level_mut,
+        ChannelLevel,
+        Option<wire::ChannelNotificationOverrideDto>
+    );
     typed_read!(profile, profile_mut, Profile, wire::UserEntity);
     typed_read!(
         communities,

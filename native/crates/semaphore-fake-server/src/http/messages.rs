@@ -184,7 +184,13 @@ async fn create_message(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::Channel(channel_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::Channel(channel_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
@@ -206,7 +212,13 @@ async fn create_direct_message(State(inner): State<Arc<Inner>>, body: Bytes) -> 
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::DirectMessage(group_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::DirectMessage(group_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
@@ -233,6 +245,15 @@ async fn add_reaction(State(inner): State<Arc<Inner>>, body: Bytes) -> Response 
         Ok(parts) => parts,
         Err(response) => return response,
     };
+    // `reactions.service` `validateCustomReaction`.
+    if emoji.starts_with("custom:") && messages::is_direct_message(&inner, &id) {
+        return inner.error(
+            400,
+            "BAD_REQUEST",
+            "Custom emoji reactions are only available in communities",
+            false,
+        );
+    }
     match messages::add_reaction(&inner, &id, &emoji) {
         Some(dto) => json_response(
             StatusCode::CREATED,
@@ -265,8 +286,10 @@ async fn mark_read(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     };
     let channel = value.get("channelId").and_then(Value::as_str);
     let group = value.get("directMessageGroupId").and_then(Value::as_str);
-    json_response(
-        StatusCode::OK,
-        messages::mark_read(&inner, channel, group, last_read),
-    )
+    // As the backend's `markReadAndAnnounce`: notifications of the context are read and the
+    // receipt goes out over the socket.
+    match crate::socket::announce_read(&inner, &inner.scenario.me.id, channel, group, last_read) {
+        Ok(receipt) => json_response(StatusCode::OK, receipt),
+        Err(message) => inner.error(400, "BAD_REQUEST", message, false),
+    }
 }

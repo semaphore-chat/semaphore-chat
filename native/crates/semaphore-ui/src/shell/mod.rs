@@ -288,7 +288,10 @@ impl Shell {
                     self.settle_route();
                 }
             }
-            CoreEvent::QueriesInvalidated { .. } | CoreEvent::MessagesChanged { .. } => {}
+            CoreEvent::QueriesInvalidated { .. }
+            | CoreEvent::MessagesChanged { .. }
+            | CoreEvent::Notify { .. }
+            | CoreEvent::WithdrawNotifications { .. } => {}
         }
         cx.notify();
     }

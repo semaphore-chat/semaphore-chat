@@ -61,17 +61,8 @@ pub(crate) struct ActionsState {
     /// By message id, the newest edit. A row here shows `edit_pending`.
     pub pending_edits: HashMap<String, PendingEdit>,
     pending_reactions: HashMap<(String, String), PendingReaction>,
-    /// Numbers each edit and reaction request.
-    next_change: u64,
     /// The reaction tooltips read lately, by message id and emoji, newest last.
     watched_reactions: Vec<(String, String)>,
-}
-
-impl ActionsState {
-    fn next_change(&mut self) -> u64 {
-        self.next_change += 1;
-        self.next_change
-    }
 }
 
 fn failed(message: impl Into<String>) -> CoreError {
@@ -465,7 +456,7 @@ impl Core {
                 Some(earlier) => earlier.original,
                 None => current,
             };
-            let change = state.actions.next_change();
+            let change = state.next_change();
             state.actions.pending_edits.insert(
                 message_id.clone(),
                 PendingEdit {
@@ -905,7 +896,7 @@ impl Core {
         let key = (message_id.clone(), emoji.clone());
         let change = self.write(|state, _| {
             state.set_my_reaction(&message_id, &emoji, add);
-            let change = state.actions.next_change();
+            let change = state.next_change();
             state.actions.pending_reactions.insert(
                 key.clone(),
                 PendingReaction {

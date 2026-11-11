@@ -24,7 +24,6 @@ pub(crate) struct ReadingState {
     awaiting_counts: HashSet<Conversation>,
     /// A subscription change on its way, by parent: the value shown meanwhile, and which change.
     optimistic: HashMap<String, (bool, u64)>,
-    next_change: u64,
     /// The server signed in to, which message links must point at.
     pub server_url: Option<String>,
 }
@@ -228,8 +227,7 @@ impl Core {
             .services()
             .ok_or_else(|| unavailable("thread subscriptions"))?;
         let change = self.write(|state, _| {
-            state.reading.next_change += 1;
-            let change = state.reading.next_change;
+            let change = state.next_change();
             state
                 .reading
                 .optimistic
