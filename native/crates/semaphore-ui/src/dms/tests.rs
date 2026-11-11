@@ -313,22 +313,24 @@ fn the_header_back_arrow_and_buttons_emit_only_when_offered(cx: &mut TestAppCont
         header.set_back(true, cx);
         header
     });
-    assert!(!rig.has(cx, "dm-header-call"), "no call button by default");
+    assert!(!rig.has(cx, "dm-call-voice"), "no call button by default");
     assert!(!rig.has(cx, "dm-header-search"), "no search by default");
     rig.click(cx, "dm-header-back");
     rig.with(cx, |header, _, cx| {
         header.update(cx, |header, cx| {
-            header.set_can_call(true, cx);
+            header.set_call_state(Some(crate::voice::DmCallState::Idle), cx);
             header.set_search(true, cx);
         })
     });
-    rig.click(cx, "dm-header-call");
+    rig.click(cx, "dm-call-voice");
+    rig.click(cx, "dm-call-video");
     rig.click(cx, "dm-header-search");
     assert_eq!(
         rig.events(),
         [
             DmHeaderEvent::Back,
-            DmHeaderEvent::JoinCall,
+            DmHeaderEvent::Call { video: false },
+            DmHeaderEvent::Call { video: true },
             DmHeaderEvent::Search
         ]
     );
@@ -338,7 +340,7 @@ fn the_header_back_arrow_and_buttons_emit_only_when_offered(cx: &mut TestAppCont
         })
     });
     assert!(
-        !rig.has(cx, "dm-header-call") && !rig.has(cx, "dm-header-search"),
+        !rig.has(cx, "dm-call-voice") && !rig.has(cx, "dm-header-search"),
         "nothing to call or search when unavailable"
     );
 }

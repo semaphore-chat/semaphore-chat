@@ -478,6 +478,38 @@ async fn the_soundboard_lists_and_plays_into_the_call_fetching_each_file_once() 
     assert!(media_calls(&rig).contains(&"soundboard stop".to_owned()));
 }
 
+/// The engine's report of the sound it plays reaches the call's view and the soundboard's
+/// `playing`, for this community's sounds only.
+#[tokio::test]
+async fn the_engines_playing_sound_shows_in_the_voice_view_and_the_soundboard() {
+    let mut rig = in_channel_call(&[ME]).await;
+    rig.backend
+        .w4
+        .answer("sounds", json!([sound_json("s1", "f1")]));
+    rig.core.soundboard(COMMUNITY.into());
+    rig.settle().await;
+    let playing = |sound: Option<&str>| VoiceView {
+        status: VoiceStatus::Connected,
+        local: LocalMediaView {
+            soundboard: sound.map(Into::into),
+            ..LocalMediaView::default()
+        },
+        ..VoiceView::default()
+    };
+    rig.core.ingest_media(1, playing(Some("s1")));
+    assert_eq!(rig.core.voice().local.soundboard.as_deref(), Some("s1"));
+    assert_eq!(
+        rig.core.soundboard(COMMUNITY.into()).playing.as_deref(),
+        Some("s1")
+    );
+    // Not one of this community's sounds: the board doesn't claim it.
+    rig.core.ingest_media(1, playing(Some("elsewhere")));
+    assert_eq!(rig.core.soundboard(COMMUNITY.into()).playing, None);
+    rig.core.ingest_media(1, playing(None));
+    assert_eq!(rig.core.voice().local.soundboard, None);
+    assert_eq!(rig.core.soundboard(COMMUNITY.into()).playing, None);
+}
+
 #[tokio::test]
 async fn the_soundboard_is_for_channel_calls() {
     let rig = signed_in().await;

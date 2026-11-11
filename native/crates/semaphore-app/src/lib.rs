@@ -66,9 +66,15 @@ pub struct AppConfig {
     /// The system's file picker (the portal's on Linux, the common dialog on Windows) when `None`;
     /// the rig answers from a queue.
     pub pick_files: Option<PickFiles>,
+    /// Where a download goes: the system's save dialog when `None`; the rig answers from a queue.
+    pub save_path: Option<SavePath>,
     /// Who opens `semaphore://` links, and registering for them: the desktop's
     /// (`desktop::DesktopLinks`) in the app, a fake in the rig, `None` for "can't tell".
     pub links: Option<Arc<dyn desktop::LinkRegistrar>>,
+    /// W4: holds off system sleep during a call (`Core::set_keep_awake`): the desktop's
+    /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
+    /// desktop's in tests or rigs.
+    pub keep_awake: Option<Arc<dyn semaphore_core::platform::KeepAwake>>,
 }
 
 /// `AppConfig::open_url`.
@@ -85,9 +91,15 @@ pub struct PickRequest {
 /// `AppConfig::pick_files`: the paths picked, or `None` when cancelled.
 pub type PickFiles = std::rc::Rc<dyn Fn(PickRequest, &mut App) -> Task<Option<Vec<PathBuf>>>>;
 
-/// The process's file picker and browser, from the config: `AppRoot::new` installs them.
+/// `AppConfig::save_path`: given the suggested file name, where to save it, or `None` when
+/// cancelled.
+pub type SavePath = std::rc::Rc<dyn Fn(&str, &mut App) -> Task<Option<PathBuf>>>;
+
+/// The process's file picker, save dialog and browser, from the config: `AppRoot::new` installs
+/// them.
 pub struct Seams {
     pub pick_files: PickFiles,
+    pub save_path: SavePath,
     pub open_url: OpenUrl,
 }
 
@@ -100,6 +112,27 @@ pub fn pick_files(request: PickRequest, cx: &mut App) -> Task<Option<Vec<PathBuf
         .map(|seams| seams.pick_files.clone())
         .unwrap_or_else(system_pick_files);
     pick(request, cx)
+}
+
+/// Asks where to save a download called `name` (made safe first), with the save dialog the
+/// config chose.
+pub fn ask_save_path(name: &str, cx: &mut App) -> Task<Option<PathBuf>> {
+    let save = cx
+        .try_global::<Seams>()
+        .map(|seams| seams.save_path.clone())
+        .unwrap_or_else(system_save_path);
+    save(&files::safe_file_name(name), cx)
+}
+
+/// The system's save dialog, through GPUI, from the home folder.
+pub fn system_save_path() -> SavePath {
+    std::rc::Rc::new(|name: &str, cx: &mut App| {
+        let directory = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let chosen = cx.prompt_for_new_path(&directory, Some(name));
+        cx.spawn(async move |_| chosen.await.ok().and_then(Result::ok).flatten())
+    })
 }
 
 /// Opens `url` in the browser the config chose.
@@ -131,6 +164,7 @@ pub fn init(cx: &mut App) {
     gpui_kit::init(cx);
     semaphore_ui::theme::init(cx);
     semaphore_ui::messages::init(cx);
+    root::calls::init(cx);
 }
 
 /// What every window that shows the app needs: lists and video are read in unfocused windows, so

@@ -143,6 +143,9 @@ pub struct LocalMediaView {
     /// W4: the LiveKit sids of our screen share's tracks while it's published, for the replay
     /// buffer. The audio sid can come later than the video's.
     pub screen_tracks: Option<ShareTracks>,
+    /// W4: the soundboard sound playing into the call (`MediaEngine::play_soundboard`'s
+    /// `sound_id`), until it ends or is stopped.
+    pub soundboard: Option<String>,
 }
 
 /// Our published screen share, as the server's replay buffer names it.

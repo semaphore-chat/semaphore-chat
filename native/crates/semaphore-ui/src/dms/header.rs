@@ -72,16 +72,25 @@ impl Render for DmHeader {
             }
         };
         let ready = matches!(self.state, DmHeaderState::Ready(_));
-        let call = (ready && self.can_call).then(|| {
-            icon_button(
-                "dm-header-call",
-                DesignIcon::Phone,
-                "Start a voice call",
-                touch,
-                sem.action_active,
+        let view = cx.entity().downgrade();
+        let call = self.call.filter(|_| ready).map(|state| {
+            let (voice, video) = (view.clone(), view);
+            crate::voice::dm_call_controls(
+                state,
+                crate::voice::DmCallActions {
+                    on_voice: std::rc::Rc::new(move |_, cx| {
+                        voice
+                            .update(cx, |_, cx| cx.emit(DmHeaderEvent::Call { video: false }))
+                            .ok();
+                    }),
+                    on_video: std::rc::Rc::new(move |_, cx| {
+                        video
+                            .update(cx, |_, cx| cx.emit(DmHeaderEvent::Call { video: true }))
+                            .ok();
+                    }),
+                },
                 cx,
             )
-            .on_click(cx.listener(|_, _, _, cx| cx.emit(DmHeaderEvent::JoinCall)))
         });
         let search = (ready && self.search).then(|| {
             icon_button(

@@ -2,10 +2,12 @@
 //! and the UI stay free of the SDK and a mobile build can bring its own.
 
 pub mod audio;
+mod diagnostics;
 mod engine;
 mod input_test;
 #[cfg(target_os = "linux")]
 pub mod pipewire_stubs;
+pub mod soundboard;
 pub mod testing;
 mod video;
 

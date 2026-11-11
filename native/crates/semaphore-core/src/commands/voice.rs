@@ -611,8 +611,22 @@ impl Core {
                     local.screen_audio = LocalShare::Off;
                 }
             }
+            let sound_before = state
+                .media
+                .as_ref()
+                .and_then(|media| media.local.soundboard.clone());
+            let sound_now = media.local.soundboard.clone();
             state.media = Some(media);
             state.view_changed(ViewKey::Voice);
+            // The soundboard's `playing` follows the engine's sound: tell its view.
+            if sound_before != sound_now
+                && let Some(VoiceRoom::Channel {
+                    community_id: Some(community_id),
+                    ..
+                }) = state.voice.room.clone()
+            {
+                state.view_changed(ViewKey::Soundboard { community_id });
+            }
         });
     }
 
@@ -786,6 +800,7 @@ impl Core {
                 voice.local.may_share = media.local.may_share;
                 voice.local.may_speak = media.local.may_speak;
                 voice.local.screen_tracks = media.local.screen_tracks.clone();
+                voice.local.soundboard = media.local.soundboard.clone();
             }
             voice.server_muted = state.me_server_muted();
             voice

@@ -41,9 +41,10 @@ use semaphore_ui::settings::{
     VoiceVideoSettings, VoiceVideoState,
 };
 
+/// How often the mic test's meter is fed while a test runs.
+const MIC_TEST_POLL: std::time::Duration = std::time::Duration::from_millis(50);
+
 /// What the voice tab says in place of what this build can't do yet.
-pub const MIC_TEST_LIMIT: &str = "Testing the microphone isn't available in this version yet, \
-     and voice activity isn't gated by the threshold: the microphone sends whenever it's unmuted.";
 pub const PUSH_TO_TALK_LIMIT: &str = "The key is saved, but this version doesn't listen for it \
      yet: hold the voice bar's Push to Talk button to transmit.";
 
@@ -65,6 +66,9 @@ pub(super) struct Account {
     create: Option<Entity<CreateCommunityForm>>,
     desktop_sign_in: Option<DesktopSignIn>,
     links: LinkHandler,
+    /// W4: the settings page's mic test while it runs, and the task feeding its meter. Dropping it
+    /// closes the mic.
+    mic_test: Option<(semaphore_media_livekit::InputTest, Task<()>)>,
     subscriptions: Vec<Subscription>,
 }
 
@@ -90,7 +94,7 @@ impl AppRoot {
         voice.update(cx, |voice, cx| {
             voice.set_limits(
                 VoiceLimits {
-                    mic_test: Some(MIC_TEST_LIMIT.into()),
+                    mic_test: None,
                     push_to_talk: Some(PUSH_TO_TALK_LIMIT.into()),
                 },
                 cx,
@@ -171,6 +175,15 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        // The mic test is the voice tab's: leaving it closes the mic.
+        if !matches!(
+            route,
+            Route::Settings {
+                tab: SettingsTab::VoiceVideo
+            }
+        ) {
+            self.stop_mic_test(cx);
+        }
         match route {
             Route::Settings { tab } => {
                 if let Some(screen) = self.account.settings.clone()
@@ -205,6 +218,8 @@ impl AppRoot {
                         window,
                         Self::on_profile,
                     ));
+                    let own = self.my_id().as_deref() == Some(user_id.as_str());
+                    self.replay_profile_opened(&page, user_id, own, window, cx);
                     self.account.page = Some(page);
                 }
                 self.refresh_profile(user_id, cx);
@@ -586,14 +601,83 @@ impl AppRoot {
                 if let Some(voice) = &self.voice {
                     voice.apply_settings(&self.settings.get().voice);
                 }
+                // The in-app players play on the same output as calls.
+                if let Some(players) = &self.players {
+                    players.set_output_device(self.settings.get().voice.output_device.clone());
+                }
             }
             VoiceSettingsEvent::PlayTestSound => {
                 self.play_test_sound();
             }
             VoiceSettingsEvent::RefreshDevices => self.refresh_voice_tab(window, cx),
-            // Hidden: the engine has no level tap yet (`MIC_TEST_LIMIT`).
-            VoiceSettingsEvent::StartMicTest | VoiceSettingsEvent::StopMicTest => {}
+            VoiceSettingsEvent::StartMicTest => self.start_mic_test(cx),
+            VoiceSettingsEvent::StopMicTest => self.stop_mic_test(cx),
         }
+    }
+
+    /// W4: the mic test: the selected input's level into the tab's meter, no playback.
+    fn start_mic_test(&mut self, cx: &mut Context<Self>) {
+        let Some(voice) = self.voice.clone() else {
+            return;
+        };
+        let test = match voice.engine.start_input_test(false) {
+            Ok(test) => test,
+            Err(error) => {
+                log::warn!("mic test: {error}");
+                if let Some(tab) = self.voice_tab(cx) {
+                    tab.update(cx, |tab, cx| tab.set_mic_level(None, cx));
+                }
+                return;
+            }
+        };
+        let feed = cx.spawn(async move |this, cx| {
+            loop {
+                let fed = this.update(cx, |this, cx| {
+                    // A call that started took the mic and stopped the test: the button and the
+                    // meter say so.
+                    if this
+                        .account
+                        .mic_test
+                        .as_ref()
+                        .is_some_and(|(test, _)| !test.is_running())
+                    {
+                        this.stop_mic_test(cx);
+                        return false;
+                    }
+                    let level = this.account.mic_test.as_ref().map(|(test, _)| test.level());
+                    if let (Some(level), Some(tab)) = (level, this.voice_tab(cx)) {
+                        tab.update(cx, |tab, cx| tab.set_mic_level(Some(level), cx));
+                    }
+                    level.is_some()
+                });
+                if !matches!(fed, Ok(true)) {
+                    return;
+                }
+                cx.background_executor().timer(MIC_TEST_POLL).await;
+            }
+        });
+        self.account.mic_test = Some((test, feed));
+        if let Some(tab) = self.voice_tab(cx) {
+            tab.update(cx, |tab, cx| tab.set_mic_level(Some(0.), cx));
+        }
+    }
+
+    /// Stops the mic test, if one runs: its mic closes, its meter goes.
+    pub(super) fn stop_mic_test(&mut self, cx: &mut Context<Self>) {
+        if self.account.mic_test.take().is_some()
+            && let Some(tab) = self.voice_tab(cx)
+        {
+            tab.update(cx, |tab, cx| tab.set_mic_level(None, cx));
+        }
+    }
+
+    /// The mic test's level now, for the rig: `None` while none runs.
+    pub fn mic_test_level(&self) -> Option<f32> {
+        self.account
+            .mic_test
+            .as_ref()
+            .filter(|(test, _)| test.is_running())
+            .map(|(test, _)| test.level())
     }
 
     // ---- Appearance. ----

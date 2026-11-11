@@ -287,6 +287,9 @@ impl Render for ProfilePage {
             HeaderSize::Page
         };
         let is_me = matches!(shown(&self.view), Shown::Ready(profile) if profile.is_me);
+        let clips = matches!(shown(&self.view), Shown::Ready(_))
+            .then(|| self.clips.clone())
+            .flatten();
         let top = div()
             .w_full()
             .mb(spacing(3.))
@@ -431,7 +434,15 @@ impl Render for ProfilePage {
                             .overflow_hidden()
                             .w_full()
                             .child(body),
-                    ),
+                    )
+                    .children(clips.map(|clips| {
+                        Paper::new()
+                            .radius(8.)
+                            .w_full()
+                            .mt(spacing(3.))
+                            .p(spacing(if phone { 2. } else { 3. }))
+                            .child(clips)
+                    })),
             )
     }
 }

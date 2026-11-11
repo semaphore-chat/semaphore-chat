@@ -203,6 +203,11 @@ pub struct Settings {
     /// The last appearance this app showed (`ThemeChoice::name`), so a start draws in it before
     /// the server's appearance arrives, and the signed-out screens keep it.
     pub theme: Option<String>,
+    /// W4: the float card's placement per viewport bucket (`StoredPlacement`).
+    pub float_placements: BTreeMap<String, StoredPlacement>,
+    /// W4: the DM call's stage share of the column's height (0..1), as the web's
+    /// `semaphore_dm_stage_ratio`. `None`: the default split.
+    pub dm_stage_ratio: Option<f32>,
 }
 
 impl Default for Settings {
@@ -217,8 +222,24 @@ impl Default for Settings {
             last_channel: None,
             link_preview_images: false,
             theme: None,
+            float_placements: BTreeMap::new(),
+            dm_stage_ratio: None,
         }
     }
+}
+
+/// W4: the float card's placement as saved, one per `semaphore_ui::voice::dock::viewport_bucket`.
+/// `anchor` is `PipAnchor::name`; one that doesn't parse, or isn't `PipPlacement::is_valid`, is
+/// ignored.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredPlacement {
+    pub anchor: String,
+    pub offset_x: f32,
+    pub offset_y: f32,
+    pub width: f32,
+    pub height: f32,
+    pub docked: bool,
+    pub collapsed: bool,
 }
 
 /// Why a save didn't happen.

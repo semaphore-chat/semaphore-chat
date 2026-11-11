@@ -5,6 +5,8 @@
 //!
 //! Each test skips, loudly, without `LK_URL`, because `cargo test` alone has no server.
 
+#[path = "../examples/common/server_api.rs"]
+mod server_api;
 #[path = "../examples/common/token.rs"]
 mod token;
 
@@ -497,4 +499,315 @@ async fn a_room_with_no_sound_card_still_joins_and_says_why() {
     let snapshot = engine.snapshot();
     assert_eq!(snapshot.voice.status, VoiceStatus::Connected);
     assert!(snapshot.audio_error.is_some());
+}
+
+/// A mono 48 kHz WAV of `hz` for `seconds`.
+fn tone_wav(hz: f64, seconds: f64) -> Vec<u8> {
+    let mut tone = ToneMic::new(hz, AMPLITUDE);
+    let mut samples = vec![0i16; (48_000.0 * seconds) as usize];
+    tone.fill(&mut samples);
+    let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut wav = b"RIFF".to_vec();
+    wav.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+    wav.extend_from_slice(b"WAVEfmt ");
+    wav.extend_from_slice(&16u32.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&1u16.to_le_bytes());
+    wav.extend_from_slice(&48_000u32.to_le_bytes());
+    wav.extend_from_slice(&96_000u32.to_le_bytes());
+    wav.extend_from_slice(&2u16.to_le_bytes());
+    wav.extend_from_slice(&16u16.to_le_bytes());
+    wav.extend_from_slice(b"data");
+    wav.extend_from_slice(&(data.len() as u32).to_le_bytes());
+    wav.extend_from_slice(&data);
+    wav
+}
+
+const SOUND_HZ: f64 = 1_499.0;
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_soundboard_goes_out_on_its_own_track_past_mute_and_push_to_talk() {
+    let url = server!();
+    let room = room_name("soundboard");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    eventually("b hears a", WAIT, || b.tap.rms_at(523.0) > HEARD_RMS).await;
+    // Neither the mic's mute nor push to talk holds the soundboard back.
+    a.engine.set_muted(true);
+    a.engine.set_ptt_mode(true);
+    eventually("a's mic is silent", WAIT, || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+
+    a.engine
+        .play_soundboard("s-1".into(), tone_wav(SOUND_HZ, 20.0))
+        .await
+        .expect("plays");
+    assert_eq!(a.snapshot().voice.local.soundboard.as_deref(), Some("s-1"));
+    eventually("b hears the sound", WAIT, || {
+        b.tap.rms_at(SOUND_HZ) > HEARD_RMS
+    })
+    .await;
+    eventually("a hears it too", WAIT, || {
+        a.tap.rms_at(SOUND_HZ) > HEARD_RMS
+    })
+    .await;
+    assert!(b.tap.rms_at(523.0) < SILENT_RMS, "the mic stayed shut");
+
+    // Deafened, my own copy goes quiet; theirs doesn't.
+    a.engine.set_deafened(true);
+    eventually("a's copy is silent", WAIT, || {
+        a.tap.rms_at(SOUND_HZ) < SILENT_RMS
+    })
+    .await;
+    assert!(b.tap.rms_at(SOUND_HZ) > HEARD_RMS);
+    a.engine.set_deafened(false);
+
+    a.engine.stop_soundboard();
+    assert_eq!(a.snapshot().voice.local.soundboard, None);
+    eventually("stopping silences it", WAIT, || {
+        b.tap.rms_at(SOUND_HZ) < SILENT_RMS
+    })
+    .await;
+
+    // A short one ends by itself and says so; the second play reuses the track (and the cache).
+    let short = tone_wav(SOUND_HZ, 1.0);
+    a.engine
+        .play_soundboard("s-2".into(), short.clone())
+        .await
+        .unwrap();
+    eventually("the short one is heard", WAIT, || {
+        b.tap.rms_at(SOUND_HZ) > HEARD_RMS
+    })
+    .await;
+    eventually("it ends", WAIT, || {
+        a.snapshot().voice.local.soundboard.is_none()
+    })
+    .await;
+    a.engine
+        .play_soundboard("s-2".into(), Vec::new())
+        .await
+        .expect("from the cache");
+    eventually("it ends again", WAIT, || {
+        a.snapshot().voice.local.soundboard.is_none()
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_sound_that_cant_be_decoded_says_why_and_nothing_plays() {
+    let url = server!();
+    let room = room_name("badsound");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let error = a
+        .engine
+        .play_soundboard("mp3".into(), b"ID3\x04\0\0\0\0\0\0".to_vec())
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "This sound is MP3, which this build of the app can't play"
+    );
+    assert!(
+        a.engine
+            .play_soundboard("junk".into(), b"junk".to_vec())
+            .await
+            .is_err()
+    );
+    assert_eq!(a.snapshot().voice.local.soundboard, None);
+    a.engine.disconnect().await;
+    assert!(
+        a.engine
+            .play_soundboard("x".into(), tone_wav(440.0, 0.1))
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_voice_activity_threshold_gates_a_quiet_mic() {
+    let url = server!();
+    let room = room_name("vad");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    eventually("b hears a", WAIT, || b.tap.rms_at(523.0) > HEARD_RMS).await;
+    // a's 0.2 tone is about 22 on the web's scale.
+    a.engine.set_vad_threshold(60);
+    eventually("below the threshold: silent", WAIT, || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+    holds("it stays shut", Duration::from_secs(1), || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+    a.engine.set_vad_threshold(10);
+    eventually("above it: heard", WAIT, || b.tap.rms_at(523.0) > HEARD_RMS).await;
+    // Push to talk ignores it.
+    a.engine.set_vad_threshold(60);
+    a.engine.set_ptt_mode(true);
+    a.engine.set_ptt_pressed(true);
+    eventually("held: heard despite the threshold", WAIT, || {
+        b.tap.rms_at(523.0) > HEARD_RMS
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_describe_the_call() {
+    let url = server!();
+    let room = room_name("diagnostics");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    eventually("b hears a", WAIT, || b.tap.rms_at(523.0) > HEARD_RMS).await;
+    let first = a.engine.diagnostics().await.expect("in a call");
+    println!("{first:?}");
+    assert!(!first.candidate_types.is_empty());
+    assert_eq!(first.audio_codec.as_deref(), Some("opus"));
+    assert_eq!(first.bitrate_in_kbps, None);
+    // Bitrates are measured between two reads: this is the measurement window, not a wait.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let second = a.engine.diagnostics().await.expect("in a call");
+    println!("{second:?}");
+    // ICE measures a round trip within seconds of connecting.
+    let started = Instant::now();
+    while a
+        .engine
+        .diagnostics()
+        .await
+        .and_then(|d| d.rtt_ms)
+        .is_none()
+    {
+        assert!(
+            started.elapsed() < WAIT,
+            "no round trip time after {WAIT:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    assert!(second.bitrate_in_kbps.is_some_and(|kbps| kbps > 0));
+    assert!(second.bitrate_out_kbps.is_some_and(|kbps| kbps > 0));
+    a.engine.disconnect().await;
+    assert_eq!(a.engine.diagnostics().await, None);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_mute_holds_against_every_local_change_from_any_thread() {
+    let url = server!();
+    let room = room_name("servermute");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    eventually("b hears a", WAIT, || b.tap.rms_at(523.0) > HEARD_RMS).await;
+    let mic = server_api::track_sids(&url, &room, "a", "MICROPHONE");
+    assert_eq!(mic.len(), 1, "{mic:?}");
+    server_api::mute_published_track(&url, &room, "a", &mic[0], true);
+    eventually("the server mute silences a", WAIT, || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+    eventually("a sees itself server-muted", WAIT, || {
+        a.snapshot()
+            .voice
+            .participants
+            .iter()
+            .any(|p| p.is_self && p.server_muted && p.muted)
+    })
+    .await;
+
+    // Every setter short of the user unmuting, from a thread with no runtime, as the UI's thread
+    // calls them.
+    let engine = &a.engine;
+    std::thread::scope(|scope| {
+        scope
+            .spawn(|| {
+                engine.set_vad_threshold(5);
+                engine.set_vad_threshold(0);
+                engine.set_ptt_mode(true);
+                engine.set_ptt_pressed(true);
+                engine.set_ptt_pressed(false);
+                engine.set_ptt_mode(false);
+                engine.set_deafened(true);
+                engine.set_deafened(false);
+                engine.set_muted(true);
+            })
+            .join()
+            .expect("no setter panics off the runtime");
+    });
+    holds(
+        "none of that undoes the server mute",
+        Duration::from_millis(1500),
+        || b.tap.rms_at(523.0) < SILENT_RMS,
+    )
+    .await;
+
+    // Core says it's lifted (LiveKit's dev server, like the default, refuses a remote unmute):
+    // still muted until the user unmutes, as on the web.
+    a.engine.set_server_muted(false);
+    holds(
+        "lifting it opens nothing by itself",
+        Duration::from_millis(1000),
+        || b.tap.rms_at(523.0) < SILENT_RMS,
+    )
+    .await;
+    a.engine.set_muted(false);
+    eventually("the user's unmute is heard", WAIT, || {
+        b.tap.rms_at(523.0) > HEARD_RMS
+    })
+    .await;
+
+    // A server mute core reports, with no LiveKit event, holds the same way.
+    a.engine.set_server_muted(true);
+    eventually("core's server mute silences a", WAIT, || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+    a.engine.set_ptt_mode(true);
+    a.engine.set_ptt_pressed(true);
+    holds("and holds", Duration::from_millis(1000), || {
+        b.tap.rms_at(523.0) < SILENT_RMS
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn stopping_a_sound_that_is_still_starting_cancels_it() {
+    let url = server!();
+    let room = room_name("pendingstop");
+    let a = Peer::join(&url, &room, "a", 523.0).await;
+    let b = Peer::join(&url, &room, "b", 743.0).await;
+    a.engine.set_muted(true);
+    eventually("b hears a peer", WAIT, || {
+        b.snapshot().voice.participants.len() == 2
+    })
+    .await;
+    // The first play decodes and publishes the track before it starts: stop lands in that window.
+    let (played, ()) = tokio::join!(
+        a.engine
+            .play_soundboard("pending".into(), tone_wav(SOUND_HZ, 3.0)),
+        async {
+            tokio::task::yield_now().await;
+            a.engine.stop_soundboard();
+        }
+    );
+    println!("the cancelled play: {played:?}");
+    holds("nothing plays", Duration::from_secs(2), || {
+        a.snapshot().voice.local.soundboard.is_none()
+            && b.tap.rms_at(SOUND_HZ) < SILENT_RMS
+            && a.tap.rms_at(SOUND_HZ) < SILENT_RMS
+    })
+    .await;
+    // The next play still works.
+    a.engine
+        .play_soundboard("pending".into(), tone_wav(SOUND_HZ, 3.0))
+        .await
+        .unwrap();
+    eventually("b hears the next one", WAIT, || {
+        b.tap.rms_at(SOUND_HZ) > HEARD_RMS
+    })
+    .await;
+    assert_eq!(
+        server_api::track_sids(&url, &room, "a", "UNKNOWN").len(),
+        1,
+        "one soundboard track"
+    );
 }

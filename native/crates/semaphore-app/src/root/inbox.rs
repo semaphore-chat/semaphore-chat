@@ -86,6 +86,13 @@ pub(super) struct Inbox {
     subscriptions: Vec<Subscription>,
 }
 
+impl Inbox {
+    /// The app's sounds, once services are up (`start_inbox`).
+    pub(super) fn sounds(&self) -> Option<&Sounds> {
+        self.sounds.as_ref()
+    }
+}
+
 /// The header for a DM: its row once the list has it, unavailable once the list says it isn't
 /// there, loading meanwhile.
 fn header_state(core: &semaphore_core::Core, dm_id: &str) -> DmHeaderState {
@@ -140,6 +147,13 @@ pub(super) fn dm_conversation(
         DmHeaderState::Ready(row) => Some(dm_placeholder(row)),
         _ => None,
     };
+    // W4: the call buttons follow the call.
+    let ready = matches!(header.read(cx).state(), DmHeaderState::Ready(_));
+    let call = root
+        .read(cx)
+        .core()
+        .map(|core| semaphore_ui::voice::DmCallState::of(&core.voice(), dm_id, ready));
+    header.update(cx, |header, cx| header.set_call_state(call, cx));
     pane.update(cx, |pane, cx| {
         pane.show(conversation, None, None, window, cx);
         pane.set_dm_placeholder(dm_placeholder, window, cx);
@@ -154,7 +168,12 @@ pub(super) fn dm_conversation(
             .flex()
             .flex_col()
             .child(header)
-            .child(div().flex_1().min_h_0().child(pane))
+            .child(
+                div().flex_1().min_h_0().child(
+                    AppRoot::dm_stage_split(root, dm_id, pane.into_any_element(), cx)
+                        .unwrap_or_else(|conversation| conversation),
+                ),
+            )
             .into_any_element(),
     )
 }
@@ -838,8 +857,17 @@ impl AppRoot {
                     pane.update(cx, |pane, cx| pane.toggle_search(window, cx));
                 }
             }
-            // No DM calls or members drawer until wave 4: neither button is offered.
-            DmHeaderEvent::JoinCall | DmHeaderEvent::OpenMembers => {}
+            DmHeaderEvent::Call { video } => {
+                let route = self
+                    .shell
+                    .as_ref()
+                    .map(|shell| shell.read(cx).nav().current().clone());
+                if let Some(Route::DirectMessage { dm_group_id }) = route {
+                    self.start_dm_call(dm_group_id, *video, cx);
+                }
+            }
+            // No members drawer yet: its button isn't offered.
+            DmHeaderEvent::OpenMembers => {}
         }
     }
 

@@ -10,8 +10,9 @@
 #     the app built with its inline attachment players (`rig-slice --features player`), running
 #     rigs/slice/scripts/w3-player-wire.steps. The default run skips that file: it needs the feature.
 #
-# --voice starts lk-stack's LiveKit and a demo publisher (`demo-peer`, video) in Squad Up, then runs
-# rigs/slice/scripts/voice.steps the same way, with the fake server minting real tokens for it.
+# --voice starts lk-stack's LiveKit and two publishers (`demo-peer`, video, in Squad Up; priya in her
+# DM's room), then runs rigs/slice/scripts/voice.steps and voice-w4.steps the same way, with the
+# fake server minting real tokens for it, the app built with its player (soundboard decoding).
 #
 # Each run starts a fresh fake server (scenario showcase) on 127.0.0.1 inside this container and
 # drives rig-slice through the steps: state checks, and screenshots into <run dir>/run-N. The
@@ -25,15 +26,21 @@ LK_SECRET=secret-that-is-at-least-32-characters-long
 LK_CLI=livekit/livekit-cli@sha256:04eff828f8edd810b996c18456a6260ba0698a60f8ea309d0f015c2b09696413
 
 if [ "${1:-}" = "--voice" ]; then
-  # The host half: LiveKit and the publisher are containers of their own on semaphore-test.
+  # The host half: LiveKit and the publishers are containers of their own on semaphore-test.
   shift
+  out_arg=("$@")
   NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   publisher="$LK_NAME-demo"
+  dm_publisher="$LK_NAME-priya"
   # Squad Up's room: the channel id the showcase serves vc-squad as (`entity_uuid`, pinned in
   # semaphore-fake-server's tests/message_ids.rs).
   squad=deedc434-97b9-503b-ac44-7b93a25560fd
+  # W4 (voice-w4.steps): priya's DM's room, with priya in it, as the DM's call. The DM's and
+  # priya's ids as the showcase serves dm-priya and u-priya.
+  dm_room=6ab2806d-d03a-560f-b667-c86afba11999
+  priya=cb3a8928-c631-5907-bc77-cd89514d87ab
   cleanup() {
-    docker rm -f "$publisher" >/dev/null 2>&1 || true
+    docker rm -f "$publisher" "$dm_publisher" >/dev/null 2>&1 || true
     LK_STACK_NAME="$LK_NAME" "$NATIVE_DIR/scripts/lk-stack.sh" down
   }
   trap cleanup EXIT INT TERM
@@ -41,16 +48,25 @@ if [ "${1:-}" = "--voice" ]; then
   docker run -d --rm --name "$publisher" --network semaphore-test "$LK_CLI" \
     --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
     room join --identity demo-peer --publish-demo "$squad" >/dev/null
-  # Bounded: the publisher is in the room once LiveKit lists it.
-  for _ in $(seq 1 60); do
-    if docker run --rm --network semaphore-test "$LK_CLI" \
-      --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
-      room participants list "$squad" 2>/dev/null | grep -q demo-peer; then
-      break
-    fi
-    sleep 0.5
+  docker run -d --rm --name "$dm_publisher" --network semaphore-test "$LK_CLI" \
+    --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
+    room join --identity "$priya" --publish-demo "$dm_room" >/dev/null
+  # Bounded: each publisher is in its room once LiveKit lists it.
+  for pair in "$squad demo-peer" "$dm_room $priya"; do
+    set -- $pair
+    for _ in $(seq 1 60); do
+      if docker run --rm --network semaphore-test "$LK_CLI" \
+        --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
+        room participants list "$1" 2>/dev/null | grep -q "$2"; then
+        break
+      fi
+      sleep 0.5
+    done
   done
-  "$NATIVE_DIR/scripts/in-image.sh" scripts/slice-e2e.sh --voice-inner "${1:-results/slice/e2e-voice}"
+  set -- ${out_arg[@]+"${out_arg[@]}"}
+  # The inner half reaches LiveKit by the same name (SLICE_LK_NAME), so it goes along.
+  NATIVE_DOCKER_ARGS="${NATIVE_DOCKER_ARGS:-} -e SLICE_LK_NAME=$LK_NAME" \
+    "$NATIVE_DIR/scripts/in-image.sh" scripts/slice-e2e.sh --voice-inner "${1:-results/slice/e2e-voice}"
   exit $?
 fi
 
@@ -67,7 +83,7 @@ out_dir="${1:-results/slice/e2e}"
 # Each entry is "steps-file|run-dir". text.steps keeps the original <out-dir>/run-N layout.
 suites=()
 if $voice; then
-  suites=("rigs/slice/scripts/voice.steps|$out_dir")
+  suites=("rigs/slice/scripts/voice.steps|$out_dir" "rigs/slice/scripts/voice-w4.steps|$out_dir/voice-w4")
 elif $player; then
   suites=("rigs/slice/scripts/w3-player-wire.steps|$out_dir/w3-player-wire")
 elif [ -n "${2:-}" ]; then
@@ -77,7 +93,7 @@ else
     name="$(basename "$f" .steps)"
     # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh); w3-player-wire
     # the player feature (--player).
-    case "$name" in voice | real | w3-player-wire) continue ;; esac
+    case "$name" in voice | voice-w4 | real | w3-player-wire) continue ;; esac
     if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
   done
 fi
@@ -96,7 +112,8 @@ export TZ=UTC
 export SEMAPHORE_LOG="${SEMAPHORE_LOG:-warn}"
 
 started_ms="$(date +%s%3N)"
-if $player; then
+# --voice too: soundboard sounds the engine doesn't decode itself (MP3, AAC) go through the player.
+if $player || $voice; then
   cargo build -q -p semaphore-fake-server -p rig-slice --features rig-slice/player
 else
   cargo build -q -p semaphore-fake-server -p rig-slice

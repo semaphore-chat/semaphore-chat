@@ -81,7 +81,8 @@ impl Services {
     pub fn shutdown(&mut self) {
         // Closing the window during a call leaves it, so the server drops this client from the
         // roster now rather than when presence expires.
-        if self.core.voice().channel_id.is_some()
+        // Any call, a DM's too.
+        if self.core.voice().room.is_some()
             && let Some(runtime) = &self.runtime
         {
             // Leaving stops the camera and the screen share with it.
@@ -163,6 +164,9 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             if let Some(sources) = video_sources {
                 engine_options.video_sources = sources;
             }
+            // Soundboard sounds the engine doesn't decode itself (MP3, AAC, Vorbis): the player's
+            // decoder, in a build with it.
+            engine_options.sound_decoder = crate::player::sound_decoder();
             // A screen share carries the system's audio: everything but our own call.
             engine_options.system_audio = semaphore_sysaudio::platform_capture().map(Arc::from);
             let screens: Arc<dyn ScreenCapture> =

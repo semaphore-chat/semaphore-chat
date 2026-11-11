@@ -118,8 +118,9 @@ pub enum DmHeaderState {
 pub enum DmHeaderEvent {
     /// The phone layout's back arrow: the owner goes back to `Route::DirectMessages`.
     Back,
-    /// Only offered with `can_call`.
-    JoinCall,
+    /// W4: the voice or video call button (`dm_call_controls`), offered with `set_call_state`.
+    /// `video`: the camera goes on once joined.
+    Call { video: bool },
     /// Only offered with `members_button`: the members drawer in a narrow window.
     OpenMembers,
     /// Only offered with `search`: the search panel, for this conversation.
@@ -131,7 +132,8 @@ pub enum DmHeaderEvent {
 pub struct DmHeader {
     state: DmHeaderState,
     back: bool,
-    can_call: bool,
+    /// W4: where this DM stands for calling; `None`: no call buttons.
+    call: Option<crate::voice::DmCallState>,
     members_button: bool,
     search: bool,
 }
@@ -143,7 +145,7 @@ impl DmHeader {
         Self {
             state: DmHeaderState::Loading,
             back: false,
-            can_call: false,
+            call: None,
             members_button: false,
             search: false,
         }
@@ -166,10 +168,16 @@ impl DmHeader {
         cx.notify();
     }
 
-    /// A call button. Off until DM calls are wired.
-    pub fn set_can_call(&mut self, can_call: bool, cx: &mut Context<Self>) {
-        self.can_call = can_call;
-        cx.notify();
+    /// W4: the call buttons, in this state (`DmCallState::of`); `None` hides them.
+    pub fn set_call_state(
+        &mut self,
+        state: Option<crate::voice::DmCallState>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.call != state {
+            self.call = state;
+            cx.notify();
+        }
     }
 
     /// A search button, as the channel header's: messages in this conversation.

@@ -129,8 +129,17 @@ pub fn wire(
 }
 
 /// Asks of the voice UI the app answers on its own thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VoiceRequest {
+    /// W4: a right-click on someone's tile, at this point in the window: the participant menu.
+    OpenParticipantMenu {
+        identity: String,
+        position: gpui_kit::Point<gpui_kit::Pixels>,
+    },
+    /// W4: the soundboard's button; `open` is what its popover should be now.
+    ToggleSoundboard(bool),
+    /// W4: Capture, while the replay buffer records: the capture dialog (`root/replay.rs`).
+    OpenCapture,
     /// Something the bar shows changed: draw again.
     Redraw,
     OpenDevices,
@@ -153,6 +162,8 @@ pub struct AppVoice {
     /// The saved resolution, frame rate and audio switch for screen shares.
     pub share_settings: Mutex<ShareSettings>,
     pub requests: async_channel::Sender<VoiceRequest>,
+    /// The voice-activity threshold last handed to the engine, which doesn't report it back.
+    pub vad_applied: std::sync::atomic::AtomicU8,
 }
 
 impl AppVoice {
@@ -177,6 +188,11 @@ impl AppVoice {
             self.engine.set_ptt_mode(wanted.ptt_mode);
         }
         self.engine.set_mic_preset(wanted.preset);
+        // Voice activity's gate: 0 (always open) under push to talk, which gates on the key.
+        let threshold = vad_threshold(voice);
+        self.engine.set_vad_threshold(threshold);
+        self.vad_applied
+            .store(threshold, std::sync::atomic::Ordering::Relaxed);
         *self
             .share_settings
             .lock()
@@ -272,6 +288,34 @@ impl VoiceController for AppVoice {
         let _ = self.requests.try_send(VoiceRequest::OpenMore);
     }
 
+    fn open_participant_menu(&self, identity: String, position: gpui_kit::Point<gpui_kit::Pixels>) {
+        let _ = self
+            .requests
+            .try_send(VoiceRequest::OpenParticipantMenu { identity, position });
+    }
+
+    fn play_sound(&self, sound_id: String) {
+        let core = self.core.clone();
+        self.exec.fire(async move {
+            // A refusal shows on the soundboard (`SoundboardView::error`).
+            if let Err(error) = core.play_sound(sound_id).await {
+                log::warn!("playing a sound: {error}");
+            }
+        });
+    }
+
+    fn retry_soundboard(&self) {
+        self.core.retry_failed();
+    }
+
+    fn toggle_soundboard(&self, open: bool) {
+        let _ = self.requests.try_send(VoiceRequest::ToggleSoundboard(open));
+    }
+
+    fn open_capture(&self) {
+        let _ = self.requests.try_send(VoiceRequest::OpenCapture);
+    }
+
     fn set_camera(&self, on: bool) {
         let core = self.core.clone();
         self.exec.fire(async move {
@@ -300,6 +344,14 @@ impl VoiceController for AppVoice {
                 }
             },
         }
+    }
+}
+
+/// The voice-activity threshold the engine gates the mic at, 0..=100.
+pub fn vad_threshold(voice: &crate::settings::VoiceSettings) -> u8 {
+    match voice.input_mode {
+        crate::settings::InputMode::VoiceActivity { threshold } => threshold.min(100),
+        crate::settings::InputMode::PushToTalk => 0,
     }
 }
 

@@ -20,7 +20,7 @@ impl Core {
         self.write(|state, _| {
             let key = keys::scoped(keys::SOUNDBOARD, &community_id);
             state.ensure_query(key.clone());
-            let sounds = state
+            let sounds: Vec<SoundboardSound> = state
                 .cache
                 .soundboard(&key)
                 .map(|sounds| {
@@ -36,15 +36,23 @@ impl Core {
                 })
                 .unwrap_or_default();
             let ours = |(community, _): &&(String, _)| *community == community_id;
+            // Starting (from `play_sound`), else what the engine says is playing, when it's one of
+            // this community's sounds.
+            let engine_playing = state
+                .media
+                .as_ref()
+                .and_then(|media| media.local.soundboard.clone())
+                .filter(|id| sounds.iter().any(|sound| sound.id == *id));
             SoundboardView {
                 state: state.load_of(&key),
-                sounds,
                 playing: state
                     .w4
                     .sound_playing
                     .as_ref()
                     .filter(ours)
-                    .map(|(_, sound)| sound.clone()),
+                    .map(|(_, sound)| sound.clone())
+                    .or(engine_playing),
+                sounds,
                 error: state
                     .w4
                     .sound_error

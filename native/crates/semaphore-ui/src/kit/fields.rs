@@ -290,6 +290,9 @@ impl RenderOnce for SelectField {
                         Select::new(&self.state)
                             .id(self.id)
                             .accessibility_label(self.label.clone())
+                            // The floating label says what to pick: the select's own "Please
+                            // select" would draw over it while nothing is picked.
+                            .placeholder("")
                             .appearance(false)
                             .disabled(self.disabled)
                             .h_full()

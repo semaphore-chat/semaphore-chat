@@ -134,7 +134,7 @@ impl VoiceStage {
         focused: bool,
         narrow: bool,
         cx: &mut Context<Self>,
-    ) -> Stateful<Div> {
+    ) -> impl IntoElement + use<> {
         let speaking = tile.participant.speaking && !tile.is_screen();
         let positive = theme::positive();
         let key = tile.key.clone();
@@ -212,7 +212,8 @@ impl VoiceStage {
                     .child(quality_bars(quality)),
             );
         }
-        card
+        // Found by id in rigs (`right-click tile-…`).
+        card.test_support()
     }
 
     /// Draws frames, and reports whether this tile is really on screen and how big.
