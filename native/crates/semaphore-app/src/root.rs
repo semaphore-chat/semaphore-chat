@@ -464,13 +464,14 @@ impl AppRoot {
         self.save_attachment(attachment, cx);
     }
 
-    /// Fetches the file into a private temporary folder and hands it to the OS's default app: an
-    /// attachment the inline player can't play.
+    /// Fetches the file into a folder under the app's own data directory (private to this user,
+    /// unlike the shared temp directory, where another local user could plant the path) and hands
+    /// it to the OS's default app: an attachment the inline player can't play.
     fn open_externally(&mut self, attachment: AttachmentView, cx: &mut Context<Self>) {
         let Some(services) = &self.services else {
             return;
         };
-        let directory = std::env::temp_dir().join("semaphore-chat-open");
+        let directory = services.data_dir.join("open");
         let path = directory.join(format!(
             "{}-{}",
             files::safe_file_name(&attachment.file_id),
@@ -484,7 +485,7 @@ impl AppRoot {
                 .spawn(async move {
                     let bytes = core.file(file_id, false).await.map_err(|e| e.to_string())?;
                     tokio::task::spawn_blocking(move || {
-                        std::fs::create_dir_all(&directory).map_err(|e| e.to_string())?;
+                        files::create_private_dir(&directory).map_err(|e| e.to_string())?;
                         std::fs::write(&target, bytes).map_err(|e| e.to_string())
                     })
                     .await
