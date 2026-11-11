@@ -7,6 +7,7 @@
 
 mod accounts;
 mod actions;
+mod calls;
 mod http;
 pub mod livekit;
 mod messages;
@@ -136,6 +137,9 @@ pub(crate) struct Inner {
     pub socket_tokens: Mutex<HashMap<u64, String>>,
     /// Accounts, sessions, invites, grants, appearance and created communities (W3).
     pub accounts: Mutex<accounts::Accounts>,
+    /// DM calls, server mutes, kicks, the replay buffer, clips and join failures (W4). Never held
+    /// with `data`.
+    pub calls: Mutex<calls::Calls>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -209,6 +213,22 @@ impl Inner {
                         .get(sid)
                         .is_some_and(|user| user_ids.iter().any(|id| id == user))
                 })
+                .map(|(_, tx)| tx.clone())
+                .collect()
+        };
+        for socket in targets {
+            self.enqueue_text(&socket, frame.clone());
+        }
+    }
+
+    /// Send an event to every socket but `user_id`'s.
+    pub fn emit_to_others(&self, user_id: &str, event: &str, payload: Value) {
+        let frame = socket::event_frame(event, payload);
+        let targets: Vec<_> = {
+            let users = lock(&self.socket_users);
+            lock(&self.sockets)
+                .iter()
+                .filter(|(sid, _)| users.get(sid).is_none_or(|user| user != user_id))
                 .map(|(_, tx)| tx.clone())
                 .collect()
         };
@@ -440,6 +460,8 @@ impl FakeServer {
     ) -> Result<Self, ScenarioError> {
         let scenario = scenario::Scenario::load(&source)?;
         let epoch = scenario.epoch;
+        let mut files = HashMap::new();
+        http::seed_sound_files(&scenario, &mut files);
         let data = Data {
             channel_messages: scenario.channel_messages.clone(),
             dm_messages: scenario.dm_messages.clone(),
@@ -448,7 +470,7 @@ impl FakeServer {
             voice: scenario.voice.clone(),
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),
-            files: HashMap::new(),
+            files,
             social: social::Social::seed(&scenario),
         };
         let listener = tokio::net::TcpListener::bind((ip, port))
@@ -469,6 +491,7 @@ impl FakeServer {
             socket_users: Mutex::new(HashMap::new()),
             socket_tokens: Mutex::new(HashMap::new()),
             accounts: Mutex::new(accounts::Accounts::new()),
+            calls: Mutex::new(calls::Calls::default()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),
@@ -656,6 +679,84 @@ impl FakeServer {
                 .emit_to_users(&event.users, event.event, event.payload);
         }
         count
+    }
+
+    // ----- W4 ----------------------------------------------------------------------------------
+
+    /// Another member joins the DM group's call, as LiveKit's `participant_joined` webhook
+    /// registers them: the first in the call sends `dmVoiceCallStarted` to the group's members,
+    /// later ones `dmVoiceUserJoined`. Already in the call: nothing. `false` if `user_id` isn't a
+    /// member of the group.
+    pub fn dm_call_join(&self, dm_group_id: &str, user_id: &str) -> bool {
+        match calls::dm_members_for(&self.inner, dm_group_id, user_id) {
+            Ok(members) => {
+                calls::dm_join(&self.inner, dm_group_id, user_id, &members);
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    /// A member leaves the DM group's call (LiveKit's `participant_left`): `dmVoiceUserLeft` to
+    /// the group's members. `false` if they weren't in it.
+    pub fn dm_call_leave(&self, dm_group_id: &str, user_id: &str) -> bool {
+        match calls::dm_members_for(&self.inner, dm_group_id, user_id) {
+            Ok(members) => calls::dm_leave(&self.inner, dm_group_id, user_id, &members),
+            Err(_) => false,
+        }
+    }
+
+    /// A moderator server-mutes (or unmutes) `user_id` in the channel, as `mute-participant`
+    /// does without its rank check: `voiceChannelUserUpdated` when they're in the call.
+    pub fn server_mute(&self, channel_id: &str, user_id: &str, mute: bool) {
+        calls::set_server_muted(&self.inner, channel_id, user_id, mute);
+    }
+
+    /// The running replay buffer now has `segments` complete 10 s segments, and its owner hears
+    /// `egressSegmentsReady`. `false` if no buffer is running.
+    pub fn emit_segments_ready(&self, segments: usize) -> bool {
+        calls::segments_ready(&self.inner, segments)
+    }
+
+    /// LiveKit fails the running replay buffer's egress: `replayBufferFailed` with `error`.
+    /// `false` if no buffer is running.
+    pub fn emit_replay_failed(&self, error: &str) -> bool {
+        calls::end_replay(&self.inner, Some(error.to_owned()))
+    }
+
+    /// LiveKit ends the running replay buffer's egress (the share ended): `replayBufferStopped`.
+    /// `false` if no buffer is running.
+    pub fn emit_replay_stopped(&self) -> bool {
+        calls::end_replay(&self.inner, None)
+    }
+
+    /// Put a clip in `user_id`'s library (its file serves the fixture MP4). Its id and file id.
+    pub fn seed_clip(
+        &self,
+        user_id: &str,
+        is_public: bool,
+        duration_seconds: i64,
+    ) -> (String, String) {
+        let clip = calls::store_clip(
+            &self.inner,
+            user_id,
+            None,
+            duration_seconds,
+            is_public,
+            None,
+        );
+        (clip.id, clip.file_id)
+    }
+
+    /// The valid join-failure reports received, in order, as the backend logs them.
+    pub fn join_failures(&self) -> Vec<Value> {
+        lock(&self.inner.calls).join_failures.clone()
+    }
+
+    /// The ids of a community's fixture soundboard sound (`Airhorn`, `Rimshot` or `Silence`):
+    /// the sound's and its file's.
+    pub fn sound_ids(community_id: &str, name: &str) -> (String, String) {
+        http::sound_ids(community_id, name)
     }
 
     /// Every HTTP request and socket event seen so far, in order.

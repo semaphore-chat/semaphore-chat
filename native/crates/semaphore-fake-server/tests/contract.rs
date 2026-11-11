@@ -1803,3 +1803,379 @@ async fn accounts_match_openapi_and_socket_events() {
         );
     }
 }
+
+/// W4: DM calls, server mute, kick, the soundboard, the replay buffer, clips and join failures,
+/// each answer against its schema and each event against socket-events.json.
+#[tokio::test]
+async fn w4_voice_routes_match_openapi_and_socket_events() {
+    use reqwest::Method as M;
+    let schemas = Schemas::load();
+    let server = start("showcase").await;
+    let base = server.base_url();
+    let client = http();
+    let id = |readable: &str| semaphore_fake_server::entity_uuid(readable);
+    let events: Value = serde_json::from_str(include_str!("../../../contract/socket-events.json"))
+        .expect("socket-events.json is valid JSON");
+    let payload_of =
+        |name: &str| schemas.reference(events["server"][name]["payload"]["$ref"].as_str().unwrap());
+    let check = |method: M,
+                 path: String,
+                 sent: Option<(&'static str, Value)>,
+                 status: u16,
+                 schema: Option<Value>| {
+        let (client, base) = (client.clone(), base.clone());
+        async move {
+            let what = format!("{method} {path}");
+            if let Some((name, body)) = &sent {
+                assert_valid(
+                    &Schemas::load(),
+                    &Schemas::load().component(name),
+                    body,
+                    &format!("{what} request"),
+                );
+            }
+            let body = sent.map(|(_, body)| body);
+            let (actual, value) = request(&client, method, &base, &path, body, true).await;
+            assert_eq!(actual, status, "{what}: {value}");
+            if let Some(schema) = schema {
+                assert_valid(&Schemas::load(), &schema, &value, &what);
+            }
+            value
+        }
+    };
+    let error = || Some(schemas.component("ErrorResponseDto"));
+    let mut me = connect_as(&base, &id("me")).await;
+    let check_events = |got: &[(String, Value)]| {
+        for (name, payload) in got {
+            assert_valid(&schemas, &payload_of(name), payload, name);
+        }
+    };
+
+    // DM calls.
+    let dm = id("dm-priya");
+    check(
+        M::GET,
+        format!("/api/dm-groups/{dm}/voice-presence"),
+        None,
+        200,
+        Some(schemas.component("DmVoicePresenceResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/dm-token".into(),
+        Some((
+            "CreateTokenDto",
+            json!({ "identity": id("me"), "roomId": dm }),
+        )),
+        201,
+        Some(schemas.component("TokenResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/dm-token".into(),
+        Some((
+            "CreateTokenDto",
+            json!({ "identity": id("me"), "roomId": uuid(9) }),
+        )),
+        403,
+        error(),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/dm-groups/{dm}/voice-presence/refresh"),
+        None,
+        201,
+        Some(schemas.component("RefreshDmPresenceResponseDto")),
+    )
+    .await;
+    assert!(server.dm_call_join(&dm, &id("u-priya")));
+    assert!(server.dm_call_leave(&dm, &id("u-priya")));
+    let got = heard(
+        &server,
+        &mut me,
+        &["dmVoiceCallStarted", "dmVoiceUserJoined", "dmVoiceUserLeft"],
+    )
+    .await;
+    check_events(&got);
+    let presence = check(
+        M::GET,
+        format!("/api/dm-groups/{dm}/voice-presence"),
+        None,
+        200,
+        Some(schemas.component("DmVoicePresenceResponseDto")),
+    )
+    .await;
+    assert_eq!(presence["count"], 1);
+
+    // Server mute, then kick.
+    let squad = id("vc-squad");
+    check(
+        M::POST,
+        format!("/api/livekit/channels/{squad}/mute-participant"),
+        Some((
+            "MuteParticipantDto",
+            json!({ "participantIdentity": id("u-priya"), "mute": true }),
+        )),
+        201,
+        Some(schemas.component("SuccessResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/livekit/channels/{squad}/mute-participant"),
+        Some((
+            "MuteParticipantDto",
+            json!({ "participantIdentity": id("me"), "mute": true }),
+        )),
+        403,
+        error(),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/moderation/kick/{}/{}", id("c-couch"), id("u-kwame")),
+        Some(("KickUserDto", json!({ "reason": "spam" }))),
+        200,
+        Some(schemas.component("SuccessMessageDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/moderation/kick/{}/{}", id("c-couch"), id("u-kwame")),
+        Some(("KickUserDto", json!({}))),
+        404,
+        error(),
+    )
+    .await;
+    let got = heard(
+        &server,
+        &mut me,
+        &[
+            "voiceChannelUserUpdated",
+            "voiceChannelUserLeft",
+            "userKicked",
+        ],
+    )
+    .await;
+    check_events(&got);
+
+    // The soundboard.
+    let sounds = check(
+        M::GET,
+        format!("/api/soundboard/community/{}", id("c-couch")),
+        None,
+        200,
+        Some(schemas.array_of("SoundboardSoundDto")),
+    )
+    .await;
+    assert_eq!(sounds.as_array().unwrap().len(), 3);
+    check(
+        M::GET,
+        "/api/soundboard/community/not-a-uuid".into(),
+        None,
+        400,
+        error(),
+    )
+    .await;
+
+    // The replay buffer, in a channel call.
+    check(
+        M::POST,
+        format!("/api/channels/{squad}/voice-presence/join"),
+        None,
+        201,
+        None,
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/replay/start".into(),
+        Some((
+            "StartReplayBufferDto",
+            json!({ "channelId": squad, "videoTrackId": "TR_video" }),
+        )),
+        201,
+        Some(schemas.component("StartReplayResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/livekit/replay/session-info".into(),
+        None,
+        200,
+        Some(schemas.component("SessionInfoResponseDto")),
+    )
+    .await;
+    assert!(server.emit_segments_ready(3));
+    check_events(&heard(&server, &mut me, &["egressSegmentsReady"]).await);
+    check(
+        M::GET,
+        "/api/livekit/replay/session-info".into(),
+        None,
+        200,
+        Some(schemas.component("SessionInfoResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/replay/capture".into(),
+        Some((
+            "CaptureReplayDto",
+            json!({ "durationMinutes": 1, "destination": "library" }),
+        )),
+        201,
+        Some(schemas.component("CaptureReplayResponseDto")),
+    )
+    .await;
+    let general = id("cc-general");
+    let captured = check(
+        M::POST,
+        "/api/livekit/replay/capture".into(),
+        Some((
+            "CaptureReplayDto",
+            json!({ "startSeconds": 5, "endSeconds": 25, "destination": "channel", "targetChannelId": general }),
+        )),
+        201,
+        Some(schemas.component("CaptureReplayResponseDto")),
+    )
+    .await;
+    assert!(captured["messageId"].is_string());
+    check_events(&heard(&server, &mut me, &["newMessage"]).await);
+    check(
+        M::POST,
+        "/api/livekit/replay/capture".into(),
+        None,
+        400,
+        error(),
+    )
+    .await;
+    let clips = check(
+        M::GET,
+        "/api/livekit/clips".into(),
+        None,
+        200,
+        Some(schemas.array_of("ClipResponseDto")),
+    )
+    .await;
+    let clip = clips[0]["id"].as_str().unwrap().to_owned();
+    check(
+        M::PUT,
+        format!("/api/livekit/clips/{clip}"),
+        Some(("UpdateClipDto", json!({ "isPublic": true }))),
+        200,
+        Some(schemas.component("ClipResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        format!("/api/livekit/clips/user/{}", id("me")),
+        None,
+        200,
+        Some(schemas.array_of("ClipResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/livekit/clips/{clip}/share"),
+        Some((
+            "ShareClipDto",
+            json!({ "destination": "dm", "targetDirectMessageGroupId": dm }),
+        )),
+        201,
+        Some(schemas.component("ShareClipResponseDto")),
+    )
+    .await;
+    check_events(&heard(&server, &mut me, &["newDirectMessage"]).await);
+    check(
+        M::DELETE,
+        format!("/api/livekit/clips/{clip}"),
+        None,
+        200,
+        Some(schemas.component("SuccessResponseDto")),
+    )
+    .await;
+    check(
+        M::DELETE,
+        format!("/api/livekit/clips/{clip}"),
+        None,
+        404,
+        error(),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/replay/stop".into(),
+        None,
+        201,
+        Some(schemas.component("StopReplayResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/replay/stop".into(),
+        None,
+        404,
+        error(),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/livekit/replay/start".into(),
+        Some((
+            "StartReplayBufferDto",
+            json!({ "channelId": squad, "videoTrackId": "TR_video" }),
+        )),
+        201,
+        None,
+    )
+    .await;
+    assert!(server.emit_replay_failed("Egress crashed"));
+    check_events(&heard(&server, &mut me, &["replayBufferFailed"]).await);
+    assert!(!server.emit_replay_stopped());
+
+    // Join failures.
+    check(
+        M::POST,
+        "/api/voice/diagnostics/join-failure".into(),
+        Some((
+            "ReportJoinFailureDto",
+            json!({
+                "errorClass": "media_unreachable",
+                "message": "ICE failed",
+                "durationMs": 12000,
+                "candidateTypes": ["host", "srflx"],
+                "platform": "electron",
+                "os": "linux",
+                "appVersion": "0.8.0",
+                "channelId": squad,
+                "isDm": false,
+            }),
+        )),
+        204,
+        None,
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/voice/diagnostics/join-failure".into(),
+        None,
+        400,
+        error(),
+    )
+    .await;
+}
+
+/// The events `socket` heard since the last call, which must be `names` in order.
+async fn heard(
+    server: &semaphore_fake_server::FakeServer,
+    socket: &mut Socket,
+    names: &[&str],
+) -> Vec<(String, Value)> {
+    let got = settle(server, &mut [socket]).await.remove(0);
+    let got_names: Vec<&str> = got.iter().map(|(name, _)| name.as_str()).collect();
+    assert_eq!(got_names, names, "{got:?}");
+    got
+}

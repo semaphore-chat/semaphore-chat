@@ -499,6 +499,8 @@ pub(crate) struct PostExtras {
     pub link_preview: Option<serde_json::Value>,
     /// A `@mention` of this user after the text, which notifies them.
     pub mention: Option<(String, String)>,
+    /// Files it carries (a replay clip's, W4).
+    pub attachments: Vec<AttachmentDto>,
 }
 
 /// Where a `post_as` message goes.
@@ -516,7 +518,7 @@ pub(crate) fn post_as(
     extras: PostExtras,
 ) -> MessageDto {
     let mut spans = vec![span_from(&SendSpan {
-        kind: "PLAIN".into(),
+        kind: "PLAINTEXT".into(),
         text: Some(text.to_owned()),
         ..SendSpan::default()
     })];
@@ -545,7 +547,7 @@ pub(crate) fn post_as(
         PostTarget::DirectMessage(id) => (None, Some(id.to_owned())),
     };
     let message = MessageDto {
-        attachments: Vec::new(),
+        attachments: extras.attachments,
         author_id: Some(author_id.to_owned()),
         channel_id: channel_id.clone(),
         client_nonce: None,
@@ -865,6 +867,8 @@ pub(crate) fn voice_presence(inner: &Inner, channel_id: &str) -> Value {
 pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
     let now = inner.now();
     let me = &inner.scenario.me;
+    // A server mute outlives the call: the next join lists them muted (W4).
+    let server_muted = crate::calls::is_server_muted(inner, channel_id, &me.id);
     {
         let mut data = lock(&inner.data);
         let users = data.voice.entry(channel_id.to_owned()).or_default();
@@ -875,7 +879,7 @@ pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
                 display_name: me.display_name.clone(),
                 id: me.id.clone(),
                 is_deafened: false,
-                is_server_muted: false,
+                is_server_muted: server_muted,
                 joined_at: now,
                 username: me.username.clone(),
             }),
