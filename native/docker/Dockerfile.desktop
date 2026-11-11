@@ -2,7 +2,7 @@
 # D-Bus, from the same archive snapshot, for rig-window-hide's Wayland case and the tray tests.
 # Dockerfile.build stays unchanged so its tag, and everything that depends on it, doesn't move.
 #
-# Built by scripts/window-probe.sh, which passes BASE (the build image's tag).
+# Built by scripts/desktop-probe.sh, which passes BASE (the build image's tag).
 ARG BASE
 FROM ${BASE}
 ARG HOST_UID=1000
