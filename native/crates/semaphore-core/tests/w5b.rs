@@ -8,7 +8,7 @@ use common::w5b::{refusal, role_json, user_roles_json};
 use common::*;
 use semaphore_core::model::{
     BanDuration, BanRequest, ChannelPreset, CommunityCaps, LoadState, NotAllowed, OverwriteRow,
-    OverwriteTarget, OverwritesDraft, RemovalCause, RoleDraft, ViewKey, VoiceStatus,
+    OverwriteTarget, OverwritesDraft, RemovalCause, RoleDraft, RolePatch, ViewKey, VoiceStatus,
 };
 use semaphore_core::platform::CoreEvent;
 use serde_json::{Value, json};
@@ -432,9 +432,17 @@ async fn an_action_this_build_does_not_know_survives_a_save() {
         .update_role(
             COMMUNITY.into(),
             "custom".into(),
-            RoleDraft {
-                name: "Renamed".into(),
-                actions: custom.actions.clone(),
+            RolePatch {
+                name: Some("Renamed".into()),
+                // A change to the list sends the whole list, the unknown action with it.
+                actions: Some(
+                    custom
+                        .actions
+                        .iter()
+                        .cloned()
+                        .chain(["BAN_USER".to_owned()])
+                        .collect(),
+                ),
             },
         )
         .await
@@ -556,6 +564,7 @@ async fn overrides_are_replaced_whole_and_named_from_the_roles() {
                     target: OverwriteTarget::Everyone,
                     allow: vec![],
                     deny: vec!["SPEAK".into()],
+                    role_missing: false,
                 }],
             },
         )
@@ -750,4 +759,45 @@ async fn banning_sends_the_end_as_a_date_and_refreshes_the_lists() {
     let _ = ViewKey::Bans {
         community_id: COMMUNITY.into(),
     };
+}
+
+// --- Role names (failing first: blank names used to be sent) ---
+
+#[tokio::test]
+async fn a_role_name_is_one_to_fifty_characters_once_trimmed() {
+    let cases: &[(&str, bool)] = &[
+        ("", false),
+        ("   ", false),
+        ("\t\n", false),
+        ("a", true),
+        ("  a  ", true),
+        (&"x".repeat(50), true),
+        (&"x".repeat(51), false),
+        // Counted in characters, as the wire type counts: 50 two-byte letters fit.
+        (&"é".repeat(50), true),
+        (&"é".repeat(51), false),
+    ];
+    for (name, ok) in cases {
+        let rig = owner().await;
+        script_me(&rig, &[]);
+        rig.backend
+            .w5b
+            .answer("create_role", role_json("new", 50, &["KICK_USER"]));
+        let result = rig
+            .core
+            .create_role(
+                COMMUNITY.into(),
+                RoleDraft {
+                    name: (*name).to_owned(),
+                    actions: vec!["KICK_USER".into()],
+                },
+            )
+            .await;
+        assert_eq!(result.is_ok(), *ok, "{name:?}");
+        assert_eq!(
+            rig.backend.w5b.count("create_role"),
+            usize::from(*ok),
+            "{name:?}: refused before any request"
+        );
+    }
 }

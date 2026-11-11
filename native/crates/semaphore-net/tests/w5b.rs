@@ -12,7 +12,7 @@ use common::until;
 use semaphore_core::lifecycle::ConnectionState;
 use semaphore_core::model::{
     BanDuration, BanRequest, ChannelPreset, LoadState, NotAllowed, OverwriteRow, OverwriteTarget,
-    OverwritesDraft, RemovalCause, RoleDraft, SessionState, TimeoutRequest,
+    OverwritesDraft, RemovalCause, RoleDraft, RolePatch, SessionState, TimeoutRequest,
 };
 use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, SecretStore};
 use semaphore_core::{Core, Services};
@@ -370,9 +370,9 @@ async fn a_role_save_and_an_override_replace_round_trip() {
         .update_role(
             couch.clone(),
             moderator.id.clone(),
-            RoleDraft {
-                name: "Moderator".into(),
-                actions,
+            RolePatch {
+                name: None,
+                actions: Some(actions),
             },
         )
         .await
@@ -396,6 +396,7 @@ async fn a_role_save_and_an_override_replace_round_trip() {
                         target: OverwriteTarget::Everyone,
                         allow: vec![],
                         deny: vec!["CREATE_MESSAGE".into()],
+                        role_missing: false,
                     },
                     OverwriteRow {
                         target: OverwriteTarget::Role {
@@ -404,6 +405,7 @@ async fn a_role_save_and_an_override_replace_round_trip() {
                         },
                         allow: vec!["CREATE_MESSAGE".into()],
                         deny: vec![],
+                        role_missing: false,
                     },
                 ],
             },
@@ -435,6 +437,7 @@ async fn a_role_save_and_an_override_replace_round_trip() {
                     target: OverwriteTarget::Everyone,
                     allow: vec!["READ_CHANNEL".into()],
                     deny: vec![],
+                    role_missing: false,
                 }],
             },
         )

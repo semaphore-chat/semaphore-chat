@@ -14,10 +14,11 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::community_admin::OpKey;
 use crate::cache::{CacheValue, QueryKey, keys as shared};
 use crate::client::{Core, State};
 use crate::model::{
-    AdminOp, BanDuration, BanListView, BanRequest, BanRow, ErrorView, ModerationActionKind,
+    AdminActionKind, BanDuration, BanListView, BanRequest, BanRow, ModerationActionKind,
     ModerationLogRow, ModerationLogView, RemovalCause, TimeoutListView, TimeoutRequest, TimeoutRow,
     UserView, ViewKey,
 };
@@ -59,8 +60,6 @@ pub(crate) const LOG_PAGE: i64 = 50;
 /// sign-out.
 #[derive(Default)]
 pub struct W5bState {
-    /// Each view's change on its way, by view.
-    pub(crate) ops: HashMap<ViewKey, AdminOp>,
     /// The views a UI has read, by community, so a change there says which to read again.
     pub(crate) watched: HashMap<String, HashSet<ViewKey>>,
     /// The moderation log's filter, by community.
@@ -237,23 +236,6 @@ impl State {
         self.view_changed(ViewKey::CommunityPermissions {
             community_id: community_id.to_owned(),
         });
-    }
-
-    pub(crate) fn w5b_op(&self, view: &ViewKey) -> AdminOp {
-        self.w5b.ops.get(view).cloned().unwrap_or_default()
-    }
-
-    pub(crate) fn w5b_set_op(&mut self, view: ViewKey, busy: bool, error: Option<ErrorView>) {
-        self.w5b.ops.insert(
-            view.clone(),
-            AdminOp {
-                busy,
-                upload: None,
-                error,
-                ..AdminOp::default()
-            },
-        );
-        self.view_changed(view);
     }
 
     /// A W5-B query's data changed: say which views to read again. False when it isn't W5-B's.
@@ -459,33 +441,40 @@ impl Core {
         )
     }
 
-    /// After a change of mine: read these again.
-    fn w5b_refresh(&self, keys: &[QueryKey]) {
-        self.write(|state, _| {
-            for key in keys {
-                state.invalidate(key);
-            }
-        });
-    }
-
-    fn after_moderating(&self, community_id: &str, user_id: &str) {
-        self.w5b_refresh(&[
+    fn moderation_refresh(community_id: &str, user_id: &str) -> Vec<QueryKey> {
+        vec![
             shared::scoped(keys::BANS, community_id),
             shared::scoped(keys::TIMEOUTS, community_id),
             shared::scoped(keys::LOGS, community_id),
             key2(keys::USER_ROLES, community_id, user_id),
             key2(keys::TIMEOUT_STATUS, community_id, user_id),
             shared::scoped(shared::MEMBERS, community_id),
-        ]);
+        ]
     }
 
+    /// The member's moderation menu's op for this action.
+    pub(crate) fn target_op(community_id: &str, user_id: &str, kind: AdminActionKind) -> OpKey {
+        OpKey::new(
+            ViewKey::ModerationTarget {
+                community_id: community_id.to_owned(),
+                user_id: user_id.to_owned(),
+            },
+            kind,
+            Some(user_id.to_owned()),
+        )
+    }
+
+    fn list_op(view: ViewKey, user_id: &str, kind: AdminActionKind) -> OpKey {
+        OpKey::new(view, kind, Some(user_id.to_owned()))
+    }
+
+    /// Shown on the member's menu (`AdminActionKind::Ban`).
     pub async fn ban_member(
         &self,
         community_id: String,
         user_id: String,
         request: BanRequest,
     ) -> Result<(), CoreError> {
-        let (services, _) = self.begin("banning a member")?;
         let now_ms = self.write(|_, now| now);
         let expires_at = match request.duration {
             BanDuration::Permanent => None,
@@ -494,87 +483,125 @@ impl Core {
                     .map(|at| at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true))
             }
         };
-        services
-            .backend
-            .moderation_controller_ban_user(
-                community_id.clone(),
-                user_id.clone(),
-                wire::ModerationBanUserDto {
-                    expires_at,
-                    reason: request.reason.filter(|r| !r.trim().is_empty()),
-                },
-            )
-            .await
-            .map_err(|error| self.backend_failed(error))?;
-        self.after_moderating(&community_id, &user_id);
-        Ok(())
+        let body = wire::ModerationBanUserDto {
+            expires_at,
+            reason: request.reason.filter(|r| !r.trim().is_empty()),
+        };
+        let (id, user) = (community_id.clone(), user_id.clone());
+        self.w5b_change(
+            &[Self::target_op(
+                &community_id,
+                &user_id,
+                AdminActionKind::Ban,
+            )],
+            "banning a member",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .moderation_controller_ban_user(id, user, body)
+                    .await
+            },
+            &Self::moderation_refresh(&community_id, &user_id),
+        )
+        .await
+        .map(|_| ())
     }
 
+    /// Shown on the ban list's row (`AdminActionKind::Unban`).
     pub async fn unban_member(
         &self,
         community_id: String,
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        let (services, _) = self.begin("lifting a ban")?;
-        services
-            .backend
-            .moderation_controller_unban_user(
-                community_id.clone(),
-                user_id.clone(),
-                wire::UnbanUserDto {
-                    reason: reason.filter(|r| !r.trim().is_empty()),
-                },
-            )
-            .await
-            .map_err(|error| self.backend_failed(error))?;
-        self.after_moderating(&community_id, &user_id);
-        Ok(())
+        let body = wire::UnbanUserDto {
+            reason: reason.filter(|r| !r.trim().is_empty()),
+        };
+        let view = ViewKey::Bans {
+            community_id: community_id.clone(),
+        };
+        let (id, user) = (community_id.clone(), user_id.clone());
+        self.w5b_change(
+            &[Self::list_op(view, &user_id, AdminActionKind::Unban)],
+            "lifting a ban",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .moderation_controller_unban_user(id, user, body)
+                    .await
+            },
+            &Self::moderation_refresh(&community_id, &user_id),
+        )
+        .await
+        .map(|_| ())
     }
 
+    /// Shown on the member's menu (`AdminActionKind::Timeout`).
     pub async fn timeout_member(
         &self,
         community_id: String,
         user_id: String,
         request: TimeoutRequest,
     ) -> Result<(), CoreError> {
-        let (services, _) = self.begin("timing out a member")?;
-        services
-            .backend
-            .moderation_controller_timeout_user(
-                community_id.clone(),
-                user_id.clone(),
-                wire::TimeoutUserDto {
-                    duration_seconds: i64::from(request.seconds),
-                    reason: request.reason.filter(|r| !r.trim().is_empty()),
-                },
-            )
-            .await
-            .map_err(|error| self.backend_failed(error))?;
-        self.after_moderating(&community_id, &user_id);
-        Ok(())
+        let body = wire::TimeoutUserDto {
+            duration_seconds: i64::from(request.seconds),
+            reason: request.reason.filter(|r| !r.trim().is_empty()),
+        };
+        let (id, user) = (community_id.clone(), user_id.clone());
+        self.w5b_change(
+            &[Self::target_op(
+                &community_id,
+                &user_id,
+                AdminActionKind::Timeout,
+            )],
+            "timing out a member",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .moderation_controller_timeout_user(id, user, body)
+                    .await
+            },
+            &Self::moderation_refresh(&community_id, &user_id),
+        )
+        .await
+        .map(|_| ())
     }
 
+    /// Shown on both the timeout list's row and the member's menu
+    /// (`AdminActionKind::RemoveTimeout`).
     pub async fn remove_timeout(
         &self,
         community_id: String,
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        let (services, _) = self.begin("lifting a timeout")?;
-        services
-            .backend
-            .moderation_controller_remove_timeout(
-                community_id.clone(),
-                user_id.clone(),
-                wire::RemoveTimeoutDto {
-                    reason: reason.filter(|r| !r.trim().is_empty()),
-                },
-            )
-            .await
-            .map_err(|error| self.backend_failed(error))?;
-        self.after_moderating(&community_id, &user_id);
-        Ok(())
+        let body = wire::RemoveTimeoutDto {
+            reason: reason.filter(|r| !r.trim().is_empty()),
+        };
+        let list = ViewKey::Timeouts {
+            community_id: community_id.clone(),
+        };
+        let (id, user) = (community_id.clone(), user_id.clone());
+        self.w5b_change(
+            &[
+                Self::list_op(list, &user_id, AdminActionKind::RemoveTimeout),
+                Self::target_op(&community_id, &user_id, AdminActionKind::RemoveTimeout),
+            ],
+            "lifting a timeout",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .moderation_controller_remove_timeout(id, user, body)
+                    .await
+            },
+            &Self::moderation_refresh(&community_id, &user_id),
+        )
+        .await
+        .map(|_| ())
     }
 
     /// Active bans (`ViewKey::Bans`), newest first. Each row says whether this user may lift it.
@@ -613,6 +640,9 @@ impl Core {
                 .collect();
             BanListView {
                 state: state.load_of(&key),
+                op: state.w5a_op(&ViewKey::Bans {
+                    community_id: community_id.clone(),
+                }),
                 community_id,
                 bans,
             }
@@ -655,6 +685,9 @@ impl Core {
                 .collect();
             TimeoutListView {
                 state: state.load_of(&key),
+                op: state.w5a_op(&ViewKey::Timeouts {
+                    community_id: community_id.clone(),
+                }),
                 community_id,
                 timeouts,
             }
@@ -697,6 +730,13 @@ impl Core {
                         .and_then(|metadata| metadata.get("durationSeconds"))
                         .and_then(serde_json::Value::as_u64)
                         .map(|seconds| seconds as u32),
+                    // Not in the contract yet (`ModerationLogDto` lacks `targetMessageId`).
+                    target_message_id: entry
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("messageId"))
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
                 })
                 .collect();
             ModerationLogView {

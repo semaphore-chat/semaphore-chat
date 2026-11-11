@@ -45,6 +45,19 @@ pub enum AdminActionKind {
     DeleteWebhook,
     CreateInvite,
     DeleteInvite,
+    CreateRole,
+    UpdateRole,
+    DeleteRole,
+    ReorderRoles,
+    ResetDefaults,
+    AssignRole,
+    UnassignRole,
+    ReplaceOverwrites,
+    Ban,
+    Unban,
+    Kick,
+    Timeout,
+    RemoveTimeout,
 }
 
 #[uniffi::remote(Record)]

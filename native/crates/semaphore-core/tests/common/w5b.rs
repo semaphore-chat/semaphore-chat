@@ -17,6 +17,8 @@ pub struct W5bFakes {
     /// The next call matching this (whole call, then op) fails with this.
     pub errors: Mutex<HashMap<String, BackendError>>,
     pub calls: Mutex<Vec<String>>,
+    /// The next call matching this (whole call, then op) waits for the sender.
+    pub gates: Mutex<HashMap<String, tokio::sync::oneshot::Receiver<()>>>,
 }
 
 impl W5bFakes {
@@ -26,6 +28,12 @@ impl W5bFakes {
 
     pub fn fail_next(&self, call: &str, error: BackendError) {
         self.errors.lock().unwrap().insert(call.to_owned(), error);
+    }
+
+    pub fn hold(&self, call: &str) -> tokio::sync::oneshot::Sender<()> {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.gates.lock().unwrap().insert(call.to_owned(), receiver);
+        sender
     }
 
     pub fn calls(&self) -> Vec<String> {
@@ -54,6 +62,13 @@ impl W5bFakes {
             None => call.clone(),
         };
         self.calls.lock().unwrap().push(recorded);
+        let gate = {
+            let mut gates = self.gates.lock().unwrap();
+            gates.remove(&call).or_else(|| gates.remove(op))
+        };
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
         let error = {
             let mut errors = self.errors.lock().unwrap();
             errors.remove(&call).or_else(|| errors.remove(op))

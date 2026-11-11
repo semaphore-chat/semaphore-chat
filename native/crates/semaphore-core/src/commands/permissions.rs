@@ -259,16 +259,23 @@ impl Core {
                 community_id: community_id.clone(),
                 user_id: user_id.clone(),
             };
-            state.w5b_watch(&community_id, view);
+            state.w5b_watch(&community_id, view.clone());
+            let op = state.w5a_op(&view);
             let me_id = state.me_id().to_owned();
             let me = state.w5b_standing(&community_id, &me_id);
             let my_key = shared::scoped(keys::MY_ROLES, &community_id);
             let their_key = key2(keys::USER_ROLES, &community_id, &user_id);
             if user_id == me_id {
+                let it = Some(NotAllowed::SelfTarget);
                 return ModerationTargetView {
                     state: state.load_of(&my_key),
                     user_id,
-                    not_allowed: Some(NotAllowed::SelfTarget),
+                    not_allowed: it,
+                    ban_not_allowed: it,
+                    kick_not_allowed: it,
+                    timeout_not_allowed: it,
+                    roles_not_allowed: it,
+                    op,
                     ..Default::default()
                 };
             }
@@ -298,6 +305,7 @@ impl Core {
                     state: load,
                     user_id,
                     timed_out_until_ms,
+                    op,
                     ..Default::default()
                 };
             }
@@ -315,15 +323,30 @@ impl Core {
             } else {
                 None
             };
+            let reason = |has: bool, ranks: bool| {
+                if !has {
+                    Some(NotAllowed::Missing)
+                } else if !ranks {
+                    Some(NotAllowed::Rank)
+                } else {
+                    None
+                }
+            };
+            // `assertCanChangeRolesOf`: top holders and the owner (who stands as top) may.
+            let roles_not_allowed = reason(me.has("UPDATE_MEMBER"), me.owner || me.top || outranks);
             ModerationTargetView {
                 state: LoadState::Ready,
                 can_ban: ban && outranks,
                 can_kick: kick && outranks,
                 can_timeout: timeout && outranks,
                 can_remove_timeout: timed_out_until_ms.is_some() && timeout,
-                // `assertCanChangeRolesOf`: top holders and the owner (who stands as top) may.
-                can_change_roles: me.has("UPDATE_MEMBER") && (me.owner || me.top || outranks),
+                can_change_roles: roles_not_allowed.is_none(),
                 not_allowed,
+                ban_not_allowed: reason(ban, outranks),
+                kick_not_allowed: reason(kick, outranks),
+                timeout_not_allowed: reason(timeout, outranks),
+                roles_not_allowed,
+                op,
                 timed_out_until_ms,
                 user_id,
             }

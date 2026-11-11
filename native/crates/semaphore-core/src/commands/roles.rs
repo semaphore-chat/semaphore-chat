@@ -9,14 +9,16 @@
 //! `RolesView::grantable` from them. A saved role keeps the actions this build doesn't know: they
 //! are sent back as the server named them.
 
+use super::community_admin::OpKey;
 use super::moderation::{W5bValue, key2, keys};
 use super::permissions::{Standing, action_names};
 use crate::cache::keys as shared;
 use crate::client::Core;
 use crate::model::{
-    ChannelOverwritesView, ChannelPreset, MemberRolesView, OverwriteRow, OverwriteTarget,
-    OverwritesDraft, PermissionGroup, RoleDraft, RoleMembersView, RoleRow, RolesView, UserView,
-    ViewKey,
+    AdminActionKind, BuiltPreset, ChannelOverwritesView, ChannelPreset, DetectedPreset,
+    MemberRolesView, NotAllowed, OverwriteRoleOption, OverwriteRow, OverwriteTarget,
+    OverwritesDraft, PermissionGroup, PresetAccess, RoleBlock, RoleDraft, RoleMembersView,
+    RolePatch, RoleRow, RolesView, UserView, ViewKey,
 };
 use crate::platform::CoreError;
 use semaphore_wire::enums::{self as wire_enums, OverwriteTarget as WireTarget};
@@ -156,26 +158,143 @@ fn uuid(id: &str, what: &str) -> Result<uuid::Uuid, CoreError> {
     })
 }
 
-fn role_row(
-    role: &wire::RoleDto,
-    me: &Standing,
-    assign: bool,
-    update: bool,
-    delete: bool,
-) -> RoleRow {
-    let actions: Vec<String> = action_names(&role.actions).collect();
-    let below = me.manages(role.position);
-    let holds = me.holds(actions.iter().map(String::as_str));
-    RoleRow {
-        id: role.id.clone(),
-        name: role.name.clone(),
-        position: role.position as i32,
-        is_default: role.is_default,
-        editable: update && below && holds,
-        deletable: delete && below && !role.is_default,
-        assignable: assign && below && holds,
-        actions,
+/// The Member role: default, named so, always last (`DEFAULT_MEMBER_ROLE`).
+pub(crate) fn is_fixed(role: &wire::RoleDto) -> bool {
+    role.is_default && role.name == "Member"
+}
+
+/// `reorderRolesAsActor`: whether the server takes this order (highest first) from this user.
+pub(crate) fn reorder_allowed(me: &Standing, roles: &[wire::RoleDto], order: &[String]) -> bool {
+    if me.owner {
+        return true;
     }
+    let mut reorderable: Vec<&wire::RoleDto> =
+        roles.iter().filter(|role| !is_fixed(role)).collect();
+    reorderable.sort_by_key(|role| role.position);
+    let incoming: Vec<&String> = order
+        .iter()
+        .filter(|id| reorderable.iter().any(|role| role.id == **id))
+        .collect();
+    if me.top {
+        return incoming.first().is_none_or(|id| me.role_ids.contains(*id));
+    }
+    let above: Vec<&String> = reorderable
+        .iter()
+        .filter(|role| role.position <= me.best)
+        .map(|role| &role.id)
+        .collect();
+    above
+        .iter()
+        .enumerate()
+        .all(|(i, id)| incoming.get(i) == Some(id))
+        && !reorderable
+            .iter()
+            .any(|role| role.position == me.best && !me.role_ids.contains(&role.id))
+}
+
+/// Why this user can't edit (or assign) a role, `None` when they can.
+fn edit_block(
+    me: &Standing,
+    has: bool,
+    role: &wire::RoleDto,
+    actions: &[String],
+) -> Option<RoleBlock> {
+    if !has {
+        Some(RoleBlock::Missing)
+    } else if !me.manages(role.position) {
+        Some(RoleBlock::Rank)
+    } else if !me.holds(actions.iter().map(String::as_str)) {
+        Some(RoleBlock::HoldsUngrantable)
+    } else {
+        None
+    }
+}
+
+/// Every row, highest first, with what this user may do to each (the server's rules).
+fn role_rows(roles: &[wire::RoleDto], me: &Standing) -> Vec<RoleRow> {
+    let (assign, update, delete) = (
+        me.has("UPDATE_MEMBER"),
+        me.has("UPDATE_ROLE"),
+        me.has("DELETE_ROLE"),
+    );
+    let mut ordered: Vec<wire::RoleDto> = roles.to_vec();
+    ordered.sort_by_key(|role| role.position);
+    let movable: Vec<String> = ordered
+        .iter()
+        .filter(|role| !is_fixed(role))
+        .map(|role| role.id.clone())
+        .collect();
+    let swapped = |index: usize, with: usize| {
+        let mut order = movable.clone();
+        order.swap(index, with);
+        reorder_allowed(me, &ordered, &order)
+    };
+    ordered
+        .iter()
+        .map(|role| {
+            let actions: Vec<String> = action_names(&role.actions).collect();
+            let edit_blocked = edit_block(me, update, role, &actions);
+            let assign_blocked = edit_block(me, assign, role, &actions);
+            let delete_blocked = if !delete {
+                Some(RoleBlock::Missing)
+            } else if !me.manages(role.position) {
+                Some(RoleBlock::Rank)
+            } else if role.is_default {
+                Some(RoleBlock::DefaultRole)
+            } else {
+                None
+            };
+            let index = movable.iter().position(|id| *id == role.id);
+            let (can_move_up, can_move_down) = match index {
+                Some(index) if update => (
+                    index > 0 && swapped(index - 1, index),
+                    index + 1 < movable.len() && swapped(index, index + 1),
+                ),
+                _ => (false, false),
+            };
+            RoleRow {
+                id: role.id.clone(),
+                name: role.name.clone(),
+                position: role.position as i32,
+                is_default: role.is_default,
+                editable: edit_blocked.is_none(),
+                deletable: delete_blocked.is_none(),
+                assignable: assign_blocked.is_none(),
+                fixed: is_fixed(role),
+                can_move_up,
+                can_move_down,
+                created_at_ms: Some(role.created_at.timestamp_millis()),
+                edit_blocked,
+                delete_blocked,
+                assign_blocked,
+                actions,
+            }
+        })
+        .collect()
+}
+
+/// A role's name as the server takes it: trimmed, 1 to 50 characters (the wire type counts
+/// characters, and checks only the upper bound).
+pub(crate) fn role_name(name: &str) -> Result<String, CoreError> {
+    let name = name.trim();
+    let count = name.chars().count();
+    if (1..=50).contains(&count) {
+        Ok(name.to_owned())
+    } else {
+        Err(CoreError::Failed {
+            message: "A role needs a name of 1 to 50 characters".into(),
+        })
+    }
+}
+
+/// `@ArrayMinSize(1)`: a role holds at least one action.
+fn role_actions(actions: &[String]) -> Result<Vec<wire_enums::RbacAction>, CoreError> {
+    if actions.is_empty() {
+        return Err(CoreError::Failed {
+            message: "A role needs at least one permission".into(),
+        });
+    }
+    Ok(actions.iter().map(|name| wire_action(name)).collect())
 }
 
 impl Core {
@@ -189,12 +308,7 @@ impl Core {
             let me_id = state.me_id().to_owned();
             let me = state.w5b_standing(&community_id, &me_id);
             let roles = state.w5b_community_roles(&community_id).unwrap_or_default();
-            let (assign, update, delete, create) = (
-                me.has("UPDATE_MEMBER"),
-                me.has("UPDATE_ROLE"),
-                me.has("DELETE_ROLE"),
-                me.has("CREATE_ROLE"),
-            );
+            let (update, create) = (me.has("UPDATE_ROLE"), me.has("CREATE_ROLE"));
             let grantable: Vec<String> = if me.owner {
                 known_actions().map(str::to_owned).collect()
             } else {
@@ -202,15 +316,13 @@ impl Core {
             };
             RolesView {
                 state: state.load_of(&shared::scoped(keys::ROLES, &community_id)),
-                roles: roles
-                    .iter()
-                    .map(|role| role_row(role, &me, assign, update, delete))
-                    .collect(),
+                roles: role_rows(&roles, &me),
                 grantable,
                 can_create: create,
                 can_reorder: update,
                 can_reset_defaults: update,
-                op: state.w5b_op(&view),
+                can_read: me.has("READ_ROLE"),
+                op: state.w5a_op(&view),
                 community_id,
             }
         })
@@ -227,40 +339,46 @@ impl Core {
             .collect()
     }
 
-    /// Runs a change of the Roles view: busy while it runs, its error kept until the next one.
-    async fn roles_change<T>(
-        &self,
-        community_id: &str,
-        what: &str,
-        run: impl AsyncFnOnce(&crate::client::Services) -> Result<T, crate::backend::BackendError>,
-    ) -> Result<T, CoreError> {
-        let view = ViewKey::Roles {
-            community_id: community_id.to_owned(),
-        };
-        self.change(
-            view,
-            what,
-            run,
-            &[
-                shared::scoped(keys::ROLES, community_id),
-                shared::scoped(keys::MY_ROLES, community_id),
-                shared::scoped(keys::USER_ROLES, community_id),
-                shared::scoped(keys::ROLE_USERS, community_id),
-            ],
+    fn roles_op(community_id: &str, kind: AdminActionKind, target: Option<String>) -> OpKey {
+        OpKey::new(
+            ViewKey::Roles {
+                community_id: community_id.to_owned(),
+            },
+            kind,
+            target,
         )
-        .await
     }
 
-    /// A change shown on `view`, and the queries to read again after it.
-    pub(crate) async fn change<T>(
+    fn roles_refresh(community_id: &str) -> Vec<crate::cache::QueryKey> {
+        vec![
+            shared::scoped(keys::ROLES, community_id),
+            shared::scoped(keys::MY_ROLES, community_id),
+            shared::scoped(keys::USER_ROLES, community_id),
+            shared::scoped(keys::ROLE_USERS, community_id),
+        ]
+    }
+
+    /// A change shown on each of `ops` (its own action there: busy, then its error), the queries
+    /// to read again after it. `checked` refuses it before anything is sent.
+    pub(crate) async fn w5b_change<T>(
         &self,
-        view: ViewKey,
+        ops: &[OpKey],
         what: &str,
+        checked: Result<(), CoreError>,
         run: impl AsyncFnOnce(&crate::client::Services) -> Result<T, crate::backend::BackendError>,
         refresh: &[crate::cache::QueryKey],
     ) -> Result<T, CoreError> {
+        if let Err(error) = checked {
+            self.write(|state, _| {
+                for op in ops {
+                    state.w5a_op_refused(op, &error);
+                }
+            });
+            return Err(error);
+        }
         let (services, epoch) = self.begin(what)?;
-        self.write(|state, _| state.w5b_set_op(view.clone(), true, None));
+        let changes: Vec<u64> =
+            self.write(|state, _| ops.iter().map(|op| state.w5a_op_begin(op)).collect());
         let result = run(&services).await;
         self.write(|state, _| {
             if state.session_epoch != epoch {
@@ -268,7 +386,9 @@ impl Core {
             }
             // The server's own message, as a UI shows it.
             let error = result.as_ref().err().map(|error| error.view());
-            state.w5b_set_op(view.clone(), false, error);
+            for (op, change) in ops.iter().zip(&changes) {
+                state.w5a_op_end(op, *change, error.clone());
+            }
             for key in refresh {
                 state.invalidate(key);
             }
@@ -276,59 +396,115 @@ impl Core {
         result.map_err(|error| self.backend_failed(error))
     }
 
-    /// Makes a role (placed by the server just below this user's own); returns its id.
+    /// Makes a role (placed by the server just below this user's own); returns its id. The name
+    /// is trimmed and 1 to 50 characters, with at least one action, or nothing is sent.
     pub async fn create_role(
         &self,
         community_id: String,
         draft: RoleDraft,
     ) -> Result<String, CoreError> {
-        let body = wire::CreateRoleDto {
-            actions: draft.actions.iter().map(|name| wire_action(name)).collect(),
-            name: draft
-                .name
-                .trim()
-                .to_owned()
-                .try_into()
-                .map_err(|_| CoreError::Failed {
+        let op = Self::roles_op(&community_id, AdminActionKind::CreateRole, None);
+        let body = role_name(&draft.name).and_then(|name| {
+            Ok(wire::CreateRoleDto {
+                actions: role_actions(&draft.actions)?,
+                name: name.parse().map_err(|_| CoreError::Failed {
                     message: "A role needs a name of 1 to 50 characters".into(),
                 })?,
-            position: None,
+                position: None,
+            })
+        });
+        let (checked, body) = match body {
+            Ok(body) => (Ok(()), Some(body)),
+            Err(error) => (Err(error), None),
         };
         let id = community_id.clone();
-        self.roles_change(&community_id, "creating a role", async move |services| {
-            services
-                .backend
-                .roles_controller_create_community_role(id, body)
-                .await
-        })
+        self.w5b_change(
+            &[op],
+            "creating a role",
+            checked,
+            async move |services| {
+                services
+                    .backend
+                    .roles_controller_create_community_role(id, body.expect("checked"))
+                    .await
+            },
+            &Self::roles_refresh(&community_id),
+        )
         .await
         .map(|role| role.id)
     }
 
-    /// Renames a role (not a default one) and sets its actions: `draft.actions` replaces them all.
+    /// Changes what `patch` names: an unchanged field isn't sent, and a default role's name never
+    /// is (the server refuses renaming one). `actions` replaces the whole list, actions this build
+    /// doesn't know included.
     pub async fn update_role(
         &self,
         community_id: String,
         role_id: String,
-        draft: RoleDraft,
+        patch: RolePatch,
     ) -> Result<(), CoreError> {
-        let body =
-            wire::UpdateRoleDto {
-                actions: draft.actions.iter().map(|name| wire_action(name)).collect(),
-                name: Some(draft.name.trim().to_owned().try_into().map_err(|_| {
-                    CoreError::Failed {
-                        message: "A role needs a name of 1 to 50 characters".into(),
+        let op = Self::roles_op(
+            &community_id,
+            AdminActionKind::UpdateRole,
+            Some(role_id.clone()),
+        );
+        let current = self.write(|state, _| {
+            state
+                .w5b_community_roles(&community_id)
+                .and_then(|roles| roles.into_iter().find(|role| role.id == role_id))
+        });
+        let body = (|| -> Result<wire::UpdateRoleDto, CoreError> {
+            let name = match &patch.name {
+                Some(name) => {
+                    let name = role_name(name)?;
+                    let unchanged = current.as_ref().is_some_and(|role| role.name == name);
+                    let default = current.as_ref().is_some_and(|role| role.is_default);
+                    if unchanged || default {
+                        None
+                    } else {
+                        Some(name.parse().map_err(|_| CoreError::Failed {
+                            message: "A role needs a name of 1 to 50 characters".into(),
+                        })?)
                     }
-                })?),
-                position: None,
+                }
+                None => None,
             };
+            let actions = match &patch.actions {
+                Some(actions) => {
+                    let unchanged = current.as_ref().is_some_and(|role| {
+                        action_names(&role.actions).collect::<Vec<_>>() == *actions
+                    });
+                    if unchanged {
+                        Vec::new()
+                    } else {
+                        role_actions(actions)?
+                    }
+                }
+                None => Vec::new(),
+            };
+            Ok(wire::UpdateRoleDto {
+                actions,
+                name,
+                position: None,
+            })
+        })();
+        let (checked, body) = match body {
+            Ok(body) => (Ok(()), Some(body)),
+            Err(error) => (Err(error), None),
+        };
         let id = community_id.clone();
-        self.roles_change(&community_id, "updating a role", async move |services| {
-            services
-                .backend
-                .roles_controller_update_role(id, role_id, body)
-                .await
-        })
+        self.w5b_change(
+            &[op],
+            "updating a role",
+            checked,
+            async move |services| {
+                services
+                    .backend
+                    .roles_controller_update_role(id, role_id, body.expect("checked"))
+                    .await
+            },
+            &Self::roles_refresh(&community_id),
+        )
         .await
         .map(|_| ())
     }
@@ -338,13 +514,24 @@ impl Core {
         community_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
+        let op = Self::roles_op(
+            &community_id,
+            AdminActionKind::DeleteRole,
+            Some(role_id.clone()),
+        );
         let id = community_id.clone();
-        self.roles_change(&community_id, "deleting a role", async move |services| {
-            services
-                .backend
-                .roles_controller_delete_role(id, role_id)
-                .await
-        })
+        self.w5b_change(
+            &[op],
+            "deleting a role",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .roles_controller_delete_role(id, role_id)
+                    .await
+            },
+            &Self::roles_refresh(&community_id),
+        )
         .await
     }
 
@@ -355,28 +542,38 @@ impl Core {
         community_id: String,
         role_ids: Vec<String>,
     ) -> Result<(), CoreError> {
+        let op = Self::roles_op(&community_id, AdminActionKind::ReorderRoles, None);
         let id = community_id.clone();
-        self.roles_change(&community_id, "reordering roles", async move |services| {
-            services
-                .backend
-                .roles_controller_reorder_roles(id, wire::ReorderRolesDto { role_ids })
-                .await
-        })
+        self.w5b_change(
+            &[op],
+            "reordering roles",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .roles_controller_reorder_roles(id, wire::ReorderRolesDto { role_ids })
+                    .await
+            },
+            &Self::roles_refresh(&community_id),
+        )
         .await
         .map(|_| ())
     }
 
     pub async fn reset_default_roles(&self, community_id: String) -> Result<(), CoreError> {
+        let op = Self::roles_op(&community_id, AdminActionKind::ResetDefaults, None);
         let id = community_id.clone();
-        self.roles_change(
-            &community_id,
+        self.w5b_change(
+            &[op],
             "resetting the default roles",
+            Ok(()),
             async move |services| {
                 services
                     .backend
                     .roles_controller_reset_default_community_roles(id)
                     .await
             },
+            &Self::roles_refresh(&community_id),
         )
         .await
         .map(|_| ())
@@ -431,11 +628,18 @@ impl Core {
             } else {
                 key2(keys::USER_ROLES, &community_id, &user_id)
             };
-            let may_change = me.has("UPDATE_MEMBER")
-                && (me.owner
-                    || me.top
-                    || user_id == me_id
-                    || (me.best != i64::MAX && me.best < them.best));
+            let outranks = me.owner
+                || me.top
+                || user_id == me_id
+                || (me.best != i64::MAX && me.best < them.best);
+            let not_allowed = if !me.has("UPDATE_MEMBER") {
+                Some(NotAllowed::Missing)
+            } else if !outranks {
+                Some(NotAllowed::Rank)
+            } else {
+                None
+            };
+            let may_change = not_allowed.is_none();
             let changeable = if may_change {
                 roles
                     .iter()
@@ -457,7 +661,8 @@ impl Core {
                 state: state.load_of(&key),
                 held: them.role_ids.iter().cloned().collect(),
                 changeable,
-                op: state.w5b_op(&view),
+                not_allowed,
+                op: state.w5a_op(&view),
                 user_id,
             }
         })
@@ -467,16 +672,23 @@ impl Core {
         &self,
         community_id: String,
         user_id: String,
+        op: (AdminActionKind, String),
         what: &str,
+        checked: Result<(), CoreError>,
         run: impl AsyncFnOnce(&crate::client::Services) -> Result<(), crate::backend::BackendError>,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::MemberRoles {
-            community_id: community_id.clone(),
-            user_id: user_id.clone(),
-        };
-        self.change(
-            view,
+        let op = OpKey::new(
+            ViewKey::MemberRoles {
+                community_id: community_id.clone(),
+                user_id: user_id.clone(),
+            },
+            op.0,
+            Some(op.1),
+        );
+        self.w5b_change(
+            &[op],
             what,
+            checked,
             run,
             &[
                 key2(keys::USER_ROLES, &community_id, &user_id),
@@ -494,19 +706,27 @@ impl Core {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        let body = wire::AssignRoleDto {
-            role_id: uuid(&role_id, "The role")?,
-            user_id: uuid(&user_id, "The member")?,
+        let body = uuid(&role_id, "The role").and_then(|role| {
+            Ok(wire::AssignRoleDto {
+                role_id: role,
+                user_id: uuid(&user_id, "The member")?,
+            })
+        });
+        let (checked, body) = match body {
+            Ok(body) => (Ok(()), Some(body)),
+            Err(error) => (Err(error), None),
         };
         let id = community_id.clone();
         self.member_roles_change(
             community_id,
             user_id,
+            (AdminActionKind::AssignRole, role_id),
             "assigning a role",
+            checked,
             async move |services| {
                 services
                     .backend
-                    .roles_controller_assign_role_to_user(id, body)
+                    .roles_controller_assign_role_to_user(id, body.expect("checked"))
                     .await
             },
         )
@@ -519,28 +739,31 @@ impl Core {
         user_id: String,
         role_id: String,
     ) -> Result<(), CoreError> {
-        let (id, user) = (community_id.clone(), user_id.clone());
+        let (id, user, role) = (community_id.clone(), user_id.clone(), role_id.clone());
         self.member_roles_change(
             community_id,
             user_id,
+            (AdminActionKind::UnassignRole, role_id),
             "removing a role",
+            Ok(()),
             async move |services| {
                 services
                     .backend
-                    .roles_controller_remove_role_from_user(id, user, role_id)
+                    .roles_controller_remove_role_from_user(id, user, role)
                     .await
             },
         )
         .await
     }
 
-    /// A channel's overrides (`ViewKey::ChannelOverwrites`), roles named from the community's.
+    /// A channel's overrides (`ViewKey::ChannelOverwrites`), roles named from the community's,
+    /// with the preset they are and what this user may apply.
     pub fn channel_overwrites(&self, channel_id: String) -> ChannelOverwritesView {
         self.write(|state, _| {
             let key = shared::scoped(keys::OVERWRITES, &channel_id);
             let community_id = state.community_of_channel(&channel_id);
             let me_id = state.me_id().to_owned();
-            let (editable, roles) = match &community_id {
+            let (me, roles) = match &community_id {
                 Some(community_id) => {
                     state.w5b_watch(
                         community_id,
@@ -549,48 +772,148 @@ impl Core {
                         },
                     );
                     let me = state.w5b_standing(community_id, &me_id);
-                    (
-                        me.has("MANAGE_CHANNEL_PERMISSIONS"),
-                        state.w5b_community_roles(community_id).unwrap_or_default(),
-                    )
+                    let roles = state.w5b_community_roles(community_id).unwrap_or_default();
+                    (me, roles)
                 }
-                None => (false, Vec::new()),
+                None => (Standing::default(), Vec::new()),
             };
             state.ensure_query(key.clone());
-            let (preset, overwrites) = match state.w5b_value(&key) {
-                Some(W5bValue::Overwrites(found)) => (
-                    super::communities::channel_preset(&found.preset),
-                    found
-                        .overwrites
-                        .iter()
-                        .map(|row| OverwriteRow {
-                            target: match (&row.target_type, &row.role_id) {
-                                (WireTarget::Role, Some(role_id)) => OverwriteTarget::Role {
-                                    role_id: role_id.clone(),
-                                    name: roles
-                                        .iter()
-                                        .find(|role| role.id == *role_id)
-                                        .map_or_else(|| role_id.clone(), |role| role.name.clone()),
-                                },
-                                _ => OverwriteTarget::Everyone,
-                            },
-                            allow: action_names(&row.allow).collect(),
-                            deny: action_names(&row.deny).collect(),
-                        })
-                        .collect(),
-                ),
-                _ => (ChannelPreset::Normal, Vec::new()),
+            let stored: Vec<wire::ChannelOverwriteDto> = match state.w5b_value(&key) {
+                Some(W5bValue::Overwrites(found)) => found.overwrites.clone(),
+                _ => Vec::new(),
             };
+            let preset = match state.w5b_value(&key) {
+                Some(W5bValue::Overwrites(found)) => {
+                    super::communities::channel_preset(&found.preset)
+                }
+                _ => ChannelPreset::Normal,
+            };
+            // Per-member rows (data model only) and a role row without a role aren't editable here:
+            // they make the set custom.
+            let odd = stored.iter().any(|row| match row.target_type {
+                WireTarget::Everyone => false,
+                WireTarget::Role => row.role_id.is_none(),
+                _ => true,
+            });
+            let overwrites: Vec<OverwriteRow> = stored
+                .iter()
+                .filter(|row| {
+                    matches!(row.target_type, WireTarget::Everyone)
+                        || (matches!(row.target_type, WireTarget::Role) && row.role_id.is_some())
+                })
+                .map(|row| {
+                    let known = row
+                        .role_id
+                        .as_ref()
+                        .and_then(|id| roles.iter().find(|role| role.id == *id));
+                    OverwriteRow {
+                        target: match (&row.target_type, &row.role_id) {
+                            (WireTarget::Role, Some(role_id)) => OverwriteTarget::Role {
+                                role_id: role_id.clone(),
+                                name: known
+                                    .map_or_else(|| role_id.clone(), |role| role.name.clone()),
+                            },
+                            _ => OverwriteTarget::Everyone,
+                        },
+                        allow: action_names(&row.allow).collect(),
+                        deny: action_names(&row.deny).collect(),
+                        role_missing: matches!(row.target_type, WireTarget::Role)
+                            && known.is_none(),
+                    }
+                })
+                .collect();
+            let below = |role: &wire::RoleDto| me.owner || role.position > me.best;
+            let preset_access = [
+                ChannelPreset::Normal,
+                ChannelPreset::ReadOnly,
+                ChannelPreset::Announcement,
+            ]
+            .into_iter()
+            .map(|preset| PresetAccess {
+                preset,
+                missing: if me.owner {
+                    Vec::new()
+                } else {
+                    presets::denies(preset, false)
+                        .into_iter()
+                        .filter(|action| !me.actions.contains(*action))
+                        .map(str::to_owned)
+                        .collect()
+                },
+            })
+            .collect();
             ChannelOverwritesView {
                 state: state.load_of(&key),
-                op: state.w5b_op(&ViewKey::ChannelOverwrites {
+                op: state.w5a_op(&ViewKey::ChannelOverwrites {
                     channel_id: channel_id.clone(),
                 }),
+                detected: if odd {
+                    DetectedPreset {
+                        preset: ChannelPreset::Custom,
+                        post_role_ids: Vec::new(),
+                        members_can_attach: true,
+                    }
+                } else {
+                    presets::detect(&overwrites)
+                },
+                default_post_role_ids: roles
+                    .iter()
+                    .filter(|role| {
+                        below(role)
+                            && role
+                                .actions
+                                .iter()
+                                .any(|action| action.as_str() == "MANAGE_CHANNEL_PERMISSIONS")
+                    })
+                    .map(|role| role.id.clone())
+                    .collect(),
+                roles: roles
+                    .iter()
+                    .map(|role| OverwriteRoleOption {
+                        id: role.id.clone(),
+                        name: role.name.clone(),
+                        position: role.position as i32,
+                        below_me: below(role),
+                    })
+                    .collect(),
+                preset_access,
+                editable: me.has("MANAGE_CHANNEL_PERMISSIONS"),
                 channel_id,
                 preset,
                 overwrites,
-                editable,
             }
+        })
+    }
+
+    /// The overrides a preset is for this channel (`buildPresetOverwrites`): the community's roles
+    /// and this user's rank decide the automatic allows. Only Normal, ReadOnly and Announcement
+    /// build; any other preset gives no overrides.
+    pub fn build_preset(
+        &self,
+        channel_id: String,
+        preset: ChannelPreset,
+        post_role_ids: Vec<String>,
+        members_can_attach: bool,
+    ) -> BuiltPreset {
+        self.write(|state, _| {
+            let Some(community_id) = state.community_of_channel(&channel_id) else {
+                return presets::build(preset, &post_role_ids, members_can_attach, &[], None);
+            };
+            let me_id = state.me_id().to_owned();
+            let me = state.w5b_standing(&community_id, &me_id);
+            let roles: Vec<presets::Role> = state
+                .w5b_community_roles(&community_id)
+                .unwrap_or_default()
+                .iter()
+                .map(|role| presets::Role {
+                    id: role.id.clone(),
+                    name: role.name.clone(),
+                    position: role.position,
+                    actions: action_names(&role.actions).collect(),
+                })
+                .collect();
+            let actor = if me.owner { None } else { Some(me.best) };
+            presets::build(preset, &post_role_ids, members_can_attach, &roles, actor)
         })
     }
 
@@ -601,13 +924,25 @@ impl Core {
         channel_id: String,
         draft: OverwritesDraft,
     ) -> Result<(), CoreError> {
+        let op = OpKey::new(
+            ViewKey::ChannelOverwrites {
+                channel_id: channel_id.clone(),
+            },
+            AdminActionKind::ReplaceOverwrites,
+            Some(channel_id.clone()),
+        );
         let mut rows = Vec::new();
+        let mut checked = Ok(());
         for row in &draft.overwrites {
             let (target_type, role_id) = match &row.target {
                 OverwriteTarget::Everyone => (WireTarget::Everyone, None),
-                OverwriteTarget::Role { role_id, .. } => {
-                    (WireTarget::Role, Some(uuid(role_id, "The role")?))
-                }
+                OverwriteTarget::Role { role_id, .. } => match uuid(role_id, "The role") {
+                    Ok(id) => (WireTarget::Role, Some(id)),
+                    Err(error) => {
+                        checked = Err(error);
+                        break;
+                    }
+                },
             };
             rows.push(wire::ReplaceOverwriteInputDto {
                 allow: row.allow.iter().map(|name| wire_action(name)).collect(),
@@ -620,18 +955,16 @@ impl Core {
             overwrites: rows,
             preset: wire_preset(draft.preset),
         };
-        let view = ViewKey::ChannelOverwrites {
-            channel_id: channel_id.clone(),
-        };
         let id = channel_id.clone();
         let community = self.read(|state| state.community_of_channel(&channel_id));
         let mut refresh = vec![shared::scoped(keys::OVERWRITES, &channel_id)];
         if let Some(community_id) = community {
             refresh.push(shared::scoped(shared::CAPABILITIES, &community_id));
         }
-        self.change(
-            view,
+        self.w5b_change(
+            &[op],
             "changing channel permissions",
+            checked,
             async move |services| {
                 services
                     .backend
@@ -642,5 +975,215 @@ impl Core {
         )
         .await
         .map(|_| ())
+    }
+}
+
+/// `shared/src/permissions/channel-presets.ts`, ported exactly: the overrides each preset is, and
+/// the reverse. Positions as the backend has them: lower ranks higher.
+pub mod presets {
+    use crate::model::{BuiltPreset, ChannelPreset, DetectedPreset, OverwriteRow, OverwriteTarget};
+    use std::collections::{BTreeSet, HashMap};
+
+    /// A community role, as `PresetRole`.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct Role {
+        pub id: String,
+        pub name: String,
+        pub position: i64,
+        pub actions: Vec<String>,
+    }
+
+    /// `PRESET_DENIES`: what a preset takes from @everyone (and gives back to its post roles).
+    pub fn full_denies(preset: ChannelPreset) -> &'static [&'static str] {
+        match preset {
+            ChannelPreset::ReadOnly => &["CREATE_MESSAGE", "ATTACH_FILES", "CREATE_REACTION"],
+            ChannelPreset::Announcement => &["CREATE_MESSAGE", "ATTACH_FILES"],
+            _ => &[],
+        }
+    }
+
+    /// `presetDenies`.
+    pub fn denies(preset: ChannelPreset, members_can_attach: bool) -> Vec<&'static str> {
+        match preset {
+            ChannelPreset::Normal if !members_can_attach => vec!["ATTACH_FILES"],
+            ChannelPreset::ReadOnly | ChannelPreset::Announcement => full_denies(preset).to_vec(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn row(target: OverwriteTarget, allow: Vec<String>, deny: Vec<String>) -> OverwriteRow {
+        OverwriteRow {
+            target,
+            allow,
+            deny,
+            role_missing: false,
+        }
+    }
+
+    /// `buildPresetOverwrites`. `actor_best`: the actor's best position, `None` for the instance
+    /// owner (no automatic allows).
+    pub fn build(
+        preset: ChannelPreset,
+        post_role_ids: &[String],
+        members_can_attach: bool,
+        roles: &[Role],
+        actor_best: Option<i64>,
+    ) -> BuiltPreset {
+        let deny = denies(preset, members_can_attach);
+        if deny.is_empty() {
+            return BuiltPreset {
+                preset,
+                overwrites: Vec::new(),
+                auto_allowed_role_ids: Vec::new(),
+            };
+        }
+        let mut allows: Vec<(String, BTreeSet<&'static str>)> = Vec::new();
+        let add = |allows: &mut Vec<(String, BTreeSet<&'static str>)>,
+                   id: &str,
+                   actions: &[&'static str]| {
+            match allows.iter_mut().find(|(known, _)| known == id) {
+                Some((_, set)) => set.extend(actions.iter().copied()),
+                None => allows.push((id.to_owned(), actions.iter().copied().collect())),
+            }
+        };
+        if preset != ChannelPreset::Normal {
+            for id in post_role_ids {
+                add(&mut allows, id, &deny);
+            }
+        }
+        let mut auto_allowed_role_ids = Vec::new();
+        if let Some(best) = actor_best {
+            for role in roles {
+                if role.position > best {
+                    continue;
+                }
+                let kept: Vec<&'static str> = deny
+                    .iter()
+                    .copied()
+                    .filter(|action| role.actions.iter().any(|held| held == action))
+                    .collect();
+                if kept.is_empty() {
+                    continue;
+                }
+                let already = allows.iter().find(|(id, _)| *id == role.id);
+                if already.is_none_or(|(_, set)| kept.iter().any(|action| !set.contains(action))) {
+                    auto_allowed_role_ids.push(role.id.clone());
+                }
+                add(&mut allows, &role.id, &kept);
+            }
+        }
+        let rank: HashMap<&str, i64> = roles
+            .iter()
+            .map(|role| (role.id.as_str(), role.position))
+            .collect();
+        let mut ids: Vec<&(String, BTreeSet<&'static str>)> = allows.iter().collect();
+        ids.sort_by(|a, b| {
+            let (ra, rb) = (
+                rank.get(a.0.as_str()).copied().unwrap_or(0),
+                rank.get(b.0.as_str()).copied().unwrap_or(0),
+            );
+            ra.cmp(&rb).then_with(|| a.0.cmp(&b.0))
+        });
+        let mut overwrites = vec![row(
+            OverwriteTarget::Everyone,
+            Vec::new(),
+            deny.iter().map(|a| (*a).to_owned()).collect(),
+        )];
+        for (id, set) in ids {
+            let name = roles
+                .iter()
+                .find(|role| role.id == *id)
+                .map_or_else(String::new, |role| role.name.clone());
+            overwrites.push(row(
+                OverwriteTarget::Role {
+                    role_id: id.clone(),
+                    name,
+                },
+                deny.iter()
+                    .filter(|action| set.contains(*action))
+                    .map(|a| (*a).to_owned())
+                    .collect(),
+                Vec::new(),
+            ));
+        }
+        BuiltPreset {
+            preset,
+            overwrites,
+            auto_allowed_role_ids,
+        }
+    }
+
+    fn same_set(a: &[String], b: &[&str]) -> bool {
+        a.len() == b.len() && a.iter().all(|x| b.contains(&x.as_str()))
+    }
+
+    /// `detectPreset`. Role allows that are a strict subset of the preset's denies are the
+    /// automatic allows, not post roles.
+    pub fn detect(overwrites: &[OverwriteRow]) -> DetectedPreset {
+        let custom = DetectedPreset {
+            preset: ChannelPreset::Custom,
+            post_role_ids: Vec::new(),
+            members_can_attach: true,
+        };
+        if overwrites.is_empty() {
+            return DetectedPreset {
+                preset: ChannelPreset::Normal,
+                post_role_ids: Vec::new(),
+                members_can_attach: true,
+            };
+        }
+        let everyone: Vec<&OverwriteRow> = overwrites
+            .iter()
+            .filter(|row| matches!(row.target, OverwriteTarget::Everyone))
+            .collect();
+        let roles: Vec<(&String, &OverwriteRow)> = overwrites
+            .iter()
+            .filter_map(|row| match &row.target {
+                OverwriteTarget::Role { role_id, .. } => Some((role_id, row)),
+                OverwriteTarget::Everyone => None,
+            })
+            .collect();
+        if everyone.len() != 1 || !everyone[0].allow.is_empty() {
+            return custom;
+        }
+        if roles.iter().any(|(_, row)| !row.deny.is_empty()) {
+            return custom;
+        }
+        let deny = &everyone[0].deny;
+        if same_set(deny, &["ATTACH_FILES"]) {
+            return if roles
+                .iter()
+                .all(|(_, row)| row.allow.iter().all(|a| a == "ATTACH_FILES"))
+            {
+                DetectedPreset {
+                    preset: ChannelPreset::Normal,
+                    post_role_ids: Vec::new(),
+                    members_can_attach: false,
+                }
+            } else {
+                custom
+            };
+        }
+        for preset in [ChannelPreset::ReadOnly, ChannelPreset::Announcement] {
+            let full = full_denies(preset);
+            if !same_set(deny, full) {
+                continue;
+            }
+            if !roles.iter().all(|(_, row)| {
+                !row.allow.is_empty() && row.allow.iter().all(|a| full.contains(&a.as_str()))
+            }) {
+                return custom;
+            }
+            return DetectedPreset {
+                preset,
+                post_role_ids: roles
+                    .iter()
+                    .filter(|(_, row)| same_set(&row.allow, full))
+                    .map(|(id, _)| (*id).clone())
+                    .collect(),
+                members_can_attach: false,
+            };
+        }
+        custom
     }
 }

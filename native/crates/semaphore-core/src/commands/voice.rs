@@ -665,18 +665,35 @@ impl Core {
         user_id: String,
         reason: Option<String>,
     ) -> Result<(), CoreError> {
-        let services = self
-            .services()
-            .ok_or_else(|| unavailable("kicking a member"))?;
         let reason = reason
             .map(|reason| reason.trim().to_owned())
             .filter(|reason| !reason.is_empty());
-        services
-            .backend
-            .moderation_controller_kick_user(community_id, user_id, wire::KickUserDto { reason })
-            .await
-            .map_err(|error| self.backend_failed(error))?;
-        Ok(())
+        // W5: shown on the member's moderation menu (`AdminActionKind::Kick`), and the lists and
+        // log read again after.
+        let op = Core::target_op(&community_id, &user_id, crate::model::AdminActionKind::Kick);
+        let refresh = vec![
+            crate::cache::keys::scoped(crate::cache::keys::MEMBERS, &community_id),
+            crate::cache::keys::scoped(super::moderation::keys::LOGS, &community_id),
+            super::moderation::key2(super::moderation::keys::USER_ROLES, &community_id, &user_id),
+        ];
+        self.w5b_change(
+            &[op],
+            "kicking a member",
+            Ok(()),
+            async move |services| {
+                services
+                    .backend
+                    .moderation_controller_kick_user(
+                        community_id,
+                        user_id,
+                        wire::KickUserDto { reason },
+                    )
+                    .await
+            },
+            &refresh,
+        )
+        .await
+        .map(|_| ())
     }
 
     /// W4: what I may do to others in this voice channel, from my roles for it (read when missing;
