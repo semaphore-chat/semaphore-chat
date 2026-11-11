@@ -248,7 +248,7 @@ above the unplayed tones" is a decision for the coordinator.
   functions that jump through pointers filled only when libwebrtc's own screen capturer starts.
   They come ahead of `-lpipewire-0.3` on the link line, so the first `pw_init` from Rust jumped to
   address 0. Any Rust PipeWire code in the app hits this, Wayland screen capture included. The fix
-  is in `linux.rs`: fill the pointers through libwebrtc's own `modules_portal::InitializePipewire`
+  is `semaphore_media_livekit::pipewire_stubs::ensure` (first in `semaphore-sysaudio`'s `linux.rs`): fill the pointers through libwebrtc's own `modules_portal::InitializePipewire`
   from the loaded libpipewire. A libwebrtc that renames it fails the link, loudly.
 - **`pipewire.sec.pid` can't identify an app.** For PulseAudio clients it is pipewire-pulse's PID.
   `application.process.id`, which both libpipewire and the Rust PulseAudio client set from

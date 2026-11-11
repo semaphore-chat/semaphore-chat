@@ -122,46 +122,11 @@ impl Drop for Running {
     }
 }
 
-/// libwebrtc (inside webrtc-sys) links its own `pw_*` functions: stubs that jump through pointers
-/// it fills only when its PipeWire screen capturer starts, and null until then. Our binary gets
-/// those stubs, not libpipewire's functions, because webrtc-sys's archive is on the link line
-/// ahead of `-lpipewire-0.3` (found by T11: `pw_init` jumped to address 0). So we fill the
-/// pointers ourselves, from the libpipewire that is already loaded, through libwebrtc's own
-/// initializer. If libwebrtc renames it, the link fails, which is loud and early.
+/// libwebrtc's `pw_*` stubs shadow libpipewire's in a binary that links both: see
+/// `semaphore_media_livekit::pipewire_stubs`.
 #[cfg(feature = "media")]
 mod webrtc_stubs {
-    use std::ffi::c_void;
-
-    unsafe extern "C" {
-        /// `void modules_portal::InitializePipewire(void* module)`, from webrtc's generated stubs
-        /// (Chromium's generate_stubs.py: it dlsyms every stubbed function from `module`).
-        #[link_name = "_ZN14modules_portal18InitializePipewireEPv"]
-        fn initialize_pipewire(module: *mut c_void);
-        /// `bool modules_portal::IsPipewireInitialized()`.
-        #[link_name = "_ZN14modules_portal21IsPipewireInitializedEv"]
-        fn is_pipewire_initialized() -> bool;
-    }
-
-    pub(super) fn ensure() -> Result<(), String> {
-        static DONE: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
-        DONE.get_or_init(|| unsafe {
-            if is_pipewire_initialized() {
-                return Ok(());
-            }
-            let handle = libc::dlopen(c"libpipewire-0.3.so.0".as_ptr(), libc::RTLD_NOW);
-            if handle.is_null() {
-                return Err("libpipewire-0.3.so.0 isn't installed".into());
-            }
-            // The handle stays open for the life of the process, as libpipewire does anyway.
-            initialize_pipewire(handle);
-            if is_pipewire_initialized() {
-                Ok(())
-            } else {
-                Err("libpipewire lacks a function libwebrtc's stubs need".into())
-            }
-        })
-        .clone()
-    }
+    pub(super) use semaphore_media_livekit::pipewire_stubs::ensure;
 }
 
 /// Without the media crate there's no libwebrtc in the binary, so no stubs to fill.

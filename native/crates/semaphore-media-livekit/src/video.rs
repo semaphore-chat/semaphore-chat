@@ -1,5 +1,7 @@
 //! Receiving video: which simulcast layer a tile asks for, and getting decoded frames to the sink.
 
+pub mod publish;
+
 use crate::{VideoFrameRef, VideoSink};
 use futures_util::StreamExt;
 use livekit::track::{RemoteVideoTrack, VideoQuality};

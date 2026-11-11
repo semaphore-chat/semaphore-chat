@@ -1,0 +1,11 @@
+[package]
+name = "rig-fake-camera"
+description = "A PipeWire camera node with fixed YUY2 modes and a known picture, for headless capture tests."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# trigger_process (a driving stream) is 0.3.34 API.
+pipewire = { version = "0.10", features = ["v0_3_34"] }
