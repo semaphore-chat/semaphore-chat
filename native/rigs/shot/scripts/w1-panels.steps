@@ -114,3 +114,35 @@ shot w1-thread-failed-desktop
 story thread-failed 390 844 light-blue-balanced
 wait idle
 shot w1-thread-failed-phone
+
+# The emoji picker: a popover on a desktop, a bottom sheet on a phone.
+story emoji-default 640 520 dark-blue-balanced
+wait idle
+shot w1-emoji-default-desktop
+story emoji-default 390 844 light-blue-balanced
+wait idle
+shot w1-emoji-default-phone
+story emoji-no-custom 640 520 dark-blue-balanced
+wait idle
+shot w1-emoji-no-custom-desktop
+story emoji-no-custom 390 844 light-blue-balanced
+wait idle
+shot w1-emoji-no-custom-phone
+story emoji-search 640 520 dark-blue-balanced
+wait idle
+shot w1-emoji-search-desktop
+story emoji-search 390 844 light-blue-balanced
+wait idle
+shot w1-emoji-search-phone
+story emoji-no-matches 640 520 dark-blue-balanced
+wait idle
+shot w1-emoji-no-matches-desktop
+story emoji-no-matches 390 844 light-blue-balanced
+wait idle
+shot w1-emoji-no-matches-phone
+story emoji-long-custom 640 520 dark-blue-balanced
+wait idle
+shot w1-emoji-long-custom-desktop
+story emoji-long-custom 390 844 light-blue-balanced
+wait idle
+shot w1-emoji-long-custom-phone
