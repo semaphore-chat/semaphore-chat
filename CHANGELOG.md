@@ -37,6 +37,7 @@ Check these before upgrading. Each one is covered under **Upgrade notes** below.
 - One message shape on REST and the socket, with ISO timestamps and `null` for missing fields. Thread replies gain `replyTo` and `webhook` like other messages. Reaction endpoints return only the reactions. (#627)
 - A refused send says why: the failed message shows the server's reason ("Slowmode is enabled…", "Timed out until 6:42 PM"), and a refused thread reply shows it in a notification. Your draft is kept. (#627)
 - Socket errors report their real message instead of "Internal server error". (#627)
+- The source of the native Rust desktop client now lives under `native/`. It is a work in progress and isn't part of this release; the desktop app you download is still the Electron one. (#626)
 
 ### Fixed
 
@@ -45,6 +46,7 @@ Check these before upgrading. Each one is covered under **Upgrade notes** below.
 - The thread reply REST body wasn't validated. (#627)
 - On instances served over plain HTTP, sending could get stuck. (#627)
 - Pinned videos and images now show their thumbnails in the pinned messages panel. (#627)
+- Building the frontend image from a clean checkout failed because the lockfile pinned packages newer than the repo's 3-day minimum release age. Those pins are back on the versions 0.8.0 shipped with. (#630)
 
 ### Upgrade notes
 
