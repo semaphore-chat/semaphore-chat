@@ -25,7 +25,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinHandle;
 
-pub use scenario::{ScenarioError, ScenarioSource, load_named, message_uuid};
+pub use scenario::{ScenarioError, ScenarioSource, entity_uuid, load_named, message_uuid};
 
 /// One thing the server saw, in the order it finished handling it.
 #[derive(Clone, Debug, Serialize)]

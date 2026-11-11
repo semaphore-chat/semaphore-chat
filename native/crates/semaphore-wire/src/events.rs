@@ -29,6 +29,8 @@ pub enum ServerEvent {
     CommunityUpdated(types::CommunityUpdatedPayloadDto),
     /// `deleteMessage`
     DeleteMessage(types::DeleteMessagePayloadDto),
+    /// `desktopSignIn`
+    DesktopSignIn(types::DesktopSignInPayloadDto),
     /// `dmVoiceCallStarted`
     DmVoiceCallStarted(types::DmVoiceCallStartedPayloadDto),
     /// `dmVoiceUserJoined`
@@ -129,6 +131,7 @@ impl ServerEvent {
             "communityDeleted" => decode_payload(name, payload, ServerEvent::CommunityDeleted),
             "communityUpdated" => decode_payload(name, payload, ServerEvent::CommunityUpdated),
             "deleteMessage" => decode_payload(name, payload, ServerEvent::DeleteMessage),
+            "desktopSignIn" => decode_payload(name, payload, ServerEvent::DesktopSignIn),
             "dmVoiceCallStarted" => decode_payload(name, payload, ServerEvent::DmVoiceCallStarted),
             "dmVoiceUserJoined" => decode_payload(name, payload, ServerEvent::DmVoiceUserJoined),
             "dmVoiceUserLeft" => decode_payload(name, payload, ServerEvent::DmVoiceUserLeft),

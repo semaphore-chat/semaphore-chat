@@ -78,7 +78,7 @@ click-row discard "this one goes away"
 wait core no-text "this one goes away"
 
 # 8. A message from someone else arrives live.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"live from pri\"}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-priya)\", \"text\": \"live from pri\"}"
 wait core text "live from pri"
 wait idle
 shot 08-incoming
@@ -87,7 +87,7 @@ shot 08-incoming
 server refuse_connections "{\"refuse\": true}"
 server drop_connections
 wait core connection disconnected
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-samira\", \"text\": \"missed while away\", \"broadcast\": false}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-samira)\", \"text\": \"missed while away\", \"broadcast\": false}"
 wait idle
 shot 09-live-reconnecting
 expect core no-text "missed while away"
@@ -103,7 +103,7 @@ shot 10-resynced
 os suspend
 wait core connection suspended
 server drop_connections
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-aiko\", \"text\": \"posted while asleep\", \"broadcast\": false}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-aiko)\", \"text\": \"posted while asleep\", \"broadcast\": false}"
 os resume
 wait core connection connected within 40
 wait core text "posted while asleep"
@@ -115,7 +115,7 @@ shot 11-offline
 os network-up
 wait core connection connected within 40
 # Wi-Fi to cellular, say: the socket is replaced and the new connection resyncs.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-diego\", \"text\": \"sent as the network moved\", \"broadcast\": false}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-diego)\", \"text\": \"sent as the network moved\", \"broadcast\": false}"
 os network-up
 wait core text "sent as the network moved" within 40
 expect core count "sent as the network moved" 1
@@ -186,9 +186,9 @@ wait idle
 shot 22-viewer
 press escape
 wait core viewer closed
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"look at this \", \"emoji\": {\"id\": \"emoji-party\", \"name\": \"party\"}, \"linkPreview\": {\"url\": \"https://example.invalid/article\", \"title\": \"An article with a picture\", \"description\": \"The picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/preview.png\"}}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-priya)\", \"text\": \"look at this \", \"emoji\": {\"id\": \"$ID(emoji-party)\", \"name\": \"party\"}, \"linkPreview\": {\"url\": \"https://example.invalid/article\", \"title\": \"An article with a picture\", \"description\": \"The picture is on another site.\", \"siteName\": \"Example\", \"imageUrl\": \"http://127.0.0.1:3999/__fixtures/preview.png\"}}"
 wait core text "look at this"
-wait core file-ready emoji-party within 10
+wait core file-ready $ID(emoji-party) within 10
 wait idle
 shot 23-preview-image-off
 expect core requests Fixture_image == 0

@@ -720,6 +720,8 @@ impl State {
             | ServerEvent::EgressSegmentsReady(_)
             | ServerEvent::ReplayBufferFailed(_)
             | ServerEvent::ReplayBufferStopped(_) => {}
+            // "Your account signed in on a desktop app": a notice, which W3's sessions work shows.
+            ServerEvent::DesktopSignIn(_) => {}
             // Who's listed changed. The rules hold the web's keys, and this read has its own.
             ServerEvent::MemberAddedToCommunity(_)
             | ServerEvent::UserBanned(_)

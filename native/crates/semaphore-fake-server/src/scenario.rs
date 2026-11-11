@@ -51,10 +51,11 @@ impl fmt::Display for ScenarioError {
 
 impl std::error::Error for ScenarioError {}
 
-/// The scenarios (by their `seed`) whose message ids are served as UUIDs. The real backend only
-/// issues UUIDs, and the contract types some message ids as one (a reaction's), so the scenario
-/// the app is driven against end to end gets them; the others keep the readable ids their tests
-/// name. By seed, not file name: the binary hands its scenario over as JSON.
+/// The scenarios (by their `seed`) whose message, user and community ids are served as UUIDs. The
+/// real backend only issues UUIDs, and the contract types some of them as one (a reaction's
+/// message id, a mention's user id), so the scenario the app is driven against end to end gets
+/// them; the others keep the readable ids their tests name. By seed, not file name: the binary
+/// hands its scenario over as JSON.
 const UUID_MESSAGE_IDS: &[&str] = &["showcase"];
 
 /// The UUID a readable message id (`sc-cc-pit-caption`) is served as: the same on every run and
@@ -62,6 +63,68 @@ const UUID_MESSAGE_IDS: &[&str] = &["showcase"];
 pub fn message_uuid(readable: &str) -> String {
     const NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x5e3a_9b0e_0000_4000_8000_6d65_7373_6167);
     uuid::Uuid::new_v5(&NAMESPACE, readable.as_bytes()).to_string()
+}
+
+/// The UUID a readable user, community or custom emoji id (`u-priya`, `c-couch`, `me`) is served
+/// as, in a scenario whose message ids are UUIDs: the contract types those ids as UUIDs in a
+/// message's spans, as the real backend issues them. The same on every run, so a script can name
+/// one (`$ID(u-priya)` in the slice rig).
+pub fn entity_uuid(readable: &str) -> String {
+    const NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x5e3a_9b0e_0000_4000_8000_656e_7469_7479);
+    uuid::Uuid::new_v5(&NAMESPACE, readable.as_bytes()).to_string()
+}
+
+/// Fields that hold words, never an id: a span's `text` can be "me".
+const FREE_TEXT: &[&str] = &[
+    "text",
+    "content",
+    "name",
+    "displayName",
+    "username",
+    "bio",
+    "title",
+    "description",
+];
+
+/// Every user and community id in the scenario's JSON, as a value or as a map's key, through
+/// `entity_uuid`. A walk over the JSON rather than over the decoded types, because user ids sit in
+/// a dozen places (authors, members, owners, mentions, reactions, voice presence, DMs).
+fn uuid_entity_ids(root: &mut serde_json::Value) {
+    use serde_json::Value;
+    let mut ids = BTreeSet::new();
+    if let Some(id) = root["me"]["id"].as_str() {
+        ids.insert(id.to_owned());
+    }
+    for list in ["users", "communities"] {
+        for entry in root[list].as_array().into_iter().flatten() {
+            if let Some(id) = entry["id"].as_str() {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    /// `keyed`: the object is a map by id (`membershipsByCommunity`), not a record with fields.
+    fn walk(value: &mut Value, ids: &BTreeSet<String>, keyed: bool) {
+        match value {
+            Value::String(text) if ids.contains(text.as_str()) => *text = entity_uuid(text),
+            Value::Array(items) => items.iter_mut().for_each(|item| walk(item, ids, false)),
+            Value::Object(fields) => {
+                let entries = std::mem::take(fields);
+                for (key, mut field) in entries {
+                    if !(FREE_TEXT.contains(&key.as_str()) && field.is_string()) {
+                        walk(&mut field, ids, key.contains("By"));
+                    }
+                    let key = if keyed && ids.contains(&key) {
+                        entity_uuid(&key)
+                    } else {
+                        key
+                    };
+                    fields.insert(key, field);
+                }
+            }
+            _ => {}
+        }
+    }
+    walk(root, &ids, false);
 }
 
 /// Every message id, and every reference to one, through `message_uuid`.
@@ -135,8 +198,6 @@ struct RawUnread {
 
 #[derive(Debug, Deserialize)]
 struct RawScenario {
-    #[serde(default)]
-    seed: Option<String>,
     me: UserEntity,
     #[serde(default)]
     users: Vec<UserEntity>,
@@ -188,17 +249,21 @@ pub struct Scenario {
 impl Scenario {
     pub fn load(source: &ScenarioSource) -> Result<Self, ScenarioError> {
         let json = source.load()?;
-        let raw: RawScenario = serde_json::from_str(&json).map_err(|error| {
+        let mut value: serde_json::Value = serde_json::from_str(&json)
+            .map_err(|error| ScenarioError(format!("scenario is not JSON: {error}")))?;
+        let uuid_ids = value["seed"]
+            .as_str()
+            .is_some_and(|seed| UUID_MESSAGE_IDS.contains(&seed));
+        if uuid_ids {
+            uuid_entity_ids(&mut value);
+        }
+        let raw: RawScenario = serde_json::from_value(value).map_err(|error| {
             ScenarioError(format!("scenario does not match the contract: {error}"))
         })?;
 
         let mut channel_messages = raw.messages_by_channel;
         let mut dm_messages = raw.messages_by_dm_group;
         let mut threads = raw.thread_replies_by_parent;
-        let uuid_ids = raw
-            .seed
-            .as_deref()
-            .is_some_and(|seed| UUID_MESSAGE_IDS.contains(&seed));
         if uuid_ids {
             uuid_message_ids(&mut channel_messages, &mut dm_messages, &mut threads);
         }

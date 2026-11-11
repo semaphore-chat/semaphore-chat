@@ -30,8 +30,9 @@
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! ```
 //!
-//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, and `$MSG(sc-msg-24)`
-//! the UUID the fake server serves that showcase message as (`message_uuid`).
+//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, `$MSG(sc-msg-24)`
+//! the UUID the fake server serves that showcase message as (`message_uuid`), and `$ID(u-priya)`
+//! the UUID it serves that showcase user, community or custom emoji as (`entity_uuid`).
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
@@ -359,17 +360,22 @@ fn condition(words: &[&str]) -> Result<Condition> {
 
 /// `$MSG(sc-cc-pit-caption)` is the UUID the fake server serves that showcase message as.
 fn message_ids(source: &str) -> String {
+    let source = expand(source, "$MSG(", semaphore_fake_server::message_uuid);
+    expand(&source, "$ID(", semaphore_fake_server::entity_uuid)
+}
+
+/// Every `<open>readable)` in `source`, through `map`.
+fn expand(source: &str, open: &str, map: fn(&str) -> String) -> String {
     let mut out = String::with_capacity(source.len());
     let mut rest = source;
-    while let Some(start) = rest.find("$MSG(") {
-        let Some(len) = rest[start + 5..].find(')') else {
+    while let Some(start) = rest.find(open) {
+        let from = start + open.len();
+        let Some(len) = rest[from..].find(')') else {
             break;
         };
         out.push_str(&rest[..start]);
-        out.push_str(&semaphore_fake_server::message_uuid(
-            &rest[start + 5..start + 5 + len],
-        ));
-        rest = &rest[start + 5 + len + 1..];
+        out.push_str(&map(&rest[from..from + len]));
+        rest = &rest[from + len + 1..];
     }
     out.push_str(rest);
     out

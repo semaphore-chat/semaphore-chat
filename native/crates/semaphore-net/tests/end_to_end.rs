@@ -511,7 +511,15 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
         .lines()
         .find_map(|line| line.strip_prefix("x-device-id: "))
         .expect("a device id");
-    assert_eq!(device_id.len(), 36);
+    assert!(device_id.parse::<uuid::Uuid>().is_ok(), "{device_id}");
+    assert!(
+        // The stub lowercases what it saw.
+        login_head.contains(&format!(
+            "x-device-name: {}",
+            semaphore_net::backend::DEVICE_NAME.to_lowercase()
+        )),
+        "{login_head}"
+    );
     assert!(!login_head.contains("authorization"), "{login_head}");
 
     let (profile_head, _) = &requests[1];
@@ -519,12 +527,19 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
         profile_head.contains("authorization: bearer access-1"),
         "{profile_head}"
     );
-    assert!(profile_head.contains("x-client-type: desktop-native"));
+    // The identity headers are the sign-in and refresh operations' parameters, nobody else's.
+    assert!(!profile_head.contains("x-client-type"), "{profile_head}");
+    assert!(!profile_head.contains("x-device-id"), "{profile_head}");
+    assert!(profile_head.contains("user-agent: semaphore-native/"));
 
     let (refresh_head, refresh_body) = &requests[2];
     assert!(refresh_body.contains("refresh-1"), "{refresh_body}");
     assert!(!refresh_head.contains("authorization"), "{refresh_head}");
     assert!(refresh_head.contains("x-client-type: desktop-native"));
+    assert!(
+        refresh_head.contains(&format!("x-device-id: {device_id}")),
+        "{refresh_head}"
+    );
 
     let (profile_head, _) = &requests[3];
     assert!(
@@ -542,7 +557,12 @@ async fn requests_carry_the_native_client_identity_and_the_held_tokens() {
     // The same install keeps its device id.
     let again = HttpBackend::new(secrets.clone());
     again.set_server_url(stub.url.clone());
-    let _ = again.user_controller_get_profile().await;
+    let _ = again
+        .auth_controller_login(wire::LoginRequestDto {
+            username: "me".into(),
+            password: "pw".into(),
+        })
+        .await;
     let (head, _) = stub.requests.lock().unwrap().last().unwrap().clone();
     assert!(
         head.contains(&format!("x-device-id: {device_id}")),

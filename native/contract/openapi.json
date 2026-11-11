@@ -35,7 +35,43 @@
     "/api/auth/login": {
       "post": {
         "operationId": "AuthController_login",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -118,7 +154,43 @@
     "/api/auth/desktop/token": {
       "post": {
         "operationId": "AuthController_redeemDesktopLogin",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -160,9 +232,45 @@
     "/api/auth/refresh": {
       "post": {
         "operationId": "AuthController_refresh",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "X-Client-Type",
+            "in": "header",
+            "description": "What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "web",
+                "electron",
+                "desktop-native",
+                "mobile-native"
+              ]
+            }
+          },
+          {
+            "name": "X-Device-Id",
+            "in": "header",
+            "description": "The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-Device-Name",
+            "in": "header",
+            "description": "Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 64
+            }
+          }
+        ],
         "requestBody": {
-          "required": true,
+          "required": false,
           "content": {
             "application/json": {
               "schema": {
@@ -193,6 +301,12 @@
             }
           }
         },
+        "security": [
+          {
+            "refresh_token": []
+          },
+          {}
+        ],
         "tags": [
           "Auth"
         ]
@@ -318,6 +432,12 @@
             }
           }
         },
+        "security": [
+          {
+            "refresh_token": []
+          },
+          {}
+        ],
         "tags": [
           "Auth"
         ]
@@ -1280,7 +1400,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InviteResponseDto"
+                  "$ref": "#/components/schemas/PublicInviteDto"
                 }
               }
             }
@@ -5126,6 +5246,302 @@
         ]
       }
     },
+    "/api/storage/my-usage": {
+      "get": {
+        "operationId": "StorageQuotaController_getMyStorageStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStorageStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get current user's storage stats (for user settings)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/instance": {
+      "get": {
+        "operationId": "StorageQuotaController_getInstanceStorageStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstanceStorageStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get instance-wide storage statistics (admin only)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/users": {
+      "get": {
+        "operationId": "StorageQuotaController_getUsersStorageList",
+        "parameters": [
+          {
+            "name": "skip",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "take",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "minPercentUsed",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStorageListResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get users list with storage usage (admin only, for storage management page)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/users/{userId}": {
+      "get": {
+        "operationId": "StorageQuotaController_getUserStorageStats",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStorageStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Get specific user's storage stats (admin only)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/users/{userId}/quota": {
+      "patch": {
+        "operationId": "StorageQuotaController_updateUserQuota",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserQuotaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStorageStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update user's storage quota (admin only)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/users/{userId}/recalculate": {
+      "post": {
+        "operationId": "StorageQuotaController_recalculateUserStorage",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserStorageStatsDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Recalculate user's storage usage (admin only)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
+    "/api/storage/settings": {
+      "patch": {
+        "operationId": "StorageQuotaController_updateStorageSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStorageSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessResponseDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Update instance storage settings (admin only)",
+        "tags": [
+          "StorageQuota"
+        ]
+      }
+    },
     "/api/file/{id}/signed-url": {
       "get": {
         "operationId": "FileController_getSignedUrl",
@@ -7327,6 +7743,82 @@
         ]
       }
     },
+    "/api/push/subscriptions": {
+      "get": {
+        "operationId": "PushNotificationsController_listSubscriptions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PushSubscriptionInfoDto"
+                  }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "The current user's push subscriptions, so they can see what still\nreceives their notifications.",
+        "tags": [
+          "PushNotifications"
+        ]
+      }
+    },
+    "/api/push/subscriptions/{id}": {
+      "delete": {
+        "operationId": "PushNotificationsController_revokeSubscription",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuccessMessageDto"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Revoke one of the current user's push subscriptions",
+        "tags": [
+          "PushNotifications"
+        ]
+      }
+    },
     "/api/push/test": {
       "post": {
         "operationId": "PushNotificationsController_sendTestPushToSelf",
@@ -8416,302 +8908,6 @@
         },
         "tags": [
           "FileUpload"
-        ]
-      }
-    },
-    "/api/storage/my-usage": {
-      "get": {
-        "operationId": "StorageQuotaController_getMyStorageStats",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageStatsDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get current user's storage stats (for user settings)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/instance": {
-      "get": {
-        "operationId": "StorageQuotaController_getInstanceStorageStats",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/InstanceStorageStatsDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get instance-wide storage statistics (admin only)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/users": {
-      "get": {
-        "operationId": "StorageQuotaController_getUsersStorageList",
-        "parameters": [
-          {
-            "name": "skip",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "take",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          },
-          {
-            "name": "minPercentUsed",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageListResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get users list with storage usage (admin only, for storage management page)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/users/{userId}": {
-      "get": {
-        "operationId": "StorageQuotaController_getUserStorageStats",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageStatsDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Get specific user's storage stats (admin only)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/users/{userId}/quota": {
-      "patch": {
-        "operationId": "StorageQuotaController_updateUserQuota",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateUserQuotaDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageStatsDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Update user's storage quota (admin only)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/users/{userId}/recalculate": {
-      "post": {
-        "operationId": "StorageQuotaController_recalculateUserStorage",
-        "parameters": [
-          {
-            "name": "userId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/UserStorageStatsDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Recalculate user's storage usage (admin only)",
-        "tags": [
-          "StorageQuota"
-        ]
-      }
-    },
-    "/api/storage/settings": {
-      "patch": {
-        "operationId": "StorageQuotaController_updateStorageSettings",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpdateStorageSettingsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/SuccessResponseDto"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "summary": "Update instance storage settings (admin only)",
-        "tags": [
-          "StorageQuota"
         ]
       }
     },
@@ -10373,6 +10569,11 @@
         "scheme": "bearer",
         "bearerFormat": "JWT",
         "type": "http"
+      },
+      "refresh_token": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "refresh_token"
       }
     },
     "schemas": {
@@ -10394,10 +10595,11 @@
       "LoginResponseDto": {
         "type": "object",
         "properties": {
-          "accessToken": {
-            "type": "string"
-          },
           "refreshToken": {
+            "type": "string",
+            "description": "Only for a client that gets body delivery (see the X-Client-Type header) or presented its refresh token in the body. Web clients get an httpOnly refresh_token cookie instead. A native client that gets no refreshToken is talking to a server too old for it."
+          },
+          "accessToken": {
             "type": "string"
           }
         },
@@ -10425,11 +10627,17 @@
                 "$ref": "#/components/schemas/CodeChallengeMethod"
               }
             ]
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "description": "The account's password: approving a new device needs more than a session."
           }
         },
         "required": [
           "codeChallenge",
-          "codeChallengeMethod"
+          "codeChallengeMethod",
+          "password"
         ]
       },
       "AuthorizeDesktopLoginResponseDto": {
@@ -10472,7 +10680,8 @@
         "type": "object",
         "properties": {
           "refreshToken": {
-            "type": "string"
+            "type": "string",
+            "description": "The refresh token, for a client that stores its own. Takes precedence over the refresh_token cookie; if it is invalid the request fails, without trying the cookie. The answer has the new refresh token in its body only when the token was presented here."
           }
         }
       },
@@ -10533,7 +10742,7 @@
         "properties": {
           "refreshToken": {
             "type": "string",
-            "description": "Refresh token (required for Electron clients that cannot use cookies)"
+            "description": "Refresh token, for a client that stores its own instead of using the refresh_token cookie"
           }
         }
       },
@@ -11075,6 +11284,56 @@
           "usages"
         ]
       },
+      "PublicInviteCreatorDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "username"
+        ]
+      },
+      "PublicInviteDto": {
+        "type": "object",
+        "properties": {
+          "uses": {
+            "type": "integer"
+          },
+          "maxUses": {
+            "type": "integer",
+            "nullable": true
+          },
+          "code": {
+            "type": "string"
+          },
+          "validUntil": {
+            "format": "date-time",
+            "type": "string",
+            "nullable": true
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PublicInviteCreatorDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "uses",
+          "maxUses",
+          "code",
+          "validUntil",
+          "disabled"
+        ]
+      },
       "UserRoleResourceType": {
         "type": "string",
         "enum": [
@@ -11265,6 +11524,8 @@
           },
           "position": {
             "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
           },
           "name": {
@@ -11289,6 +11550,8 @@
           },
           "position": {
             "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
             "description": "Position for ordering (lower = higher priority)"
           },
           "name": {
@@ -11705,7 +11968,8 @@
           },
           "userId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "specialKind": {
             "type": "string",
@@ -11713,7 +11977,8 @@
           },
           "communityId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "channelId": {
             "type": "string",
@@ -11723,11 +11988,13 @@
           },
           "aliasId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "emojiId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "format": "uuid"
           },
           "bold": {
             "type": "boolean",
@@ -12630,7 +12897,8 @@
             "type": "string"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Ignored: the display name in the token is the account's. Accepted because\nclients send it, and the whitelist would otherwise only strip it."
           }
         },
         "required": [
@@ -12710,7 +12978,8 @@
             "format": "uuid"
           },
           "roomName": {
-            "type": "string"
+            "type": "string",
+            "description": "Ignored: the room is the authorized channel's. Existing clients send it."
           },
           "videoTrackId": {
             "type": "string"
@@ -12720,12 +12989,11 @@
           },
           "participantIdentity": {
             "type": "string",
-            "description": "Participant identity (usually the user ID)\nUsed to query track resolution for matching egress encoding to source quality"
+            "description": "Ignored: the tracks must be the caller's own. Existing clients send it."
           }
         },
         "required": [
           "channelId",
-          "roomName",
           "videoTrackId"
         ]
       },
@@ -13149,6 +13417,263 @@
         "required": [
           "event"
         ]
+      },
+      "UserStorageStatsDto": {
+        "type": "object",
+        "properties": {
+          "usedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "quotaBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "fileCount": {
+            "type": "integer"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          },
+          "percentUsed": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "usedBytes",
+          "quotaBytes",
+          "fileCount",
+          "userId",
+          "username",
+          "percentUsed"
+        ]
+      },
+      "StorageDistributionDto": {
+        "type": "object",
+        "properties": {
+          "under25Percent": {
+            "type": "integer"
+          },
+          "under50Percent": {
+            "type": "integer"
+          },
+          "under75Percent": {
+            "type": "integer"
+          },
+          "under90Percent": {
+            "type": "integer"
+          },
+          "over90Percent": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "under25Percent",
+          "under50Percent",
+          "under75Percent",
+          "under90Percent",
+          "over90Percent"
+        ]
+      },
+      "StorageByTypeDto": {
+        "type": "object",
+        "properties": {
+          "bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "bytes",
+          "count",
+          "type"
+        ]
+      },
+      "ServerStatsDto": {
+        "type": "object",
+        "properties": {
+          "memoryTotalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryUsedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryFreeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "cpuCores": {
+            "type": "integer"
+          },
+          "diskTotalBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "diskUsedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "diskFreeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "memoryUsedPercent": {
+            "type": "number"
+          },
+          "cpuModel": {
+            "type": "string"
+          },
+          "loadAverage": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "diskUsedPercent": {
+            "type": "number"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "uptime": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "memoryTotalBytes",
+          "memoryUsedBytes",
+          "memoryFreeBytes",
+          "cpuCores",
+          "diskTotalBytes",
+          "diskUsedBytes",
+          "diskFreeBytes",
+          "memoryUsedPercent",
+          "cpuModel",
+          "loadAverage",
+          "diskUsedPercent",
+          "platform",
+          "hostname",
+          "uptime"
+        ]
+      },
+      "InstanceStorageStatsDto": {
+        "type": "object",
+        "properties": {
+          "totalStorageUsedBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "totalFileCount": {
+            "type": "integer"
+          },
+          "totalUserCount": {
+            "type": "integer"
+          },
+          "averageStoragePerUserBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "defaultQuotaBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "maxFileSizeBytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "usersApproachingQuota": {
+            "type": "integer"
+          },
+          "usersOverQuota": {
+            "type": "integer"
+          },
+          "userStorageDistribution": {
+            "$ref": "#/components/schemas/StorageDistributionDto"
+          },
+          "storageByType": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StorageByTypeDto"
+            }
+          },
+          "server": {
+            "$ref": "#/components/schemas/ServerStatsDto"
+          }
+        },
+        "required": [
+          "totalStorageUsedBytes",
+          "totalFileCount",
+          "totalUserCount",
+          "averageStoragePerUserBytes",
+          "defaultQuotaBytes",
+          "maxFileSizeBytes",
+          "usersApproachingQuota",
+          "usersOverQuota",
+          "userStorageDistribution",
+          "storageByType",
+          "server"
+        ]
+      },
+      "UserStorageListResponseDto": {
+        "type": "object",
+        "properties": {
+          "users": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserStorageStatsDto"
+            }
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "users",
+          "total"
+        ]
+      },
+      "UpdateUserQuotaDto": {
+        "type": "object",
+        "properties": {
+          "quotaBytes": {
+            "type": "integer",
+            "minimum": 0,
+            "format": "int64"
+          }
+        },
+        "required": [
+          "quotaBytes"
+        ]
+      },
+      "UpdateStorageSettingsDto": {
+        "type": "object",
+        "properties": {
+          "defaultStorageQuotaBytes": {
+            "type": "integer",
+            "minimum": 1073741824,
+            "format": "int64"
+          },
+          "maxFileSizeBytes": {
+            "type": "integer",
+            "minimum": 1048576,
+            "maximum": 1073741824,
+            "format": "int64"
+          }
+        }
       },
       "SignedUrlResponseDto": {
         "type": "object",
@@ -14543,6 +15068,38 @@
           "enabled"
         ]
       },
+      "PushSubscriptionInfoDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "endpointHost": {
+            "type": "string",
+            "nullable": true,
+            "description": "Host of the push service; the full endpoint URL is never returned."
+          },
+          "userAgent": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "endpointHost",
+          "userAgent",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "TestPushResponseDto": {
         "type": "object",
         "properties": {
@@ -15369,263 +15926,6 @@
           "thumbnailPath"
         ]
       },
-      "UserStorageStatsDto": {
-        "type": "object",
-        "properties": {
-          "usedBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "quotaBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "fileCount": {
-            "type": "integer"
-          },
-          "userId": {
-            "type": "string"
-          },
-          "username": {
-            "type": "string"
-          },
-          "percentUsed": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "usedBytes",
-          "quotaBytes",
-          "fileCount",
-          "userId",
-          "username",
-          "percentUsed"
-        ]
-      },
-      "StorageDistributionDto": {
-        "type": "object",
-        "properties": {
-          "under25Percent": {
-            "type": "integer"
-          },
-          "under50Percent": {
-            "type": "integer"
-          },
-          "under75Percent": {
-            "type": "integer"
-          },
-          "under90Percent": {
-            "type": "integer"
-          },
-          "over90Percent": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "under25Percent",
-          "under50Percent",
-          "under75Percent",
-          "under90Percent",
-          "over90Percent"
-        ]
-      },
-      "StorageByTypeDto": {
-        "type": "object",
-        "properties": {
-          "bytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "count": {
-            "type": "integer"
-          },
-          "type": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "bytes",
-          "count",
-          "type"
-        ]
-      },
-      "ServerStatsDto": {
-        "type": "object",
-        "properties": {
-          "memoryTotalBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "memoryUsedBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "memoryFreeBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "cpuCores": {
-            "type": "integer"
-          },
-          "diskTotalBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "diskUsedBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "diskFreeBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "memoryUsedPercent": {
-            "type": "number"
-          },
-          "cpuModel": {
-            "type": "string"
-          },
-          "loadAverage": {
-            "type": "array",
-            "items": {
-              "type": "number"
-            }
-          },
-          "diskUsedPercent": {
-            "type": "number"
-          },
-          "platform": {
-            "type": "string"
-          },
-          "hostname": {
-            "type": "string"
-          },
-          "uptime": {
-            "type": "number"
-          }
-        },
-        "required": [
-          "memoryTotalBytes",
-          "memoryUsedBytes",
-          "memoryFreeBytes",
-          "cpuCores",
-          "diskTotalBytes",
-          "diskUsedBytes",
-          "diskFreeBytes",
-          "memoryUsedPercent",
-          "cpuModel",
-          "loadAverage",
-          "diskUsedPercent",
-          "platform",
-          "hostname",
-          "uptime"
-        ]
-      },
-      "InstanceStorageStatsDto": {
-        "type": "object",
-        "properties": {
-          "totalStorageUsedBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "totalFileCount": {
-            "type": "integer"
-          },
-          "totalUserCount": {
-            "type": "integer"
-          },
-          "averageStoragePerUserBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "defaultQuotaBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "maxFileSizeBytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "usersApproachingQuota": {
-            "type": "integer"
-          },
-          "usersOverQuota": {
-            "type": "integer"
-          },
-          "userStorageDistribution": {
-            "$ref": "#/components/schemas/StorageDistributionDto"
-          },
-          "storageByType": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/StorageByTypeDto"
-            }
-          },
-          "server": {
-            "$ref": "#/components/schemas/ServerStatsDto"
-          }
-        },
-        "required": [
-          "totalStorageUsedBytes",
-          "totalFileCount",
-          "totalUserCount",
-          "averageStoragePerUserBytes",
-          "defaultQuotaBytes",
-          "maxFileSizeBytes",
-          "usersApproachingQuota",
-          "usersOverQuota",
-          "userStorageDistribution",
-          "storageByType",
-          "server"
-        ]
-      },
-      "UserStorageListResponseDto": {
-        "type": "object",
-        "properties": {
-          "users": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/UserStorageStatsDto"
-            }
-          },
-          "total": {
-            "type": "integer"
-          }
-        },
-        "required": [
-          "users",
-          "total"
-        ]
-      },
-      "UpdateUserQuotaDto": {
-        "type": "object",
-        "properties": {
-          "quotaBytes": {
-            "type": "integer",
-            "minimum": 0,
-            "format": "int64"
-          }
-        },
-        "required": [
-          "quotaBytes"
-        ]
-      },
-      "UpdateStorageSettingsDto": {
-        "type": "object",
-        "properties": {
-          "defaultStorageQuotaBytes": {
-            "type": "integer",
-            "minimum": 1073741824,
-            "format": "int64"
-          },
-          "maxFileSizeBytes": {
-            "type": "integer",
-            "minimum": 1048576,
-            "maximum": 1073741824,
-            "format": "int64"
-          }
-        }
-      },
       "RegistrationMode": {
         "type": "string",
         "enum": [
@@ -16089,54 +16389,13 @@
           "createdAt"
         ]
       },
-      "ThreadReplySpanDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SpanType"
-              }
-            ]
-          },
-          "text": {
-            "type": "string",
-            "nullable": true
-          },
-          "userId": {
-            "type": "string",
-            "nullable": true
-          },
-          "specialKind": {
-            "type": "string",
-            "nullable": true
-          },
-          "communityId": {
-            "type": "string",
-            "nullable": true
-          },
-          "channelId": {
-            "type": "string",
-            "nullable": true,
-            "description": "For CHANNEL_MENTION (text is ignored and stored as null).",
-            "format": "uuid"
-          },
-          "aliasId": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
       "CreateThreadReplyBodyDto": {
         "type": "object",
         "properties": {
           "spans": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/ThreadReplySpanDto"
+              "$ref": "#/components/schemas/CreateMessageSpanDto"
             }
           },
           "pendingAttachments": {
@@ -16873,6 +17132,25 @@
           "reason"
         ]
       },
+      "DesktopSignInPayloadDto": {
+        "type": "object",
+        "properties": {
+          "ipAddress": {
+            "type": "string",
+            "nullable": true,
+            "description": "Where the desktop app signed in from, as the server saw it."
+          },
+          "signedInAt": {
+            "type": "string",
+            "description": "When the desktop app signed in.",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "ipAddress",
+          "signedInAt"
+        ]
+      },
       "ReadReceiptUpdatedPayloadDto": {
         "type": "object",
         "properties": {
@@ -17592,54 +17870,13 @@
           "bio"
         ]
       },
-      "SendThreadReplySpanDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SpanType"
-              }
-            ]
-          },
-          "text": {
-            "type": "string",
-            "nullable": true
-          },
-          "userId": {
-            "type": "string",
-            "nullable": true
-          },
-          "specialKind": {
-            "type": "string",
-            "nullable": true
-          },
-          "communityId": {
-            "type": "string",
-            "nullable": true
-          },
-          "channelId": {
-            "type": "string",
-            "nullable": true,
-            "description": "For CHANNEL_MENTION (text is ignored and stored as null).",
-            "format": "uuid"
-          },
-          "aliasId": {
-            "type": "string",
-            "nullable": true
-          }
-        },
-        "required": [
-          "type"
-        ]
-      },
       "SendThreadReplyDto": {
         "type": "object",
         "properties": {
           "spans": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/SendThreadReplySpanDto"
+              "$ref": "#/components/schemas/CreateMessageSpanDto"
             }
           },
           "pendingAttachments": {

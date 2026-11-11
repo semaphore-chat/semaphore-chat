@@ -377,7 +377,7 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 
 | Path | What the backend does | Effect on native | Where fixed |
 |---|---|---|---|
-| Refresh token in the response body | `auth.controller.ts` `respondWithNewSession` and `refresh` return the refresh token in the body only when `User-Agent` contains `Electron`; otherwise cookies only | A native client on a `main`/v0.7.0 backend gets no refresh token | `security/release` (`client-type.util.ts`, `X-Client-Type: desktop-native`); not in any release yet, and the native pin (`chore/stack-review-fixes`) lacks it (U7 sends the header by hand) |
+| Refresh token in the response body | `auth.controller.ts` `respondWithNewSession` and `refresh` return the refresh token in the body only when `User-Agent` contains `Electron`; otherwise cookies only | A native client on a v0.7.0 backend gets no refresh token | `main` after v0.7.0 (`client-type.util.ts`, `X-Client-Type: desktop-native`); pinned and sent as generated header parameters since W0-contract |
 | Refresh throttling | `refresh-throttler.guard.ts` reads a body refresh token only for `Electron` user agents | Throttling misses native refreshes on `main` | `security/release` (`presentedRefreshToken`) |
 | Sessions list "current" marker | `getCurrentTokenId` reads the refresh cookie only on `main` | Native's own session isn't marked current, so "sign out other sessions" could include it | `security/release` falls back to the access token's `sid` |
 | Push notifications | `push-notifications` is Web Push only (VAPID key, subscription `endpoint`) | No push when the app isn't running; desktop native must rely on the live socket. Mobile later needs FCM/APNs/UnifiedPush backend work | not planned anywhere found |
@@ -385,7 +385,7 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 | Replay preview (HLS) | `livekit/replay/preview/playlist.m3u8` and segment URLs sit behind `JwtAuthGuard` (header or cookie) | A native HLS player must add `Authorization` to segment fetches | n/a (available) |
 | Password reset link | `mailer.service.ts` builds `${publicAppUrl}/reset-password?token=...`, a web URL | The email always opens the web app; `semaphore://` has no reset route | web flow is acceptable unless native should handle it (decide) |
 | Third-party media | Link-preview images and GIF media (`gifs` returns Giphy URLs) are loaded by the browser straight from third parties | Native must fetch them directly (exposes the viewer's IP) or the backend needs a proxy | pending Mike's decision |
-| Browser sign-in | `auth/desktop/authorize` + `auth/desktop/token` (PKCE, loopback) exist and are in the native pin | Usable, but the issued session's token delivery depends on the client-type contract above | `security/release` |
+| Browser sign-in | `auth/desktop/authorize` + `auth/desktop/token` (PKCE, loopback) exist and are in the native pin | Usable: the redeem takes the client-type headers (W0-contract pin). Authorize now also needs the account's `password` | `main` |
 
 ### Asks from W1 for the backend lane
 

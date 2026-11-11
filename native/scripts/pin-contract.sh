@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The generators read native/contract/, not backend/, because the API-contract stack has not
-# reached this branch. PIN records the commit it came from, so generation is repeatable.
+# The generators read native/contract/, not backend/, so a backend change reaches the native
+# client only when the pin moves. PIN records the commit it came from, so generation is repeatable.
 #
 #   native/scripts/pin-contract.sh <git-ref>   copy the contract from that ref and rewrite PIN
 #   native/scripts/pin-contract.sh --check     fail if the files don't match PIN or that commit

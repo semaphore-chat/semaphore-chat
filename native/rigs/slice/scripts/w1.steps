@@ -173,7 +173,7 @@ click header-search
 wait core side-panel none
 
 # 8. A message link in the web's form opens its channel at the message, not the browser.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"the lfg post: $SERVER/#/community/c-couch/channel/cc-lfg?highlight=$MSG(sc-msg-24)\"}"
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-priya)\", \"text\": \"the lfg post: $SERVER/#/community/$ID(c-couch)/channel/cc-lfg?highlight=$MSG(sc-msg-24)\"}"
 wait core text "the lfg post"
 wait idle
 click-text "the lfg post" "/#/community"
@@ -186,7 +186,7 @@ wait idle
 shot 17-link-opened
 
 # 9. The unread divider where reading stopped when the channel opened.
-click community-c-lumen
+click community-$ID(c-lumen)
 click channel-ch-general
 wait core channel ch-general
 wait core unread-after "Lunch spot recommendations"
