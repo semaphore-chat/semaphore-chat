@@ -261,20 +261,19 @@ impl Core {
     ) -> Result<T, CoreError> {
         let (services, epoch) = self.begin(what)?;
         self.write(|state, _| state.w5b_set_op(view.clone(), true, None));
-        let result = run(&services)
-            .await
-            .map_err(|error| self.backend_failed(error));
+        let result = run(&services).await;
         self.write(|state, _| {
             if state.session_epoch != epoch {
                 return;
             }
-            let error = result.as_ref().err().map(super::core_error_view);
+            // The server's own message, as a UI shows it.
+            let error = result.as_ref().err().map(|error| error.view());
             state.w5b_set_op(view.clone(), false, error);
             for key in refresh {
                 state.invalidate(key);
             }
         });
-        result
+        result.map_err(|error| self.backend_failed(error))
     }
 
     /// Makes a role (placed by the server just below this user's own); returns its id.

@@ -299,4 +299,75 @@ impl ModerationBackend for FakeBackend {
         }))
         .unwrap())
     }
+
+    // W5-B: scripted in `w5b.rs`.
+    async fn moderation_controller_ban_user(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::ModerationBanUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        self.w5b_ban(community_id, user_id, body).await
+    }
+    async fn moderation_controller_unban_user(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::UnbanUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        self.w5b_unban(community_id, user_id, body).await
+    }
+    async fn moderation_controller_get_ban_list(
+        &self,
+        community_id: String,
+    ) -> BackendResult<Vec<wire::CommunityBanDto>> {
+        self.w5b.run("bans", &[&community_id], None).await
+    }
+    async fn moderation_controller_timeout_user(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::TimeoutUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        self.w5b_timeout(community_id, user_id, body).await
+    }
+    async fn moderation_controller_remove_timeout(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::RemoveTimeoutDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        self.w5b_remove_timeout(community_id, user_id, body).await
+    }
+    async fn moderation_controller_get_timeout_list(
+        &self,
+        community_id: String,
+    ) -> BackendResult<Vec<wire::CommunityTimeoutDto>> {
+        self.w5b.run("timeouts", &[&community_id], None).await
+    }
+    async fn moderation_controller_get_timeout_status(
+        &self,
+        community_id: String,
+        user_id: String,
+    ) -> BackendResult<wire::TimeoutStatusResponseDto> {
+        self.w5b
+            .run("timeout_status", &[&community_id, &user_id], None)
+            .await
+    }
+    async fn moderation_controller_get_moderation_logs(
+        &self,
+        community_id: String,
+        action: Option<String>,
+        limit: Option<i64>,
+        offset: Option<i64>,
+    ) -> BackendResult<wire::ModerationLogsResponseDto> {
+        let action = action.unwrap_or_else(|| "-".into());
+        let (limit, offset) = (
+            limit.unwrap_or_default().to_string(),
+            offset.unwrap_or_default().to_string(),
+        );
+        self.w5b
+            .run("logs", &[&community_id, &action, &limit, &offset], None)
+            .await
+    }
 }
