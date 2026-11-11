@@ -101,17 +101,34 @@ impl Client {
     }
     /**Sends a `POST` request to `/api/auth/login`
 
+    Arguments:
+    - `x_client_type`: What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.
+    - `x_device_id`: The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.
+    - `x_device_name`: Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.
+    - `body`
     */
     pub async fn auth_controller_login<'a>(
         &'a self,
+        x_client_type: Option<types::AuthControllerLoginXClientType>,
+        x_device_id: Option<&'a ::uuid::Uuid>,
+        x_device_name: Option<&'a types::AuthControllerLoginXDeviceName>,
         body: &'a types::LoginRequestDto,
     ) -> Result<ResponseValue<types::LoginResponseDto>, Error<()>> {
         let url = format!("{}/api/auth/login", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(4usize);
         header_map.append(
             ::reqwest::header::HeaderName::from_static("api-version"),
             ::reqwest::header::HeaderValue::from_static(Self::api_version()),
         );
+        if let Some(value) = x_client_type {
+            header_map.append("X-Client-Type", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_id {
+            header_map.append("X-Device-Id", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_name {
+            header_map.append("X-Device-Name", value.to_string().try_into()?);
+        }
         #[allow(unused_mut)]
         let mut request = self
             .client
@@ -189,17 +206,34 @@ impl Client {
 
     Sends a `POST` request to `/api/auth/desktop/token`
 
+    Arguments:
+    - `x_client_type`: What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.
+    - `x_device_id`: The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.
+    - `x_device_name`: Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.
+    - `body`
     */
     pub async fn auth_controller_redeem_desktop_login<'a>(
         &'a self,
+        x_client_type: Option<types::AuthControllerRedeemDesktopLoginXClientType>,
+        x_device_id: Option<&'a ::uuid::Uuid>,
+        x_device_name: Option<&'a types::AuthControllerRedeemDesktopLoginXDeviceName>,
         body: &'a types::DesktopLoginTokenRequestDto,
     ) -> Result<ResponseValue<types::LoginResponseDto>, Error<()>> {
         let url = format!("{}/api/auth/desktop/token", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(4usize);
         header_map.append(
             ::reqwest::header::HeaderName::from_static("api-version"),
             ::reqwest::header::HeaderValue::from_static(Self::api_version()),
         );
+        if let Some(value) = x_client_type {
+            header_map.append("X-Client-Type", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_id {
+            header_map.append("X-Device-Id", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_name {
+            header_map.append("X-Device-Name", value.to_string().try_into()?);
+        }
         #[allow(unused_mut)]
         let mut request = self
             .client
@@ -225,17 +259,34 @@ impl Client {
     }
     /**Sends a `POST` request to `/api/auth/refresh`
 
+    Arguments:
+    - `x_client_type`: What kind of client this is. Absent or unknown means web. Asks for the refresh token in the response body instead of a cookie; it is not proof, and a request that looks like a web page gets cookies whatever it says. Native clients must also send X-Device-Id and a User-Agent, and get no cookies.
+    - `x_device_id`: The client install's random id, generated once and kept. A new sign-in replaces the sessions of the same install.
+    - `x_device_name`: Native clients: a name for the device in its owner's sessions list, as percent-encoded UTF-8. Sanitized and capped by the server.
+    - `body`
     */
     pub async fn auth_controller_refresh<'a>(
         &'a self,
+        x_client_type: Option<types::AuthControllerRefreshXClientType>,
+        x_device_id: Option<&'a ::uuid::Uuid>,
+        x_device_name: Option<&'a types::AuthControllerRefreshXDeviceName>,
         body: &'a types::RefreshRequestDto,
     ) -> Result<ResponseValue<types::LoginResponseDto>, Error<()>> {
         let url = format!("{}/api/auth/refresh", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(4usize);
         header_map.append(
             ::reqwest::header::HeaderName::from_static("api-version"),
             ::reqwest::header::HeaderValue::from_static(Self::api_version()),
         );
+        if let Some(value) = x_client_type {
+            header_map.append("X-Client-Type", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_id {
+            header_map.append("X-Device-Id", value.to_string().try_into()?);
+        }
+        if let Some(value) = x_device_name {
+            header_map.append("X-Device-Name", value.to_string().try_into()?);
+        }
         #[allow(unused_mut)]
         let mut request = self
             .client
@@ -1249,7 +1300,7 @@ impl Client {
     pub async fn invite_controller_get_public_invite<'a>(
         &'a self,
         code: &'a str,
-    ) -> Result<ResponseValue<types::InviteResponseDto>, Error<()>> {
+    ) -> Result<ResponseValue<types::PublicInviteDto>, Error<()>> {
         let url = format!(
             "{}/api/invite/public/{}",
             self.baseurl,
@@ -4467,6 +4518,286 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**Get current user's storage stats (for user settings)
+
+    Sends a `GET` request to `/api/storage/my-usage`
+
+    */
+    pub async fn storage_quota_controller_get_my_storage_stats<'a>(
+        &'a self,
+    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
+        let url = format!("{}/api/storage/my-usage", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_get_my_storage_stats",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Get instance-wide storage statistics (admin only)
+
+    Sends a `GET` request to `/api/storage/instance`
+
+    */
+    pub async fn storage_quota_controller_get_instance_storage_stats<'a>(
+        &'a self,
+    ) -> Result<ResponseValue<types::InstanceStorageStatsDto>, Error<()>> {
+        let url = format!("{}/api/storage/instance", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_get_instance_storage_stats",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Get users list with storage usage (admin only, for storage management page)
+
+    Sends a `GET` request to `/api/storage/users`
+
+    */
+    pub async fn storage_quota_controller_get_users_storage_list<'a>(
+        &'a self,
+        min_percent_used: Option<i64>,
+        skip: Option<i64>,
+        take: Option<i64>,
+    ) -> Result<ResponseValue<types::UserStorageListResponseDto>, Error<()>> {
+        let url = format!("{}/api/storage/users", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .query(&progenitor_client::QueryParam::new(
+                "minPercentUsed",
+                &min_percent_used,
+            ))
+            .query(&progenitor_client::QueryParam::new("skip", &skip))
+            .query(&progenitor_client::QueryParam::new("take", &take))
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_get_users_storage_list",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Get specific user's storage stats (admin only)
+
+    Sends a `GET` request to `/api/storage/users/{userId}`
+
+    */
+    pub async fn storage_quota_controller_get_user_storage_stats<'a>(
+        &'a self,
+        user_id: &'a str,
+    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
+        let url = format!(
+            "{}/api/storage/users/{}",
+            self.baseurl,
+            encode_path(&user_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_get_user_storage_stats",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Update user's storage quota (admin only)
+
+    Sends a `PATCH` request to `/api/storage/users/{userId}/quota`
+
+    */
+    pub async fn storage_quota_controller_update_user_quota<'a>(
+        &'a self,
+        user_id: &'a str,
+        body: &'a types::UpdateUserQuotaDto,
+    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
+        let url = format!(
+            "{}/api/storage/users/{}/quota",
+            self.baseurl,
+            encode_path(&user_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .patch(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_update_user_quota",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Recalculate user's storage usage (admin only)
+
+    Sends a `POST` request to `/api/storage/users/{userId}/recalculate`
+
+    */
+    pub async fn storage_quota_controller_recalculate_user_storage<'a>(
+        &'a self,
+        user_id: &'a str,
+    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
+        let url = format!(
+            "{}/api/storage/users/{}/recalculate",
+            self.baseurl,
+            encode_path(&user_id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .post(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_recalculate_user_storage",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Update instance storage settings (admin only)
+
+    Sends a `PATCH` request to `/api/storage/settings`
+
+    */
+    pub async fn storage_quota_controller_update_storage_settings<'a>(
+        &'a self,
+        body: &'a types::UpdateStorageSettingsDto,
+    ) -> Result<ResponseValue<types::SuccessResponseDto>, Error<()>> {
+        let url = format!("{}/api/storage/settings", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .patch(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .json(&body)
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "storage_quota_controller_update_storage_settings",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Sends a `GET` request to `/api/file/{id}/signed-url`
 
     */
@@ -6449,6 +6780,84 @@ impl Client {
             _ => Err(Error::UnexpectedResponse(response)),
         }
     }
+    /**The current user's push subscriptions, so they can see what still
+    receives their notifications
+
+    Sends a `GET` request to `/api/push/subscriptions`
+
+    */
+    pub async fn push_notifications_controller_list_subscriptions<'a>(
+        &'a self,
+    ) -> Result<ResponseValue<::std::vec::Vec<types::PushSubscriptionInfoDto>>, Error<()>> {
+        let url = format!("{}/api/push/subscriptions", self.baseurl,);
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .get(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "push_notifications_controller_list_subscriptions",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
+    /**Revoke one of the current user's push subscriptions
+
+    Sends a `DELETE` request to `/api/push/subscriptions/{id}`
+
+    */
+    pub async fn push_notifications_controller_revoke_subscription<'a>(
+        &'a self,
+        id: &'a str,
+    ) -> Result<ResponseValue<types::SuccessMessageDto>, Error<()>> {
+        let url = format!(
+            "{}/api/push/subscriptions/{}",
+            self.baseurl,
+            encode_path(&id.to_string()),
+        );
+        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
+        header_map.append(
+            ::reqwest::header::HeaderName::from_static("api-version"),
+            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
+        );
+        #[allow(unused_mut)]
+        let mut request = self
+            .client
+            .delete(url)
+            .header(
+                ::reqwest::header::ACCEPT,
+                ::reqwest::header::HeaderValue::from_static("application/json"),
+            )
+            .headers(header_map)
+            .build()?;
+        let info = OperationInfo {
+            operation_id: "push_notifications_controller_revoke_subscription",
+        };
+        self.pre(&mut request, &info).await?;
+        let result = self.exec(request, &info).await;
+        self.post(&result, &info).await?;
+        let response = result?;
+        match response.status().as_u16() {
+            200u16 => ResponseValue::from_response(response).await,
+            _ => Err(Error::UnexpectedResponse(response)),
+        }
+    }
     /**Send a test push notification to the current user
     POST /push/test
     Any authenticated user can test their own push notifications
@@ -7477,286 +7886,6 @@ impl Client {
             .build()?;
         let info = OperationInfo {
             operation_id: "file_upload_controller_remove",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Get current user's storage stats (for user settings)
-
-    Sends a `GET` request to `/api/storage/my-usage`
-
-    */
-    pub async fn storage_quota_controller_get_my_storage_stats<'a>(
-        &'a self,
-    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
-        let url = format!("{}/api/storage/my-usage", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .get(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_get_my_storage_stats",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Get instance-wide storage statistics (admin only)
-
-    Sends a `GET` request to `/api/storage/instance`
-
-    */
-    pub async fn storage_quota_controller_get_instance_storage_stats<'a>(
-        &'a self,
-    ) -> Result<ResponseValue<types::InstanceStorageStatsDto>, Error<()>> {
-        let url = format!("{}/api/storage/instance", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .get(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_get_instance_storage_stats",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Get users list with storage usage (admin only, for storage management page)
-
-    Sends a `GET` request to `/api/storage/users`
-
-    */
-    pub async fn storage_quota_controller_get_users_storage_list<'a>(
-        &'a self,
-        min_percent_used: Option<i64>,
-        skip: Option<i64>,
-        take: Option<i64>,
-    ) -> Result<ResponseValue<types::UserStorageListResponseDto>, Error<()>> {
-        let url = format!("{}/api/storage/users", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .get(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .query(&progenitor_client::QueryParam::new(
-                "minPercentUsed",
-                &min_percent_used,
-            ))
-            .query(&progenitor_client::QueryParam::new("skip", &skip))
-            .query(&progenitor_client::QueryParam::new("take", &take))
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_get_users_storage_list",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Get specific user's storage stats (admin only)
-
-    Sends a `GET` request to `/api/storage/users/{userId}`
-
-    */
-    pub async fn storage_quota_controller_get_user_storage_stats<'a>(
-        &'a self,
-        user_id: &'a str,
-    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
-        let url = format!(
-            "{}/api/storage/users/{}",
-            self.baseurl,
-            encode_path(&user_id.to_string()),
-        );
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .get(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_get_user_storage_stats",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Update user's storage quota (admin only)
-
-    Sends a `PATCH` request to `/api/storage/users/{userId}/quota`
-
-    */
-    pub async fn storage_quota_controller_update_user_quota<'a>(
-        &'a self,
-        user_id: &'a str,
-        body: &'a types::UpdateUserQuotaDto,
-    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
-        let url = format!(
-            "{}/api/storage/users/{}/quota",
-            self.baseurl,
-            encode_path(&user_id.to_string()),
-        );
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .patch(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .json(&body)
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_update_user_quota",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Recalculate user's storage usage (admin only)
-
-    Sends a `POST` request to `/api/storage/users/{userId}/recalculate`
-
-    */
-    pub async fn storage_quota_controller_recalculate_user_storage<'a>(
-        &'a self,
-        user_id: &'a str,
-    ) -> Result<ResponseValue<types::UserStorageStatsDto>, Error<()>> {
-        let url = format!(
-            "{}/api/storage/users/{}/recalculate",
-            self.baseurl,
-            encode_path(&user_id.to_string()),
-        );
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .post(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_recalculate_user_storage",
-        };
-        self.pre(&mut request, &info).await?;
-        let result = self.exec(request, &info).await;
-        self.post(&result, &info).await?;
-        let response = result?;
-        match response.status().as_u16() {
-            200u16 => ResponseValue::from_response(response).await,
-            _ => Err(Error::UnexpectedResponse(response)),
-        }
-    }
-    /**Update instance storage settings (admin only)
-
-    Sends a `PATCH` request to `/api/storage/settings`
-
-    */
-    pub async fn storage_quota_controller_update_storage_settings<'a>(
-        &'a self,
-        body: &'a types::UpdateStorageSettingsDto,
-    ) -> Result<ResponseValue<types::SuccessResponseDto>, Error<()>> {
-        let url = format!("{}/api/storage/settings", self.baseurl,);
-        let mut header_map = ::reqwest::header::HeaderMap::with_capacity(1usize);
-        header_map.append(
-            ::reqwest::header::HeaderName::from_static("api-version"),
-            ::reqwest::header::HeaderValue::from_static(Self::api_version()),
-        );
-        #[allow(unused_mut)]
-        let mut request = self
-            .client
-            .patch(url)
-            .header(
-                ::reqwest::header::ACCEPT,
-                ::reqwest::header::HeaderValue::from_static("application/json"),
-            )
-            .json(&body)
-            .headers(header_map)
-            .build()?;
-        let info = OperationInfo {
-            operation_id: "storage_quota_controller_update_storage_settings",
         };
         self.pre(&mut request, &info).await?;
         let result = self.exec(request, &info).await;

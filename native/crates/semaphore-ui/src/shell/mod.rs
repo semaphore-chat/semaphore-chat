@@ -29,6 +29,7 @@ use gpui_kit::*;
 use semaphore_core::model::{ChannelKind, ChannelRow, CommunityRow, SessionState, ViewKey};
 use semaphore_core::{ConnectionState, CoreEvent};
 use semaphore_design::Icon as IconName;
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -58,6 +59,11 @@ pub struct ContentProps {
     pub route: Route,
     pub channel: Option<ChannelRow>,
     pub community: Option<CommunityRow>,
+    /// The shell just appeared or navigated: the owner moves keyboard focus into what it shows (the
+    /// composer), as it does on opening another conversation. Set on the first drawing of a channel
+    /// after it, even when the conversation is the one already open: the shell's first render, and
+    /// a click on a rail or channel row, took the focus.
+    pub take_focus: bool,
 }
 
 /// What the owner acts on. Core's commands are the owner's to call, so stories need no core.
@@ -103,6 +109,8 @@ pub struct Shell {
     /// holds focus until the user moves it.
     pub(crate) focus: FocusHandle,
     pub(crate) took_focus: bool,
+    /// [`ContentProps::take_focus`] for the next drawing of a channel.
+    pub(crate) focus_content: Cell<bool>,
     pub(crate) content: ContentSlot,
     pub(crate) voice_bar: Option<VoiceBarSlot>,
     /// How many pinned messages the header's badge shows. Fed by the owner.
@@ -136,6 +144,7 @@ impl Shell {
             columns: cx.new(|_| ResizableState::default()),
             focus: cx.focus_handle(),
             took_focus: false,
+            focus_content: Cell::new(true),
             content,
             voice_bar: None,
             pinned_count: 0,
@@ -218,6 +227,7 @@ impl Shell {
         self.settle_route();
         self.phone_rail_open = false;
         self.phone_content = self.nav.current().channel_id().is_some();
+        self.focus_content.set(true);
         cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
         cx.notify();
     }
@@ -227,6 +237,7 @@ impl Shell {
         let handled = self.nav.open_deep_link(raw);
         if handled {
             self.settle_route();
+            self.focus_content.set(true);
             cx.emit(ShellEvent::Navigated(self.nav.current().clone()));
             cx.notify();
         }
@@ -277,7 +288,10 @@ impl Shell {
                     self.settle_route();
                 }
             }
-            CoreEvent::QueriesInvalidated { .. } | CoreEvent::MessagesChanged { .. } => {}
+            CoreEvent::QueriesInvalidated { .. }
+            | CoreEvent::MessagesChanged { .. }
+            | CoreEvent::Notify { .. }
+            | CoreEvent::WithdrawNotifications { .. } => {}
         }
         cx.notify();
     }
@@ -335,10 +349,14 @@ impl Shell {
                 Load::Ready(_) => {}
             }
         }
+        let channel = self.channel();
+        // Kept until a channel is drawn: a route still loading has nothing to focus yet.
+        let take_focus = channel.is_some() && self.focus_content.take();
         let props = ContentProps {
             route: self.nav.current().clone(),
-            channel: self.channel(),
+            channel,
             community: self.community(),
+            take_focus,
         };
         (self.content)(&props, window, cx)
     }

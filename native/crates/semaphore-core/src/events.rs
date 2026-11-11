@@ -245,6 +245,7 @@ impl State {
 
     /// Unread counts changed for this context.
     fn unread_views_changed(&mut self, context_id: &str) {
+        self.w2_dms_touched();
         self.view_changed(ViewKey::Communities);
         self.view_changed(ViewKey::Rail);
         if let Some(community_id) = self.community_of_channel(context_id) {
@@ -318,7 +319,7 @@ impl State {
             }
         }
         if dto.direct_message_group_id.is_some() {
-            self.invalidate_for("newMessage");
+            self.w2_dm_message(&dto);
         }
         if is_mine {
             // Own message while detached: sending implies "take me to the present".
@@ -449,6 +450,7 @@ impl State {
         let key = keys::op(keys::UNREAD);
         self.note_direct_update(&key);
         let Some(counts) = self.cache.unread_counts_mut(&key) else {
+            self.w2_on_context_read(&conversation, &payload.last_read_message_id);
             return;
         };
         let read_at = Some(payload.last_read_at);
@@ -474,6 +476,7 @@ impl State {
         }
         let context_id = context_id.clone();
         self.unread_views_changed(&context_id);
+        self.w2_on_context_read(&conversation, &payload.last_read_message_id);
     }
 
     /// The hybrid pattern: an update if this channel's presence is loaded, a refetch if not.
@@ -505,6 +508,7 @@ impl State {
         if let Some(presence) = self.cache.presence_mut(&key) {
             presence.insert(user_id.to_owned(), online);
             self.members_changed(Some(user_id));
+            self.w2_presence_changed();
         }
     }
 
@@ -633,6 +637,7 @@ impl State {
             }
             ServerEvent::ReadReceiptUpdated(event) => self.on_read_receipt(event),
             ServerEvent::NewNotification(event) => {
+                self.w2_on_new_notification(&event, now);
                 if !event.read {
                     let key = keys::op(keys::NOTIFICATION_COUNT);
                     self.note_direct_update(&key);
@@ -664,6 +669,7 @@ impl State {
                 }
             }
             ServerEvent::NotificationRead(event) => {
+                self.w2_on_notification_read(&event.notification_id);
                 // Refetched, not counted down: another device reading the same one would count twice.
                 self.invalidate(&keys::op(keys::NOTIFICATION_COUNT));
                 if let Some(conversation) =
@@ -720,6 +726,8 @@ impl State {
             | ServerEvent::EgressSegmentsReady(_)
             | ServerEvent::ReplayBufferFailed(_)
             | ServerEvent::ReplayBufferStopped(_) => {}
+            // "Your account signed in on a desktop app": a notice, which W3's sessions work shows.
+            ServerEvent::DesktopSignIn(_) => {}
             // Who's listed changed. The rules hold the web's keys, and this read has its own.
             ServerEvent::MemberAddedToCommunity(_)
             | ServerEvent::UserBanned(_)

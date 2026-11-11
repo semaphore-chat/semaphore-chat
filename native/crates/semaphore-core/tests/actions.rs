@@ -153,18 +153,20 @@ async fn a_refused_edit_leaves_a_newer_server_update_alone() {
 async fn an_edit_keeps_formatting_mentions_and_emoji() {
     let id = uuid(1);
     let channel_id = uuid(77);
+    // The contract types every id in a span as a UUID, as the backend issues them.
+    let (ava, crew, party) = (uuid(78), uuid(79), uuid(80));
     let spans = json!([
         { "type": "PLAINTEXT", "text": "bold", "bold": true },
         { "type": "PLAINTEXT", "text": " and " },
         { "type": "PLAINTEXT", "text": "slanted", "italic": true },
         { "type": "PLAINTEXT", "text": " " },
-        { "type": "USER_MENTION", "text": "@ava", "userId": "ava" },
+        { "type": "USER_MENTION", "text": "@ava", "userId": ava },
         { "type": "PLAINTEXT", "text": " in " },
         { "type": "CHANNEL_MENTION", "channelId": channel_id },
         { "type": "PLAINTEXT", "text": " with " },
-        { "type": "ALIAS_MENTION", "text": "@crew", "aliasId": "alias-1" },
+        { "type": "ALIAS_MENTION", "text": "@crew", "aliasId": crew },
         { "type": "PLAINTEXT", "text": " " },
-        { "type": "EMOJI", "text": ":party:", "emojiId": "emoji-1" },
+        { "type": "EMOJI", "text": ":party:", "emojiId": party },
     ]);
     let mut rig = rig_with(vec![with_spans(&id, ME, spans)]).await;
 
@@ -209,10 +211,10 @@ async fn an_edit_keeps_formatting_mentions_and_emoji() {
             .iter()
             .any(|s| s["text"] == "slanted" && s["italic"] == true)
     );
-    assert_eq!(field("USER_MENTION")[0]["userId"], "ava");
+    assert_eq!(field("USER_MENTION")[0]["userId"], ava);
     assert_eq!(field("CHANNEL_MENTION")[0]["channelId"], channel_id);
-    assert_eq!(field("ALIAS_MENTION")[0]["aliasId"], "alias-1");
-    assert_eq!(field("EMOJI")[0]["emojiId"], "emoji-1");
+    assert_eq!(field("ALIAS_MENTION")[0]["aliasId"], crew);
+    assert_eq!(field("EMOJI")[0]["emojiId"], party);
     rig.sync();
     let row = rig.row(&id);
     assert!(row.display.ends_with(" more"), "{}", row.display);

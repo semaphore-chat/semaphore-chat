@@ -66,6 +66,20 @@ pub enum ViewKey {
     ChannelModeration {
         channel_id: String,
     },
+    /// `Core::dm_list` and `Core::dm`.
+    DirectMessages,
+    /// `Core::friends`.
+    Friends,
+    /// `Core::notifications`.
+    Notifications,
+    /// `Core::notification_settings`.
+    NotificationSettings,
+    /// `Core::channel_notify_level`.
+    ChannelNotifyLevel {
+        channel_id: String,
+    },
+    /// `Core::badge_count`: the tray and dock badge.
+    Badge,
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

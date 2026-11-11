@@ -1,6 +1,8 @@
 //! U13's end-to-end rig: the real app, headless on lavapipe, against `semaphore-fake-server`.
 //!
-//!   rig-slice --server <url> --scenario <file.json> --script <file.steps> --out <dir>
+//!   rig-slice --server <url> [--scenario <file.json>] --script <file.steps> --out <dir>
+//!
+//! Without `--scenario` (a real backend: `scripts/slice-real.sh`), the clock is the machine's.
 //!
 //! It runs `rig-shot`'s steps (click, type, press, drag, wait idle, shot, expect label...) and these:
 //!
@@ -25,13 +27,17 @@
 //! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
 //! video fail-next camera "why"         # the fake camera (or screen) refuses its next start
 //! expect stored-session yes           # a refresh token is in the (memory) keyring
+//! remember stored-session             # note it; then `expect stored-session rotated` after a
+//! expect old-refresh-token refused    # restart, and a replay of the noted one must get 401/403
+//! exec "python3 scripts/real-api.py …"  # a shell command (slice-real.sh only)
 //! hover-row message "text"            # the pointer over a row's element, as click-row finds it
 //! right-click-row message "text"      # a right press on it: the actions menu
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! ```
 //!
-//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, and `$MSG(sc-msg-24)`
-//! the UUID the fake server serves that showcase message as (`message_uuid`).
+//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, `$MSG(sc-msg-24)`
+//! the UUID the fake server serves that showcase message as (`message_uuid`), and `$ID(u-priya)`
+//! the UUID it serves that showcase user, community or custom emoji as (`entity_uuid`).
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
@@ -257,6 +263,16 @@ enum Step {
     Restart,
     /// Whether a refresh token is stored.
     ExpectStoredSession(bool),
+    /// Notes the stored refresh token, for `expect stored-session rotated` and the replay.
+    RememberStoredSession,
+    /// The stored refresh token is not the one remembered: the server rotated it.
+    ExpectStoredSessionRotated,
+    /// Presents the remembered (rotated-out) refresh token to the server's refresh endpoint, as
+    /// this install, and expects a 401 or 403: reuse detection.
+    ExpectOldRefreshRefused,
+    /// A shell command, for what the server is told by someone else (`real-api.py`). Fails the
+    /// script on a non-zero exit. Only `slice-real.sh`'s script uses it.
+    Exec(String),
     /// Moves GPUI's headless clock on: the stage redraws on a timer.
     Tick(u64),
     /// One frame to a PNG, without waiting for the window to stop changing: live video never does.
@@ -359,17 +375,22 @@ fn condition(words: &[&str]) -> Result<Condition> {
 
 /// `$MSG(sc-cc-pit-caption)` is the UUID the fake server serves that showcase message as.
 fn message_ids(source: &str) -> String {
+    let source = expand(source, "$MSG(", semaphore_fake_server::message_uuid);
+    expand(&source, "$ID(", semaphore_fake_server::entity_uuid)
+}
+
+/// Every `<open>readable)` in `source`, through `map`.
+fn expand(source: &str, open: &str, map: fn(&str) -> String) -> String {
     let mut out = String::with_capacity(source.len());
     let mut rest = source;
-    while let Some(start) = rest.find("$MSG(") {
-        let Some(len) = rest[start + 5..].find(')') else {
+    while let Some(start) = rest.find(open) {
+        let from = start + open.len();
+        let Some(len) = rest[from..].find(')') else {
             break;
         };
         out.push_str(&rest[..start]);
-        out.push_str(&semaphore_fake_server::message_uuid(
-            &rest[start + 5..start + 5 + len],
-        ));
-        rest = &rest[start + 5 + len + 1..];
+        out.push_str(&map(&rest[from..from + len]));
+        rest = &rest[from + len + 1..];
     }
     out.push_str(rest);
     out
@@ -436,6 +457,10 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             },
             ["expect", "stored-session", "yes"] => Step::ExpectStoredSession(true),
             ["expect", "stored-session", "no"] => Step::ExpectStoredSession(false),
+            ["remember", "stored-session"] => Step::RememberStoredSession,
+            ["expect", "stored-session", "rotated"] => Step::ExpectStoredSessionRotated,
+            ["expect", "old-refresh-token", "refused"] => Step::ExpectOldRefreshRefused,
+            ["exec", command] => Step::Exec((*command).into()),
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
                 needle: (*needle).into(),
@@ -477,6 +502,25 @@ fn http_with(
     body: &str,
     bearer: Option<&str>,
 ) -> Result<Value> {
+    let auth = bearer.map_or_else(String::new, |token| {
+        format!("Authorization: Bearer {token}\r\n")
+    });
+    let (status, body) = http_raw(server, method, path, &auth, body)?;
+    if status != 200 {
+        bail!("{method} {path}: {status} {body}");
+    }
+    serde_json::from_str(&body).with_context(|| format!("{path} answered {body}"))
+}
+
+/// One request with these extra header lines (each ending `\r\n`): the status and the body. The
+/// body is read whole, so this is for small, unchunked JSON answers (Nest's and the fake's).
+fn http_raw(
+    server: &str,
+    method: &str,
+    path: &str,
+    headers: &str,
+    body: &str,
+) -> Result<(u16, String)> {
     let address = server
         .strip_prefix("http://")
         .ok_or_else(|| anyhow!("the server URL must be http://"))?
@@ -485,12 +529,9 @@ fn http_with(
         TcpStream::connect(address).with_context(|| format!("connecting {address}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(10)))?;
     let body = if body.is_empty() { "{}" } else { body };
-    let auth = bearer.map_or_else(String::new, |token| {
-        format!("Authorization: Bearer {token}\r\n")
-    });
     write!(
         stream,
-        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n{auth}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        "{method} {path} HTTP/1.1\r\nHost: {address}\r\nContent-Type: application/json\r\n{headers}Content-Length: {}\r\nConnection: close\r\n\r\n{body}",
         body.len()
     )?;
     let mut response = String::new();
@@ -498,10 +539,27 @@ fn http_with(
     let (head, body) = response
         .split_once("\r\n\r\n")
         .ok_or_else(|| anyhow!("no HTTP response"))?;
-    if !head.starts_with("HTTP/1.1 200") {
-        bail!("{method} {path}: {head}");
+    let status = head
+        .split(' ')
+        .nth(1)
+        .and_then(|code| code.parse().ok())
+        .ok_or_else(|| anyhow!("{method} {path}: no status in {head}"))?;
+    Ok((status, body.to_owned()))
+}
+
+/// `exec`'s command, through `sh -c`, with its output on the rig's stderr.
+fn exec(command: &str) -> Result<()> {
+    let output = std::process::Command::new("sh")
+        .args(["-c", command])
+        .output()
+        .with_context(|| format!("running {command}"))?;
+    std::io::stderr().write_all(&output.stdout)?;
+    std::io::stderr().write_all(&output.stderr)?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(anyhow!("`{command}` failed: {}", output.status))
     }
-    serde_json::from_str(body).with_context(|| format!("{path} answered {body}"))
 }
 
 /// The newest `sentAt` in a scenario plus a second: where the fake server's clock starts, so rows
@@ -575,6 +633,8 @@ struct Rig {
     video: Arc<FakeVideoSources>,
     /// Our picker's list: two screens and a window.
     screens: Arc<RigScreens>,
+    /// The refresh token `remember stored-session` noted.
+    remembered: Option<String>,
 }
 
 impl Rig {
@@ -605,6 +665,51 @@ impl Rig {
             size: (1280., 800.),
             video: Arc::default(),
             screens: Arc::new(RigScreens),
+            remembered: None,
+        }
+    }
+
+    /// The stored refresh token, if there is one. Never printed.
+    fn stored_token(&self) -> Option<String> {
+        self.secrets
+            .0
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(key, _)| key.starts_with("refresh-token:"))
+            .map(|(_, token)| token.clone())
+    }
+
+    fn replay_old_refresh(&self) -> Result<()> {
+        let old = self
+            .remembered
+            .as_deref()
+            .ok_or_else(|| anyhow!("remember stored-session first"))?;
+        let device = self
+            .secrets
+            .0
+            .lock()
+            .unwrap()
+            .get("device-id")
+            .cloned()
+            .ok_or_else(|| anyhow!("the app stored no device id"))?;
+        let headers = format!(
+            "X-Client-Type: desktop-native\r\nX-Device-Id: {device}\r\nUser-Agent: Semaphore-Native/rig\r\n"
+        );
+        let body = serde_json::json!({ "refreshToken": old }).to_string();
+        let (status, answer) =
+            http_raw(&self.server, "POST", "/api/auth/refresh", &headers, &body)?;
+        if matches!(status, 401 | 403) {
+            Ok(())
+        } else {
+            // The answer may hold new tokens: only its status and error fields are shown.
+            let answer: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
+            Err(anyhow!(
+                "POST /api/auth/refresh with the rotated-out token (X-Client-Type: desktop-native, \
+                 X-Device-Id: {device}) answered {status}, not 401/403: errorCode {}, message {}",
+                answer["errorCode"],
+                answer["message"]
+            ))
         }
     }
 
@@ -1255,6 +1360,28 @@ impl Rig {
                     self.link_images = *on;
                     Ok(())
                 }
+                Step::RememberStoredSession => {
+                    self.remembered = Some(
+                        self.stored_token()
+                            .ok_or_else(|| anyhow!("no refresh token is stored"))?,
+                    );
+                    Ok(())
+                }
+                Step::ExpectStoredSessionRotated => {
+                    let remembered = self
+                        .remembered
+                        .as_deref()
+                        .ok_or_else(|| anyhow!("remember stored-session first"))?;
+                    match self.stored_token() {
+                        None => Err(anyhow!("no refresh token is stored")),
+                        Some(now) if now == remembered => {
+                            Err(anyhow!("the stored refresh token was not rotated"))
+                        }
+                        Some(_) => Ok(()),
+                    }
+                }
+                Step::ExpectOldRefreshRefused => self.replay_old_refresh(),
+                Step::Exec(command) => exec(command),
                 Step::ExpectStoredSession(wanted) => {
                     if self.stored_session() == *wanted {
                         Ok(())
@@ -1332,7 +1459,8 @@ fn main() -> Result<()> {
     }
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let server = take_flag(&mut args, "--server")?;
-    let scenario = PathBuf::from(take_flag(&mut args, "--scenario")?);
+    // Without a scenario (a real server), the clock is the machine's.
+    let scenario = optional_flag(&mut args, "--scenario")?.map(PathBuf::from);
     let script_path = take_flag(&mut args, "--script")?;
     let out_dir = PathBuf::from(take_flag(&mut args, "--out")?);
     let heartbeat = Duration::from_millis(
@@ -1356,7 +1484,12 @@ fn main() -> Result<()> {
             .replace("$SERVER", server.trim_end_matches('/')),
     );
     let steps = parse(&source).with_context(|| script_path.clone())?;
-    let now_ms = scenario_now_ms(&scenario)?;
+    let now_ms = match &scenario {
+        Some(scenario) => scenario_now_ms(scenario)?,
+        None => std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_millis() as i64,
+    };
     std::fs::create_dir_all(&out_dir)?;
     // A fresh data directory per run: no server remembered from the last one.
     let data_dir = out_dir.join("app-data");

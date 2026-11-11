@@ -15,3 +15,35 @@ wait core channel cc-general
 wait core rows >= 5
 wait idle
 shot 02-channel
+
+# Keyboard focus is in the composer wherever the app lands on a conversation, with no click into
+# it first: the channel opened at sign-in (the shell's first render had taken the focus), a click
+# on the channel already open, a session restore, and a second sign-in in the same app.
+type "typed at sign-in"
+wait core composer-text "typed at sign-in" within 5
+click channel-cc-general
+type " reselected"
+wait core composer-text "reselected" within 5
+restart
+wait core session signed-in
+wait core channel cc-general
+wait core element composer-field
+wait idle
+type " restored"
+wait core composer-text "restored" within 5
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "alexk"
+click auth-password
+type "pw"
+click auth-login
+wait core session signed-in
+wait core channel cc-general
+wait core element composer-field
+wait idle
+type " again"
+wait core composer-text "again" within 5

@@ -7,10 +7,13 @@
 
 pub(crate) mod actions;
 mod communities;
+mod dms;
 mod messages;
+pub(crate) mod notify;
 mod queries;
 pub(crate) mod reading;
 mod session;
+pub mod social;
 mod voice;
 
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};
@@ -69,6 +72,11 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::THREAD_META => Some(ViewKey::Thread {
             parent_message_id: id(),
         }),
+        keys::DMS => Some(ViewKey::DirectMessages),
+        keys::FRIENDS => Some(ViewKey::Friends),
+        keys::NOTIFICATIONS => Some(ViewKey::Notifications),
+        keys::NOTIFY_SETTINGS => Some(ViewKey::NotificationSettings),
+        keys::CHANNEL_LEVEL => Some(ViewKey::ChannelNotifyLevel { channel_id: id() }),
         _ => None,
     }
 }
@@ -82,6 +90,13 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::Pins { channel_id } => Some(keys::scoped(keys::PINS, channel_id)),
         ViewKey::ChannelModeration { channel_id } => {
             Some(keys::scoped(keys::CHANNEL_ROLES, channel_id))
+        }
+        ViewKey::DirectMessages => Some(keys::op(keys::DMS)),
+        ViewKey::Friends => Some(keys::op(keys::FRIENDS)),
+        ViewKey::Notifications => Some(keys::op(keys::NOTIFICATIONS)),
+        ViewKey::NotificationSettings => Some(keys::op(keys::NOTIFY_SETTINGS)),
+        ViewKey::ChannelNotifyLevel { channel_id } => {
+            Some(keys::scoped(keys::CHANNEL_LEVEL, channel_id))
         }
         _ => None,
     }
@@ -117,6 +132,8 @@ impl State {
         self.mention_notifications.clear();
         self.actions = Default::default();
         self.reading = Default::default();
+        self.w2 = Default::default();
+        self.session_epoch += 1;
         self.effects.clear();
         self.main_conversation = None;
         self.thread_conversation = None;
@@ -129,6 +146,7 @@ impl State {
         self.token_expires_at_ms = None;
         self.view_changed(ViewKey::Session);
         self.view_changed(ViewKey::Voice);
+        self.view_changed(ViewKey::Badge);
         // After the queue was cleared above: a call mustn't outlive the session.
         if call_live {
             self.push_effect(Effect::EndCall);
@@ -188,6 +206,7 @@ impl State {
                     self.session = SessionState::SignedIn {
                         me: user_view(profile),
                     };
+                    self.w2_signed_in();
                 }
                 self.view_changed(ViewKey::Session);
             }
@@ -221,11 +240,29 @@ impl State {
             keys::MEMBERS => {
                 self.view_changed(ViewKey::Members { community_id: id });
             }
-            keys::PRESENCE => self.members_changed(None),
-            keys::NOTIFICATION_COUNT => self.view_changed(ViewKey::Rail),
+            keys::PRESENCE => {
+                self.members_changed(None);
+                self.w2_presence_changed();
+            }
+            keys::NOTIFICATION_COUNT => self.badge_changed(),
+            keys::DMS => self.view_changed(ViewKey::DirectMessages),
+            keys::FRIENDS => self.view_changed(ViewKey::Friends),
+            keys::NOTIFICATIONS => self.view_changed(ViewKey::Notifications),
+            keys::NOTIFY_SETTINGS => {
+                self.view_changed(ViewKey::NotificationSettings);
+                for key in self.cache.keys_with_op(keys::CHANNEL_LEVEL) {
+                    if let Some(channel_id) = key.segments.get(1).cloned() {
+                        self.view_changed(ViewKey::ChannelNotifyLevel { channel_id });
+                    }
+                }
+            }
+            keys::CHANNEL_LEVEL => {
+                self.view_changed(ViewKey::ChannelNotifyLevel { channel_id: id })
+            }
             keys::THREAD_META => self.reading_meta_arrived(id),
             keys::UNREAD => {
                 self.reading_counts_arrived();
+                self.w2_dms_touched();
                 self.view_changed(ViewKey::Communities);
                 self.view_changed(ViewKey::Rail);
                 for channels_key in self.cache.keys_with_op(keys::CHANNELS) {

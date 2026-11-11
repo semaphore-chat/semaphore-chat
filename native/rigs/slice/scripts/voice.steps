@@ -103,7 +103,7 @@ click voice-camera
 wait core voice camera on within 15
 
 # A moderator removes us: the call ends here, and the server hears we left.
-livekit remove vc-squad me
+livekit remove vc-squad $ID(me)
 wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
 expect core voice camera off

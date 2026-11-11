@@ -30,7 +30,10 @@ uniffi::setup_scaffolding!("semaphore");
 // W1: each part exports its commands in an `#[uniffi::export] impl SemaphoreCore` block of its own
 // file. UniFFI takes any number of such blocks for one object.
 mod actions;
+mod dms;
+mod notify;
 mod reading;
+mod social;
 
 #[uniffi::remote(Enum)]
 pub enum Conversation {
@@ -429,6 +432,12 @@ pub enum ViewKey {
     Thread { parent_message_id: String },
     UnreadMarker { conversation: Conversation },
     ChannelModeration { channel_id: String },
+    DirectMessages,
+    Friends,
+    Notifications,
+    NotificationSettings,
+    ChannelNotifyLevel { channel_id: String },
+    Badge,
 }
 
 #[uniffi::remote(Record)]
@@ -547,6 +556,12 @@ pub enum CoreEvent {
     MessagesChanged {
         conversation: Conversation,
         ops: Vec<ListOp>,
+    },
+    Notify {
+        notification: semaphore_core::model::OsNotification,
+    },
+    WithdrawNotifications {
+        tag: String,
     },
 }
 

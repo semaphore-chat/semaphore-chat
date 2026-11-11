@@ -377,7 +377,7 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 
 | Path | What the backend does | Effect on native | Where fixed |
 |---|---|---|---|
-| Refresh token in the response body | `auth.controller.ts` `respondWithNewSession` and `refresh` return the refresh token in the body only when `User-Agent` contains `Electron`; otherwise cookies only | A native client on a `main`/v0.7.0 backend gets no refresh token | `security/release` (`client-type.util.ts`, `X-Client-Type: desktop-native`); not in any release yet, and the native pin (`chore/stack-review-fixes`) lacks it (U7 sends the header by hand) |
+| Refresh token in the response body | `auth.controller.ts` `respondWithNewSession` and `refresh` return the refresh token in the body only when `User-Agent` contains `Electron`; otherwise cookies only | A native client on a v0.7.0 backend gets no refresh token | `main` after v0.7.0 (`client-type.util.ts`, `X-Client-Type: desktop-native`); pinned and sent as generated header parameters since W0-contract |
 | Refresh throttling | `refresh-throttler.guard.ts` reads a body refresh token only for `Electron` user agents | Throttling misses native refreshes on `main` | `security/release` (`presentedRefreshToken`) |
 | Sessions list "current" marker | `getCurrentTokenId` reads the refresh cookie only on `main` | Native's own session isn't marked current, so "sign out other sessions" could include it | `security/release` falls back to the access token's `sid` |
 | Push notifications | `push-notifications` is Web Push only (VAPID key, subscription `endpoint`) | No push when the app isn't running; desktop native must rely on the live socket. Mobile later needs FCM/APNs/UnifiedPush backend work | not planned anywhere found |
@@ -385,7 +385,7 @@ Checked against `backend/` on this branch (same as `main` v0.7.0 for these files
 | Replay preview (HLS) | `livekit/replay/preview/playlist.m3u8` and segment URLs sit behind `JwtAuthGuard` (header or cookie) | A native HLS player must add `Authorization` to segment fetches | n/a (available) |
 | Password reset link | `mailer.service.ts` builds `${publicAppUrl}/reset-password?token=...`, a web URL | The email always opens the web app; `semaphore://` has no reset route | web flow is acceptable unless native should handle it (decide) |
 | Third-party media | Link-preview images and GIF media (`gifs` returns Giphy URLs) are loaded by the browser straight from third parties | Native must fetch them directly (exposes the viewer's IP) or the backend needs a proxy | pending Mike's decision |
-| Browser sign-in | `auth/desktop/authorize` + `auth/desktop/token` (PKCE, loopback) exist and are in the native pin | Usable, but the issued session's token delivery depends on the client-type contract above | `security/release` |
+| Browser sign-in | `auth/desktop/authorize` + `auth/desktop/token` (PKCE, loopback) exist and are in the native pin | Usable: the redeem takes the client-type headers (W0-contract pin). Authorize now also needs the account's `password` | `main` |
 
 ### Asks from W1 for the backend lane
 
@@ -399,4 +399,21 @@ Things the contract makes awkward for a non-web client, found while designing W1
 | A block check on reactions in 1:1 DMs | `reactions.service` has none, so a blocked user can still react | none (server gap) |
 | Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit |
 | Effective per-channel capabilities for pin, unpin, delete-any and see-removed | `rolesControllerGetMyRolesForChannel` returns community roles without the channel's permission overwrites, so a channel that denies or grants these is shown wrong (the web client has the same gap) | Uses the community roles, as the web does; the server still refuses what it denies |
+
+### Asks from W2 for the backend lane
+
+Found while building W2-core (2026-11-11). None blocks W2; each has a workaround in core.
+
+| Ask | Why | Native's workaround meanwhile |
+|---|---|---|
+| Socket events for friendship changes (request sent, accepted, declined, cancelled, removed) | `friends` emits nothing at all, so a client learns of a request only by asking | Reads friends again after its own changes, on reconnect, and when shown while older than 30 s |
+| Socket events for DM group changes (created, member added, member left) | `dm-group.*` are internal EventEmitter events only; other members see a new group at its first message | A message for a group the list lacks reads the list again |
+| `notificationRead` (or a count event) for read-all, dismiss and the context reads `markAsRead` does | Only a single mark-read is announced, so other devices' badges stay stale | Reads the count again after its own changes and its own `readReceiptUpdated` |
+| Leave dismissed rows out of `GET /notifications` (or a filter) | The list returns them, and `total` counts them, so paging and "more" include rows nobody shows | Filters them out; "more" compares raw rows to `total` |
+| `channelName` on list rows, `parentMessageId` on `newNotification` | The list DTO lacks the name the event has; the event lacks the thread the list has | Takes names from cached channels; a thread reply's OS notification opens the channel |
+| A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call |
+| A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves |
+| An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle |
+| Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) |
+| `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" |
 

@@ -4,10 +4,13 @@
 
 pub mod auth;
 pub mod composer;
+pub mod dms;
 pub mod emoji;
+pub mod friends;
 pub mod kit;
 pub mod messages;
 pub mod nav;
+pub mod notifications;
 pub mod panel;
 pub mod shell;
 #[cfg(feature = "stories")]

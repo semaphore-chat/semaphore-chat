@@ -3,11 +3,12 @@
 //! What lives here, and not in core: the tokens, their single-flight refresh, and their
 //! persistence in a [`SecretStore`].
 //!
-//! - **Client identity.** The pinned contract lacks the client-type headers (README "Known
-//!   gaps"), so every request carries `X-Client-Type: desktop-native`, an `X-Device-Id` and a
-//!   `User-Agent` by hand. The backend (`backend/src/auth/client-type.util.ts`) answers a
-//!   `desktop-native` sign-in or refresh with the refresh token in the body, and refuses one
-//!   without the device id and user agent.
+//! - **Client identity.** Sign-in and refresh carry `X-Client-Type: desktop-native`, the install's
+//!   `X-Device-Id` and an `X-Device-Name`, as the contract's header parameters on those
+//!   operations (the only ones the backend reads them on). The backend
+//!   (`backend/src/auth/client-type.util.ts`) answers them with the refresh token in the body, and
+//!   refuses a native one without the device id and a user agent. The contract doesn't model
+//!   `User-Agent`, so every request carries it as a default header.
 //! - **Authorization.** The generated client has no per-request hook, so the reqwest client
 //!   behind it carries `Authorization` as a default header, and is rebuilt when the access token
 //!   changes. That is at most once per refresh.
@@ -31,7 +32,7 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, MutexGuard, mpsc};
 
 use futures_util::StreamExt;
-use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderName, HeaderValue, USER_AGENT};
+use reqwest::header::{AUTHORIZATION, HeaderMap, HeaderValue, USER_AGENT};
 use semaphore_api::{ByteStream, Client, Error, ResponseValue, from_progenitor};
 use semaphore_core::backend::{BackendError, BackendResult};
 use semaphore_core::platform::SecretStore;
@@ -42,11 +43,17 @@ use tokio::time::timeout;
 
 use crate::{Timeouts, http_client_with_timeouts};
 
-/// What `X-Client-Type` says: a native desktop app, which the backend hands its refresh token in
-/// the response body.
-pub const CLIENT_TYPE: &str = "desktop-native";
-
 const DEVICE_ID_KEY: &str = "device-id";
+
+/// What `X-Device-Name` says: how this install shows in its owner's sessions list. ASCII, so it
+/// needs no percent-encoding, and well under the contract's 64 characters.
+pub const DEVICE_NAME: &str = if cfg!(windows) {
+    "Semaphore Desktop on Windows"
+} else if cfg!(target_os = "macos") {
+    "Semaphore Desktop on macOS"
+} else {
+    "Semaphore Desktop on Linux"
+};
 
 /// A token that cannot be printed.
 #[derive(Clone, PartialEq)]
@@ -111,7 +118,7 @@ enum StoreOp {
 
 /// What the store thread reads before anything else, for [`HttpBackend::new`].
 struct Startup {
-    device_id: String,
+    device_id: uuid::Uuid,
     /// The refresh token stored for the server asked about, if there is one.
     stored: Option<Token>,
 }
@@ -161,15 +168,16 @@ fn run_store(
     }
 }
 
-fn load_device_id(secrets: &dyn SecretStore) -> String {
+fn load_device_id(secrets: &dyn SecretStore) -> uuid::Uuid {
     match secrets.load(DEVICE_ID_KEY.into()) {
-        Ok(Some(id)) if !id.is_empty() => id,
+        Ok(Some(id)) if let Ok(id) = id.parse::<uuid::Uuid>() => id,
         other => {
             if let Err(error) = other {
                 log::warn!("cannot read the device id, using a new one: {error}");
             }
-            let id = uuid::Uuid::new_v4().to_string();
-            if let Err(error) = secrets.save(DEVICE_ID_KEY.into(), id.clone()) {
+            // None stored, or one the contract's `format: uuid` would refuse.
+            let id = uuid::Uuid::new_v4();
+            if let Err(error) = secrets.save(DEVICE_ID_KEY.into(), id.to_string()) {
                 log::warn!("the device id was not stored: {error}");
             }
             id
@@ -179,7 +187,7 @@ fn load_device_id(secrets: &dyn SecretStore) -> String {
 
 struct Inner {
     store: mpsc::Sender<StoreJob>,
-    device_id: String,
+    device_id: uuid::Uuid,
     timeouts: Timeouts,
     state: Mutex<Session>,
     /// The session stored at the last run: its server and refresh token, until `set_server_url`
@@ -252,6 +260,11 @@ fn is_rejection(error: &BackendError) -> bool {
     matches!(error.status, 401 | 403)
 }
 
+/// [`DEVICE_NAME`] as the header type of whichever operation sends it.
+pub(crate) fn device_name<T: std::str::FromStr>() -> Option<T> {
+    DEVICE_NAME.parse().ok()
+}
+
 fn secret_key(url: &str) -> String {
     format!("refresh-token:{}", url.trim_end_matches('/'))
 }
@@ -265,13 +278,6 @@ impl Inner {
 
     fn base_headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(
-            HeaderName::from_static("x-client-type"),
-            HeaderValue::from_static(CLIENT_TYPE),
-        );
-        if let Ok(value) = HeaderValue::from_str(&self.device_id) {
-            headers.insert(HeaderName::from_static("x-device-id"), value);
-        }
         headers.insert(
             USER_AGENT,
             HeaderValue::from_static(concat!("Semaphore-Native/", env!("CARGO_PKG_VERSION"))),
@@ -359,7 +365,15 @@ impl Inner {
                     let body = wire::RefreshRequestDto {
                         refresh_token: Some(refresh),
                     };
-                    match anon.auth_controller_refresh(&body).await {
+                    match anon
+                        .auth_controller_refresh(
+                            Some(wire::AuthControllerRefreshXClientType::DesktopNative),
+                            Some(&self.device_id),
+                            device_name().as_ref(),
+                            &body,
+                        )
+                        .await
+                    {
                         Ok(response) => Ok(response.into_inner()),
                         Err(error) => Err(convert(error).await),
                     }
@@ -546,7 +560,7 @@ impl HttpBackend {
             .spawn(move || run_store(secrets, asked, startup_sender, jobs))
             .expect("the OS starts a thread for the secret store");
         let Startup { device_id, stored } = startup.recv().unwrap_or_else(|_| Startup {
-            device_id: uuid::Uuid::new_v4().to_string(),
+            device_id: uuid::Uuid::new_v4(),
             stored: None,
         });
         Self {
@@ -713,10 +727,13 @@ macro_rules! rpc {
 
 // The `Backend` impl, one area trait per file. Declared after `rpc!` so they can use it.
 mod communities;
+mod dms;
 mod files;
 mod messages;
 mod moderation;
+mod notify;
 mod search;
 mod session;
+mod social;
 mod threads;
 mod voice;

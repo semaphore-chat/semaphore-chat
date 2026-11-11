@@ -279,6 +279,7 @@ fn context_of(target: &SendTarget) -> (Option<&str>, Option<&str>, Option<&str>)
 /// Returns the message. The caller decides how to ack it.
 pub(crate) fn send(
     inner: &Inner,
+    author: &str,
     target: SendTarget,
     body: &SendBody,
     fault: Option<crate::SendFault>,
@@ -312,7 +313,7 @@ pub(crate) fn send(
         None => None,
     };
 
-    let author = inner.scenario.me.id.clone();
+    let author = author.to_owned();
     let now = inner.now();
     let mut data = lock(&inner.data);
 
@@ -468,11 +469,21 @@ pub(crate) fn send(
             )
         }
     };
+    // A DM goes to its members; a group the store doesn't know goes to every socket.
+    let dm_members = match &target {
+        SendTarget::DirectMessage(group) => crate::social::dm_member_ids(&data, group),
+        _ => None,
+    };
+    let notifications = crate::social::notify_message(inner, &mut data, &message);
     drop(data);
-    inner.broadcast(payload.0, payload.1);
+    match dm_members {
+        Some(members) => inner.emit_to_users(&members, payload.0, payload.1),
+        None => inner.broadcast(payload.0, payload.1),
+    }
     if let Some(count) = count_update {
         inner.broadcast("threadReplyCountUpdated", count);
     }
+    crate::social::flush(inner, notifications);
     Ok(message)
 }
 
@@ -539,7 +550,7 @@ pub(crate) fn post_as(
         spans,
         webhook: None,
     };
-    {
+    let notifications = {
         let mut data = lock(&inner.data);
         let messages = data
             .channel_messages
@@ -547,7 +558,10 @@ pub(crate) fn post_as(
             .or_default();
         messages.push(message.clone());
         sorted(messages);
-    }
+        // The notification is made whether or not anyone hears the message (a client that is
+        // disconnected misses both).
+        crate::social::notify_message(inner, &mut data, &message)
+    };
     if broadcast {
         let payload = NewMessagePayloadDto {
             message: message.clone(),
@@ -556,6 +570,7 @@ pub(crate) fn post_as(
             "newMessage",
             serde_json::to_value(&payload).expect("a payload serializes"),
         );
+        crate::social::flush(inner, notifications);
     }
     message
 }
@@ -609,7 +624,13 @@ pub(crate) fn emojis_in_use(inner: &Inner, community_id: &str) -> Vec<serde_json
     let data = lock(&inner.data);
     let mut seen = std::collections::BTreeMap::new();
     // One every community has, so a test can post it without a scenario that uses it.
-    seen.insert("emoji-party".to_owned(), "party".to_owned());
+    // A UUID where the scenario's ids are (`entity_uuid`), as the contract types an emoji id.
+    let party = if inner.scenario.uuid_message_ids {
+        crate::scenario::entity_uuid("emoji-party")
+    } else {
+        "emoji-party".to_owned()
+    };
+    seen.insert(party, "party".to_owned());
     for channel in &channels {
         for message in data.channel_messages.get(channel).into_iter().flatten() {
             for span in &message.spans {
@@ -672,6 +693,14 @@ pub(crate) fn message_map<'a>(
 }
 
 /// Add `me` to a message's reaction, returning the DTO the REST route sends.
+/// Whether a message is in a DM, which takes no custom emoji reactions (`validateCustomReaction`).
+pub(crate) fn is_direct_message(inner: &Inner, id: &str) -> bool {
+    let mut data = lock(&inner.data);
+    message_map(&mut data, id)
+        .and_then(|messages| messages.iter().find(|message| message.id == id))
+        .is_some_and(|message| message.channel_id.is_none())
+}
+
 pub(crate) fn add_reaction(inner: &Inner, id: &str, emoji: &str) -> Option<MessageReactionsDto> {
     let author = inner.scenario.me.id.clone();
     let mut data = lock(&inner.data);

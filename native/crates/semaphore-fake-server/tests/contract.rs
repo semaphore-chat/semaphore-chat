@@ -1046,3 +1046,439 @@ async fn message_actions_match_openapi_and_socket_events() {
         "channel roles",
     );
 }
+
+/// W2: the DM, friends and notification routes against their schemas, and the events they and the
+/// socket send against socket-events.json. On the showcase, whose ids are the UUIDs the schemas'
+/// paths and bodies ask for.
+#[tokio::test]
+async fn dms_friends_and_notifications_match_openapi_and_socket_events() {
+    use reqwest::Method as M;
+    let schemas = Schemas::load();
+    let server = start("showcase").await;
+    let base = server.base_url();
+    let client = http();
+    let id = |readable: &str| semaphore_fake_server::entity_uuid(readable);
+    let events: Value = serde_json::from_str(include_str!("../../../contract/socket-events.json"))
+        .expect("socket-events.json is valid JSON");
+    let payload_of =
+        |name: &str| schemas.reference(events["server"][name]["payload"]["$ref"].as_str().unwrap());
+
+    let check =
+        |method: M, path: String, body: Option<Value>, status: u16, schema: Option<Value>| {
+            let (client, base) = (client.clone(), base.clone());
+            async move {
+                let what = format!("{method} {path}");
+                let (actual, value) = request(&client, method, &base, &path, body, true).await;
+                assert_eq!(actual, status, "{what}: {value}");
+                if let Some(schema) = schema {
+                    assert_valid(&Schemas::load(), &schema, &value, &what);
+                }
+                value
+            }
+        };
+    let error = schemas.component("ErrorResponseDto");
+
+    // DMs.
+    let groups = check(
+        M::GET,
+        "/api/direct-messages".into(),
+        None,
+        200,
+        Some(schemas.array_of("DmGroupResponseDto")),
+    )
+    .await;
+    assert_eq!(groups.as_array().unwrap().len(), 5);
+    let trio = check(
+        M::POST,
+        "/api/direct-messages".into(),
+        Some(json!({ "userIds": [id("u-priya"), id("u-samira")], "name": "Trio" })),
+        201,
+        Some(schemas.component("DmGroupResponseDto")),
+    )
+    .await;
+    let trio_id = trio["id"].as_str().unwrap().to_owned();
+    check(
+        M::POST,
+        "/api/direct-messages".into(),
+        Some(json!({ "userIds": [id("u-priya")] })),
+        201,
+        Some(schemas.component("DmGroupResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/direct-messages/{trio_id}/members"),
+        Some(json!({ "userIds": [id("u-mateo")] })),
+        201,
+        Some(schemas.component("DmGroupResponseDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/direct-messages/{}/members", id("dm-priya")),
+        Some(json!({ "userIds": [id("u-mateo")] })),
+        403,
+        Some(error.clone()),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/direct-messages/x/members".into(),
+        Some(json!({ "userIds": [] })),
+        400,
+        Some(error.clone()),
+    )
+    .await;
+    check(
+        M::DELETE,
+        format!("/api/direct-messages/{trio_id}/members/me"),
+        None,
+        204,
+        None,
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/users/search?q=a&limit=5".into(),
+        None,
+        200,
+        Some(schemas.array_of("UserEntity")),
+    )
+    .await;
+
+    // Friends.
+    check(
+        M::GET,
+        "/api/friends".into(),
+        None,
+        200,
+        Some(schemas.array_of("FriendListItemDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/friends/requests".into(),
+        None,
+        200,
+        Some(schemas.component("PendingRequestsDto")),
+    )
+    .await;
+    for user in ["u-chloe", "u-tomas", "u-priya", "u-mateo"] {
+        check(
+            M::GET,
+            format!("/api/friends/status/{}", id(user)),
+            None,
+            200,
+            Some(schemas.component("FriendshipStatusDto")),
+        )
+        .await;
+    }
+    check(
+        M::POST,
+        format!("/api/friends/request/{}", id("u-mateo")),
+        None,
+        201,
+        Some(schemas.component("FriendshipDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/friends/request/{}", id("u-priya")),
+        None,
+        409,
+        Some(error.clone()),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/friends/request/{}", uuid(1)),
+        None,
+        404,
+        Some(error.clone()),
+    )
+    .await;
+    let pending = check(
+        M::GET,
+        "/api/friends/requests".into(),
+        None,
+        200,
+        Some(schemas.component("PendingRequestsDto")),
+    )
+    .await;
+    let mateo_request = pending["sent"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|row| row["userBId"] == id("u-mateo").as_str())
+        .unwrap()["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let success = Some(schemas.component("SuccessResponseDto"));
+    check(
+        M::DELETE,
+        format!("/api/friends/cancel/{mateo_request}"),
+        None,
+        200,
+        success.clone(),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/friends/accept/{}", id("sc-friend-u-chloe")),
+        None,
+        201,
+        Some(schemas.component("FriendshipDto")),
+    )
+    .await;
+    check(
+        M::DELETE,
+        format!("/api/friends/{}", id("sc-friend-u-chloe")),
+        None,
+        200,
+        success.clone(),
+    )
+    .await;
+    check(
+        M::DELETE,
+        format!("/api/friends/decline/{}", id("sc-friend-out-u-tomas")),
+        None,
+        403,
+        Some(error.clone()),
+    )
+    .await;
+    {
+        let other = start("showcase").await;
+        let (client, base) = (http(), other.base_url());
+        let (status, body) = request(
+            &client,
+            M::DELETE,
+            &base,
+            &format!("/api/friends/decline/{}", id("sc-friend-u-chloe")),
+            None,
+            true,
+        )
+        .await;
+        assert_eq!(status, 200, "{body}");
+        assert_valid(
+            &schemas,
+            &schemas.component("SuccessResponseDto"),
+            &body,
+            "decline",
+        );
+    }
+
+    // Notifications.
+    let list = check(
+        M::GET,
+        "/api/notifications?limit=50".into(),
+        None,
+        200,
+        Some(schemas.component("NotificationListResponseDto")),
+    )
+    .await;
+    assert_eq!(list["notifications"].as_array().unwrap().len(), 11);
+    check(
+        M::GET,
+        "/api/notifications/unread-count".into(),
+        None,
+        200,
+        Some(schemas.component("UnreadCountResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/notifications?limit=0".into(),
+        None,
+        400,
+        Some(error.clone()),
+    )
+    .await;
+    let mut me = connect_as(&base, &id("me")).await;
+    check(
+        M::POST,
+        format!(
+            "/api/notifications/{}/read",
+            id("sc-notif-sc-design-accent")
+        ),
+        None,
+        200,
+        Some(schemas.component("NotificationDto")),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert_eq!(names(&heard[0]), vec!["notificationRead"]);
+    assert_valid(
+        &schemas,
+        &payload_of("notificationRead"),
+        &heard[0][0].1,
+        "notificationRead payload",
+    );
+    check(
+        M::POST,
+        format!(
+            "/api/notifications/{}/dismiss",
+            id("sc-notif-sc-dm-launch-copy")
+        ),
+        None,
+        200,
+        Some(schemas.component("NotificationDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        format!("/api/notifications/{}/read", uuid(2)),
+        None,
+        404,
+        Some(error.clone()),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/notifications/read-all".into(),
+        None,
+        200,
+        Some(schemas.component("UnreadCountResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/notifications/settings".into(),
+        None,
+        200,
+        Some(schemas.component("UserNotificationSettingsDto")),
+    )
+    .await;
+    check(
+        M::PUT,
+        "/api/notifications/settings".into(),
+        Some(json!({ "defaultChannelLevel": "all", "soundType": "mention", "doNotDisturb": true, "dndStartTime": "21:30", "dndEndTime": "07:00", "dndTimezone": "Europe/Berlin" })),
+        200,
+        Some(schemas.component("UserNotificationSettingsDto")),
+    )
+    .await;
+    let override_path = "/api/notifications/channels/tr-general/override".to_owned();
+    check(
+        M::GET,
+        override_path.clone(),
+        None,
+        200,
+        Some(schemas.component("ChannelNotificationOverrideDto")),
+    )
+    .await;
+    check(
+        M::PUT,
+        override_path.clone(),
+        Some(json!({ "level": "mentions" })),
+        200,
+        Some(schemas.component("ChannelNotificationOverrideDto")),
+    )
+    .await;
+    check(M::DELETE, override_path, None, 204, None).await;
+
+    // Socket events. Priya's DM and mention reach me as new notifications; me reads a DM.
+    let mut priya = connect_as(&base, &id("u-priya")).await;
+    let (sent, _) = emit_event(
+        &mut priya,
+        1,
+        "sendDirectMessage",
+        json!({
+            "directMessageGroupId": id("dm-priya"),
+            "spans": [{ "type": "PLAINTEXT", "text": "contract dm" }],
+            "attachments": [],
+            "clientNonce": uuid(11),
+        }),
+    )
+    .await;
+    assert_valid(
+        &schemas,
+        &payload_of("newDirectMessage"),
+        &sent[0].1,
+        "newDirectMessage",
+    );
+    emit_event(
+        &mut priya,
+        2,
+        "sendMessage",
+        json!({
+            "channelId": "cc-general",
+            "spans": [{ "type": "USER_MENTION", "text": "@alexk", "userId": id("me") }],
+            "attachments": [],
+            "clientNonce": uuid(12),
+        }),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await;
+    let notifications: Vec<_> = heard[0]
+        .iter()
+        .filter(|(name, _)| name == "newNotification")
+        .collect();
+    assert_eq!(notifications.len(), 2, "{heard:?}");
+    for (_, payload) in &notifications {
+        assert_valid(
+            &schemas,
+            &payload_of("newNotification"),
+            payload,
+            "newNotification",
+        );
+    }
+    assert_eq!(notifications[0].1["type"], "DIRECT_MESSAGE");
+    assert_eq!(notifications[1].1["type"], "USER_MENTION");
+
+    let mark = json!({ "directMessageGroupId": id("dm-priya"), "lastReadMessageId": sent[0].1["message"]["id"] });
+    assert_valid(
+        &schemas,
+        &schemas.reference(
+            events["client"]["markAsRead"]["payload"]["$ref"]
+                .as_str()
+                .unwrap(),
+        ),
+        &mark,
+        "markAsRead payload",
+    );
+    let (receipts, _) = emit_event(&mut me, 1, "markAsRead", mark).await;
+    assert_eq!(
+        names(&receipts),
+        vec!["readReceiptUpdated", "readReceiptUpdated"]
+    );
+    for (_, payload) in &receipts {
+        assert_valid(
+            &schemas,
+            &payload_of("readReceiptUpdated"),
+            payload,
+            "readReceiptUpdated",
+        );
+    }
+    check(
+        M::POST,
+        "/api/read-receipts/mark-read".into(),
+        Some(json!({ "directMessageGroupId": id("dm-priya"), "lastReadMessageId": sent[0].1["message"]["id"] })),
+        200,
+        Some(schemas.component("ReadReceiptDto")),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert_eq!(
+        names(&heard[0]),
+        vec!["readReceiptUpdated", "readReceiptUpdated"]
+    );
+    for (_, payload) in &heard[0] {
+        assert_valid(
+            &schemas,
+            &payload_of("readReceiptUpdated"),
+            payload,
+            "REST readReceiptUpdated",
+        );
+    }
+    let presence = json!({ "idle": true });
+    assert_valid(
+        &schemas,
+        &schemas.reference(
+            events["client"]["presenceOnline"]["payload"]["$ref"]
+                .as_str()
+                .unwrap(),
+        ),
+        &presence,
+        "presenceOnline payload",
+    );
+}

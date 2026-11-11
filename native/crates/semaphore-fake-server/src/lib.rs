@@ -11,6 +11,7 @@ pub mod livekit;
 mod messages;
 mod png;
 pub mod scenario;
+mod social;
 mod socket;
 
 use axum::Json;
@@ -25,7 +26,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinHandle;
 
-pub use scenario::{ScenarioError, ScenarioSource, load_named, message_uuid};
+pub use scenario::{ScenarioError, ScenarioSource, entity_uuid, load_named, message_uuid};
 
 /// One thing the server saw, in the order it finished handling it.
 #[derive(Clone, Debug, Serialize)]
@@ -102,6 +103,8 @@ pub(crate) struct Data {
     pub nonces: HashMap<(String, String), NonceEntry>,
     /// What clients uploaded, by file id: served back from the file routes.
     pub files: HashMap<String, StoredFile>,
+    /// DMs, friendships and notifications.
+    pub social: social::Social,
 }
 
 /// An uploaded file, kept in memory for the server's life.
@@ -121,6 +124,9 @@ pub(crate) struct Inner {
     pub clock: Mutex<DateTime<Utc>>,
     pub records: Mutex<Vec<Record>>,
     pub sockets: Mutex<HashMap<u64, mpsc::UnboundedSender<Outbound>>>,
+    /// Whose socket each is: the handshake's `userId` (a fake-only extension, so a test can
+    /// connect as someone else), otherwise the signed-in user.
+    pub socket_users: Mutex<HashMap<u64, String>>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -173,6 +179,31 @@ impl Inner {
         let frame = socket::event_frame(event, payload);
         let sockets: Vec<_> = lock(&self.sockets).values().cloned().collect();
         for socket in sockets {
+            self.enqueue_text(&socket, frame.clone());
+        }
+    }
+
+    /// Send an event to the sockets of one user.
+    pub fn emit_to_user(&self, user_id: &str, event: &str, payload: Value) {
+        self.emit_to_users(&[user_id.to_owned()], event, payload);
+    }
+
+    /// Send an event to the sockets of these users, once per socket.
+    pub fn emit_to_users(&self, user_ids: &[String], event: &str, payload: Value) {
+        let frame = socket::event_frame(event, payload);
+        let targets: Vec<_> = {
+            let users = lock(&self.socket_users);
+            lock(&self.sockets)
+                .iter()
+                .filter(|(sid, _)| {
+                    users
+                        .get(sid)
+                        .is_some_and(|user| user_ids.iter().any(|id| id == user))
+                })
+                .map(|(_, tx)| tx.clone())
+                .collect()
+        };
+        for socket in targets {
             self.enqueue_text(&socket, frame.clone());
         }
     }
@@ -398,6 +429,7 @@ impl FakeServer {
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),
             files: HashMap::new(),
+            social: social::Social::seed(&scenario),
         };
         let listener = tokio::net::TcpListener::bind((ip, port))
             .await
@@ -414,6 +446,7 @@ impl FakeServer {
             clock: Mutex::new(epoch),
             records: Mutex::new(Vec::new()),
             sockets: Mutex::new(HashMap::new()),
+            socket_users: Mutex::new(HashMap::new()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),
@@ -483,6 +516,11 @@ impl FakeServer {
     /// Send a server event to every connected socket.
     pub async fn emit(&self, event: &str, payload: Value) {
         self.inner.broadcast(event, payload);
+    }
+
+    /// Send a server event to the sockets of one user.
+    pub async fn emit_to_user(&self, user_id: &str, event: &str, payload: Value) {
+        self.inner.emit_to_user(user_id, event, payload);
     }
 
     /// Drop every socket without a close frame, as a network failure would.

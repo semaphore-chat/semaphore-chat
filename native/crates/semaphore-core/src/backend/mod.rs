@@ -11,20 +11,26 @@
 //! implements each area trait, and gets `Backend` from the blanket impl.
 
 mod communities;
+mod dms;
 mod files;
 mod messages;
 mod moderation;
+mod notify;
 mod search;
 mod session;
+mod social;
 mod threads;
 mod voice;
 
 pub use communities::CommunitiesBackend;
+pub use dms::DmsBackend;
 pub use files::FilesBackend;
 pub use messages::MessagesBackend;
 pub use moderation::ModerationBackend;
+pub use notify::NotifyBackend;
 pub use search::SearchBackend;
 pub use session::SessionBackend;
+pub use social::SocialBackend;
 pub use threads::ThreadsBackend;
 pub use voice::VoiceBackend;
 
@@ -86,6 +92,9 @@ pub trait Backend:
     + ModerationBackend
     + ThreadsBackend
     + SearchBackend
+    + DmsBackend
+    + SocialBackend
+    + NotifyBackend
 {
 }
 
@@ -101,6 +110,9 @@ impl<T> Backend for T where
         + ModerationBackend
         + ThreadsBackend
         + SearchBackend
+        + DmsBackend
+        + SocialBackend
+        + NotifyBackend
 {
 }
 

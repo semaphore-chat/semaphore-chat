@@ -206,3 +206,69 @@ pub fn event(frame: &str) -> (String, Value) {
         args.get(1).cloned().unwrap_or(Value::Null),
     )
 }
+
+pub async fn put(client: &reqwest::Client, base: &str, path: &str, body: Value) -> (u16, Value) {
+    request(client, reqwest::Method::PUT, base, path, Some(body), true).await
+}
+
+/// A v2 socket that is `user_id`'s (the fake's handshake extension), so a test can watch what
+/// another member receives.
+pub async fn connect_as(base: &str, user_id: &str) -> Socket {
+    Socket::connect(
+        base,
+        json!({ "token": TOKEN, "protocol": 2, "userId": user_id }),
+    )
+    .await
+}
+
+/// Send one event with an ack id and read frames until its ack: the events the server sent first
+/// (broadcasts and the notifications the send caused go out before the ack), and the ack value.
+pub async fn emit_event(
+    socket: &mut Socket,
+    ack_id: u64,
+    name: &str,
+    payload: Value,
+) -> (Vec<(String, Value)>, Value) {
+    socket
+        .send(&format!("42{ack_id}{}", json!([name, payload])))
+        .await;
+    let mut events = Vec::new();
+    loop {
+        let frame = socket.next_text().await;
+        if let Some((id, value)) = parse_ack(&frame) {
+            assert_eq!(id, ack_id, "{frame}");
+            return (events, value);
+        }
+        events.push(event(&frame));
+    }
+}
+
+/// Everything each socket was sent until now, in order: a `marker` event goes to all connected
+/// sockets, and each given one is read up to it (earlier calls' markers are skipped). A frame that was queued before the marker is read before it, so an event
+/// that was not sent is proved absent without waiting for it.
+pub async fn settle(server: &FakeServer, sockets: &mut [&mut Socket]) -> Vec<Vec<(String, Value)>> {
+    static MARKERS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let this = MARKERS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    server.emit("marker", json!({ "n": this })).await;
+    let mut all = Vec::new();
+    for socket in sockets.iter_mut() {
+        let mut events = Vec::new();
+        loop {
+            let (name, payload) = event(&socket.next_text().await);
+            if name == "marker" {
+                // An earlier call that left this socket out: its marker is still queued.
+                if payload["n"] == this {
+                    break;
+                }
+                continue;
+            }
+            events.push((name, payload));
+        }
+        all.push(events);
+    }
+    all
+}
+
+pub fn names(events: &[(String, Value)]) -> Vec<&str> {
+    events.iter().map(|(name, _)| name.as_str()).collect()
+}

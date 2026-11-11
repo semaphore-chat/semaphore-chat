@@ -58,7 +58,16 @@ impl SessionBackend for HttpBackend {
                 .ok_or_else(|| failure("no server URL is set"))?;
             (client, state.server_url.clone(), state.generation)
         };
-        let response = match client.auth_controller_login(&body).await {
+        let device_id = self.inner.device_id;
+        let response = match client
+            .auth_controller_login(
+                Some(wire::AuthControllerLoginXClientType::DesktopNative),
+                Some(&device_id),
+                super::device_name().as_ref(),
+                &body,
+            )
+            .await
+        {
             Ok(response) => response.into_inner(),
             Err(error) => return Err(convert(error).await),
         };
