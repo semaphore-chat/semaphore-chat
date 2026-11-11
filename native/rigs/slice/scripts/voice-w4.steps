@@ -1,0 +1,121 @@
+# W4: calls against a real LiveKit (lk-stack) and the fake server minting real tokens. Run by
+# `slice-e2e.sh --voice` after voice.steps. Two publishers are there before the app starts:
+# `demo-peer` (video) in Squad Up, and priya (`$ID(u-priya)`, video) in her DM's room, so the DM
+# call has someone in it once the app answers. Snaps named *-live-* carry video and aren't compared.
+
+app 1280 800
+click auth-connect
+wait core label "Username" within 5
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core connection connected
+expect core keep-awake off
+
+# 1. Priya calls. Declined first: nothing joins.
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing $ID(dm-priya)
+wait core ring looping
+click incoming-decline
+wait core ringing no
+wait core ring stopped
+expect core voice room none
+
+# 2. She calls again and the app answers: her conversation, the call above it, her video, the
+# system kept awake, the connected cue.
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+server dm_call_join "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+wait core ringing $ID(dm-priya)
+click incoming-accept
+wait core voice connected within 30
+wait core voice room dm $ID(dm-priya)
+wait core route dm/$ID(dm-priya)
+wait core ringing no
+wait core ring stopped
+wait core voice participant $ID(u-priya) within 30
+wait core voice frames within 30
+wait core keep-awake on
+wait core cue connected 1
+wait core element dm-stage-split
+wait core element dm-call-in-call
+tick 100
+snap 01-live-dm-call
+
+# Elsewhere, the call floats over the column, with the bar under it.
+click community-$ID(c-couch)
+click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core float shown
+wait core label "Share screen"
+tick 100
+snap 02-live-float
+
+# Leaving from the bar: the inhibitor goes, the disconnected cue plays.
+click voice-leave
+wait core voice disconnected within 15
+wait core voice room none
+wait core keep-awake off
+wait core cue disconnected 1
+wait core float hidden
+server dm_call_leave "{\"dmGroupId\": \"$ID(dm-priya)\", \"userId\": \"$ID(u-priya)\"}"
+
+# 3. Squad Up: the soundboard. Rimshot (Ogg Opus, decoded built in) goes out on the published
+# `soundboard` track LiveKit lists, and we hear it too.
+click channel-$ID(vc-squad)
+wait core voice connected within 30
+wait core voice participant demo-peer within 30
+wait core keep-awake on
+click voice-soundboard
+# c-couch's Rimshot: entity_uuid("sound:<c-couch's uuid>:Rimshot").
+wait core element sound-d0424970-cbfa-5e9a-a0b0-d2472bc106e1 within 15
+tick 100
+snap 03-live-soundboard
+forget sounds
+click sound-d0424970-cbfa-5e9a-a0b0-d2472bc106e1
+wait core livekit track $ID(vc-squad) $ID(me) soundboard within 15
+wait core sound heard within 15
+
+# 4. A moderator mutes me: the mic can't come back until they lift it.
+server server_mute "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(me)\", \"mute\": true}"
+wait core voice server-muted yes
+wait core label "Muted by a moderator"
+tick 100
+snap 04-live-server-muted
+server server_mute "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(me)\", \"mute\": false}"
+wait core voice server-muted no
+
+# 5. The participant menu on demo-peer's tile: muted for me (saved), then a server mute.
+right-click tile-demo-peer-camera
+wait core dialog participant-menu open
+tick 100
+snap 05-live-participant-menu
+click participant-local-mute
+expect settings /user_volumes/demo-peer 0
+click participant-server-mute
+wait core dialog participant-menu closed
+wait core requests LivekitController_muteParticipant >= 1
+
+# 6. A screen share starts the replay buffer: the Capture button and the recording dot.
+click voice-share
+wait core label "Screen 1"
+click picker-source-screen-1
+click picker-share
+wait core voice screen on within 15
+wait core replay recording within 20
+wait core element voice-capture
+wait core element voice-recording-dot
+tick 100
+snap 06-live-recording
+click voice-share
+wait core voice screen off within 15
+wait core replay off within 15
+wait core no-element voice-capture
+
+# 7. Leaving.
+click voice-leave
+wait core voice disconnected within 15
+wait core keep-awake off

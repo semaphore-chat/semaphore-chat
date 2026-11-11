@@ -295,6 +295,8 @@ pub fn dm_call_controls(
             gpui_kit::white()
         };
         return div()
+            .id("dm-call-in-call")
+            .test_support()
             .flex()
             .items_center()
             .gap(px(4.))
