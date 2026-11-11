@@ -219,7 +219,14 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            // W5: each lane fetches its own queries.
             op => {
+                if let Some(value) = self.w5a_fetch(key).await {
+                    return value;
+                }
+                if let Some(value) = self.w5b_fetch(key).await {
+                    return value;
+                }
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),
                 });

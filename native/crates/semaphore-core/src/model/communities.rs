@@ -1,6 +1,6 @@
 //! Communities, channels, permissions, members and the rail's counters.
 
-use super::UserView;
+use super::{ChannelPreset, UserView};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommunityRow {
@@ -36,6 +36,8 @@ pub struct ChannelRow {
     /// `None` while they load, or if they failed to. Fail open then, as the web does: the server
     /// enforces them either way.
     pub permissions: Option<ChannelPermissions>,
+    /// W5: the permission preset's label, for the channels tab.
+    pub preset: ChannelPreset,
 }
 
 /// What this user may do in a channel.

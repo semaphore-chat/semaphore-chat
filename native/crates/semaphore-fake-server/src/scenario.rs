@@ -250,6 +250,11 @@ struct RawScenario {
     notification_settings: Option<UserNotificationSettingsDto>,
     #[serde(rename = "channelOverrides", default)]
     channel_overrides: Vec<ChannelNotificationOverrideDto>,
+    /// W5: every other top-level key (`rolesByCommunity`, and the bans, timeouts, logs, mention
+    /// groups, emoji, sounds, webhooks, invites and overrides W5's lanes add), for `admin.rs` and
+    /// `rbac.rs` to read, so neither lane edits this file.
+    #[serde(flatten)]
+    extra: BTreeMap<String, serde_json::Value>,
 }
 
 /// The immutable part of a loaded scenario.
@@ -275,6 +280,8 @@ pub struct Scenario {
     pub epoch: DateTime<Utc>,
     /// Its message ids are UUIDs (`message_uuid`), and new messages get UUIDs too.
     pub uuid_message_ids: bool,
+    /// W5: the scenario's other top-level keys as JSON, ids already converted like the rest.
+    pub extra: BTreeMap<String, serde_json::Value>,
 }
 
 impl Scenario {
@@ -367,6 +374,7 @@ impl Scenario {
             channel_overrides: raw.channel_overrides,
             epoch,
             uuid_message_ids: uuid_ids,
+            extra: raw.extra,
         })
     }
 

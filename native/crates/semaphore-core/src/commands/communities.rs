@@ -4,11 +4,24 @@ use super::SPECIAL_MENTIONS;
 use crate::cache::{QueryKey, keys};
 use crate::client::{Core, user_view};
 use crate::model::{
-    ChannelKind, ChannelPermissions, ChannelRow, CommunityRow, DisplayRole, EmojiView, MemberList,
-    MemberView, MentionCandidate, MentionKind, RailCounts, UserView,
+    ChannelKind, ChannelPermissions, ChannelPreset, ChannelRow, CommunityRow, DisplayRole,
+    EmojiView, MemberList, MemberView, MentionCandidate, MentionKind, RailCounts, UserView,
 };
 use semaphore_wire::enums::ChannelType;
 use semaphore_wire::types as wire;
+
+/// W5: the wire preset as the model's.
+pub(crate) fn channel_preset(preset: &semaphore_wire::enums::ChannelPreset) -> ChannelPreset {
+    use semaphore_wire::enums::ChannelPreset as Wire;
+    match preset {
+        Wire::Normal => ChannelPreset::Normal,
+        Wire::ReadOnly => ChannelPreset::ReadOnly,
+        Wire::Announcement => ChannelPreset::Announcement,
+        Wire::ModsOnly => ChannelPreset::ModsOnly,
+        Wire::Custom => ChannelPreset::Custom,
+        Wire::Unknown(_) => ChannelPreset::Unknown,
+    }
+}
 
 fn channel_permissions(capability: &wire::ChannelCapabilitiesDto) -> ChannelPermissions {
     ChannelPermissions {
@@ -91,6 +104,7 @@ impl Core {
                                     .map(channel_permissions)
                             });
                     ChannelRow {
+                        preset: channel_preset(&channel.preset),
                         slowmode_seconds: channel.slowmode_seconds.max(0) as u32,
                         permissions,
                         community_id: channel.community_id,

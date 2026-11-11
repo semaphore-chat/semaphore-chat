@@ -112,6 +112,10 @@ pub(crate) struct State {
     pub w3: crate::commands::account::W3State,
     /// W4's incoming call: gone with the session.
     pub w4: crate::commands::calls::W4State,
+    /// W5-A's pending changes and errors: gone with the session.
+    pub w5a: crate::commands::community_admin::W5aState,
+    /// W5-B's pending changes, the removals already announced, the moderation log's paging.
+    pub w5b: crate::commands::moderation::W5bState,
     /// W4's platform seams (the sleep inhibitor): they outlive sessions.
     pub w4_platform: crate::commands::calls::W4Platform,
     /// W3's signed-out work (the server in use, invites, sign in with browser): it outlives sessions.
@@ -172,6 +176,8 @@ impl State {
             w2: Default::default(),
             w3: Default::default(),
             w4: Default::default(),
+            w5a: Default::default(),
+            w5b: Default::default(),
             w4_platform: Default::default(),
             auth: Default::default(),
             session_epoch: 0,

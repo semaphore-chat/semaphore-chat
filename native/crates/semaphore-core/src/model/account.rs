@@ -36,6 +36,10 @@ pub struct InstancePermissionsView {
     pub state: LoadState,
     /// `CREATE_COMMUNITY`: show "Create community". False until known.
     pub can_create_community: bool,
+    /// W5: `CREATE_INSTANCE_INVITE`, half of what an invite needs (`CommunityCaps::create_invite`).
+    pub can_create_invite: bool,
+    /// W5: `DELETE_INSTANCE_INVITE`.
+    pub can_delete_invite: bool,
 }
 
 /// Dark or light, as the server stores it.

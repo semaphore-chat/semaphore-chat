@@ -365,6 +365,58 @@ engine report of `screen_audio: Failed` starts the video alone at once.
 | W5-ui-moderation | Ban/kick/timeout dialogs, user moderation menu, ban and timeout lists, moderation log | new `ui/src/moderation` | W5 freeze | M | stories per dialog and list state |
 | W5-app | Wire community settings route, role-gated actions across the shell | `semaphore-app/*`, `rigs/slice/scripts/w5.steps` | W5-core, W5-ui-* | M | `w5.steps`: create channel, edit role, timeout a member (composer locks), ban, invite created |
 
+**W5 freeze** (2026-11-11). W5-core runs as two full-stack lanes, each owning core, net and fake
+server for its area, so each proves its own wire tests. If W5-B is too big, its fake-server files
+can go to a separate W5-fake-B lane. The shared core files (`cache.rs`, `commands/mod.rs`,
+`commands/queries.rs`, `events.rs`, `client.rs`) only call each lane's hub, so neither lane edits
+them: `CacheValue::W5a`/`W5b` hold the lanes' own value enums, and `view_for`, `key_for`, the
+`query_changed` arm, the fetch arm and `apply_event` delegate to `community_admin.rs` (A) and
+`moderation.rs` (B). The fake server's `Scenario::extra` holds the scenario's other top-level keys
+for the lanes to read. After the freeze, each lane owns these files:
+
+| Lane | Owns |
+|---|---|
+| W5-A structure: community update/delete, channels CRUD and moves, private channel members, adding members, mention groups, custom emoji, sound management, webhooks, invites | `semaphore-core/src/commands/{community_admin,community_assets}.rs`, `semaphore-core/src/backend/community_admin.rs`, `semaphore-net/src/backend/community_admin.rs`, `semaphore-fake-server/src/{admin.rs, http/community_admin.rs, http/communities.rs}`, `semaphore-core/tests/{w5a.rs, common/w5a.rs}`, `semaphore-net/tests/w5a.rs`, the bodies in `semaphore-ffi/src/admin_w5a.rs`, its scenario keys |
+| W5-B RBAC: the community permission set, roles and assignment, channel overrides, ban/unban, timeouts, lists, the moderation log, being moderated | `semaphore-core/src/commands/{roles,permissions,moderation}.rs`, `semaphore-core/src/backend/{roles,moderation}.rs`, `semaphore-net/src/backend/{roles,moderation}.rs`, `semaphore-fake-server/src/{rbac.rs, actions.rs (role routes), http/{roles,moderation}.rs}`, `semaphore-core/tests/{w5b.rs, common/w5b.rs}`, `semaphore-net/tests/w5b.rs`, the bodies in `semaphore-ffi/src/admin_w5b.rs`, `rolesByCommunity` and its other scenario keys |
+| W5-ui-community | `semaphore-ui/src/community_settings/*` |
+| W5-ui-roles | `semaphore-ui/src/roles/*` |
+| W5-ui-moderation | `semaphore-ui/src/moderation/*` (and the removal dialog) |
+| W5-app | `semaphore-app/*`, the `CommunityRemoved`/`ChannelRemoved` arms in `semaphore-ui/src/shell/mod.rs`, `rigs/slice/scripts/w5.steps` |
+
+Model changes after the freeze are additive only, with the coordinator. A's fake handlers ask
+`rbac::allows`, which B fills in (true until then). The Members tab's per-member actions read B's
+`Core::moderation_target`.
+
+**W5 defaults** (chosen for the owner, who may overrule; 2026-11-11):
+
+- "Remove" on the Members tab is the moderation kick (KICK_USER, with a reason, logged), W4's
+  `Core::kick_member`; the plain membership removal (DELETE_MEMBER) isn't offered.
+- An action the rank rule forbids shows disabled with its reason (`NotAllowed`), not hidden.
+- The instance owner without a role in the community gets what the server gives them today: ban,
+  kick and timeout show refused (`NotAllowed::Rank`), because the server applies the rank rule to
+  them (see Backend asks W5). The gating flips when the server changes.
+- Being kicked or banned, or the community being deleted, shows one dialog ("You were removed
+  from X" / "You were banned from X", with the reason and, for a temporary ban, until when), then
+  goes home. Core leaves the call and drops the community first (`CoreEvent::CommunityRemoved`).
+- When a timeout runs out, the host calls `Core::timeout_elapsed` at `timed_out_until_ms`: the
+  server says nothing then.
+- The Invites tab lists only my invites that include this community (the web lists all of mine),
+  and offers creating one only with community CREATE_INVITE and instance CREATE_INSTANCE_INVITE,
+  both of which the server asks for.
+- "Add member" searches with `userControllerSearchUsers` and the community, not the web's admin-only
+  user list.
+- Reset default roles is offered, behind a confirm.
+- Per-member channel overrides (`OverwriteTarget.MEMBER`) are left out: the API doesn't manage
+  them.
+- Role actions are wire names, and a saved role keeps the ones this build doesn't know.
+
+**Carried over** (for whoever touches core next; not fixed in W5's freeze):
+
+- A ring stopped early once in a wave 4 rig run. The suspected cause is a late, empty DM-presence
+  answer from the previous ring stopping the new one (`semaphore-core/src/commands/calls.rs:301-316`,
+  where an empty presence ends the ring; `commands/queries.rs:44`, `answer_dirty`). W5-B is the
+  next lane in core's command files.
+
 ### Wave 6: instance admin and first run
 
 | Unit | Delivers | Touches | Depends on | Size | Done when |
@@ -483,3 +535,23 @@ Found while designing W4 (2026-11-11). None blocks W4; each has a workaround or 
 | Decline, missed-call or cancel events for DM calls, and a REST leave for DM voice presence | Only `dmVoiceCallStarted`/`UserJoined`/`UserLeft` exist, and DM presence leaves only by LiveKit's webhook or the 90 s TTL | Decline is local; ringing stops when the call's presence empties |
 | Make the "first user" check in `handleWebhookDmParticipantJoined` atomic | `smembers` then a pipeline: two members joining at once can both emit `dmVoiceCallStarted` | A ring for a DM whose call we're in or joining is ignored |
 | A "remove from call" endpoint, and whether I outrank someone | The web's voice "remove" is a community kick; server mute needs outranking, which a client can't see | Kick behind a confirm; the menu offers mute by role and shows the server's 403 |
+
+### Backend asks W5
+
+Found while designing W5 (2026-11-11). None blocks W5; each has a workaround or a default above.
+Issue numbers to follow, except those named.
+
+| Ask | Where | Affects the web today | Native's workaround meanwhile |
+|---|---|---|---|
+| Let the instance owner past the rank rule of ban, kick and timeout, as unban, lifting a timeout and membership removal already do (`membership.service.ts:389`); the controller doesn't pass the role | `backend/src/moderation/moderation.service.ts:78-97` (`canModerate`), `:136`, `:357`, `:471`; `moderation.controller.ts:75-81`, `:146` | Yes: an owner with no role in the community is refused | Shows those actions refused (`NotAllowed::Rank`) |
+| Invalidate the member list under its real key after ban, kick and timeout: the handlers name `membershipControllerGetMembers`, which isn't an operation | `frontend/src/socket-hub/handlers/moderationHandlers.ts:9,18,26,37` (frontend) | Yes: member lists stay stale | Core also reads `membershipControllerFindAllForCommunity` again |
+| A socket event to the user added to or removed from a private channel | `backend/src/channel-membership/channel-membership.service.ts:102,290` (internal room events only); `rooms/room-subscription.handler.ts:365-407` | Yes: the channel appears or goes only on a refetch | Reads channels again when shown and on a new connection |
+| Socket events for custom emoji, soundboard, mention group and webhook changes | `custom-emoji/` and `soundboard/` services emit none; `alias-groups/alias-groups.service.ts:213,315,374,404,476` (room events only) | Yes: pickers and lists stay stale | W2's rule: read again after own changes, when shown and older than 30 s, on reconnect |
+| An event for an unban, and something that tells moderators to refresh the ban list, timeout list and moderation log | `backend/src/moderation/moderation.service.ts` (`unbanUser`) | Yes (low) | Reads those lists again on any moderation event it sees, and when shown |
+| An event when a timeout runs out by itself (only the voice-restore job runs then) | `backend/src/moderation/moderation.service.ts:551-560` | Probably: the web composer only ticks locally (`frontend/src/hooks/useComposerAvailability.ts:83`); whether its capabilities stay masked until a refetch isn't checked | `Core::timeout_elapsed` at `timed_out_until_ms` |
+| Community invites: decide whether community CREATE_INVITE alone should do (today instance CREATE_INSTANCE_INVITE is also required, so the default Community Admin can't invite); list invites per community (`GET /invite` returns all of mine); delete says admins bypass but only the creator may | `backend/src/invite/invite.controller.ts:32,49`; `invite.service.ts:42-62,200-203,273-276`; web `components/Community/InviteManagement.tsx:63,76` | Yes | Gates on both actions; filters to the community |
+| "Add member" lists users through instance READ_USER, so community admins without an instance role are refused | `frontend/src/components/Community/MemberManagement.tsx:62` (frontend); `backend/src/user/user.controller.ts:118-121` | Yes | Uses `userControllerSearchUsers` with the community |
+| An enum for the moderation log's `action` filter in the contract (it is a free string) | `backend/src/moderation/moderation.controller.ts:340` | No | Sends the wire name |
+| Timeout list behind VIEW_BAN_LIST: a moderator with only TIMEOUT_USER can't see it (product) | `backend/src/moderation/moderation.controller.ts:211` | Yes | Gates the list on VIEW_BAN_LIST |
+| A banned or kicked user can hear the event twice (personal room, then the community room after a room leave that isn't awaited) | `backend/src/moderation/moderation.service.ts:209-230,398-420` | No (invalidation is idempotent) | Core announces a removal once. #673 |
+| Channel capabilities for update, delete and webhooks; overrides in the role lookup; whether I outrank someone | `ChannelCapabilitiesDto`, `rolesControllerGetMyRolesForChannel` | Yes | Community roles, as the web does. #639, #644, #663 |

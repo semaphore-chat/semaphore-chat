@@ -288,18 +288,24 @@ impl Core {
                 return InstancePermissionsView {
                     state: LoadState::Ready,
                     can_create_community: true,
+                    can_create_invite: true,
+                    can_delete_invite: true,
                 };
             }
             state.ensure_query(key.clone());
-            let can_create_community = state.cache.instance_roles(&key).is_some_and(|roles| {
-                roles
-                    .roles
-                    .iter()
-                    .any(|role| role.actions.contains(&RbacAction::CreateCommunity))
-            });
+            let has = |action: RbacAction| {
+                state.cache.instance_roles(&key).is_some_and(|roles| {
+                    roles
+                        .roles
+                        .iter()
+                        .any(|role| role.actions.contains(&action))
+                })
+            };
             InstancePermissionsView {
+                can_create_community: has(RbacAction::CreateCommunity),
+                can_create_invite: has(RbacAction::CreateInstanceInvite),
+                can_delete_invite: has(RbacAction::DeleteInstanceInvite),
                 state: state.query_load_state(&key),
-                can_create_community,
             }
         })
     }

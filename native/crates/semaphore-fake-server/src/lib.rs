@@ -7,11 +7,13 @@
 
 mod accounts;
 mod actions;
+mod admin;
 mod calls;
 mod http;
 pub mod livekit;
 mod messages;
 mod png;
+mod rbac;
 pub mod scenario;
 mod social;
 mod socket;
@@ -140,6 +142,14 @@ pub(crate) struct Inner {
     /// DM calls, server mutes, kicks, the replay buffer, clips and join failures (W4). Never held
     /// with `data`.
     pub calls: Mutex<calls::Calls>,
+    /// W5-A: channels made, moved and changed, private members, mention groups, emoji, sounds,
+    /// webhooks and invites. Never held with `data` or `rbac`.
+    #[allow(dead_code)]
+    pub admin: Mutex<admin::Admin>,
+    /// W5-B: roles, assignments, overrides, bans, timeouts and the moderation log. Never held with
+    /// `data` or `admin`.
+    #[allow(dead_code)]
+    pub rbac: Mutex<rbac::Rbac>,
     pub faults: Mutex<Faults>,
     next_sid: std::sync::atomic::AtomicU64,
     next_message: std::sync::atomic::AtomicU64,
@@ -492,6 +502,8 @@ impl FakeServer {
             socket_tokens: Mutex::new(HashMap::new()),
             accounts: Mutex::new(accounts::Accounts::new()),
             calls: Mutex::new(calls::Calls::default()),
+            admin: Mutex::new(admin::Admin::default()),
+            rbac: Mutex::new(rbac::Rbac::default()),
             faults: Mutex::new(Faults::default()),
             next_sid: std::sync::atomic::AtomicU64::new(0),
             next_message: std::sync::atomic::AtomicU64::new(0),

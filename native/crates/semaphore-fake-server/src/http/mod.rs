@@ -8,6 +8,7 @@
 
 mod account;
 mod communities;
+mod community_admin;
 mod dms;
 mod files;
 mod messages;
@@ -15,6 +16,7 @@ mod moderation;
 mod notify;
 mod onboarding;
 mod replay;
+mod roles;
 mod search;
 mod session;
 mod social;
@@ -55,6 +57,8 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(onboarding::routes())
         .merge(replay::routes())
         .merge(soundboard::routes())
+        .merge(community_admin::routes())
+        .merge(roles::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -78,6 +82,8 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| onboarding::operation_id(method, route))
         .or_else(|| replay::operation_id(method, route))
         .or_else(|| soundboard::operation_id(method, route))
+        .or_else(|| community_admin::operation_id(method, route))
+        .or_else(|| roles::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -532,7 +538,16 @@ async fn control(
         "requests" => {
             return json_response(StatusCode::OK, json!({ "requests": inner.requests() }));
         }
-        _ => return invalid(&format!("Unknown control {name}")),
+        // W5: each lane's own controls (W5-B's `act_as`, which changes the signed-in user's roles
+        // for a test).
+        other => {
+            if let Some(response) = crate::admin::control(&inner, other, &request)
+                .or_else(|| crate::rbac::control(&inner, other, &request))
+            {
+                return response;
+            }
+            return invalid(&format!("Unknown control {name}"));
+        }
     }
     json_response(StatusCode::OK, json!({ "ok": true }))
 }

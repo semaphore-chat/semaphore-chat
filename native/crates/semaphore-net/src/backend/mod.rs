@@ -728,6 +728,7 @@ macro_rules! rpc {
 // The `Backend` impl, one area trait per file. Declared after `rpc!` so they can use it.
 mod account;
 mod communities;
+mod community_admin;
 mod dms;
 mod files;
 mod messages;
@@ -735,6 +736,7 @@ mod moderation;
 mod notify;
 mod onboarding;
 mod replay;
+mod roles;
 mod search;
 mod session;
 mod social;
