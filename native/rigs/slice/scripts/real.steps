@@ -27,9 +27,8 @@ wait core channel {{CH_GENERAL}}
 wait idle
 shot 01-general
 
-# 3. A send, acked by its nonce, exactly once. The composer is clicked first: the channel opened at
-# sign-in, and the shell's first render took the focus from its composer (see the W0 report).
-click composer-field
+# 3. A send, acked by its nonce, exactly once. Typed with no click into the composer: it has the
+# focus after the clicks on the community and channel already open.
 type "hello from native"
 press enter
 wait core sent "hello from native"
