@@ -662,13 +662,27 @@ async fn diagnostics_describe_the_call() {
     let first = a.engine.diagnostics().await.expect("in a call");
     println!("{first:?}");
     assert!(!first.candidate_types.is_empty());
-    assert!(first.rtt_ms.is_some());
     assert_eq!(first.audio_codec.as_deref(), Some("opus"));
     assert_eq!(first.bitrate_in_kbps, None);
     // Bitrates are measured between two reads: this is the measurement window, not a wait.
     tokio::time::sleep(Duration::from_millis(500)).await;
     let second = a.engine.diagnostics().await.expect("in a call");
     println!("{second:?}");
+    // ICE measures a round trip within seconds of connecting.
+    let started = Instant::now();
+    while a
+        .engine
+        .diagnostics()
+        .await
+        .and_then(|d| d.rtt_ms)
+        .is_none()
+    {
+        assert!(
+            started.elapsed() < WAIT,
+            "no round trip time after {WAIT:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
     assert!(second.bitrate_in_kbps.is_some_and(|kbps| kbps > 0));
     assert!(second.bitrate_out_kbps.is_some_and(|kbps| kbps > 0));
     a.engine.disconnect().await;

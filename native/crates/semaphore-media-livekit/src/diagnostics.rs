@@ -2,7 +2,8 @@
 //! of the two peer connections (publisher and subscriber).
 //!
 //! - Candidate types: the selected pair's local and remote ICE candidates, on each connection.
-//! - RTT: the publisher's selected pair (the subscriber's when not publishing).
+//! - RTT: the publisher's selected pair (the subscriber's when not publishing); `None` until ICE
+//!   has measured one.
 //! - Loss: what we receive, lost / (received + lost) over the call, else what the SFU says it lost
 //!   of ours (remote-inbound `fractionLost`).
 //! - Codec: what our audio goes out as, else what audio comes in as, `opus` rather than
@@ -77,7 +78,15 @@ fn selected(stats: &[RtcStats]) -> (Vec<&'static str>, Option<u32>) {
             kinds.push(candidate_name(kind));
         }
     }
-    let rtt = pair.candidate_pair.current_round_trip_time;
+    // The latest measurement; early in a call only the average over the responses so far.
+    let pair = &pair.candidate_pair;
+    let rtt = if pair.current_round_trip_time > 0.0 {
+        pair.current_round_trip_time
+    } else if pair.responses_received > 0 {
+        pair.total_round_trip_time / pair.responses_received as f64
+    } else {
+        0.0
+    };
     let rtt = (rtt > 0.0).then(|| (rtt * 1000.0).round() as u32);
     (kinds, rtt)
 }
@@ -301,6 +310,20 @@ mod tests {
         // Counters that went back (a new call) give no rate.
         let (reset, _) = summarize(&[], &[], Some(totals), later);
         assert_eq!(reset.bitrate_in_kbps, None);
+    }
+
+    #[test]
+    fn early_in_a_call_the_average_round_trip_stands_in() {
+        let mut stats = connection(IceCandidateType::Host, IceCandidateType::Host, 0, 0.0);
+        let RtcStats::CandidatePair(pair) = &mut stats[1] else {
+            unreachable!("connection() puts the selected pair second");
+        };
+        pair.candidate_pair.total_round_trip_time = 0.09;
+        pair.candidate_pair.responses_received = 3;
+        let (diagnostics, _) = summarize(&stats, &[], None, Instant::now());
+        assert_eq!(diagnostics.rtt_ms, Some(30));
+        let fresh = connection(IceCandidateType::Host, IceCandidateType::Host, 0, 0.0);
+        assert_eq!(summarize(&fresh, &[], None, Instant::now()).0.rtt_ms, None);
     }
 
     #[test]
