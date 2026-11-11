@@ -45,7 +45,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         )
         .route(
             "/api/custom-emoji/community/{communityId}",
-            get(list_emojis),
+            get(list_emojis).post(super::community_admin::create_emoji),
         )
 }
 
@@ -89,6 +89,8 @@ async fn communities_mine(State(inner): State<Arc<Inner>>, headers: HeaderMap) -
         .iter()
         .cloned()
         .chain(inner.created_communities_of(&user))
+        // W5-A: as changed or deleted since.
+        .filter_map(|community| crate::admin::changed(&inner, community))
         .map(|community| {
             serde_json::to_value(CommunityResponseDto {
                 avatar: community.avatar,
@@ -106,14 +108,18 @@ async fn communities_mine(State(inner): State<Arc<Inner>>, headers: HeaderMap) -
 
 async fn channels_for_community(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.find_community(&community_id) else {
+    let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
+    let user = inner.user_of(bearer_token(&headers));
+    // W5-A: a private channel only for its members (or, with no list, everyone).
     let channels: Vec<Value> = community
         .channels
         .iter()
+        .filter(|channel| crate::admin::sees(&inner, channel, &user))
         .map(|channel| serde_json::to_value(channel).expect("a channel serializes"))
         .collect();
     json_response(StatusCode::OK, Value::Array(channels))
@@ -123,7 +129,7 @@ async fn mentionable_channels(
     State(inner): State<Arc<Inner>>,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.find_community(&community_id) else {
+    let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
     let channels: Vec<Value> = community
@@ -139,7 +145,7 @@ async fn channel_permissions(
     State(inner): State<Arc<Inner>>,
     Path(community_id): Path<String>,
 ) -> Response {
-    let Some(community) = inner.find_community(&community_id) else {
+    let Some(community) = crate::admin::community(&inner, &community_id) else {
         return inner.error(404, "NOT_FOUND", "Community not found", false);
     };
     let channels: Vec<ChannelCapabilitiesDto> = community
@@ -188,17 +194,9 @@ async fn members_of_community(
         },
         None => 100,
     };
-    let created = inner.created_members(&community_id);
-    let all = created
-        .as_deref()
-        .or_else(|| {
-            inner
-                .scenario
-                .memberships
-                .get(&community_id)
-                .map(Vec::as_slice)
-        })
-        .unwrap_or(&[]);
+    // W5-A: with the members added since.
+    let all = crate::admin::members(&inner, &community_id);
+    let all = all.as_slice();
     let start = match query.get("continuationToken") {
         Some(token) => match all.iter().position(|member| member.id == *token) {
             Some(index) => index + 1,
@@ -291,5 +289,7 @@ async fn list_emojis(
     Path(community_id): Path<String>,
 ) -> Response {
     let emojis = messages::emojis_in_use(&inner, &community_id);
+    // W5-A: with those added and without those deleted since.
+    let emojis = crate::admin::emojis(&inner, &community_id, emojis);
     json_response(StatusCode::OK, Value::Array(emojis))
 }
