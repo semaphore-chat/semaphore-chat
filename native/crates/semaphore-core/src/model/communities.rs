@@ -79,6 +79,8 @@ pub struct MemberView {
     pub status: Option<String>,
     pub online: bool,
     pub display_role: Option<DisplayRole>,
+    /// W5: when they joined the community (`MembershipResponseDto.joinedAt`).
+    pub joined_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

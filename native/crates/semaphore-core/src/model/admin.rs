@@ -7,13 +7,68 @@
 use super::{ChannelKind, DraftFile, ErrorView, ImageChange, LoadState, UploadView, UserView};
 
 /// A settings form's change on its way, and why the last one failed. Each view below carries one.
+///
+/// `busy`, `upload`, `error` and `action` describe the change started last on the view (`busy` is
+/// any change running). Several can overlap on one view (a move on one channel row while another
+/// is deleted), so `actions` keeps each separately, keyed by `AdminAction`: a row reads its own
+/// entry and never shows another action's error. An entry goes when its action succeeds; a failed
+/// one stays until the same action starts again.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AdminOp {
     /// A change is on its way: the form's Save waits.
     pub busy: bool,
-    /// The file going up for it (an avatar, banner, emoji or sound), while it does.
+    /// The file going up for the last change (an avatar, banner, emoji or sound), while it does.
     pub upload: Option<UploadView>,
-    /// Why the last change failed, until the next one starts.
+    /// Why the last change failed, until it starts again.
+    pub error: Option<ErrorView>,
+    /// W5: which change the fields above describe.
+    pub action: Option<AdminAction>,
+    /// W5: every change running or failed on this view, oldest started first.
+    pub actions: Vec<AdminActionState>,
+}
+
+/// One kind of W5-A change, the command it comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AdminActionKind {
+    UpdateCommunity,
+    DeleteCommunity,
+    CreateChannel,
+    UpdateChannel,
+    DeleteChannel,
+    MoveChannel,
+    AddMember,
+    AddSound,
+    DeleteSound,
+    AddPrivateMember,
+    RemovePrivateMember,
+    CreateAliasGroup,
+    RenameAliasGroup,
+    DeleteAliasGroup,
+    SetAliasGroupMembers,
+    AddAliasGroupMember,
+    RemoveAliasGroupMember,
+    AddCustomEmoji,
+    DeleteCustomEmoji,
+    CreateWebhook,
+    DeleteWebhook,
+    CreateInvite,
+    DeleteInvite,
+}
+
+/// A change and what it changes: the community, channel, user, group, emoji, sound, webhook or
+/// invite code the command names; `None` for a create (nothing has an id yet).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AdminAction {
+    pub kind: AdminActionKind,
+    pub target_id: Option<String>,
+}
+
+/// One change's state within an `AdminOp`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminActionState {
+    pub action: AdminAction,
+    pub busy: bool,
+    pub upload: Option<UploadView>,
     pub error: Option<ErrorView>,
 }
 

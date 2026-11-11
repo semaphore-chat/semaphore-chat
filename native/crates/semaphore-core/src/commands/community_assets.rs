@@ -6,13 +6,13 @@
 //! refuses; something new shows once the server agrees. Sounds are W4's `Core::soundboard` list;
 //! their changes show on `CommunitySettings`' `op`.
 
-use super::community_admin::{admin_keys as k, invalid, uuid};
+use super::community_admin::{OpKey, admin_keys as k, invalid, uuid};
 use crate::cache::keys;
 use crate::client::{Core, State};
 use crate::model::{
-    AliasGroupRow, AliasGroupView, AliasGroupsView, CreatedWebhook, CustomEmojiRow,
-    CustomEmojiView, DraftFile, InviteDraft, InviteRow, InvitesView, SoundDraft, UserView, ViewKey,
-    WebhookRow, WebhooksView,
+    AdminActionKind, AliasGroupRow, AliasGroupView, AliasGroupsView, CreatedWebhook,
+    CustomEmojiRow, CustomEmojiView, DraftFile, InviteDraft, InviteRow, InvitesView, SoundDraft,
+    UserView, ViewKey, WebhookRow, WebhooksView,
 };
 use crate::platform::CoreError;
 use semaphore_wire::enums::ResourceType;
@@ -25,6 +25,25 @@ pub(crate) fn emoji_name_ok(name: &str) -> bool {
             .bytes()
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
         && name.bytes().any(|byte| byte.is_ascii_lowercase())
+}
+
+/// `url` as an absolute address: as it is when it already has a scheme, otherwise joined to the
+/// server's `base` (which may carry a path prefix) with exactly one `/` between them.
+pub(crate) fn absolute_url(base: &str, url: &str) -> String {
+    let has_scheme = url.split_once("://").is_some_and(|(scheme, _)| {
+        !scheme.is_empty()
+            && scheme
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b"+-.".contains(&b))
+    });
+    if has_scheme || base.is_empty() {
+        return url.to_owned();
+    }
+    format!(
+        "{}/{}",
+        base.trim_end_matches('/'),
+        url.trim_start_matches('/')
+    )
 }
 
 fn alias_member(member: &wire::AliasGroupMemberDto) -> UserView {
@@ -145,9 +164,13 @@ impl Core {
         name: String,
         member_ids: Vec<String>,
     ) -> Result<String, CoreError> {
-        let view = ViewKey::AliasGroups {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::AliasGroups {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::CreateAliasGroup,
+            None,
+        );
         let body = name
             .trim()
             .parse::<wire::CreateAliasGroupDtoName>()
@@ -201,9 +224,13 @@ impl Core {
         group_id: String,
         name: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::AliasGroup {
-            group_id: group_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::AliasGroup {
+                group_id: group_id.clone(),
+            },
+            AdminActionKind::RenameAliasGroup,
+            Some(group_id.clone()),
+        );
         let body = match name.trim().parse::<wire::UpdateAliasGroupDtoName>() {
             Ok(name) => wire::UpdateAliasGroupDto { name },
             Err(_) => return self.w5a_refuse(&view, invalid("group name")),
@@ -237,7 +264,7 @@ impl Core {
                     now,
                 );
                 state.alias_group_named(&group_id, None, &group.name);
-                state.view_changed(view.clone());
+                state.view_changed(view.view.clone());
             },
             |state| {
                 if let Some(old) = &old {
@@ -253,9 +280,13 @@ impl Core {
         let community_id = self
             .read(|state| state.alias_group_community(&group_id))
             .unwrap_or_default();
-        let view = ViewKey::AliasGroups {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::AliasGroups {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::DeleteAliasGroup,
+            Some(group_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a mention group")?;
         let list = keys::scoped(k::ALIAS_GROUPS, &community_id);
         let removed = self.write(|state, _| {
@@ -299,19 +330,17 @@ impl Core {
     /// Runs one change to a group's members, then reads the group and its community's list again.
     async fn alias_members_change(
         &self,
+        view: &OpKey,
         group_id: &str,
         what: &str,
         call: impl AsyncFnOnce(&crate::client::Services) -> crate::backend::BackendResult<()>,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::AliasGroup {
-            group_id: group_id.to_owned(),
-        };
-        let (services, epoch, change) = self.w5a_begin(&view, what)?;
+        let (services, epoch, change) = self.w5a_begin(view, what)?;
         let result = call(&services).await;
         let community = self.read(|state| state.alias_group_community(group_id));
         self.w5a_settle(
             epoch,
-            &view,
+            view,
             change,
             result,
             |state, _, _| {
@@ -330,22 +359,31 @@ impl Core {
         group_id: String,
         member_ids: Vec<String>,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::AliasGroup {
-            group_id: group_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::AliasGroup {
+                group_id: group_id.clone(),
+            },
+            AdminActionKind::SetAliasGroupMembers,
+            Some(group_id.clone()),
+        );
         let member_ids = match uuids(&member_ids) {
             Ok(ids) => ids,
             Err(error) => return self.w5a_refuse(&view, error),
         };
-        self.alias_members_change(&group_id, "changing a mention group", async |services| {
-            services
-                .backend
-                .alias_groups_controller_update_members(
-                    group_id.clone(),
-                    wire::UpdateMembersDto { member_ids },
-                )
-                .await
-        })
+        self.alias_members_change(
+            &view,
+            &group_id,
+            "changing a mention group",
+            async |services| {
+                services
+                    .backend
+                    .alias_groups_controller_update_members(
+                        group_id.clone(),
+                        wire::UpdateMembersDto { member_ids },
+                    )
+                    .await
+            },
+        )
         .await
     }
 
@@ -355,22 +393,31 @@ impl Core {
         group_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::AliasGroup {
-            group_id: group_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::AliasGroup {
+                group_id: group_id.clone(),
+            },
+            AdminActionKind::AddAliasGroupMember,
+            Some(user_id.clone()),
+        );
         let user = match uuid(&user_id, "the user") {
             Ok(user) => user,
             Err(error) => return self.w5a_refuse(&view, error),
         };
-        self.alias_members_change(&group_id, "adding to a mention group", async |services| {
-            services
-                .backend
-                .alias_groups_controller_add_member(
-                    group_id.clone(),
-                    wire::AddMemberDto { user_id: user },
-                )
-                .await
-        })
+        self.alias_members_change(
+            &view,
+            &group_id,
+            "adding to a mention group",
+            async |services| {
+                services
+                    .backend
+                    .alias_groups_controller_add_member(
+                        group_id.clone(),
+                        wire::AddMemberDto { user_id: user },
+                    )
+                    .await
+            },
+        )
         .await
     }
 
@@ -380,7 +427,15 @@ impl Core {
         group_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
+        let view = OpKey::new(
+            ViewKey::AliasGroup {
+                group_id: group_id.clone(),
+            },
+            AdminActionKind::RemoveAliasGroupMember,
+            Some(user_id.clone()),
+        );
         self.alias_members_change(
+            &view,
             &group_id,
             "removing from a mention group",
             async |services| {
@@ -435,9 +490,13 @@ impl Core {
         name: String,
         file: DraftFile,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::CustomEmoji {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CustomEmoji {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::AddCustomEmoji,
+            None,
+        );
         let name = name.trim().trim_matches(':').to_owned();
         if !emoji_name_ok(&name) {
             return self.w5a_refuse(&view, invalid("emoji name"));
@@ -485,7 +544,7 @@ impl Core {
                     }
                     state.note_direct_update(&key);
                 }
-                state.view_changed(view.clone());
+                state.view_changed(view.view.clone());
                 // The pickers' list.
                 state.w5a_reread(&keys::scoped(keys::EMOJIS, &community_id));
             },
@@ -501,9 +560,13 @@ impl Core {
         community_id: String,
         emoji_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::CustomEmoji {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CustomEmoji {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::DeleteCustomEmoji,
+            Some(emoji_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a custom emoji")?;
         let key = keys::scoped(k::EMOJIS, &community_id);
         let removed = self.write(|state, _| {
@@ -511,7 +574,7 @@ impl Core {
             let index = emojis.iter().position(|emoji| emoji.id == emoji_id)?;
             let emoji = emojis.remove(index);
             state.note_direct_update(&key);
-            state.view_changed(view.clone());
+            state.view_changed(view.view.clone());
             Some((index, emoji))
         });
         let result = services
@@ -546,9 +609,13 @@ impl Core {
         community_id: String,
         draft: SoundDraft,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::AddSound,
+            None,
+        );
         let name = draft
             .name
             .trim()
@@ -629,9 +696,13 @@ impl Core {
         community_id: String,
         sound_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::DeleteSound,
+            Some(sound_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a sound")?;
         let key = keys::scoped(keys::SOUNDBOARD, &community_id);
         let sounds_view = ViewKey::Soundboard {
@@ -701,19 +772,28 @@ impl Core {
         })
     }
 
-    /// Makes a webhook (text channels only; its name 1 to 80 characters). Its URL is in the answer
-    /// only: core keeps the webhook without it, and nothing shows it again.
+    /// Makes a webhook (text channels only; its name 1 to 80 characters; `avatar_url` as the
+    /// web's form sends it, blank for none). Its URL is in the answer only: core keeps the webhook
+    /// without it, and nothing shows it again. The URL is always absolute: without
+    /// `PUBLIC_APP_URL` the server answers a bare path, joined here to the server's address.
     pub async fn create_webhook(
         &self,
         channel_id: String,
         name: String,
+        avatar_url: Option<String>,
     ) -> Result<CreatedWebhook, CoreError> {
-        let view = ViewKey::Webhooks {
-            channel_id: channel_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::Webhooks {
+                channel_id: channel_id.clone(),
+            },
+            AdminActionKind::CreateWebhook,
+            None,
+        );
         let body = match name.trim().parse::<wire::CreateWebhookDtoName>() {
             Ok(name) => wire::CreateWebhookDto {
-                avatar_url: None,
+                avatar_url: avatar_url
+                    .map(|url| url.trim().to_owned())
+                    .filter(|url| !url.is_empty()),
                 name,
             },
             Err(_) => return self.w5a_refuse(&view, invalid("webhook name")),
@@ -744,9 +824,12 @@ impl Core {
             },
             |_| {},
         )
-        .map(|created| CreatedWebhook {
-            id: created.id,
-            url: created.url,
+        .map(|created| {
+            let base = self.read(|state| state.reading.server_url.clone());
+            CreatedWebhook {
+                id: created.id,
+                url: absolute_url(base.as_deref().unwrap_or(""), &created.url),
+            }
         })
     }
 
@@ -756,9 +839,13 @@ impl Core {
         channel_id: String,
         webhook_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::Webhooks {
-            channel_id: channel_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::Webhooks {
+                channel_id: channel_id.clone(),
+            },
+            AdminActionKind::DeleteWebhook,
+            Some(webhook_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a webhook")?;
         let key = keys::scoped(k::WEBHOOKS, &channel_id);
         let removed = self.write(|state, _| {
@@ -839,7 +926,7 @@ impl Core {
         community_id: String,
         draft: InviteDraft,
     ) -> Result<String, CoreError> {
-        let view = ViewKey::Invites;
+        let view = OpKey::new(ViewKey::Invites, AdminActionKind::CreateInvite, None);
         let community = match uuid(&community_id, "the community") {
             Ok(community) => community,
             Err(error) => return self.w5a_refuse(&view, error),
@@ -879,7 +966,11 @@ impl Core {
 
     /// Deletes one of my invites: gone at once, back if the server refuses.
     pub async fn delete_invite(&self, code: String) -> Result<(), CoreError> {
-        let view = ViewKey::Invites;
+        let view = OpKey::new(
+            ViewKey::Invites,
+            AdminActionKind::DeleteInvite,
+            Some(code.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting an invite")?;
         let key = keys::op(k::INVITES);
         let removed = self.write(|state, _| {
@@ -916,7 +1007,57 @@ impl Core {
 
 #[cfg(test)]
 mod tests {
-    use super::emoji_name_ok;
+    use super::{absolute_url, emoji_name_ok};
+
+    #[test]
+    fn a_webhook_path_joins_the_server_address_once() {
+        let path = "/api/webhooks/w1/t0k";
+        for (base, url, want) in [
+            (
+                "https://chat.example",
+                path,
+                "https://chat.example/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://chat.example/",
+                path,
+                "https://chat.example/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://chat.example//",
+                "api/webhooks/w1/t0k",
+                "https://chat.example/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://example.org/semaphore",
+                path,
+                "https://example.org/semaphore/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://example.org/semaphore/",
+                path,
+                "https://example.org/semaphore/api/webhooks/w1/t0k",
+            ),
+            (
+                "http://localhost:3000",
+                path,
+                "http://localhost:3000/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://chat.example",
+                "https://public.example/api/webhooks/w1/t0k",
+                "https://public.example/api/webhooks/w1/t0k",
+            ),
+            (
+                "https://chat.example",
+                "HTTP://public.example/x",
+                "HTTP://public.example/x",
+            ),
+            ("", path, path),
+        ] {
+            assert_eq!(absolute_url(base, url), want, "{base} + {url}");
+        }
+    }
 
     #[test]
     fn emoji_names_follow_the_backends_rule() {

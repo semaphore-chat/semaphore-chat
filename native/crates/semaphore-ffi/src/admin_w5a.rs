@@ -4,15 +4,58 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    AdminOp, AliasGroupRow, AliasGroupView, AliasGroupsView, ChannelDraft, ChannelKind,
-    ChannelMove, CommunityPatch, CommunitySettingsView, CreatedWebhook, CustomEmojiRow,
-    CustomEmojiView, DraftFile, ErrorView, ImageChange, InviteDraft, InviteRow, InvitesView,
-    LoadState, PrivateMemberRow, PrivateMembersView, SoundDraft, UploadView, UserView, WebhookRow,
-    WebhooksView,
+    AdminAction, AdminActionKind, AdminActionState, AdminOp, AliasGroupRow, AliasGroupView,
+    AliasGroupsView, ChannelDraft, ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView,
+    CreatedWebhook, CustomEmojiRow, CustomEmojiView, DraftFile, ErrorView, ImageChange,
+    InviteDraft, InviteRow, InvitesView, LoadState, PrivateMemberRow, PrivateMembersView,
+    SoundDraft, UploadView, UserView, WebhookRow, WebhooksView,
 };
 
 #[uniffi::remote(Record)]
 pub struct AdminOp {
+    pub busy: bool,
+    pub upload: Option<UploadView>,
+    pub error: Option<ErrorView>,
+    pub action: Option<AdminAction>,
+    pub actions: Vec<AdminActionState>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum AdminActionKind {
+    UpdateCommunity,
+    DeleteCommunity,
+    CreateChannel,
+    UpdateChannel,
+    DeleteChannel,
+    MoveChannel,
+    AddMember,
+    AddSound,
+    DeleteSound,
+    AddPrivateMember,
+    RemovePrivateMember,
+    CreateAliasGroup,
+    RenameAliasGroup,
+    DeleteAliasGroup,
+    SetAliasGroupMembers,
+    AddAliasGroupMember,
+    RemoveAliasGroupMember,
+    AddCustomEmoji,
+    DeleteCustomEmoji,
+    CreateWebhook,
+    DeleteWebhook,
+    CreateInvite,
+    DeleteInvite,
+}
+
+#[uniffi::remote(Record)]
+pub struct AdminAction {
+    pub kind: AdminActionKind,
+    pub target_id: Option<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct AdminActionState {
+    pub action: AdminAction,
     pub busy: bool,
     pub upload: Option<UploadView>,
     pub error: Option<ErrorView>,
@@ -339,8 +382,9 @@ impl SemaphoreCore {
         &self,
         channel_id: String,
         name: String,
+        avatar_url: Option<String>,
     ) -> Result<CreatedWebhook, CoreError> {
-        self.core.create_webhook(channel_id, name).await
+        self.core.create_webhook(channel_id, name, avatar_url).await
     }
 
     pub async fn delete_webhook(

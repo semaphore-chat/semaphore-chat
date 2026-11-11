@@ -15,13 +15,13 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::cache::{CacheValue, QueryKey, keys as shared};
-use crate::client::{Core, Effect, State};
+use crate::client::{Core, State};
 use crate::model::{
     AdminOp, BanDuration, BanListView, BanRequest, BanRow, ErrorView, ModerationActionKind,
     ModerationLogRow, ModerationLogView, RemovalCause, TimeoutListView, TimeoutRequest, TimeoutRow,
-    UserView, ViewKey, VoiceRoom, VoiceView,
+    UserView, ViewKey,
 };
-use crate::platform::{CoreError, CoreEvent};
+use crate::platform::CoreError;
 use crate::resync::unavailable;
 use semaphore_wire::events::ServerEvent;
 use semaphore_wire::types as wire;
@@ -54,9 +54,6 @@ pub(crate) mod keys {
 
 /// How many moderation log entries a page asks for.
 pub(crate) const LOG_PAGE: i64 = 50;
-/// A second `userKicked`/`userBanned` for the same community within this long is the same removal
-/// (#673: the user's room and the community's room both carry it).
-const REMOVAL_DEDUP_MS: u64 = 30_000;
 
 /// W5-B's state: changes on their way, the removals already announced, the log's paging. Gone at
 /// sign-out.
@@ -66,8 +63,6 @@ pub struct W5bState {
     pub(crate) ops: HashMap<ViewKey, AdminOp>,
     /// The views a UI has read, by community, so a change there says which to read again.
     pub(crate) watched: HashMap<String, HashSet<ViewKey>>,
-    /// When each community's removal was announced.
-    pub(crate) removed: HashMap<String, u64>,
     /// The moderation log's filter, by community.
     pub(crate) log_filter: HashMap<String, ModerationActionKind>,
     /// A log page on its way, by community.
@@ -255,6 +250,7 @@ impl State {
                 busy,
                 upload: None,
                 error,
+                ..AdminOp::default()
             },
         );
         self.view_changed(view);
@@ -310,50 +306,12 @@ impl State {
         self.view_changed(ViewKey::Rail);
     }
 
-    /// Leaves the call if it is in this community: the server has already taken us out of it.
-    fn w5b_leave_call_in(&mut self, community_id: &str) {
-        let in_community = match &self.voice.room {
-            Some(VoiceRoom::Channel {
-                channel_id,
-                community_id: room_community,
-            }) => {
-                room_community.as_deref() == Some(community_id)
-                    || self.community_of_channel(channel_id).as_deref() == Some(community_id)
-            }
-            _ => false,
-        };
-        if in_community {
-            self.voice = VoiceView::default();
-            self.media = None;
-            self.view_changed(ViewKey::Voice);
-            self.push_effect(Effect::EndCall);
-        }
-    }
-
-    /// This user lost the community: announced once, however many times the server says so.
-    fn w5b_removed(&mut self, community_id: &str, cause: RemovalCause, now: u64) {
-        if self
-            .w5b
-            .removed
-            .get(community_id)
-            .is_some_and(|at| now.saturating_sub(*at) < REMOVAL_DEDUP_MS)
-        {
-            return;
-        }
-        self.w5b.removed.insert(community_id.to_owned(), now);
-        let name = self
-            .cache
-            .communities(&shared::op(shared::COMMUNITIES))
-            .and_then(|list| list.iter().find(|c| c.id == community_id))
-            .map(|community| community.name.clone())
-            .unwrap_or_default();
-        self.w5b_leave_call_in(community_id);
+    /// This user lost the community (kicked or banned): W5-A's `w5a_drop_community` leaves a call
+    /// there, drops the shared caches and announces it once, however many times the server says
+    /// so (#673); W5-B's own caches go after it.
+    fn w5b_removed(&mut self, community_id: &str, cause: RemovalCause) {
+        self.w5a_drop_community(community_id, Some(cause));
         self.w5b_drop_community(community_id);
-        self.push_event(CoreEvent::CommunityRemoved {
-            community_id: community_id.to_owned(),
-            name,
-            cause,
-        });
     }
 
     /// Another member was moderated: the lists and the log may have changed.
@@ -367,7 +325,7 @@ impl State {
 
     /// W5-B's handling of a socket event, before the shared rules (role and moderation events,
     /// `communityDeleted`).
-    pub(crate) fn w5b_event(&mut self, event: &ServerEvent, now: u64) {
+    pub(crate) fn w5b_event(&mut self, event: &ServerEvent, _now: u64) {
         let me = self.me_id().to_owned();
         match event {
             ServerEvent::UserKicked(event) if event.user_id == me => {
@@ -376,7 +334,6 @@ impl State {
                     RemovalCause::Kicked {
                         reason: event.reason.clone().filter(|r| !r.is_empty()),
                     },
-                    now,
                 );
             }
             ServerEvent::UserBanned(event) if event.user_id == me => {
@@ -387,11 +344,11 @@ impl State {
                         reason: event.reason.clone().filter(|r| !r.is_empty()),
                         until_ms,
                     },
-                    now,
                 );
             }
+            // W5-A's hub announces it (and not for a deletion this core made); W5-B drops its own.
             ServerEvent::CommunityDeleted(event) => {
-                self.w5b_removed(&event.community_id, RemovalCause::Deleted, now);
+                self.w5b_drop_community(&event.community_id);
             }
             ServerEvent::UserKicked(event) => {
                 self.w5b_moderated(&event.community_id, &event.user_id);

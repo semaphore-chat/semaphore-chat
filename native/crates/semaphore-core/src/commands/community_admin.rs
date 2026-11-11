@@ -30,9 +30,10 @@ use crate::backend::{BackendError, BackendResult, FileUpload, UploadProgress};
 use crate::cache::{CacheValue, QueryKey, keys};
 use crate::client::{Core, Effect, Services, State, user_view};
 use crate::model::{
-    AdminOp, ChannelDraft, ChannelKind, ChannelMove, CommunityPatch, CommunitySettingsView,
-    DraftFile, ErrorView, ImageChange, PrivateMemberRow, PrivateMembersView, RemovalCause,
-    UploadView, UserView, ViewKey, VoiceRoom, VoiceView,
+    AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelDraft, ChannelKind,
+    ChannelMove, CommunityPatch, CommunitySettingsView, DraftFile, ErrorView, ImageChange,
+    PrivateMemberRow, PrivateMembersView, RemovalCause, UploadView, UserView, ViewKey, VoiceRoom,
+    VoiceView,
 };
 use crate::platform::{CoreError, CoreEvent};
 use crate::resync::unavailable;
@@ -69,19 +70,37 @@ pub mod admin_keys {
 }
 use admin_keys as k;
 
-/// One view's changes: how many are running, the file going up, the last failure.
-#[derive(Default)]
-pub(crate) struct OpState {
+/// One action's changes on a view: how many are running, the file going up, its last failure.
+pub(crate) struct OpEntry {
+    action: AdminAction,
     running: u32,
     /// The upload's change number and progress.
     upload: Option<(u64, UploadView)>,
     error: Option<ErrorView>,
+    /// When it last started (a change number): the newest describes the view's `AdminOp`.
+    started: u64,
+}
+
+/// A change's view, and which action it is there.
+#[derive(Debug, Clone)]
+pub(crate) struct OpKey {
+    pub view: ViewKey,
+    pub action: AdminAction,
+}
+
+impl OpKey {
+    pub(crate) fn new(view: ViewKey, kind: AdminActionKind, target_id: Option<String>) -> Self {
+        Self {
+            view,
+            action: AdminAction { kind, target_id },
+        }
+    }
 }
 
 /// W5-A's state: changes on their way and their errors. Gone at sign-out.
 #[derive(Default)]
 pub struct W5aState {
-    pub(crate) ops: HashMap<ViewKey, OpState>,
+    pub(crate) ops: HashMap<ViewKey, Vec<OpEntry>>,
     /// Communities whose removal was announced or that this core deleted: announced once.
     pub(crate) removed_communities: HashSet<String>,
     /// Communities this core is deleting: their `communityDeleted` isn't announced.
@@ -267,32 +286,60 @@ impl State {
         self.invalidate(key);
     }
 
-    /// A change starts on `view`: busy, and the last failure cleared.
-    pub(crate) fn w5a_op_begin(&mut self, view: &ViewKey) -> u64 {
+    /// The entry for `op`'s action on its view, made when missing.
+    fn w5a_entry(&mut self, op: &OpKey) -> &mut OpEntry {
+        let entries = self.w5a.ops.entry(op.view.clone()).or_default();
+        let index = match entries.iter().position(|entry| entry.action == op.action) {
+            Some(index) => index,
+            None => {
+                entries.push(OpEntry {
+                    action: op.action.clone(),
+                    running: 0,
+                    upload: None,
+                    error: None,
+                    started: 0,
+                });
+                entries.len() - 1
+            }
+        };
+        &mut entries[index]
+    }
+
+    /// A change starts: its action busy and that action's last failure cleared (another action's
+    /// stays).
+    pub(crate) fn w5a_op_begin(&mut self, op: &OpKey) -> u64 {
         let change = self.next_change();
-        let op = self.w5a.ops.entry(view.clone()).or_default();
-        op.running += 1;
-        op.error = None;
-        self.view_changed(view.clone());
+        let entry = self.w5a_entry(op);
+        entry.running += 1;
+        entry.error = None;
+        entry.started = change;
+        self.view_changed(op.view.clone());
         change
     }
 
-    /// A change on `view` ended, with its failure if it failed.
-    pub(crate) fn w5a_op_end(&mut self, view: &ViewKey, change: u64, error: Option<ErrorView>) {
-        let op = self.w5a.ops.entry(view.clone()).or_default();
-        op.running = op.running.saturating_sub(1);
-        if op.upload.as_ref().is_some_and(|(of, _)| *of == change) {
-            op.upload = None;
+    /// A change ended, with its failure if it failed. An action that succeeded and has nothing
+    /// running leaves the list.
+    pub(crate) fn w5a_op_end(&mut self, op: &OpKey, change: u64, error: Option<ErrorView>) {
+        let entry = self.w5a_entry(op);
+        entry.running = entry.running.saturating_sub(1);
+        if entry.upload.as_ref().is_some_and(|(of, _)| *of == change) {
+            entry.upload = None;
         }
         if error.is_some() {
-            op.error = error;
+            entry.error = error;
         }
-        self.view_changed(view.clone());
+        if let Some(entries) = self.w5a.ops.get_mut(&op.view) {
+            entries.retain(|entry| entry.running > 0 || entry.error.is_some());
+        }
+        self.view_changed(op.view.clone());
     }
 
-    /// A change refused before it was sent: the form shows why.
-    pub(crate) fn w5a_op_refused(&mut self, view: &ViewKey, error: &CoreError) {
-        self.w5a.ops.entry(view.clone()).or_default().error = Some(ErrorView {
+    /// A change refused before it was sent: the form shows why, on that action.
+    pub(crate) fn w5a_op_refused(&mut self, op: &OpKey, error: &CoreError) {
+        let change = self.next_change();
+        let entry = self.w5a_entry(op);
+        entry.started = change;
+        entry.error = Some(ErrorView {
             code: "VALIDATION_FAILED".into(),
             message: match error {
                 CoreError::Failed { message } => message.clone(),
@@ -301,18 +348,31 @@ impl State {
             retryable: false,
             retry_after_ms: None,
         });
-        self.view_changed(view.clone());
+        self.view_changed(op.view.clone());
     }
 
     pub(crate) fn w5a_op(&self, view: &ViewKey) -> AdminOp {
-        self.w5a
-            .ops
-            .get(view)
-            .map_or_else(AdminOp::default, |op| AdminOp {
-                busy: op.running > 0,
-                upload: op.upload.as_ref().map(|(_, upload)| upload.clone()),
-                error: op.error.clone(),
-            })
+        let Some(entries) = self.w5a.ops.get(view).filter(|entries| !entries.is_empty()) else {
+            return AdminOp::default();
+        };
+        let mut ordered: Vec<&OpEntry> = entries.iter().collect();
+        ordered.sort_by_key(|entry| entry.started);
+        let last = ordered.last().expect("not empty");
+        AdminOp {
+            busy: entries.iter().any(|entry| entry.running > 0),
+            upload: last.upload.as_ref().map(|(_, upload)| upload.clone()),
+            error: last.error.clone(),
+            action: Some(last.action.clone()),
+            actions: ordered
+                .iter()
+                .map(|entry| AdminActionState {
+                    action: entry.action.clone(),
+                    busy: entry.running > 0,
+                    upload: entry.upload.as_ref().map(|(_, upload)| upload.clone()),
+                    error: entry.error.clone(),
+                })
+                .collect(),
+        }
     }
 
     /// A W5-A query's data changed: say which views to read again. False when it isn't W5-A's.
@@ -406,9 +466,19 @@ impl State {
         self.push_effect(Effect::EndCall);
     }
 
-    /// The community is gone for this user: its call left, what core holds of it dropped, and
-    /// `CoreEvent::CommunityRemoved` once (`announce` false: this core deleted it). W5-B can
-    /// call this for a kick or a ban with its own cause.
+    /// The community is gone for this user. The one place that handles that, for every cause:
+    /// W5-A's `communityDeleted` and this core's own `delete_community`, W5-B's kick and ban.
+    ///
+    /// Contract (stable, W5-B calls it):
+    /// - leaves a channel call in this community (the server already dropped its room);
+    /// - drops the community from the rail and every shared and W5-A cache keyed by it or by its
+    ///   channels and mention groups (W5-B drops its own after);
+    /// - with `Some(cause)`, sends `CoreEvent::CommunityRemoved { community_id, name, cause }`
+    ///   with the name the rail last had, at most once until this user is added to it again
+    ///   (`memberAddedToCommunity` naming them), however many events say so (#673);
+    /// - with `None` (this core deleted it), announces nothing, and later calls don't either.
+    ///
+    /// Idempotent: a second call changes nothing more.
     pub(crate) fn w5a_drop_community(&mut self, community_id: &str, cause: Option<RemovalCause>) {
         let list = keys::op(keys::COMMUNITIES);
         let mut name = String::new();
@@ -525,6 +595,10 @@ impl State {
                     community.banner = payload.banner.clone();
                 });
             }
+            // Back in the community: a later removal is announced again.
+            ServerEvent::MemberAddedToCommunity(payload) if payload.user_id == self.me_id() => {
+                self.w5a.removed_communities.remove(&payload.community_id);
+            }
             ServerEvent::CommunityDeleted(payload) => {
                 let mine = self.w5a.deleting.contains(&payload.community_id);
                 self.w5a_drop_community(
@@ -625,7 +699,7 @@ impl Core {
     /// Starts a change on `view`: the services, the session, and the change's number.
     pub(crate) fn w5a_begin(
         &self,
-        view: &ViewKey,
+        view: &OpKey,
         what: &str,
     ) -> Result<(Services, u64, u64), CoreError> {
         let (services, epoch) = self.begin(what)?;
@@ -634,7 +708,7 @@ impl Core {
     }
 
     /// Refuses a change before it's sent, showing why on `view`.
-    pub(crate) fn w5a_refuse<T>(&self, view: &ViewKey, error: CoreError) -> Result<T, CoreError> {
+    pub(crate) fn w5a_refuse<T>(&self, view: &OpKey, error: CoreError) -> Result<T, CoreError> {
         self.write(|state, _| state.w5a_op_refused(view, &error));
         Err(error)
     }
@@ -644,7 +718,7 @@ impl Core {
     pub(crate) fn w5a_settle<T>(
         &self,
         epoch: u64,
-        view: &ViewKey,
+        view: &OpKey,
         change: u64,
         result: BackendResult<T>,
         apply: impl FnOnce(&mut State, u64, &T),
@@ -683,7 +757,7 @@ impl Core {
     pub(crate) async fn w5a_upload(
         &self,
         services: &Services,
-        view: &ViewKey,
+        view: &OpKey,
         change: u64,
         file: DraftFile,
         resource_type: ResourceType,
@@ -691,7 +765,7 @@ impl Core {
     ) -> BackendResult<String> {
         let total = file.bytes.len() as u64;
         self.write(|state, _| {
-            state.w5a.ops.entry(view.clone()).or_default().upload = Some((
+            state.w5a_entry(view).upload = Some((
                 change,
                 UploadView {
                     name: file.name.clone(),
@@ -700,18 +774,18 @@ impl Core {
                     failed: None,
                 },
             ));
-            state.view_changed(view.clone());
+            state.view_changed(view.view.clone());
         });
         let core = self.clone();
         let progress_view = view.clone();
         let progress: UploadProgress = Arc::new(move |sent| {
             core.write(|state, _| {
-                if let Some(op) = state.w5a.ops.get_mut(&progress_view)
-                    && let Some((of, upload)) = &mut op.upload
+                let entry = state.w5a_entry(&progress_view);
+                if let Some((of, upload)) = &mut entry.upload
                     && *of == change
                 {
                     upload.sent_bytes = sent.min(total);
-                    state.view_changed(progress_view.clone());
+                    state.view_changed(progress_view.view.clone());
                 }
             });
         });
@@ -770,9 +844,13 @@ impl Core {
         community_id: String,
         patch: CommunityPatch,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::UpdateCommunity,
+            Some(community_id.clone()),
+        );
         let name = patch
             .name
             .as_deref()
@@ -896,7 +974,7 @@ impl Core {
                     CacheValue::W5a(W5aValue::Community(updated.clone())),
                     now,
                 );
-                state.view_changed(view.clone());
+                state.view_changed(view.view.clone());
                 state.community_edit(&community_id, |community| *community = updated.clone());
             },
             undo,
@@ -907,9 +985,13 @@ impl Core {
     /// Deletes the community for everyone. It goes from this core at once; `communityDeleted`
     /// then removes it from the others.
     pub async fn delete_community(&self, community_id: String) -> Result<(), CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::DeleteCommunity,
+            Some(community_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a community")?;
         self.write(|state, _| state.w5a.deleting.insert(community_id.clone()));
         let result = services
@@ -934,9 +1016,13 @@ impl Core {
         community_id: String,
         draft: ChannelDraft,
     ) -> Result<String, CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::CreateChannel,
+            None,
+        );
         let body = (|| {
             Ok(wire::CreateChannelDto {
                 community_id: uuid(&community_id, "the community")?,
@@ -981,9 +1067,13 @@ impl Core {
             .as_ref()
             .map(|(_, channel)| channel.community_id.clone())
             .unwrap_or_default();
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::UpdateChannel,
+            Some(channel_id.clone()),
+        );
         let name = draft.name.trim().to_owned();
         let slowmode = i64::from(draft.slowmode_seconds);
         let old = cached.map(|(_, channel)| channel);
@@ -1066,9 +1156,13 @@ impl Core {
             .as_ref()
             .map(|(_, channel)| channel.community_id.clone())
             .unwrap_or_default();
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::DeleteChannel,
+            Some(channel_id.clone()),
+        );
         let (services, epoch, change) = self.w5a_begin(&view, "deleting a channel")?;
         let index = self.write(|state, _| {
             let key = keys::scoped(keys::CHANNELS, &community_id);
@@ -1116,9 +1210,13 @@ impl Core {
             .as_ref()
             .map(|(_, channel)| channel.community_id.clone())
             .unwrap_or_default();
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::MoveChannel,
+            Some(channel_id.clone()),
+        );
         let body = match uuid(&community_id, "the channel's community") {
             Ok(id) => wire::MoveChannelDto { community_id: id },
             Err(error) => return self.w5a_refuse(&view, error),
@@ -1236,9 +1334,13 @@ impl Core {
         channel_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::PrivateMembers {
-            channel_id: channel_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::PrivateMembers {
+                channel_id: channel_id.clone(),
+            },
+            AdminActionKind::AddPrivateMember,
+            Some(user_id.clone()),
+        );
         let body = match (uuid(&channel_id, "the channel"), uuid(&user_id, "the user")) {
             (Ok(channel), Ok(user)) => wire::CreateChannelMembershipDto {
                 channel_id: channel,
@@ -1277,9 +1379,13 @@ impl Core {
         channel_id: String,
         user_id: String,
     ) -> Result<(), CoreError> {
-        let view = ViewKey::PrivateMembers {
-            channel_id: channel_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::PrivateMembers {
+                channel_id: channel_id.clone(),
+            },
+            AdminActionKind::RemovePrivateMember,
+            Some(user_id.clone()),
+        );
         let (services, epoch, change) =
             self.w5a_begin(&view, "removing a private channel member")?;
         let key = keys::scoped(k::PRIVATE_MEMBERS, &channel_id);
@@ -1342,9 +1448,13 @@ impl Core {
 
     /// Adds a user to the community. The member list reads again.
     pub async fn add_member(&self, community_id: String, user_id: String) -> Result<(), CoreError> {
-        let view = ViewKey::CommunitySettings {
-            community_id: community_id.clone(),
-        };
+        let view = OpKey::new(
+            ViewKey::CommunitySettings {
+                community_id: community_id.clone(),
+            },
+            AdminActionKind::AddMember,
+            Some(user_id.clone()),
+        );
         let body = match (
             uuid(&community_id, "the community"),
             uuid(&user_id, "the user"),

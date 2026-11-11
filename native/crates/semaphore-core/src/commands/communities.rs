@@ -163,6 +163,7 @@ impl Core {
                                 .copied()
                                 .unwrap_or(false),
                         display_role,
+                        joined_at_ms: Some(member.joined_at.timestamp_millis()),
                     }
                 })
                 .collect();
