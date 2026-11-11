@@ -8,7 +8,7 @@
 //! Needs Windows 10 2004 (build 19041) or later; the documented minimum is build 20348. On
 //! anything older activation fails, `start` returns the error, and the app shares without audio.
 //!
-//! UNTESTED: compiles for x86_64-pc-windows-msvc in the image; nothing here has run on Windows.
+//! First run on Windows 11 (2026-11-10) crashed in activation; see `activate`. Not yet passed.
 
 use crate::{CHANNELS as SYSTEM_AUDIO_CHANNELS, RATE as SYSTEM_AUDIO_RATE};
 use crate::{
@@ -170,7 +170,9 @@ unsafe fn activate(only_own: bool) -> Result<IAudioClient, String> {
             },
         },
     };
-    let variant = PROPVARIANT {
+    // Never dropped: PROPVARIANT's Drop is PropVariantClear, which would CoTaskMemFree the blob,
+    // and the blob is `params` on our stack (heap corruption 0xC0000374, seen on Windows 11).
+    let variant = std::mem::ManuallyDrop::new(PROPVARIANT {
         Anonymous: PROPVARIANT_0 {
             Anonymous: std::mem::ManuallyDrop::new(PROPVARIANT_0_0 {
                 vt: VT_BLOB,
@@ -185,14 +187,14 @@ unsafe fn activate(only_own: bool) -> Result<IAudioClient, String> {
                 },
             }),
         },
-    };
+    });
     let done = Event::new()?;
     let handler: IActivateAudioInterfaceCompletionHandler = Completion { done: done.raw() }.into();
     let operation = unsafe {
         ActivateAudioInterfaceAsync(
             VIRTUAL_AUDIO_DEVICE_PROCESS_LOOPBACK,
             &IAudioClient::IID,
-            Some(&raw const variant),
+            Some(&raw const *variant),
             &handler,
         )
     }
