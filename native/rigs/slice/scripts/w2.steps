@@ -120,7 +120,7 @@ shot 08-group-created
 server friend_request_as "{\"fromId\": \"$ID(u-zara)\", \"id\": \"w2-zara\"}"
 click dm-tab-friends
 wait core incoming 2
-click friends-panel 172 87
+click friends-tabs-1
 wait core element request-$ID(w2-zara)
 wait idle
 shot 09-friend-request

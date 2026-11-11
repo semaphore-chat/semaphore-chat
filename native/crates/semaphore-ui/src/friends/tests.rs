@@ -137,17 +137,12 @@ fn a_busy_friend_does_nothing(cx: &mut TestAppContext) {
 #[gpui_kit::test]
 fn requests_accept_decline_and_cancel_by_friendship(cx: &mut TestAppContext) {
     let rig = panel(cx);
-    rig.with(cx, |panel, _, cx| {
-        panel.update(cx, |panel, cx| panel.set_tab(FriendsTab::Pending, cx))
-    });
+    // The tabs are clicked by id, as the slice rig does: `<tabs id>-<index>`.
+    rig.click(cx, "friends-tabs-1");
     rig.click(cx, "request-accept-r-cleo");
     rig.click(cx, "request-decline-r-cleo");
     rig.click(cx, "request-accept-r-dev");
-    rig.with(cx, |panel, _, cx| {
-        panel.update(cx, |panel, cx| {
-            panel.set_requests_tab(RequestsTab::Sent, cx)
-        })
-    });
+    rig.click(cx, "requests-tabs-1");
     rig.click(cx, "request-cancel-r-emma");
     assert_eq!(
         rig.events(),
