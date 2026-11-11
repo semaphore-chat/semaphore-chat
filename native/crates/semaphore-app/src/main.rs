@@ -72,9 +72,19 @@ fn usage() -> ExitCode {
 
 /// Registers `semaphore://` for this executable, off the main thread: it writes a few small files
 /// (Linux) or registry values (Windows), and a failure only means links don't open the app.
-/// `SEMAPHORE_REGISTER_SCHEME=0` skips it, for a build that mustn't claim links.
+///
+/// Only a packaged build does this on its own (`SEMAPHORE_PACKAGED=1` in the build environment):
+/// until the native app replaces the Electron one, a development build run from a checkout must
+/// not take `semaphore://` links away from the installed app. `SEMAPHORE_REGISTER_SCHEME=1` asks
+/// for it at run time (to test links), and `=0` forbids it even in a packaged build.
 fn register_scheme() {
-    if std::env::var_os("SEMAPHORE_REGISTER_SCHEME").is_some_and(|value| value == "0") {
+    let asked = std::env::var("SEMAPHORE_REGISTER_SCHEME").ok();
+    let register = match asked.as_deref() {
+        Some("1") => true,
+        Some("0") => false,
+        _ => option_env!("SEMAPHORE_PACKAGED") == Some("1"),
+    };
+    if !register {
         return;
     }
     let _ = std::thread::Builder::new()

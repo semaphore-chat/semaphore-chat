@@ -134,10 +134,13 @@ The tray, close to tray, single instance, `semaphore://` links and window restor
 bus; everything below needs a real panel, compositor or Windows. Notification clicks come with the
 notifier (later).
 
-Every start registers `semaphore://` for the binary that's running (Linux: a desktop entry and icon
-under `~/.local/share` and the default in `~/.config/mimeapps.list`; Windows: `HKCU\Software\Classes\semaphore`),
-unless a package installed `app.semaphorechat.semaphore.desktop` or `SEMAPHORE_REGISTER_SCHEME=0`
-is set. `slice-run.sh` therefore points links at `~/.cache/semaphore-slice/semaphore-app`.
+A packaged build (built with `SEMAPHORE_PACKAGED=1`) registers `semaphore://` for itself on every
+start (Linux: a desktop entry and icon under `~/.local/share` and the default in
+`~/.config/mimeapps.list`; Windows: `HKCU\Software\Classes\semaphore`), unless a package installed
+`app.semaphorechat.semaphore.desktop`. A development build does not: until the native app replaces
+the Electron one it must not take links away from the installed app. To test links with a
+development build, start it with `SEMAPHORE_REGISTER_SCHEME=1`, and afterwards open the installed
+app once so it registers itself again. `SEMAPHORE_REGISTER_SCHEME=0` forbids it in any build.
 
 | Where | What | How | Expected |
 |---|---|---|---|
