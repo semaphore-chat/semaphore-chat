@@ -7,13 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-11
+
+One wire contract for REST and sockets, sends that are safe to retry, and clear reasons when a send is refused. It also closes a gap that let the instance owner read direct messages they weren't part of.
+
 ### ⚠️ Breaking changes / upgrade checklist
 
-- **Two database migrations for message nonces.** `20261105200000_message_client_nonce` adds the nullable `Message.clientNonce` column and the `MessageNonceTombstone` table; `20261105200100_message_client_nonce_index` then builds the unique index on `(authorId, clientNonce)` with `CREATE INDEX CONCURRENTLY` as its only statement. The column is empty for existing messages, so no conflict is possible, and neither migration blocks sending or reading while it runs. Concurrent builds are slower and can fail on their own (a cancelled deploy, a server restart): that leaves an invalid index and marks the migration failed, which blocks the next deploy. Drop the index (`DROP INDEX CONCURRENTLY IF EXISTS "Message_authorId_clientNonce_key";`), mark the migration rolled back (`pnpm exec prisma migrate resolve --rolled-back 20261105200100_message_client_nonce_index`), then deploy again.
+Check these before upgrading. Each one is covered under **Upgrade notes** below. There are no new environment variables.
+
+- **Two database migrations for message nonces.** `20261105200000_message_client_nonce` adds the nullable `Message.clientNonce` column and the `MessageNonceTombstone` table. `20261105200100_message_client_nonce_index` then builds a unique index on `(authorId, clientNonce)` with `CREATE INDEX CONCURRENTLY`, so sending and reading stay available while it runs. Existing messages have no nonce, so the index can't conflict with them. (#627)
+- **Direct messages are members-only, instance owners included.** An instance owner who isn't in a DM can no longer read it, post in it, react in it or add themselves to it. (#627, #628)
+- **REST sends behave like socket sends.** `POST /messages` now applies timeouts and slow mode and broadcasts the message. Bots and integrations that post over REST can be refused during a timeout or slow mode. (#627)
+- **Leaner message payloads.** Messages no longer carry `searchText`, `webhookId`, or span `id`, `messageId` and `position`. Socket events no longer carry the voice user's internal `sid`, and DM and notification lists no longer carry raw database rows. No released Semaphore app reads any of these, so older desktop apps keep working. Third-party clients should check. (#627)
 
 ### Security
 
-- **Direct messages are members-only, instance owners included.** The instance owner skipped every permission check, which also covered direct messages: an owner could read any DM's messages, search, threads and attachments, or add themselves to the group. A DM now needs membership whatever the instance role. Community and channel access for owners is unchanged.
+- **Direct messages** — The instance owner skipped every permission check, which also covered direct messages: an owner could read any DM's messages, search, threads and attachments, post in it, or add themselves to the group. A DM now needs membership whatever the instance role. Community and channel access for owners is unchanged. (#627, #628)
+- **Dependency advisories** — Updated `nodemailer` to 10.1.4. (#617)
+
+### Added
+
+- `POST /messages/dm`, the REST equivalent of sending a direct message. (#627)
+- **Safe retries.** A send can carry a `clientNonce`. A retry after a lost acknowledgement returns the same message instead of posting it twice, and a deleted message stays deleted. The web and desktop app use this for channel messages, DMs and thread replies. (#627)
+- **Stable error codes.** Every REST error body and socket error carries `errorCode` and `retryable`, next to the existing fields. Socket clients that connect with `auth.protocol: 2` get a typed send acknowledgement; others keep the plain message id. (#627)
+- **A strict OpenAPI spec that also describes every socket event** (`backend/socket-events.json`), checked in CI, so clients can be generated from it. See `docs-site/docs/architecture/wire-contract.md`. (#627)
+
+### Changed
+
+- One message shape on REST and the socket, with ISO timestamps and `null` for missing fields. Thread replies gain `replyTo` and `webhook` like other messages. Reaction endpoints return only the reactions. (#627)
+- A refused send says why: the failed message shows the server's reason ("Slowmode is enabled…", "Timed out until 6:42 PM"), and a refused thread reply shows it in a notification. Your draft is kept. (#627)
+- Socket errors report their real message instead of "Internal server error". (#627)
+- The source of the native Rust desktop client now lives under `native/`. It is a work in progress and isn't part of this release; the desktop app you download is still the Electron one. (#626)
+
+### Fixed
+
+- Thread replies and read receipts sent over REST weren't announced to your other sessions or the people in the conversation. (#627)
+- Deleting a thread reply left the reply count and "last reply" time too high. (#627)
+- The thread reply REST body wasn't validated. (#627)
+- On instances served over plain HTTP, sending could get stuck. (#627)
+- Pinned videos and images now show their thumbnails in the pinned messages panel. (#627)
+- Building the frontend image from a clean checkout failed because the lockfile pinned packages newer than the repo's 3-day minimum release age. Those pins are back on the versions 0.8.0 shipped with. (#630)
+
+### Upgrade notes
+
+- **Back up your database, then migrate as usual.** The migrations apply on backend start, or through the Helm migration job. The concurrent index build is slower than a normal one on a large message table, but it doesn't block the chat while it runs.
+- **If the index build is interrupted** (a cancelled deploy, a restart), it leaves an invalid index and marks the migration failed, which blocks the next deploy. Drop the index (`DROP INDEX CONCURRENTLY IF EXISTS "Message_authorId_clientNonce_key";`), mark the migration rolled back (`pnpm exec prisma migrate resolve --rolled-back 20261105200100_message_client_nonce_index`), then deploy again.
+- **Bots and third-party clients** that send over REST should expect timeouts and slow mode to apply. They can read `errorCode` to tell a refusal from a failure.
 
 ## [0.8.0] - 2026-11-10
 
