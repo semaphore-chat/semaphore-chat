@@ -1,0 +1,116 @@
+# W1 panels: pins, search and the thread pane, docked on a desktop and full-screen on a phone.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w1-panels.steps
+story pins-loading 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-loading-desktop
+story pins-loading 390 844 light-blue-balanced
+wait idle
+shot w1-pins-loading-phone
+story pins-empty 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-empty-desktop
+story pins-empty 390 844 light-blue-balanced
+wait idle
+shot w1-pins-empty-phone
+story pins-failed 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-failed-desktop
+story pins-failed 390 844 light-blue-balanced
+wait idle
+shot w1-pins-failed-phone
+story pins-list 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-list-desktop
+story pins-list 390 844 light-blue-balanced
+wait idle
+shot w1-pins-list-phone
+story pins-moderator 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-moderator-desktop
+story pins-moderator 390 844 light-blue-balanced
+wait idle
+shot w1-pins-moderator-phone
+story pins-long 1280 800 dark-blue-balanced
+wait idle
+shot w1-pins-long-desktop
+story pins-long 390 844 light-blue-balanced
+wait idle
+shot w1-pins-long-phone
+story search-idle 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-idle-desktop
+story search-idle 390 844 light-blue-balanced
+wait idle
+shot w1-search-idle-phone
+story search-loading 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-loading-desktop
+story search-loading 390 844 light-blue-balanced
+wait idle
+shot w1-search-loading-phone
+story search-empty 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-empty-desktop
+story search-empty 390 844 light-blue-balanced
+wait idle
+shot w1-search-empty-phone
+story search-failed 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-failed-desktop
+story search-failed 390 844 light-blue-balanced
+wait idle
+shot w1-search-failed-phone
+story search-results 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-results-desktop
+story search-results 390 844 light-blue-balanced
+wait idle
+shot w1-search-results-phone
+story search-at-limit 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-at-limit-desktop
+story search-at-limit 390 844 light-blue-balanced
+wait idle
+shot w1-search-at-limit-phone
+story search-dm 1280 800 dark-blue-balanced
+wait idle
+shot w1-search-dm-desktop
+story search-dm 390 844 light-blue-balanced
+wait idle
+shot w1-search-dm-phone
+story thread-subscribed 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-subscribed-desktop
+story thread-subscribed 390 844 light-blue-balanced
+wait idle
+shot w1-thread-subscribed-phone
+story thread-unsubscribed 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-unsubscribed-desktop
+story thread-unsubscribed 390 844 light-blue-balanced
+wait idle
+shot w1-thread-unsubscribed-phone
+story thread-no-replies 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-no-replies-desktop
+story thread-no-replies 390 844 light-blue-balanced
+wait idle
+shot w1-thread-no-replies-phone
+story thread-loading 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-loading-desktop
+story thread-loading 390 844 light-blue-balanced
+wait idle
+shot w1-thread-loading-phone
+story thread-missing-parent 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-missing-parent-desktop
+story thread-missing-parent 390 844 light-blue-balanced
+wait idle
+shot w1-thread-missing-parent-phone
+story thread-failed 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-failed-desktop
+story thread-failed 390 844 light-blue-balanced
+wait idle
+shot w1-thread-failed-phone
