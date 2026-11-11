@@ -271,30 +271,9 @@ pub(crate) fn community<T>(
 
 /// The community a channel belongs to: the scenario's, or one made over the API.
 pub(crate) fn community_of_channel(inner: &Inner, channel_id: &str) -> Option<String> {
-    inner
-        .scenario
-        .communities
-        .iter()
-        .find(|community| {
-            community
-                .channels
-                .iter()
-                .any(|channel| channel.id == channel_id)
-        })
-        .map(|community| community.id.clone())
-        .or_else(|| {
-            lock(&inner.accounts)
-                .communities
-                .iter()
-                .find(|created| {
-                    created
-                        .community
-                        .channels
-                        .iter()
-                        .any(|channel| channel.id == channel_id)
-                })
-                .map(|created| created.community.id.clone())
-        })
+    // W5-A's view of the channels: the scenario's, created communities', and those made, moved
+    // or deleted over the API. Takes `admin` and `accounts`: never call it holding `rbac`.
+    crate::admin::channel_of(inner, channel_id).map(|(community, _)| community.id)
 }
 
 /// The instance owner, whom `RbacGuard` lets past every community check.

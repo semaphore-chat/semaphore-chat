@@ -53,6 +53,24 @@ pub enum AdminActionKind {
     DeleteWebhook,
     CreateInvite,
     DeleteInvite,
+    /// W5-B: on `Roles` (target: the role; `None` for a create).
+    CreateRole,
+    UpdateRole,
+    DeleteRole,
+    ReorderRoles,
+    ResetDefaults,
+    /// W5-B: on `MemberRoles` (target: the role).
+    AssignRole,
+    UnassignRole,
+    /// W5-B: on `ChannelOverwrites` (target: the channel).
+    ReplaceOverwrites,
+    /// W5-B: on `ModerationTarget` (target: the member); `Unban` on `Bans`, `RemoveTimeout` on
+    /// `Timeouts` and `ModerationTarget`.
+    Ban,
+    Unban,
+    Kick,
+    Timeout,
+    RemoveTimeout,
 }
 
 /// A change and what it changes: the community, channel, user, group, emoji, sound, webhook or

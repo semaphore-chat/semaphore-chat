@@ -3,11 +3,13 @@
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
-    AdminOp, BanDuration, BanListView, BanRequest, BanRow, ChannelOverwritesView, ChannelPreset,
-    CommunityCaps, CommunityPermissionsView, LoadState, MemberRolesView, ModerationActionKind,
-    ModerationLogRow, ModerationLogView, ModerationTargetView, NotAllowed, OverwriteRow,
-    OverwriteTarget, OverwritesDraft, PermissionGroup, RemovalCause, RoleDraft, RoleMembersView,
-    RoleRow, RolesView, TimeoutListView, TimeoutRequest, TimeoutRow, UserView,
+    AdminOp, BanDuration, BanListView, BanRequest, BanRow, BuiltPreset, ChannelOverwritesView,
+    ChannelPreset, CommunityCaps, CommunityPermissionsView, DetectedPreset, LoadState,
+    MemberRolesView, ModerationActionKind, ModerationLogRow, ModerationLogView,
+    ModerationTargetView, NotAllowed, OverwriteRoleOption, OverwriteRow, OverwriteTarget,
+    OverwritesDraft, PermissionGroup, PresetAccess, RemovalCause, RoleBlock, RoleDraft,
+    RoleMembersView, RolePatch, RoleRow, RolesView, TimeoutListView, TimeoutRequest, TimeoutRow,
+    UserView,
 };
 
 #[uniffi::remote(Record)]
@@ -20,6 +22,27 @@ pub struct RoleRow {
     pub editable: bool,
     pub deletable: bool,
     pub assignable: bool,
+    pub fixed: bool,
+    pub can_move_up: bool,
+    pub can_move_down: bool,
+    pub created_at_ms: Option<i64>,
+    pub edit_blocked: Option<RoleBlock>,
+    pub delete_blocked: Option<RoleBlock>,
+    pub assign_blocked: Option<RoleBlock>,
+}
+
+#[uniffi::remote(Enum)]
+pub enum RoleBlock {
+    Missing,
+    Rank,
+    HoldsUngrantable,
+    DefaultRole,
+}
+
+#[uniffi::remote(Record)]
+pub struct RolePatch {
+    pub name: Option<String>,
+    pub actions: Option<Vec<String>>,
 }
 
 #[uniffi::remote(Record)]
@@ -31,6 +54,7 @@ pub struct RolesView {
     pub can_create: bool,
     pub can_reorder: bool,
     pub can_reset_defaults: bool,
+    pub can_read: bool,
     pub op: AdminOp,
 }
 
@@ -59,6 +83,7 @@ pub struct MemberRolesView {
     pub user_id: String,
     pub held: Vec<String>,
     pub changeable: Vec<String>,
+    pub not_allowed: Option<NotAllowed>,
     pub op: AdminOp,
 }
 
@@ -83,6 +108,35 @@ pub struct OverwriteRow {
     pub target: OverwriteTarget,
     pub allow: Vec<String>,
     pub deny: Vec<String>,
+    pub role_missing: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct OverwriteRoleOption {
+    pub id: String,
+    pub name: String,
+    pub position: i32,
+    pub below_me: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct DetectedPreset {
+    pub preset: ChannelPreset,
+    pub post_role_ids: Vec<String>,
+    pub members_can_attach: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct PresetAccess {
+    pub preset: ChannelPreset,
+    pub missing: Vec<String>,
+}
+
+#[uniffi::remote(Record)]
+pub struct BuiltPreset {
+    pub preset: ChannelPreset,
+    pub overwrites: Vec<OverwriteRow>,
+    pub auto_allowed_role_ids: Vec<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -92,6 +146,10 @@ pub struct ChannelOverwritesView {
     pub preset: ChannelPreset,
     pub overwrites: Vec<OverwriteRow>,
     pub editable: bool,
+    pub roles: Vec<OverwriteRoleOption>,
+    pub detected: DetectedPreset,
+    pub preset_access: Vec<PresetAccess>,
+    pub default_post_role_ids: Vec<String>,
     pub op: AdminOp,
 }
 
@@ -164,6 +222,11 @@ pub struct ModerationTargetView {
     pub can_remove_timeout: bool,
     pub can_change_roles: bool,
     pub not_allowed: Option<NotAllowed>,
+    pub ban_not_allowed: Option<NotAllowed>,
+    pub kick_not_allowed: Option<NotAllowed>,
+    pub timeout_not_allowed: Option<NotAllowed>,
+    pub roles_not_allowed: Option<NotAllowed>,
+    pub op: AdminOp,
     pub timed_out_until_ms: Option<i64>,
 }
 
@@ -200,6 +263,7 @@ pub struct BanListView {
     pub state: LoadState,
     pub community_id: String,
     pub bans: Vec<BanRow>,
+    pub op: AdminOp,
 }
 
 #[uniffi::remote(Record)]
@@ -217,6 +281,7 @@ pub struct TimeoutListView {
     pub state: LoadState,
     pub community_id: String,
     pub timeouts: Vec<TimeoutRow>,
+    pub op: AdminOp,
 }
 
 #[uniffi::remote(Enum)]
@@ -241,6 +306,7 @@ pub struct ModerationLogRow {
     pub reason: Option<String>,
     pub created_at_ms: i64,
     pub duration_seconds: Option<u32>,
+    pub target_message_id: Option<String>,
 }
 
 #[uniffi::remote(Record)]
@@ -287,9 +353,9 @@ impl SemaphoreCore {
         &self,
         community_id: String,
         role_id: String,
-        draft: RoleDraft,
+        patch: RolePatch,
     ) -> Result<(), CoreError> {
-        self.core.update_role(community_id, role_id, draft).await
+        self.core.update_role(community_id, role_id, patch).await
     }
 
     pub async fn delete_role(
@@ -342,6 +408,17 @@ impl SemaphoreCore {
 
     pub fn channel_overwrites(&self, channel_id: String) -> ChannelOverwritesView {
         self.core.channel_overwrites(channel_id)
+    }
+
+    pub fn build_preset(
+        &self,
+        channel_id: String,
+        preset: ChannelPreset,
+        post_role_ids: Vec<String>,
+        members_can_attach: bool,
+    ) -> BuiltPreset {
+        self.core
+            .build_preset(channel_id, preset, post_role_ids, members_can_attach)
     }
 
     pub async fn replace_channel_overwrites(
