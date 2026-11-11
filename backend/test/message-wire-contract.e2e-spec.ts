@@ -608,16 +608,14 @@ describe('Message wire contract (e2e)', () => {
         deletedByReason: 'off topic',
       });
 
-      await http()
+      // A removed message takes no late uploads (0.8.0), so nothing re-sends
+      // it: the refusal conforms to the error schema instead.
+      const refused = await http()
         .post(`/api/messages/${message.id}/attachments`)
         .set('Authorization', auth('author'))
         .send({})
-        .expect(201);
-      const event = await nextEvent(
-        ServerEvents.UPDATE_MESSAGE,
-        (p) => p.message.id === message.id,
-      );
-      expect(event.message.spans).toEqual([]);
+        .expect(403);
+      expectConforms('ErrorResponseDto', 'late upload refused', refused.body);
     });
   });
 

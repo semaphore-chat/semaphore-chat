@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 import { JwtService } from '@nestjs/jwt';
 import {
   ClientEvents,
@@ -501,6 +501,35 @@ describe('Socket event contract (e2e)', () => {
     await seen(ServerEvents.TOKEN_EXPIRING);
     const ended = await seen(ServerEvents.SESSION_TERMINATED);
     expect(ended.reason).toBe('TOKEN_EXPIRED');
+  });
+
+  it('a desktop sign-in: DESKTOP_SIGN_IN to the other sessions', async () => {
+    const verifier = randomBytes(32).toString('base64url');
+    const challenge = createHash('sha256').update(verifier).digest('base64url');
+    const authorized = await http()
+      .post('/api/auth/desktop/authorize')
+      .set('Authorization', auth('member'))
+      .send({
+        codeChallenge: challenge,
+        codeChallengeMethod: 'S256',
+        password: 'Password123!',
+      })
+      .expect(200);
+    await http()
+      .post('/api/auth/desktop/token')
+      .set(
+        'User-Agent',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 SemaphoreChat/0.6.0 Chrome/140.0.0.0 Electron/39.0.0',
+      )
+      .set('X-Device-Id', randomUUID())
+      .send({
+        code: (authorized.body as { code: string }).code,
+        codeVerifier: verifier,
+      })
+      .expect(200);
+
+    const signedIn = await seen(ServerEvents.DESKTOP_SIGN_IN);
+    expect(typeof signedIn.signedInAt).toBe('string');
   });
 
   it('the reauthenticate acknowledgement', async () => {
