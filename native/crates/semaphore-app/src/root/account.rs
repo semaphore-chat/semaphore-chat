@@ -629,6 +629,17 @@ impl AppRoot {
         let feed = cx.spawn(async move |this, cx| {
             loop {
                 let fed = this.update(cx, |this, cx| {
+                    // A call that started took the mic and stopped the test: the button and the
+                    // meter say so.
+                    if this
+                        .account
+                        .mic_test
+                        .as_ref()
+                        .is_some_and(|(test, _)| !test.is_running())
+                    {
+                        this.stop_mic_test(cx);
+                        return false;
+                    }
                     let level = this.account.mic_test.as_ref().map(|(test, _)| test.level());
                     if let (Some(level), Some(tab)) = (level, this.voice_tab(cx)) {
                         tab.update(cx, |tab, cx| tab.set_mic_level(Some(level), cx));
@@ -656,15 +667,13 @@ impl AppRoot {
         }
     }
 
-    /// Ends the mic test without touching the tab (a join takes the mic; the meter goes with
-    /// the next refresh of the tab).
-    pub(super) fn drop_mic_test(&mut self) {
-        self.account.mic_test = None;
-    }
-
     /// The mic test's level now, for the rig: `None` while none runs.
     pub fn mic_test_level(&self) -> Option<f32> {
-        self.account.mic_test.as_ref().map(|(test, _)| test.level())
+        self.account
+            .mic_test
+            .as_ref()
+            .filter(|(test, _)| test.is_running())
+            .map(|(test, _)| test.level())
     }
 
     // ---- Appearance. ----

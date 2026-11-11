@@ -86,6 +86,8 @@ pub(super) struct Calls {
     dm_drag: Rc<Cell<Option<(f32, f32)>>>,
     /// The DM stage's split while dragging, saved on release.
     dm_ratio: Rc<Cell<Option<f32>>>,
+    /// The server mute about me last handed to the engine.
+    server_muted: bool,
 }
 
 impl AppRoot {
@@ -293,8 +295,6 @@ impl AppRoot {
 
     /// Before any join: the voice settings and the volumes kept per user.
     pub(super) fn prepare_join(&mut self) {
-        // The call takes the mic: a settings mic test running ends.
-        self.drop_mic_test();
         if let Some(voice) = &self.voice {
             voice.apply_settings(&self.settings.get().voice);
         }
@@ -469,6 +469,18 @@ impl AppRoot {
                 open: self.calls.soundboard_open,
             },
             _ => SoundboardBar::default(),
+        }
+    }
+
+    /// Core's view of a moderator's mute of me, to the engine, which holds the mic muted against
+    /// local changes while it lasts. On a change only.
+    pub(super) fn apply_server_mute(&mut self, server_muted: bool) {
+        if self.calls.server_muted == server_muted {
+            return;
+        }
+        self.calls.server_muted = server_muted;
+        if let Some(voice) = &self.voice {
+            voice.engine.set_server_muted(server_muted);
         }
     }
 

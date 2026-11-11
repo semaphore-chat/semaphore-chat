@@ -426,6 +426,7 @@ impl AppRoot {
             self.more_open = false;
             self.call_ended();
         }
+        self.apply_server_mute(model.voice.server_muted);
         let soundboard = self.soundboard_bar();
         if let Some(stage) = &self.stage {
             stage.update(cx, |stage, cx| {

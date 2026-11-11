@@ -82,19 +82,28 @@ wait core sound heard within 15
 # 4. A moderator mutes me: the mic can't come back until they lift it.
 server server_mute "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(me)\", \"mute\": true}"
 wait core voice server-muted yes
-wait core label "Muted by a moderator"
+wait core voice muted
+wait core label "A moderator muted you"
 tick 100
 snap 04-live-server-muted
+# Lifted: the mic stays off until I turn it on, as on the web.
 server server_mute "{\"channelId\": \"$ID(vc-squad)\", \"userId\": \"$ID(me)\", \"mute\": false}"
 wait core voice server-muted no
+expect core voice muted
+click voice-mic
+wait core voice unmuted
 
-# 5. The participant menu on demo-peer's tile: muted for me (saved), then a server mute.
+# 5. The participant menu on demo-peer's tile: muted for me (saved), then, as the community's
+# owner, a server mute.
 right-click tile-demo-peer-camera
 wait core dialog participant-menu open
 tick 100
 snap 05-live-participant-menu
 click participant-local-mute
+wait core dialog participant-menu closed
 expect settings /user_volumes/demo-peer 0
+right-click tile-demo-peer-camera
+wait core dialog participant-menu open
 click participant-server-mute
 wait core dialog participant-menu closed
 wait core requests LivekitController_muteParticipant >= 1
@@ -119,3 +128,7 @@ wait core no-element voice-capture
 click voice-leave
 wait core voice disconnected within 15
 wait core keep-awake off
+wait core label "Join voice"
+wait core float hidden
+wait idle
+shot 07-left
