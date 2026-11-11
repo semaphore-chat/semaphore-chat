@@ -4,7 +4,7 @@
 //! - **Capture** (`CaptureReplayDialog`): the buffer's state from `VoiceView::replay` and
 //!   `Core::replay_session`; the destinations from the call's community's text channels or my DMs;
 //!   `Core::capture_replay`, or `Core::download_replay` saved where the user chooses
-//!   (`files::ask_save_path`, the system's save dialog, which a rig never answers).
+//!   (`files::ask_save_path`: the config's save dialog, the system's or the rig's queue).
 //! - **Clip libraries** (`ClipLibrary`) on profile pages: mine (`Core::clips`) on my page, the
 //!   user's public ones (`Core::user_clips`) on theirs, played by the window's `Players`.
 //! - **Sharing** a clip (`ShareClipDialog`) to a channel of one of my communities or a DM.
@@ -14,12 +14,9 @@
 //!   `Core::expire_replay_audio_wait` at it.
 //! - **Sessions**: everything here is the session's. Results that land after a sign-out find their
 //!   session's token gone ([`Replay::session`]) and are dropped.
-//!
-//! Also here, for want of a session-start hook in `root.rs`: the window's `Players` get their
-//! video posters (`files::poster_resolver`) on the first core event with media set up.
 
 use super::AppRoot;
-use crate::files::{self, AppMedia};
+use crate::files;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
@@ -34,7 +31,7 @@ use semaphore_ui::replay::{
     CaptureEvent, CaptureReplayDialog, Choices, ClipEvent, ClipLibrary, DestinationKind,
     PickOption, ShareClipDialog, ShareEvent,
 };
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -55,8 +52,6 @@ pub(super) struct Replay {
     toast: Option<Toast>,
     /// The audio wait the timer is for, and the timer.
     audio_wait: Option<(u64, Task<()>)>,
-    /// The media the window's players take their posters from.
-    posters_from: Option<Weak<AppMedia>>,
 }
 
 struct Capture {
@@ -144,7 +139,6 @@ fn community_choices(core: &Core) -> Choices {
 
 impl AppRoot {
     pub(super) fn replay_on_core(&mut self, event: &CoreEvent, cx: &mut Context<Self>) {
-        self.install_posters();
         let CoreEvent::ViewChanged { view } = event else {
             return;
         };
@@ -764,23 +758,6 @@ impl AppRoot {
             }
         });
         self.replay.audio_wait = Some((until, timer));
-    }
-
-    /// The window's players take their posters from this session's media.
-    fn install_posters(&mut self) {
-        let (Some(media), Some(players)) = (&self.media, &self.players) else {
-            return;
-        };
-        let current = self
-            .replay
-            .posters_from
-            .as_ref()
-            .and_then(Weak::upgrade)
-            .is_some_and(|installed| Rc::ptr_eq(&installed, media));
-        if !current {
-            players.set_posters(files::poster_resolver(media));
-            self.replay.posters_from = Some(Rc::downgrade(media));
-        }
     }
 
     /// Runs `update` with the window, after the event being handled (core events come without

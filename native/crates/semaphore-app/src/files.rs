@@ -523,17 +523,13 @@ pub fn poster_resolver(media: &std::rc::Rc<AppMedia>) -> semaphore_ui::player::P
     })
 }
 
-/// Asks where to save a download called `name`, from the home folder: the system's save dialog,
-/// as `AppRoot::save_attachment` does. `None` when cancelled (or never answered, in a rig).
+/// Asks where to save a download called `name`: the save dialog the config chose
+/// (`crate::ask_save_path`; the system's, or the rig's queue). `None` when cancelled.
 pub fn ask_save_path(
     name: &str,
     cx: &mut gpui_kit::App,
-) -> impl std::future::Future<Output = Option<std::path::PathBuf>> + use<> {
-    let directory = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let chosen = cx.prompt_for_new_path(&directory, Some(&safe_file_name(name)));
-    async move { chosen.await.ok().and_then(Result::ok).flatten() }
+) -> gpui_kit::Task<Option<std::path::PathBuf>> {
+    crate::ask_save_path(name, cx)
 }
 
 /// Writes a download where the user chose, on a blocking thread of the net runtime.

@@ -601,6 +601,10 @@ impl AppRoot {
                 if let Some(voice) = &self.voice {
                     voice.apply_settings(&self.settings.get().voice);
                 }
+                // The in-app players play on the same output as calls.
+                if let Some(players) = &self.players {
+                    players.set_output_device(self.settings.get().voice.output_device.clone());
+                }
             }
             VoiceSettingsEvent::PlayTestSound => {
                 self.play_test_sound();

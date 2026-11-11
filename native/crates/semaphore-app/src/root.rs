@@ -174,6 +174,10 @@ impl AppRoot {
                 .pick_files
                 .clone()
                 .unwrap_or_else(crate::system_pick_files),
+            save_path: config
+                .save_path
+                .clone()
+                .unwrap_or_else(crate::system_save_path),
             open_url: config
                 .open_url
                 .clone()
@@ -327,6 +331,11 @@ impl AppRoot {
         let frames = VideoFrames::for_window(window);
         services.frames.attach(frames.clone());
         self.players = crate::player::players(&services, self.activity.clone(), frames.clone());
+        if let Some(players) = &self.players {
+            players.set_posters(files::poster_resolver(&media));
+            // The voice settings' output, for the attachment and clip players too.
+            players.set_output_device(self.settings.get().voice.output_device.clone());
+        }
         let (requests, asks) = async_channel::unbounded();
         let voice = Arc::new(AppVoice {
             core: services.core.clone(),
@@ -542,14 +551,10 @@ impl AppRoot {
         let Some(services) = &self.services else {
             return;
         };
-        let name = files::safe_file_name(&attachment.filename);
-        let directory = std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir);
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
+        let chosen = crate::ask_save_path(&attachment.filename, cx);
         let (core, handle) = (services.core.clone(), services.exec.handle().clone());
         cx.spawn(async move |_, _| {
-            let Ok(Ok(Some(path))) = chosen.await else {
+            let Some(path) = chosen.await else {
                 return;
             };
             let file_id = attachment.file_id.clone();

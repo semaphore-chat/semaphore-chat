@@ -164,6 +164,9 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             if let Some(sources) = video_sources {
                 engine_options.video_sources = sources;
             }
+            // Soundboard sounds the engine doesn't decode itself (MP3, AAC, Vorbis): the player's
+            // decoder, in a build with it.
+            engine_options.sound_decoder = crate::player::sound_decoder();
             // A screen share carries the system's audio: everything but our own call.
             engine_options.system_audio = semaphore_sysaudio::platform_capture().map(Arc::from);
             let screens: Arc<dyn ScreenCapture> =

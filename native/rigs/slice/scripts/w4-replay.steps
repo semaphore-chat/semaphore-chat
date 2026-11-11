@@ -111,3 +111,8 @@ expect core no-element clip-public-$ID(w4-priya-pub)
 expect core no-element clip-download-$ID(w4-priya-priv)
 wait idle
 shot 06-other-public-clips
+
+# 8. Downloading her clip: saved where the (rig's) save dialog says.
+save-as priya-clip.mp4
+click clip-download-$ID(w4-priya-pub)
+wait core saved priya-clip.mp4

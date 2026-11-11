@@ -95,9 +95,10 @@ pub fn players(_: &Services, _: Arc<Activity>, _: Arc<VideoFrames>) -> Option<Pl
     None
 }
 
-/// The longest soundboard sound decoded: the engine's own limit for the formats it decodes.
+/// The longest soundboard sound decoded: the engine's own limit (`soundboard::MAX_SECONDS`, 30 s),
+/// so a longer one is refused before it's all decoded. The engine checks what this returns too.
 #[cfg(feature = "player")]
-pub const MAX_SOUND: std::time::Duration = std::time::Duration::from_secs(120);
+pub const MAX_SOUND: std::time::Duration = std::time::Duration::from_secs(30);
 
 /// Soundboard sounds through the player's FFmpeg: the first audio stream, mono at 48 kHz.
 #[cfg(feature = "player")]

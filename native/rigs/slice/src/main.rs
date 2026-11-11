@@ -60,7 +60,8 @@
 //! times: joined, left, connected, disconnected, ring-start, ring-stop, call-ended), `voice room
 //! none|dm ID|channel ID`, `voice server-muted yes|no`, `keep-awake on|off` (the rig's inhibitor),
 //! `mic-test running|stopped`, `mic-level heard`, `engine vad N`, `soundboard playing ID|none`,
-//! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `float shown|hidden`. The step
+//! `livekit track ROOM IDENTITY NAME` (LiveKit's server lists it), `float shown|hidden`, `saved NAME` (a download reached the
+//! run's `saved/NAME`). `save-as NAME` answers the next save dialog with `saved/NAME`. The step
 //! `mic tone on|off` makes the virtual mic play a tone; `clock hold|run` stops the scenario clock
 //! counting real time (only `tick` moves it), and starts it again. `tick N` also moves
 //! the scenario clock core reads by N, so the app's timers for core's deadlines fire due.
@@ -380,6 +381,8 @@ enum W4 {
     },
     /// `float shown|hidden`: the float card over the middle column.
     Float(bool),
+    /// `saved NAME`: a download reached `<data dir>/saved/NAME`, not empty.
+    Saved(String),
 }
 
 /// The sound cue a `cue NAME` names.
@@ -519,6 +522,8 @@ enum Step {
     ExpectLinkRegistrations(usize),
     /// W4: `mic tone on|off`.
     MicTone(bool),
+    /// W4: `save-as NAME`: the next save dialog answers `<data dir>/saved/NAME`.
+    SaveAs(String),
     /// W4: `clock hold|run`: the scenario clock stops counting real time, or counts it again.
     ClockHold(bool),
 }
@@ -663,6 +668,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
             name: (*name).into(),
         }),
         ["float", state @ ("shown" | "hidden")] => Condition::W4(W4::Float(*state == "shown")),
+        ["saved", name] => Condition::W4(W4::Saved((*name).into())),
         ["dialog", name, state @ ("open" | "closed")] => {
             dialog_element(name)?;
             Condition::W4(W4::Dialog((*name).into(), *state == "open"))
@@ -764,6 +770,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["link", url] => Step::Link((*url).into()),
             ["forget", "sounds"] => Step::ForgetSounds,
             ["mic", "tone", on @ ("on" | "off")] => Step::MicTone(*on == "on"),
+            ["save-as", name] => Step::SaveAs((*name).into()),
             ["clock", state @ ("hold" | "run")] => Step::ClockHold(*state == "hold"),
             ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["pick-file", path] => Step::PickFile(PathBuf::from(path)),
@@ -959,6 +966,9 @@ struct Rig {
     opened: Rc<RefCell<Vec<String>>>,
     /// What the next file pickers answer, instead of the system's.
     picks: Rc<RefCell<VecDeque<PathBuf>>>,
+    /// Where the next save dialogs answer (`save-as NAME`), instead of the system's; none queued
+    /// is a cancel.
+    saves: Rc<RefCell<VecDeque<PathBuf>>>,
     /// Who opens semaphore:// links, instead of the OS.
     links: Arc<RigLinks>,
     /// What `tick` and `clock hold|run` did to the scenario clock, kept across restarts; and
@@ -1112,6 +1122,7 @@ impl Rig {
             heard: Arc::default(),
             opened: Rc::default(),
             picks: Rc::default(),
+            saves: Rc::default(),
             links: Arc::default(),
             clock_moves: Arc::default(),
             clock_started: Instant::now(),
@@ -1229,6 +1240,10 @@ impl Rig {
                 let opened = self.opened.clone();
                 Rc::new(move |url: &str, _: &mut App| opened.borrow_mut().push(url.to_owned()))
             }),
+            save_path: Some({
+                let saves = self.saves.clone();
+                Rc::new(move |_: &str, _: &mut App| Task::ready(saves.borrow_mut().pop_front()))
+            }),
             pick_files: Some({
                 let picks = self.picks.clone();
                 Rc::new(move |_, _: &mut App| {
@@ -1323,6 +1338,10 @@ impl Rig {
         {
             return self.livekit_has_track(room, identity, name);
         }
+        if let W4::Saved(name) = condition {
+            let path = self.data_dir.join("saved").join(name);
+            return Ok(std::fs::metadata(path).is_ok_and(|meta| meta.len() > 0));
+        }
         if let W4::KeepAwake(on) = condition {
             return Ok(self
                 .keep_awake
@@ -1400,7 +1419,11 @@ impl Rig {
                     };
                     view.clips.len() == *count
                 }
-                W4::Dialog(..) | W4::LiveKitTrack { .. } | W4::KeepAwake(_) | W4::Float(_) => {
+                W4::Dialog(..)
+                | W4::LiveKitTrack { .. }
+                | W4::KeepAwake(_)
+                | W4::Float(_)
+                | W4::Saved(_) => {
                     unreachable!("answered above")
                 }
             })
@@ -2249,6 +2272,12 @@ impl Rig {
                     } else {
                         self.clock_moves.run(elapsed);
                     }
+                    Ok(())
+                }
+                Step::SaveAs(name) => {
+                    let directory = self.data_dir.join("saved");
+                    std::fs::create_dir_all(&directory)?;
+                    self.saves.borrow_mut().push_back(directory.join(name));
                     Ok(())
                 }
                 Step::MicTone(on) => {

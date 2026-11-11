@@ -174,6 +174,7 @@ fn main() -> ExitCode {
                 notifier: desktop.notifier.clone(),
                 open_url: None,
                 pick_files: None,
+                save_path: None,
                 links: Some(Arc::new(semaphore_app::desktop::DesktopLinks::from_env())),
                 keep_awake: Some(Arc::new(
                     semaphore_platform_desktop::keep_awake::DesktopKeepAwake::new(),
