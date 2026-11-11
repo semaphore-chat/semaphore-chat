@@ -410,6 +410,7 @@ pub struct LocalMediaView {
     pub may_share: bool,
     pub may_speak: bool,
     pub screen_tracks: Option<ShareTracks>,
+    pub soundboard: Option<String>,
 }
 
 #[uniffi::remote(Enum)]

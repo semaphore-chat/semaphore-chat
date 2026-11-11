@@ -12,9 +12,12 @@ use crate::audio::mixer::{MAX_VOLUME_PERCENT, Mixer, MixerInput};
 use crate::audio::system::{
     CaptureScope, STEREO_FRAME_SAMPLES, SYSTEM_AUDIO_CHANNELS, StereoChunker, SystemAudioCapture,
 };
+use crate::audio::vad::{VadGate, VoiceLevel};
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
+use crate::diagnostics::{self, Totals};
+use crate::soundboard::{self, SoundCache, SoundDecoder};
 use crate::video::local::{
     Capturing, FramePipeline, VideoCaptureSource, VideoSources, may_publish,
 };
@@ -43,8 +46,8 @@ use livekit_protocol::TrackSource as ProtoSource;
 use semaphore_core::CoreError;
 pub use semaphore_core::model::ConnectionQuality as ConnectionQualityView;
 use semaphore_core::model::{
-    LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest, UserView, VideoTrackView,
-    ViewKey, VoiceStatus, VoiceView,
+    LocalMediaView, LocalShare, MediaDiagnostics, ParticipantView, ScreenShareRequest, ShareTracks,
+    UserView, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
 };
 use semaphore_core::platform::{CoreEvent, EventSink, MediaEngine, ScreenShareStarted};
 use std::borrow::Cow;
@@ -52,8 +55,8 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
@@ -154,6 +157,9 @@ pub struct EngineOptions {
     /// The system audio a screen share sends when asked to. `None`: asking for it fails, and the
     /// screen is shared without it. The app passes `semaphore_sysaudio::platform_capture()`.
     pub system_audio: Option<Arc<dyn SystemAudioCapture>>,
+    /// Soundboard formats beyond the built-in WAV, Ogg Opus and WebM Opus (MP3, AAC, Vorbis). The
+    /// app passes the player's decoder when it has the player feature; `None` refuses them.
+    pub sound_decoder: Option<Arc<dyn SoundDecoder>>,
 }
 
 impl Default for EngineOptions {
@@ -166,6 +172,7 @@ impl Default for EngineOptions {
             device_poll: Duration::from_secs(2),
             video_sources: Arc::new(PlatformVideoSources),
             system_audio: None,
+            sound_decoder: None,
         }
     }
 }
@@ -203,6 +210,8 @@ struct Wanted {
     preset: MicPreset,
     /// A camera's unique id from `cameras()`, or `None` for the first one.
     camera_device: Option<String>,
+    /// Voice activity's threshold, 0..=100; 0 is no gate. Not applied in push-to-talk mode.
+    vad_threshold: u8,
 }
 
 impl Wanted {
@@ -262,10 +271,37 @@ struct Inner {
     /// `drop_room_for_test`: the room is treated as lost, and the engine rejoins.
     lose_room: tokio::sync::Notify,
     next_capture: AtomicU64,
+    /// Ourselves, for tasks spawned from `&self` that report back.
+    me: Weak<Inner>,
+    /// The voice-activity threshold the mic's callback applies now: 0 while off or in PTT mode.
+    vad_threshold: Arc<AtomicU32>,
+    /// Why the screen share's audio didn't start or stopped, until the next share or its end.
+    screen_audio_failed: Mutex<Option<String>>,
+    sound_decoder: Option<Arc<dyn SoundDecoder>>,
+    sounds: Mutex<SoundCache>,
+    /// This call's `soundboard` track source, made (and published) by the first play.
+    soundboard_source: Mutex<Option<NativeAudioSource>>,
+    soundboard: Mutex<Option<PlayingSound>>,
+    /// One soundboard start at a time, so two plays can't publish two tracks.
+    soundboard_ops: tokio::sync::Mutex<()>,
+    next_sound: AtomicU64,
+    /// The last `diagnostics()` byte totals, for its bitrates.
+    last_totals: Mutex<Option<Totals>>,
 }
+
+struct PlayingSound {
+    id: u64,
+    sound_id: String,
+    task: JoinHandle<()>,
+}
+
+/// The mixer's key and identity for our own soundboard: no LiveKit sid or identity looks like it.
+const SOUNDBOARD_MONITOR: &str = "\u{1}soundboard";
 
 struct SystemAudioShare {
     source: NativeAudioSource,
+    /// Its publication's sid in the current room, for the replay buffer.
+    sid: Arc<Mutex<Option<String>>>,
     _capture: AudioStream,
     pump: JoinHandle<()>,
 }
@@ -332,7 +368,7 @@ impl LiveKitEngine {
             ..Wanted::default()
         };
         Self {
-            inner: Arc::new(Inner {
+            inner: Arc::new_cyclic(|me| Inner {
                 runtime: runtime.handle().clone(),
                 io: options.audio_io,
                 processing: Mutex::new(options.processing),
@@ -368,6 +404,16 @@ impl LiveKitEngine {
                 local_ops: tokio::sync::Mutex::new(()),
                 lose_room: tokio::sync::Notify::new(),
                 next_capture: AtomicU64::new(1),
+                me: me.clone(),
+                vad_threshold: Arc::new(AtomicU32::new(0)),
+                screen_audio_failed: Mutex::new(None),
+                sound_decoder: options.sound_decoder,
+                sounds: Mutex::default(),
+                soundboard_source: Mutex::new(None),
+                soundboard: Mutex::new(None),
+                soundboard_ops: tokio::sync::Mutex::new(()),
+                next_sound: AtomicU64::new(1),
+                last_totals: Mutex::new(None),
             }),
             runtime: Some(runtime),
         }
@@ -452,6 +498,14 @@ impl LiveKitEngine {
         self.inner.publish_snapshot();
     }
 
+    /// Voice activity's threshold, 0 to 100 on the web's scale (`audio::vad`): below it the mic
+    /// sends nothing. 0, the default, is no gate. Push-to-talk mode ignores it. Remembered across
+    /// calls, and a live call follows at once.
+    pub fn set_vad_threshold(&self, threshold: u8) {
+        lock(&self.inner.wanted).vad_threshold = threshold.min(100);
+        self.inner.apply_mic_state();
+    }
+
     /// 0 to 200, by identity. Survives the person's track ending, and a rejoin.
     pub fn set_participant_volume(&self, identity: &str, percent: u32) {
         self.inner
@@ -526,6 +580,27 @@ impl LiveKitEngine {
             preset: wanted.preset,
             processing: *lock(&self.inner.processing),
         }
+    }
+
+    /// For `start_input_test`: the audio IO, the chosen devices and processing, and whether a
+    /// call holds the mic.
+    pub(crate) fn input_test_setup(
+        &self,
+    ) -> (
+        Arc<dyn AudioIo>,
+        Option<String>,
+        Option<String>,
+        AudioProcessing,
+        bool,
+    ) {
+        let wanted = lock(&self.inner.wanted);
+        (
+            self.inner.io.clone(),
+            wanted.input_device.clone(),
+            wanted.output_device.clone(),
+            *lock(&self.inner.processing),
+            self.inner.input_stream_open() || self.inner.current_room().is_some(),
+        )
     }
 
     pub fn output_latency_ms(&self) -> u32 {
@@ -671,6 +746,34 @@ impl MediaEngine for LiveKitEngine {
             .spawn(async move { inner.stop_screen_share().await })
             .await;
     }
+
+    async fn play_soundboard(&self, sound_id: String, bytes: Vec<u8>) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        self.inner
+            .runtime
+            .spawn(async move { inner.play_soundboard(sound_id, bytes).await })
+            .await
+            .map_err(failed)?
+            .map_err(failed)
+    }
+
+    fn stop_soundboard(&self) {
+        self.inner.stop_soundboard();
+    }
+
+    fn set_participant_volume(&self, identity: String, percent: u32) {
+        LiveKitEngine::set_participant_volume(self, &identity, percent);
+    }
+
+    async fn diagnostics(&self) -> Option<MediaDiagnostics> {
+        let inner = self.inner.clone();
+        self.inner
+            .runtime
+            .spawn(async move { inner.diagnostics().await })
+            .await
+            .ok()
+            .flatten()
+    }
 }
 
 fn room_options() -> RoomOptions {
@@ -713,16 +816,36 @@ impl Inner {
         let pump = self
             .runtime
             .spawn(pump_system_audio(source.clone(), frames_rx));
+        let sid = Arc::new(Mutex::new(None));
         *lock(&self.system_audio) = Some(SystemAudioShare {
             source: source.clone(),
+            sid: sid.clone(),
             _capture: capture,
             pump,
         });
+        *lock(&self.screen_audio_failed) = None;
         if let Some(room) = self.current_room() {
-            self.runtime
-                .spawn(async move { publish_system_audio(&room, source).await });
+            let weak = self.me.clone();
+            self.runtime.spawn(async move {
+                let published = publish_system_audio(&room, source, &sid).await;
+                if let Some(inner) = weak.upgrade() {
+                    inner.system_audio_published(published);
+                }
+            });
         }
         Ok(())
+    }
+
+    /// The share's audio track went out, or the room refused it: then the capture is pointless,
+    /// and the report says why.
+    fn system_audio_published(&self, published: Result<(), String>) {
+        if let Err(error) = published {
+            log::warn!("system audio publish failed: {error}");
+            self.stop_system_audio();
+            *lock(&self.screen_audio_failed) =
+                Some(format!("the call refused the screen's audio: {error}"));
+        }
+        self.publish_snapshot();
     }
 
     /// Stops the capture and unpublishes the track. Nothing is left in the OS audio graph.
@@ -812,6 +935,9 @@ impl Inner {
         if let Some(share) = lock(&self.system_audio).take() {
             share.pump.abort();
         }
+        *lock(&self.screen_audio_failed) = None;
+        *lock(&self.soundboard_source) = None;
+        *lock(&self.last_totals) = None;
         self.drop_local_video();
         self.clear_media();
         self.stop_audio();
@@ -847,9 +973,16 @@ impl Inner {
         self.apply_mic_state();
         let system_audio = lock(&self.system_audio)
             .as_ref()
-            .map(|share| share.source.clone());
-        if let Some(source) = system_audio {
-            publish_system_audio(room, source).await;
+            .map(|share| (share.source.clone(), share.sid.clone()));
+        if let Some((source, sid)) = system_audio {
+            let published = publish_system_audio(room, source, &sid).await;
+            self.system_audio_published(published);
+        }
+        let soundboard = lock(&self.soundboard_source).clone();
+        if let Some(source) = soundboard
+            && let Err(error) = publish_soundboard(room, source).await
+        {
+            log::warn!("republishing the soundboard failed: {error}");
         }
         // A rejoin puts the camera and the screen back.
         for slot in [&self.camera, &self.screen] {
@@ -931,6 +1064,9 @@ impl Inner {
         if let Some(share) = lock(&self.system_audio).take() {
             share.pump.abort();
         }
+        *lock(&self.screen_audio_failed) = None;
+        *lock(&self.soundboard_source) = None;
+        *lock(&self.last_totals) = None;
         self.drop_local_video();
         self.clear_media();
         self.set_room(None);
@@ -1149,6 +1285,10 @@ impl Inner {
 
     /// Everything tied to the room's tracks, but not the devices or what the user wants.
     fn clear_media(&self) {
+        // A sound playing goes with the room it played into.
+        if let Some(playing) = lock(&self.soundboard).take() {
+            playing.task.abort();
+        }
         self.mixer.clear_inputs();
         for (_, task) in lock(&self.audio_tasks).drain() {
             task.abort();
@@ -1164,8 +1304,18 @@ impl Inner {
     /// Mutes the publication, for the SFU and other people's UIs, and closes the gate in front of
     /// the encoder, so a muted mic's audio isn't even handed to WebRTC.
     fn apply_mic_state(&self) {
-        let open = lock(&self.wanted).mic_open();
+        let (open, threshold) = {
+            let wanted = lock(&self.wanted);
+            let threshold = if wanted.ptt_mode {
+                0
+            } else {
+                wanted.vad_threshold
+            };
+            (wanted.mic_open(), threshold)
+        };
         self.mic_gate.store(open, Ordering::Relaxed);
+        self.vad_threshold
+            .store(u32::from(threshold), Ordering::Relaxed);
         let Some(room) = self.current_room() else {
             return;
         };
@@ -1283,6 +1433,9 @@ impl Inner {
             lost.store(true, Ordering::Relaxed);
         });
         let mut chunker = Chunker::new();
+        let threshold = self.vad_threshold.clone();
+        let mut level = VoiceLevel::default();
+        let mut vad = VadGate::default();
         let result = self.io.open_input(
             device.as_deref(),
             Box::new(move |samples, capture_latency| {
@@ -1292,7 +1445,10 @@ impl Inner {
                     if let Some(apm) = &apm {
                         apm.process_capture(frame, delay);
                     }
-                    if gate.load(Ordering::Relaxed) {
+                    // The web gates on what it would send, after processing; so does this.
+                    let threshold = threshold.load(Ordering::Relaxed) as u8;
+                    let voiced = threshold == 0 || vad.step(level.push(frame), threshold);
+                    if gate.load(Ordering::Relaxed) && voiced {
                         // Never block the device thread: a full queue drops 10 ms instead.
                         let _ = mic_tx.try_send(frame.to_vec());
                     }
@@ -1634,11 +1790,16 @@ async fn pump_system_audio(source: NativeAudioSource, mut frames: mpsc::Receiver
 }
 
 /// The web client's `SCREEN_SHARE_AUDIO_PUBLISH_OPTIONS`: 128 kbps, no DTX (it would gate quiet
-/// passages), RED on.
-async fn publish_system_audio(room: &Room, source: NativeAudioSource) {
+/// passages), RED on. Keeps the publication's sid in `sid`.
+async fn publish_system_audio(
+    room: &Room,
+    source: NativeAudioSource,
+    sid: &Mutex<Option<String>>,
+) -> Result<(), String> {
+    *lock(sid) = None;
     let track =
         LocalAudioTrack::create_audio_track("screen_share_audio", RtcAudioSource::Native(source));
-    let published = room
+    let publication = room
         .local_participant()
         .publish_track(
             LocalTrack::Audio(track),
@@ -1652,10 +1813,36 @@ async fn publish_system_audio(room: &Room, source: NativeAudioSource) {
                 ..Default::default()
             },
         )
-        .await;
-    if let Err(error) = published {
-        log::warn!("system audio publish failed: {error}");
-    }
+        .await
+        .map_err(|error| error.to_string())?;
+    *lock(sid) = Some(publication.sid().to_string());
+    Ok(())
+}
+
+/// The web's soundboard track: `Source.Unknown`, found by its name; no DTX or RED, as there.
+async fn publish_soundboard(room: &Room, source: NativeAudioSource) -> Result<(), String> {
+    let track =
+        LocalAudioTrack::create_audio_track(soundboard::TRACK_NAME, RtcAudioSource::Native(source));
+    room.local_participant()
+        .publish_track(
+            LocalTrack::Audio(track),
+            TrackPublishOptions {
+                source: TrackSource::Unknown,
+                dtx: false,
+                red: false,
+                ..Default::default()
+            },
+        )
+        .await
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+fn soundboard_published(room: &Room) -> bool {
+    room.local_participant()
+        .track_publications()
+        .values()
+        .any(|publication| publication.name() == soundboard::TRACK_NAME)
 }
 
 async fn unpublish_system_audio(room: &Room) {
@@ -1677,6 +1864,117 @@ async fn pump_track_audio(track: RemoteAudioTrack, mut input: MixerInput) {
     let mut stream = NativeAudioStream::new(track.rtc_track(), SAMPLE_RATE as i32, 1);
     while let Some(frame) = stream.next().await {
         input.push(&frame.data);
+    }
+}
+
+/// The soundboard, and what the debug panel reads.
+impl Inner {
+    async fn play_soundboard(
+        self: Arc<Self>,
+        sound_id: String,
+        bytes: Vec<u8>,
+    ) -> Result<(), String> {
+        let _one_at_a_time = self.soundboard_ops.lock().await;
+        let room = self.current_room().ok_or("not in a call")?;
+        let cached = lock(&self.sounds).get(&sound_id);
+        let sound = match cached {
+            Some(sound) => sound,
+            None => {
+                let decoder = self.sound_decoder.clone();
+                let sound = tokio::task::spawn_blocking(move || {
+                    soundboard::decode(&bytes, decoder.as_deref())
+                })
+                .await
+                .map_err(|error| error.to_string())??;
+                lock(&self.sounds).insert(sound_id.clone(), sound.clone());
+                sound
+            }
+        };
+        let source = lock(&self.soundboard_source)
+            .get_or_insert_with(|| {
+                // 100 ms of queue, as the mic: the pacing is ours, so it stays near empty.
+                NativeAudioSource::new(AudioSourceOptions::default(), SAMPLE_RATE, 1, 100)
+            })
+            .clone();
+        if !soundboard_published(&room) {
+            publish_soundboard(&room, source.clone())
+                .await
+                .map_err(|error| format!("the call refused the soundboard: {error}"))?;
+        }
+        if self
+            .current_room()
+            .is_none_or(|current| !Arc::ptr_eq(&current, &room))
+        {
+            return Err("the call ended while the sound was starting".into());
+        }
+        self.stop_soundboard_quietly();
+        let id = self.next_sound.fetch_add(1, Ordering::Relaxed);
+        let monitor = self.mixer.add_input(SOUNDBOARD_MONITOR, SOUNDBOARD_MONITOR);
+        {
+            // Held while spawning, so a sound that ends at once can't end before it's recorded.
+            let mut playing = lock(&self.soundboard);
+            let weak = self.me.clone();
+            let task = self.runtime.spawn(async move {
+                soundboard::play(source, sound, monitor).await;
+                if let Some(inner) = weak.upgrade() {
+                    inner.sound_ended(id);
+                }
+            });
+            *playing = Some(PlayingSound { id, sound_id, task });
+        }
+        self.publish_snapshot();
+        Ok(())
+    }
+
+    /// Stops what plays, without a report.
+    fn stop_soundboard_quietly(&self) -> bool {
+        let Some(playing) = lock(&self.soundboard).take() else {
+            return false;
+        };
+        playing.task.abort();
+        self.mixer.remove_input(SOUNDBOARD_MONITOR);
+        true
+    }
+
+    fn stop_soundboard(&self) {
+        if self.stop_soundboard_quietly() {
+            self.publish_snapshot();
+        }
+    }
+
+    fn sound_ended(&self, id: u64) {
+        let ended = {
+            let mut playing = lock(&self.soundboard);
+            if playing.as_ref().is_some_and(|playing| playing.id == id) {
+                playing.take()
+            } else {
+                None
+            }
+        };
+        if ended.is_some() {
+            self.mixer.remove_input(SOUNDBOARD_MONITOR);
+            self.publish_snapshot();
+        }
+    }
+
+    async fn diagnostics(&self) -> Option<MediaDiagnostics> {
+        let room = self.current_room()?;
+        let stats = match room.get_stats().await {
+            Ok(stats) => stats,
+            Err(error) => {
+                log::debug!("no call stats: {error}");
+                return None;
+            }
+        };
+        let previous = *lock(&self.last_totals);
+        let (diagnostics, totals) = diagnostics::summarize(
+            &stats.publisher_stats,
+            &stats.subscriber_stats,
+            previous,
+            Instant::now(),
+        );
+        *lock(&self.last_totals) = Some(totals);
+        Some(diagnostics)
     }
 }
 
@@ -1711,6 +2009,7 @@ impl Inner {
     ) -> Result<ScreenShareStarted, String> {
         let _one_at_a_time = self.local_ops.lock().await;
         self.stop_system_audio();
+        *lock(&self.screen_audio_failed) = None;
         self.stop_video(TrackSource::Screenshare).await;
         let room = self.current_room().ok_or("not in a call")?;
         let permission = room.local_participant().permission();
@@ -1730,6 +2029,7 @@ impl Inner {
         });
         if let Some(Err(error)) = &audio {
             log::warn!("screen share audio: {error}");
+            *lock(&self.screen_audio_failed) = Some(error.clone());
         }
         self.publish_snapshot();
         Ok(ScreenShareStarted { audio })
@@ -1738,6 +2038,7 @@ impl Inner {
     async fn stop_screen_share(self: Arc<Self>) {
         let _one_at_a_time = self.local_ops.lock().await;
         self.stop_system_audio();
+        *lock(&self.screen_audio_failed) = None;
         self.stop_video(TrackSource::Screenshare).await;
     }
 
@@ -1906,6 +2207,7 @@ impl Inner {
         log::info!("{kind:?} ended: {why}");
         if kind == TrackSource::Screenshare {
             self.stop_system_audio();
+            *lock(&self.screen_audio_failed) = None;
         }
         self.stop_video(kind).await;
     }
@@ -1920,15 +2222,33 @@ impl Inner {
             }
         };
         let permission = room.and_then(|room| room.local_participant().permission());
+        let audio_sid = lock(&self.system_audio)
+            .as_ref()
+            .map(|share| lock(&share.sid).clone());
+        let screen_audio = match (&audio_sid, lock(&self.screen_audio_failed).clone()) {
+            (Some(_), _) => LocalShare::On,
+            (None, Some(message)) => LocalShare::Failed { message },
+            (None, None) => LocalShare::Off,
+        };
+        // The replay buffer's: the published share's video, and its audio once that's out too.
+        let screen_tracks = lock(&self.screen)
+            .as_ref()
+            .and_then(|video| lock(&video.sid).clone())
+            .map(|video_sid| ShareTracks {
+                video_sid,
+                audio_sid: audio_sid.flatten(),
+            });
         LocalMediaView {
             camera: on(lock(&self.camera).is_some()),
             screen: on(lock(&self.screen).is_some()),
-            screen_audio: on(lock(&self.system_audio).is_some()),
+            screen_audio,
             may_camera: room.is_some() && may_publish(permission.as_ref(), ProtoSource::Camera),
             may_share: room.is_some() && may_publish(permission.as_ref(), ProtoSource::ScreenShare),
             may_speak: room.is_some() && may_publish(permission.as_ref(), ProtoSource::Microphone),
-            // W4-media: the published share's sids, for the replay buffer.
-            screen_tracks: None,
+            screen_tracks,
+            soundboard: lock(&self.soundboard)
+                .as_ref()
+                .map(|playing| playing.sound_id.clone()),
         }
     }
 
