@@ -1,0 +1,433 @@
+diff -ruN a/build.rs b/build.rs
+--- a/build.rs
++++ b/build.rs
+@@ -61,6 +61,11 @@
+     if is_desktop {
+         rust_files.push("src/desktop_capturer.rs");
+     }
++    // Semaphore patch: macOS cameras live in the ObjC SDK, not in VideoCaptureModule.
++    let has_camera_capturer = target_os == "linux" || target_os == "windows";
++    if has_camera_capturer {
++        rust_files.push("src/camera_capturer.rs");
++    }
+ 
+     let mut builder = cxx_build::bridges(rust_files);
+ 
+@@ -104,6 +109,9 @@
+     if is_desktop {
+         builder.file("src/desktop_capturer.cpp");
+     }
++    if has_camera_capturer {
++        builder.file("src/camera_capturer.cpp");
++    }
+ 
+     let webrtc_dir = webrtc_sys_build::webrtc_dir();
+     let webrtc_include = webrtc_dir.join("include");
+@@ -151,6 +159,8 @@
+             println!("cargo:rustc-link-lib=dylib=dxgi");
+             println!("cargo:rustc-link-lib=dylib=dwmapi");
+             println!("cargo:rustc-link-lib=dylib=shcore");
++            // DirectShow's device names come as VARIANTs (camera_capturer).
++            println!("cargo:rustc-link-lib=dylib=oleaut32");
+ 
+             //let path = env::current_dir().unwrap();
+             //println!("cargo:rustc-link-search=native={}/vaapi-windows/x64/lib", path.display());
+diff -ruN a/include/livekit/camera_capturer.h b/include/livekit/camera_capturer.h
+--- a/include/livekit/camera_capturer.h
++++ b/include/livekit/camera_capturer.h
+@@ -0,0 +1,78 @@
++/*
++ * Semaphore patch: libwebrtc's VideoCaptureModule (cameras) for Rust. PipeWire or V4L2 on
++ * Linux, DirectShow on Windows. Frames go to a NativeVideoSink, as a remote track's do.
++ * Licensed under the Apache License, Version 2.0, like the rest of this crate.
++ */
++
++#pragma once
++
++#include <condition_variable>
++#include <memory>
++#include <mutex>
++
++#include "api/scoped_refptr.h"
++#include "livekit/video_track.h"
++#include "modules/video_capture/video_capture.h"
++#include "rust/cxx.h"
++#if defined(WEBRTC_LINUX)
++#include "modules/video_capture/video_capture_options.h"
++#endif
++
++namespace livekit_ffi {
++class CameraCapturer;
++struct CameraCapturerOptions;
++struct CameraDevice;
++struct CameraCapability;
++}  // namespace livekit_ffi
++
++#include "webrtc-sys/src/camera_capturer.rs.h"
++
++namespace livekit_ffi {
++
++// Linux needs VideoCaptureOptions (PipeWire or V4L2) and waits for it to
++// initialize; elsewhere the factory needs nothing.
++class CameraCapturer
++#if defined(WEBRTC_LINUX)
++    : public webrtc::VideoCaptureOptions::Callback
++#endif
++{
++ public:
++  explicit CameraCapturer(CameraCapturerOptions options);
++  ~CameraCapturer();
++
++  // 0 when ready; otherwise a webrtc::VideoCaptureOptions::Status, or
++  // kInitTimedOut.
++  int32_t init_status() const { return status_; }
++  rust::Vec<CameraDevice> devices() const;
++  bool start(rust::Str unique_id,
++             CameraCapability capability,
++             std::shared_ptr<NativeVideoSink> sink) const;
++  void stop() const;
++  bool is_capturing() const;
++
++#if defined(WEBRTC_LINUX)
++  void OnInitialized(webrtc::VideoCaptureOptions::Status status) override;
++#endif
++
++ private:
++#if defined(WEBRTC_LINUX)
++  void wait_for_init(uint32_t timeout_ms);
++#endif
++  webrtc::VideoCaptureModule::DeviceInfo* device_info() const;
++
++  mutable std::mutex mutex_;
++  std::condition_variable initialized_;
++  bool init_done_ = false;
++  int32_t status_ = 0;
++#if defined(WEBRTC_LINUX)
++  std::unique_ptr<webrtc::VideoCaptureOptions> options_;
++#endif
++  mutable std::unique_ptr<webrtc::VideoCaptureModule::DeviceInfo> info_;
++  mutable webrtc::scoped_refptr<webrtc::VideoCaptureModule> module_;
++  mutable std::shared_ptr<NativeVideoSink> sink_;
++};
++
++std::unique_ptr<CameraCapturer> new_camera_capturer(
++    CameraCapturerOptions options);
++
++}  // namespace livekit_ffi
+diff -ruN a/include/livekit/desktop_capturer.h b/include/livekit/desktop_capturer.h
+--- a/include/livekit/desktop_capturer.h
++++ b/include/livekit/desktop_capturer.h
+@@ -43,6 +43,9 @@
+   bool select_source(uint64_t id) const { return capturer->SelectSource(id); }
+   void start(rust::Box<DesktopCapturerCallbackWrapper> callback);
+   void capture_frame() const { capturer->CaptureFrame(); }
++  void set_max_frame_rate(uint32_t max_frame_rate) const {
++    capturer->SetMaxFrameRate(max_frame_rate);
++  }
+ 
+  private:
+   std::unique_ptr<webrtc::DesktopCapturer> capturer;
+diff -ruN a/src/camera_capturer.cpp b/src/camera_capturer.cpp
+--- a/src/camera_capturer.cpp
++++ b/src/camera_capturer.cpp
+@@ -0,0 +1,173 @@
++/*
++ * Semaphore patch: see include/livekit/camera_capturer.h.
++ * Licensed under the Apache License, Version 2.0, like the rest of this crate.
++ */
++
++#include "livekit/camera_capturer.h"
++
++#include <chrono>
++#include <string>
++
++#include "modules/video_capture/video_capture_factory.h"
++
++namespace livekit_ffi {
++
++namespace {
++// Beyond VideoCaptureOptions::Status (0..4).
++constexpr int32_t kInitTimedOut = 100;
++constexpr uint32_t kNameLength = 1024;
++}  // namespace
++
++CameraCapturer::CameraCapturer(CameraCapturerOptions options) {
++#if defined(WEBRTC_LINUX)
++  options_ = std::make_unique<webrtc::VideoCaptureOptions>();
++#if defined(WEBRTC_USE_PIPEWIRE)
++  if (options.pipewire) {
++    options_->set_allow_pipewire(true);
++    // libwebrtc's PipeWire session takes the fd over (pw_context_connect_fd);
++    // a negative one makes it ask the camera portal.
++    options_->set_pipewire_fd(options.pipewire_fd);
++  } else {
++    options_->set_allow_v4l2(true);
++  }
++#else
++  options_->set_allow_v4l2(true);
++#endif
++  options_->Init(this);
++  wait_for_init(options.init_timeout_ms);
++#else
++  // Windows (DirectShow) and the rest need no initialization.
++  (void)options;
++  init_done_ = true;
++#endif
++}
++
++CameraCapturer::~CameraCapturer() {
++  stop();
++  std::lock_guard<std::mutex> lock(mutex_);
++  info_.reset();
++  module_ = nullptr;
++}
++
++#if defined(WEBRTC_LINUX)
++void CameraCapturer::OnInitialized(webrtc::VideoCaptureOptions::Status status) {
++  std::lock_guard<std::mutex> lock(mutex_);
++  if (!init_done_) {
++    status_ = static_cast<int32_t>(status);
++    init_done_ = true;
++  }
++  initialized_.notify_all();
++}
++
++void CameraCapturer::wait_for_init(uint32_t timeout_ms) {
++  std::unique_lock<std::mutex> lock(mutex_);
++  if (!initialized_.wait_for(lock, std::chrono::milliseconds(timeout_ms),
++                             [this] { return init_done_; })) {
++    // A late callback only takes the lock and finds init_done_ set.
++    status_ = kInitTimedOut;
++    init_done_ = true;
++  }
++}
++#endif
++
++webrtc::VideoCaptureModule::DeviceInfo* CameraCapturer::device_info() const {
++  if (!info_) {
++#if defined(WEBRTC_LINUX)
++    info_.reset(webrtc::VideoCaptureFactory::CreateDeviceInfo(options_.get()));
++#else
++    info_.reset(webrtc::VideoCaptureFactory::CreateDeviceInfo());
++#endif
++  }
++  return info_.get();
++}
++
++rust::Vec<CameraDevice> CameraCapturer::devices() const {
++  rust::Vec<CameraDevice> devices;
++  std::lock_guard<std::mutex> lock(mutex_);
++  if (status_ != 0) {
++    return devices;
++  }
++  webrtc::VideoCaptureModule::DeviceInfo* info = device_info();
++  if (!info) {
++    return devices;
++  }
++  uint32_t count = info->NumberOfDevices();
++  for (uint32_t i = 0; i < count; ++i) {
++    char name[kNameLength] = {0};
++    char unique_id[kNameLength] = {0};
++    if (info->GetDeviceName(i, name, kNameLength, unique_id, kNameLength) != 0) {
++      continue;
++    }
++    CameraDevice device;
++    device.name = rust::String(name);
++    device.unique_id = rust::String(unique_id);
++    int32_t caps = info->NumberOfCapabilities(unique_id);
++    for (int32_t c = 0; c < caps; ++c) {
++      webrtc::VideoCaptureCapability capability;
++      if (info->GetCapability(unique_id, c, capability) != 0) {
++        continue;
++      }
++      device.capabilities.push_back(CameraCapability{
++          capability.width, capability.height, capability.maxFPS,
++          static_cast<int32_t>(capability.videoType), capability.interlaced});
++    }
++    devices.push_back(std::move(device));
++  }
++  return devices;
++}
++
++bool CameraCapturer::start(rust::Str unique_id,
++                           CameraCapability capability,
++                           std::shared_ptr<NativeVideoSink> sink) const {
++  std::lock_guard<std::mutex> lock(mutex_);
++  if (status_ != 0 || module_) {
++    return false;
++  }
++  std::string id(unique_id.data(), unique_id.size());
++#if defined(WEBRTC_LINUX)
++  module_ = webrtc::VideoCaptureFactory::Create(options_.get(), id.c_str());
++#else
++  module_ = webrtc::VideoCaptureFactory::Create(id.c_str());
++#endif
++  if (!module_) {
++    return false;
++  }
++  sink_ = std::move(sink);
++  module_->RegisterCaptureDataCallback(sink_.get());
++  webrtc::VideoCaptureCapability requested;
++  requested.width = capability.width;
++  requested.height = capability.height;
++  requested.maxFPS = capability.max_fps;
++  requested.videoType = static_cast<webrtc::VideoType>(capability.video_type);
++  requested.interlaced = capability.interlaced;
++  if (module_->StartCapture(requested) != 0) {
++    module_->DeRegisterCaptureDataCallback();
++    module_ = nullptr;
++    sink_.reset();
++    return false;
++  }
++  return true;
++}
++
++void CameraCapturer::stop() const {
++  std::lock_guard<std::mutex> lock(mutex_);
++  if (!module_) {
++    return;
++  }
++  module_->StopCapture();
++  module_->DeRegisterCaptureDataCallback();
++  module_ = nullptr;
++  sink_.reset();
++}
++
++bool CameraCapturer::is_capturing() const {
++  std::lock_guard<std::mutex> lock(mutex_);
++  return module_ && module_->CaptureStarted();
++}
++
++std::unique_ptr<CameraCapturer> new_camera_capturer(
++    CameraCapturerOptions options) {
++  return std::make_unique<CameraCapturer>(options);
++}
++
++}  // namespace livekit_ffi
+diff -ruN a/src/camera_capturer.rs b/src/camera_capturer.rs
+--- a/src/camera_capturer.rs
++++ b/src/camera_capturer.rs
+@@ -0,0 +1,57 @@
++// Semaphore patch: libwebrtc's VideoCaptureModule (cameras). See include/livekit/camera_capturer.h.
++// Licensed under the Apache License, Version 2.0, like the rest of this crate.
++
++use crate::impl_thread_safety;
++
++#[cxx::bridge(namespace = "livekit_ffi")]
++pub mod ffi {
++    /// Linux only; ignored elsewhere.
++    #[derive(Clone, Debug)]
++    struct CameraCapturerOptions {
++        /// PipeWire, else V4L2.
++        pipewire: bool,
++        /// A connection to the PipeWire daemon, which libwebrtc takes over, or -1 to go
++        /// through the camera portal.
++        pipewire_fd: i32,
++        init_timeout_ms: u32,
++    }
++
++    #[derive(Clone, Debug)]
++    struct CameraCapability {
++        width: i32,
++        height: i32,
++        max_fps: i32,
++        /// `webrtc::VideoType`.
++        video_type: i32,
++        interlaced: bool,
++    }
++
++    #[derive(Clone, Debug)]
++    struct CameraDevice {
++        unique_id: String,
++        name: String,
++        capabilities: Vec<CameraCapability>,
++    }
++
++    unsafe extern "C++" {
++        include!("livekit/camera_capturer.h");
++
++        type CameraCapturer;
++        type NativeVideoSink = crate::video_track::ffi::NativeVideoSink;
++
++        /// Blocks until the backend is ready (PipeWire) or `init_timeout_ms` passes.
++        fn new_camera_capturer(options: CameraCapturerOptions) -> UniquePtr<CameraCapturer>;
++        fn init_status(self: &CameraCapturer) -> i32;
++        fn devices(self: &CameraCapturer) -> Vec<CameraDevice>;
++        fn start(
++            self: &CameraCapturer,
++            unique_id: &str,
++            capability: CameraCapability,
++            sink: SharedPtr<NativeVideoSink>,
++        ) -> bool;
++        fn stop(self: &CameraCapturer);
++        fn is_capturing(self: &CameraCapturer) -> bool;
++    }
++}
++
++impl_thread_safety!(ffi::CameraCapturer, Send + Sync);
+diff -ruN a/src/desktop_capturer.cpp b/src/desktop_capturer.cpp
+--- a/src/desktop_capturer.cpp
++++ b/src/desktop_capturer.cpp
+@@ -33,10 +33,10 @@
+ #ifdef _WIN64
+   switch (options.source_type) {
+     case SourceType::Screen:
+-      webrtc_options.set_allow_wgc_screen_capturer(true);
++      webrtc_options.set_allow_wgc_screen_capturer(options.allow_wgc);
+       break;
+     case SourceType::Window:
+-      webrtc_options.set_allow_wgc_window_capturer(true);
++      webrtc_options.set_allow_wgc_window_capturer(options.allow_wgc);
+       // https://github.com/webrtc-sdk/webrtc/blob/m137_release/modules/desktop_capture/desktop_capture_options.h#L133-L142
+       webrtc_options.set_enumerate_current_process_windows(false);
+       break;
+@@ -47,6 +47,10 @@
+ #endif /* _WIN64 */
+ #ifdef WEBRTC_USE_PIPEWIRE
+   webrtc_options.set_allow_pipewire(true);
++  if (options.target_width > 0 && options.target_height > 0) {
++    webrtc_options.set_width(options.target_width);
++    webrtc_options.set_height(options.target_height);
++  }
+ #endif /* WEBRTC_USE_PIPEWIRE */
+ 
+   // prefer_cursor_embedded indicate that the capturer should try to include the
+diff -ruN a/src/desktop_capturer.rs b/src/desktop_capturer.rs
+--- a/src/desktop_capturer.rs
++++ b/src/desktop_capturer.rs
+@@ -38,6 +38,13 @@
+         source_type: SourceType,
+         include_cursor: bool,
+         allow_sck_system_picker: bool,
++        /// Windows: use Windows.Graphics.Capture where it applies. Off, screens use DXGI or GDI
++        /// and windows GDI, which draw no capture border (semaphore patch).
++        allow_wgc: bool,
++        /// PipeWire: ask the compositor for frames of this size. 0 keeps the source size
++        /// (semaphore patch).
++        target_width: u32,
++        target_height: u32,
+     }
+ 
+     enum CaptureResult {
+@@ -56,6 +63,9 @@
+         fn capture_frame(self: &DesktopCapturer);
+         fn get_source_list(self: &DesktopCapturer) -> Vec<Source>;
+         fn select_source(self: &DesktopCapturer, id: u64) -> bool;
++        /// `webrtc::DesktopCapturer::SetMaxFrameRate`: PipeWire negotiates it with the
++        /// compositor; other capturers ignore it (semaphore patch).
++        fn set_max_frame_rate(self: &DesktopCapturer, max_frame_rate: u32);
+         fn start(self: Pin<&mut DesktopCapturer>, callback: Box<DesktopCapturerCallbackWrapper>);
+ 
+         fn width(self: &DesktopFrame) -> i32;
+diff -ruN a/src/lib.rs b/src/lib.rs
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -19,6 +19,8 @@
+ pub mod audio_mixer;
+ pub mod audio_resampler;
+ pub mod audio_track;
++#[cfg(any(target_os = "windows", target_os = "linux"))]
++pub mod camera_capturer;
+ pub mod candidate;
+ pub mod data_channel;
+ #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]

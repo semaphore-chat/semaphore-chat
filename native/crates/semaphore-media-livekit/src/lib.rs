@@ -3,6 +3,8 @@
 
 pub mod audio;
 mod engine;
+#[cfg(target_os = "linux")]
+pub mod pipewire_stubs;
 pub mod testing;
 mod video;
 
@@ -10,6 +12,7 @@ pub use engine::{
     ConnectionQualityView, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset, RejoinPolicy,
     TokenSource,
 };
+pub use video::publish;
 pub use video::{TrackVideoStats, VideoDemand, layer_for};
 
 use semaphore_core::CoreError;

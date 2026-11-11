@@ -1,4 +1,4 @@
-# Vendored GPUI with the video surface patch
+# Vendored GPUI with the video surface patch, and libwebrtc with capture
 
 `vendor/` is crates.io source plus `patches/`, nothing else. Cargo uses it through
 `[patch.crates-io]` in `native/Cargo.toml`. Edit the patches, never `vendor/`.
@@ -9,6 +9,7 @@
 | `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface` |
 | `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
+| `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
 | `vendor.sh` | Rebuilds `vendor/` from `series`. `--check` fails if it differs. Needs network |
 
 The patches come from the video agent, whose README has the API and the limits. Their rig's telemetry

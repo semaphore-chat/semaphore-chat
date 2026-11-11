@@ -148,6 +148,24 @@ jobs:
             native/target/release/rig-sysaudio.exe
             native/scripts/desk/t11-sysaudio-windows.ps1
           if-no-files-found: error
+      # The capture shim: libwebrtc's screen capturers (WGC, DXGI) and its DirectShow camera
+      # module, through our patched webrtc-sys. Building it compiles the shim's C++ for MSVC,
+      # which the Linux image can't. The run is informational: a hosted runner may have no
+      # capturable desktop and has no camera, so it can't fail the job.
+      - name: Build the capture probe
+        shell: bash
+        run: cargo build --locked --release -p semaphore-media-livekit --example capture_probe
+      - name: Capture probe (informational)
+        shell: bash
+        continue-on-error: true
+        run: |
+          target/release/examples/capture_probe screens --fps 15 --frames 10 || true
+          target/release/examples/capture_probe cameras --frames 10 || true
+      - uses: actions/upload-artifact@v7
+        with:
+          name: capture-probe-windows
+          path: native/target/release/examples/capture_probe.exe
+          if-no-files-found: error
       # For a real Windows GPU: the hosted runner only has the software adapter.
       - uses: actions/upload-artifact@v7
         with:

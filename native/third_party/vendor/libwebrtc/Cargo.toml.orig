@@ -1,0 +1,66 @@
+[package]
+name = "libwebrtc"
+version = "0.4.0"
+edition.workspace = true
+homepage = "https://livekit.io"
+license.workspace = true
+description = "Livekit safe bindings to libwebrtc"
+repository.workspace = true
+
+[features]
+default = []
+
+# On Wayland, libwebrtc uses GDBus to communicate with the XDG Desktop Portal.
+# GDBus requires a GLib event loop to be running. Enable this feature if you
+# wish to use screensharing, and you do not already have a GLib event loop
+# running in your application.
+glib-main-loop = [ "dep:glib" ]
+
+# How CI checks this crate's features, read by
+# `.github/workflows/feature-combinations-curated.yml` via `cargo metadata`.
+[package.metadata.feature-combinations]
+mode = "powerset"
+
+[dependencies]
+log = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+glib = { version = "0.21.3", optional = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+webrtc-sys = { workspace = true }
+tokio-stream = { workspace = true }
+lazy_static = { workspace = true }
+parking_lot = { workspace = true }
+tokio = { workspace = true, default-features = false, features = ["sync", "macros", "time", "rt-multi-thread"] }
+cxx = "1.0"
+rtrb = "0.3.3"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+  "MessageEvent",
+  "RtcPeerConnection",
+  "RtcSignalingState",
+  "RtcSdpType",
+  "RtcSessionDescriptionInit",
+  "RtcPeerConnectionIceEvent",
+  "RtcIceCandidate",
+  "RtcDataChannel",
+  "RtcDataChannelEvent",
+  "RtcDataChannelState",
+  "EventTarget",
+  "WebGlRenderingContext",
+  "WebGlTexture",
+] }
+
+[dev-dependencies]
+env_logger = { workspace = true }
