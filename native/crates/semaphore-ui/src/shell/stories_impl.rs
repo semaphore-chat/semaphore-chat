@@ -180,20 +180,25 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
         )
 }
 
-struct Options {
-    scenario: &'static str,
-    channel: Option<&'static str>,
-    connection: ConnectionState,
-    edit: fn(&mut Fixture),
-    expanded: bool,
-    members_open: bool,
-    messages: bool,
-    phone_content: bool,
-    side_panel: bool,
+pub(crate) struct Options {
+    pub scenario: &'static str,
+    pub channel: Option<&'static str>,
+    pub connection: ConnectionState,
+    pub edit: fn(&mut Fixture),
+    pub expanded: bool,
+    pub members_open: bool,
+    pub messages: bool,
+    pub phone_content: bool,
+    pub side_panel: bool,
     /// Open `/direct-messages` instead of a channel, with a stand-in route sidebar.
-    dm_route: bool,
+    pub dm_route: bool,
     /// A stand-in in the channel header's level button slot.
-    header_accessory: bool,
+    pub header_accessory: bool,
+    /// Real views in place of the stand-ins, for the W2 stories that show them in the shell.
+    pub route_sidebar: Option<RouteSidebarSlot>,
+    pub accessory: Option<AnyView>,
+    pub content: Option<ContentSlot>,
+    pub panel: Option<AnyView>,
 }
 
 impl Default for Options {
@@ -210,11 +215,15 @@ impl Default for Options {
             side_panel: false,
             dm_route: false,
             header_accessory: false,
+            route_sidebar: None,
+            accessory: None,
+            content: None,
+            panel: None,
         }
     }
 }
 
-fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
+pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
     let views = env.scenario(options.scenario).unwrap_or_else(|error| {
         panic!("story scenario {}: {error}", options.scenario);
     });
@@ -266,15 +275,24 @@ fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
         options.phone_content,
         options.side_panel,
     );
-    let panel: Option<AnyView> = side_panel.then(|| cx.new(|_| PlaceholderPanel).into());
-    let accessory: Option<AnyView> = options
-        .header_accessory
-        .then(|| cx.new(|_| PlaceholderAccessory).into());
-    let dm_route = options.dm_route;
+    let panel: Option<AnyView> = options
+        .panel
+        .or_else(|| side_panel.then(|| cx.new(|_| PlaceholderPanel).into()));
+    let accessory: Option<AnyView> = options.accessory.or_else(|| {
+        options
+            .header_accessory
+            .then(|| cx.new(|_| PlaceholderAccessory).into())
+    });
+    let route_sidebar = options.route_sidebar.or_else(|| {
+        options
+            .dm_route
+            .then(|| Rc::new(placeholder_sidebar) as RouteSidebarSlot)
+    });
+    let content: ContentSlot = options.content.unwrap_or_else(|| Rc::new(stub_rows));
     cx.new(|cx| {
-        let mut shell = Shell::new(source, route, Rc::new(stub_rows), connection, cx);
-        if dm_route {
-            shell = shell.with_route_sidebar(Rc::new(placeholder_sidebar));
+        let mut shell = Shell::new(source, route, content, connection, cx);
+        if let Some(slot) = route_sidebar {
+            shell = shell.with_route_sidebar(slot);
         }
         shell.header_accessory = accessory;
         shell.rail_expanded = expanded;
