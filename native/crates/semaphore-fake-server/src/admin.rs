@@ -188,7 +188,11 @@ pub(crate) fn is_member(inner: &Inner, community_id: &str, user_id: &str) -> boo
 }
 
 /// Whether `user_id` sees the channel: public, or private with them on its list (or no list).
-pub(crate) fn sees(inner: &Inner, channel: &semaphore_wire::types::ChannelDto, user_id: &str) -> bool {
+pub(crate) fn sees(
+    inner: &Inner,
+    channel: &semaphore_wire::types::ChannelDto,
+    user_id: &str,
+) -> bool {
     if !channel.is_private {
         return true;
     }
@@ -240,7 +244,14 @@ pub(crate) fn sounds(
     let mut list: Vec<SoundboardSoundDto> = list
         .into_iter()
         .filter(|sound| !admin.removed_assets.contains(&sound.id))
-        .chain(admin.sounds.get(community_id).into_iter().flatten().cloned())
+        .chain(
+            admin
+                .sounds
+                .get(community_id)
+                .into_iter()
+                .flatten()
+                .cloned(),
+        )
         .collect();
     list.sort_by(|a, b| a.name.cmp(&b.name));
     list

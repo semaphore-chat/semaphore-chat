@@ -92,7 +92,10 @@ async fn settings_read_the_community_and_an_edit_lands_with_its_images() {
     );
     rig.settle().await;
     let view = rig.core.community_settings(COMMUNITY.into());
-    assert_eq!((view.name.as_str(), view.description.as_deref()), ("Old", Some("About")));
+    assert_eq!(
+        (view.name.as_str(), view.description.as_deref()),
+        ("Old", Some("About"))
+    );
 
     let mut answer = community_json("New");
     answer["avatar"] = json!("avatar-file");
@@ -104,15 +107,26 @@ async fn settings_read_the_community_and_an_edit_lands_with_its_images() {
             CommunityPatch {
                 name: Some(" New ".into()),
                 description: Some(String::new()),
-                avatar: Some(ImageChange::Set { file: file("a.png") }),
+                avatar: Some(ImageChange::Set {
+                    file: file("a.png"),
+                }),
                 banner: Some(ImageChange::Remove),
             },
         )
         .await
         .unwrap();
     let uploads = rig.backend.uploads.lock().unwrap().clone();
-    assert_eq!(uploads, vec![("a.png".to_owned(), 10, Some(COMMUNITY.to_owned()))]);
-    let call = rig.backend.w4.calls().into_iter().find(|c| c.starts_with("update_community")).unwrap();
+    assert_eq!(
+        uploads,
+        vec![("a.png".to_owned(), 10, Some(COMMUNITY.to_owned()))]
+    );
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .find(|c| c.starts_with("update_community"))
+        .unwrap();
     let sent: Value = serde_json::from_str(call.splitn(3, ' ').nth(2).unwrap()).unwrap();
     assert_eq!(sent["name"], "New");
     assert_eq!(sent["description"], "");
@@ -178,7 +192,13 @@ async fn a_bad_name_is_refused_before_it_is_sent() {
         .await;
     assert!(result.is_err());
     assert_eq!(rig.backend.w4.count("update_community"), 0);
-    assert!(rig.core.community_settings(COMMUNITY.into()).op.error.is_some());
+    assert!(
+        rig.core
+            .community_settings(COMMUNITY.into())
+            .op
+            .error
+            .is_some()
+    );
 }
 
 #[tokio::test]
@@ -194,7 +214,9 @@ async fn a_failed_image_upload_sends_no_update_and_puts_the_text_back() {
             COMMUNITY.into(),
             CommunityPatch {
                 name: Some("New".into()),
-                banner: Some(ImageChange::Set { file: file("b.png") }),
+                banner: Some(ImageChange::Set {
+                    file: file("b.png"),
+                }),
                 ..Default::default()
             },
         )
@@ -243,11 +265,14 @@ async fn deleting_the_community_drops_it_without_announcing_it_and_the_echo_is_q
     rig.backend.w4.answer("delete_community", Value::Null);
     rig.core.delete_community("comm".into()).await.unwrap();
     assert!(rig.core.communities().is_empty());
-    rig.core.ingest(event("communityDeleted", json!({ "communityId": "comm" })));
+    rig.core
+        .ingest(event("communityDeleted", json!({ "communityId": "comm" })));
     let events = rig.settle().await;
-    assert!(!events
-        .iter()
-        .any(|event| matches!(event, CoreEvent::CommunityRemoved { .. })));
+    assert!(
+        !events
+            .iter()
+            .any(|event| matches!(event, CoreEvent::CommunityRemoved { .. }))
+    );
 }
 
 #[tokio::test]
@@ -267,15 +292,11 @@ async fn a_refused_delete_keeps_the_community() {
 #[tokio::test]
 async fn someone_deleting_the_community_announces_it_once_and_leaves_its_call() {
     let rig = Rig::with_media();
-    rig.backend
-        .channels
-        .lock()
-        .unwrap()
-        .push(json!({
-            "id": VOICE_A, "name": "lounge", "communityId": "comm", "type": "VOICE",
-            "position": 0, "slowmodeSeconds": 0, "preset": "NORMAL", "isPrivate": false,
-            "createdAt": "2026-09-22T18:00:00.000Z",
-        }));
+    rig.backend.channels.lock().unwrap().push(json!({
+        "id": VOICE_A, "name": "lounge", "communityId": "comm", "type": "VOICE",
+        "position": 0, "slowmodeSeconds": 0, "preset": "NORMAL", "isPrivate": false,
+        "createdAt": "2026-09-22T18:00:00.000Z",
+    }));
     let mut rig = rig.signed_in().await;
     rig.core.communities();
     rig.core.channels("comm".into());
@@ -283,7 +304,8 @@ async fn someone_deleting_the_community_announces_it_once_and_leaves_its_call() 
     rig.core.join_voice(VOICE_A.into()).await.unwrap();
     rig.settle().await;
     for _ in 0..2 {
-        rig.core.ingest(event("communityDeleted", json!({ "communityId": "comm" })));
+        rig.core
+            .ingest(event("communityDeleted", json!({ "communityId": "comm" })));
     }
     // Gone at once (the fake's list, read again, still has it: the real one wouldn't).
     assert!(rig.core.communities().is_empty());
@@ -301,10 +323,21 @@ async fn someone_deleting_the_community_announces_it_once_and_leaves_its_call() 
         .collect();
     assert_eq!(
         removed,
-        vec![("comm".to_owned(), "Community".to_owned(), RemovalCause::Deleted)]
+        vec![(
+            "comm".to_owned(),
+            "Community".to_owned(),
+            RemovalCause::Deleted
+        )]
     );
     assert_eq!(rig.core.voice().room, None, "the call is left");
-    assert!(rig.media.calls.lock().unwrap().iter().any(|call| call == "disconnect"));
+    assert!(
+        rig.media
+            .calls
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|call| call == "disconnect")
+    );
 }
 
 // --- Channels ---
@@ -350,17 +383,26 @@ async fn a_refused_channel_shows_why_and_adds_nothing() {
     rig.backend
         .w4
         .fail_next("create_channel", refusal(409, "CONFLICT"));
-    assert!(rig
-        .core
-        .create_channel(COMMUNITY.into(), draft("general", false, 0))
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .create_channel(COMMUNITY.into(), draft("general", false, 0))
+            .await
+            .is_err()
+    );
     assert_eq!(names(&rig).len(), 3);
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "CONFLICT");
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "CONFLICT",
+    );
     // A kind the server doesn't make is refused here.
     let mut odd = draft("x", false, 0);
     odd.kind = ChannelKind::Unknown;
-    assert!(rig.core.create_channel(COMMUNITY.into(), odd).await.is_err());
+    assert!(
+        rig.core
+            .create_channel(COMMUNITY.into(), odd)
+            .await
+            .is_err()
+    );
     assert_eq!(rig.backend.w4.count("create_channel"), 1);
 }
 
@@ -371,7 +413,9 @@ async fn an_update_sends_only_what_changed_and_shows_it_at_once() {
     let mut answer = channel_json(TEXT_A, "chat", "TEXT", 0);
     answer["slowmodeSeconds"] = json!(10);
     rig.backend.w4.answer("update_channel", answer);
-    let update = rig.core.update_channel(TEXT_A.into(), draft("chat", false, 10));
+    let update = rig
+        .core
+        .update_channel(TEXT_A.into(), draft("chat", false, 10));
     let (result, ()) = tokio::join!(update, async {
         tokio::task::yield_now().await;
         assert_eq!(names(&rig)[0], "chat");
@@ -392,7 +436,9 @@ async fn a_refused_update_puts_back_only_its_own_fields() {
     rig.backend
         .w4
         .fail_next("update_channel", refusal(403, "FORBIDDEN"));
-    let update = rig.core.update_channel(TEXT_A.into(), draft("chat", true, 0));
+    let update = rig
+        .core
+        .update_channel(TEXT_A.into(), draft("chat", true, 0));
     let (result, ()) = tokio::join!(update, async {
         tokio::task::yield_now().await;
         // Someone changes its slow mode meanwhile: not a field this edit wrote.
@@ -410,7 +456,10 @@ async fn a_refused_update_puts_back_only_its_own_fields() {
     assert_eq!(row.name, "general");
     assert!(!row.is_private);
     assert_eq!(row.slowmode_seconds, 60);
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "FORBIDDEN");
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "FORBIDDEN",
+    );
 }
 
 #[tokio::test]
@@ -420,7 +469,9 @@ async fn a_channel_update_answered_after_a_new_session_changes_nothing() {
     rig.backend
         .w4
         .answer("update_channel", channel_json(TEXT_A, "late", "TEXT", 0));
-    let update = rig.core.update_channel(TEXT_A.into(), draft("late", false, 0));
+    let update = rig
+        .core
+        .update_channel(TEXT_A.into(), draft("late", false, 0));
     let (result, ()) = tokio::join!(update, new_session_then(&rig, hold));
     assert!(result.is_err());
     assert_eq!(names(&rig)[0], "general");
@@ -454,7 +505,10 @@ async fn a_refused_delete_puts_the_channel_back_where_it_was() {
         .fail_next("delete_channel", refusal(403, "FORBIDDEN"));
     assert!(rig.core.delete_channel(TEXT_A.into()).await.is_err());
     assert_eq!(names(&rig), ["general", "lounge", "random"]);
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "FORBIDDEN");
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "FORBIDDEN",
+    );
 }
 
 #[tokio::test]
@@ -489,7 +543,11 @@ async fn moving_swaps_with_the_neighbour_of_its_kind_then_takes_the_servers_orde
     let moving = rig.core.move_channel(TEXT_B.into(), ChannelMove::Up);
     let (result, ()) = tokio::join!(moving, async {
         tokio::task::yield_now().await;
-        assert_eq!(names(&rig), ["random", "lounge", "general"], "shown at once");
+        assert_eq!(
+            names(&rig),
+            ["random", "lounge", "general"],
+            "shown at once"
+        );
         hold.send(()).unwrap();
     });
     result.unwrap();
@@ -507,13 +565,17 @@ async fn a_refused_move_puts_both_channels_back() {
     rig.backend
         .w4
         .fail_next("move_down", refusal(403, "FORBIDDEN"));
-    assert!(rig
-        .core
-        .move_channel(TEXT_A.into(), ChannelMove::Down)
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .move_channel(TEXT_A.into(), ChannelMove::Down)
+            .await
+            .is_err()
+    );
     assert_eq!(names(&rig), ["general", "lounge", "random"]);
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "FORBIDDEN");
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "FORBIDDEN",
+    );
 }
 
 #[tokio::test]
@@ -550,10 +612,14 @@ async fn a_community_update_event_renames_it_in_the_rail() {
 #[tokio::test]
 async fn private_members_list_add_and_remove() {
     let mut rig = Rig::new().signed_in().await;
-    rig.backend
-        .w4
-        .answer("private_members", json!([private_member_json("ann", TEXT_A)]));
-    assert_eq!(rig.core.private_members(TEXT_A.into()).state, LoadState::Loading);
+    rig.backend.w4.answer(
+        "private_members",
+        json!([private_member_json("ann", TEXT_A)]),
+    );
+    assert_eq!(
+        rig.core.private_members(TEXT_A.into()).state,
+        LoadState::Loading
+    );
     rig.settle().await;
     let view = rig.core.private_members(TEXT_A.into());
     assert_eq!(view.members.len(), 1);
@@ -565,7 +631,10 @@ async fn private_members_list_add_and_remove() {
     rig.backend.w4.answer("add_private", added);
     rig.backend.w4.answer(
         "private_members",
-        json!([private_member_json("ann", TEXT_A), private_member_json(BOB, TEXT_A)]),
+        json!([
+            private_member_json("ann", TEXT_A),
+            private_member_json(BOB, TEXT_A)
+        ]),
     );
     rig.core
         .add_private_member(TEXT_A.into(), BOB.into())
@@ -574,7 +643,9 @@ async fn private_members_list_add_and_remove() {
     assert_eq!(rig.core.private_members(TEXT_A.into()).members.len(), 2);
     rig.settle().await;
     assert_eq!(
-        rig.core.private_members(TEXT_A.into()).members[1].user.username,
+        rig.core.private_members(TEXT_A.into()).members[1]
+            .user
+            .username,
         BOB,
         "read again for the user"
     );
@@ -582,11 +653,12 @@ async fn private_members_list_add_and_remove() {
     rig.backend
         .w4
         .fail_next("remove_private", refusal(403, "FORBIDDEN"));
-    assert!(rig
-        .core
-        .remove_private_member(TEXT_A.into(), BOB.into())
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .remove_private_member(TEXT_A.into(), BOB.into())
+            .await
+            .is_err()
+    );
     let view = rig.core.private_members(TEXT_A.into());
     assert_eq!(view.members.len(), 2, "back after the refusal");
     shows_refusal(&view.op, "FORBIDDEN");
@@ -643,25 +715,49 @@ async fn adding_a_member_searches_users_outside_the_community_and_reads_members_
     assert_eq!(rig.backend.w2.calls().last().unwrap(), "search_users bo");
     rig.core.members(COMMUNITY.into());
     rig.settle().await;
-    let before = rig.backend.member_page_requests.load(std::sync::atomic::Ordering::SeqCst);
+    let before = rig
+        .backend
+        .member_page_requests
+        .load(std::sync::atomic::Ordering::SeqCst);
     rig.backend.w4.answer(
         "add_member",
         json!({ "id": "m", "userId": BOB, "communityId": COMMUNITY,
                 "joinedAt": "2026-09-22T18:00:00.000Z" }),
     );
-    rig.core.add_member(COMMUNITY.into(), BOB.into()).await.unwrap();
+    rig.core
+        .add_member(COMMUNITY.into(), BOB.into())
+        .await
+        .unwrap();
     rig.settle().await;
     assert_eq!(
         rig.backend.w4.calls().last().unwrap(),
         &format!("add_member {{\"communityId\":\"{COMMUNITY}\",\"userId\":\"{BOB}\"}}")
     );
-    assert!(rig.backend.member_page_requests.load(std::sync::atomic::Ordering::SeqCst) > before);
+    assert!(
+        rig.backend
+            .member_page_requests
+            .load(std::sync::atomic::Ordering::SeqCst)
+            > before
+    );
     rig.backend
         .w4
         .fail_next("add_member", refusal(409, "CONFLICT"));
-    assert!(rig.core.add_member(COMMUNITY.into(), BOB.into()).await.is_err());
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "CONFLICT");
-    assert!(rig.core.add_member(COMMUNITY.into(), "not-a-uuid".into()).await.is_err());
+    assert!(
+        rig.core
+            .add_member(COMMUNITY.into(), BOB.into())
+            .await
+            .is_err()
+    );
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "CONFLICT",
+    );
+    assert!(
+        rig.core
+            .add_member(COMMUNITY.into(), "not-a-uuid".into())
+            .await
+            .is_err()
+    );
 }
 
 // --- Mention groups ---
@@ -686,11 +782,17 @@ async fn mention_groups_create_rename_set_members_and_delete() {
     assert_eq!(id, GROUP);
     rig.backend.w4.answer(
         "alias_groups",
-        json!([summary_json("g0", "alpha", 1), summary_json(GROUP, "builders", 2)]),
+        json!([
+            summary_json("g0", "alpha", 1),
+            summary_json(GROUP, "builders", 2)
+        ]),
     );
     let groups = rig.core.alias_groups(COMMUNITY.into()).groups;
     assert_eq!(
-        groups.iter().map(|g| (g.name.as_str(), g.member_count)).collect::<Vec<_>>(),
+        groups
+            .iter()
+            .map(|g| (g.name.as_str(), g.member_count))
+            .collect::<Vec<_>>(),
         [("alpha", 1), ("devs", 1)]
     );
     let group = rig.core.alias_group(GROUP.into());
@@ -704,24 +806,29 @@ async fn mention_groups_create_rename_set_members_and_delete() {
         .rename_alias_group(GROUP.into(), "builders".into())
         .await
         .unwrap();
-    assert_eq!(rig.core.alias_groups(COMMUNITY.into()).groups[1].name, "builders");
+    assert_eq!(
+        rig.core.alias_groups(COMMUNITY.into()).groups[1].name,
+        "builders"
+    );
 
     rig.backend
         .w4
         .fail_next("rename_group", refusal(409, "CONFLICT"));
-    assert!(rig
-        .core
-        .rename_alias_group(GROUP.into(), "alpha".into())
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .rename_alias_group(GROUP.into(), "alpha".into())
+            .await
+            .is_err()
+    );
     let group = rig.core.alias_group(GROUP.into());
     assert_eq!(group.name, "builders", "back after the refusal");
     shows_refusal(&group.op, "CONFLICT");
-    assert!(rig
-        .core
-        .rename_alias_group(GROUP.into(), "has space".into())
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .rename_alias_group(GROUP.into(), "has space".into())
+            .await
+            .is_err()
+    );
 
     rig.backend
         .w4
@@ -746,9 +853,21 @@ async fn mention_groups_create_rename_set_members_and_delete() {
         .w4
         .fail_next("delete_group", refusal(403, "FORBIDDEN"));
     assert!(rig.core.delete_alias_group(GROUP.into()).await.is_err());
-    assert!(rig.core.alias_groups(COMMUNITY.into()).groups.iter().any(|g| g.id == GROUP));
+    assert!(
+        rig.core
+            .alias_groups(COMMUNITY.into())
+            .groups
+            .iter()
+            .any(|g| g.id == GROUP)
+    );
     rig.core.delete_alias_group(GROUP.into()).await.unwrap();
-    assert!(!rig.core.alias_groups(COMMUNITY.into()).groups.iter().any(|g| g.id == GROUP));
+    assert!(
+        !rig.core
+            .alias_groups(COMMUNITY.into())
+            .groups
+            .iter()
+            .any(|g| g.id == GROUP)
+    );
 }
 
 #[tokio::test]
@@ -788,7 +907,10 @@ async fn an_emoji_uploads_then_is_added_and_a_refused_delete_comes_back() {
         rig.backend.uploads.lock().unwrap()[0],
         ("p.png".to_owned(), 10, Some(COMMUNITY.to_owned()))
     );
-    assert_eq!(rig.backend.w4.calls()[0], format!("create_emoji {COMMUNITY} party"));
+    assert_eq!(
+        rig.backend.w4.calls()[0],
+        format!("create_emoji {COMMUNITY} party")
+    );
     let names: Vec<_> = rig
         .core
         .custom_emoji(COMMUNITY.into())
@@ -798,21 +920,27 @@ async fn an_emoji_uploads_then_is_added_and_a_refused_delete_comes_back() {
         .collect();
     assert_eq!(names, ["party", "wave"]);
 
-    assert!(rig
-        .core
-        .add_custom_emoji(COMMUNITY.into(), "Bad Name".into(), file("x.png"))
-        .await
-        .is_err());
-    assert_eq!(rig.backend.uploads.lock().unwrap().len(), 1, "nothing uploaded");
+    assert!(
+        rig.core
+            .add_custom_emoji(COMMUNITY.into(), "Bad Name".into(), file("x.png"))
+            .await
+            .is_err()
+    );
+    assert_eq!(
+        rig.backend.uploads.lock().unwrap().len(),
+        1,
+        "nothing uploaded"
+    );
 
     rig.backend
         .w4
         .fail_next("delete_emoji", refusal(403, "FORBIDDEN"));
-    assert!(rig
-        .core
-        .delete_custom_emoji(COMMUNITY.into(), "e1".into())
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .delete_custom_emoji(COMMUNITY.into(), "e1".into())
+            .await
+            .is_err()
+    );
     let view = rig.core.custom_emoji(COMMUNITY.into());
     assert_eq!(view.emojis.len(), 2);
     shows_refusal(&view.op, "FORBIDDEN");
@@ -829,11 +957,12 @@ async fn a_refused_emoji_shows_the_servers_message() {
     rig.backend
         .w4
         .fail_next("create_emoji", refusal(409, "CONFLICT"));
-    assert!(rig
-        .core
-        .add_custom_emoji(COMMUNITY.into(), "wave".into(), file("w.png"))
-        .await
-        .is_err());
+    assert!(
+        rig.core
+            .add_custom_emoji(COMMUNITY.into(), "wave".into(), file("w.png"))
+            .await
+            .is_err()
+    );
     let op = rig.core.custom_emoji(COMMUNITY.into()).op;
     shows_refusal(&op, "CONFLICT");
     assert!(op.upload.is_none());
@@ -861,31 +990,52 @@ async fn a_sound_uploads_then_joins_the_soundboard_and_a_delete_takes_it_out() {
         )
         .await
         .unwrap();
-    let call = rig.backend.w4.calls().into_iter().find(|c| c.starts_with("create_sound")).unwrap();
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .find(|c| c.starts_with("create_sound"))
+        .unwrap();
     let sent: Value = serde_json::from_str(call.splitn(3, ' ').nth(2).unwrap()).unwrap();
-    assert_eq!((sent["name"].clone(), sent["emoji"].clone()), (json!("Bell"), json!("🔔")));
+    assert_eq!(
+        (sent["name"].clone(), sent["emoji"].clone()),
+        (json!("Bell"), json!("🔔"))
+    );
     assert_eq!(rig.core.soundboard(COMMUNITY.into()).sounds.len(), 2);
 
     rig.backend
         .w4
         .fail_next("delete_sound", refusal(403, "FORBIDDEN"));
-    assert!(rig.core.delete_sound(COMMUNITY.into(), "s1".into()).await.is_err());
+    assert!(
+        rig.core
+            .delete_sound(COMMUNITY.into(), "s1".into())
+            .await
+            .is_err()
+    );
     assert_eq!(rig.core.soundboard(COMMUNITY.into()).sounds.len(), 2);
-    shows_refusal(&rig.core.community_settings(COMMUNITY.into()).op, "FORBIDDEN");
-    rig.core.delete_sound(COMMUNITY.into(), "s1".into()).await.unwrap();
-    assert_eq!(rig.core.soundboard(COMMUNITY.into()).sounds.len(), 1);
-    assert!(rig
-        .core
-        .add_sound(
-            COMMUNITY.into(),
-            SoundDraft {
-                name: "bad!".into(),
-                emoji: None,
-                file: file("x.mp3"),
-            },
-        )
+    shows_refusal(
+        &rig.core.community_settings(COMMUNITY.into()).op,
+        "FORBIDDEN",
+    );
+    rig.core
+        .delete_sound(COMMUNITY.into(), "s1".into())
         .await
-        .is_err());
+        .unwrap();
+    assert_eq!(rig.core.soundboard(COMMUNITY.into()).sounds.len(), 1);
+    assert!(
+        rig.core
+            .add_sound(
+                COMMUNITY.into(),
+                SoundDraft {
+                    name: "bad!".into(),
+                    emoji: None,
+                    file: file("x.mp3"),
+                },
+            )
+            .await
+            .is_err()
+    );
 }
 
 // --- Webhooks and invites ---
@@ -899,7 +1049,11 @@ async fn a_webhooks_url_is_returned_once_and_never_kept() {
     let mut created = webhook_json("w1", "CI", TEXT_A);
     created["url"] = json!("https://chat.example/api/webhooks/w1/secret");
     rig.backend.w4.answer("create_webhook", created);
-    let made = rig.core.create_webhook(TEXT_A.into(), "CI".into()).await.unwrap();
+    let made = rig
+        .core
+        .create_webhook(TEXT_A.into(), "CI".into())
+        .await
+        .unwrap();
     assert_eq!(made.url, "https://chat.example/api/webhooks/w1/secret");
     let view = rig.core.webhooks(TEXT_A.into());
     assert_eq!(view.webhooks.len(), 1);
@@ -908,11 +1062,19 @@ async fn a_webhooks_url_is_returned_once_and_never_kept() {
     rig.backend
         .w4
         .fail_next("delete_webhook", refusal(403, "FORBIDDEN"));
-    assert!(rig.core.delete_webhook(TEXT_A.into(), "w1".into()).await.is_err());
+    assert!(
+        rig.core
+            .delete_webhook(TEXT_A.into(), "w1".into())
+            .await
+            .is_err()
+    );
     let view = rig.core.webhooks(TEXT_A.into());
     assert_eq!(view.webhooks.len(), 1);
     shows_refusal(&view.op, "FORBIDDEN");
-    rig.core.delete_webhook(TEXT_A.into(), "w1".into()).await.unwrap();
+    rig.core
+        .delete_webhook(TEXT_A.into(), "w1".into())
+        .await
+        .unwrap();
     assert!(rig.core.webhooks(TEXT_A.into()).webhooks.is_empty());
 }
 
@@ -921,13 +1083,19 @@ async fn invites_list_only_this_communitys_and_create_and_delete() {
     let mut rig = Rig::new().signed_in().await;
     rig.backend.w4.answer(
         "invites",
-        json!([invite_json("mine", COMMUNITY), invite_json("other", "elsewhere")]),
+        json!([
+            invite_json("mine", COMMUNITY),
+            invite_json("other", "elsewhere")
+        ]),
     );
     rig.core.community_invites(COMMUNITY.into());
     rig.settle().await;
     let view = rig.core.community_invites(COMMUNITY.into());
     assert_eq!(view.invites.len(), 1);
-    assert_eq!((view.invites[0].uses, view.invites[0].max_uses), (1, Some(5)));
+    assert_eq!(
+        (view.invites[0].uses, view.invites[0].max_uses),
+        (1, Some(5))
+    );
 
     rig.backend
         .w4
@@ -944,12 +1112,26 @@ async fn invites_list_only_this_communitys_and_create_and_delete() {
         .await
         .unwrap();
     assert_eq!(code, "fresh");
-    let call = rig.backend.w4.calls().into_iter().find(|c| c.starts_with("create_invite")).unwrap();
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .find(|c| c.starts_with("create_invite"))
+        .unwrap();
     let sent: Value = serde_json::from_str(call.split_once(' ').unwrap().1).unwrap();
     assert_eq!(sent["communityIds"], json!([COMMUNITY]));
     assert_eq!(sent["maxUses"], 5);
-    assert!(sent["validUntil"].as_str().unwrap().starts_with("2027-01-15"));
-    assert_eq!(rig.core.community_invites(COMMUNITY.into()).invites[0].code, "fresh");
+    assert!(
+        sent["validUntil"]
+            .as_str()
+            .unwrap()
+            .starts_with("2027-01-15")
+    );
+    assert_eq!(
+        rig.core.community_invites(COMMUNITY.into()).invites[0].code,
+        "fresh"
+    );
 
     rig.backend
         .w4
@@ -959,7 +1141,10 @@ async fn invites_list_only_this_communitys_and_create_and_delete() {
     assert_eq!(view.invites.len(), 2);
     shows_refusal(&view.op, "FORBIDDEN");
     rig.core.delete_invite("fresh".into()).await.unwrap();
-    assert_eq!(rig.core.community_invites(COMMUNITY.into()).invites.len(), 1);
+    assert_eq!(
+        rig.core.community_invites(COMMUNITY.into()).invites.len(),
+        1
+    );
 }
 
 #[tokio::test]
@@ -983,5 +1168,8 @@ async fn an_invite_deleted_after_a_new_session_is_not_put_back_or_taken_out_ther
     rig.settle().await;
     let view = rig.core.community_invites(COMMUNITY.into());
     assert_eq!(view.invites.len(), 1);
-    assert!(view.op.error.is_none(), "the old session's refusal isn't shown");
+    assert!(
+        view.op.error.is_none(),
+        "the old session's refusal isn't shown"
+    );
 }

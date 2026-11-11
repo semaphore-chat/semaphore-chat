@@ -72,7 +72,12 @@ pub fn private_member_json(user: &str, channel: &str) -> Value {
 impl FakeBackend {
     /// `op`, answering `null` unless scripted otherwise: for the calls that answer nothing.
     async fn unit(&self, op: &'static str, args: &[&str]) -> BackendResult<()> {
-        self.w4.answers.lock().unwrap().entry(op).or_insert(Value::Null);
+        self.w4
+            .answers
+            .lock()
+            .unwrap()
+            .entry(op)
+            .or_insert(Value::Null);
         self.w4.run(op, args).await
     }
 }
@@ -94,7 +99,9 @@ impl CommunityAdminBackend for FakeBackend {
         id: String,
         update: wire::UpdateCommunityDto,
     ) -> BackendResult<wire::CommunityResponseDto> {
-        self.w4.run("update_community", &[&id, &body(&update)]).await
+        self.w4
+            .run("update_community", &[&id, &body(&update)])
+            .await
     }
     async fn community_controller_remove(&self, id: String) -> BackendResult<()> {
         self.unit("delete_community", &[&id]).await
@@ -180,7 +187,9 @@ impl CommunityAdminBackend for FakeBackend {
         group_id: String,
         update: wire::UpdateAliasGroupDto,
     ) -> BackendResult<wire::AliasGroupWithMembersDto> {
-        self.w4.run("rename_group", &[&group_id, &body(&update)]).await
+        self.w4
+            .run("rename_group", &[&group_id, &body(&update)])
+            .await
     }
     async fn alias_groups_controller_delete_alias_group(
         &self,
@@ -208,7 +217,8 @@ impl CommunityAdminBackend for FakeBackend {
         group_id: String,
         update: wire::UpdateMembersDto,
     ) -> BackendResult<()> {
-        self.unit("group_members", &[&group_id, &body(&update)]).await
+        self.unit("group_members", &[&group_id, &body(&update)])
+            .await
     }
     async fn custom_emoji_controller_create_emoji(
         &self,
@@ -262,7 +272,8 @@ impl CommunityAdminBackend for FakeBackend {
         channel_id: String,
         webhook_id: String,
     ) -> BackendResult<()> {
-        self.unit("delete_webhook", &[&channel_id, &webhook_id]).await
+        self.unit("delete_webhook", &[&channel_id, &webhook_id])
+            .await
     }
     async fn invite_controller_get_invites(&self) -> BackendResult<Vec<wire::InviteResponseDto>> {
         self.w4.run("invites", &[]).await

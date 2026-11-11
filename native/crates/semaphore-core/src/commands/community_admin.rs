@@ -189,7 +189,11 @@ impl State {
     }
 
     /// Edits a cached W5-A value, keeping when it was read and whether it's stale.
-    fn w5a_edit<R>(&mut self, key: &QueryKey, change: impl FnOnce(&mut W5aValue) -> R) -> Option<R> {
+    fn w5a_edit<R>(
+        &mut self,
+        key: &QueryKey,
+        change: impl FnOnce(&mut W5aValue) -> R,
+    ) -> Option<R> {
         let entry = self.cache.get(key)?.clone();
         let CacheValue::W5a(mut value) = entry.value else {
             return None;
@@ -207,7 +211,12 @@ impl State {
         Some(result)
     }
 
-    w5a_typed!(w5a_community, w5a_community_edit, Community, wire::CommunityResponseDto);
+    w5a_typed!(
+        w5a_community,
+        w5a_community_edit,
+        Community,
+        wire::CommunityResponseDto
+    );
     w5a_typed!(
         w5a_private_members,
         w5a_private_members_edit,
@@ -226,8 +235,18 @@ impl State {
         AliasGroup,
         wire::AliasGroupWithMembersDto
     );
-    w5a_typed!(w5a_webhooks, w5a_webhooks_edit, Webhooks, Vec<wire::WebhookDto>);
-    w5a_typed!(w5a_invites, w5a_invites_edit, Invites, Vec<wire::InviteResponseDto>);
+    w5a_typed!(
+        w5a_webhooks,
+        w5a_webhooks_edit,
+        Webhooks,
+        Vec<wire::WebhookDto>
+    );
+    w5a_typed!(
+        w5a_invites,
+        w5a_invites_edit,
+        Invites,
+        Vec<wire::InviteResponseDto>
+    );
 
     /// Reads a view's query: again when it's older than [`ADMIN_STALE_MS`], since no event says
     /// it changed.
@@ -286,11 +305,14 @@ impl State {
     }
 
     pub(crate) fn w5a_op(&self, view: &ViewKey) -> AdminOp {
-        self.w5a.ops.get(view).map_or_else(AdminOp::default, |op| AdminOp {
-            busy: op.running > 0,
-            upload: op.upload.as_ref().map(|(_, upload)| upload.clone()),
-            error: op.error.clone(),
-        })
+        self.w5a
+            .ops
+            .get(view)
+            .map_or_else(AdminOp::default, |op| AdminOp {
+                busy: op.running > 0,
+                upload: op.upload.as_ref().map(|(_, upload)| upload.clone()),
+                error: op.error.clone(),
+            })
     }
 
     /// A W5-A query's data changed: say which views to read again. False when it isn't W5-A's.
@@ -304,19 +326,26 @@ impl State {
 
     /// The channel in the community's cached list, and the list's key.
     fn cached_channel(&self, channel_id: &str) -> Option<(QueryKey, wire::ChannelDto)> {
-        self.cache.keys_with_op(keys::CHANNELS).into_iter().find_map(|key| {
-            let channel = self
-                .cache
-                .channels(&key)?
-                .iter()
-                .find(|channel| channel.id == channel_id)?
-                .clone();
-            Some((key, channel))
-        })
+        self.cache
+            .keys_with_op(keys::CHANNELS)
+            .into_iter()
+            .find_map(|key| {
+                let channel = self
+                    .cache
+                    .channels(&key)?
+                    .iter()
+                    .find(|channel| channel.id == channel_id)?
+                    .clone();
+                Some((key, channel))
+            })
     }
 
     /// Changes a community's cached channel list, as a direct update.
-    fn channels_edit(&mut self, community_id: &str, change: impl FnOnce(&mut Vec<wire::ChannelDto>)) {
+    fn channels_edit(
+        &mut self,
+        community_id: &str,
+        change: impl FnOnce(&mut Vec<wire::ChannelDto>),
+    ) {
         let key = keys::scoped(keys::CHANNELS, community_id);
         let Some(channels) = self.cache.channels_mut(&key) else {
             return;
@@ -330,13 +359,16 @@ impl State {
     }
 
     /// Changes the community in the rail's list and in its settings, as a direct update.
-    fn community_edit(&mut self, community_id: &str, change: impl Fn(&mut wire::CommunityResponseDto)) {
+    fn community_edit(
+        &mut self,
+        community_id: &str,
+        change: impl Fn(&mut wire::CommunityResponseDto),
+    ) {
         let list = keys::op(keys::COMMUNITIES);
-        if let Some(community) = self
-            .cache
-            .communities_mut(&list)
-            .and_then(|list| list.iter_mut().find(|community| community.id == community_id))
-        {
+        if let Some(community) = self.cache.communities_mut(&list).and_then(|list| {
+            list.iter_mut()
+                .find(|community| community.id == community_id)
+        }) {
             change(community);
             self.note_direct_update(&list);
             self.view_changed(ViewKey::Communities);
@@ -416,7 +448,8 @@ impl State {
             .map(|groups| groups.iter().map(|group| group.id.clone()).collect())
             .unwrap_or_default();
         for group in groups {
-            self.cache.remove_prefix(&keys::scoped(k::ALIAS_GROUP, &group));
+            self.cache
+                .remove_prefix(&keys::scoped(k::ALIAS_GROUP, &group));
         }
         for op in [
             keys::CHANNELS,
@@ -536,9 +569,12 @@ impl Core {
         let id = key.segments.get(1).cloned().unwrap_or_default();
         let failed = |error| self.backend_failed(error);
         let value = match key.op() {
-            k::COMMUNITY => {
-                W5aValue::Community(backend.community_controller_find_one(id).await.map_err(failed)?)
-            }
+            k::COMMUNITY => W5aValue::Community(
+                backend
+                    .community_controller_find_one(id)
+                    .await
+                    .map_err(failed)?,
+            ),
             k::PRIVATE_MEMBERS => W5aValue::PrivateMembers(
                 backend
                     .channel_membership_controller_find_all_for_channel(id)
@@ -571,9 +607,12 @@ impl Core {
                     .await
                     .map_err(failed)?,
             ),
-            k::INVITES => {
-                W5aValue::Invites(backend.invite_controller_get_invites().await.map_err(failed)?)
-            }
+            k::INVITES => W5aValue::Invites(
+                backend
+                    .invite_controller_get_invites()
+                    .await
+                    .map_err(failed)?,
+            ),
             op => {
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),
@@ -808,7 +847,14 @@ impl Core {
                 None => {}
                 Some(ImageChange::Remove) => images[slot] = Some(String::new()),
                 Some(ImageChange::Set { file }) => match self
-                    .w5a_upload(&services, &view, change, file.clone(), resource_type, &community_id)
+                    .w5a_upload(
+                        &services,
+                        &view,
+                        change,
+                        file.clone(),
+                        resource_type,
+                        &community_id,
+                    )
                     .await
                 {
                     Ok(id) => images[slot] = Some(id),
@@ -895,7 +941,11 @@ impl Core {
             Ok(wire::CreateChannelDto {
                 community_id: uuid(&community_id, "the community")?,
                 is_private: draft.is_private,
-                name: draft.name.trim().parse().map_err(|_| invalid("channel name"))?,
+                name: draft
+                    .name
+                    .trim()
+                    .parse()
+                    .map_err(|_| invalid("channel name"))?,
                 position: None,
                 slowmode_seconds: Some(i64::from(draft.slowmode_seconds)),
                 type_: wire_kind(draft.kind).ok_or_else(|| invalid("channel kind"))?,
@@ -946,10 +996,14 @@ impl Core {
                 },
                 false => None,
             },
-            is_private: differs(old.as_ref().is_some_and(|old| old.is_private == draft.is_private))
-                .then_some(draft.is_private),
+            is_private: differs(
+                old.as_ref()
+                    .is_some_and(|old| old.is_private == draft.is_private),
+            )
+            .then_some(draft.is_private),
             slowmode_seconds: differs(
-                old.as_ref().is_some_and(|old| old.slowmode_seconds == slowmode),
+                old.as_ref()
+                    .is_some_and(|old| old.slowmode_seconds == slowmode),
             )
             .then_some(slowmode),
             position: None,
@@ -1052,7 +1106,11 @@ impl Core {
 
     /// Moves a channel one place up or down among those of its kind. The swap shows at once; the
     /// server's answer is the community's list in its new order.
-    pub async fn move_channel(&self, channel_id: String, step: ChannelMove) -> Result<(), CoreError> {
+    pub async fn move_channel(
+        &self,
+        channel_id: String,
+        step: ChannelMove,
+    ) -> Result<(), CoreError> {
         let cached = self.read(|state| state.cached_channel(&channel_id));
         let community_id = cached
             .as_ref()
@@ -1075,7 +1133,9 @@ impl Core {
             let Some(me) = channels.iter().find(|c| c.id == channel_id) else {
                 return Vec::new();
             };
-            let same_kind = channels.iter().filter(|c| c.type_ == me.type_ && c.id != me.id);
+            let same_kind = channels
+                .iter()
+                .filter(|c| c.type_ == me.type_ && c.id != me.id);
             let neighbour = match step {
                 ChannelMove::Up => same_kind
                     .filter(|c| c.position < me.position)
@@ -1242,7 +1302,9 @@ impl Core {
             result,
             |state, _, _| state.w5a_reread(&key),
             |state| {
-                let Some((index, member)) = removed else { return };
+                let Some((index, member)) = removed else {
+                    return;
+                };
                 state.w5a_private_members_edit(&key, |members| {
                     if !members.iter().any(|m| m.user_id == member.user_id) {
                         members.insert(index.min(members.len()), member);
@@ -1283,7 +1345,10 @@ impl Core {
         let view = ViewKey::CommunitySettings {
             community_id: community_id.clone(),
         };
-        let body = match (uuid(&community_id, "the community"), uuid(&user_id, "the user")) {
+        let body = match (
+            uuid(&community_id, "the community"),
+            uuid(&user_id, "the user"),
+        ) {
             (Ok(community), Ok(user)) => wire::CreateMembershipDto {
                 community_id: community,
                 user_id: user,
@@ -1305,4 +1370,3 @@ impl Core {
         .map(|_| ())
     }
 }
-

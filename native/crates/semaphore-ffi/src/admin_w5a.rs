@@ -278,6 +278,22 @@ impl SemaphoreCore {
             .await
     }
 
+    pub async fn add_alias_group_member(
+        &self,
+        group_id: String,
+        user_id: String,
+    ) -> Result<(), CoreError> {
+        self.core.add_alias_group_member(group_id, user_id).await
+    }
+
+    pub async fn remove_alias_group_member(
+        &self,
+        group_id: String,
+        user_id: String,
+    ) -> Result<(), CoreError> {
+        self.core.remove_alias_group_member(group_id, user_id).await
+    }
+
     pub fn custom_emoji(&self, community_id: String) -> CustomEmojiView {
         self.core.custom_emoji(community_id)
     }

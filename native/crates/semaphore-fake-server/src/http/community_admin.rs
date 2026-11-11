@@ -227,7 +227,11 @@ fn community_dto(community: &crate::scenario::Community) -> CommunityResponseDto
 }
 
 /// The channels `user` sees, as `findAll` orders them: TEXT before VOICE, then by position.
-fn visible_channels(inner: &Inner, community: &crate::scenario::Community, user: &str) -> Vec<ChannelDto> {
+fn visible_channels(
+    inner: &Inner,
+    community: &crate::scenario::Community,
+    user: &str,
+) -> Vec<ChannelDto> {
     let mut channels: Vec<ChannelDto> = community
         .channels
         .iter()
@@ -377,8 +381,15 @@ async fn create_channel(
             return not_found(&inner, "Community not found");
         };
         let name = create.name.to_string();
-        if community.channels.iter().any(|channel| channel.name == name) {
-            return conflict(&inner, "Channel with this name already exists in the community");
+        if community
+            .channels
+            .iter()
+            .any(|channel| channel.name == name)
+        {
+            return conflict(
+                &inner,
+                "Channel with this name already exists in the community",
+            );
         }
         let position = community
             .channels
@@ -451,7 +462,8 @@ async fn update_channel(
     let privacy_changes = update
         .is_private
         .is_some_and(|private| private != before.is_private);
-    if privacy_changes && !crate::rbac::allows(&inner, &user, &community.id, "MANAGE_CHANNEL_PERMISSIONS")
+    if privacy_changes
+        && !crate::rbac::allows(&inner, &user, &community.id, "MANAGE_CHANNEL_PERMISSIONS")
     {
         return forbidden(
             &inner,
@@ -469,7 +481,10 @@ async fn update_channel(
                 .iter()
                 .any(|channel| channel.id != id && channel.name == name.to_string())
         {
-            return conflict(&inner, "Channel with this name already exists in the community");
+            return conflict(
+                &inner,
+                "Channel with this name already exists in the community",
+            );
         }
         let Some(channel) = community.channels.iter_mut().find(|c| c.id == id) else {
             return not_found(&inner, "Channel not found");
@@ -526,7 +541,9 @@ async fn delete_channel(
         community.channels.retain(|channel| channel.id != id);
     }
     admin.private_members.remove(&id);
-    admin.webhooks.retain(|(webhook, _)| webhook.channel_id != id);
+    admin
+        .webhooks
+        .retain(|(webhook, _)| webhook.channel_id != id);
     no_content()
 }
 
@@ -553,7 +570,11 @@ async fn move_down(
 /// to the community, and the caller's visible list.
 fn move_channel(inner: &Inner, headers: &HeaderMap, id: &str, body: &Bytes, up: bool) -> Response {
     let user = me(inner, headers);
-    tri!(check_uuid(inner, id, admin::channel_of(inner, id).is_some()));
+    tri!(check_uuid(
+        inner,
+        id,
+        admin::channel_of(inner, id).is_some()
+    ));
     let moved: semaphore_wire::types::MoveChannelDto = tri!(typed(body));
     let community_id = moved.community_id.to_string();
     tri!(allows(inner, &user, &community_id, "UPDATE_CHANNEL"));
@@ -615,11 +636,7 @@ fn move_channel(inner: &Inner, headers: &HeaderMap, id: &str, body: &Bytes, up: 
 
 // ----- private channel members ----------------------------------------------------------------
 
-async fn add_private(
-    State(inner): State<Arc<Inner>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn add_private(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes) -> Response {
     let actor = me(&inner, &headers);
     let create: semaphore_wire::types::CreateChannelMembershipDto = tri!(typed(&body));
     let (channel_id, user_id) = (create.channel_id.to_string(), create.user_id.to_string());
@@ -703,7 +720,11 @@ async fn remove_private(
     let actor = me(&inner, &headers);
     let found = admin::channel_of(&inner, &channel_id);
     tri!(check_uuid(&inner, &channel_id, found.is_some()));
-    tri!(check_uuid(&inner, &user_id, inner.user_entity(&user_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &user_id,
+        inner.user_entity(&user_id).is_some()
+    ));
     let Some((community, channel)) = found else {
         return not_found(&inner, "Channel not found");
     };
@@ -729,11 +750,7 @@ async fn remove_private(
 
 // ----- adding members -------------------------------------------------------------------------
 
-async fn add_member(
-    State(inner): State<Arc<Inner>>,
-    headers: HeaderMap,
-    body: Bytes,
-) -> Response {
+async fn add_member(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes) -> Response {
     let actor = me(&inner, &headers);
     let create: semaphore_wire::types::CreateMembershipDto = tri!(typed(&body));
     let (community_id, user_id) = (create.community_id.to_string(), create.user_id.to_string());
@@ -791,7 +808,12 @@ fn group_dto(inner: &Inner, group: &AliasGroup) -> AliasGroupWithMembersDto {
 }
 
 /// The group, for a route on it: 404 when there's none (the guard's lookup).
-fn group_of(inner: &Inner, user: &str, group_id: &str, action: &str) -> Result<AliasGroup, Response> {
+fn group_of(
+    inner: &Inner,
+    user: &str,
+    group_id: &str,
+    action: &str,
+) -> Result<AliasGroup, Response> {
     let group = lock(&inner.admin).group(group_id).cloned();
     check_uuid(inner, group_id, group.is_some())?;
     let Some(group) = group else {
@@ -811,7 +833,10 @@ fn not_members(inner: &Inner, community_id: &str, ids: &[String]) -> Option<Resp
     (!invalid.is_empty()).then(|| {
         bad_request(
             inner,
-            format!("Users not members of this community: {}", invalid.join(", ")),
+            format!(
+                "Users not members of this community: {}",
+                invalid.join(", ")
+            ),
         )
     })
 }
@@ -822,7 +847,11 @@ async fn list_groups(
     Path(community_id): Path<String>,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
     tri!(allows(&inner, &user, &community_id, "READ_ALIAS_GROUP"));
     let mut groups: Vec<AliasGroupSummaryDto> = lock(&inner.admin)
         .alias_groups
@@ -846,7 +875,11 @@ async fn create_group(
     body: Bytes,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
     tri!(allows(&inner, &user, &community_id, "CREATE_ALIAS_GROUP"));
     let create: semaphore_wire::types::CreateAliasGroupDto = tri!(typed(&body));
     let name = create.name.to_string();
@@ -941,7 +974,12 @@ async fn add_group_member(
     body: Bytes,
 ) -> Response {
     let user = me(&inner, &headers);
-    let group = tri!(group_of(&inner, &user, &group_id, "CREATE_ALIAS_GROUP_MEMBER"));
+    let group = tri!(group_of(
+        &inner,
+        &user,
+        &group_id,
+        "CREATE_ALIAS_GROUP_MEMBER"
+    ));
     let add: semaphore_wire::types::AddMemberDto = tri!(typed(&body));
     let member = add.user_id.to_string();
     if !admin::is_member(&inner, &group.community_id, &member) {
@@ -964,8 +1002,17 @@ async fn remove_group_member(
     Path((group_id, member)): Path<(String, String)>,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(group_of(&inner, &user, &group_id, "DELETE_ALIAS_GROUP_MEMBER"));
-    tri!(check_uuid(&inner, &member, inner.user_entity(&member).is_some()));
+    tri!(group_of(
+        &inner,
+        &user,
+        &group_id,
+        "DELETE_ALIAS_GROUP_MEMBER"
+    ));
+    tri!(check_uuid(
+        &inner,
+        &member,
+        inner.user_entity(&member).is_some()
+    ));
     let mut admin = lock(&inner.admin);
     let Some(stored) = admin.alias_groups.iter_mut().find(|g| g.id == group_id) else {
         return not_found(&inner, "Alias group not found");
@@ -985,7 +1032,12 @@ async fn set_group_members(
     body: Bytes,
 ) -> Response {
     let user = me(&inner, &headers);
-    let group = tri!(group_of(&inner, &user, &group_id, "UPDATE_ALIAS_GROUP_MEMBER"));
+    let group = tri!(group_of(
+        &inner,
+        &user,
+        &group_id,
+        "UPDATE_ALIAS_GROUP_MEMBER"
+    ));
     let update: semaphore_wire::types::UpdateMembersDto = tri!(typed(&body));
     let mut members: Vec<String> = Vec::new();
     for id in update.member_ids.iter().map(ToString::to_string) {
@@ -1013,7 +1065,11 @@ pub(super) async fn create_emoji(
     body: Bytes,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
     tri!(allows(&inner, &user, &community_id, "MANAGE_EMOJIS"));
     let create: semaphore_wire::types::CreateCustomEmojiDto = tri!(typed(&body));
     if !crate_emoji_name_ok(&create.name) {
@@ -1023,10 +1079,16 @@ pub(super) async fn create_emoji(
     }
     let in_use = crate::messages::emojis_in_use(&inner, &community_id);
     let listed = admin::emojis(&inner, &community_id, in_use);
-    if listed.iter().any(|emoji| emoji["name"] == create.name.as_str()) {
+    if listed
+        .iter()
+        .any(|emoji| emoji["name"] == create.name.as_str())
+    {
         return conflict(
             &inner,
-            format!("An emoji named \":{}:\" already exists in this community", create.name),
+            format!(
+                "An emoji named \":{}:\" already exists in this community",
+                create.name
+            ),
         );
     }
     let file_id = create.file_id.to_string();
@@ -1071,7 +1133,11 @@ async fn delete_emoji(
     Path((community_id, emoji_id)): Path<(String, String)>,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
     tri!(check_uuid(&inner, &emoji_id, false));
     tri!(allows(&inner, &user, &community_id, "MANAGE_EMOJIS"));
     let in_use = crate::messages::emojis_in_use(&inner, &community_id);
@@ -1095,8 +1161,17 @@ pub(super) async fn create_sound(
     body: Bytes,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
-    tri!(allows(&inner, &user, &community_id, "CREATE_SOUNDBOARD_SOUND"));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
+    tri!(allows(
+        &inner,
+        &user,
+        &community_id,
+        "CREATE_SOUNDBOARD_SOUND"
+    ));
     let create: semaphore_wire::types::CreateSoundboardSoundDto = tri!(typed(&body));
     let name = create.name.to_string();
     let listed = super::soundboard::listed(&inner, &community_id);
@@ -1147,9 +1222,18 @@ async fn delete_sound(
     Path((community_id, sound_id)): Path<(String, String)>,
 ) -> Response {
     let user = me(&inner, &headers);
-    tri!(check_uuid(&inner, &community_id, admin::community(&inner, &community_id).is_some()));
+    tri!(check_uuid(
+        &inner,
+        &community_id,
+        admin::community(&inner, &community_id).is_some()
+    ));
     tri!(check_uuid(&inner, &sound_id, false));
-    tri!(allows(&inner, &user, &community_id, "DELETE_SOUNDBOARD_SOUND"));
+    tri!(allows(
+        &inner,
+        &user,
+        &community_id,
+        "DELETE_SOUNDBOARD_SOUND"
+    ));
     let listed = super::soundboard::listed(&inner, &community_id);
     if !listed.iter().any(|sound| sound.id == sound_id) {
         return not_found(&inner, "Soundboard sound not found");
@@ -1256,13 +1340,14 @@ async fn list_invites(State(inner): State<Arc<Inner>>, headers: HeaderMap) -> Re
         .filter(|invite| invite.created_by_id.as_deref() == Some(user.as_str()))
         .cloned()
         .map(|mut invite| {
-            invite.created_by = creator.as_ref().map(|creator| {
-                semaphore_wire::types::InviteCreatorDto {
-                    display_name: creator.display_name.clone(),
-                    id: creator.id.clone(),
-                    username: creator.username.clone(),
-                }
-            });
+            invite.created_by =
+                creator
+                    .as_ref()
+                    .map(|creator| semaphore_wire::types::InviteCreatorDto {
+                        display_name: creator.display_name.clone(),
+                        id: creator.id.clone(),
+                        username: creator.username.clone(),
+                    });
             invite
         })
         .collect();
@@ -1280,7 +1365,11 @@ async fn create_invite(
     let user = me(&inner, &headers);
     tri!(allows_instance(&inner, &user, "CREATE_INSTANCE_INVITE"));
     let create: semaphore_wire::types::CreateInviteDto = tri!(typed(&body));
-    let communities: Vec<String> = create.community_ids.iter().map(ToString::to_string).collect();
+    let communities: Vec<String> = create
+        .community_ids
+        .iter()
+        .map(ToString::to_string)
+        .collect();
     for community in &communities {
         if !crate::rbac::allows(&inner, &user, community, "CREATE_INVITE") {
             return forbidden(

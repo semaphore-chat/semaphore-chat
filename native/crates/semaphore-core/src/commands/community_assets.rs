@@ -173,12 +173,15 @@ impl Core {
             change,
             result,
             |state, now, group| {
-                state.w5a_alias_groups_edit(&keys::scoped(k::ALIAS_GROUPS, &community_id), |groups| {
-                    if !groups.iter().any(|known| known.id == group.id) {
-                        groups.push(summary(group));
-                        groups.sort_by(|a, b| a.name.cmp(&b.name));
-                    }
-                });
+                state.w5a_alias_groups_edit(
+                    &keys::scoped(k::ALIAS_GROUPS, &community_id),
+                    |groups| {
+                        if !groups.iter().any(|known| known.id == group.id) {
+                            groups.push(summary(group));
+                            groups.sort_by(|a, b| a.name.cmp(&b.name));
+                        }
+                    },
+                );
                 state.cache.set(
                     keys::scoped(k::ALIAS_GROUP, &group.id),
                     crate::cache::CacheValue::W5a(super::community_admin::W5aValue::AliasGroup(
@@ -193,7 +196,11 @@ impl Core {
     }
 
     /// Renames a group: shown at once, back if the server refuses.
-    pub async fn rename_alias_group(&self, group_id: String, name: String) -> Result<(), CoreError> {
+    pub async fn rename_alias_group(
+        &self,
+        group_id: String,
+        name: String,
+    ) -> Result<(), CoreError> {
         let view = ViewKey::AliasGroup {
             group_id: group_id.clone(),
         };
@@ -277,7 +284,9 @@ impl Core {
                 });
             },
             |state| {
-                let Some((index, group)) = removed else { return };
+                let Some((index, group)) = removed else {
+                    return;
+                };
                 state.w5a_alias_groups_edit(&list, |groups| {
                     if !groups.iter().any(|known| known.id == group.id) {
                         groups.insert(index.min(groups.len()), group);
@@ -516,7 +525,9 @@ impl Core {
             result,
             |state, _, _| state.w5a_reread(&keys::scoped(keys::EMOJIS, &community_id)),
             |state| {
-                let Some((index, emoji)) = removed else { return };
+                let Some((index, emoji)) = removed else {
+                    return;
+                };
                 if let Some(emojis) = state.cache.emojis_mut(&key)
                     && !emojis.iter().any(|known| known.id == emoji.id)
                 {
@@ -530,7 +541,11 @@ impl Core {
     /// Uploads the sound (progress in `CommunitySettings`' `op.upload`), then adds it to the
     /// soundboard (W4's `Core::soundboard` lists it). Its name is 1 to 50 letters, digits,
     /// spaces, `_` or `-`; its emoji at most 16 characters.
-    pub async fn add_sound(&self, community_id: String, draft: SoundDraft) -> Result<(), CoreError> {
+    pub async fn add_sound(
+        &self,
+        community_id: String,
+        draft: SoundDraft,
+    ) -> Result<(), CoreError> {
         let view = ViewKey::CommunitySettings {
             community_id: community_id.clone(),
         };
@@ -609,7 +624,11 @@ impl Core {
     }
 
     /// Deletes a sound: gone from the soundboard at once, back if the server refuses.
-    pub async fn delete_sound(&self, community_id: String, sound_id: String) -> Result<(), CoreError> {
+    pub async fn delete_sound(
+        &self,
+        community_id: String,
+        sound_id: String,
+    ) -> Result<(), CoreError> {
         let view = ViewKey::CommunitySettings {
             community_id: community_id.clone(),
         };
@@ -637,7 +656,9 @@ impl Core {
             result,
             |state, _, _| state.w5a_reread(&key),
             |state| {
-                let Some((index, sound)) = removed else { return };
+                let Some((index, sound)) = removed else {
+                    return;
+                };
                 if let Some(sounds) = state.cache.soundboard_mut(&key)
                     && !sounds.iter().any(|known| known.id == sound.id)
                 {
@@ -743,7 +764,9 @@ impl Core {
         let removed = self.write(|state, _| {
             state
                 .w5a_webhooks_edit(&key, |webhooks| {
-                    let index = webhooks.iter().position(|webhook| webhook.id == webhook_id)?;
+                    let index = webhooks
+                        .iter()
+                        .position(|webhook| webhook.id == webhook_id)?;
                     Some((index, webhooks.remove(index)))
                 })
                 .flatten()
@@ -759,7 +782,9 @@ impl Core {
             result,
             |_, _, _| {},
             |state| {
-                let Some((index, webhook)) = removed else { return };
+                let Some((index, webhook)) = removed else {
+                    return;
+                };
                 state.w5a_webhooks_edit(&key, |webhooks| {
                     if !webhooks.iter().any(|known| known.id == webhook.id) {
                         webhooks.insert(index.min(webhooks.len()), webhook);
@@ -876,7 +901,9 @@ impl Core {
             result,
             |_, _, _| {},
             |state| {
-                let Some((index, invite)) = removed else { return };
+                let Some((index, invite)) = removed else {
+                    return;
+                };
                 state.w5a_invites_edit(&key, |invites| {
                     if !invites.iter().any(|known| known.code == invite.code) {
                         invites.insert(index.min(invites.len()), invite);
@@ -896,7 +923,15 @@ mod tests {
         for good in ["ok", "party_parrot", "a1", "x_9"] {
             assert!(emoji_name_ok(good), "{good}");
         }
-        for bad in ["a", "12", "__", "Big", "has space", "émoji", &"a".repeat(33)] {
+        for bad in [
+            "a",
+            "12",
+            "__",
+            "Big",
+            "has space",
+            "émoji",
+            &"a".repeat(33),
+        ] {
             assert!(!emoji_name_ok(bad), "{bad}");
         }
     }
