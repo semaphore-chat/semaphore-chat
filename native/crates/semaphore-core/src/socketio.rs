@@ -207,13 +207,15 @@ pub fn encode_event(name: &str, payload: &Value, ack_id: Option<u64>) -> String 
 /// The socket URL for an http(s) or ws(s) base URL.
 pub fn websocket_url(base: &str) -> String {
     let base = base.trim_end_matches('/');
-    let base = base
-        .strip_prefix("https://")
+    // Schemes are case-insensitive: `HTTPS://host` is a server URL too.
+    let rest_after = |scheme: &str| {
+        base.get(..scheme.len())
+            .filter(|prefix| prefix.eq_ignore_ascii_case(scheme))
+            .map(|_| &base[scheme.len()..])
+    };
+    let base = rest_after("https://")
         .map(|rest| format!("wss://{rest}"))
-        .or_else(|| {
-            base.strip_prefix("http://")
-                .map(|rest| format!("ws://{rest}"))
-        })
+        .or_else(|| rest_after("http://").map(|rest| format!("ws://{rest}")))
         .unwrap_or_else(|| base.to_owned());
     format!("{base}/socket.io/?EIO=4&transport=websocket")
 }
@@ -481,6 +483,26 @@ mod tests {
         // A cut never lands inside a character.
         let text = format!("42{}", "\u{1F600}".repeat(500));
         assert!(malformed_frame(&text));
+    }
+
+    #[test]
+    fn the_socket_url_ignores_scheme_case() {
+        assert_eq!(
+            websocket_url("HTTPS://chat.example"),
+            "wss://chat.example/socket.io/?EIO=4&transport=websocket"
+        );
+        assert_eq!(
+            websocket_url("Http://a:3000///"),
+            "ws://a:3000/socket.io/?EIO=4&transport=websocket"
+        );
+        assert_eq!(
+            websocket_url("wss://a"),
+            "wss://a/socket.io/?EIO=4&transport=websocket"
+        );
+        assert_eq!(
+            websocket_url("https://a/chat/"),
+            "wss://a/chat/socket.io/?EIO=4&transport=websocket"
+        );
     }
 
     mod properties {
