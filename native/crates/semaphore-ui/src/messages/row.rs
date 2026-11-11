@@ -98,7 +98,8 @@ pub(crate) struct Shared {
     pub visible: RefCell<BTreeMap<(i64, u32), BlockGeom>>,
     pub selection: Cell<Option<Selection>>,
     pub hovered_link: Cell<Option<(i64, u32)>>,
-    pub palette: Palette,
+    /// Set again on each draw when the list follows the theme (`ListOptions::follow_theme`).
+    pub palette: Cell<Palette>,
     pub fonts: Fonts,
     pub me_id: String,
     pub time: TimeFormat,
@@ -419,7 +420,7 @@ fn prepare(row: &MessageRow, inline_marks: bool, shared: &Shared) -> Prepared {
                 row,
                 block,
                 suffix,
-                &shared.palette,
+                &shared.palette.get(),
                 &shared.fonts,
             ))
         })
@@ -478,7 +479,7 @@ fn render_avatar(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let state = row
         .author
         .avatar_file_id
@@ -617,7 +618,33 @@ fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoEle
     )
 }
 
-fn render_header(row: &MessageRow, prepared: &Prepared, palette: &Palette) -> impl IntoElement {
+/// A click here opens the author's profile; nothing for a row with no known author.
+fn opens_profile(shared: &Rc<Shared>, row: &MessageRow, id: &'static str, element: Div) -> AnyElement {
+    if row.author.id.is_empty() {
+        return element.into_any_element();
+    }
+    let user_id = row.author.id.clone();
+    let shared = shared.clone();
+    clickable((id, row.seq as u64))
+        .test_support()
+        .child(element)
+        .on_click(move |_, _, cx| {
+            shared.emit(
+                MessageListEvent::OpenProfile {
+                    user_id: user_id.clone(),
+                },
+                cx,
+            );
+        })
+        .into_any_element()
+}
+
+fn render_header(
+    shared: &Rc<Shared>,
+    row: &MessageRow,
+    prepared: &Prepared,
+    palette: &Palette,
+) -> impl IntoElement {
     let name = div()
         .min_w_0()
         .truncate()
@@ -634,7 +661,7 @@ fn render_header(row: &MessageRow, prepared: &Prepared, palette: &Palette) -> im
         .items_baseline()
         .gap(px(6.))
         .min_w_0()
-        .child(name)
+        .child(opens_profile(shared, row, "message-author", name))
         .child(
             div()
                 .flex_none()
@@ -673,7 +700,7 @@ fn render_file_card(
     attachment: &AttachmentView,
     file_icon: Glyph,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let event_shared = shared.clone();
     let file_id = attachment.file_id.clone();
     clickable(("attachment", (seq as u64) << 8 | index as u64))
@@ -738,7 +765,7 @@ fn render_image(
     window: &mut Window,
     cx: &mut App,
 ) -> impl IntoElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let media = shared.media.source.attachment(attachment);
     let state = shared.media.resolve(media, CacheKind::Images, window, cx);
     let (natural_w, natural_h) = image_box(attachment);
@@ -782,7 +809,7 @@ fn render_uploads(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
     if row.uploads.is_empty() && others == 0 {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let mut column = div().mt(px(8.)).flex().flex_col().gap(px(6.));
     for (index, upload) in row.uploads.iter().enumerate() {
         let fraction = if upload.size_bytes == 0 {
@@ -909,7 +936,7 @@ fn render_link_previews(
     if row.link_previews.is_empty() || row.removed {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let mut cards = div().mt(px(8.)).flex().flex_col().gap(px(8.));
     for (index, preview) in row.link_previews.iter().enumerate() {
         let event_shared = shared.clone();
@@ -1007,7 +1034,7 @@ fn render_attachments(
     if row.attachments.is_empty() {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let multi = row.attachments.len() > 1;
     let mut items = Vec::with_capacity(row.attachments.len());
     for (index, attachment) in row.attachments.iter().enumerate() {
@@ -1055,7 +1082,7 @@ fn render_reactions(
     if row.reactions.is_empty() {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let mut chips = Vec::with_capacity(row.reactions.len());
     for (index, reaction) in row.reactions.iter().enumerate() {
         let event_shared = shared.clone();
@@ -1164,7 +1191,7 @@ fn render_thread_badge(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyEleme
     if row.reply_count == 0 {
         return None;
     }
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let label = if row.reply_count == 1 {
         "1 reply".to_owned()
     } else {
@@ -1224,7 +1251,7 @@ fn render_failed(shared: &Rc<Shared>, row: &MessageRow) -> Option<AnyElement> {
     let SendState::Failed { error } = &row.send_state else {
         return None;
     };
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let nonce = row.client_nonce.clone().unwrap_or_default();
     let label = if error.retryable || error.message.is_empty() {
         "Failed to send".to_owned()
@@ -1296,7 +1323,7 @@ fn render_block(
     window: &mut Window,
     cx: &mut App,
 ) -> AnyElement {
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let emoji = block
         .emoji
         .iter()
@@ -1354,7 +1381,7 @@ pub(crate) fn render_row(
         };
         (row, shared.decor_at(&rows, ix), rows.len())
     };
-    let palette = shared.palette;
+    let palette = shared.palette.get();
     let prepared = shared.prepared_for(&row, decor.grouped);
     let failed = matches!(row.send_state, SendState::Failed { .. });
     let pending = matches!(row.send_state, SendState::Pending);
@@ -1366,7 +1393,7 @@ pub(crate) fn render_row(
     let reply = shared.replies.borrow().get(&row.seq).cloned();
     let mut body = div().flex().flex_col().flex_1().min_w_0();
     if !decor.grouped {
-        body = body.child(render_header(&row, &prepared, &palette));
+        body = body.child(render_header(shared, &row, &prepared, &palette));
     }
     if let Some(reply) = &reply {
         let preview = render_reply(reply, &palette);
@@ -1534,7 +1561,12 @@ pub(crate) fn render_row(
                 .w(px(AVATAR))
                 .mr(px(12.))
                 .mt(px(4.))
-                .child(render_avatar(shared, &row, &prepared, window, cx)),
+                .child(opens_profile(
+                    shared,
+                    &row,
+                    "message-avatar",
+                    div().child(render_avatar(shared, &row, &prepared, window, cx)),
+                )),
         )
     };
     let container = container.child(body).children(toolbar);

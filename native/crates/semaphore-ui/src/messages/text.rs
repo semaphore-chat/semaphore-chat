@@ -123,6 +123,14 @@ pub fn link_at(row: &MessageRow, byte: u32) -> Option<&str> {
     })
 }
 
+/// The user an @mention at this byte names.
+pub fn mention_at(row: &MessageRow, byte: u32) -> Option<&str> {
+    spans(row).into_iter().find_map(|span| match span.kind {
+        SegKind::UserMention { user_id } if span.range.contains(&byte) => Some(user_id.as_str()),
+        _ => None,
+    })
+}
+
 /// Whether a link may leave the app. The web client only ever links `http(s)` URLs, and a span's
 /// target comes from another user.
 pub fn is_openable_url(url: &str) -> bool {

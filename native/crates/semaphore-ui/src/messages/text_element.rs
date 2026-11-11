@@ -160,7 +160,7 @@ impl Element for MessageText {
     ) {
         let layout = self.styled.layout().clone();
         let line_height = layout.line_height();
-        let palette = self.shared.palette;
+        let palette = self.shared.palette.get();
         let base = self.block.base;
         let selectable = self.block.selectable;
 

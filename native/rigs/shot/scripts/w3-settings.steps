@@ -281,3 +281,21 @@ shot w3-settings-desktop-unknown-full-desktop
 story settings-desktop-unknown 390 2600 light-blue-balanced
 wait idle
 shot w3-settings-desktop-unknown-full-phone
+story settings-voice-limited 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-voice-limited-desktop
+story settings-voice-limited 390 844 light-blue-balanced
+wait idle
+shot w3-settings-voice-limited-phone
+story settings-desktop-dev-build 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-dev-build-desktop
+story settings-desktop-dev-build 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-dev-build-phone
+story settings-desktop-links-blocked 1280 800 dark-blue-balanced
+wait idle
+shot w3-settings-desktop-links-blocked-desktop
+story settings-desktop-links-blocked 390 844 light-blue-balanced
+wait idle
+shot w3-settings-desktop-links-blocked-phone

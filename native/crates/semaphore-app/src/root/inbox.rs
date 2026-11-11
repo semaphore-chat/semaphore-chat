@@ -34,7 +34,6 @@ use semaphore_ui::dms::{
 use semaphore_ui::friends::{
     AddFriendDialog, AddFriendDialogEvent, AddFriendEvent, AddOutcome, FriendsEvent,
 };
-use semaphore_ui::kit::{Button, Dialog};
 use semaphore_ui::nav::{DeepLink, Route};
 use semaphore_ui::notifications::{
     ChannelNotifyEvent, ChannelNotifyMenu, NotificationCenter, NotificationEvent,
@@ -438,8 +437,14 @@ impl AppRoot {
             return;
         };
         let view = core.notification_settings();
-        let _ = self.window.update(cx, |_, window, cx| {
-            section.update(cx, |section, cx| section.set_view(view, window, cx));
+        // In a frame of its own: this may run inside the window's own update (building the screens).
+        let window = self.window;
+        cx.defer(move |cx| {
+            window
+                .update(cx, |_, window, cx| {
+                    section.update(cx, |section, cx| section.set_view(view, window, cx));
+                })
+                .ok();
         });
     }
 
@@ -789,6 +794,9 @@ impl AppRoot {
                 })
             }
             DmSidebarEvent::Friends(FriendsEvent::AddFriend) => self.open_add_friend(window, cx),
+            DmSidebarEvent::Friends(FriendsEvent::OpenProfile { user_id }) => {
+                self.open_profile(user_id, window, cx)
+            }
             DmSidebarEvent::TabChanged(DmTab::Friends) => {
                 // As the web's list refetching when it mounts: requests come with no event.
                 core.invalidate(&keys::op(keys::FRIENDS));
@@ -807,6 +815,9 @@ impl AppRoot {
     ) {
         match event {
             DmHeaderEvent::Back => self.navigate(Route::DirectMessages, cx),
+            DmHeaderEvent::OpenProfile { user_id } => {
+                self.open_profile(user_id.clone(), window, cx)
+            }
             DmHeaderEvent::Search => {
                 self.inbox.centre_open = false;
                 if let Some(pane) = &self.pane {
@@ -958,24 +969,25 @@ impl AppRoot {
         }
     }
 
-    // ---- Notification settings, from the account dialog until the settings page (W3). ----
+    // ---- Notification settings: the settings page's first tab (W3). ----
 
-    pub(super) fn open_notification_settings(
+    /// The settings page's notifications section: fed and answered here, as W2 did.
+    pub(super) fn adopt_notification_settings(
         &mut self,
+        section: Entity<NotificationSettingsSection>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let section = cx.new(|cx| {
-            let mut section = NotificationSettingsSection::new(window, cx);
-            section.set_local_timezone(semaphore_core::notify::system_timezone(), cx);
-            section
-        });
         self.inbox
             .subscriptions
             .push(cx.subscribe_in(&section, window, Self::on_settings));
         self.inbox.settings = Some(section);
         self.refresh_settings(cx);
-        cx.notify();
+    }
+
+    /// The voice tab's "Play test sound", on the chosen speakers.
+    pub(super) fn play_test_sound(&self) {
+        self.play(NotifySound::Default);
     }
 
     fn on_settings(
@@ -1019,45 +1031,14 @@ impl AppRoot {
         }
     }
 
-    pub fn settings_open(&self) -> bool {
-        self.inbox.settings.is_some()
-    }
-
     /// The dialogs W2 opens over the shell.
-    pub(super) fn inbox_overlays(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
+    pub(super) fn inbox_overlays(&self, _: &mut Context<Self>) -> Vec<AnyElement> {
         let mut overlays: Vec<AnyElement> = Vec::new();
         if let Some(dialog) = &self.inbox.create_dm {
             overlays.push(dialog.clone().into_any_element());
         }
         if let Some(dialog) = &self.inbox.add_friend {
             overlays.push(dialog.clone().into_any_element());
-        }
-        if let Some(section) = &self.inbox.settings {
-            let close = cx.entity().downgrade();
-            let done = close.clone();
-            overlays.push(
-                Dialog::new("Notification settings")
-                    .width(560.)
-                    .body(div().max_h(px(560.)).child(section.clone()))
-                    .action(Button::new("notification-settings-done", "Done").on_click(
-                        move |_, _, cx| {
-                            done.update(cx, |this, cx| {
-                                this.inbox.settings = None;
-                                cx.notify();
-                            })
-                            .ok();
-                        },
-                    ))
-                    .on_close(move |_, cx| {
-                        close
-                            .update(cx, |this, cx| {
-                                this.inbox.settings = None;
-                                cx.notify();
-                            })
-                            .ok();
-                    })
-                    .into_any_element(),
-            );
         }
         overlays
     }

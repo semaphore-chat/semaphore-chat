@@ -81,18 +81,35 @@ impl Render for DesktopAppSettings {
                     ),
             )
             .children(offer.then(|| {
-                div().flex().child(
-                    Button::new(
-                        "desktop-register-links",
-                        "Make Semaphore open semaphore:// links",
+                let blocked = state.links_blocked.clone();
+                let note = blocked.clone().or(state.links_note.clone());
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(spacing(0.5))
+                    .child(
+                        div().flex().child(
+                            Button::new(
+                                "desktop-register-links",
+                                "Make Semaphore open semaphore:// links",
+                            )
+                            .outlined()
+                            .size(ButtonSize::Small)
+                            .start_icon(DesignIcon::Link)
+                            .disabled(blocked.is_some())
+                            .on_click(cx.listener(|_, _, _, cx| {
+                                cx.emit(DesktopAppEvent::RegisterLinkHandler)
+                            })),
+                        ),
                     )
-                    .outlined()
-                    .size(ButtonSize::Small)
-                    .start_icon(DesignIcon::Link)
-                    .on_click(
-                        cx.listener(|_, _, _, cx| cx.emit(DesktopAppEvent::RegisterLinkHandler)),
-                    ),
-                )
+                    .children(note.map(|note| {
+                        div()
+                            .id("desktop-links-note")
+                            .test_support()
+                            .role(Role::Note)
+                            .aria_label(SharedString::from(note.clone()))
+                            .child(text(Variant::Caption, note).text_color(sem.text_secondary))
+                    }))
             }));
         let previews_view = view.clone();
         let previews = section("Link previews", cx).child(switch_row(

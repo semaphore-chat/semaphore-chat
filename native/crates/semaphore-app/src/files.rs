@@ -255,7 +255,8 @@ fn resource(path: String) -> MediaRef {
 /// http or https, a few redirects deep, with a byte cap and a deadline, and with nothing of the
 /// session (no cookies, no auth, a generic user agent).
 pub struct PreviewFetcher {
-    allowed: bool,
+    /// The settings' link preview images switch, as it is now.
+    allowed: std::sync::atomic::AtomicBool,
     pub requests: AtomicUsize,
     client: OnceLock<Option<reqwest::Client>>,
 }
@@ -268,14 +269,19 @@ pub const PREVIEW_MAX_REDIRECTS: usize = 3;
 impl PreviewFetcher {
     pub fn new(allowed: bool) -> Self {
         Self {
-            allowed,
+            allowed: std::sync::atomic::AtomicBool::new(allowed),
             requests: AtomicUsize::new(0),
             client: OnceLock::new(),
         }
     }
 
     pub fn allowed(&self) -> bool {
-        self.allowed
+        self.allowed.load(Ordering::Relaxed)
+    }
+
+    /// The switch changed: images load (or stop loading) from the next preview drawn.
+    pub fn set_allowed(&self, allowed: bool) {
+        self.allowed.store(allowed, Ordering::Relaxed);
     }
 
     fn client(&self) -> Option<reqwest::Client> {
@@ -305,7 +311,7 @@ impl PreviewFetcher {
 
     /// The image at `url`, or why not. Makes no request unless allowed and the URL is http(s).
     pub async fn fetch(&self, url: &str) -> Result<Vec<u8>, String> {
-        if !self.allowed {
+        if !self.allowed() {
             return Err("link preview images are off".into());
         }
         let parsed = reqwest::Url::parse(url).map_err(|error| error.to_string())?;

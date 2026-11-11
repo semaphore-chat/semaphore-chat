@@ -54,6 +54,8 @@ pub enum PaneEvent {
     OpenDm { dm_id: String },
     /// The header's pin badge.
     PinnedCount(u32),
+    /// An author or a mention was clicked: their profile.
+    OpenProfile { user_id: String },
 }
 
 /// Which of the pane's lists something happened in.
@@ -362,6 +364,7 @@ impl ConversationPane {
                 ListOptions {
                     time,
                     scrollbar,
+                    follow_theme: true,
                     ..ListOptions::default()
                 },
                 cx,
@@ -430,7 +433,11 @@ impl ConversationPane {
                     max_file_bytes: None,
                     mode: semaphore_ui::composer::ComposerMode::Send,
                 };
-                let composer = cx.new(|cx| Composer::new(config, window, cx));
+                let composer = cx.new(|cx| {
+                    let mut composer = Composer::new(config, window, cx);
+                    composer.follow_theme(cx);
+                    composer
+                });
                 self._subscriptions.push(cx.subscribe_in(
                     &composer,
                     window,
@@ -825,7 +832,10 @@ pub fn mime_for(name: &str) -> String {
 
 impl Render for ConversationPane {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let palette = semaphore_ui::messages::palette::Palette::dark();
+        let palette = cx
+            .try_global::<semaphore_ui::theme::Sem>()
+            .map(|sem| semaphore_ui::messages::palette::Palette::for_theme(sem.choice))
+            .unwrap_or_else(semaphore_ui::messages::palette::Palette::dark);
         let typing = self.typing_line();
         let notice = self.notice_element(cx);
         let picker = self.picker_element(cx);

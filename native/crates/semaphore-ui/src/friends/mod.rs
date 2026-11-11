@@ -46,6 +46,10 @@ pub enum FriendsEvent {
     Message {
         user_id: String,
     },
+    /// "View Profile" in a friend's menu.
+    OpenProfile {
+        user_id: String,
+    },
     Remove {
         friendship_id: String,
     },

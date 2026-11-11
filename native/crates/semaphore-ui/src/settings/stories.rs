@@ -3,7 +3,7 @@
 
 use super::{
     AppearanceSettings, DesktopAppSettings, DesktopAppState, DeviceLists, DeviceOption, InputMode,
-    LinkHandler, SessionsSettings, SettingsScreen, SettingsTab, VoiceVideoSettings,
+    LinkHandler, SessionsSettings, SettingsScreen, SettingsTab, VoiceLimits, VoiceVideoSettings,
     VoiceVideoState,
 };
 use crate::dms::stories::failed;
@@ -193,6 +193,8 @@ pub(crate) fn sample_desktop(links: LinkHandler) -> DesktopAppState {
         server_name: Some("Example Community".into()),
         app_version: "0.9.0".into(),
         server_version: Some("0.8.2".into()),
+        links_note: None,
+        links_blocked: None,
     }
 }
 
@@ -287,6 +289,27 @@ pub fn stories() -> Vec<Story> {
                 ..sample_voice()
             };
             voice_story(state, sample_devices(), Some(0.9), window, cx)
+        }),
+        // What the desktop build says today: no mic test, and push to talk only from the bar.
+        Story::new("settings-voice-limited", |_, window, cx| {
+            let state = VoiceVideoState {
+                input_mode: InputMode::PushToTalk,
+                ptt_key: Some("f13".into()),
+                ..sample_voice()
+            };
+            let view = voice_story(state, sample_devices(), None, window, cx);
+            if let Ok(voice) = view.clone().downcast::<VoiceVideoSettings>() {
+                voice.update(cx, |voice, cx| {
+                    voice.set_limits(
+                        VoiceLimits {
+                            mic_test: Some("Testing the microphone isn't available in this version yet.".into()),
+                            push_to_talk: Some("The key is saved, but this version doesn't listen for it yet: hold the voice bar's Push to Talk button to transmit.".into()),
+                        },
+                        cx,
+                    )
+                });
+            }
+            view
         }),
         Story::new("settings-voice-devices-loading", |_, window, cx| {
             voice_story(sample_voice(), DeviceLists::default(), None, window, cx)
@@ -434,6 +457,24 @@ pub fn stories() -> Vec<Story> {
         }),
         Story::new("settings-desktop-package-owned", |_, _, cx| {
             desktop_story(sample_desktop(LinkHandler::PackageOwned), cx)
+        }),
+        Story::new("settings-desktop-dev-build", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    links_note: Some("This is a development build: registering takes semaphore:// links away from an installed Semaphore app.".into()),
+                    ..sample_desktop(LinkHandler::NotRegistered)
+                },
+                cx,
+            )
+        }),
+        Story::new("settings-desktop-links-blocked", |_, _, cx| {
+            desktop_story(
+                DesktopAppState {
+                    links_blocked: Some("Turned off for this computer (SEMAPHORE_REGISTER_SCHEME=0).".into()),
+                    ..sample_desktop(LinkHandler::NotRegistered)
+                },
+                cx,
+            )
         }),
         Story::new("settings-desktop-unknown", |_, _, cx| {
             let state = DesktopAppState {
