@@ -1,7 +1,7 @@
 //! What the voice UI draws and what it can ask for. `VoiceView` is core's; the rest is here because
-//! it's the app's (quality and rejoin from the engine, push-to-talk, the audio share).
+//! it's the app's (quality and rejoin from the engine, push-to-talk).
 
-use semaphore_core::model::{ParticipantView, VideoTrackView, VoiceView};
+use semaphore_core::model::{LocalShare, ParticipantView, VideoTrackView, VoiceView};
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,10 +50,6 @@ pub struct VoiceStageModel {
     pub ptt: Option<PttState>,
     /// Name strips stay up, for touch screens, which never hover, and for review screenshots.
     pub always_show_overlays: bool,
-    /// The system's audio is being shared into the call (audio only: no screen or camera yet).
-    pub system_audio: bool,
-    /// Why starting the audio share failed, until it's tried again.
-    pub system_audio_error: Option<String>,
 }
 
 impl QualityLevel {
@@ -82,8 +78,90 @@ pub trait VoiceController: Send + Sync {
     fn set_video_demands(&self, demands: Vec<TileDemand>);
     fn ptt_pressed(&self, _pressed: bool) {}
     fn open_settings(&self) {}
-    /// Share the system's audio into the call, or stop.
-    fn set_system_audio(&self, _on: bool) {}
+    /// The narrow bar's "more": what doesn't fit on it. Settings, unless the app has more to offer.
+    fn open_more(&self) {
+        self.open_settings();
+    }
+    /// Send the camera, or stop.
+    fn set_camera(&self, _on: bool) {}
+    /// Share a screen or window (the app chooses how to pick one), or stop the share.
+    fn toggle_screen_share(&self) {}
+}
+
+/// How a camera or screen button looks, from core's `LocalShare` and the call's permission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShareLook {
+    Off,
+    /// Asked for, not yet sent: dimmed and not clickable.
+    Starting,
+    On,
+    /// Clicking retries; the bar says why.
+    Failed,
+    /// The call doesn't allow it: visible, greyed, not clickable.
+    NotAllowed,
+}
+
+impl ShareLook {
+    pub fn of(share: &LocalShare, allowed: bool) -> Self {
+        match share {
+            // A share already running stays stoppable even if the permission went away.
+            LocalShare::On => Self::On,
+            _ if !allowed => Self::NotAllowed,
+            LocalShare::Off => Self::Off,
+            LocalShare::Starting => Self::Starting,
+            LocalShare::Failed { .. } => Self::Failed,
+        }
+    }
+
+    pub fn clickable(self) -> bool {
+        matches!(self, Self::Off | Self::On | Self::Failed)
+    }
+}
+
+/// The camera button's accessible name.
+pub fn camera_label(look: ShareLook) -> &'static str {
+    match look {
+        ShareLook::Off => "Turn on camera",
+        ShareLook::Starting => "Camera starting",
+        ShareLook::On => "Turn off camera",
+        ShareLook::Failed => "Retry camera",
+        ShareLook::NotAllowed => "Camera not allowed in this call",
+    }
+}
+
+/// The screen-share button's accessible name.
+pub fn screen_label(look: ShareLook) -> &'static str {
+    match look {
+        ShareLook::Off => "Share screen",
+        ShareLook::Starting => "Screen share starting",
+        ShareLook::On => "Stop sharing screen",
+        ShareLook::Failed => "Retry screen share",
+        ShareLook::NotAllowed => "Screen share not allowed in this call",
+    }
+}
+
+/// The line under the channel's name: a failure first, then what we're sending.
+pub fn bar_subtitle(model: &VoiceStageModel) -> String {
+    let local = &model.voice.local;
+    if let LocalShare::Failed { message } = &local.camera {
+        return format!("Camera failed: {message}");
+    }
+    if let LocalShare::Failed { message } = &local.screen {
+        return format!("Screen share failed: {message}");
+    }
+    match (&local.screen, &local.screen_audio) {
+        (LocalShare::On, LocalShare::Failed { message }) => {
+            return format!("Sharing your screen (audio failed: {message})");
+        }
+        (LocalShare::On, _) => return "Sharing your screen".into(),
+        (LocalShare::Starting, _) => return "Choosing what to share\u{2026}".into(),
+        _ => {}
+    }
+    if model.is_dm {
+        "DM Voice Call".into()
+    } else {
+        "Voice Connected".into()
+    }
 }
 
 /// For stories: every button does nothing.
@@ -341,6 +419,79 @@ mod tests {
 
     const TILE_HUE_ALICE: f32 = 0.0;
     const TILE_HUE_BEN: f32 = 72.0;
+
+    #[test]
+    fn your_own_screen_share_takes_the_stage() {
+        let mut me = person("me", true);
+        me.screen_share = Some(track("own-screen"));
+        let alone = build_tiles(&VoiceView {
+            participants: vec![me.clone()],
+            ..Default::default()
+        });
+        assert_eq!(
+            choose_layout(&alone, None),
+            StageLayout::Stage {
+                main: "me-screen".into()
+            },
+            "not the solo card"
+        );
+        let with_others = build_tiles(&VoiceView {
+            participants: vec![me, person("b", false)],
+            ..Default::default()
+        });
+        assert_eq!(
+            choose_layout(&with_others, None),
+            StageLayout::Stage {
+                main: "me-screen".into()
+            }
+        );
+    }
+
+    #[test]
+    fn buttons_follow_the_share_and_the_permission() {
+        let failed = LocalShare::Failed {
+            message: "no".into(),
+        };
+        assert_eq!(ShareLook::of(&LocalShare::Off, true), ShareLook::Off);
+        assert_eq!(
+            ShareLook::of(&LocalShare::Starting, true),
+            ShareLook::Starting
+        );
+        assert_eq!(ShareLook::of(&LocalShare::On, true), ShareLook::On);
+        assert_eq!(ShareLook::of(&failed, true), ShareLook::Failed);
+        assert_eq!(
+            ShareLook::of(&LocalShare::Off, false),
+            ShareLook::NotAllowed
+        );
+        assert_eq!(ShareLook::of(&failed, false), ShareLook::NotAllowed);
+        assert_eq!(ShareLook::of(&LocalShare::On, false), ShareLook::On);
+        assert!(!ShareLook::Starting.clickable());
+        assert!(!ShareLook::NotAllowed.clickable());
+        assert!(ShareLook::Failed.clickable());
+        assert_eq!(camera_label(ShareLook::On), "Turn off camera");
+        assert_eq!(screen_label(ShareLook::Off), "Share screen");
+    }
+
+    #[test]
+    fn the_subtitle_says_what_failed_then_what_is_sent() {
+        let mut model = VoiceStageModel::default();
+        assert_eq!(bar_subtitle(&model), "Voice Connected");
+        model.voice.local.screen = LocalShare::Starting;
+        assert_eq!(bar_subtitle(&model), "Choosing what to share\u{2026}");
+        model.voice.local.screen = LocalShare::On;
+        assert_eq!(bar_subtitle(&model), "Sharing your screen");
+        model.voice.local.screen_audio = LocalShare::Failed {
+            message: "no PipeWire".into(),
+        };
+        assert_eq!(
+            bar_subtitle(&model),
+            "Sharing your screen (audio failed: no PipeWire)"
+        );
+        model.voice.local.camera = LocalShare::Failed {
+            message: "no camera".into(),
+        };
+        assert_eq!(bar_subtitle(&model), "Camera failed: no camera");
+    }
 
     #[test]
     fn only_trouble_shows_on_a_tile() {

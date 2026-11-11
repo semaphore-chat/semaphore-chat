@@ -7,7 +7,7 @@
 |---|---|
 | `series` | Each vendored crate: version, sha256 of its `.crate`, its patch |
 | `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface` |
-| `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling |
+| `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates, see below |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
 | `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
 | `vendor.sh` | Rebuilds `vendor/` from `series`. `--check` fails if it differs. Needs network |
@@ -32,6 +32,18 @@ uploader.failed();                             // a surface failed: stop using t
 
 **Windows builds:** a release build compiles the shaders with `fxc.exe` from the Windows SDK, so a release
 build from Linux fails. `cargo check` in a dev profile works anywhere, and `verify.sh` runs it.
+
+## Image sampling (ours, not the video agent's)
+
+Upstream samples a polychrome sprite at `(tile origin + local) / atlas size`, computed per vertex and
+interpolated. The float precision left for the fraction shrinks as the tile's origin grows, so a
+scaled image came out one level different on the rows whose filter weight sits on a rounding step,
+depending on where the atlas happened to put it (lavapipe quantises the weights; the slice e2e caught
+it as `18-media.png` differing on two rows when the image landed at y 256 instead of 0). An edge also
+read its neighbouring tile. `fs_poly_sprite` now filters bilinearly itself from tile-local
+coordinates with four `textureLoad`s clamped to the tile, so an image draws the same wherever it is in
+the atlas and never bleeds. Glyphs (monochrome and subpixel) draw 1:1 and are unchanged. If a GPUI
+bump drops or rewrites `fs_poly_sprite`, port this and rerun the default `slice-e2e.sh` many times.
 
 ## Swapping in a new patch set
 

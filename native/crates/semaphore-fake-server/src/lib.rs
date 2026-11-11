@@ -5,6 +5,7 @@
 //! `native/fixtures/scenarios/` over HTTP and Socket.IO framing, from an in-memory state
 //! with a settable clock, and exposes faults for tests.
 
+mod actions;
 mod http;
 pub mod livekit;
 mod messages;
@@ -92,6 +93,10 @@ pub(crate) struct Data {
     pub channel_messages: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
     pub dm_messages: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
     pub threads: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
+    /// Thread subscriptions the signed-in user set or cleared, and when, by parent. Otherwise, or
+    /// once they reply after that, the backend's default: subscribed if they wrote the parent or
+    /// a reply.
+    pub thread_subscriptions: std::collections::BTreeMap<String, (bool, DateTime<Utc>)>,
     pub voice: std::collections::BTreeMap<String, Vec<semaphore_wire::VoicePresenceUserDto>>,
     pub unread: std::collections::BTreeMap<String, (i64, i64)>,
     pub nonces: HashMap<(String, String), NonceEntry>,
@@ -383,6 +388,7 @@ impl FakeServer {
             channel_messages: scenario.channel_messages.clone(),
             dm_messages: scenario.dm_messages.clone(),
             threads: scenario.threads.clone(),
+            thread_subscriptions: Default::default(),
             voice: scenario.voice.clone(),
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),
@@ -427,6 +433,45 @@ impl FakeServer {
     /// `http://127.0.0.1:<port>`.
     pub fn base_url(&self) -> String {
         self.inner.base_url.clone()
+    }
+
+    /// Gives a stored message a new id, in place. The scenarios' ids are readable, and a few
+    /// routes type the id as a UUID, so a test that calls them renames its messages first.
+    pub fn rename_message(&self, id: &str, new_id: &str) -> bool {
+        let mut data = lock(&self.inner.data);
+        match messages::find_message_mut(&mut data, id) {
+            Some(message) => {
+                message.id = new_id.to_owned();
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Gives a stored message these attachments (file ids), replacing any it has. For tests of
+    /// what an edit keeps.
+    pub fn set_attachments(&self, id: &str, file_ids: &[&str]) -> bool {
+        let mut data = lock(&self.inner.data);
+        let Some(message) = messages::find_message_mut(&mut data, id) else {
+            return false;
+        };
+        message.attachments = file_ids
+            .iter()
+            .map(|file_id| semaphore_wire::types::AttachmentDto {
+                file_type: semaphore_wire::enums::FileType::Document,
+                filename: format!("{file_id}.txt"),
+                has_thumbnail: false,
+                id: (*file_id).to_owned(),
+                mime_type: "text/plain".into(),
+                size: 1,
+            })
+            .collect();
+        true
+    }
+
+    /// A stored message as the server holds it.
+    pub fn message(&self, id: &str) -> Option<semaphore_wire::types::MessageDto> {
+        messages::find_message(&lock(&self.inner.data), id)
     }
 
     /// Send a server event to every connected socket.

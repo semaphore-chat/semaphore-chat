@@ -335,9 +335,28 @@ impl State {
         self.bump_unread(&conversation, &context_id, 1, 0);
     }
 
-    /// `handleUpdateMessage`, and the thread window for a reply.
-    fn on_update_message(&mut self, dto: MessageDto) {
+    /// `handleUpdateMessage`, and the thread window for a reply, and the channel's cached pins.
+    ///
+    /// The server blanks a removed message in every broadcast (`toWireMessage`), so for a reader
+    /// who may see removed messages the socket copy would wipe text they're shown. For them a
+    /// loaded removed row is read again over REST instead, which answers them in full.
+    fn on_update_message(&mut self, mut dto: MessageDto) {
         let id = dto.id.clone();
+        if dto.deleted_at.is_some() {
+            let may_see = dto
+                .channel_id
+                .as_deref()
+                .and_then(|channel_id| self.moderation_of(channel_id))
+                .is_some_and(|moderation| moderation.remove_any);
+            if may_see {
+                if self.find_message(&id).is_some() {
+                    self.push_effect(crate::client::Effect::RefetchMessage(id));
+                }
+                return;
+            }
+        }
+        self.blank_for_reader(&mut dto);
+        self.edit_pins(&id, |pinned| *pinned = dto.clone());
         let targets = [
             context(&dto.channel_id, &dto.direct_message_group_id),
             dto.parent_message_id
@@ -352,8 +371,20 @@ impl State {
         }
     }
 
-    /// `handleDeleteMessage`. The payload doesn't say if this was a reply, so threads are checked too.
-    fn on_delete_message(&mut self, payload: wire::DeleteMessagePayloadDto) {
+    /// `handleDeleteMessage`, except for a reader who may see removed messages: the payload doesn't
+    /// say whether a moderator removed the message (the row stays, text and all) or it was deleted
+    /// (it goes), so for them the row turns removed and is read again.
+    fn on_delete_message(&mut self, payload: wire::DeleteMessagePayloadDto, now: u64) {
+        self.drop_from_pins(payload.channel_id.as_deref(), &payload.message_id);
+        if self.removal_kept(&payload, now) {
+            return;
+        }
+        self.remove_message(&payload);
+    }
+
+    /// The row goes, wherever it's loaded. The payload doesn't say if this was a reply, so threads
+    /// are checked too.
+    pub(crate) fn remove_message(&mut self, payload: &wire::DeleteMessagePayloadDto) {
         let thread = Conversation::Thread {
             parent_message_id: payload.message_id.clone(),
         };
@@ -528,7 +559,7 @@ impl State {
                 self.on_new_message(event.message);
             }
             ServerEvent::UpdateMessage(event) => self.on_update_message(event.message),
-            ServerEvent::DeleteMessage(event) => self.on_delete_message(event),
+            ServerEvent::DeleteMessage(event) => self.on_delete_message(event, now),
             ServerEvent::NewThreadReply(event) => {
                 let conversation = Conversation::Thread {
                     parent_message_id: event.parent_message_id,
@@ -538,6 +569,9 @@ impl State {
                     self.sends.remove(nonce);
                     self.uploads_may_start(nonce, &event.reply.id);
                 }
+                if is_mine && let Conversation::Thread { parent_message_id } = &conversation {
+                    self.reading_my_reply(parent_message_id);
+                }
                 if let Some(window) = self.windows.get_mut(&conversation) {
                     window.note_upsert(&event.reply.id, Some(event.reply.clone()));
                     window.reconcile_echo(event.reply);
@@ -545,6 +579,8 @@ impl State {
             }
             ServerEvent::ReactionAdded(event) => {
                 let reaction = event.reaction;
+                self.heard_reaction(&event.message_id, &reaction.emoji);
+                self.reaction_users_changed(Some(&event.message_id));
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),
                     event.parent_message_id.as_deref(),
@@ -557,6 +593,8 @@ impl State {
             }
             ServerEvent::ReactionRemoved(event) => {
                 let reactions = event.reactions;
+                self.heard_reaction(&event.message_id, &event.emoji);
+                self.reaction_users_changed(Some(&event.message_id));
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),
                     event.parent_message_id.as_deref(),
@@ -587,6 +625,11 @@ impl State {
                 self.invalidate_for(name);
             }
             ServerEvent::ThreadReplyCountUpdated(event) => {
+                self.reading_reply_count(
+                    &event.parent_message_id,
+                    event.reply_count,
+                    event.last_reply_at,
+                );
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),
                     None,

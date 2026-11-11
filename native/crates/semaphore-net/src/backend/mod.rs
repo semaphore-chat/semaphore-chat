@@ -715,5 +715,8 @@ macro_rules! rpc {
 mod communities;
 mod files;
 mod messages;
+mod moderation;
+mod search;
 mod session;
+mod threads;
 mod voice;

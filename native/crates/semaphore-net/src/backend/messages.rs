@@ -108,4 +108,23 @@ impl MessagesBackend for HttpBackend {
         let body = &body;
         rpc!(self, c => c.read_receipts_controller_mark_as_read(body))
     }
+
+    async fn messages_controller_update(
+        &self,
+        id: String,
+        body: wire::UpdateMessageDto,
+    ) -> BackendResult<wire::MessageDto> {
+        let (id, body) = (id.as_str(), &body);
+        rpc!(self, c => c.messages_controller_update(id, body))
+    }
+
+    async fn messages_controller_remove(&self, id: String) -> BackendResult<()> {
+        let id = id.as_str();
+        rpc!(self, c => c.messages_controller_remove(id))
+    }
+
+    async fn messages_controller_find_one(&self, id: String) -> BackendResult<wire::MessageDto> {
+        let id = id.as_str();
+        rpc!(self, c => c.messages_controller_find_one(id))
+    }
 }

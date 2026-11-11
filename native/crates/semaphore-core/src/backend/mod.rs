@@ -13,13 +13,19 @@
 mod communities;
 mod files;
 mod messages;
+mod moderation;
+mod search;
 mod session;
+mod threads;
 mod voice;
 
 pub use communities::CommunitiesBackend;
 pub use files::FilesBackend;
 pub use messages::MessagesBackend;
+pub use moderation::ModerationBackend;
+pub use search::SearchBackend;
 pub use session::SessionBackend;
+pub use threads::ThreadsBackend;
 pub use voice::VoiceBackend;
 
 use semaphore_wire::enums::ErrorCode;
@@ -70,7 +76,16 @@ pub type BackendResult<T> = Result<T, BackendError>;
 
 /// REST, as core sees it: every area's calls, behind one object-safe trait.
 pub trait Backend:
-    Send + Sync + SessionBackend + CommunitiesBackend + MessagesBackend + VoiceBackend + FilesBackend
+    Send
+    + Sync
+    + SessionBackend
+    + CommunitiesBackend
+    + MessagesBackend
+    + VoiceBackend
+    + FilesBackend
+    + ModerationBackend
+    + ThreadsBackend
+    + SearchBackend
 {
 }
 
@@ -83,6 +98,9 @@ impl<T> Backend for T where
         + MessagesBackend
         + VoiceBackend
         + FilesBackend
+        + ModerationBackend
+        + ThreadsBackend
+        + SearchBackend
 {
 }
 

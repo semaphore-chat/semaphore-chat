@@ -31,12 +31,41 @@ pub struct ErrorView {
 pub enum ViewKey {
     Session,
     Communities,
-    Channels { community_id: String },
-    Mentionables { community_id: String },
-    Members { community_id: String },
+    Channels {
+        community_id: String,
+    },
+    Mentionables {
+        community_id: String,
+    },
+    Members {
+        community_id: String,
+    },
     Rail,
     Voice,
-    Typing { conversation: Conversation },
+    Typing {
+        conversation: Conversation,
+    },
+    /// `Core::pinned_messages`.
+    Pins {
+        channel_id: String,
+    },
+    /// `Core::reaction_users`.
+    ReactionUsers {
+        message_id: String,
+        emoji: String,
+    },
+    /// `Core::thread_info`.
+    Thread {
+        parent_message_id: String,
+    },
+    /// `Core::unread_marker`.
+    UnreadMarker {
+        conversation: Conversation,
+    },
+    /// `Core::channel_moderation`.
+    ChannelModeration {
+        channel_id: String,
+    },
 }
 
 /// Whether a list a UI reads from core has arrived. `ViewChanged` for the same `ViewKey` says when to

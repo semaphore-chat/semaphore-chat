@@ -3442,7 +3442,7 @@ impl Client {
     pub async fn messages_controller_update<'a>(
         &'a self,
         id: &'a str,
-        body: &'a types::UpdateMessageDto,
+        body: &'a semaphore_wire::overrides::UpdateMessageDto,
     ) -> Result<ResponseValue<types::MessageDto>, Error<()>> {
         let url = format!(
             "{}/api/messages/{}",

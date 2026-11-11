@@ -5,9 +5,11 @@
 //! and fetch what's missing or stale, as `useQuery` does: `CoreEvent::ViewChanged` says when to read
 //! again.
 
+pub(crate) mod actions;
 mod communities;
 mod messages;
 mod queries;
+pub(crate) mod reading;
 mod session;
 mod voice;
 
@@ -61,6 +63,12 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::COMMUNITIES => Some(ViewKey::Communities),
         keys::CHANNELS => Some(ViewKey::Channels { community_id: id() }),
         keys::MEMBERS => Some(ViewKey::Members { community_id: id() }),
+        keys::PINS => Some(ViewKey::Pins { channel_id: id() }),
+        keys::CHANNEL_ROLES => Some(ViewKey::ChannelModeration { channel_id: id() }),
+        // W1 part B: so a missing thread fails once, not on every read.
+        keys::THREAD_META => Some(ViewKey::Thread {
+            parent_message_id: id(),
+        }),
         _ => None,
     }
 }
@@ -71,6 +79,10 @@ fn key_for(view: &ViewKey) -> Option<QueryKey> {
         ViewKey::Communities => Some(keys::op(keys::COMMUNITIES)),
         ViewKey::Channels { community_id } => Some(keys::scoped(keys::CHANNELS, community_id)),
         ViewKey::Members { community_id } => Some(keys::scoped(keys::MEMBERS, community_id)),
+        ViewKey::Pins { channel_id } => Some(keys::scoped(keys::PINS, channel_id)),
+        ViewKey::ChannelModeration { channel_id } => {
+            Some(keys::scoped(keys::CHANNEL_ROLES, channel_id))
+        }
         _ => None,
     }
 }
@@ -103,6 +115,8 @@ impl State {
         self.sends.clear();
         self.typing.clear();
         self.mention_notifications.clear();
+        self.actions = Default::default();
+        self.reading = Default::default();
         self.effects.clear();
         self.main_conversation = None;
         self.thread_conversation = None;
@@ -181,6 +195,7 @@ impl State {
                 for window in self.windows.values_mut() {
                     window.touch_author(&id);
                 }
+                self.reaction_users_changed(None);
                 self.view_changed(ViewKey::Voice);
                 self.members_changed(Some(&id));
             }
@@ -208,7 +223,9 @@ impl State {
             }
             keys::PRESENCE => self.members_changed(None),
             keys::NOTIFICATION_COUNT => self.view_changed(ViewKey::Rail),
+            keys::THREAD_META => self.reading_meta_changed(id),
             keys::UNREAD => {
+                self.reading_counts_arrived();
                 self.view_changed(ViewKey::Communities);
                 self.view_changed(ViewKey::Rail);
                 for channels_key in self.cache.keys_with_op(keys::CHANNELS) {
@@ -234,6 +251,10 @@ impl State {
                 }
                 self.view_changed(ViewKey::Voice);
             }
+            keys::PINS => self.view_changed(ViewKey::Pins { channel_id: id }),
+            keys::CHANNEL_ROLES => {
+                self.view_changed(ViewKey::ChannelModeration { channel_id: id });
+            }
             keys::MEMBER_SEARCH | keys::MENTIONABLE | keys::EMOJIS => {
                 self.view_changed(ViewKey::Mentionables { community_id: id });
             }
@@ -257,6 +278,7 @@ impl State {
 
     /// `(on screen, still needs its first page)` after opening a conversation.
     fn open(&mut self, conversation: &Conversation) -> bool {
+        self.reading_opened(conversation);
         match conversation {
             Conversation::Thread { .. } => {
                 let previous = self.thread_conversation.replace(conversation.clone());

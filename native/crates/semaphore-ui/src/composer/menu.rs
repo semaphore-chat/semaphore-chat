@@ -109,6 +109,9 @@ fn avatar(
         MentionKind::Alias => (palette.warning, DesignIcon::Group),
         MentionKind::Special => (palette.success, DesignIcon::Notifications),
         MentionKind::Channel => (palette.primary, DesignIcon::Tag),
+        // Drafts carry these, as an edit keeps them; core offers no candidates of either.
+        MentionKind::Community => (palette.primary, DesignIcon::Groups),
+        MentionKind::Emoji => (palette.warning, DesignIcon::EmojiEmotionsOutlined),
     };
     div()
         .size(px(36.))

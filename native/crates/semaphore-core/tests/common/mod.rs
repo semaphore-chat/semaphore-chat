@@ -1,6 +1,12 @@
 //! Fakes for what core talks to, and a mirror that applies `ListOp`s the way a UI must.
 #![allow(dead_code)]
 
+// W1: each part's fakes in a file of its own, so the two don't edit the same lines.
+mod actions;
+mod reading;
+#[allow(unused_imports)]
+pub use actions::refusal;
+
 use async_trait::async_trait;
 use semaphore_core::backend::{
     BackendError, BackendResult, CommunitiesBackend, FilesBackend, MessagesBackend, SessionBackend,
@@ -174,9 +180,13 @@ pub struct FakeBackend {
     /// Newest first, by channel.
     pub messages: Mutex<HashMap<String, Vec<MessageDto>>>,
     pub thread_replies: Mutex<HashMap<String, Vec<MessageDto>>>,
+    /// W1 part B's scripted threads and search: `common/reading.rs`.
+    pub reading: reading::ReadingFakes,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// Likewise for the next around-page.
+    pub around_gate: Mutex<Option<oneshot::Receiver<()>>>,
     pub unread: Mutex<Vec<Value>>,
     pub unread_requests: AtomicU64,
     pub channels: Mutex<Vec<Value>>,
@@ -213,6 +223,8 @@ pub struct FakeBackend {
     pub upload_error: Mutex<Option<BackendError>>,
     /// Each attach: message id, file id (none releases a slot).
     pub attaches: Mutex<Vec<(String, Option<String>)>>,
+    /// W1 part A's calls: `actions.rs`.
+    pub actions: actions::ActionsFake,
 }
 
 impl FakeBackend {
@@ -510,7 +522,12 @@ impl MessagesBackend for FakeBackend {
         message_id: String,
         limit: Option<i64>,
     ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
-        self.around(&channel_id, &message_id, limit)
+        let page = self.around(&channel_id, &message_id, limit);
+        let gate = self.around_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        page
     }
 
     async fn messages_controller_find_all_for_group(
@@ -586,16 +603,45 @@ impl MessagesBackend for FakeBackend {
 
     async fn messages_controller_add_reaction(
         &self,
-        _: wire::AddReactionDto,
+        body: wire::AddReactionDto,
     ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
+        self.fake_react(
+            "add_reaction",
+            body.message_id.to_string(),
+            body.emoji,
+            true,
+        )
+        .await
     }
 
     async fn messages_controller_remove_reaction(
         &self,
-        _: wire::RemoveReactionDto,
+        body: wire::RemoveReactionDto,
     ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
+        self.fake_react(
+            "remove_reaction",
+            body.message_id.to_string(),
+            body.emoji,
+            false,
+        )
+        .await
+    }
+
+    // W1 part A: in `actions.rs`.
+    async fn messages_controller_update(
+        &self,
+        id: String,
+        body: wire::UpdateMessageDto,
+    ) -> BackendResult<MessageDto> {
+        self.fake_update(id, body).await
+    }
+
+    async fn messages_controller_remove(&self, id: String) -> BackendResult<()> {
+        self.fake_remove(id).await
+    }
+
+    async fn messages_controller_find_one(&self, id: String) -> BackendResult<MessageDto> {
+        self.fake_find_one(id).await
     }
 
     async fn read_receipts_controller_mark_as_read(

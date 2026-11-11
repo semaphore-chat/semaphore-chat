@@ -6,11 +6,11 @@
 
 use crate::runtime::{Activity, Exec, net_runtime};
 use crate::voice::{self, FramesSink};
-use semaphore_core::platform::{Clock, SecretStore};
+use semaphore_core::platform::{Clock, ScreenCapture, SecretStore};
 use semaphore_core::realtime::Realtime as _;
 use semaphore_core::{Core, CoreEvent, EventSink, Services as CoreServices};
 use semaphore_media_livekit::audio::AudioIo;
-use semaphore_media_livekit::{EngineOptions, LiveKitEngine};
+use semaphore_media_livekit::{DesktopScreenCapture, EngineOptions, LiveKitEngine, VideoSources};
 use semaphore_net::socket::SocketConfig;
 use semaphore_net::{HttpBackend, SocketRealtime};
 use std::path::{Path, PathBuf};
@@ -61,6 +61,8 @@ pub struct Services {
     pub engine: Arc<LiveKitEngine>,
     /// Where the engine's frames go once the window's `VideoFrames` is attached.
     pub frames: Arc<FramesSink>,
+    /// Who picks what to share, and what there is.
+    pub screens: Arc<dyn ScreenCapture>,
     realtime: Arc<SocketRealtime>,
     runtime: Option<tokio::runtime::Runtime>,
 }
@@ -79,7 +81,7 @@ impl Services {
         if self.core.voice().channel_id.is_some()
             && let Some(runtime) = &self.runtime
         {
-            self.engine.stop_system_audio();
+            // Leaving stops the camera and the screen share with it.
             let core = self.core.clone();
             let left = runtime.block_on(async move {
                 tokio::time::timeout(Duration::from_secs(2), core.leave_voice()).await
@@ -122,6 +124,10 @@ pub struct StartOptions {
     pub data_dir: PathBuf,
     pub audio: Option<Arc<dyn AudioIo>>,
     pub heartbeat: Duration,
+    /// Cameras and screens: `None` for the platform's, or the rig's fakes.
+    pub video_sources: Option<Arc<dyn VideoSources>>,
+    /// The screen list for our picker: `None` for the platform's.
+    pub screen_capture: Option<Arc<dyn ScreenCapture>>,
 }
 
 pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
@@ -131,6 +137,8 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
         data_dir,
         audio,
         heartbeat,
+        video_sources,
+        screen_capture,
     } = options;
     let (events_sender, events) = async_channel::unbounded();
     let (services_sender, services) = async_channel::bounded(1);
@@ -148,6 +156,13 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
             if let Some(audio) = audio {
                 engine_options.audio_io = audio;
             }
+            if let Some(sources) = video_sources {
+                engine_options.video_sources = sources;
+            }
+            // A screen share carries the system's audio: everything but our own call.
+            engine_options.system_audio = semaphore_sysaudio::platform_capture().map(Arc::from);
+            let screens: Arc<dyn ScreenCapture> =
+                screen_capture.unwrap_or_else(|| Arc::new(DesktopScreenCapture));
             let engine = Arc::new(LiveKitEngine::new(engine_options));
             let sink = Arc::new(ChannelSink {
                 sender: events_sender,
@@ -174,6 +189,7 @@ pub fn start(options: StartOptions, activity: Arc<Activity>) -> Started {
                 data_dir,
                 engine,
                 frames,
+                screens,
                 realtime,
                 runtime: Some(runtime),
             };

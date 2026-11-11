@@ -20,7 +20,10 @@
 //! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
 //! link-images on                      # the next start loads link previews' images
 //! livekit remove vc-squad me          # LiveKit's server API removes someone (needs --livekit-http)
-//! wait core voice connected           # also frames, muted, deafened, participant ID, share-error
+//! wait core voice connected           # also frames, muted, deafened, participant ID
+//! wait core voice camera on            # camera|screen|screen-audio off|starting|on|failed
+//! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
+//! video fail-next camera "why"         # the fake camera (or screen) refuses its next start
 //! expect stored-session yes           # a refresh token is in the (memory) keyring
 //! ```
 //!
@@ -35,11 +38,16 @@ use rig_shot::driver::Driver;
 use rig_shot::script;
 use semaphore_app::settings::{Settings, SettingsStore};
 use semaphore_app::{AppConfig, AppRoot, OsEvent};
-use semaphore_core::model::{Conversation, MessageRow, SendState, SessionState, VoiceStatus};
-use semaphore_core::platform::{Clock, CoreError, SecretStore};
+use semaphore_core::model::{
+    Conversation, LocalShare, MessageRow, SendState, SessionState, VoiceStatus,
+};
+use semaphore_core::platform::{
+    CaptureKind, CaptureSource, Clock, CoreError, PickerKind, ScreenCapture, SecretStore, Thumbnail,
+};
 use semaphore_core::{ConnectionState, NetworkState};
 use semaphore_fake_server::livekit::LiveKit;
 use semaphore_media_livekit::audio::virtual_io::VirtualIo;
+use semaphore_media_livekit::testing::FakeVideoSources;
 use semaphore_ui::kit::set_reduced_motion;
 use semaphore_ui::messages::TimeFormat;
 use serde_json::Value;
@@ -86,6 +94,44 @@ impl Clock for ScenarioClock {
     }
 }
 
+/// Our picker's list, as X11 or Windows would give it: the same every run, so its shot compares.
+struct RigScreens;
+
+impl ScreenCapture for RigScreens {
+    fn picker(&self) -> PickerKind {
+        PickerKind::Listed
+    }
+
+    fn sources(&self, thumbnail_px: u32) -> Result<Vec<CaptureSource>, CoreError> {
+        let thumbnail = |seed: u8| {
+            let (width, height) = (thumbnail_px.max(16), thumbnail_px.max(16) * 9 / 16);
+            let mut bgra = Vec::with_capacity((width * height * 4) as usize);
+            for y in 0..height {
+                for x in 0..width {
+                    let shade = (x * 120 / width) as u8;
+                    bgra.extend([seed * 40 + shade, 90, (y * 100 / height) as u8 + 60, 255]);
+                }
+            }
+            Some(Thumbnail {
+                width,
+                height,
+                bgra,
+            })
+        };
+        let source = |id: &str, name: &str, kind, seed| CaptureSource {
+            id: id.into(),
+            name: name.into(),
+            kind,
+            thumbnail: thumbnail(seed),
+        };
+        Ok(vec![
+            source("screen-1", "Screen 1", CaptureKind::Screen, 1),
+            source("screen-2", "Screen 2", CaptureKind::Screen, 2),
+            source("window-1", "Terminal", CaptureKind::Window, 3),
+        ])
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum Condition {
     Session(String),
@@ -109,8 +155,13 @@ enum Condition {
     VoiceMuted(bool),
     VoiceDeafened(bool),
     VoiceParticipant(String),
-    /// The audio share failed and the bar says why.
-    VoiceShareError,
+    /// What we send: `camera`, `screen` or `screen-audio`, as core's `LocalShare` says.
+    VoiceLocal {
+        what: String,
+        state: String,
+    },
+    /// Our own `camera` or `screen` preview has reached the window.
+    VoiceOwnFrames(String),
     /// The fake server has seen at least this many of an operation or socket event.
     Requests(String, usize),
     RequestsExactly(String, usize),
@@ -175,6 +226,11 @@ enum Step {
         room: String,
         identity: String,
     },
+    /// The fake camera or screen refuses its next start with this reason.
+    VideoFailNext {
+        screen: bool,
+        why: String,
+    },
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -203,7 +259,17 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["voice", "deafened"] => Condition::VoiceDeafened(true),
         ["voice", "undeafened"] => Condition::VoiceDeafened(false),
         ["voice", "participant", identity] => Condition::VoiceParticipant((*identity).into()),
-        ["voice", "share-error"] => Condition::VoiceShareError,
+        [
+            "voice",
+            what @ ("camera" | "screen" | "screen-audio"),
+            state,
+        ] => Condition::VoiceLocal {
+            what: (*what).into(),
+            state: (*state).into(),
+        },
+        ["voice", "own-frames", what @ ("camera" | "screen")] => {
+            Condition::VoiceOwnFrames((*what).into())
+        }
         ["requests", name, ">=", count] => Condition::Requests((*name).into(), number(count)?),
         ["requests", name, "==", count] => {
             Condition::RequestsExactly((*name).into(), number(count)?)
@@ -274,6 +340,10 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["livekit", "remove", room, identity] => Step::LiveKitRemove {
                 room: (*room).into(),
                 identity: (*identity).into(),
+            },
+            ["video", "fail-next", what @ ("camera" | "screen"), why] => Step::VideoFailNext {
+                screen: *what == "screen",
+                why: (*why).into(),
             },
             ["expect", "stored-session", "yes"] => Step::ExpectStoredSession(true),
             ["expect", "stored-session", "no"] => Step::ExpectStoredSession(false),
@@ -400,6 +470,10 @@ struct Rig {
     link_images: bool,
     data_dir: PathBuf,
     size: (f32, f32),
+    /// Cameras and screens: no real ones in a container, and these can be made to fail.
+    video: Arc<FakeVideoSources>,
+    /// Our picker's list: two screens and a window.
+    screens: Arc<RigScreens>,
 }
 
 impl Rig {
@@ -428,6 +502,8 @@ impl Rig {
             link_images: false,
             data_dir,
             size: (1280., 800.),
+            video: Arc::default(),
+            screens: Arc::new(RigScreens),
         }
     }
 
@@ -466,6 +542,8 @@ impl Rig {
             watch_os: false,
             // No sound card in a container, and a rig mustn't use the machine's.
             audio: Some(Arc::new(VirtualIo::new())),
+            video_sources: Some(self.video.clone()),
+            screen_capture: Some(self.screens.clone()),
             heartbeat: self.heartbeat,
             // Never read from or written to disk: only this switch is set, as before.
             settings: SettingsStore::ephemeral(Settings {
@@ -603,7 +681,8 @@ impl Rig {
             | Condition::VoiceMuted(_)
             | Condition::VoiceDeafened(_)
             | Condition::VoiceParticipant(_)
-            | Condition::VoiceShareError
+            | Condition::VoiceLocal { .. }
+            | Condition::VoiceOwnFrames(_)
             | Condition::Requests(..)
             | Condition::RequestsExactly(..)
             | Condition::FileReady(_)
@@ -692,7 +771,34 @@ impl Rig {
                     .participants
                     .iter()
                     .any(|participant| &participant.identity == identity)),
-                Condition::VoiceShareError => Ok(root.app_voice()?.share().error.is_some()),
+                Condition::VoiceLocal { what, state } => {
+                    let share = match what.as_str() {
+                        "camera" => &voice.local.camera,
+                        "screen" => &voice.local.screen,
+                        _ => &voice.local.screen_audio,
+                    };
+                    Ok(match state.as_str() {
+                        "off" => *share == LocalShare::Off,
+                        "starting" => *share == LocalShare::Starting,
+                        "on" => *share == LocalShare::On,
+                        "failed" => matches!(share, LocalShare::Failed { .. }),
+                        _ => return Some(Err(anyhow!("unknown share state {state}"))),
+                    })
+                }
+                Condition::VoiceOwnFrames(what) => {
+                    let stage = root.stage()?.read(cx);
+                    Ok(voice.participants.iter().any(|participant| {
+                        let track = if what == "camera" {
+                            &participant.camera
+                        } else {
+                            &participant.screen_share
+                        };
+                        participant.is_self
+                            && track
+                                .as_ref()
+                                .is_some_and(|track| stage.frames().has_frame(&track.track_sid))
+                    }))
+                }
                 _ => return None,
             })
         });
@@ -705,7 +811,8 @@ impl Rig {
                     | Condition::VoiceMuted(_)
                     | Condition::VoiceDeafened(_)
                     | Condition::VoiceParticipant(_)
-                    | Condition::VoiceShareError
+                    | Condition::VoiceLocal { .. }
+                    | Condition::VoiceOwnFrames(_)
             ) =>
             {
                 Ok(Some(false))
@@ -888,6 +995,15 @@ impl Rig {
                     self.driver.settle()
                 }
                 Step::LiveKitRemove { room, identity } => self.livekit_remove(room, identity),
+                Step::VideoFailNext { screen, why } => {
+                    let slot = if *screen {
+                        &self.video.fail_next_screen
+                    } else {
+                        &self.video.fail_next_camera
+                    };
+                    *slot.lock().unwrap() = Some(why.clone());
+                    Ok(())
+                }
                 Step::Snap(name) => self.snap(&out_dir.join(format!("{name}.png"))),
                 Step::Attach(path) => self.attach(path),
                 Step::LinkImages(on) => {

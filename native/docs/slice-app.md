@@ -79,8 +79,14 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
 - [ ] Join Squad Up: your mic is live, others hear you, you hear them; the speaking ring follows.
 - [ ] Mute, deafen and undeafen from the bar; the others see it.
 - [ ] Settings: switch input and output while talking.
-- [ ] Share audio while a video plays: the others hear it, and don't hear themselves echoed back.
-  Stop it again. (T11 in the real app.)
+- [ ] Camera from the bar: the others see you, your own tile shows your picture; off again.
+  Pick another camera under Settings, Camera, and turn it on again.
+- [ ] Share screen. On Wayland the portal's dialog opens straight away; on X11 and Windows our picker
+  lists screens and windows with thumbnails. Your share fills your stage, the others see it, and with
+  a video playing they hear it too, without hearing themselves echoed back (T11). Stop it from the
+  bar, and from the system's own "stop sharing" (Wayland), and by closing a shared window.
+- [ ] Settings, Screen share: change resolution, frame rate and audio; the next share uses them (the
+  defaults are 1080p at 30 fps with audio). At phone width, share is under "more".
 - [ ] Video tiles from a sharing participant play smoothly on the GPU path.
 - [ ] Leave from the bar; join, then close the window: the others see you leave at once.
 - [ ] Stay in a call for an hour (T6 later runs 24): you stay on the roster throughout.
@@ -97,7 +103,7 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
   until you decide (it tells those sites your address).
 - [ ] Scroll a long channel full of images for a while: memory settles (it's bounded).
 
-Not in this build, so not bugs yet: publishing your camera or screen, DM voice, the emoji picker,
+Not in this build, so not bugs yet: DM voice, the emoji picker,
 threads, DMs, editing, notifications.
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
@@ -112,8 +118,11 @@ native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit
 
 `--voice` brings up `lk-stack.sh`'s LiveKit and a `lk room join --publish-demo` publisher, then runs
 `rigs/slice/scripts/voice.steps` twice: join, the publisher's video reaching a tile, the heartbeat,
-mute and deafen, Share audio failing cleanly (no PipeWire in a container), the bar elsewhere, a
-moderator removing us (the call ends here and on the server), a second call, and leaving.
+mute and deafen, the camera on (our own preview reaching our tile) and off, a camera that fails and
+is retried, a screen share through our picker (the engine's fake screens, the rig's list) shown on
+our own stage with its audio failing cleanly (no PipeWire in a container), a cancelled picker, the
+bar elsewhere, a moderator removing us with the camera on (the call ends here and on the server, and
+the camera goes off), a second call, and leaving.
 
 The default run executes every `rigs/slice/scripts/*.steps` except `voice.steps`, in sorted order,
 each twice with a fresh fake server per run, so a wave adds its own steps file instead of growing

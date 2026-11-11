@@ -60,6 +60,9 @@ pub(crate) enum Effect {
     Upload(String),
     /// Release a pending attachment slot on this message: a file the user gave up on.
     ReleaseSlot(String),
+    /// Read a message again after a `deleteMessage`, for a reader who may see removed ones: a
+    /// moderator's removal keeps the row, a delete takes it away.
+    RefetchMessage(String),
 }
 
 pub(crate) struct State {
@@ -83,6 +86,10 @@ pub(crate) struct State {
     pub typing: HashMap<Conversation, Vec<(String, u64)>>,
     /// Unread mention notifications, so one being read can take its count back off.
     pub mention_notifications: HashMap<String, Conversation>,
+    /// Edit, delete, pin and react: `commands/actions.rs`.
+    pub actions: crate::commands::actions::ActionsState,
+    /// Threads, search, the unread divider and links: `commands/reading.rs`.
+    pub reading: crate::commands::reading::ReadingState,
     pub session: SessionState,
     pub me: Option<UserView>,
     pub voice: VoiceView,
@@ -128,6 +135,8 @@ impl State {
             next_upload_id: 0,
             typing: HashMap::new(),
             mention_notifications: HashMap::new(),
+            actions: Default::default(),
+            reading: Default::default(),
             session: SessionState::SignedOut,
             me: None,
             voice: VoiceView::default(),
@@ -284,9 +293,14 @@ impl State {
             view
         };
         let uploads = self.upload_views();
+        let editing = &self.actions.pending_edits;
         let mut changes = Vec::new();
         for (conversation, window) in &mut self.windows {
-            let ops = window.take_ops(|row| project(row, &me_id, &mut author, &uploads));
+            let ops = window.take_ops(|row| {
+                let mut view = project(row, &me_id, &mut author, &uploads);
+                view.edit_pending = editing.contains_key(&row.message.dto.id);
+                view
+            });
             if !ops.is_empty() {
                 changes.push(CoreEvent::MessagesChanged {
                     conversation: conversation.clone(),
@@ -495,6 +509,7 @@ impl Core {
             Effect::LeavePresence(channel_id) => self.leave_presence(channel_id).await,
             Effect::Upload(nonce) => self.run_uploads(nonce).await,
             Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
+            Effect::RefetchMessage(message_id) => self.refetch_message(message_id).await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;

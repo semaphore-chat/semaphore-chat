@@ -5,16 +5,20 @@
 //!
 //! Split by area; every type is re-exported here, so `model::X` is the path to use.
 
+mod actions;
 mod common;
 mod communities;
 mod files;
 mod messages;
+mod reading;
 mod session;
 mod voice;
 
+pub use actions::*;
 pub use common::*;
 pub use communities::*;
 pub use files::*;
 pub use messages::*;
+pub use reading::*;
 pub use session::*;
 pub use voice::*;

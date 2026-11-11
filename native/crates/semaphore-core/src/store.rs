@@ -873,15 +873,30 @@ fn attachment_kind(mime_type: &str) -> AttachmentKind {
     }
 }
 
+/// The prefix the web gives a community emoji's reaction: `custom:{emojiId}`.
+pub const CUSTOM_REACTION_PREFIX: &str = "custom:";
+
+/// The community emoji a reaction names, if it names one.
+pub fn custom_emoji_id(emoji: &str) -> Option<String> {
+    emoji
+        .strip_prefix(CUSTOM_REACTION_PREFIX)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+}
+
 fn reaction_view(reaction: &ReactionDto, me_id: &str) -> ReactionView {
     ReactionView {
         emoji: reaction.emoji.clone(),
         count: reaction.user_ids.len() as u32,
         me: reaction.user_ids.iter().any(|id| id == me_id),
+        user_ids: reaction.user_ids.clone(),
+        custom_emoji_id: custom_emoji_id(&reaction.emoji),
     }
 }
 
-/// A row as a UI renders it. Removed messages are blank: contract rule 5.
+/// A row as a UI renders it. A removed message shows what the server sent of it: the server blanks
+/// it for readers who may not see removed messages (contract rule 5), and sends it whole to
+/// moderators, who keep seeing what they removed.
 pub fn project(
     row: &Row,
     me_id: &str,
@@ -891,11 +906,7 @@ pub fn project(
     let message = &row.message;
     let dto = &message.dto;
     let removed = dto.deleted_at.is_some();
-    let spans: Vec<SpanInput> = if removed {
-        Vec::new()
-    } else {
-        dto.spans.iter().map(span_input).collect()
-    };
+    let spans: Vec<SpanInput> = dto.spans.iter().map(span_input).collect();
     let (display, segs) = layout_spans(&spans);
     let mut view_of = |id: &Option<String>| {
         id.as_deref()
@@ -907,7 +918,7 @@ pub fn project(
             })
             .unwrap_or_default()
     };
-    let reply_to = dto.reply_to.as_ref().filter(|_| !removed).map(|reply| {
+    let reply_to = dto.reply_to.as_ref().map(|reply| {
         let deleted = reply.deleted_at.is_some();
         ReplyToView {
             message_id: reply.id.clone(),
@@ -925,11 +936,12 @@ pub fn project(
         }
     });
     let author = view_of(&dto.author_id);
+    let removed_by = dto.deleted_by.is_some().then(|| view_of(&dto.deleted_by));
+    let pinned_by = dto.pinned_by.is_some().then(|| view_of(&dto.pinned_by));
     let link_previews = dto
         .link_previews
         .iter()
         .flatten()
-        .filter(|_| !removed)
         .map(|preview| LinkPreviewView {
             url: preview.url.clone(),
             title: preview.title.clone(),
@@ -952,39 +964,39 @@ pub fn project(
         author,
         sent_at_ms: dto.sent_at.timestamp_millis(),
         edited: dto.edited_at.is_some(),
+        mine: !me_id.is_empty() && dto.author_id.as_deref() == Some(me_id),
+        edit_pending: false,
         removed,
+        removed_by: removed_by.filter(|_| removed),
+        removed_reason: dto.deleted_by_reason.clone().filter(|_| removed),
         display,
         segs,
-        attachments: if removed {
-            Vec::new()
-        } else {
-            dto.attachments
-                .iter()
-                .map(|file| AttachmentView {
-                    file_id: file.id.clone(),
-                    filename: file.filename.clone(),
-                    mime_type: file.mime_type.clone(),
-                    size_bytes: file.size.max(0) as u64,
-                    kind: attachment_kind(&file.mime_type),
-                    has_thumbnail: file.has_thumbnail,
-                    width: None,
-                    height: None,
-                })
-                .collect()
-        },
-        reactions: if removed {
-            Vec::new()
-        } else {
-            dto.reactions
-                .iter()
-                .map(|reaction| reaction_view(reaction, me_id))
-                .collect()
-        },
+        attachments: dto
+            .attachments
+            .iter()
+            .map(|file| AttachmentView {
+                file_id: file.id.clone(),
+                filename: file.filename.clone(),
+                mime_type: file.mime_type.clone(),
+                size_bytes: file.size.max(0) as u64,
+                kind: attachment_kind(&file.mime_type),
+                has_thumbnail: file.has_thumbnail,
+                width: None,
+                height: None,
+            })
+            .collect(),
+        reactions: dto
+            .reactions
+            .iter()
+            .map(|reaction| reaction_view(reaction, me_id))
+            .collect(),
         reply_count: dto.reply_count.max(0) as u32,
         last_reply_at_ms: dto.last_reply_at.map(|at| at.timestamp_millis()),
         reply_to,
         link_previews,
         pinned: dto.pinned,
+        pinned_by: pinned_by.filter(|_| dto.pinned),
+        pinned_at_ms: dto.pinned_at.map(|at| at.timestamp_millis()),
         webhook,
         send_state: match &message.send {
             SendStatus::Settled => SendState::Sent,
@@ -993,12 +1005,9 @@ pub fn project(
                 error: error.clone(),
             },
         },
-        pending_attachments: if removed {
-            0
-        } else {
-            dto.pending_attachments
-                .map_or(0, |count| count.max(0) as u32)
-        },
+        pending_attachments: dto
+            .pending_attachments
+            .map_or(0, |count| count.max(0) as u32),
         uploads: message
             .client_id
             .as_ref()

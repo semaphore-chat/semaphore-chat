@@ -42,7 +42,7 @@ pub fn is_optimistic_id(id: &str) -> bool {
     id.starts_with(OPTIMISTIC_ID_PREFIX)
 }
 
-fn span_json(span: &SpanInput) -> Value {
+pub(crate) fn span_json(span: &SpanInput) -> Value {
     let mut value = json!({ "type": span.kind, "text": span.text });
     let object = value.as_object_mut().expect("just built as an object");
     let mut set = |key: &str, field: &Option<String>| {

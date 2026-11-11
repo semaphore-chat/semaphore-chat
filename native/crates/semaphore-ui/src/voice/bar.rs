@@ -1,7 +1,9 @@
 //! The bar along the bottom of a call: where you are, how the connection is, and the controls.
 
 use super::icons::{self, VoiceIcon, icon};
-use super::model::{VoiceController, VoiceStageModel};
+use super::model::{
+    ShareLook, VoiceController, VoiceStageModel, bar_subtitle, camera_label, screen_label,
+};
 use super::stage::quality_bars;
 use super::theme::{self, alpha};
 use gpui_kit::*;
@@ -43,7 +45,8 @@ fn round_button(
         .child(icon(
             glyph,
             px(24.),
-            if style.disabled {
+            // A filled button that can't be pressed is busy, not unavailable: it keeps its glyph.
+            if style.disabled && style.fill.is_none() {
                 theme::text_disabled()
             } else {
                 style.icon
@@ -71,6 +74,50 @@ fn round_button(
     }
 }
 
+/// A camera or screen button in one of `ShareLook`'s states.
+fn share_button(
+    id: &'static str,
+    glyph: VoiceIcon,
+    look: ShareLook,
+    label: &'static str,
+    toggle: impl Fn() + 'static,
+) -> impl IntoElement {
+    let style = match look {
+        ShareLook::Off => plain(),
+        ShareLook::Starting => ButtonStyle {
+            icon: theme::white(),
+            fill: Some(alpha(theme::primary(), 0.5)),
+            hover: alpha(theme::primary(), 0.5),
+            disabled: true,
+        },
+        ShareLook::On => ButtonStyle {
+            icon: theme::white(),
+            fill: Some(theme::primary()),
+            hover: alpha(theme::primary(), 0.8),
+            disabled: false,
+        },
+        ShareLook::Failed => ButtonStyle {
+            icon: theme::error_main(),
+            fill: None,
+            hover: alpha(theme::error_main(), 0.2),
+            disabled: false,
+        },
+        ShareLook::NotAllowed => ButtonStyle {
+            disabled: true,
+            ..plain()
+        },
+    };
+    let mut button = round_button(id, glyph, style, false, move |_, _, _| toggle());
+    if look == ShareLook::Starting {
+        // Dimmed, but still the white glyph: it's on its way, not unavailable.
+        button = button.opacity(0.7);
+    }
+    if look == ShareLook::Failed {
+        button = button.border_2().border_color(theme::error_main());
+    }
+    button.role(Role::Button).aria_label(label).test_support()
+}
+
 fn vertical_divider() -> impl IntoElement {
     div().w(px(1.)).h(px(32.)).mx(px(8.)).bg(theme::divider())
 }
@@ -91,12 +138,7 @@ pub(super) fn voice_bar(
     } else {
         model.channel_name.clone().into()
     };
-    let subtitle: SharedString = match (&model.system_audio_error, model.system_audio) {
-        (Some(error), _) => format!("Audio share failed: {error}").into(),
-        (None, true) => "Sharing audio".into(),
-        (None, false) if model.is_dm => "DM Voice Call".into(),
-        (None, false) => "Voice Connected".into(),
-    };
+    let subtitle: SharedString = bar_subtitle(model).into();
     let reconnecting = model
         .reconnect_attempt
         .or((voice.status == VoiceStatus::Reconnecting).then_some(1));
@@ -182,6 +224,7 @@ pub(super) fn voice_bar(
                                 None => div()
                                     .text_xs()
                                     .text_color(theme::text_secondary())
+                                    .truncate()
                                     .child(subtitle)
                                     .into_any_element(),
                             })
@@ -265,17 +308,32 @@ pub(super) fn voice_bar(
         move |_, _, _| deafen_controller.set_deafened(!deafened),
     );
 
-    // Viewing works; publishing a camera or a screen is past this slice, so these stay visibly off.
-    let off = ButtonStyle {
-        disabled: true,
-        ..plain()
-    };
-    let camera = round_button(
+    let local = &voice.local;
+    let camera_look = ShareLook::of(&local.camera, local.may_camera);
+    let camera_controller = controller.clone();
+    let camera = share_button(
         "voice-camera",
-        icons::VIDEOCAM_OFF,
-        off,
-        false,
-        |_, _, _| {},
+        if camera_look == ShareLook::On {
+            icons::VIDEOCAM
+        } else {
+            icons::VIDEOCAM_OFF
+        },
+        camera_look,
+        camera_label(camera_look),
+        move || camera_controller.set_camera(camera_look != ShareLook::On),
+    );
+    let screen_look = ShareLook::of(&local.screen, local.may_share);
+    let screen_controller = controller.clone();
+    let screen = share_button(
+        "voice-share",
+        if screen_look == ShareLook::On {
+            icons::STOP_SCREEN_SHARE
+        } else {
+            icons::SCREEN_SHARE
+        },
+        screen_look,
+        screen_label(screen_look),
+        move || screen_controller.toggle_screen_share(),
     );
 
     let leave_controller = controller.clone();
@@ -312,52 +370,25 @@ pub(super) fn voice_bar(
     if !narrow {
         controls = controls.child(vertical_divider());
     }
-    controls = controls.child(camera.test_support());
+    controls = controls.child(camera);
     if narrow {
-        controls = controls.child(round_button(
-            "voice-more",
-            icons::MORE_HORIZ,
-            plain(),
-            false,
-            move |_, _, _| settings_controller.open_settings(),
-        ));
-    } else {
-        let sharing = model.system_audio;
-        let share_controller = controller.clone();
-        controls = controls
-            .child(round_button(
-                "voice-share",
-                icons::SCREEN_SHARE,
-                off,
+        // Screen share lives in "more" here: there's no room for it on a phone-width bar.
+        let more_controller = controller.clone();
+        controls = controls.child(
+            round_button(
+                "voice-more",
+                icons::MORE_HORIZ,
+                plain(),
                 false,
-                |_, _, _| {},
-            ))
-            // Audio only: the screen's picture isn't published yet, its sound is (T11).
-            .child(
-                round_button(
-                    "voice-share-audio",
-                    icons::VOLUME_UP,
-                    if sharing {
-                        ButtonStyle {
-                            icon: theme::white(),
-                            fill: Some(theme::primary()),
-                            hover: alpha(theme::primary(), 0.8),
-                            disabled: false,
-                        }
-                    } else {
-                        plain()
-                    },
-                    false,
-                    move |_, _, _| share_controller.set_system_audio(!sharing),
-                )
-                .role(Role::Button)
-                .aria_label(if sharing {
-                    "Stop sharing audio"
-                } else {
-                    "Share audio"
-                })
-                .test_support(),
+                move |_, _, _| more_controller.open_more(),
             )
+            .role(Role::Button)
+            .aria_label("More call options")
+            .test_support(),
+        );
+    } else {
+        controls = controls
+            .child(screen)
             .child(vertical_divider())
             .child(
                 round_button(
@@ -367,6 +398,8 @@ pub(super) fn voice_bar(
                     false,
                     move |_, _, _| settings_controller.open_settings(),
                 )
+                .role(Role::Button)
+                .aria_label("Voice settings")
                 .test_support(),
             )
             .child(vertical_divider());

@@ -7,7 +7,8 @@ use crate::conversation::ConversationPane;
 use crate::files::{self, AppMedia, PreviewFetcher};
 use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
-use crate::voice::{AppVoice, ShareState, VoiceRequest};
+use crate::settings::{SHARE_FPS, SettingsStore, ShareSettings, ShareSize};
+use crate::voice::{AppVoice, VoiceRequest};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView};
@@ -15,17 +16,22 @@ use semaphore_core::model::{
     ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
     ViewKey,
 };
+use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
 use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
 use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep, BrowserLogin};
-use semaphore_ui::kit::{Button, Dialog, Spinner, Variant, emit_core_event, on_core_event, text};
+use semaphore_ui::kit::{
+    Button, Dialog, Menu, MenuItem, Radio, Spinner, Switch, Variant, emit_core_event,
+    on_core_event, text,
+};
 use semaphore_ui::messages::{LruImageCache, MediaRef};
 use semaphore_ui::nav::Route;
 use semaphore_ui::shell::{ContentProps, CoreSource, ShellEvent};
 use semaphore_ui::theme::SemTheme as _;
 use semaphore_ui::voice::{
-    QualityLevel, VideoFrames, VoiceController, VoiceStage, VoiceStageModel, voice_bar_element,
+    PickerActions, PickerModel, PickerSource, QualityLevel, VideoFrames, VoiceController,
+    VoiceStage, VoiceStageModel, source_picker, voice_bar_element,
 };
 use std::rc::Rc;
 use std::sync::Arc;
@@ -76,6 +82,12 @@ pub struct AppRoot {
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
     devices_open: bool,
+    /// The narrow bar's "more" sheet.
+    more_open: bool,
+    /// Our screen picker, while it's open.
+    picker: Option<PickerModel>,
+    /// The settings, as changed in this run; saved on each change.
+    settings: SettingsStore,
     media: Option<Rc<AppMedia>>,
     /// An image open in the viewer, and the decodes it draws from.
     viewer: Option<AttachmentView>,
@@ -94,6 +106,8 @@ impl AppRoot {
                 data_dir: config.data_dir.clone(),
                 audio: config.audio.clone(),
                 heartbeat: config.heartbeat,
+                video_sources: config.video_sources.clone(),
+                screen_capture: config.screen_capture.clone(),
             },
             activity.clone(),
         );
@@ -131,7 +145,11 @@ impl AppRoot {
                 pane.update(cx, |pane, cx| pane.set_focused(active, cx));
             }
         });
+        let settings = config.settings.clone();
         Self {
+            settings,
+            more_open: false,
+            picker: None,
             config: Rc::new(config),
             activity,
             services: None,
@@ -241,16 +259,15 @@ impl AppRoot {
             core: services.core.clone(),
             engine: services.engine.clone(),
             exec: services.exec.clone(),
-            share: Arc::new(Mutex::new(ShareState::default())),
+            screens: services.screens.clone(),
+            share_settings: Mutex::new(self.settings.get().voice.screen_share),
             requests,
         });
         cx.spawn(async move |this, cx| {
             while let Ok(ask) = asks.recv().await {
                 let gone = this
                     .update(cx, |this, cx| {
-                        if ask == VoiceRequest::OpenDevices {
-                            this.devices_open = true;
-                        }
+                        this.voice_request(ask);
                         this.refresh_stage(cx);
                         cx.notify();
                     })
@@ -303,11 +320,6 @@ impl AppRoot {
             .map_or(QualityLevel::Unknown, |p| {
                 QualityLevel::from_core(p.quality)
             });
-        let share = self
-            .voice
-            .as_ref()
-            .map(|voice| voice.share())
-            .unwrap_or_default();
         VoiceStageModel {
             reconnect_attempt: voice.reconnect_attempt,
             voice,
@@ -317,19 +329,15 @@ impl AppRoot {
             local_quality,
             ptt: None,
             always_show_overlays: false,
-            system_audio: share.on,
-            system_audio_error: share.error,
         }
     }
 
     fn refresh_stage(&mut self, cx: &mut Context<Self>) {
         let model = self.stage_model();
-        // A call that ended takes its audio share with it.
-        if model.voice.channel_id.is_none()
-            && model.system_audio
-            && let Some(voice) = &self.voice
-        {
-            voice.stop_share();
+        // The picker is for this call's share: a call that ended takes it away.
+        if model.voice.channel_id.is_none() {
+            self.picker = None;
+            self.more_open = false;
         }
         if let Some(stage) = &self.stage {
             stage.update(cx, |stage, cx| stage.set_model(model, cx));
@@ -894,6 +902,146 @@ impl AppRoot {
 }
 
 impl AppRoot {
+    fn voice_request(&mut self, ask: VoiceRequest) {
+        match ask {
+            VoiceRequest::Redraw => {}
+            VoiceRequest::OpenDevices => self.devices_open = true,
+            VoiceRequest::OpenMore => self.more_open = true,
+            VoiceRequest::OpenPicker => self.picker = Some(PickerModel::loading()),
+            // Only into a picker still open and still loading: a cancelled one stays closed.
+            VoiceRequest::PickerSources(listed) => {
+                if let Some(picker) = &mut self.picker
+                    && matches!(picker.state, semaphore_ui::voice::PickerState::Loading)
+                {
+                    *picker = match listed {
+                        Ok(sources) => PickerModel::ready(
+                            sources.iter().map(PickerSource::from_capture).collect(),
+                        ),
+                        Err(why) => PickerModel::failed(why),
+                    };
+                }
+            }
+        }
+    }
+
+    /// Our screen picker, over the window. Share starts the share and closes it.
+    fn picker_dialog(
+        &self,
+        picker: &PickerModel,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement + use<> {
+        let this = cx.entity().downgrade();
+        let (tab, select, share, cancel) = (this.clone(), this.clone(), this.clone(), this);
+        source_picker(
+            picker,
+            PickerActions {
+                on_tab: Rc::new(move |kind: CaptureKind, _, cx| {
+                    tab.update(cx, |root, cx| {
+                        if let Some(picker) = &mut root.picker {
+                            picker.set_tab(kind);
+                        }
+                        cx.notify();
+                    })
+                    .ok();
+                }),
+                on_select: Rc::new(move |id: String, _, cx| {
+                    select
+                        .update(cx, |root, cx| {
+                            if let Some(picker) = &mut root.picker {
+                                picker.select(&id);
+                            }
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+                on_share: Rc::new(move |id: String, _, cx| {
+                    share
+                        .update(cx, |root, cx| {
+                            root.picker = None;
+                            if let Some(voice) = &root.voice {
+                                voice.start_share(Some(id));
+                            }
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+                on_cancel: Rc::new(move |_, cx| {
+                    cancel
+                        .update(cx, |root, cx| {
+                            root.picker = None;
+                            cx.notify();
+                        })
+                        .ok();
+                }),
+            },
+        )
+    }
+
+    /// The narrow bar's "more": the screen share, which has no room on the bar, and settings.
+    fn more_dialog(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let local = self
+            .core()
+            .map(|core| core.voice().local)
+            .unwrap_or_default();
+        let look = semaphore_ui::voice::ShareLook::of(&local.screen, local.may_share);
+        let share_label = semaphore_ui::voice::screen_label(look);
+        let this = cx.entity().downgrade();
+        let (share, settings, close, done) = (this.clone(), this.clone(), this.clone(), this);
+        let shut = |root: &mut AppRoot, cx: &mut Context<AppRoot>| {
+            root.more_open = false;
+            cx.notify();
+        };
+        Dialog::new("Call options")
+            .width(320.)
+            .body(Menu::new(
+                "Call options",
+                vec![
+                    MenuItem::new("more-share", share_label, move |_, cx| {
+                        share
+                            .update(cx, |root, cx| {
+                                shut(root, cx);
+                                if let Some(voice) = &root.voice {
+                                    voice.toggle_screen_share();
+                                }
+                            })
+                            .ok();
+                    })
+                    .disabled(!look.clickable()),
+                    MenuItem::new("more-settings", "Voice settings", move |_, cx| {
+                        settings
+                            .update(cx, |root, cx| {
+                                shut(root, cx);
+                                root.devices_open = true;
+                            })
+                            .ok();
+                    }),
+                ],
+            ))
+            .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
+                done.update(cx, shut).ok();
+            }))
+            .on_close(move |_, cx| {
+                close.update(cx, shut).ok();
+            })
+    }
+
+    /// Saves a change to the screen-share settings, and hands it to the next share.
+    fn set_share_settings(
+        &mut self,
+        change: impl FnOnce(&mut ShareSettings),
+        cx: &mut Context<Self>,
+    ) {
+        let mut next = self.settings.get().voice.screen_share;
+        change(&mut next);
+        if let Err(error) = self.settings.update(|s| s.voice.screen_share = next) {
+            log::warn!("saving the screen-share settings: {error}");
+        }
+        if let Some(voice) = &self.voice {
+            voice.set_share_settings(next);
+        }
+        cx.notify();
+    }
+
     /// Which microphone and speakers: the two lists the engine knows, nothing else.
     fn devices_dialog(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let devices = self
@@ -939,14 +1087,91 @@ impl AppRoot {
             }
             column
         };
-        Dialog::new("Voice devices")
+        let cameras = self
+            .voice
+            .as_ref()
+            .map(|voice| voice.engine.cameras())
+            .unwrap_or_default();
+        let mut camera_column = div()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .child(text(Variant::Subtitle2, "Camera").text_color(sem.text_primary));
+        if cameras.is_empty() {
+            camera_column = camera_column.child(text(Variant::Body2, "None found"));
+        }
+        for (index, (id, name)) in cameras.into_iter().enumerate() {
+            let voice = self.voice.clone();
+            camera_column = camera_column.child(
+                Button::new(
+                    ElementId::NamedInteger("device-camera".into(), index as u64),
+                    name,
+                )
+                .on_click(move |_, _, _| {
+                    if let Some(voice) = &voice {
+                        voice.engine.select_camera(Some(id.clone()));
+                    }
+                }),
+            );
+        }
+        let share = self.settings.get().voice.screen_share;
+        let this = cx.entity().downgrade();
+        let sizes = ShareSize::ALL.iter().map(|size| {
+            let (size, this) = (*size, this.clone());
+            Radio::new(
+                ElementId::Name(format!("share-size-{}", size.label()).into()),
+                size.label(),
+                share.resolution == size,
+            )
+            .on_select(move |_, cx| {
+                this.update(cx, |root, cx| {
+                    root.set_share_settings(|s| s.resolution = size, cx)
+                })
+                .ok();
+            })
+        });
+        let rates = SHARE_FPS.iter().map(|fps| {
+            let (fps, this) = (*fps, this.clone());
+            Radio::new(
+                ElementId::Name(format!("share-fps-{fps}").into()),
+                format!("{fps} fps"),
+                share.fps == fps,
+            )
+            .on_select(move |_, cx| {
+                this.update(cx, |root, cx| root.set_share_settings(|s| s.fps = fps, cx))
+                    .ok();
+            })
+        });
+        let audio_this = this.clone();
+        let share_column = div()
+            .flex()
+            .flex_col()
+            .gap(px(4.))
+            .child(text(Variant::Subtitle2, "Screen share").text_color(sem.text_primary))
+            .child(div().flex().flex_wrap().children(sizes))
+            .child(div().flex().flex_wrap().children(rates))
+            .child(
+                Switch::new("share-audio", "Share system audio", share.audio).on_change(
+                    move |on, _, cx| {
+                        audio_this
+                            .update(cx, |root, cx| root.set_share_settings(|s| s.audio = on, cx))
+                            .ok();
+                    },
+                ),
+            );
+        Dialog::new("Voice settings")
             .body(
                 div()
+                    .id("voice-settings-body")
+                    .max_h(px(520.))
+                    .overflow_y_scroll()
                     .flex()
                     .flex_col()
                     .gap(px(16.))
                     .child(list("Input", "device-input", devices.inputs, true))
-                    .child(list("Output", "device-output", devices.outputs, false)),
+                    .child(list("Output", "device-output", devices.outputs, false))
+                    .child(camera_column)
+                    .child(share_column),
             )
             .action(
                 Button::new("devices-done", "Done").on_click(move |_, _, cx| {
@@ -1160,6 +1385,10 @@ impl Render for AppRoot {
                 })
                 .when(self.devices_open, |root| {
                     root.child(self.devices_dialog(cx))
+                })
+                .when(self.more_open, |root| root.child(self.more_dialog(cx)))
+                .when_some(self.picker.clone(), |root, picker| {
+                    root.child(self.picker_dialog(&picker, cx))
                 })
                 .children(self.viewer_overlay(cx));
         }
