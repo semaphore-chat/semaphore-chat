@@ -293,6 +293,114 @@ async fn a_dm_message_moves_its_group_up_and_an_unknown_group_reads_the_list() {
     assert_eq!(rig.backend.w2.count("dms"), 2, "a new group: read again");
 }
 
+fn preview(rig: &Rig, dm_id: &str) -> String {
+    rig.core
+        .dm(dm_id.into())
+        .unwrap()
+        .last_message
+        .unwrap()
+        .text
+}
+
+#[tokio::test]
+async fn the_preview_follows_an_edit_and_a_delete_over_the_socket() {
+    let rig = w2_rig().await;
+    rig.core.dm_list();
+    rig.core.run_until_idle().await;
+    let last = format!("last-{GROUP}");
+
+    // Another message in the group changes nothing.
+    rig.core.ingest(event(
+        "updateMessage",
+        json!({ "message": dm_message("m-old", GROUP, BOB, "older", "2026-09-22T15:00:00.000Z") }),
+    ));
+    assert_eq!(preview(&rig, GROUP), "plans");
+
+    rig.events.take();
+    rig.core.ingest(event(
+        "updateMessage",
+        json!({ "message": dm_message(&last, GROUP, ALICE, "new plans", "2026-09-22T16:00:00.000Z") }),
+    ));
+    assert!(viewed(&rig.events.take(), &ViewKey::DirectMessages));
+    assert_eq!(preview(&rig, GROUP), "new plans");
+    assert_eq!(
+        rig.core.dm_list().rows[1].id,
+        GROUP,
+        "an edit doesn't move the row"
+    );
+
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": "m-old", "channelId": null, "directMessageGroupId": GROUP }),
+    ));
+    rig.core.run_until_idle().await;
+    assert_eq!(
+        rig.backend.w2.count("dms"),
+        1,
+        "not the preview: no refetch"
+    );
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": last, "channelId": null, "directMessageGroupId": GROUP }),
+    ));
+    rig.core.run_until_idle().await;
+    assert_eq!(
+        rig.backend.w2.count("dms"),
+        2,
+        "the preview went: the list says what came before it"
+    );
+}
+
+#[tokio::test]
+async fn the_preview_follows_my_own_edit_and_delete() {
+    let rig = w2_unsigned();
+    let mine = "6f0c3a52-1c1e-4b0e-9d43-2b8a5e0c0e01";
+    let mut dms = rig.backend.w2.answers.lock().unwrap()["dms"].clone();
+    dms[0]["lastMessage"]["id"] = json!(mine);
+    dms[0]["lastMessage"]["authorId"] = json!(ME);
+    rig.backend.w2.answer("dms", dms);
+    let dto = serde_json::from_value(dm_message(
+        mine,
+        DM_ALICE,
+        ME,
+        "hi",
+        "2026-09-22T17:00:00.000Z",
+    ))
+    .unwrap();
+    rig.backend
+        .messages
+        .lock()
+        .unwrap()
+        .insert(DM_ALICE.into(), vec![dto]);
+    let rig = rig.signed_in().await;
+    rig.core.dm_list();
+    rig.core
+        .open_conversation(Conversation::DirectMessage {
+            id: DM_ALICE.into(),
+        })
+        .await
+        .unwrap();
+    rig.core.run_until_idle().await;
+
+    let draft = semaphore_core::model::MessageDraft {
+        text: "hi there".into(),
+        ..Default::default()
+    };
+    rig.core
+        .edit_message(mine.into(), draft, None)
+        .await
+        .unwrap();
+    assert_eq!(preview(&rig, DM_ALICE), "hi there");
+
+    rig.core.delete_message(mine.into(), None).await.unwrap();
+    rig.core.run_until_idle().await;
+    assert_eq!(
+        rig.backend.w2.count("dms"),
+        2,
+        "read again for what came before"
+    );
+}
+
 #[tokio::test]
 async fn creating_a_dm_puts_it_first_and_an_existing_one_is_not_repeated() {
     let rig = w2_rig().await;

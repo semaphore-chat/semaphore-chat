@@ -132,6 +132,58 @@ impl State {
         self.view_changed(crate::model::ViewKey::DirectMessages);
     }
 
+    /// A message changed where it's shown (edited, by me or over the socket): a DM whose preview
+    /// it is shows the new text. A removal blanks it, so the list is read for what the server
+    /// shows instead.
+    pub(crate) fn w2_dm_message_changed(&mut self, dto: &MessageDto) {
+        let Some(group_id) = dto.direct_message_group_id.as_deref() else {
+            return;
+        };
+        let key = keys::op(keys::DMS);
+        let Some(last) = self
+            .cache
+            .dm_groups_mut(&key)
+            .and_then(|groups| groups.iter_mut().find(|group| group.id == group_id))
+            .and_then(|group| group.last_message.as_mut())
+            .filter(|last| last.id == dto.id)
+        else {
+            return;
+        };
+        if dto.deleted_at.is_some() {
+            self.invalidate(&key);
+            return;
+        }
+        // A reaction or a pin goes through here too, and changes nothing the row shows.
+        let same = serde_json::to_value(&last.spans).ok() == serde_json::to_value(&dto.spans).ok();
+        if same {
+            return;
+        }
+        last.spans = dto.spans.clone();
+        self.note_direct_update(&key);
+        self.view_changed(crate::model::ViewKey::DirectMessages);
+    }
+
+    /// A message went (deleted, by me or over the socket). If it was a DM's preview, the list is
+    /// read again: the one before it may not be loaded, and the server's list names it.
+    pub(crate) fn w2_dm_message_gone(&mut self, group_id: Option<&str>, message_id: &str) {
+        let Some(group_id) = group_id else {
+            return;
+        };
+        let key = keys::op(keys::DMS);
+        let was_preview = self.cache.dm_groups(&key).is_some_and(|groups| {
+            groups.iter().any(|group| {
+                group.id == group_id
+                    && group
+                        .last_message
+                        .as_ref()
+                        .is_some_and(|last| last.id == message_id)
+            })
+        });
+        if was_preview {
+            self.invalidate(&key);
+        }
+    }
+
     /// Unread counts or presence changed: the rows show both.
     pub(crate) fn w2_dms_touched(&mut self) {
         if self.cache.dm_groups(&keys::op(keys::DMS)).is_some() {
