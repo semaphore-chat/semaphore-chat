@@ -267,10 +267,28 @@ jobs:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
 
       # Firefox's page script can send what Chromium's can't. Only this spec.
+      # No `--with-deps` up front: it runs apt on the runner, which fails when
+      # GitHub's Ubuntu mirrors are unreachable (issue #664). System libraries
+      # are installed only if the spec fails without them.
       - name: Run token delivery spec on Firefox
         working-directory: frontend
         run: |
-          timeout 240 pnpm exec playwright install --with-deps firefox
+          installed=0
+          for attempt in 1 2 3; do
+            echo "Playwright Firefox install attempt $attempt…"
+            if timeout 240 pnpm exec playwright install firefox; then
+              installed=1; break
+            fi
+            echo "Attempt $attempt failed/stalled; retrying…"; sleep 5
+          done
+          if [ "$installed" != 1 ]; then
+            echo "Playwright Firefox install failed after 3 attempts"; exit 1
+          fi
+          if pnpm exec playwright test --project=auth-token-delivery-firefox; then
+            exit 0
+          fi
+          echo "::notice::Firefox spec failed without system deps; installing them with apt and retrying once"
+          timeout 240 sudo -E env "PATH=$PATH" pnpm exec playwright install-deps firefox
           pnpm exec playwright test --project=auth-token-delivery-firefox
         env:
           CI: true
