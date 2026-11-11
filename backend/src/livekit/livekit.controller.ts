@@ -283,6 +283,12 @@ export class LivekitController {
    * Creates a temporary file, streams it, and deletes it after streaming completes
    */
   @Get('replay/stream')
+  @ApiOkResponse({
+    description: 'MP4 replay clip download',
+    content: {
+      'video/mp4': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   async streamReplay(
     @Query() query: StreamReplayDto,
     @Req() req: AuthenticatedRequest,
@@ -355,6 +361,12 @@ export class LivekitController {
    * Returns the playlist file for the user's active session
    */
   @Get('replay/preview/playlist.m3u8')
+  @ApiOkResponse({
+    description: 'HLS playlist (m3u8) for the active preview session',
+    content: {
+      'application/vnd.apple.mpegurl': { schema: { type: 'string' } },
+    },
+  })
   async getPreviewPlaylist(
     @Req() req: AuthenticatedRequest,
     @Res() res: Response,
@@ -374,6 +386,12 @@ export class LivekitController {
    * for HLS.js compatibility (LiveKit egress creates HDMV-style TS)
    */
   @Get('replay/preview/segment/:segmentFile')
+  @ApiOkResponse({
+    description: 'Remuxed MPEG-TS segment',
+    content: {
+      'video/mp2t': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   async getPreviewSegment(
     @Param('segmentFile') segmentFile: string,
     @Req() req: AuthenticatedRequest,

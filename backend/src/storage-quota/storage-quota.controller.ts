@@ -12,7 +12,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { StorageQuotaService } from './storage-quota.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
@@ -63,6 +63,9 @@ export class StorageQuotaController {
   @RequiredActions(RbacActions.MANAGE_USER_STORAGE)
   @RbacResource({ type: RbacResourceType.INSTANCE })
   @ApiOkResponse({ type: UserStorageListResponseDto })
+  @ApiQuery({ name: 'skip', required: false, type: 'integer' })
+  @ApiQuery({ name: 'take', required: false, type: 'integer' })
+  @ApiQuery({ name: 'minPercentUsed', required: false, type: 'integer' })
   async getUsersStorageList(
     @Query('skip', new DefaultValuePipe(0), ParseIntPipe) skip: number,
     @Query('take', new DefaultValuePipe(20), ParseIntPipe) take: number,

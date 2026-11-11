@@ -19,6 +19,7 @@ import {
   ApiBearerAuth,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 
 import { CommunityService } from './community.service';
@@ -116,6 +117,7 @@ export class CommunityController {
   @RequiredActions(RbacActions.READ_ALL_COMMUNITIES)
   @RbacResource({ type: RbacResourceType.INSTANCE })
   @ApiOkResponse({ type: CommunityStatsListResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   findAllWithStats(
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,
     @Query('continuationToken') continuationToken?: string,

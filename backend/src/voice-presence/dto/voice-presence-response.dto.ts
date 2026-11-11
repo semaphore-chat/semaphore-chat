@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class VoicePresenceUserDto {
   id: string;
   username: string;
@@ -11,12 +13,14 @@ export class VoicePresenceUserDto {
 export class ChannelVoicePresenceResponseDto {
   channelId: string;
   users: VoicePresenceUserDto[];
+  @ApiProperty({ type: 'integer' })
   count: number;
 }
 
 export class DmVoicePresenceResponseDto {
   dmGroupId: string;
   users: VoicePresenceUserDto[];
+  @ApiProperty({ type: 'integer' })
   count: number;
 }
 

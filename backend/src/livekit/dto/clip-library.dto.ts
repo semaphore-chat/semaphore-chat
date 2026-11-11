@@ -28,7 +28,10 @@ export class ShareClipDto {
    * - 'channel': Post to specified channel
    * - 'dm': Send to specified DM group
    */
-  @ApiProperty({ enum: ['channel', 'dm'] })
+  @ApiProperty({
+    enum: ['channel', 'dm'],
+    enumName: 'ShareClipDestination',
+  })
   @IsEnum(['channel', 'dm'], {
     message: 'Destination must be channel or dm',
   })
@@ -58,10 +61,12 @@ export class ClipResponseDto {
   id: string;
   fileId: string;
   channelId: string | null;
+  @ApiProperty({ type: 'integer' })
   durationSeconds: number;
   isPublic: boolean;
   capturedAt: Date;
   downloadUrl: string;
+  @ApiProperty({ type: 'integer', format: 'int64' })
   sizeBytes: number;
   filename: string;
 }
@@ -72,6 +77,9 @@ export class ClipResponseDto {
 export class ShareClipResponseDto {
   messageId: string;
   clipId: string;
-  @ApiProperty({ enum: ['channel', 'dm'] })
+  @ApiProperty({
+    enum: ['channel', 'dm'],
+    enumName: 'ShareClipDestination',
+  })
   destination: 'channel' | 'dm';
 }

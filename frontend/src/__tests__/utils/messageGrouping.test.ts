@@ -39,7 +39,7 @@ describe('shouldGroupWithPrevious', () => {
       authorId: 'u1',
       sentAt: at(16, 1),
       replyToId: 'm-0',
-      replyTo: { id: 'm-0', authorId: 'u2', spans: [], sentAt: at(15, 0) },
+      replyTo: { id: 'm-0', authorId: 'u2', spans: [], sentAt: at(15, 0), deletedAt: null },
     });
     expect(shouldGroupWithPrevious(prev, curr)).toBe(false);
     // A reply whose target was hard-deleted (replyTo: null) is still a reply.

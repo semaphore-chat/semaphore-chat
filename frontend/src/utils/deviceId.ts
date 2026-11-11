@@ -16,9 +16,10 @@ const memoryIds = new Map<string, string>();
 /**
  * A random v4 UUID. crypto.randomUUID only exists in secure contexts, and a
  * self-hosted instance may be served over plain HTTP on a LAN;
- * getRandomValues works everywhere.
+ * getRandomValues works everywhere. Also used for a send's nonce, which has
+ * the same constraint.
  */
-function randomUuid(): string {
+export function randomUuid(): string {
   if (typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
   }

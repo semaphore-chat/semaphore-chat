@@ -45,7 +45,7 @@ export class AuthorizeDesktopLoginRequestDto {
   @Matches(/^[A-Za-z0-9_-]{43}$/)
   codeChallenge: string;
 
-  @ApiProperty({ enum: ['S256'] })
+  @ApiProperty({ enum: ['S256'], enumName: 'CodeChallengeMethod' })
   @IsIn(['S256'])
   codeChallengeMethod: 'S256';
 

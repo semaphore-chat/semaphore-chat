@@ -80,22 +80,18 @@ export class ClipMessageListener {
     );
     const message = await this.messagesService.create(messagePayload);
 
-    // Enrich with file metadata for WebSocket clients
-    const enrichedMessage =
-      this.messagesService.enrichMessageWithFileMetadata(message);
-
     // Emit WebSocket event to notify channel/DM members
     if (event.destination === 'channel' && event.targetChannelId) {
       this.websocketService.sendToRoom(
         event.targetChannelId,
         ServerEvents.NEW_MESSAGE,
-        { message: toWireMessage(enrichedMessage) },
+        { message: toWireMessage(message) },
       );
     } else if (event.destination === 'dm' && event.targetDirectMessageGroupId) {
       this.websocketService.sendToRoom(
         RoomName.dmGroup(event.targetDirectMessageGroupId),
         ServerEvents.NEW_DM,
-        { message: toWireMessage(enrichedMessage) },
+        { message: toWireMessage(message) },
       );
     }
 

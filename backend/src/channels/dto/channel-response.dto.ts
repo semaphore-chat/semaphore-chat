@@ -10,12 +10,14 @@ export class ChannelDto {
   name: string;
   communityId: string;
   createdAt: Date;
-  @ApiProperty({ enum: ChannelTypeValues })
+  @ApiProperty({ enum: ChannelTypeValues, enumName: 'ChannelType' })
   type: ChannelType;
+  @ApiProperty({ type: 'integer' })
   position: number;
+  @ApiProperty({ type: 'integer' })
   slowmodeSeconds: number;
   isPrivate: boolean;
   /** Display label for the permission preset (enforcement uses overwrites). */
-  @ApiProperty({ enum: ChannelPresetValues })
+  @ApiProperty({ enum: ChannelPresetValues, enumName: 'ChannelPreset' })
   preset: ChannelPreset;
 }

@@ -15,6 +15,7 @@ import {
   ResourceType,
   StorageType,
 } from '@prisma/client';
+import { ErrorCode } from '@semaphore-chat/shared';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { PermissionsService } from '@/roles/permissions.service';
 import { createHash } from 'crypto';
@@ -86,6 +87,10 @@ export class FileUploadService {
     if (!allowed) {
       throw new ForbiddenException(
         'You cannot upload a file for this resource',
+        {
+          description: 'Forbidden',
+          errorCode: ErrorCode.UPLOAD_TARGET_NOT_ALLOWED,
+        },
       );
     }
   }
@@ -125,6 +130,10 @@ export class FileUploadService {
         await this.cleanupFile(file.path);
         throw new PayloadTooLargeException(
           quotaCheck.message || 'Storage quota exceeded',
+          {
+            description: 'Payload Too Large',
+            errorCode: ErrorCode.STORAGE_QUOTA_EXCEEDED,
+          },
         );
       }
 

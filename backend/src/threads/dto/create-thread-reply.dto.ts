@@ -3,11 +3,12 @@ import {
   IsOptional,
   IsArray,
   IsInt,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, OmitType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
@@ -32,12 +33,24 @@ export class CreateThreadReplyDto {
   @IsInt()
   @Min(0)
   @IsOptional()
+  @ApiPropertyOptional({ type: 'integer' })
   pendingAttachments?: number;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }
 
 /**
- * The REST body: the parent comes from the route. A real class, because the
- * validation pipe skips a body typed `Omit<...>` (no runtime type).
+ * The REST body of `POST /threads/:parentMessageId/replies`: the parent message
+ * comes from the path. A class, not `Omit<CreateThreadReplyDto, ...>`: the
+ * ValidationPipe validates against the parameter's metatype, and a mapped type
+ * erases it, which let an empty nonce and a non-array `attachments` through.
  */
 export class CreateThreadReplyBodyDto extends OmitType(CreateThreadReplyDto, [
   'parentMessageId',

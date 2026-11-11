@@ -4,9 +4,53 @@
  * Shared payload type definitions for all WebSocket events.
  */
 
-import { Message, Reaction } from '../types/message.types';
-import { Channel } from '../types/channel.types';
-import { NewNotificationPayload, NotificationReadPayload } from '../types/notification.types';
+import type {
+  ChannelCreatedPayloadDto,
+  ChannelDeletedPayloadDto,
+  ChannelPermissionsUpdatedPayloadDto,
+  ChannelUpdatedPayloadDto,
+  ChannelsReorderedPayloadDto,
+  CommunityDeletedPayloadDto,
+  CommunityUpdatedPayloadDto,
+  DeleteMessagePayloadDto,
+  DesktopSignInPayloadDto,
+  DmVoiceCallStartedPayloadDto,
+  DmVoiceUserJoinedPayloadDto,
+  DmVoiceUserLeftPayloadDto,
+  EgressSegmentsReadyPayloadDto,
+  MemberAddedToCommunityPayloadDto,
+  MessagePinnedPayloadDto,
+  MessageUnpinnedPayloadDto,
+  NewMessagePayloadDto,
+  NewThreadReplyPayloadDto,
+  ReactionAddedPayloadDto,
+  ReactionRemovedPayloadDto,
+  ReadReceiptUpdatedPayloadDto,
+  ReauthenticateResultDto,
+  ReplayBufferFailedPayloadDto,
+  ReplayBufferStoppedPayloadDto,
+  RoleAssignedPayloadDto,
+  RoleCreatedPayloadDto,
+  RoleDeletedPayloadDto,
+  RoleUnassignedPayloadDto,
+  RoleUpdatedPayloadDto,
+  SessionTerminatedPayloadDto,
+  ThreadReplyCountUpdatedPayloadDto,
+  TimeoutRemovedPayloadDto,
+  TokenExpiringPayloadDto,
+  UpdateMessagePayloadDto,
+  UserBannedPayloadDto,
+  UserKickedPayloadDto,
+  UserPresencePayloadDto,
+  UserProfileUpdatedPayloadDto,
+  UserTimedOutPayloadDto,
+  UserTypingPayloadDto,
+  VoiceChannelUserJoinedPayloadDto,
+  VoiceChannelUserLeftPayloadDto,
+  VoiceChannelUserUpdatedPayloadDto,
+  VoicePresenceUserDto,
+} from '../generated';
+import type { NewNotificationPayload, NotificationReadPayload } from '../types/notification.types';
 import { ServerEvents } from '../events/server-events.enum';
 
 // Re-export notification payloads for convenience
@@ -16,135 +60,51 @@ export type { NewNotificationPayload, NotificationReadPayload };
 // Common Types
 // =============================================================================
 
-export interface UserPresenceInfo {
-  userId: string;
-  username?: string;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-}
+export type UserPresenceInfo = UserPresencePayloadDto;
 
-export interface VoicePresenceUser {
-  id: string;
-  username: string;
-  displayName?: string;
-  avatarUrl?: string;
-  joinedAt: Date | string;
-  isDeafened?: boolean;
-  isServerMuted?: boolean;
-}
+export type VoicePresenceUser = VoicePresenceUserDto;
 
 // =============================================================================
 // Session Lifecycle Payloads
 // =============================================================================
 
-/**
- * Why the server ended a socket's session. Sent in SESSION_TERMINATED right
- * before the server disconnects the socket.
- *
- * - TOKEN_EXPIRED: the access token expired without a REAUTHENTICATE; a
- *   refreshed token is enough to reconnect.
- * - LOGGED_OUT / SESSION_REVOKED / PASSWORD_CHANGED: the session (or all of
- *   the user's sessions) was revoked; refreshing fails unless the client
- *   holds another valid session.
- * - ACCOUNT_BANNED / ACCOUNT_DELETED: the account can no longer sign in.
- */
-export type SessionTerminatedReason =
-  | 'TOKEN_EXPIRED'
-  | 'LOGGED_OUT'
-  | 'SESSION_REVOKED'
-  | 'PASSWORD_CHANGED'
-  | 'ACCOUNT_BANNED'
-  | 'ACCOUNT_DELETED';
+export type { SessionTerminatedReason } from '../generated';
 
-export interface DesktopSignInPayload {
-  /** Where the app signed in from, as the server saw it. */
-  ipAddress: string | null;
-  signedInAt: string;
-}
+export type DesktopSignInPayload = DesktopSignInPayloadDto;
 
-export interface SessionTerminatedPayload {
-  reason: SessionTerminatedReason;
-}
+export type SessionTerminatedPayload = SessionTerminatedPayloadDto;
 
-export interface TokenExpiringPayload {
-  /** When the socket's current access token expires (ISO 8601). */
-  expiresAt: string;
-}
+export type TokenExpiringPayload = TokenExpiringPayloadDto;
 
-/** Acknowledgement of a REAUTHENTICATE request. */
-export type ReauthenticateResult =
-  | { ok: true; expiresAt: string }
-  | { ok: false; error: 'AUTH_FAILED' };
+export type ReauthenticateResult = ReauthenticateResultDto;
 
 // =============================================================================
 // Acknowledgment & Error Payloads
 // =============================================================================
 
-export interface AckPayload {
-  id: string;
-  [key: string]: unknown;
-}
-
-export interface ErrorPayload {
-  message: string;
-  code?: string | number;
-  [key: string]: unknown;
-}
-
 // =============================================================================
 // Message Payloads
 // =============================================================================
 
-export interface NewMessagePayload {
-  message: Message;
-}
+export type NewMessagePayload = NewMessagePayloadDto;
 
-export interface UpdateMessagePayload {
-  message: Message;
-}
+export type UpdateMessagePayload = UpdateMessagePayloadDto;
 
-export interface DeleteMessagePayload {
-  messageId: string;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-}
+export type DeleteMessagePayload = DeleteMessagePayloadDto;
 
 // =============================================================================
 // Reaction Payloads
 // =============================================================================
 
-export interface ReactionAddedPayload {
-  messageId: string;
-  reaction: Reaction;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-  parentMessageId?: string | null;
-}
+export type ReactionAddedPayload = ReactionAddedPayloadDto;
 
-export interface ReactionRemovedPayload {
-  messageId: string;
-  emoji: string;
-  reactions: Reaction[];
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-  parentMessageId?: string | null;
-}
+export type ReactionRemovedPayload = ReactionRemovedPayloadDto;
 
 // =============================================================================
 // Read Receipt Payloads
 // =============================================================================
 
-export interface ReadReceiptUpdatedPayload {
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-  lastReadMessageId: string;
-  lastReadAt: string;
-  /** Present when broadcast to DM room (not on user-room self-sync) */
-  userId?: string;
-  username?: string;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-}
+export type ReadReceiptUpdatedPayload = ReadReceiptUpdatedPayloadDto;
 
 // =============================================================================
 // Presence & Typing Payloads
@@ -154,266 +114,116 @@ export type UserOnlinePayload = UserPresenceInfo;
 
 export type UserOfflinePayload = UserPresenceInfo;
 
-export interface UserTypingPayload {
-  userId: string;
-  channelId?: string;
-  directMessageGroupId?: string;
-  isTyping: boolean;
-}
+export type UserTypingPayload = UserTypingPayloadDto;
 
 // =============================================================================
 // Voice Channel Payloads
 // =============================================================================
 
-export interface VoiceChannelUserJoinedPayload {
-  channelId: string;
-  user: VoicePresenceUser;
-}
+export type VoiceChannelUserJoinedPayload = VoiceChannelUserJoinedPayloadDto;
 
-export interface VoiceChannelUserLeftPayload {
-  channelId: string;
-  userId: string;
-  user: VoicePresenceUser;
-}
+export type VoiceChannelUserLeftPayload = VoiceChannelUserLeftPayloadDto;
 
-export interface VoiceChannelUserUpdatedPayload {
-  channelId: string;
-  userId: string;
-  user: VoicePresenceUser;
-}
+export type VoiceChannelUserUpdatedPayload = VoiceChannelUserUpdatedPayloadDto;
 
 // =============================================================================
 // DM Voice Call Payloads
 // =============================================================================
 
-export interface DmVoiceCallStartedPayload {
-  dmGroupId: string;
-  startedBy: string;
-  starter: {
-    id: string;
-    username: string;
-    displayName?: string | null;
-    avatarUrl?: string | null;
-  };
-}
+export type DmVoiceCallStartedPayload = DmVoiceCallStartedPayloadDto;
 
-export interface DmVoiceUserJoinedPayload {
-  dmGroupId: string;
-  user: VoicePresenceUser;
-}
+export type DmVoiceUserJoinedPayload = DmVoiceUserJoinedPayloadDto;
 
-export interface DmVoiceUserLeftPayload {
-  dmGroupId: string;
-  userId: string;
-  user: VoicePresenceUser;
-}
+export type DmVoiceUserLeftPayload = DmVoiceUserLeftPayloadDto;
 
-export interface DmVoiceUserUpdatedPayload {
-  dmGroupId: string;
-  userId: string;
-  user: VoicePresenceUser;
-}
 
 // =============================================================================
 // Replay Buffer (Screen Recording) Payloads
 // =============================================================================
 
-export interface ReplayBufferStoppedPayload {
-  sessionId: string;
-  egressId: string;
-  channelId: string;
-}
+export type ReplayBufferStoppedPayload = ReplayBufferStoppedPayloadDto;
 
-export interface ReplayBufferFailedPayload {
-  sessionId: string;
-  egressId: string;
-  channelId: string;
-  error: string;
-}
+export type ReplayBufferFailedPayload = ReplayBufferFailedPayloadDto;
 
 // =============================================================================
 // Channel Management Payloads
 // =============================================================================
 
-export interface ChannelsReorderedPayload {
-  communityId: string;
-  channels: Channel[];
-}
+export type ChannelsReorderedPayload = ChannelsReorderedPayloadDto;
 
 // =============================================================================
 // Moderation Payloads
 // =============================================================================
 
-export interface UserBannedPayload {
-  communityId: string;
-  userId: string;
-  moderatorId: string;
-  reason?: string;
-  expiresAt?: string;
-}
+export type UserBannedPayload = UserBannedPayloadDto;
 
-export interface UserKickedPayload {
-  communityId: string;
-  userId: string;
-  moderatorId: string;
-  reason?: string;
-}
+export type UserKickedPayload = UserKickedPayloadDto;
 
-export interface UserTimedOutPayload {
-  communityId: string;
-  userId: string;
-  moderatorId: string;
-  reason?: string;
-  durationSeconds: number;
-  expiresAt: string;
-}
+export type UserTimedOutPayload = UserTimedOutPayloadDto;
 
-export interface TimeoutRemovedPayload {
-  communityId: string;
-  userId: string;
-  moderatorId: string;
-  reason?: string;
-}
+export type TimeoutRemovedPayload = TimeoutRemovedPayloadDto;
 
-export interface MessagePinnedPayload {
-  messageId: string;
-  channelId: string;
-  pinnedBy: string;
-  pinnedAt: string;
-}
+export type MessagePinnedPayload = MessagePinnedPayloadDto;
 
-export interface MessageUnpinnedPayload {
-  messageId: string;
-  channelId: string;
-  unpinnedBy: string;
-}
+export type MessageUnpinnedPayload = MessageUnpinnedPayloadDto;
 
-export interface NewThreadReplyPayload {
-  reply: Message;
-  parentMessageId: string;
-}
+export type NewThreadReplyPayload = NewThreadReplyPayloadDto;
 
-export interface UpdateThreadReplyPayload {
-  reply: Message;
-  parentMessageId: string;
-}
 
-export interface DeleteThreadReplyPayload {
-  replyId: string;
-  parentMessageId: string;
-}
 
-export interface ThreadReplyCountUpdatedPayload {
-  parentMessageId: string;
-  replyCount: number;
-  lastReplyAt: string | null;
-  channelId?: string | null;
-  directMessageGroupId?: string | null;
-}
+export type ThreadReplyCountUpdatedPayload = ThreadReplyCountUpdatedPayloadDto;
 
 // =============================================================================
 // Community Membership Payloads
 // =============================================================================
 
-export interface MemberAddedToCommunityPayload {
-  communityId: string;
-  userId: string;
-}
+export type MemberAddedToCommunityPayload = MemberAddedToCommunityPayloadDto;
 
 // =============================================================================
 // Channel Lifecycle Payloads
 // =============================================================================
 
-export interface ChannelCreatedPayload {
-  communityId: string;
-  channel: Channel;
-}
+export type ChannelCreatedPayload = ChannelCreatedPayloadDto;
 
-export interface ChannelUpdatedPayload {
-  communityId: string;
-  channel: Channel;
-}
+export type ChannelUpdatedPayload = ChannelUpdatedPayloadDto;
 
-export interface ChannelPermissionsUpdatedPayload {
-  communityId: string;
-  channelId: string;
-}
+export type ChannelPermissionsUpdatedPayload = ChannelPermissionsUpdatedPayloadDto;
 
-export interface ChannelDeletedPayload {
-  communityId: string;
-  channelId: string;
-}
+export type ChannelDeletedPayload = ChannelDeletedPayloadDto;
 
 // =============================================================================
 // Community Lifecycle Payloads
 // =============================================================================
 
-export interface CommunityUpdatedPayload {
-  communityId: string;
-  name?: string;
-  description?: string | null;
-  avatar?: string | null;
-  banner?: string | null;
-}
+export type CommunityUpdatedPayload = CommunityUpdatedPayloadDto;
 
-export interface CommunityDeletedPayload {
-  communityId: string;
-}
+export type CommunityDeletedPayload = CommunityDeletedPayloadDto;
 
 // =============================================================================
 // Role Management Payloads
 // =============================================================================
 
-export interface RoleCreatedPayload {
-  communityId: string;
-  roleId: string;
-  roleName: string;
-}
+export type RoleCreatedPayload = RoleCreatedPayloadDto;
 
-export interface RoleUpdatedPayload {
-  communityId: string;
-  roleId: string;
-  roleName: string;
-}
+export type RoleUpdatedPayload = RoleUpdatedPayloadDto;
 
-export interface RoleDeletedPayload {
-  communityId: string;
-  roleId: string;
-}
+export type RoleDeletedPayload = RoleDeletedPayloadDto;
 
-export interface RoleAssignedPayload {
-  communityId: string;
-  userId: string;
-  roleId: string;
-  roleName: string;
-}
+export type RoleAssignedPayload = RoleAssignedPayloadDto;
 
-export interface RoleUnassignedPayload {
-  communityId: string;
-  userId: string;
-  roleId: string;
-}
+export type RoleUnassignedPayload = RoleUnassignedPayloadDto;
 
 // =============================================================================
 // User Profile Payloads
 // =============================================================================
 
-export interface UserProfileUpdatedPayload {
-  userId: string;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-  bannerUrl?: string | null;
-  bio?: string | null;
-}
+export type UserProfileUpdatedPayload = UserProfileUpdatedPayloadDto;
 
 // =============================================================================
 // Egress Payloads
 // =============================================================================
 
-export interface EgressSegmentsReadyPayload {
-  sessionId: string;
-  channelId: string;
-}
+export type EgressSegmentsReadyPayload = EgressSegmentsReadyPayloadDto;
 
 // =============================================================================
 // Server Events Payload Map
@@ -458,7 +268,6 @@ export type ServerEventPayloads = {
   [ServerEvents.DM_VOICE_CALL_STARTED]: DmVoiceCallStartedPayload;
   [ServerEvents.DM_VOICE_USER_JOINED]: DmVoiceUserJoinedPayload;
   [ServerEvents.DM_VOICE_USER_LEFT]: DmVoiceUserLeftPayload;
-  [ServerEvents.DM_VOICE_USER_UPDATED]: DmVoiceUserUpdatedPayload;
 
   // Replay Buffer (Screen Recording)
   [ServerEvents.REPLAY_BUFFER_STOPPED]: ReplayBufferStoppedPayload;
@@ -475,8 +284,6 @@ export type ServerEventPayloads = {
   [ServerEvents.MESSAGE_PINNED]: MessagePinnedPayload;
   [ServerEvents.MESSAGE_UNPINNED]: MessageUnpinnedPayload;
   [ServerEvents.NEW_THREAD_REPLY]: NewThreadReplyPayload;
-  [ServerEvents.UPDATE_THREAD_REPLY]: UpdateThreadReplyPayload;
-  [ServerEvents.DELETE_THREAD_REPLY]: DeleteThreadReplyPayload;
   [ServerEvents.THREAD_REPLY_COUNT_UPDATED]: ThreadReplyCountUpdatedPayload;
 
   // Community Membership
@@ -506,8 +313,6 @@ export type ServerEventPayloads = {
   [ServerEvents.EGRESS_SEGMENTS_READY]: EgressSegmentsReadyPayload;
 
   // Acknowledgments & Errors
-  [ServerEvents.ACK]: AckPayload;
-  [ServerEvents.ERROR]: ErrorPayload;
 };
 
 export type ServerEventHandler<E extends keyof ServerEventPayloads> = (

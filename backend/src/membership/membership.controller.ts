@@ -14,7 +14,7 @@ import {
   DefaultValuePipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { MembershipService } from './membership.service';
 import { CreateMembershipDto } from './dto/create-membership.dto';
 import {
@@ -55,6 +55,7 @@ export class MembershipController {
 
   @Get('/community/:communityId')
   @ApiOkResponse({ type: PaginatedMembershipsResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MEMBER)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,
@@ -75,6 +76,7 @@ export class MembershipController {
   }
 
   @Get('/community/:communityId/search')
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @RequiredActions(RbacActions.READ_MEMBER)
   @RbacResource({
     type: RbacResourceType.COMMUNITY,

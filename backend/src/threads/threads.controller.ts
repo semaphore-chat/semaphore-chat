@@ -14,7 +14,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import { ApiCreatedResponse, ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { ThreadsService } from './threads.service';
 import { RemovedMessageVisibilityInterceptor } from '@/roles/removed-message-visibility.interceptor';
 import {
@@ -33,10 +33,10 @@ import {
 
 import { AuthenticatedRequest } from '@/types';
 import {
-  ThreadReplyDto,
   ThreadRepliesResponseDto,
   ThreadMetadataDto,
 } from './dto/thread-response.dto';
+import { MessageDto } from '@/messages/dto/message-response.dto';
 
 /**
  * Controller for thread operations.
@@ -60,17 +60,17 @@ export class ThreadsController {
     idKey: 'parentMessageId',
     source: ResourceIdSource.PARAM,
   })
-  @ApiCreatedResponse({ type: ThreadReplyDto })
+  @ApiCreatedResponse({ type: MessageDto })
   async createReply(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Body() body: CreateThreadReplyBodyDto,
     @Req() req: AuthenticatedRequest,
-  ): Promise<ThreadReplyDto> {
+  ): Promise<MessageDto> {
     const dto: CreateThreadReplyDto = {
       ...body,
       parentMessageId,
     };
-    return this.threadsService.createThreadReply(dto, req.user.id);
+    return this.threadsService.sendThreadReply(dto, req.user.id);
   }
 
   /**
@@ -84,6 +84,7 @@ export class ThreadsController {
     source: ResourceIdSource.PARAM,
   })
   @ApiOkResponse({ type: ThreadRepliesResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   async getReplies(
     @Param('parentMessageId', ParseUUIDPipe) parentMessageId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,

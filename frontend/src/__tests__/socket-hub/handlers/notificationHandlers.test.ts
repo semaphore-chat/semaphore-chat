@@ -22,6 +22,8 @@ import type { NewNotificationPayload } from '@semaphore-chat/shared';
 // Helpers
 // ---------------------------------------------------------------------------
 
+type NotificationSpan = NonNullable<NewNotificationPayload['message']>['spans'][number];
+
 function makeNotificationPayload(
   overrides: Partial<NewNotificationPayload> = {},
 ): NewNotificationPayload {
@@ -34,10 +36,12 @@ function makeNotificationPayload(
     channelName: 'general',
     directMessageGroupId: null,
     authorId: 'user-2',
-    author: { id: 'user-2', username: 'alice', avatarUrl: undefined },
+    author: { id: 'user-2', username: 'alice', displayName: null, avatarUrl: null },
     message: {
       id: 'msg-1',
-      spans: [{ type: 'PLAINTEXT', text: 'hello' }],
+      channelId: 'ch-1',
+      directMessageGroupId: null,
+      spans: [{ type: 'PLAINTEXT', text: 'hello' } as NotificationSpan],
     },
     createdAt: '2024-06-01T00:00:00Z',
     read: false,
@@ -350,12 +354,14 @@ describe('notificationHandlers', () => {
 
       const payload = makeNotificationPayload({
         notificationId: 'notif-rich',
-        author: { id: 'u-5', username: 'bob', avatarUrl: 'https://img.test/avatar.png' },
+        author: { id: 'u-5', username: 'bob', displayName: null, avatarUrl: 'https://img.test/avatar.png' },
         message: {
           id: 'msg-10',
+          channelId: 'ch-1',
+          directMessageGroupId: null,
           spans: [
-            { type: 'MENTION', text: '@alice', userId: 'u-1' },
-            { type: 'PLAINTEXT', text: ' hey' },
+            { type: 'MENTION', text: '@alice', userId: 'u-1' } as unknown as NotificationSpan,
+            { type: 'PLAINTEXT', text: ' hey' } as NotificationSpan,
           ],
         },
       });

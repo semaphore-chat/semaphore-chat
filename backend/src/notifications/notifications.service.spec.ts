@@ -2508,7 +2508,7 @@ describe('NotificationsService', () => {
           channelId: 'channel-1',
           directMessageGroupId: null,
           authorId: 'author-1',
-        } as never,
+        },
         'parent-1',
         'author-1',
       );

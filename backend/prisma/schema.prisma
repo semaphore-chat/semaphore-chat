@@ -43,6 +43,9 @@ model Message {
   // Incoming webhook attribution (set instead of authorId for webhook-posted messages)
   webhookId String?
 
+  // The sender's id for this send, so a retry gets the same message
+  clientNonce String?
+
   // Relations (composite types → proper tables)
   spans       MessageSpan[]
   reactions   MessageReaction[]
@@ -80,6 +83,9 @@ model Message {
   @@index([parentMessageId]) // For fetching thread replies
   @@index([replyToId]) // For fetching inline replies
   @@index([authorId]) // Author-based lookups
+
+  // NULLs stay distinct: sends without a nonce and webhook posts aren't limited
+  @@unique([authorId, clientNonce])
 }
 
 model MessageSpan {
@@ -125,6 +131,17 @@ model MessageReaction {
 
   @@unique([messageId, emoji, userId])
   @@index([messageId])
+}
+
+/// A deleted message's nonce, so a retry of a lost send can't bring it back.
+model MessageNonceTombstone {
+  authorId    String
+  clientNonce String
+  deletedAt   DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@id([authorId, clientNonce])
 }
 
 model MessageAttachment {
@@ -357,6 +374,9 @@ model User {
   communityTimeoutsMade     CommunityTimeout[]    @relation("TimeoutModerator")
   instanceInviteUsages      InstanceInviteUsage[] @relation("InviteUsageUser")
   resourceFiles             File[]                @relation("FileResourceUser")
+
+  messageNonceTombstones MessageNonceTombstone[]
+
 }
 
 model PasswordResetToken {

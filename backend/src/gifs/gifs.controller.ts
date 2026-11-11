@@ -23,7 +23,7 @@ export class GifsController {
    */
   @Get('search')
   @ApiOkResponse({ type: GifSearchResponseDto })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @ApiQuery({ name: 'pos', required: false })
   async search(
     @Query('q') q: string,
@@ -39,7 +39,7 @@ export class GifsController {
    */
   @Get('featured')
   @ApiOkResponse({ type: GifSearchResponseDto })
-  @ApiQuery({ name: 'limit', required: false })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
   @ApiQuery({ name: 'pos', required: false })
   async featured(
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit: number,

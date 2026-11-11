@@ -40,7 +40,7 @@ import type { VoiceState } from '../../contexts/VoiceContext';
 import { RoomContext } from '../../contexts/RoomContextDef';
 import { SpeakingProvider } from '../../contexts/SpeakingContext';
 import { SocketContext } from '../../utils/SocketContext';
-import type { Message, Span } from '../../types/message.type';
+import { EMPTY_MESSAGE_FIELDS, type Message, type Span } from '../../types/message.type';
 import { SpanType } from '../../types/message.type';
 import { SandboxShell } from './SandboxShell';
 import { StoryRoutes } from './StoryRoutes';
@@ -501,6 +501,7 @@ function ShowcaseControls({
         const id = `sc-live-${++n}`;
         const spans: Span[] = [{ type: SpanType.PLAINTEXT, text }];
         const message: Message = {
+          ...EMPTY_MESSAGE_FIELDS,
           id,
           channelId: where.channelId ?? null,
           directMessageGroupId: where.dmId ?? null,

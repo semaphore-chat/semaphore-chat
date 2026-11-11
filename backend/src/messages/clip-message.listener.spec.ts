@@ -67,7 +67,6 @@ describe('ClipMessageListener', () => {
     it('should create a message with clip text span and attachment for a channel', async () => {
       const message = { id: 'message-1', attachments: ['file-1'] };
       messagesService.create.mockResolvedValue(message as any);
-      messagesService.enrichMessageWithFileMetadata.mockReturnValue(message);
 
       await listener.handleClipMessageCreate(channelEvent);
 
@@ -87,31 +86,22 @@ describe('ClipMessageListener', () => {
       );
     });
 
-    it('should enrich the message and broadcast NEW_MESSAGE to the channel room', async () => {
+    it('should broadcast NEW_MESSAGE to the channel room', async () => {
       const message = { id: 'message-1', attachments: ['file-1'] };
-      const enriched = {
-        ...message,
-        attachmentMetadata: [{ id: 'file-1', filename: 'clip.mp4' }],
-      };
       messagesService.create.mockResolvedValue(message as any);
-      messagesService.enrichMessageWithFileMetadata.mockReturnValue(enriched);
 
       await listener.handleClipMessageCreate(channelEvent);
 
-      expect(
-        messagesService.enrichMessageWithFileMetadata,
-      ).toHaveBeenCalledWith(message);
       expect(websocketService.sendToRoom).toHaveBeenCalledWith(
         'channel-1',
         ServerEvents.NEW_MESSAGE,
-        { message: enriched },
+        { message },
       );
     });
 
     it('should create a DM message and broadcast NEW_DM to the DM group room', async () => {
       const message = { id: 'message-2', attachments: ['file-2'] };
       messagesService.create.mockResolvedValue(message as any);
-      messagesService.enrichMessageWithFileMetadata.mockReturnValue(message);
 
       await listener.handleClipMessageCreate(dmEvent);
 
@@ -139,7 +129,6 @@ describe('ClipMessageListener', () => {
     it('should return the created message id', async () => {
       const message = { id: 'message-1', attachments: ['file-1'] };
       messagesService.create.mockResolvedValue(message as any);
-      messagesService.enrichMessageWithFileMetadata.mockReturnValue(message);
 
       const result = await listener.handleClipMessageCreate(channelEvent);
 

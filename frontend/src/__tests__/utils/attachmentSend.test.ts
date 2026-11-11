@@ -237,9 +237,9 @@ describe('sendMessageWithAttachments', () => {
     let resolveSend: (r: SendMessageResult) => void = () => {};
     const send = vi.fn(() => new Promise<SendMessageResult>((r) => { resolveSend = r; }));
     void sendMessageWithAttachments({ runtime: runtime(), payload: payload(), files: files(), send });
-    const clientId = cacheMessages()[0].clientId!;
+    const { clientId, clientNonce } = cacheMessages()[0];
 
-    await handleNewMessage({ message: serverMessage([], 2) as never }, queryClient);
+    await handleNewMessage({ message: { ...serverMessage([], 2), clientNonce } as never }, queryClient);
     const [row] = cacheMessages();
     expect(row.id).toBe('msg-1');
     expect(row.clientId).toBe(clientId);

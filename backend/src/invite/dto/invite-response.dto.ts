@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 /**
  * Simplified user info for invite responses
  */
@@ -25,7 +27,9 @@ export class InviteResponseDto {
   id: string;
   code: string;
   createdById: string | null;
+  @ApiProperty({ type: 'integer', nullable: true })
   maxUses: number | null;
+  @ApiProperty({ type: 'integer' })
   uses: number;
   validUntil: Date | null;
   createdAt: Date;

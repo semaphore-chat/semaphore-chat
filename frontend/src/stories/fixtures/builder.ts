@@ -192,6 +192,7 @@ function buildChannelMessages(
         authorId: target.authorId,
         spans: target.spans,
         sentAt: target.sentAt,
+        deletedAt: null,
       },
     };
   }
@@ -338,7 +339,10 @@ export function buildScenario(options: BuildScenarioOptions = {}): Scenario {
           pinnedBy: me.id,
           replyCount: 0,
           lastReplyAt: null,
-          searchText: null,
+          linkPreviews: null,
+          replyToId: null,
+          replyTo: null,
+          webhook: null,
           pendingAttachments: 0,
           deletedBy: null,
           deletedByReason: null,

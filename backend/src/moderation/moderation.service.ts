@@ -20,7 +20,11 @@ import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { RoomEvents } from '@/rooms/room-subscription.events';
 import { RoomName } from '@/common/utils/room-name.util';
-import { groupReactions } from '@/common/utils/reactions.utils';
+import {
+  MESSAGE_INCLUDE_WITH_REPLY,
+  toMessageDto,
+} from '@/messages/message.mapper';
+import { PinnedMessageDto } from './dto/moderation-response.dto';
 import { PUBLIC_USER_SELECT } from '@/common/constants/user-select.constant';
 import {
   ModerationAction,
@@ -841,7 +845,7 @@ export class ModerationService {
     );
   }
 
-  async getPinnedMessages(channelId: string) {
+  async getPinnedMessages(channelId: string): Promise<PinnedMessageDto[]> {
     // Note: Deleted messages should have pinned set to false when deleted.
     const messages = await this.databaseService.message.findMany({
       where: {
@@ -849,25 +853,7 @@ export class ModerationService {
         pinned: true,
       },
       orderBy: { pinnedAt: 'asc' },
-      include: {
-        attachments: {
-          include: {
-            file: {
-              select: {
-                id: true,
-                filename: true,
-                mimeType: true,
-                fileType: true,
-                size: true,
-                thumbnailPath: true,
-              },
-            },
-          },
-          orderBy: { position: 'asc' as const },
-        },
-        spans: { orderBy: { position: 'asc' as const } },
-        reactions: true,
-      },
+      include: MESSAGE_INCLUDE_WITH_REPLY,
     });
 
     // Filter out deleted messages in memory (handles both null and undefined)
@@ -895,22 +881,11 @@ export class ModerationService {
 
     const authorMap = new Map(authors.map((author) => [author.id, author]));
 
-    // Transform messages: add author, format attachments and reactions
     return activeMessages.map((message) => ({
-      ...message,
+      ...toMessageDto(message),
       author: message.authorId
         ? (authorMap.get(message.authorId) ?? null)
         : null,
-      spans: message.spans ?? [],
-      reactions: message.reactions ? groupReactions(message.reactions) : [],
-      attachments: message.attachments.map((a) => ({
-        id: a.file.id,
-        filename: a.file.filename,
-        mimeType: a.file.mimeType,
-        fileType: a.file.fileType,
-        size: a.file.size,
-        hasThumbnail: !!a.file.thumbnailPath,
-      })),
     }));
   }
 

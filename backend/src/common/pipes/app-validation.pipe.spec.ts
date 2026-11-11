@@ -148,7 +148,11 @@ describe('AppValidationPipe', () => {
         expect(err).not.toHaveProperty('value');
       }
       expect(error.getStatus()).toBe(400);
-      expect(error.getResponse()).toEqual(stock.getResponse());
+      // The stock body, plus the code clients can branch on.
+      expect(error.getResponse()).toEqual({
+        ...(stock.getResponse() as object),
+        errorCode: 'VALIDATION_FAILED',
+      });
     });
   });
 
@@ -245,6 +249,7 @@ describe('AppValidationPipe', () => {
       expect(res.body).toEqual({
         statusCode: 400,
         error: 'Bad Request',
+        errorCode: 'VALIDATION_FAILED',
         message: expect.arrayContaining([
           'channelId must be a string',
           'spans must be an array',

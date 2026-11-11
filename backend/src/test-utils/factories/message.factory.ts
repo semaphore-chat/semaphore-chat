@@ -25,6 +25,14 @@ export class MessageFactory {
       parentMessageId: overrides.parentMessageId || null,
       replyCount: overrides.replyCount ?? 0,
       lastReplyAt: overrides.lastReplyAt || null,
+      replyToId: null,
+      linkPreviews: null,
+      webhookId: null,
+      // What the standard includes load (see messages/message.mapper.ts)
+      spans: [],
+      reactions: [],
+      attachments: [],
+      webhook: null,
       ...overrides,
     } as Message;
   }

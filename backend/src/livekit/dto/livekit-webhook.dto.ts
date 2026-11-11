@@ -1,3 +1,4 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
   IsOptional,
@@ -65,10 +66,12 @@ export class LiveKitRoomInfo {
 
   @IsOptional()
   @IsNumber()
+  @ApiPropertyOptional({ type: 'integer' })
   numParticipants?: number;
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   creationTime?: number; // Unix timestamp in nanoseconds
 }
 
@@ -93,6 +96,7 @@ export class LiveKitParticipantInfo {
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   joinedAt?: number; // Unix timestamp in nanoseconds
 }
 
@@ -104,6 +108,10 @@ export class LiveKitEgressInfo {
   egressId: string;
 
   @IsEnum(LiveKitEgressStatus)
+  @ApiProperty({
+    enum: LiveKitEgressStatus,
+    enumName: 'LiveKitEgressStatus',
+  })
   status: LiveKitEgressStatus;
 
   @IsOptional()
@@ -112,14 +120,17 @@ export class LiveKitEgressInfo {
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   startedAt?: number; // Unix timestamp in nanoseconds
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   endedAt?: number; // Unix timestamp in nanoseconds
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   updatedAt?: number; // Unix timestamp in nanoseconds
 }
 
@@ -131,6 +142,10 @@ export class LiveKitEgressInfo {
  */
 export class LiveKitWebhookDto {
   @IsEnum(LiveKitWebhookEvent)
+  @ApiProperty({
+    enum: LiveKitWebhookEvent,
+    enumName: 'LiveKitWebhookEvent',
+  })
   event: LiveKitWebhookEvent;
 
   @IsOptional()
@@ -139,6 +154,7 @@ export class LiveKitWebhookDto {
 
   @IsOptional()
   @Int64()
+  @ApiPropertyOptional({ type: 'integer', format: 'int64' })
   createdAt?: number; // Unix timestamp when webhook was created
 
   // Room info (present in room_* and participant_* events)

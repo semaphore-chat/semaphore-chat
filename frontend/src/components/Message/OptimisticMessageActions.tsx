@@ -12,14 +12,26 @@ import { Box, Button, Typography } from "@mui/material";
 import ReplayIcon from "@mui/icons-material/Replay";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import { useOptimisticMessageRetry } from "../../hooks/useOptimisticSendMessage";
+import { useChannelPermissions } from "../../hooks/useChannelPermissions";
+import { formatClockTime } from "../../utils/messageTime";
 import type { Message } from "../../types/message.type";
 
 interface OptimisticMessageActionsProps {
   message: Message;
+  communityId?: string;
 }
 
-export const OptimisticMessageActions: React.FC<OptimisticMessageActionsProps> = ({ message }) => {
+export const OptimisticMessageActions: React.FC<OptimisticMessageActionsProps> = ({ message, communityId }) => {
   const { retry, remove } = useOptimisticMessageRetry(message);
+  // A send that raced a timeout comes back as a plain refusal, so the time left
+  // comes from the same capabilities the composer's countdown uses.
+  const { timedOutUntil } = useChannelPermissions(
+    message.channelId ? communityId : undefined,
+    message.channelId ?? undefined,
+  );
+  const failure = timedOutUntil
+    ? `Timed out until ${formatClockTime(timedOutUntil)}`
+    : (message.sendError ?? "Failed to send");
   const [isRetrying, setIsRetrying] = React.useState(false);
   // Guards the finally-block setState below: `retry` awaits a socket
   // round-trip (up to the 10s send timeout), and this row can unmount
@@ -44,28 +56,31 @@ export const OptimisticMessageActions: React.FC<OptimisticMessageActionsProps> =
   };
 
   return (
-    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mt: 0.5 }}>
-      <Typography variant="caption" color="error.main">
-        Failed to send
+    <Box sx={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 1, mt: 0.5 }}>
+      <Typography variant="caption" color="error.main" sx={{ overflowWrap: "anywhere" }}>
+        {failure}
       </Typography>
-      <Button
-        size="small"
-        disabled={isRetrying}
-        startIcon={<ReplayIcon fontSize="small" />}
-        onClick={() => void handleRetry()}
-        aria-label="Retry sending message"
-      >
-        Retry
-      </Button>
-      <Button
-        size="small"
-        color="error"
-        startIcon={<DeleteOutlineIcon fontSize="small" />}
-        onClick={remove}
-        aria-label="Delete message"
-      >
-        Delete
-      </Button>
+      {/* Wraps as a pair under a long reason, never one button alone. */}
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+        <Button
+          size="small"
+          disabled={isRetrying}
+          startIcon={<ReplayIcon fontSize="small" />}
+          onClick={() => void handleRetry()}
+          aria-label="Retry sending message"
+        >
+          Retry
+        </Button>
+        <Button
+          size="small"
+          color="error"
+          startIcon={<DeleteOutlineIcon fontSize="small" />}
+          onClick={remove}
+          aria-label="Delete message"
+        >
+          Delete
+        </Button>
+      </Box>
     </Box>
   );
 };

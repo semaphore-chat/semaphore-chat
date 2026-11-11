@@ -16,7 +16,6 @@ import {
   handleDmVoiceCallStarted,
   handleDmVoiceUserJoined,
   handleDmVoiceUserLeft,
-  handleDmVoiceUserUpdated,
 } from '../../../socket-hub/handlers/voiceHandlers';
 
 // ---------------------------------------------------------------------------
@@ -283,35 +282,4 @@ describe('voiceHandlers — DM', () => {
     });
   });
 
-  describe('handleDmVoiceUserUpdated', () => {
-    it('updates a user in the DM presence cache', () => {
-      const user = makeVoiceUser({ id: 'user-1', isCameraOn: false });
-      const queryKey = dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId } });
-      queryClient.setQueryData(queryKey, makeDmPresence([user]));
-
-      const updated = makeVoiceUser({ id: 'user-1', isCameraOn: true });
-      handleDmVoiceUserUpdated({ dmGroupId, user: updated } as never, queryClient);
-
-      const data = queryClient.getQueryData<TestDmPresence>(queryKey);
-      expect(data!.users[0].isCameraOn).toBe(true);
-    });
-
-    it('does not add the user if they are not found in the cache', () => {
-      const queryKey = dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId } });
-      queryClient.setQueryData(queryKey, makeDmPresence([]));
-
-      handleDmVoiceUserUpdated({ dmGroupId, user: makeVoiceUser({ id: 'ghost' }) } as never, queryClient);
-
-      const data = queryClient.getQueryData<TestDmPresence>(queryKey);
-      expect(data!.users).toHaveLength(0);
-    });
-
-    it('falls back to invalidation when there is no existing cache', () => {
-      const spy = vi.spyOn(queryClient, 'invalidateQueries');
-
-      handleDmVoiceUserUpdated({ dmGroupId, user: makeVoiceUser() } as never, queryClient);
-
-      expect(spy).toHaveBeenCalled();
-    });
-  });
 });

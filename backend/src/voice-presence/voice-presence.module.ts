@@ -5,7 +5,6 @@ import {
   UserVoicePresenceController,
   DmVoicePresenceController,
 } from './voice-presence.controller';
-import { VoicePresenceGateway } from './voice-presence.gateway';
 import { RedisModule } from '@/redis/redis.module';
 import { WebsocketModule } from '@/websocket/websocket.module';
 import { AuthModule } from '@/auth/auth.module';
@@ -27,7 +26,7 @@ import { DatabaseModule } from '@/database/database.module';
     UserVoicePresenceController,
     DmVoicePresenceController,
   ],
-  providers: [VoicePresenceService, VoicePresenceGateway],
+  providers: [VoicePresenceService],
   exports: [VoicePresenceService],
 })
 export class VoicePresenceModule {}

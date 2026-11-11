@@ -5,6 +5,7 @@ import { ClipMessageListener } from './clip-message.listener';
 import { MessagesController } from './messages.controller';
 import { MessagesGateway } from './messages.gateway';
 import { MessageDispatchService } from './message-dispatch.service';
+import { MessageSendService } from './message-send.service';
 import { DatabaseModule } from '@/database/database.module';
 import { UserModule } from '@/user/user.module';
 import { RolesModule } from '@/roles/roles.module';
@@ -26,6 +27,7 @@ import { RedisModule } from '@/redis/redis.module';
     MessageOwnershipGuard,
     ClipMessageListener,
     MessageDispatchService,
+    MessageSendService,
   ],
   imports: [
     DatabaseModule,

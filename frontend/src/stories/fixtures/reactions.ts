@@ -27,7 +27,13 @@ export function useSimulateReactions(
     let timer: ReturnType<typeof setTimeout> | undefined;
     const send = () => {
       for (const reaction of reactions) {
-        const payload: ReactionAddedPayload = { messageId, reaction, channelId, directMessageGroupId };
+        const payload: ReactionAddedPayload = {
+          messageId,
+          reaction,
+          channelId: channelId ?? null,
+          directMessageGroupId: directMessageGroupId ?? null,
+          parentMessageId: null,
+        };
         socket.receive(ServerEvents.REACTION_ADDED, payload);
       }
     };

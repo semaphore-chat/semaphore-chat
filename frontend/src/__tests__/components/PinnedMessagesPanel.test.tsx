@@ -16,8 +16,10 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 
 // Mock AttachmentPreview so we can assert it renders without side effects
 vi.mock('../../components/Message/AttachmentPreview', () => ({
-  AttachmentPreview: ({ metadata }: { metadata: { id: string; filename: string } }) => (
-    <div data-testid="attachment-preview">{metadata.filename}</div>
+  AttachmentPreview: ({ metadata }: { metadata: { id: string; filename: string; hasThumbnail: boolean } }) => (
+    <div data-testid="attachment-preview" data-has-thumbnail={String(metadata.hasThumbnail)}>
+      {metadata.filename}
+    </div>
   ),
 }));
 
@@ -50,7 +52,10 @@ function makePinnedMessage(overrides: Partial<PinnedMessageDto> = {}): PinnedMes
     pinnedBy: 'user-2',
     replyCount: 0,
     lastReplyAt: null,
-    searchText: null,
+    linkPreviews: null,
+    replyToId: null,
+    replyTo: null,
+    webhook: null,
     pendingAttachments: null,
     deletedBy: null,
     deletedByReason: null,
@@ -96,7 +101,7 @@ describe('PinnedMessagesPanel', () => {
   it('renders attachment preview for pinned message with image', async () => {
     const msg = makePinnedMessage({
       attachments: [
-        { id: 'file-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
+        { id: 'file-1', filename: 'photo.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);
@@ -109,11 +114,26 @@ describe('PinnedMessagesPanel', () => {
     expect(screen.getByText('photo.png')).toBeInTheDocument();
   });
 
+  it("passes the attachment's thumbnail flag through to the preview", async () => {
+    const msg = makePinnedMessage({
+      attachments: [
+        { id: 'file-1', filename: 'clip.mp4', mimeType: 'video/mp4', fileType: 'VIDEO', size: 4096, hasThumbnail: true },
+      ],
+    });
+    setupPinnedEndpoint([msg]);
+
+    renderWithProviders(
+      <PinnedMessagesPanel channelId="channel-1" communityId="community-1" />,
+    );
+
+    expect(await screen.findByTestId('attachment-preview')).toHaveAttribute('data-has-thumbnail', 'true');
+  });
+
   it('renders both text and attachment for message with caption', async () => {
     const msg = makePinnedMessage({
       spans: [{ type: 'PLAINTEXT', text: 'Check this out', userId: null, specialKind: null, communityId: null, aliasId: null }],
       attachments: [
-        { id: 'file-1', filename: 'screenshot.png', mimeType: 'image/png', fileType: 'IMAGE', size: 2048 },
+        { id: 'file-1', filename: 'screenshot.png', mimeType: 'image/png', fileType: 'IMAGE', size: 2048, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);
@@ -130,9 +150,9 @@ describe('PinnedMessagesPanel', () => {
   it('shows "+N more" when multiple attachments exist', async () => {
     const msg = makePinnedMessage({
       attachments: [
-        { id: 'file-1', filename: 'img1.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
-        { id: 'file-2', filename: 'img2.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
-        { id: 'file-3', filename: 'img3.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024 },
+        { id: 'file-1', filename: 'img1.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
+        { id: 'file-2', filename: 'img2.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
+        { id: 'file-3', filename: 'img3.png', mimeType: 'image/png', fileType: 'IMAGE', size: 1024, hasThumbnail: false },
       ],
     });
     setupPinnedEndpoint([msg]);

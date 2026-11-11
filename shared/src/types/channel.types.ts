@@ -1,15 +1,6 @@
-export interface Channel {
-  name: string;
-  id: string;
-  communityId: string;
-  type: ChannelType;
-  isPrivate: boolean;
-  createdAt: string;
-  position?: number;
-  slowmodeSeconds?: number;
-}
+/** Generated from backend/openapi.json (see src/generated). */
+import type { ChannelDto } from '../generated';
 
-export enum ChannelType {
-  TEXT = 'TEXT',
-  VOICE = 'VOICE',
-}
+export { ChannelType } from '../generated';
+
+export type Channel = ChannelDto;

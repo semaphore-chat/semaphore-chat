@@ -1,3 +1,5 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class CommunityStatsDto {
   id: string;
   name: string;
@@ -5,11 +7,14 @@ export class CommunityStatsDto {
   avatar: string | null;
   banner: string | null;
   createdAt: Date;
+  @ApiProperty({ type: 'integer' })
   memberCount: number;
+  @ApiProperty({ type: 'integer' })
   channelCount: number;
 }
 
 export class CommunityStatsDetailDto extends CommunityStatsDto {
+  @ApiProperty({ type: 'integer' })
   messageCount: number;
 }
 

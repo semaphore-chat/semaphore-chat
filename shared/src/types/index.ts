@@ -1,4 +1,5 @@
 export {
+  FileType,
   SpanType,
   type Span,
   type Reaction,

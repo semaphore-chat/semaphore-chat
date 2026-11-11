@@ -11,7 +11,11 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ApiHideProperty,
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
 import { SpanTypeValues } from '@/common/enums/swagger-enums';
 import { ArrayMinLength } from '../../decorators/array-min-length.decorator';
 
@@ -21,7 +25,7 @@ import { ArrayMinLength } from '../../decorators/array-min-length.decorator';
  * fields: everything else about a span is the server's.
  */
 export class CreateMessageSpanDto {
-  @ApiProperty({ enum: SpanTypeValues })
+  @ApiProperty({ enum: SpanTypeValues, enumName: 'SpanType' })
   @IsEnum($Enums.SpanType)
   type: $Enums.SpanType;
 
@@ -80,28 +84,35 @@ export class CreateMessageSpanDto {
 }
 
 export class CreateMessageDto {
+  @ApiHideProperty()
   @Exclude()
   id: string;
 
   @IsOptional()
   @IsString()
   @IsUUID()
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   channelId: string | null;
 
   @IsOptional()
   @IsString()
   @IsUUID()
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
   directMessageGroupId: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   authorId: string;
 
+  @ApiHideProperty()
   @Exclude()
   sentAt: Date;
 
+  @ApiHideProperty()
   @Exclude()
   editedAt: Date | null;
 
+  @ApiHideProperty()
   @Exclude()
   deletedAt: Date | null;
 
@@ -118,35 +129,45 @@ export class CreateMessageDto {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @ApiPropertyOptional({ type: 'integer', nullable: true })
   pendingAttachments: number | null;
 
+  @ApiHideProperty()
   @Exclude()
   searchText: string | null;
 
   // Pinning fields (excluded - set by moderation actions)
+  @ApiHideProperty()
   @Exclude()
   pinned: boolean;
 
+  @ApiHideProperty()
   @Exclude()
   pinnedAt: Date | null;
 
+  @ApiHideProperty()
   @Exclude()
   pinnedBy: string | null;
 
   // Moderation deletion fields (excluded - set by moderation actions)
+  @ApiHideProperty()
   @Exclude()
   deletedBy: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   deletedByReason: string | null;
 
   // Threading fields (excluded - set by threading system)
+  @ApiHideProperty()
   @Exclude()
   parentMessageId: string | null;
 
+  @ApiHideProperty()
   @Exclude()
   replyCount: number;
 
+  @ApiHideProperty()
   @Exclude()
   lastReplyAt: Date | null;
 
@@ -155,4 +176,13 @@ export class CreateMessageDto {
   @IsString()
   @IsUUID()
   replyToId?: string | null;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }

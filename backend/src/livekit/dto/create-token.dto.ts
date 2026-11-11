@@ -6,6 +6,7 @@ import {
   Min,
   Max,
 } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateTokenDto {
   @IsString()
@@ -34,5 +35,6 @@ export class CreateTokenDto {
   @IsNumber()
   @Min(1)
   @Max(3600)
+  @ApiPropertyOptional({ type: 'integer' })
   ttl?: number;
 }

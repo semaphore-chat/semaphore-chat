@@ -1,3 +1,4 @@
+import type { VoicePresenceUser as VoicePresenceUserDto } from '@semaphore-chat/shared';
 import { ForbiddenException, Injectable, Logger, Inject } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { REDIS_CLIENT } from '@/redis/redis.constants';
@@ -40,6 +41,23 @@ export interface VoicePresenceUser {
    * ignored. Absent for REST-only presence.
    */
   sid?: string;
+}
+
+/**
+ * A voice user as it goes out on the socket: without `sid`, which is only for
+ * matching webhooks, and with `joinedAt` as a string whether it came fresh or
+ * back from Redis.
+ */
+function toWireVoiceUser(user: VoicePresenceUser): VoicePresenceUserDto {
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    joinedAt: new Date(user.joinedAt).toISOString(),
+    isDeafened: user.isDeafened,
+    isServerMuted: user.isServerMuted,
+  };
 }
 
 @Injectable()
@@ -178,7 +196,7 @@ export class VoicePresenceService {
         {
           channelId,
           userId,
-          user: userData,
+          user: toWireVoiceUser(userData),
         },
       );
 
@@ -549,7 +567,7 @@ export class VoicePresenceService {
       ServerEvents.VOICE_CHANNEL_USER_JOINED,
       {
         channelId,
-        user: voiceUser,
+        user: toWireVoiceUser(voiceUser),
       },
     );
 
@@ -562,7 +580,7 @@ export class VoicePresenceService {
         {
           channelId,
           userId,
-          user: voiceUser,
+          user: toWireVoiceUser(voiceUser),
         },
       );
     }
@@ -700,7 +718,7 @@ export class VoicePresenceService {
         ServerEvents.DM_VOICE_USER_JOINED,
         {
           dmGroupId,
-          user: voiceUser,
+          user: toWireVoiceUser(voiceUser),
         },
       );
       this.logger.log(
@@ -744,7 +762,7 @@ export class VoicePresenceService {
       {
         channelId,
         userId,
-        user: userData,
+        user: toWireVoiceUser(userData),
       },
     );
 
@@ -788,7 +806,7 @@ export class VoicePresenceService {
       {
         channelId,
         userId,
-        user: userData,
+        user: toWireVoiceUser(userData),
       },
     );
 
@@ -890,7 +908,7 @@ export class VoicePresenceService {
         {
           dmGroupId,
           userId,
-          user: userData,
+          user: toWireVoiceUser(userData),
         },
       );
 

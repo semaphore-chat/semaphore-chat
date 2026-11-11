@@ -6,6 +6,16 @@ import { createMessage } from '../test-utils/factories';
 import { SpanType } from '../../types/message.type';
 import { setPendingUpload, resetPendingUploadsForTests } from '../../utils/pendingUploadStore';
 
+let mockTimedOutUntil: Date | undefined;
+let mockPermissionsArgs: unknown[] = [];
+vi.mock('../../hooks/useChannelPermissions', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useChannelPermissions: (...args: unknown[]) => {
+    mockPermissionsArgs = args;
+    return { can: () => true, timedOutUntil: mockTimedOutUntil };
+  },
+}));
+
 vi.mock('../../hooks/useCurrentUser', () => ({
   useCurrentUser: () => ({ user: { id: 'user-1', username: 'alice' } }),
 }));
@@ -65,6 +75,7 @@ vi.mock('../../hooks/useOptimisticSendMessage', () => ({
 
 describe('MessageComponent optimistic states (PR-13)', () => {
   beforeEach(() => {
+    mockTimedOutUntil = undefined;
     vi.clearAllMocks();
   });
 
@@ -87,6 +98,40 @@ describe('MessageComponent optimistic states (PR-13)', () => {
     expect(screen.queryByLabelText('Quote reply')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Reply in thread')).not.toBeInTheDocument();
     expect(screen.queryByText('Failed to send')).not.toBeInTheDocument();
+  });
+
+  it('a failed message says why, when the server told us', () => {
+    const message = createMessage({
+      id: 'pending-3',
+      clientId: 'pending-3',
+      sendStatus: 'failed',
+      sendError: 'Slowmode is on',
+      authorId: 'user-1',
+    });
+
+    renderWithProviders(<MessageComponent message={message} isAuthor />);
+
+    expect(screen.getByText('Slowmode is on')).toBeInTheDocument();
+    expect(screen.queryByText('Failed to send')).not.toBeInTheDocument();
+  });
+
+  it('a failed message in a channel the sender is timed out of says until when', () => {
+    mockTimedOutUntil = new Date('2030-01-01T15:30:00');
+    const message = createMessage({
+      id: 'pending-4',
+      clientId: 'pending-4',
+      sendStatus: 'failed',
+      sendError: "You can't send messages here",
+      channelId: 'channel-1',
+      authorId: 'user-1',
+    });
+
+    renderWithProviders(
+      <MessageComponent message={message} isAuthor communityId="community-1" />,
+    );
+
+    expect(screen.getByText(/^Timed out until /)).toBeInTheDocument();
+    expect(mockPermissionsArgs).toEqual(['community-1', 'channel-1']);
   });
 
   it('renders a failed message with always-visible, keyboard-reachable Retry/Delete actions', async () => {

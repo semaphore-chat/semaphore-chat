@@ -28,11 +28,11 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient, type InfiniteData } from '@tanstack/react-query';
 import { delay, http, HttpResponse, type HttpHandler } from 'msw';
 import { createMessage, createSpan, createChannel, createReaction, createDmGroupMember } from '../../../__tests__/test-utils/factories';
-import type { Message, Span, FileMetadata, LinkPreview } from '../../../types/message.type';
+import { EMPTY_MESSAGE_FIELDS, type Message, type Span, type FileMetadata, type LinkPreview } from '../../../types/message.type';
 import { SpanType } from '../../../types/message.type';
 import type { Channel } from '../../../types/channel.type';
 import type { DirectMessageGroup } from '../../../types/direct-message.type';
-import type { MembershipResponseDto, PaginatedMessagesResponseDto, EnrichedThreadReplyDto } from '../../../api-client/types.gen';
+import type { MembershipResponseDto, PaginatedMessagesResponseDto, MessageDto } from '../../../api-client/types.gen';
 import { parseMessageWithMentions } from '../../../utils/mentionParser';
 import { prependMessageToInfinite, markOptimisticFailed } from '../../../utils/messageCacheUpdaters';
 import { setPendingUpload, deletePendingUpload, createPreviewUrl, type PendingFileStatus } from '../../../utils/pendingUploadStore';
@@ -118,7 +118,7 @@ function filler(ctx: { channelId?: string; dmId?: string; key: string }, startMi
   return FILLER.map((t, i) => makeMsg(ctx, authors[i % authors.length].id, startMinutesAgo - i * 2, text(t)));
 }
 
-function file(id: string, filename: string, mimeType: string, fileType: string, size: number, hasThumbnail = false): FileMetadata {
+function file(id: string, filename: string, mimeType: string, fileType: FileMetadata['fileType'], size: number, hasThumbnail = false): FileMetadata {
   return { id, filename, mimeType, fileType, size, hasThumbnail };
 }
 
@@ -579,7 +579,7 @@ function svgResponse(svgDataUri: string): HttpResponse<string> {
   return new HttpResponse(decodeURIComponent(encoded), { headers: { 'Content-Type': 'image/svg+xml' } });
 }
 
-function toThreadReply(m: Message): EnrichedThreadReplyDto {
+function toThreadReply(m: Message): MessageDto {
   return {
     ...m,
     directMessageGroupId: m.directMessageGroupId ?? null,
@@ -591,10 +591,9 @@ function toThreadReply(m: Message): EnrichedThreadReplyDto {
     pinnedBy: null,
     replyCount: 0,
     lastReplyAt: null,
-    searchText: null,
     deletedBy: null,
     deletedByReason: null,
-  } as unknown as EnrichedThreadReplyDto;
+  } as unknown as MessageDto;
 }
 
 export interface ChatHandlerOptions {
@@ -1002,6 +1001,8 @@ export interface OptimisticSpec {
   text: string;
   /** 'sent': acked by the server (real id), its files still uploading. */
   status: 'pending' | 'failed' | 'sent';
+  /** Why a 'failed' send failed, as the server said. */
+  sendError?: string;
   replyTo?: Message;
   /** Files the message is uploading. */
   uploads?: UploadSpec[];
@@ -1078,6 +1079,7 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
         const clientId = `pending-edge-chat-${i + 1}`;
         const sent = spec.status === 'sent';
         const msg: Message = {
+          ...EMPTY_MESSAGE_FIELDS,
           id: sent ? `edge-chat-sent-${i + 1}` : clientId,
           clientId,
           channelId: context.channelId ?? null,
@@ -1096,7 +1098,7 @@ export function useInjectOptimisticMessages(context: { channelId?: string; dmId?
         if (prependMessageToInfinite(current, msg) === current) return;
         queryClient.setQueryData(key, (old: unknown) => {
           const next = prependMessageToInfinite(old as never, msg);
-          return spec.status === 'failed' ? markOptimisticFailed(next, clientId) : next;
+          return spec.status === 'failed' ? markOptimisticFailed(next, clientId, spec.sendError) : next;
         });
       });
       return true;

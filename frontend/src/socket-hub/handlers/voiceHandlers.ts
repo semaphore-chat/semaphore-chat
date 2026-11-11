@@ -22,7 +22,6 @@ function invalidateVoiceQueries(queryClient: QueryClient) {
 function toPresenceUserDto(user: VoicePresenceUser): VoicePresenceUserDto {
   return {
     ...user,
-    joinedAt: user.joinedAt instanceof Date ? user.joinedAt.toISOString() : user.joinedAt,
     isDeafened: user.isDeafened ?? false,
     isServerMuted: user.isServerMuted ?? false,
   };
@@ -139,30 +138,6 @@ export const handleDmVoiceUserLeft: SocketEventHandler<typeof ServerEvents.DM_VO
       if (!draft) return draft;
       const newUsers = draft.users.filter((u) => u.id !== data.userId);
       return { ...draft, users: newUsers, count: newUsers.length };
-    });
-  } else {
-    invalidateVoiceQueries(queryClient);
-  }
-};
-
-export const handleDmVoiceUserUpdated: SocketEventHandler<typeof ServerEvents.DM_VOICE_USER_UPDATED> = (
-  data,
-  queryClient: QueryClient,
-) => {
-  const queryKey = dmVoicePresenceControllerGetDmPresenceQueryKey({ path: { dmGroupId: data.dmGroupId } });
-  const existing = queryClient.getQueryData<DmVoicePresenceResponseDto>(queryKey);
-
-  if (existing) {
-    const user = toPresenceUserDto(data.user);
-    queryClient.setQueryData<DmVoicePresenceResponseDto>(queryKey, (draft) => {
-      if (!draft) return draft;
-      const index = draft.users.findIndex((u) => u.id === user.id);
-      if (index !== -1) {
-        const newUsers = [...draft.users];
-        newUsers[index] = user;
-        return { ...draft, users: newUsers };
-      }
-      return draft;
     });
   } else {
     invalidateVoiceQueries(queryClient);

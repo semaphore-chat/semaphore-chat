@@ -577,7 +577,7 @@ function MessageComponentInner({
             <MessageAttachments attachments={message.attachments} />
             {/* Files this client is still uploading for the message (own sends only). */}
             <PendingAttachments message={message} />
-            {!gifUrl && <MessageLinkPreviews linkPreviews={message.linkPreviews} />}
+            {!gifUrl && <MessageLinkPreviews linkPreviews={message.linkPreviews ?? undefined} />}
             <MessageReactions
               messageId={message.id}
               reactions={message.reactions}
@@ -592,7 +592,7 @@ function MessageComponentInner({
                 onClick={handleOpenThread}
               />
             )}
-            {isFailed && <OptimisticMessageActions message={message} />}
+            {isFailed && <OptimisticMessageActions message={message} communityId={communityId} />}
           </>
         )}
       </div>

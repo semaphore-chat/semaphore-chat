@@ -349,7 +349,6 @@ describe('Moderator-removed message visibility (e2e)', () => {
       reactions: [],
       linkPreviews: null,
       replyTo: null,
-      searchText: null,
       deletedBy: null,
       deletedByReason: null,
     });

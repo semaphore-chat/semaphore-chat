@@ -1,3 +1,4 @@
+import { ErrorCode } from '@semaphore-chat/shared';
 import { RbacResourceType } from '@/auth/rbac-resource.decorator';
 import { DatabaseService } from '@/database/database.service';
 import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
@@ -440,6 +441,7 @@ export class PermissionsService {
     if (!allowed) {
       throw new ForbiddenException(
         "You don't have permission to attach files in this channel",
+        { description: 'Forbidden', errorCode: ErrorCode.ATTACH_NOT_ALLOWED },
       );
     }
   }

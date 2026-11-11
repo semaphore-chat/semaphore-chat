@@ -1,3 +1,4 @@
+import { toSpanDto } from '@/messages/message.mapper';
 import {
   Injectable,
   Logger,
@@ -54,6 +55,12 @@ const NOTIFICATION_INCLUDE = {
     },
   },
 } as const;
+
+/** What notifying about a thread reply needs from it. */
+type ThreadReplyTarget = Pick<
+  Message,
+  'id' | 'channelId' | 'directMessageGroupId' | 'authorId'
+>;
 
 @Injectable()
 export class NotificationsService {
@@ -820,7 +827,8 @@ export class NotificationsService {
     return Promise.all(
       notifications.map(async (notification) => {
         if (!notification.message) return notification;
-        const { deletedAt, ...message } = notification.message;
+        const { deletedAt, ...row } = notification.message;
+        const message = { ...row, spans: row.spans.map(toSpanDto) };
         if (!deletedAt) return { ...notification, message };
 
         let allowed = false;
@@ -1052,7 +1060,7 @@ export class NotificationsService {
    * Notifies all thread subscribers (excluding the reply author).
    */
   async processThreadReplyNotifications(
-    reply: Message,
+    reply: ThreadReplyTarget,
     parentMessageId: string,
     authorId: string,
   ): Promise<void> {
@@ -1120,7 +1128,7 @@ export class NotificationsService {
    */
   private async createNotificationIfAllowedForThread(
     userId: string,
-    reply: Message,
+    reply: ThreadReplyTarget,
     parentMessageId: string,
   ): Promise<Notification | null> {
     // Check if user should be notified based on settings

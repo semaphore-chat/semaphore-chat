@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import {
   handleNewThreadReply,
-  handleUpdateThreadReply,
-  handleDeleteThreadReply,
 } from '../../../socket-hub/handlers/threadHandlers';
 import { threadsControllerGetRepliesQueryKey } from '../../../api-client/@tanstack/react-query.gen';
 import type { ThreadRepliesResponseDto } from '../../../api-client';
@@ -58,43 +56,4 @@ describe('threadHandlers', () => {
     });
   });
 
-  describe('handleUpdateThreadReply', () => {
-    it('updates an existing reply', async () => {
-      const queryClient = new QueryClient();
-      const key = getRepliesKey('parent-1');
-      queryClient.setQueryData(key, {
-        replies: [makeReply('r1') as never],
-        continuationToken: null,
-      });
-
-      const updated = { ...makeReply('r1'), content: 'edited' };
-      await handleUpdateThreadReply(
-        { reply: updated as never, parentMessageId: 'parent-1' },
-        queryClient,
-      );
-
-      const data = queryClient.getQueryData<ThreadRepliesResponseDto>(key);
-      expect((data!.replies[0] as unknown as { content: string }).content).toBe('edited');
-    });
-  });
-
-  describe('handleDeleteThreadReply', () => {
-    it('removes a reply from cache', async () => {
-      const queryClient = new QueryClient();
-      const key = getRepliesKey('parent-1');
-      queryClient.setQueryData(key, {
-        replies: [makeReply('r1') as never, makeReply('r2') as never],
-        continuationToken: null,
-      });
-
-      await handleDeleteThreadReply(
-        { replyId: 'r1', parentMessageId: 'parent-1' },
-        queryClient,
-      );
-
-      const data = queryClient.getQueryData<ThreadRepliesResponseDto>(key);
-      expect(data!.replies).toHaveLength(1);
-      expect(data!.replies[0].id).toBe('r2');
-    });
-  });
 });

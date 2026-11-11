@@ -4,9 +4,7 @@ import { MessagesService } from './messages.service';
 import { ReactionsService } from './reactions.service';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { ServerEvents } from '@semaphore-chat/shared';
-import { MessageDispatchService } from './message-dispatch.service';
-import { ModerationService } from '@/moderation/moderation.service';
-import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
+import { MessageSendService } from './message-send.service';
 import type { Mocked } from '@suites/doubles.jest';
 
 describe('MessagesGateway', () => {
@@ -14,9 +12,7 @@ describe('MessagesGateway', () => {
   let messagesService: Mocked<MessagesService>;
   let reactionsService: Mocked<ReactionsService>;
   let websocketService: Mocked<WebsocketService>;
-  let messageDispatchService: Mocked<MessageDispatchService>;
-  let moderationService: Mocked<ModerationService>;
-  let readReceiptsService: Mocked<ReadReceiptsService>;
+  let messageSendService: Mocked<MessageSendService>;
 
   beforeEach(async () => {
     const { unit, unitRef } = await TestBed.solitary(MessagesGateway).compile();
@@ -25,25 +21,7 @@ describe('MessagesGateway', () => {
     messagesService = unitRef.get(MessagesService);
     reactionsService = unitRef.get(ReactionsService);
     websocketService = unitRef.get(WebsocketService);
-    messageDispatchService = unitRef.get(MessageDispatchService);
-    moderationService = unitRef.get(ModerationService);
-    readReceiptsService = unitRef.get(ReadReceiptsService);
-
-    // Set up default return values that tests rely on
-    messagesService.checkSlowmode.mockResolvedValue(undefined);
-    moderationService.getCommunityIdFromChannel.mockResolvedValue(
-      'community-123',
-    );
-    moderationService.isUserTimedOut.mockResolvedValue({
-      isTimedOut: false,
-    });
-    messageDispatchService.dispatch.mockResolvedValue(undefined);
-    readReceiptsService.markAsRead.mockResolvedValue({
-      channelId: null,
-      directMessageGroupId: null,
-      lastReadMessageId: 'msg-123',
-      lastReadAt: new Date(),
-    } as any);
+    messageSendService = unitRef.get(MessageSendService);
 
     // Set up mock server for READ_RECEIPT_UPDATED emission
     const mockEmit = jest.fn();
@@ -64,7 +42,7 @@ describe('MessagesGateway', () => {
     expect(messagesService).toBeDefined();
     expect(reactionsService).toBeDefined();
     expect(websocketService).toBeDefined();
-    expect(messageDispatchService).toBeDefined();
+    expect(messageSendService).toBeDefined();
   });
 
   describe('afterInit', () => {
@@ -104,162 +82,30 @@ describe('MessagesGateway', () => {
     });
   });
 
-  describe('handleMessage (SEND_MESSAGE)', () => {
-    it('should create message and broadcast to channel', async () => {
-      const payload = {
-        channelId: 'channel-123',
-        content: 'Test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-123' } },
-      } as any;
+  describe.each([
+    ['handleMessage', 'sendToChannel'],
+    ['handleDirectMessageWithRBAC', 'sendToDirectMessageGroup'],
+  ] as const)('%s', (handler, sendMethod) => {
+    const payload = { spans: [] } as any;
+    const client = { handshake: { user: { id: 'user-123' } } } as any;
 
-      const createdMessage = {
+    it('sends as the socket user and acks the message id', async () => {
+      messageSendService[sendMethod].mockResolvedValue({
         id: 'msg-123',
-        ...payload,
-        authorId: 'user-123',
-      };
+      } as any);
 
-      messagesService.create.mockResolvedValue(createdMessage as any);
-
-      const result = await gateway.handleMessage(payload as any, mockClient);
-
-      expect(result).toBe('msg-123');
-      expect(messagesService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          channelId: 'channel-123',
-          content: 'Test message',
-          authorId: 'user-123',
-        }),
-      );
-      expect(messageDispatchService.dispatch).toHaveBeenCalledWith(
-        createdMessage,
-        {
-          room: 'channel-123',
-          event: ServerEvents.NEW_MESSAGE,
-          notifications: true,
-          linkPreviews: true,
-        },
+      await expect(gateway[handler](payload, client)).resolves.toBe('msg-123');
+      expect(messageSendService[sendMethod]).toHaveBeenCalledWith(
+        'user-123',
+        payload,
       );
     });
 
-    it('should auto-mark the sent message as read', async () => {
-      const payload = {
-        channelId: 'channel-123',
-        content: 'Test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-123' } },
-      } as any;
+    it('lets a failed send reach the exception filter', async () => {
+      const error = new Error('database down');
+      messageSendService[sendMethod].mockRejectedValue(error);
 
-      const createdMessage = {
-        id: 'msg-123',
-        ...payload,
-        authorId: 'user-123',
-      };
-
-      messagesService.create.mockResolvedValue(createdMessage as any);
-
-      await gateway.handleMessage(payload as any, mockClient);
-
-      expect(readReceiptsService.markAsRead).toHaveBeenCalledWith('user-123', {
-        lastReadMessageId: 'msg-123',
-        channelId: 'channel-123',
-      });
-    });
-
-    it('should throw error when channelId is missing', async () => {
-      const payload = {
-        content: 'Test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-123' } },
-      } as any;
-
-      await expect(
-        gateway.handleMessage(payload as any, mockClient),
-      ).rejects.toThrow('channelId is required for channel messages');
-    });
-  });
-
-  describe('handleDirectMessageWithRBAC (SEND_DM)', () => {
-    it('should create DM and broadcast to DM group', async () => {
-      const payload = {
-        directMessageGroupId: 'dm-group-456',
-        content: 'DM test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-456' } },
-      } as any;
-
-      const createdMessage = {
-        id: 'msg-456',
-        ...payload,
-        authorId: 'user-456',
-      };
-
-      messagesService.create.mockResolvedValue(createdMessage as any);
-
-      const result = await gateway.handleDirectMessageWithRBAC(
-        payload as any,
-        mockClient,
-      );
-
-      expect(result).toBe('msg-456');
-      expect(messagesService.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          directMessageGroupId: 'dm-group-456',
-          content: 'DM test message',
-          authorId: 'user-456',
-        }),
-      );
-      expect(messageDispatchService.dispatch).toHaveBeenCalledWith(
-        createdMessage,
-        {
-          room: 'dm:dm-group-456',
-          event: ServerEvents.NEW_DM,
-          notifications: true,
-          linkPreviews: true,
-        },
-      );
-    });
-
-    it('should auto-mark the sent DM as read', async () => {
-      const payload = {
-        directMessageGroupId: 'dm-group-456',
-        content: 'DM test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-456' } },
-      } as any;
-
-      const createdMessage = {
-        id: 'msg-456',
-        ...payload,
-        authorId: 'user-456',
-      };
-
-      messagesService.create.mockResolvedValue(createdMessage as any);
-
-      await gateway.handleDirectMessageWithRBAC(payload as any, mockClient);
-
-      expect(readReceiptsService.markAsRead).toHaveBeenCalledWith('user-456', {
-        lastReadMessageId: 'msg-456',
-        directMessageGroupId: 'dm-group-456',
-      });
-    });
-
-    it('should throw error when directMessageGroupId is missing', async () => {
-      const payload = {
-        content: 'DM test message',
-      };
-      const mockClient = {
-        handshake: { user: { id: 'user-456' } },
-      } as any;
-
-      await expect(
-        gateway.handleDirectMessageWithRBAC(payload as any, mockClient),
-      ).rejects.toThrow('directMessageGroupId is required for direct messages');
+      await expect(gateway[handler](payload, client)).rejects.toBe(error);
     });
   });
 

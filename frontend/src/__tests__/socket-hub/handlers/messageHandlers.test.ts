@@ -102,6 +102,7 @@ describe('messageHandlers', () => {
       const optimistic = makeMessage({
         id: 'pending-abc',
         clientId: 'pending-abc',
+        clientNonce: 'nonce-abc',
         sendStatus: 'pending',
         authorId: 'me',
       });
@@ -112,7 +113,7 @@ describe('messageHandlers', () => {
         { channelId: 'ch-1', unreadCount: 0, mentionCount: 0 },
       ]);
 
-      const realMsg = makeMessage({ id: 'real-1', channelId: 'ch-1', authorId: 'me' });
+      const realMsg = makeMessage({ id: 'real-1', channelId: 'ch-1', authorId: 'me', clientNonce: 'nonce-abc' });
       await handleNewMessage({ message: realMsg as never }, queryClient);
 
       const data = queryClient.getQueryData<InfiniteData<PaginatedMessagesResponseDto>>(queryKey);
@@ -121,12 +122,13 @@ describe('messageHandlers', () => {
       expect(data!.pages[0].messages[0].id).toBe('real-1');
     });
 
-    it('multi-pending (fix round 1): failed-A + pending-B, echo for B reconciles B and leaves A untouched', async () => {
+    it('multi-pending: failed-A + pending-B, echo for B reconciles B and leaves A untouched', async () => {
       const queryClient = new QueryClient();
       const queryKey = channelMessagesQueryKey('ch-1');
       const failedA = makeMessage({
         id: 'pending-a',
         clientId: 'pending-a',
+        clientNonce: 'nonce-a',
         sendStatus: 'failed',
         authorId: 'me',
         spans: [{ type: 'PLAINTEXT', text: 'message A' }],
@@ -134,6 +136,7 @@ describe('messageHandlers', () => {
       const pendingB = makeMessage({
         id: 'pending-b',
         clientId: 'pending-b',
+        clientNonce: 'nonce-b',
         sendStatus: 'pending',
         authorId: 'me',
         spans: [{ type: 'PLAINTEXT', text: 'message B' }],
@@ -147,6 +150,7 @@ describe('messageHandlers', () => {
 
       const echoForB = makeMessage({
         id: 'real-b',
+        clientNonce: 'nonce-b',
         channelId: 'ch-1',
         authorId: 'me',
         spans: [{ type: 'PLAINTEXT', text: 'message B' }],

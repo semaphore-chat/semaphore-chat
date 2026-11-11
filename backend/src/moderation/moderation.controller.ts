@@ -13,7 +13,7 @@ import {
   ParseIntPipe,
   ParseUUIDPipe,
 } from '@nestjs/common';
-import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { ModerationService } from './moderation.service';
 import { JwtAuthGuard } from '@/auth/jwt-auth.guard';
 import { RbacGuard } from '@/auth/rbac.guard';
@@ -336,6 +336,8 @@ export class ModerationController {
     source: ResourceIdSource.PARAM,
   })
   @ApiOkResponse({ type: ModerationLogsResponseDto })
+  @ApiQuery({ name: 'limit', required: false, type: 'integer' })
+  @ApiQuery({ name: 'offset', required: false, type: 'integer' })
   async getModerationLogs(
     @Param('communityId', ParseUUIDPipe) communityId: string,
     @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit: number,

@@ -347,6 +347,7 @@ describe('DirectMessagesService', () => {
 
       const createdGroup = {
         ...DirectMessageGroupFactory.build(),
+        members: [],
         messages: [],
       };
       mockDatabase.directMessageGroup.findFirst.mockResolvedValue(null);

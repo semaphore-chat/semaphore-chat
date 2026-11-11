@@ -19,10 +19,17 @@ import { SocketContext } from "../../utils/SocketContext";
 import { ClientEvents } from '@semaphore-chat/shared';
 import { SpanType } from "../../types/message.type";
 import { logger } from "../../utils/logger";
+import { useNotification } from "../../contexts/NotificationContext";
+import {
+  describeSendFailure,
+  emitSend,
+  isDeletedWhileSending,
+} from "../../utils/sendAck";
 import { EmojiPickerPopover } from "../Message/EmojiPicker";
 import { useResponsive } from "../../hooks/useResponsive";
 import { TOUCH_TARGETS } from "../../utils/breakpoints";
 import { parseMessageWithMentions } from "../../utils/mentionParser";
+import { randomUuid } from "../../utils/deviceId";
 import type { EmojiMention } from "../../utils/mentionParser";
 import { wrapSelection, markerForShortcut } from "../../utils/richTextShortcuts";
 import { useCommunityCustomEmojis } from "../../hooks/useCommunityCustomEmojis";
@@ -56,6 +63,8 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
   const actionButtonSize = shouldUseTouchUI ? TOUCH_TARGETS.MINIMUM : 40;
   const [content, setContent] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const nonceRef = useRef<{ content: string; clientNonce: string } | null>(null);
+  const { showNotification } = useNotification();
 
   const { emojis: customEmojis } = useCommunityCustomEmojis(communityId);
   const emojiMentions: EmojiMention[] = customEmojis.map(e => ({
@@ -152,22 +161,34 @@ export const ThreadMessageInput: React.FC<ThreadMessageInputProps> = ({
       spans = [{ type: SpanType.PLAINTEXT, text: trimmedContent }];
     }
 
-    const payload = {
+    // The same nonce until this text goes through, so sending it again after a
+    // lost ack can't post it twice.
+    if (nonceRef.current?.content !== trimmedContent) {
+      nonceRef.current = { content: trimmedContent, clientNonce: randomUuid() };
+    }
+
+    const result = await emitSend(socket, ClientEvents.SEND_THREAD_REPLY, {
       parentMessageId,
       spans,
       attachments: [],
       pendingAttachments: 0,
-    };
-
-    socket.emit(ClientEvents.SEND_THREAD_REPLY, payload, (response: string | { error: string }) => {
-      setIsSending(false);
-      if (typeof response === "string") {
-        // Success - response is the message ID
-        setContent("");
-      } else if (response?.error) {
-        logger.error("Failed to send thread reply:", response.error);
-      }
+      clientNonce: nonceRef.current.clientNonce,
     });
+    setIsSending(false);
+
+    if (result.success || isDeletedWhileSending(result.error)) {
+      nonceRef.current = null;
+      setContent("");
+    }
+    if (!result.success) {
+      logger.error("Failed to send thread reply:", result.error);
+      showNotification(
+        isDeletedWhileSending(result.error)
+          ? "That reply was deleted"
+          : describeSendFailure(result.error),
+        "error",
+      );
+    }
   };
 
   const applyFormattingShortcut = (e: React.KeyboardEvent): boolean => {

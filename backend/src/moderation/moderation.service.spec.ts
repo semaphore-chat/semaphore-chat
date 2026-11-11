@@ -1,3 +1,4 @@
+import { MESSAGE_INCLUDE_WITH_REPLY } from '@/messages/message.mapper';
 import { TestBed } from '@suites/unit';
 import type { Mocked } from '@suites/doubles.jest';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -1176,24 +1177,17 @@ describe('ModerationService', () => {
   describe('getPinnedMessages', () => {
     it('should return pinned messages for channel with authors', async () => {
       const messages = [
-        {
+        MessageFactory.build({
           id: 'msg-1',
           authorId: 'user-1',
           pinned: true,
-          deletedAt: null,
-          attachments: [],
-          spans: [],
-          reactions: [],
-        },
-        {
+          searchText: 'not for clients',
+        }),
+        MessageFactory.build({
           id: 'msg-2',
           authorId: 'user-2',
           pinned: true,
-          deletedAt: null,
-          attachments: [],
-          spans: [],
-          reactions: [],
-        },
+        }),
       ];
       const authors = [
         {
@@ -1217,32 +1211,13 @@ describe('ModerationService', () => {
       expect(result).toHaveLength(2);
       expect(result[0].author).toEqual(authors[0]);
       expect(result[1].author).toEqual(authors[1]);
+      expect(result[0]).not.toHaveProperty('searchText');
+      expect(result[0].id).toBe('msg-1');
       // Note: deletedAt is filtered in memory after query
       expect(mockDatabase.message.findMany).toHaveBeenCalledWith({
-        where: {
-          channelId,
-          pinned: true,
-        },
+        where: { channelId, pinned: true },
         orderBy: { pinnedAt: 'asc' },
-        include: {
-          attachments: {
-            include: {
-              file: {
-                select: {
-                  id: true,
-                  filename: true,
-                  mimeType: true,
-                  fileType: true,
-                  size: true,
-                  thumbnailPath: true,
-                },
-              },
-            },
-            orderBy: { position: 'asc' },
-          },
-          spans: { orderBy: { position: 'asc' } },
-          reactions: true,
-        },
+        include: MESSAGE_INCLUDE_WITH_REPLY,
       });
       expect(mockDatabase.user.findMany).toHaveBeenCalledWith({
         where: { id: { in: ['user-1', 'user-2'] } },

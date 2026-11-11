@@ -14,7 +14,7 @@ import { http, HttpResponse, type HttpHandler } from 'msw';
 import type {
   FriendListItemDto,
   PendingRequestsDto,
-  EnrichedThreadReplyDto,
+  MessageDto,
   ThreadMetadataDto,
   PublicSettingsResponseDto,
   InstanceSettingsResponseDto,
@@ -53,7 +53,7 @@ function messageMatches(message: Message, query: string): boolean {
   return text.includes(query);
 }
 
-function toThreadReply(message: Message): EnrichedThreadReplyDto {
+function toThreadReply(message: Message): MessageDto {
   return {
     id: message.id,
     channelId: message.channelId ?? null,
@@ -71,11 +71,10 @@ function toThreadReply(message: Message): EnrichedThreadReplyDto {
     pinnedBy: message.pinnedBy ?? null,
     replyCount: 0,
     lastReplyAt: null,
-    searchText: null,
     deletedBy: null,
     deletedByReason: null,
     parentMessageId: message.parentMessageId ?? '',
-  } as unknown as EnrichedThreadReplyDto;
+  } as unknown as MessageDto;
 }
 
 export interface MakeHandlersOptions {

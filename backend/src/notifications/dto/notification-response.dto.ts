@@ -46,7 +46,7 @@ export class NotificationMessageDto {
 export class NotificationDto {
   id: string;
   userId: string;
-  @ApiProperty({ enum: NotificationTypeValues })
+  @ApiProperty({ enum: NotificationTypeValues, enumName: 'NotificationType' })
   type: NotificationType;
   messageId: string | null;
   channelId: string | null;
@@ -63,11 +63,14 @@ export class NotificationDto {
 
 export class NotificationListResponseDto {
   notifications: NotificationDto[];
+  @ApiProperty({ type: 'integer' })
   total: number;
+  @ApiProperty({ type: 'integer' })
   unreadCount: number;
 }
 
 export class UnreadCountResponseDto {
+  @ApiProperty({ type: 'integer' })
   count: number;
 }
 
@@ -87,14 +90,18 @@ export class DebugPushSubscriptionDto {
 export class DebugSubscriptionsResponseDto {
   @ApiProperty({ type: [DebugPushSubscriptionDto] })
   subscriptions: DebugPushSubscriptionDto[];
+  @ApiProperty({ type: 'integer' })
   count: number;
   pushEnabled: boolean;
 }
 
 export class ClearNotificationDataResponseDto {
   success: boolean;
+  @ApiProperty({ type: 'integer' })
   notificationsDeleted: number;
+  @ApiProperty({ type: 'integer' })
   settingsDeleted: number;
+  @ApiProperty({ type: 'integer' })
   overridesDeleted: number;
   message: string;
 }

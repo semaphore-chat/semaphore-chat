@@ -18,7 +18,11 @@ export class CreateRoleDto {
   @MaxLength(50, { message: 'Role name must not exceed 50 characters' })
   name: string;
 
-  @ApiProperty({ enum: RbacActionsValues, isArray: true })
+  @ApiProperty({
+    enum: RbacActionsValues,
+    enumName: 'RbacAction',
+    isArray: true,
+  })
   @IsArray()
   @IsEnum(RbacActions, { each: true })
   @ArrayMinSize(1, { message: 'Role must have at least one permission' })
@@ -26,6 +30,7 @@ export class CreateRoleDto {
 
   @ApiPropertyOptional({
     description: 'Position for ordering (lower = higher priority)',
+    type: 'integer',
   })
   @IsOptional()
   @IsInt()

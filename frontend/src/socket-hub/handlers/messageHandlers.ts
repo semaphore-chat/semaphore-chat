@@ -10,7 +10,7 @@ import type {
   ThreadReplyCountUpdatedPayload,
   ReadReceiptUpdatedPayload,
 } from '@semaphore-chat/shared';
-import type { Message } from '../../types/message.type';
+import type { MessagesInfiniteData } from '../../utils/messageCacheUpdaters';
 import type {
   UnreadCountDto,
   UserControllerGetProfileResponse,
@@ -27,7 +27,7 @@ import {
   directMessagesControllerFindUserDmGroupsQueryKey,
   threadsControllerGetRepliesQueryKey,
 } from '../../api-client/@tanstack/react-query.gen';
-import type { ThreadRepliesResponseDto, EnrichedThreadReplyDto } from '../../api-client';
+import type { ThreadRepliesResponseDto } from '../../api-client';
 import {
   prependOrReconcileOptimistic,
   updateMessageInInfinite,
@@ -65,8 +65,8 @@ export const handleNewMessage: SocketEventHandler<
     // Reconciles in place with a matching optimistic (pending/failed) row
     // from the same author if the echo beats the sender's own ack — see
     // prependOrReconcileOptimistic (PR-13).
-    queryClient.setQueryData(queryKey, (old: unknown) =>
-      prependOrReconcileOptimistic(old as never, message as Message),
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+      prependOrReconcileOptimistic(old, message),
     );
   }
 
@@ -130,8 +130,8 @@ export const handleUpdateMessage: SocketEventHandler<typeof ServerEvents.UPDATE_
   const queryKey = messageQueryKeyForContext(message);
   if (!queryKey) return;
   await queryClient.cancelQueries({ queryKey });
-  queryClient.setQueryData(queryKey, (old: unknown) =>
-    updateMessageInInfinite(old as never, message as Message),
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    updateMessageInInfinite(old, message),
   );
 };
 
@@ -142,8 +142,8 @@ export const handleDeleteMessage: SocketEventHandler<typeof ServerEvents.DELETE_
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (!queryKey) return;
   await queryClient.cancelQueries({ queryKey });
-  queryClient.setQueryData(queryKey, (old: unknown) =>
-    deleteMessageFromInfinite(old as never, messageId),
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    deleteMessageFromInfinite(old, messageId),
   );
 
   // Remove thread replies cache if this was a thread parent.
@@ -161,8 +161,8 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (queryKey) {
     await queryClient.cancelQueries({ queryKey });
-    queryClient.setQueryData(queryKey, (old: unknown) => {
-      const msg = findMessageInInfinite(old as never, messageId);
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+      const msg = findMessageInInfinite(old, messageId);
       if (!msg) return old;
 
       const updatedReactions = [...msg.reactions];
@@ -173,7 +173,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
         updatedReactions.push(reaction);
       }
 
-      return updateMessageInInfinite(old as never, {
+      return updateMessageInInfinite(old, {
         ...msg,
         reactions: updatedReactions,
       });
@@ -200,7 +200,7 @@ export const handleReactionAdded: SocketEventHandler<typeof ServerEvents.REACTIO
           } else {
             updatedReactions.push(reaction);
           }
-          return { ...r, reactions: updatedReactions } as EnrichedThreadReplyDto;
+          return { ...r, reactions: updatedReactions };
         }),
       };
     });
@@ -215,10 +215,10 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
   const queryKey = messageQueryKeyForContext({ channelId, directMessageGroupId });
   if (queryKey) {
     await queryClient.cancelQueries({ queryKey });
-    queryClient.setQueryData(queryKey, (old: unknown) => {
-      const msg = findMessageInInfinite(old as never, messageId);
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+      const msg = findMessageInInfinite(old, messageId);
       if (!msg) return old;
-      return updateMessageInInfinite(old as never, {
+      return updateMessageInInfinite(old, {
         ...msg,
         reactions,
       });
@@ -238,7 +238,7 @@ export const handleReactionRemoved: SocketEventHandler<typeof ServerEvents.REACT
         ...old,
         replies: old.replies.map((r) => {
           if (r.id !== messageId) return r;
-          return { ...r, reactions } as EnrichedThreadReplyDto;
+          return { ...r, reactions };
         }),
       };
     });
@@ -251,10 +251,10 @@ export const handleMessagePinned: SocketEventHandler<typeof ServerEvents.MESSAGE
 ) => {
   const queryKey = channelMessagesQueryKey(channelId);
   await queryClient.cancelQueries({ queryKey });
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const msg = findMessageInInfinite(old as never, messageId);
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+    const msg = findMessageInInfinite(old, messageId);
     if (!msg) return old;
-    return updateMessageInInfinite(old as never, {
+    return updateMessageInInfinite(old, {
       ...msg,
       pinned: true,
       pinnedBy,
@@ -272,10 +272,10 @@ export const handleMessageUnpinned: SocketEventHandler<typeof ServerEvents.MESSA
 ) => {
   const queryKey = channelMessagesQueryKey(channelId);
   await queryClient.cancelQueries({ queryKey });
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const msg = findMessageInInfinite(old as never, messageId);
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+    const msg = findMessageInInfinite(old, messageId);
     if (!msg) return old;
-    return updateMessageInInfinite(old as never, {
+    return updateMessageInInfinite(old, {
       ...msg,
       pinned: false,
       pinnedBy: null,
@@ -295,10 +295,10 @@ export const handleThreadReplyCountUpdated: SocketEventHandler<typeof ServerEven
   if (!queryKey) return;
 
   await queryClient.cancelQueries({ queryKey });
-  queryClient.setQueryData(queryKey, (old: unknown) => {
-    const msg = findMessageInInfinite(old as never, parentMessageId);
+  queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) => {
+    const msg = findMessageInInfinite(old, parentMessageId);
     if (!msg) return old;
-    return updateMessageInInfinite(old as never, {
+    return updateMessageInInfinite(old, {
       ...msg,
       replyCount,
       lastReplyAt,

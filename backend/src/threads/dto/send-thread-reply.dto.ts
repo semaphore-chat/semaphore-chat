@@ -3,11 +3,12 @@ import {
   IsOptional,
   IsArray,
   IsInt,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CreateMessageSpanDto } from '@/messages/dto/create-message.dto';
 
 /**
@@ -30,5 +31,15 @@ export class SendThreadReplyDto {
   @IsInt()
   @Min(0)
   @IsOptional()
+  @ApiPropertyOptional({ type: 'integer' })
   pendingAttachments?: number;
+
+  /**
+   * The sender's id for this send (a UUID). Retrying with the same one returns
+   * the same message instead of creating another.
+   */
+  @IsOptional()
+  @IsUUID()
+  @ApiPropertyOptional({ type: String, nullable: true })
+  clientNonce?: string | null;
 }

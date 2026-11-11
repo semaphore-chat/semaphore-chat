@@ -1,6 +1,8 @@
 import { NestFactory } from '@nestjs/core';
-import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { createOpenApiDocument } from './common/openapi/create-document';
+import { buildSocketEventIndex } from './websocket/socket-event-schemas';
 import { writeFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -16,14 +18,18 @@ async function generate() {
     .addCookieAuth('refresh_token', { type: 'apiKey' }, 'refresh_token')
     .build();
 
-  const document = SwaggerModule.createDocument(app, config);
+  const document = createOpenApiDocument(app, config);
 
   // __dirname is dist/src/ when compiled, so go up two levels to project root
   writeFileSync(
     resolve(__dirname, '..', '..', 'openapi.json'),
     JSON.stringify(document, null, 2),
   );
-  console.log('OpenAPI spec written to openapi.json');
+  writeFileSync(
+    resolve(__dirname, '..', '..', 'socket-events.json'),
+    `${JSON.stringify(buildSocketEventIndex(), null, 2)}\n`,
+  );
+  console.log('OpenAPI spec written to openapi.json and socket-events.json');
 
   await app.close();
 }

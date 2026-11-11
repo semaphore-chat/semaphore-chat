@@ -8,7 +8,7 @@ import {
   Max,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 /**
  * DTO for streaming a replay clip (download-only, no persistence)
@@ -18,7 +18,11 @@ export class StreamReplayDto {
    * Duration preset in minutes
    * User selects from: 1, 2, 5, or 10 minutes
    */
-  @ApiProperty({ enum: [1, 2, 5, 10] })
+  @ApiProperty({
+    enum: [1, 2, 5, 10],
+    enumName: 'ReplayDurationMinutes',
+    type: 'integer',
+  })
   @Type(() => Number)
   @IsInt()
   @Min(1)
@@ -37,7 +41,12 @@ export class CaptureReplayDto {
    * Duration preset in minutes (optional if using custom range)
    * User selects from: 1, 2, 5, or 10 minutes
    */
-  @ApiProperty({ enum: [1, 2, 5, 10], required: false })
+  @ApiProperty({
+    enum: [1, 2, 5, 10],
+    enumName: 'ReplayDurationMinutes',
+    type: 'integer',
+    required: false,
+  })
   @IsOptional()
   @ValidateIf((o: CaptureReplayDto) => !o.startSeconds && !o.endSeconds)
   @IsEnum([1, 2, 5, 10], {
@@ -54,6 +63,7 @@ export class CaptureReplayDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
+  @ApiPropertyOptional({ type: 'integer' })
   startSeconds?: number;
 
   /**
@@ -65,6 +75,7 @@ export class CaptureReplayDto {
   @Type(() => Number)
   @IsInt()
   @Min(1)
+  @ApiPropertyOptional({ type: 'integer' })
   endSeconds?: number;
 
   /**
@@ -73,7 +84,10 @@ export class CaptureReplayDto {
    * - 'dm': Save to library and send to specified DM group
    * - 'channel': Save to library and post to specified channel
    */
-  @ApiProperty({ enum: ['library', 'dm', 'channel'] })
+  @ApiProperty({
+    enum: ['library', 'dm', 'channel'],
+    enumName: 'CaptureReplayDestination',
+  })
   @IsEnum(['library', 'dm', 'channel'], {
     message: 'Destination must be library, dm, or channel',
   })
@@ -113,16 +127,19 @@ export class CaptureReplayResponseDto {
   /**
    * Actual duration of the clip in seconds
    */
+  @ApiProperty({ type: 'integer' })
   durationSeconds: number;
 
   /**
    * Requested duration in seconds (for comparison)
    */
+  @ApiProperty({ type: 'integer' })
   requestedDurationSeconds: number;
 
   /**
    * File size in bytes
    */
+  @ApiProperty({ type: 'integer', format: 'int64' })
   sizeBytes: number;
 
   /**
@@ -153,11 +170,13 @@ export class SessionInfoResponseDto {
   /**
    * Total number of segments available
    */
+  @ApiPropertyOptional({ type: 'integer' })
   totalSegments?: number;
 
   /**
    * Total buffer duration in seconds
    */
+  @ApiPropertyOptional({ type: 'integer' })
   totalDurationSeconds?: number;
 
   /**

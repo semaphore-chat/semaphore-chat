@@ -15,7 +15,6 @@ import {
   SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
-  WsException,
 } from '@nestjs/websockets';
 import { WsLoggingExceptionFilter } from '@/websocket/ws-exception.filter';
 import { RbacActions } from '@prisma/client';
@@ -26,16 +25,15 @@ import { AddReactionDto } from './dto/add-reaction.dto';
 import { RemoveReactionDto } from './dto/remove-reaction.dto';
 import { TypingEventDto } from './dto/typing-event.dto';
 import { Server, Socket } from 'socket.io';
-import { ClientEvents, ServerEvents } from '@semaphore-chat/shared';
+import { ClientEvents, SendAck, ServerEvents } from '@semaphore-chat/shared';
+import { sendSuccessAck } from '@/websocket/send-ack';
 import { WebsocketService } from '@/websocket/websocket.service';
 import { WsJwtAuthGuard } from '@/auth/ws-jwt-auth.guard';
 import { WsThrottleGuard } from '@/auth/ws-throttle.guard';
-import { ModerationService } from '@/moderation/moderation.service';
-import { ReadReceiptsService } from '@/read-receipts/read-receipts.service';
 import { getSocketUserId } from '@/common/utils/socket.utils';
 import { groupReactions } from '@/common/utils/reactions.utils';
 import { RoomName } from '@/common/utils/room-name.util';
-import { MessageDispatchService } from './message-dispatch.service';
+import { MessageSendService } from './message-send.service';
 import { toWirePayload } from '@/websocket/websocket-wire.util';
 
 @UseFilters(WsLoggingExceptionFilter)
@@ -61,9 +59,7 @@ export class MessagesGateway
     private readonly messagesService: MessagesService,
     private readonly reactionsService: ReactionsService,
     private readonly websocketService: WebsocketService,
-    private readonly messageDispatchService: MessageDispatchService,
-    private readonly moderationService: ModerationService,
-    private readonly readReceiptsService: ReadReceiptsService,
+    private readonly messageSendService: MessageSendService,
   ) {}
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -89,80 +85,13 @@ export class MessagesGateway
   async handleMessage(
     @MessageBody() payload: CreateMessageDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+  ): Promise<string | SendAck> {
     const userId = getSocketUserId(client);
-
-    if (!payload.channelId) {
-      throw new WsException('channelId is required for channel messages');
-    }
-
-    // Check if user is timed out in this community
-    const communityId = await this.moderationService.getCommunityIdFromChannel(
-      payload.channelId,
-    );
-    const timeoutStatus = await this.moderationService.isUserTimedOut(
-      communityId,
+    const message = await this.messageSendService.sendToChannel(
       userId,
+      payload,
     );
-    if (timeoutStatus.isTimedOut) {
-      const remainingMs = timeoutStatus.expiresAt
-        ? timeoutStatus.expiresAt.getTime() - Date.now()
-        : 0;
-      const remainingSeconds = Math.ceil(remainingMs / 1000);
-      throw new WsException(
-        `You are timed out in this community. Time remaining: ${remainingSeconds} seconds`,
-      );
-    }
-
-    // Check slowmode
-    try {
-      await this.messagesService.checkSlowmode(payload.channelId, userId);
-    } catch (error) {
-      throw new WsException(
-        error instanceof Error ? error.message : 'Slowmode check failed',
-      );
-    }
-
-    const message = await this.messagesService.create({
-      ...payload,
-      authorId: userId,
-      sentAt: new Date(),
-    });
-
-    // Auto-mark the sender's own message as read
-    this.readReceiptsService
-      .markAsRead(userId, {
-        lastReadMessageId: message.id,
-        channelId: payload.channelId,
-      })
-      .then((receipt) => {
-        this.websocketService.sendToRoom(
-          RoomName.user(userId),
-          ServerEvents.READ_RECEIPT_UPDATED,
-          {
-            channelId: receipt.channelId,
-            directMessageGroupId: receipt.directMessageGroupId,
-            lastReadMessageId: receipt.lastReadMessageId,
-            // Cast, not converted: WebsocketService.sendToRoom() normalizes
-            // every payload to JSON wire form (Date -> ISO string) right
-            // before `.emit()`, so the runtime already matches this cast.
-            // See toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-            lastReadAt: receipt.lastReadAt as unknown as string,
-          },
-        );
-      })
-      .catch((error) =>
-        this.logger.error('Failed to auto-mark message as read', error),
-      );
-
-    await this.messageDispatchService.dispatch(message, {
-      room: payload.channelId,
-      event: ServerEvents.NEW_MESSAGE,
-      notifications: true,
-      linkPreviews: true,
-    });
-
-    return message.id;
+    return sendSuccessAck(client, message.id);
   }
 
   @SubscribeMessage(ClientEvents.SEND_DM)
@@ -175,55 +104,13 @@ export class MessagesGateway
   async handleDirectMessageWithRBAC(
     @MessageBody() payload: CreateMessageDto,
     @ConnectedSocket() client: Socket,
-  ): Promise<string> {
+  ): Promise<string | SendAck> {
     const userId = getSocketUserId(client);
-
-    if (!payload.directMessageGroupId) {
-      throw new WsException(
-        'directMessageGroupId is required for direct messages',
-      );
-    }
-
-    const message = await this.messagesService.create({
-      ...payload,
-      authorId: userId,
-      sentAt: new Date(),
-    });
-
-    // Auto-mark the sender's own message as read
-    this.readReceiptsService
-      .markAsRead(userId, {
-        lastReadMessageId: message.id,
-        directMessageGroupId: payload.directMessageGroupId,
-      })
-      .then((receipt) => {
-        this.websocketService.sendToRoom(
-          RoomName.user(userId),
-          ServerEvents.READ_RECEIPT_UPDATED,
-          {
-            channelId: receipt.channelId,
-            directMessageGroupId: receipt.directMessageGroupId,
-            lastReadMessageId: receipt.lastReadMessageId,
-            // Cast, not converted: WebsocketService.sendToRoom() normalizes
-            // every payload to JSON wire form (Date -> ISO string) right
-            // before `.emit()`, so the runtime already matches this cast.
-            // See toWirePayload in @/websocket/websocket-wire.util. Fixes #440.
-            lastReadAt: receipt.lastReadAt as unknown as string,
-          },
-        );
-      })
-      .catch((error) =>
-        this.logger.error('Failed to auto-mark DM as read', error),
-      );
-
-    await this.messageDispatchService.dispatch(message, {
-      room: RoomName.dmGroup(payload.directMessageGroupId),
-      event: ServerEvents.NEW_DM,
-      notifications: true,
-      linkPreviews: true,
-    });
-
-    return message.id;
+    const message = await this.messageSendService.sendToDirectMessageGroup(
+      userId,
+      payload,
+    );
+    return sendSuccessAck(client, message.id);
   }
 
   @SubscribeMessage(ClientEvents.ADD_REACTION)

@@ -30,12 +30,13 @@
  * reload loses them: the message stays with the files that made it, and the
  * server keeps counting the missing ones as pending.
  */
+import { isDeletedWhileSending, newSendIdentity } from "./sendAck";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   messagesControllerAddAttachment,
   messagesControllerRemove,
 } from "../api-client/sdk.gen";
-import type { Message } from "../types/message.type";
+import { EMPTY_MESSAGE_FIELDS, type Message } from "../types/message.type";
 import type { MessageContext, NewMessagePayload, SendMessageResult } from "../hooks/useSendMessage";
 import {
   deleteMessageFromInfinite,
@@ -141,8 +142,8 @@ function writeMessage(clientId: string, message: Message): void {
   const runtime = runtimes.get(clientId);
   if (!runtime) return;
   const queryKey = messagesQueryKeyFor(runtime.contextType, runtime.contextId);
-  runtime.queryClient.setQueryData(queryKey, (old: unknown) =>
-    updateMessageInInfinite(old as MessagesInfiniteData | undefined, message),
+  runtime.queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    updateMessageInInfinite(old, message),
   );
 }
 
@@ -158,7 +159,7 @@ async function attach(clientId: string, localId: string): Promise<void> {
         throwOnError: true,
       });
       runtimes.get(clientId)?.seedFileBlob?.(file.fileId, file.file);
-      writeMessage(clientId, data as unknown as Message);
+      writeMessage(clientId, data);
       updatePendingFile(clientId, localId, { status: "done", progress: 1, error: null });
       finishIfComplete(clientId);
     } catch (error) {
@@ -245,18 +246,25 @@ export async function sendMessageWithAttachments({
 }: SendMessageWithAttachmentsOptions): Promise<SendMessageResult> {
   const { queryClient } = runtime;
   const queryKey = messagesQueryKeyFor(runtime.contextType, runtime.contextId);
-  const clientId = `${OPTIMISTIC_ID_PREFIX}${crypto.randomUUID()}`;
-  const wirePayload: NewMessagePayload = { ...payload, attachments: [], pendingAttachments: files.length };
+  const { clientNonce, clientId } = newSendIdentity(OPTIMISTIC_ID_PREFIX);
+  const wirePayload: NewMessagePayload = { ...payload, clientNonce, attachments: [], pendingAttachments: files.length };
   register(runtime, clientId, files, flattenText(payload.spans).trim() !== "");
 
   // Same scope guard as useOptimisticSendMessage: no optimistic row in a
   // window detached from the live edge (the own-send reset brings the
   // message in once its echo lands).
   const detached = isDetachedFromLiveEdge(queryClient.getQueryData<MessagesInfiniteData>(queryKey));
-  const optimisticMessage = { ...wirePayload, id: clientId, clientId, sendStatus: "pending" } as Message;
+  const optimisticMessage: Message = {
+    ...EMPTY_MESSAGE_FIELDS,
+    ...wirePayload,
+    authorId: wirePayload.authorId,
+    id: clientId,
+    clientId,
+    sendStatus: "pending",
+  };
   if (!detached) {
-    queryClient.setQueryData(queryKey, (old: unknown) =>
-      prependMessageToInfinite(old as MessagesInfiniteData | undefined, optimisticMessage),
+    queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+      prependMessageToInfinite(old, optimisticMessage),
     );
   }
 
@@ -271,6 +279,8 @@ export async function sendMessageWithAttachments({
   if (!detached) reconcileAfterSend(queryClient, queryKey, clientId, optimisticMessage, result);
   if (result.success && result.messageId) {
     startAttachmentUploads(clientId, result.messageId);
+  } else if (isDeletedWhileSending(result.error)) {
+    forget(clientId);
   } else if (detached) {
     // No row to show the failure on: say so, and drop the files.
     runtime.notifyError?.(describeError(result.error, "Failed to send message"));
@@ -360,8 +370,8 @@ async function discardEmptyMessage(
   forget(clientId);
   const queryKey = messagesQueryKeyFor(runtime.contextType, runtime.contextId);
   if (!messageId) {
-    runtime.queryClient.setQueryData(queryKey, (old: unknown) =>
-      removeOptimisticMessage(old as MessagesInfiniteData | undefined, clientId),
+    runtime.queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+      removeOptimisticMessage(old, clientId),
     );
     return;
   }
@@ -374,8 +384,8 @@ async function discardEmptyMessage(
       return;
     }
   }
-  runtime.queryClient.setQueryData(queryKey, (old: unknown) =>
-    deleteMessageFromInfinite(old as MessagesInfiniteData | undefined, messageId),
+  runtime.queryClient.setQueryData<MessagesInfiniteData>(queryKey, (old) =>
+    deleteMessageFromInfinite(old, messageId),
   );
 }
 
