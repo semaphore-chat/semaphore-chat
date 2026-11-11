@@ -2,7 +2,7 @@
 //! (edit in place, delete and removal, pins, reactions through the emoji picker), links and jumps
 //! to a message, and the notice that shows what the server refused, in its own words.
 
-use super::{ConversationPane, FileSource, PaneEvent, TYPING_EVERY, Which, read_files};
+use super::{ConversationPane, FileSource, OpenHow, PaneEvent, TYPING_EVERY, Which, read_files};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::CoreError;
@@ -209,7 +209,12 @@ impl ConversationPane {
                     core.discard_failed_send(client_nonce).await,
                 );
             }),
-            MessageListEvent::OpenAttachment { file_id } => {
+            MessageListEvent::OpenAttachment { file_id }
+            | MessageListEvent::OpenExternally { file_id } => {
+                let how = match event {
+                    MessageListEvent::OpenExternally { .. } => OpenHow::Externally,
+                    _ => OpenHow::View,
+                };
                 let attachment = self
                     .rows_of(which)
                     .iter()
@@ -217,7 +222,7 @@ impl ConversationPane {
                     .find(|attachment| attachment.file_id == file_id)
                     .cloned();
                 if let Some(attachment) = attachment {
-                    (self.open_attachment)(attachment, window, cx);
+                    (self.open_attachment)(attachment, how, window, cx);
                 }
             }
             MessageListEvent::RetryUpload {

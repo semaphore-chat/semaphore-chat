@@ -1,5 +1,6 @@
 # W3 player: both players in every state, a long name, past an hour, a tall video, the expanded
-# view, a hover time on the scrubber, and a conversation with a video and an audio attachment.
+# view, a hover time on the scrubber, a conversation with a video and an audio attachment, and
+# both players inside a real message list.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-player.steps
 story player-video-idle 1280 800 dark-blue-balanced
 wait idle
@@ -165,3 +166,10 @@ wait idle
 hover player-scrubber
 wait idle
 shot w3-player-audio-hover-time-phone
+# W3-player-wire: the players inside a real message list (fake engine); the AVI keeps its row.
+story messages-attachment-players 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-in-list-desktop
+story messages-attachment-players-phone 390 844 light-blue-balanced
+wait idle
+shot w3-player-in-list-phone

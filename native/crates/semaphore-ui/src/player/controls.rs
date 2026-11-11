@@ -85,10 +85,20 @@ impl Ink {
     }
 }
 
+/// Where the scrubber's hover time shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TipAt {
+    /// Over the track (video: the picture is above it).
+    Above,
+    /// Under it, drawn over whatever follows (audio: the file name is above it).
+    Below,
+}
+
 pub(crate) fn scrubber<V: PlayerView>(
     playback: &Playback,
     scrub: &Scrub,
     ink: Ink,
+    tip_at: TipAt,
     cx: &mut Context<V>,
 ) -> impl IntoElement + use<V> {
     let enabled = playback.phase.is_open() && playback.duration.is_some();
@@ -141,11 +151,10 @@ pub(crate) fn scrubber<V: PlayerView>(
             .filter(|_| enabled)
             .zip(playback.duration)
             .map(|(fraction, duration)| {
-                div()
+                let tip = div()
                     .id("player-hover-time")
                     .test_support()
                     .absolute()
-                    .bottom(px(20.))
                     .left(relative(fraction))
                     .ml(px(-22.))
                     .w(px(44.))
@@ -158,7 +167,12 @@ pub(crate) fn scrubber<V: PlayerView>(
                     .child(text(
                         Variant::Xs,
                         model::format_time(model::time_at(fraction, duration)),
-                    ))
+                    ));
+                match tip_at {
+                    TipAt::Above => tip.bottom(px(20.)).into_any_element(),
+                    // Deferred, so the rows painted after this one don't cover it.
+                    TipAt::Below => deferred(tip.top(px(18.))).into_any_element(),
+                }
             });
     let mut element = div()
         .id("player-scrubber")

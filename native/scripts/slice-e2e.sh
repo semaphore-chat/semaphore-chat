@@ -6,6 +6,9 @@
 #     with a fresh fake server per run. text.steps writes <out-dir>/run-N (as it always did);
 #     any other file writes <out-dir>/<name>/run-N. A steps-file argument runs just that file.
 #   native/scripts/slice-e2e.sh --voice [out-dir]          # on the host: brings up LiveKit too
+#   native/scripts/in-image.sh scripts/slice-e2e.sh --player [out-dir]
+#     the app built with its inline attachment players (`rig-slice --features player`), running
+#     rigs/slice/scripts/w3-player-wire.steps. The default run skips that file: it needs the feature.
 #
 # --voice starts lk-stack's LiveKit and a demo publisher (`demo-peer`, video) in Squad Up, then runs
 # rigs/slice/scripts/voice.steps the same way, with the fake server minting real tokens for it.
@@ -52,8 +55,12 @@ if [ "${1:-}" = "--voice" ]; then
 fi
 
 voice=false
+player=false
 if [ "${1:-}" = "--voice-inner" ]; then
   voice=true
+  shift
+elif [ "${1:-}" = "--player" ]; then
+  player=true
   shift
 fi
 out_dir="${1:-results/slice/e2e}"
@@ -61,13 +68,16 @@ out_dir="${1:-results/slice/e2e}"
 suites=()
 if $voice; then
   suites=("rigs/slice/scripts/voice.steps|$out_dir")
+elif $player; then
+  suites=("rigs/slice/scripts/w3-player-wire.steps|$out_dir/w3-player-wire")
 elif [ -n "${2:-}" ]; then
   suites=("$2|$out_dir")
 else
   for f in rigs/slice/scripts/*.steps; do
     name="$(basename "$f" .steps)"
-    # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh).
-    case "$name" in voice | real) continue ;; esac
+    # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh); w3-player-wire
+    # the player feature (--player).
+    case "$name" in voice | real | w3-player-wire) continue ;; esac
     if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
   done
 fi
@@ -86,7 +96,11 @@ export TZ=UTC
 export SEMAPHORE_LOG="${SEMAPHORE_LOG:-warn}"
 
 started_ms="$(date +%s%3N)"
-cargo build -q -p semaphore-fake-server -p rig-slice
+if $player; then
+  cargo build -q -p semaphore-fake-server -p rig-slice --features rig-slice/player
+else
+  cargo build -q -p semaphore-fake-server -p rig-slice
+fi
 built_ms="$(date +%s%3N)"
 target="${CARGO_TARGET_DIR:-target}/debug"
 

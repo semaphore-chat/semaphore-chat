@@ -5,8 +5,10 @@
 use super::session::{PlayerOpener, PlayerSurface};
 use gpui_kit::Nv12Frame;
 use semaphore_core::player::{
-    MediaPlayer, Metadata, PlaybackSource, PlaybackState, PlayerError, PlayerEvent, PlayerEvents,
+    Exclusive, MediaPlayer, Metadata, PlaybackSource, PlaybackState, PlayerError, PlayerEvent,
+    PlayerEvents,
 };
+use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
@@ -122,12 +124,21 @@ impl FakeHandle {
     }
 }
 
+/// The engine's one-playing rule, as `DesktopPlayers` keeps it: playing one pauses the other.
+#[derive(Default)]
+struct OneAtATime {
+    exclusive: Exclusive,
+    players: HashMap<u64, PlayerEvents>,
+    next: u64,
+}
+
 /// Opens [`FakePlayer`]s that follow a script and log into one list.
 #[derive(Clone)]
 pub struct FakeOpener {
     pub script: Arc<Mutex<Script>>,
     pub calls: Arc<Mutex<Vec<Call>>>,
     pub last: Arc<Mutex<Option<FakeHandle>>>,
+    one: Arc<Mutex<OneAtATime>>,
 }
 
 impl FakeOpener {
@@ -136,7 +147,13 @@ impl FakeOpener {
             script: Arc::new(Mutex::new(script)),
             calls: Arc::default(),
             last: Arc::default(),
+            one: Arc::default(),
         }
+    }
+
+    /// The fake players alive now.
+    pub fn alive(&self) -> usize {
+        self.one.lock().unwrap().players.len()
     }
 
     pub fn rc(script: Script) -> (Rc<dyn PlayerOpener>, Self) {
@@ -194,7 +211,16 @@ impl PlayerOpener for FakeOpener {
             }
             None => false,
         };
+        let id = {
+            let mut one = self.one.lock().unwrap();
+            one.next += 1;
+            let id = one.next;
+            one.players.insert(id, events.clone());
+            id
+        };
         Box::new(FakePlayer {
+            id,
+            one: self.one.clone(),
             events,
             calls: self.calls.clone(),
             opened,
@@ -204,6 +230,8 @@ impl PlayerOpener for FakeOpener {
 }
 
 pub struct FakePlayer {
+    id: u64,
+    one: Arc<Mutex<OneAtATime>>,
     events: PlayerEvents,
     calls: Arc<Mutex<Vec<Call>>>,
     opened: bool,
@@ -219,6 +247,14 @@ impl FakePlayer {
 impl MediaPlayer for FakePlayer {
     fn play(&self) {
         self.log(Call::Play);
+        let paused = {
+            let mut one = self.one.lock().unwrap();
+            let previous = one.exclusive.activate(self.id);
+            previous.and_then(|previous| one.players.get(&previous).cloned())
+        };
+        if let Some(previous) = paused {
+            previous(PlayerEvent::State(PlaybackState::Paused));
+        }
         if self.opened {
             (self.events)(PlayerEvent::State(self.on_play.clone()));
         }
@@ -244,6 +280,14 @@ impl MediaPlayer for FakePlayer {
 
     fn set_muted(&self, muted: bool) {
         self.log(Call::Muted(muted));
+    }
+}
+
+impl Drop for FakePlayer {
+    fn drop(&mut self) {
+        let mut one = self.one.lock().unwrap();
+        one.players.remove(&self.id);
+        one.exclusive.release(self.id);
     }
 }
 

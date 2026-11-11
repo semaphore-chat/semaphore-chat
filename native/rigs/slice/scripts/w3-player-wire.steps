@@ -1,0 +1,75 @@
+# W3-player-wire: audio and video attachments play inline in the real app, with the real engine,
+# against the fake server's Range responses. Needs rig-slice built with `--features player`:
+#   scripts/in-image.sh scripts/slice-e2e.sh --player
+# Sound goes to the rig's virtual speaker and frames to the headless window: nothing reaches the
+# host's devices. Shots are taken only where the pixels don't depend on timing (idle, ended).
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. An audio file and a video file, sent as attachments: both get the inline player.
+attach rigs/slice/fixtures/opus.ogg
+type "a recording"
+press enter
+wait core attachments "a recording" 1 within 15
+wait core uploads "a recording" 0
+attach rigs/slice/fixtures/vp9-opus.webm
+type "a clip"
+press enter
+wait core attachments "a clip" 1 within 15
+wait core uploads "a clip" 0
+wait core player opus.ogg idle
+wait core player vp9-opus.webm idle
+expect core players-open 0
+wait idle
+shot 01-players-idle
+
+# 2. The audio plays to its end through the range reader and the virtual speaker.
+player toggle opus.ogg
+wait core player opus.ogg playing within 10
+expect requests FileController_getFile >= 1
+wait core sound heard within 10
+wait core player opus.ogg ended within 15
+
+# 3. The video plays to its end: frames reach the window, and the last one stays.
+player toggle vp9-opus.webm
+wait core player vp9-opus.webm playing within 10
+wait core player-frames vp9-opus.webm within 10
+wait core player vp9-opus.webm ended within 15
+wait idle
+shot 02-both-ended
+
+# 4. One at a time: playing the audio again, then the video, pauses the audio.
+player toggle opus.ogg
+wait core player opus.ogg playing within 10
+player toggle vp9-opus.webm
+wait core player vp9-opus.webm playing within 10
+wait core player opus.ogg paused within 5
+expect core players-open 2
+
+# 5. Deleting the video's message stops its player and drops it.
+hover-row message "a clip"
+click message-action-delete
+click message-action-confirm-delete
+wait core no-text "a clip"
+wait core players-open 1 within 5
+
+# 6. Signing out closes every player: nothing of the session keeps playing.
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core players-open 0 within 5
