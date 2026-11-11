@@ -14,9 +14,11 @@ mod messages;
 mod moderation;
 mod notify;
 mod onboarding;
+mod replay;
 mod search;
 mod session;
 mod social;
+mod soundboard;
 mod threads;
 mod voice;
 
@@ -34,6 +36,8 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub(crate) use soundboard::{seed_files as seed_sound_files, sound_ids};
+
 pub(crate) fn router(inner: Arc<Inner>) -> Router {
     Router::new()
         .merge(session::routes())
@@ -49,6 +53,8 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(notify::routes())
         .merge(account::routes())
         .merge(onboarding::routes())
+        .merge(replay::routes())
+        .merge(soundboard::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -70,6 +76,8 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| notify::operation_id(method, route))
         .or_else(|| account::operation_id(method, route))
         .or_else(|| onboarding::operation_id(method, route))
+        .or_else(|| replay::operation_id(method, route))
+        .or_else(|| soundboard::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -336,6 +344,7 @@ async fn control(
                     .map(|(id, name)| (id.to_owned(), name.to_owned())),
                 link_preview: request.get("linkPreview").cloned(),
                 mention,
+                ..Default::default()
             };
             let message = crate::messages::post_as(&inner, target, author, text, broadcast, extras);
             return json_response(StatusCode::OK, json!({ "id": message.id }));
@@ -411,6 +420,60 @@ async fn control(
                     .iter()
                     .map(|(key, value)| (key.clone(), value.clone())),
             );
+        }
+        // W4: another user in a DM call, the replay buffer's egress, the clip library and
+        // server mutes, as `FakeServer::dm_call_join` and the rest do them for tests.
+        "dm_call_join" | "dm_call_leave" => {
+            let field = |name: &str| request.get(name).and_then(Value::as_str);
+            let (Some(group), Some(user)) = (field("dmGroupId"), field("userId")) else {
+                return invalid("dmGroupId and userId are required");
+            };
+            let members = match crate::calls::dm_members_for(&inner, group, user) {
+                Ok(members) => members,
+                Err(_) => return invalid("userId is not a member of dmGroupId"),
+            };
+            if name == "dm_call_join" {
+                crate::calls::dm_join(&inner, group, user, &members);
+            } else {
+                crate::calls::dm_leave(&inner, group, user, &members);
+            }
+        }
+        "server_mute" => {
+            let field = |name: &str| request.get(name).and_then(Value::as_str);
+            let (Some(channel), Some(user)) = (field("channelId"), field("userId")) else {
+                return invalid("channelId and userId are required");
+            };
+            let mute = request.get("mute").and_then(Value::as_bool).unwrap_or(true);
+            crate::calls::set_server_muted(&inner, channel, user, mute);
+        }
+        "emit_segments_ready" => {
+            let segments = request.get("segments").and_then(Value::as_u64).unwrap_or(6) as usize;
+            if !crate::calls::segments_ready(&inner, segments) {
+                return invalid("no replay buffer is running");
+            }
+        }
+        "emit_replay_failed" | "emit_replay_stopped" => {
+            let error = (name == "emit_replay_failed").then(|| {
+                request
+                    .get("error")
+                    .and_then(Value::as_str)
+                    .unwrap_or("Egress failed")
+                    .to_owned()
+            });
+            if !crate::calls::end_replay(&inner, error) {
+                return invalid("no replay buffer is running");
+            }
+        }
+        "seed_clip" => {
+            let clip = match crate::calls::seed_clip_from(&inner, &request) {
+                Ok(clip) => clip,
+                Err(message) => return invalid(message),
+            };
+            return json_response(StatusCode::OK, crate::calls::clip_json(&clip));
+        }
+        "join_failures" => {
+            let reports = lock(&inner.calls).join_failures.clone();
+            return json_response(StatusCode::OK, json!({ "reports": reports }));
         }
         "drop_connections" => {
             inner.close_connections();

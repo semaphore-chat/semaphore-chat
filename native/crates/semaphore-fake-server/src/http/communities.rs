@@ -206,7 +206,14 @@ async fn members_of_community(
         },
         None => 0,
     };
-    let members: Vec<_> = all.iter().skip(start).take(limit).cloned().collect();
+    // W4: a kicked member is no longer listed.
+    let members: Vec<_> = all
+        .iter()
+        .skip(start)
+        .filter(|member| !crate::calls::is_kicked(&inner, &community_id, &member.user_id))
+        .take(limit)
+        .cloned()
+        .collect();
     let continuation_token = (members.len() == limit)
         .then(|| members.last().map(|member| member.id.clone()))
         .flatten();

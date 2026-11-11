@@ -1,4 +1,5 @@
 //! Edit, delete and read one message; pins, a moderator's removal and channel roles (W1 part A).
+//! W4: kicking a member (the voice menu's "Kick").
 
 use super::{json_response, typed};
 use crate::Inner;
@@ -22,6 +23,10 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
         .route("/api/moderation/message/{messageId}", delete(remove_as_mod))
         .route("/api/roles/my/channel/{channelId}", get(my_channel_roles))
         .route("/api/roles/my/instance", get(my_instance_roles))
+        .route(
+            "/api/moderation/kick/{communityId}/{userId}",
+            post(kick_user),
+        )
 }
 
 pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
@@ -37,6 +42,7 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
         }
         ("GET", "/api/roles/my/channel/{channelId}") => "RolesController_getMyRolesForChannel",
         ("GET", "/api/roles/my/instance") => "RolesController_getMyInstanceRoles",
+        ("POST", "/api/moderation/kick/{communityId}/{userId}") => "ModerationController_kickUser",
         _ => return None,
     })
 }
@@ -144,4 +150,28 @@ async fn my_channel_roles(
         StatusCode::OK,
         actions::my_channel_roles(&inner, &channel_id),
     )
+}
+
+/// `POST /moderation/kick/{communityId}/{userId}`: both ids through `ParseUUIDPipe` (a
+/// scenario's own readable ids pass), an optional `{ reason }`, then `200`.
+async fn kick_user(
+    State(inner): State<Arc<Inner>>,
+    Path((community_id, user_id)): Path<(String, String)>,
+    body: Bytes,
+) -> Response {
+    let community_known = inner.scenario.community(&community_id).is_some();
+    let user_known = inner.scenario.user(&user_id).is_some();
+    if !crate::social::valid_id(&community_id, community_known)
+        || !crate::social::valid_id(&user_id, user_known)
+    {
+        return super::dms::bad_id(&inner, "uuid");
+    }
+    let body = match reason(&body) {
+        Ok(body) => body,
+        Err(response) => return response,
+    };
+    match crate::calls::kick(&inner, &community_id, &user_id, body.reason) {
+        Ok(()) => success("User kicked successfully"),
+        Err((status, code, message)) => inner.error(status, code, message, false),
+    }
 }
