@@ -57,6 +57,7 @@ step "T11 Windows capture: cargo check" "$IN_IMAGE" cargo check --locked -p sema
 step "capture shim + probe: cargo check Windows" "$IN_IMAGE" sh scripts/check-webrtc-windows.sh \
   -p semaphore-media-livekit --lib --tests --example capture_probe -p rig-fake-camera
 step "capture probe: Xvfb screen and PipeWire camera" "$NATIVE_DIR/scripts/capture-probe.sh"
+step "desktop: hide/show on X11 and Wayland, tray on a private bus" "$NATIVE_DIR/scripts/desktop-probe.sh"
 step "T10 harness: screenshot on lavapipe" "$IN_IMAGE" scripts/shot.sh shell-connected 800 480 results/phase0/shots
 step "cargo build --release -p semaphore-app" "$IN_IMAGE" nice -n 10 cargo build --locked --release -p semaphore-app
 step "release binary joins a real LiveKit room" "$NATIVE_DIR/scripts/media-probe.sh"

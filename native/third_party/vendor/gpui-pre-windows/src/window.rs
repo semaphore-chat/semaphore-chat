@@ -634,6 +634,19 @@ impl Drop for WindowsWindow {
 }
 
 impl PlatformWindow for WindowsWindow {
+    // Semaphore patch: close to tray.
+    fn can_hide(&self) -> bool {
+        true
+    }
+
+    // Semaphore patch: close to tray. A hidden window keeps its taskbar button off and its state.
+    fn set_visible(&self, visible: bool) -> bool {
+        let command = if visible { SW_SHOW } else { SW_HIDE };
+        // The return value is the previous visibility, not an error.
+        let _ = unsafe { ShowWindowAsync(self.0.hwnd, command) };
+        true
+    }
+
     fn bounds(&self) -> Bounds<Pixels> {
         self.state.bounds()
     }

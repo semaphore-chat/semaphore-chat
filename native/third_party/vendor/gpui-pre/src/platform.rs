@@ -1290,6 +1290,21 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
         answers: &[PromptButton],
     ) -> Option<oneshot::Receiver<usize>>;
     fn activate(&self);
+    /// Semaphore patch: activates with a token another process handed over (a second launch's
+    /// `XDG_ACTIVATION_TOKEN`, a notification's activation token), so the compositor may grant
+    /// focus. Platforms without such tokens just activate.
+    fn activate_with_token(&self, _token: &str) {
+        self.activate()
+    }
+    /// Semaphore patch: whether [`Self::set_visible`] can hide this window.
+    fn can_hide(&self) -> bool {
+        false
+    }
+    /// Semaphore patch: hides (`false`) or shows (`true`) the window without closing it, for close
+    /// to tray. Returns whether the platform did.
+    fn set_visible(&self, _visible: bool) -> bool {
+        false
+    }
     /// Requests that the operating system draw attention to this window.
     fn request_attention(&self) {}
     fn is_active(&self) -> bool;

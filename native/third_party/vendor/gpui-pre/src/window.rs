@@ -6927,6 +6927,25 @@ impl Window {
         self.platform_window.activate();
     }
 
+    /// Semaphore patch: activates the window with an activation token from another process, such
+    /// as a second launch's `XDG_ACTIVATION_TOKEN`. Without token support it's
+    /// [`Self::activate_window`].
+    pub fn activate_window_with_token(&self, token: &str) {
+        self.platform_window.activate_with_token(token);
+    }
+
+    /// Semaphore patch: whether [`Self::set_window_visible`] can hide this window here.
+    pub fn can_hide_window(&self) -> bool {
+        self.platform_window.can_hide()
+    }
+
+    /// Semaphore patch: hides (`false`) or shows (`true`) the window, keeping it and everything in
+    /// it. Returns whether the platform did. A shown window isn't activated: call
+    /// [`Self::activate_window`] for that.
+    pub fn set_window_visible(&self, visible: bool) -> bool {
+        self.platform_window.set_visible(visible)
+    }
+
     /// Requests that the operating system draw attention to this window.
     pub fn request_attention(&self) {
         self.platform_window.request_attention();
