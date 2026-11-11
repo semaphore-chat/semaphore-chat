@@ -67,7 +67,7 @@ PNGs without a display, which is how UI changes are reviewed.
 | `semaphore-net` | HTTP, WebSocket, TLS; implements core's backend and realtime traits | core, api |
 | `semaphore-media-livekit` | Core's media engine on LiveKit | core |
 | `semaphore-player` | Audio and video file playback (optional feature) | core, media |
-| `semaphore-sysaudio` | System audio capture for screen sharing | |
+| `semaphore-sysaudio` | System audio capture for screen sharing | media (optional) |
 | `semaphore-platform-desktop` | Desktop OS services: keyring, tray, notifications, keep-awake | core |
 | `semaphore-design` | Generated tokens and icons | Nothing |
 | `semaphore-ui` | GPUI views, one directory per feature, plus the kit | core, design, gpui-kit |
