@@ -474,6 +474,9 @@ pub(crate) struct PostExtras {
     pub emoji: Option<(String, String)>,
     /// A link preview, as the server's unfurler would have made it.
     pub link_preview: Option<serde_json::Value>,
+    /// The message's id, in place of the next readable one: a UUID, for what the contract types
+    /// as one (reactions).
+    pub id: Option<String>,
 }
 
 pub(crate) fn post_as(
@@ -511,7 +514,7 @@ pub(crate) fn post_as(
         deleted_by_reason: None,
         direct_message_group_id: None,
         edited_at: None,
-        id: inner.next_message_id(),
+        id: extras.id.unwrap_or_else(|| inner.next_message_id()),
         last_reply_at: None,
         link_previews,
         parent_message_id: None,
@@ -712,7 +715,8 @@ fn reactions_dto(message: &MessageDto) -> MessageReactionsDto {
     }
 }
 
-/// The scenario's unread counts, plus anything `markAsRead` cleared.
+/// The scenario's unread counts, plus anything `markAsRead` cleared. With some unread, the last
+/// read message is the one before them, as the backend's read receipt says.
 pub(crate) fn unread_counts(inner: &Inner) -> Value {
     let data = lock(&inner.data);
     let counts: Vec<Value> = data
@@ -723,6 +727,20 @@ pub(crate) fn unread_counts(inner: &Inner) -> Value {
                 "unreadCount": unread,
                 "mentionCount": mentions,
             });
+            let messages = data
+                .channel_messages
+                .get(context)
+                .or_else(|| data.dm_messages.get(context));
+            if let Some(messages) = messages
+                && *unread > 0
+            {
+                let mut ordered: Vec<_> = messages.iter().collect();
+                ordered.sort_by_key(|message| message.sent_at);
+                let read = ordered.len().checked_sub(*unread as usize + 1);
+                if let Some(last_read) = read.and_then(|index| ordered.get(index)) {
+                    body["lastReadMessageId"] = Value::from(last_read.id.clone());
+                }
+            }
             if inner.scenario.dm_ids.contains(context) {
                 body["directMessageGroupId"] = Value::from(context.clone());
             } else {
