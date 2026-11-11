@@ -16,8 +16,13 @@ import {
   composed,
   useDriver,
   clickButtonByText,
+  clickButtonByLabel,
+  composerTextarea,
+  typeInto,
   type DriverStep,
 } from '../../fixtures/edge/chat';
+import { createFakeSocket } from '../../fixtures/fakeSocket';
+import { SocketContext } from '../../../utils/SocketContext';
 import { ThreadPanel } from '../../../components/Thread/ThreadPanel';
 import type { Message } from '../../../types/message.type';
 
@@ -79,3 +84,64 @@ export const PhoneLongOriginalMessage = defineComponent(
   { maxWidth: false, extraHandlers: chatHandlers() },
 );
 PhoneLongOriginalMessage.meta = { viewports: ['phone'] };
+
+/** The "1 reply" thread's parent, as the panel receives it. */
+const oneReplyParent: Message =
+  edgeChatScenario.messagesByChannel[threadsChannel.id].find((m) => m.id === THREAD_IDS.one)!;
+
+/**
+ * A socket that refuses every send the way the server does for a client on
+ * auth.protocol 2: a typed failure ack carrying the server's reason.
+ */
+function refusingSocket(errorCode: string, message: string) {
+  const socket = createFakeSocket();
+  socket.emit = (_event: string, ...args: unknown[]) => {
+    const ack = args[args.length - 1];
+    if (typeof ack === 'function') {
+      (ack as (answer: unknown) => void)({ ok: false, error: { errorCode, message, retryable: false } });
+    }
+  };
+  return socket;
+}
+
+function refusedReplyStory(errorCode: string, message: string): LadleStoryComponent {
+  const socket = refusingSocket(errorCode, message);
+  return defineComponent(
+    edgeChatScenario,
+    () => (
+      <SocketContext.Provider value={{ socket: socket as never, isConnected: true }}>
+        <Box sx={{ height: '100dvh' }}>
+          <ThreadPanel
+            parentMessage={oneReplyParent}
+            channelId={threadsChannel.id}
+            communityId={edgeCommunityId}
+            fullScreen
+          />
+        </Box>
+        <Drive
+          steps={[
+            () => {
+              const box = composerTextarea();
+              if (!box) return false;
+              typeInto(box, 'one more thought on this');
+            },
+            () => clickButtonByLabel('send'),
+          ]}
+        />
+      </SocketContext.Provider>
+    ),
+    { maxWidth: false, extraHandlers: chatHandlers() },
+  );
+}
+
+/**
+ * A refused thread reply: the error toast gives the server's reason, and the
+ * draft stays in the composer so it can be sent again.
+ */
+export const ReplyRefusedSlowmode = refusedReplyStory(
+  'SLOWMODE',
+  'Slowmode is enabled. Please wait 42 seconds before sending another message.',
+);
+
+/** A refusal with a generic code reads as a plain sentence, not the server's wording. */
+export const ReplyRefusedForbidden = refusedReplyStory('FORBIDDEN', 'Insufficient permissions');
