@@ -220,7 +220,7 @@ fn presence_user_view(user: &wire::VoicePresenceUserDto) -> UserView {
 impl State {
     /// Everything in `rule(name).invalidate` that isn't scoped to one id: the handlers whose whole
     /// effect is a refetch.
-    fn invalidate_for(&mut self, name: &str) {
+    pub(crate) fn invalidate_for(&mut self, name: &str) {
         let Some(rule) = rule(name) else {
             return;
         };
@@ -709,10 +709,18 @@ impl State {
                     }
                 });
             }
-            // DM presence isn't cached here, so these are the cold path of the hybrid rule.
-            ServerEvent::DmVoiceCallStarted(_)
-            | ServerEvent::DmVoiceUserJoined(_)
-            | ServerEvent::DmVoiceUserLeft(_) => self.invalidate_for(name),
+            // W4: the web refetches; the ring is ours.
+            ServerEvent::DmVoiceCallStarted(event) => {
+                self.invalidate_for(name);
+                self.w4_ring(&event, now);
+            }
+            ServerEvent::DmVoiceUserJoined(event) => {
+                let user_id = event.user.id.clone();
+                self.w4_dm_presence(&event.dm_group_id, &user_id, Some(event.user), name);
+            }
+            ServerEvent::DmVoiceUserLeft(event) => {
+                self.w4_dm_presence(&event.dm_group_id, &event.user_id, None, name);
+            }
             ServerEvent::UserProfileUpdated(event) => {
                 if event.user_id == self.me_id() {
                     self.invalidate(&keys::op(keys::PROFILE));
@@ -727,10 +735,17 @@ impl State {
             ServerEvent::UserOnline(event) => self.on_presence(&event.user_id, true),
             ServerEvent::UserOffline(event) => self.on_presence(&event.user_id, false),
             // These have no cache handler on the web either.
-            ServerEvent::SessionTerminated(_)
-            | ServerEvent::EgressSegmentsReady(_)
-            | ServerEvent::ReplayBufferFailed(_)
-            | ServerEvent::ReplayBufferStopped(_) => {}
+            ServerEvent::SessionTerminated(_) => {}
+            // W4: the buffer the trim timeline reads grew.
+            ServerEvent::EgressSegmentsReady(_) => {
+                self.invalidate(&keys::op(keys::REPLAY_SESSION));
+            }
+            ServerEvent::ReplayBufferStopped(event) => {
+                self.w4_replay_ended(&event.session_id, None);
+            }
+            ServerEvent::ReplayBufferFailed(event) => {
+                self.w4_replay_ended(&event.session_id, Some(event.error));
+            }
             // "Your account signed in on a desktop app": a warning, and a new row in the sessions.
             ServerEvent::DesktopSignIn(event) => {
                 self.push_event(crate::platform::CoreEvent::DesktopSignedIn {

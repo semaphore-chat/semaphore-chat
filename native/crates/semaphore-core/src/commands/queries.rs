@@ -186,6 +186,36 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            keys::DM_VOICE_PRESENCE => CacheValue::DmVoicePresence(
+                backend
+                    .dm_voice_presence_controller_get_dm_presence(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::SOUNDBOARD => CacheValue::Soundboard(
+                backend
+                    .soundboard_controller_list_community_sounds(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::CLIPS => CacheValue::Clips(
+                backend
+                    .livekit_controller_get_my_clips()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::USER_CLIPS => CacheValue::Clips(
+                backend
+                    .livekit_controller_get_user_public_clips(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::REPLAY_SESSION => CacheValue::ReplaySession(
+                backend
+                    .livekit_controller_get_session_info()
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
             op => {
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),

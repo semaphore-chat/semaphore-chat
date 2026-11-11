@@ -261,6 +261,10 @@ impl SemaphoreCore {
         self.core.replay_preview().await
     }
 
+    pub async fn replay_segment(&self, segment: PreviewSegment) -> Result<Vec<u8>, CoreError> {
+        self.core.replay_segment(segment).await
+    }
+
     pub async fn capture_replay(&self, request: CaptureRequest) -> Result<CapturedClip, CoreError> {
         self.core.capture_replay(request).await
     }

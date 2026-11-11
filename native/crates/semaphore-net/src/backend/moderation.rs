@@ -51,4 +51,14 @@ impl ModerationBackend for HttpBackend {
         let channel_id = channel_id.as_str();
         rpc!(self, c => c.roles_controller_get_my_roles_for_channel(channel_id))
     }
+
+    async fn moderation_controller_kick_user(
+        &self,
+        community_id: String,
+        user_id: String,
+        body: wire::KickUserDto,
+    ) -> BackendResult<wire::SuccessMessageDto> {
+        let (community_id, user_id, body) = (community_id.as_str(), user_id.as_str(), &body);
+        rpc!(self, c => c.moderation_controller_kick_user(community_id, user_id, body))
+    }
 }

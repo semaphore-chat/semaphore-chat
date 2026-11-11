@@ -189,6 +189,10 @@ pub struct FakeBackend {
     pub w2: w2::W2Fakes,
     /// W3's scripted account and onboarding calls: `common/w3.rs`.
     pub w3: w2::W2Fakes,
+    /// W4's scripted DM calls, moderator voice actions, replay and soundboard: `common/w4.rs`.
+    pub w4: w2::W2Fakes,
+    /// File bytes by id, for `file_controller_get_file`; each read is counted in `w4` as `file <id>`.
+    pub files: Mutex<HashMap<String, Vec<u8>>>,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
@@ -732,6 +736,58 @@ impl VoiceBackend for FakeBackend {
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
         self.voice_call("deafen", channel)
     }
+
+    async fn livekit_controller_generate_dm_token(
+        &self,
+        body: wire::CreateTokenDto,
+    ) -> BackendResult<wire::TokenResponseDto> {
+        let minted = self.tokens_minted.fetch_add(1, Ordering::SeqCst) + 1;
+        self.w4.answers.lock().unwrap().insert(
+            "dm_token",
+            json!({ "token": format!("dm-token-{minted}"), "identity": body.identity, "roomId": body.room_id }),
+        );
+        self.w4.run("dm_token", &[&body.room_id]).await
+    }
+
+    async fn dm_voice_presence_controller_get_dm_presence(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::DmVoicePresenceResponseDto> {
+        let users = self.w4.answers.lock().unwrap().get("dm_users").cloned();
+        let users = users.unwrap_or_else(|| json!([]));
+        self.w4.answers.lock().unwrap().insert(
+            "dm_presence",
+            json!({ "dmGroupId": dm_group_id, "count": users.as_array().map_or(0, Vec::len), "users": users }),
+        );
+        self.w4.run("dm_presence", &[&dm_group_id]).await
+    }
+
+    async fn dm_voice_presence_controller_refresh_dm_presence(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        self.w4.answers.lock().unwrap().insert(
+            "dm_refresh",
+            json!({ "dmGroupId": dm_group_id, "message": "ok", "success": true }),
+        );
+        self.w4.run("dm_refresh", &[&dm_group_id]).await
+    }
+
+    async fn livekit_controller_mute_participant(
+        &self,
+        channel_id: String,
+        body: wire::MuteParticipantDto,
+    ) -> BackendResult<wire::SuccessResponseDto> {
+        self.w4
+            .answers
+            .lock()
+            .unwrap()
+            .insert("mute", json!({ "success": true }));
+        let mute = body.mute.to_string();
+        self.w4
+            .run("mute", &[&channel_id, &body.participant_identity, &mute])
+            .await
+    }
 }
 
 #[async_trait]
@@ -773,8 +829,15 @@ impl FilesBackend for FakeBackend {
         Ok(message(&id, ME, "with files"))
     }
 
-    async fn file_controller_get_file(&self, _: String) -> BackendResult<Vec<u8>> {
-        Err(not_found())
+    async fn file_controller_get_file(&self, id: String) -> BackendResult<Vec<u8>> {
+        let bytes = self.files.lock().unwrap().get(&id).cloned();
+        match bytes {
+            Some(bytes) => {
+                self.w4.calls.lock().unwrap().push(format!("file {id}"));
+                Ok(bytes)
+            }
+            None => Err(not_found()),
+        }
     }
 
     async fn file_controller_get_file_thumbnail(&self, _: String) -> BackendResult<Vec<u8>> {
@@ -892,6 +955,10 @@ pub struct FakeMedia {
     /// The next screen start waits for this before it returns, as an open picker does.
     pub hold_screen: Mutex<Option<oneshot::Receiver<()>>>,
     pub core: Mutex<Option<Core>>,
+    /// W4: the next soundboard play fails with this.
+    pub soundboard_fails: Mutex<Option<String>>,
+    /// W4: what `diagnostics` answers.
+    pub diagnostics: Mutex<Option<semaphore_core::model::MediaDiagnostics>>,
 }
 
 #[async_trait]
@@ -969,6 +1036,39 @@ impl MediaEngine for FakeMedia {
     }
     async fn stop_screen_share(&self) {
         self.calls.lock().unwrap().push("screen stop".into());
+    }
+    async fn play_soundboard(&self, sound_id: String, bytes: Vec<u8>) -> Result<(), CoreError> {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("soundboard {sound_id} {}", bytes.len()));
+        match self.soundboard_fails.lock().unwrap().take() {
+            Some(message) => Err(CoreError::Failed { message }),
+            None => Ok(()),
+        }
+    }
+    fn stop_soundboard(&self) {
+        self.calls.lock().unwrap().push("soundboard stop".into());
+    }
+    fn set_participant_volume(&self, identity: String, percent: u32) {
+        self.calls
+            .lock()
+            .unwrap()
+            .push(format!("volume {identity} {percent}"));
+    }
+    async fn diagnostics(&self) -> Option<semaphore_core::model::MediaDiagnostics> {
+        self.diagnostics.lock().unwrap().clone()
+    }
+}
+
+/// W4: a sleep inhibitor that records each set.
+#[derive(Default)]
+pub struct FakeKeepAwake(pub Mutex<Vec<bool>>);
+
+impl semaphore_core::platform::KeepAwake for FakeKeepAwake {
+    fn set(&self, on: bool) -> Result<(), CoreError> {
+        self.0.lock().unwrap().push(on);
+        Ok(())
     }
 }
 

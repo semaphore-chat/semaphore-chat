@@ -64,4 +64,37 @@ impl VoiceBackend for HttpBackend {
         let body = &body;
         rpc!(self, c => c.voice_presence_controller_update_deafen_state(channel_id, body))
     }
+
+    async fn livekit_controller_generate_dm_token(
+        &self,
+        body: wire::CreateTokenDto,
+    ) -> BackendResult<wire::TokenResponseDto> {
+        let body = &body;
+        rpc!(self, c => c.livekit_controller_generate_dm_token(body))
+    }
+
+    async fn dm_voice_presence_controller_get_dm_presence(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::DmVoicePresenceResponseDto> {
+        let dm_group_id = dm_group_id.as_str();
+        rpc!(self, c => c.dm_voice_presence_controller_get_dm_presence(dm_group_id))
+    }
+
+    async fn dm_voice_presence_controller_refresh_dm_presence(
+        &self,
+        dm_group_id: String,
+    ) -> BackendResult<wire::RefreshDmPresenceResponseDto> {
+        let dm_group_id = dm_group_id.as_str();
+        rpc!(self, c => c.dm_voice_presence_controller_refresh_dm_presence(dm_group_id))
+    }
+
+    async fn livekit_controller_mute_participant(
+        &self,
+        channel_id: String,
+        body: wire::MuteParticipantDto,
+    ) -> BackendResult<wire::SuccessResponseDto> {
+        let (channel_id, body) = (channel_id.as_str(), &body);
+        rpc!(self, c => c.livekit_controller_mute_participant(channel_id, body))
+    }
 }
