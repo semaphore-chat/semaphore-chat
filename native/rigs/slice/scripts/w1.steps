@@ -13,7 +13,7 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core rows >= 14
 expect requests ModerationController_getPinnedMessages >= 1
 wait idle
@@ -173,11 +173,11 @@ click header-search
 wait core side-panel none
 
 # 8. A message link in the web's form opens its channel at the message, not the browser.
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-priya)\", \"text\": \"the lfg post: $SERVER/#/community/$ID(c-couch)/channel/cc-lfg?highlight=$MSG(sc-msg-24)\"}"
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"the lfg post: $SERVER/#/community/$ID(c-couch)/channel/$ID(cc-lfg)?highlight=$MSG(sc-msg-24)\"}"
 wait core text "the lfg post"
 wait idle
 click-text "the lfg post" "/#/community"
-wait core channel cc-lfg
+wait core channel $ID(cc-lfg)
 wait core text "need one more"
 # The composer outlives the switch, and takes the new channel's name.
 wait core composer-placeholder "Message #lfg"
@@ -187,8 +187,8 @@ shot 17-link-opened
 
 # 9. The unread divider where reading stopped when the channel opened.
 click community-$ID(c-lumen)
-click channel-ch-general
-wait core channel ch-general
+click channel-$ID(ch-general)
+wait core channel $ID(ch-general)
 wait core unread-after "Lunch spot recommendations"
 expect label "4 NEW MESSAGES"
 wait idle

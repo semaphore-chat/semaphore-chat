@@ -74,6 +74,24 @@ fn a_group_name_wins_over_its_members() {
 }
 
 #[test]
+fn the_composer_names_the_person_or_the_group() {
+    assert_eq!(
+        dm_placeholder(&one("ava", Some("Ava Chen"))),
+        "Message @Ava Chen"
+    );
+    assert_eq!(dm_placeholder(&group(&["a", "b"])), "Message the group");
+    let mut named = group(&["a", "b"]);
+    named.name = Some("Weekend plan".into());
+    assert_eq!(dm_placeholder(&named), "Message Weekend plan");
+    named.name = Some("  ".into());
+    assert_eq!(
+        dm_placeholder(&named),
+        "Message the group",
+        "a blank name is none"
+    );
+}
+
+#[test]
 fn previews_say_what_the_web_says() {
     let mut row = one("ava", None);
     assert_eq!(dm_preview(&row), "No messages yet");

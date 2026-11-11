@@ -11,7 +11,7 @@ click auth-password
 type "pw"
 click auth-login
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core rows >= 5
 wait idle
 shot 02-channel
@@ -21,12 +21,12 @@ shot 02-channel
 # on the channel already open, a session restore, and a second sign-in in the same app.
 type "typed at sign-in"
 wait core composer-text "typed at sign-in" within 5
-click channel-cc-general
+click channel-$ID(cc-general)
 type " reselected"
 wait core composer-text "reselected" within 5
 restart
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core element composer-field
 wait idle
 type " restored"
@@ -42,7 +42,7 @@ click auth-password
 type "pw"
 click auth-login
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core element composer-field
 wait idle
 type " again"

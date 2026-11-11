@@ -358,6 +358,7 @@ impl State {
         }
         self.blank_for_reader(&mut dto);
         self.edit_pins(&id, |pinned| *pinned = dto.clone());
+        self.w2_dm_message_changed(&dto);
         let targets = [
             context(&dto.channel_id, &dto.direct_message_group_id),
             dto.parent_message_id
@@ -386,6 +387,10 @@ impl State {
     /// The row goes, wherever it's loaded. The payload doesn't say if this was a reply, so threads
     /// are checked too.
     pub(crate) fn remove_message(&mut self, payload: &wire::DeleteMessagePayloadDto) {
+        self.w2_dm_message_gone(
+            payload.direct_message_group_id.as_deref(),
+            &payload.message_id,
+        );
         let thread = Conversation::Thread {
             parent_message_id: payload.message_id.clone(),
         };

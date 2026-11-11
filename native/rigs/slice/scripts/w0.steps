@@ -11,7 +11,7 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core rows >= 5
 wait idle
 shot 00-signed-in

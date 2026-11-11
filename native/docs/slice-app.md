@@ -38,7 +38,7 @@ stops the server. `SEMAPHORE_LOG=info` prints the app's log.
 | Send | Enter | The row shows at once, then settles; no duplicate |
 | A refused send | `curl -X POST <url>/__control/fail_next_send -d '{"retryable":true}'`, then send | "Failed to send" with Retry and Delete; Retry sends it once |
 | Reconnect | `curl -X POST <url>/__control/drop_connections` | A "Reconnecting..." chip, then back; nothing missing or doubled |
-| A missed message | `.../refuse_connections -d '{"refuse":true}'`, `.../drop_connections`, then `.../post_as -d '{"channelId":"cc-general","authorId":"u-priya","text":"missed","broadcast":false}'`, then `.../refuse_connections -d '{"refuse":false}'` | After reconnecting, "missed" appears once |
+| A missed message | `.../refuse_connections -d '{"refuse":true}'`, `.../drop_connections`, then `.../post_as -d '{"channelId":"ed581418-ab68-57d3-8bee-d3e8cf1eb0c8","authorId":"cb3a8928-c631-5907-bc77-cd89514d87ab","text":"missed","broadcast":false}'`, then `.../refuse_connections -d '{"refuse":false}'` (the ids: `cc-general` and `u-priya` as the showcase serves them, `entity_uuid`) | After reconnecting, "missed" appears once |
 | Window behaviour | Resize to phone width, unfocus and watch a message arrive | Layout follows; the list keeps full frame rate unfocused |
 
 ### Sleep, network and restart: what only a real machine shows

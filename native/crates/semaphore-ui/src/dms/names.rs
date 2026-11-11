@@ -64,6 +64,23 @@ pub fn dm_name(row: &DmRow) -> CompactName {
     }
 }
 
+/// What the empty composer says, as `DirectMessageContainer`: "Message <name>" for a named group,
+/// "Message the group" for an unnamed one (its title is a list of names), "Message @Ava" for a 1:1.
+pub fn dm_placeholder(row: &DmRow) -> String {
+    let named = row
+        .name
+        .as_deref()
+        .is_some_and(|name| !name.trim().is_empty());
+    let name = dm_name(row).full;
+    if named {
+        format!("Message {name}")
+    } else if row.is_group {
+        "Message the group".to_owned()
+    } else {
+        format!("Message @{name}")
+    }
+}
+
 /// The row's second line: the newest message's text, "Message" for one with no text (only an
 /// attachment), or "No messages yet".
 pub fn dm_preview(row: &DmRow) -> String {

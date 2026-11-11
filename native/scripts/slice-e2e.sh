@@ -26,6 +26,9 @@ if [ "${1:-}" = "--voice" ]; then
   shift
   NATIVE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
   publisher="$LK_NAME-demo"
+  # Squad Up's room: the channel id the showcase serves vc-squad as (`entity_uuid`, pinned in
+  # semaphore-fake-server's tests/message_ids.rs).
+  squad=deedc434-97b9-503b-ac44-7b93a25560fd
   cleanup() {
     docker rm -f "$publisher" >/dev/null 2>&1 || true
     LK_STACK_NAME="$LK_NAME" "$NATIVE_DIR/scripts/lk-stack.sh" down
@@ -34,12 +37,12 @@ if [ "${1:-}" = "--voice" ]; then
   LK_STACK_NAME="$LK_NAME" "$NATIVE_DIR/scripts/lk-stack.sh" up >/dev/null
   docker run -d --rm --name "$publisher" --network semaphore-test "$LK_CLI" \
     --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
-    room join --identity demo-peer --publish-demo vc-squad >/dev/null
+    room join --identity demo-peer --publish-demo "$squad" >/dev/null
   # Bounded: the publisher is in the room once LiveKit lists it.
   for _ in $(seq 1 60); do
     if docker run --rm --network semaphore-test "$LK_CLI" \
       --url "ws://$LK_NAME:7880" --api-key "$LK_KEY" --api-secret "$LK_SECRET" \
-      room participants list vc-squad 2>/dev/null | grep -q demo-peer; then
+      room participants list "$squad" 2>/dev/null | grep -q demo-peer; then
       break
     fi
     sleep 0.5

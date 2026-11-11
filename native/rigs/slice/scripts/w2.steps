@@ -11,14 +11,14 @@ wait core session signed-out within 5
 wait idle
 
 # 0. A link that arrives before sign-in is kept, and the session lands on it.
-link-channel $ID(c-couch) cc-lfg
+link "semaphore://community/$ID(c-couch)/channel/$ID(cc-lfg)"
 click auth-username
 type "alexk"
 click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-wait core channel cc-lfg
+wait core channel $ID(cc-lfg)
 wait core text "need one more"
 wait idle
 shot 00-link-before-sign-in
@@ -120,7 +120,7 @@ shot 08-group-created
 server friend_request_as "{\"fromId\": \"$ID(u-zara)\", \"id\": \"w2-zara\"}"
 click dm-tab-friends
 wait core incoming 2
-click friends-panel 172 87
+click friends-tabs-1
 wait core element request-$ID(w2-zara)
 wait idle
 shot 09-friend-request
@@ -135,15 +135,15 @@ click dm-tab-messages
 # 5. A mention from another user raises a notification (with the mention sound), and reading the
 # channel takes it down.
 expect core sound silent
-server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"$ID(u-priya)\", \"text\": \"look at this \", \"mentionUserId\": \"$ID(me)\"}"
-wait core notified channel:cc-general
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"look at this \", \"mentionUserId\": \"$ID(me)\"}"
+wait core notified channel:$ID(cc-general)
 wait core sound heard
 wait idle
 shot 11-mention-raised
 click community-$ID(c-couch)
-click channel-cc-general
-wait core channel cc-general
-wait core withdrawn channel:cc-general
+click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
+wait core withdrawn channel:$ID(cc-general)
 
 # 6. A DM from another user, and a click on its notification: the DM opens, and the server has it
 # read.
@@ -173,12 +173,12 @@ shot 14-centre-all-read
 click rail-notifications
 wait core centre closed
 
-# 8. A deep link while signed in: a DM through the parser, then a channel.
+# 8. A deep link while signed in: a DM, then a channel, both through the parser.
 link "semaphore://direct-messages/$ID(dm-kwame)"
 wait core dm $ID(dm-kwame)
 wait idle
 shot 15-link-dm
-link-channel $ID(c-couch) cc-memes
-wait core channel cc-memes
+link "semaphore://community/$ID(c-couch)/channel/$ID(cc-memes)"
+wait core channel $ID(cc-memes)
 wait idle
 shot 16-link-channel

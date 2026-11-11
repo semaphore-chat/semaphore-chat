@@ -155,6 +155,10 @@ impl DmHeader {
     }
 
     /// The phone layout's back arrow.
+    pub fn state(&self) -> &DmHeaderState {
+        &self.state
+    }
+
     pub fn set_back(&mut self, back: bool, cx: &mut Context<Self>) {
         self.back = back;
         cx.notify();
