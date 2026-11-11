@@ -532,6 +532,8 @@ impl ConversationPane {
             MessageListEvent::OpenThread { message_id } => {
                 log::info!("opening the thread of {message_id}: the thread pane is a follow-up");
             }
+            // W1's message actions: wired in the app-wiring piece (P5).
+            other => log::info!("message action not wired yet: {other:?}"),
         }
     }
 

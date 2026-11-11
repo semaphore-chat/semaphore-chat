@@ -456,6 +456,62 @@ fn error(retryable: bool, message: &str) -> SendState {
     }
 }
 
+/// For the message-action stories: someone else's message (seq 1), one pinned (2), mine (3, with
+/// reactions), one mid-edit (4), and a moderator's view of a removed message with its reason (5).
+pub fn actions() -> Vec<MessageRow> {
+    let mut theirs = message(
+        1,
+        ava(),
+        NOW_MS - 40 * MINUTE,
+        Body::default().text("Has anyone tried the new build on Windows yet?"),
+    );
+    theirs.reactions = vec![
+        reaction("\u{1F44D}", 3, false),
+        reaction("\u{1F440}", 1, true),
+    ];
+    theirs.reactions[0].user_ids = vec!["u-ben".into(), "u-cleo".into(), "u-me".into()];
+    let mut pinned = message(
+        2,
+        ben(),
+        NOW_MS - 30 * MINUTE,
+        Body::default().text("Release checklist lives in the wiki, please read it before tagging."),
+    );
+    pinned.pinned = true;
+    pinned.pinned_by = Some(cleo());
+    let mut mine = message(
+        3,
+        me(),
+        NOW_MS - 20 * MINUTE,
+        Body::default().text("Yes, installer works, auto-update too."),
+    );
+    mine.mine = true;
+    let mut editing = message(
+        4,
+        me(),
+        NOW_MS - 19 * MINUTE,
+        Body::default().text("One more thing: the tray icon is blurry at 150%."),
+    );
+    editing.mine = true;
+    editing.edited = true;
+    editing.edit_pending = true;
+    let mut removed = message(
+        5,
+        cleo(),
+        NOW_MS - 10 * MINUTE,
+        Body::default().text("buy cheap followers at example.com"),
+    );
+    removed.removed = true;
+    removed.removed_by = Some(ava());
+    removed.removed_reason = Some("Spam".into());
+    let later = message(
+        6,
+        ava(),
+        NOW_MS - 5 * MINUTE,
+        Body::default().text("Thanks, merging the fix now."),
+    );
+    vec![theirs, pinned, mine, editing, removed, later]
+}
+
 /// Sends in flight and failed, with and without a retry.
 pub fn send_states() -> Vec<MessageRow> {
     let mut pending = message(

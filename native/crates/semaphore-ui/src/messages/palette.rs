@@ -115,4 +115,11 @@ impl Palette {
     pub fn tint(&self, color: Hsla, a: f32) -> Hsla {
         Hsla { a, ..color }
     }
+
+    /// MUI's tooltip: grey 700 at 92%, in both modes.
+    pub fn tooltip_bg(&self) -> Hsla {
+        let mut color: Hsla = rgb(0x616161).into();
+        color.a = 0.92;
+        color
+    }
 }

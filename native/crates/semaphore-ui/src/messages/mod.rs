@@ -10,6 +10,9 @@
 //! The app must call [`init`] once at startup and pass every window that shows a list through
 //! [`with_list_frame_policy`].
 
+#[cfg(test)]
+mod action_tests;
+mod actions;
 mod format;
 mod icons;
 mod media;
@@ -31,6 +34,10 @@ mod stories;
 #[cfg(test)]
 mod tests;
 
+pub use actions::{
+    ListPermissions, MessageAction, UnreadDivider, delete_is_removal, message_actions,
+    reaction_tooltip_lines, toolbar_actions, unread_label,
+};
 pub use format::TimeFormat;
 pub use media::{
     CacheKind, IMAGE_BUDGET_BYTES, LruImageCache, Media, MediaRef, MediaSource, MediaState,
