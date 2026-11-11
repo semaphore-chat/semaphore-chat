@@ -66,9 +66,9 @@ The coordinator decided these on 2026-11-10. The product defaults are the owner'
 | C. Engine publish path | Done: `LiveKitEngine::set_camera`, `start_screen_share`, `stop_screen_share` (the `MediaEngine` methods), `select_camera`, `cameras`. Frames go source → `video/local.rs` (BGRA or I420 to I420, scaled to `fit_capture`) → `NativeVideoSource`, with a 640 px, 15 fps preview to the `VideoSink` under our publication's sid. Self's `camera` and `screen_share` come from our publications; `local.may_*` from the room's permissions. The screen's system audio starts after the screen is published, and its failing leaves the screen on. A rejoin republishes both from the same captures. Sources: `video/platform.rs` (libwebrtc) or `testing::FakeVideoSources`. 8 real-SFU tests (`proof/test-video.sh`) |
 | D. T12 rig: a viewer asserting layers, fps, frame counter and bitrates | Next |
 | E. Core API | Done: `Core::set_camera`, `start_screen_share`, `stop_screen_share`; `VoiceView.local: LocalMediaView` (`LocalShare::{Off, Starting, On, Failed}`, `may_camera`, `may_share`); `ScreenShareRequest`, `ShareResolution`; `ScreenCapture` with `picker()` and thumbnails; `MediaEngine` methods with `Unavailable` defaults. Mirrored in `semaphore-ffi`. 15 core tests in `tests/media.rs` |
-| F. UI: bar buttons, X11/Windows picker, settings | Against E's types |
+| F. UI: bar buttons, X11/Windows picker, settings | Done: `voice-camera` and `voice-share` follow `LocalShare` (Starting dimmed and not clickable, Failed retries with the reason in the bar), disabled not hidden without `may_*`; share under "more" at phone width. `voice/picker.rs` (Screens and Windows tabs, thumbnails). Settings: camera list, resolution, fps (default 1080p30) and audio, saved in `voice.screen_share`. Stories `voice-camera-*`, `voice-share-*`, `voice-no-permission`, `voice-picker*` |
 | G. Media Foundation camera | Deferred (see above) |
-| H. App wiring | Last |
+| H. App wiring | Done: the buttons call core; Wayland starts straight from the saved settings, X11 and Windows open our picker over `DesktopScreenCapture::sources`; `EngineOptions::system_audio` is `platform_capture()`; the "Share audio" button is gone. `rigs/slice/scripts/voice.steps` drives camera, a failed camera, the picker and our own share against the fake server and LiveKit |
 
 ## How core and the engine share the state
 

@@ -42,6 +42,10 @@ pub struct AppConfig {
     pub watch_os: bool,
     /// The call's audio: `None` for the real devices, or the rig's virtual ones.
     pub audio: Option<Arc<dyn semaphore_media_livekit::audio::AudioIo>>,
+    /// Cameras and screens: `None` for the platform's, or the rig's fakes.
+    pub video_sources: Option<Arc<dyn semaphore_media_livekit::VideoSources>>,
+    /// What our screen picker lists: `None` for the platform's (the portal on Wayland).
+    pub screen_capture: Option<Arc<dyn semaphore_core::platform::ScreenCapture>>,
     /// How often voice presence is refreshed: `voice::HEARTBEAT`, or less in the rig.
     pub heartbeat: std::time::Duration,
     /// The local settings, loaded once at start (`SettingsStore::load(&data_dir)`). Only

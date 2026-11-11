@@ -4,6 +4,7 @@ mod bar;
 mod frames;
 mod icons;
 mod model;
+mod picker;
 mod stage;
 #[cfg(feature = "stories")]
 mod stories;
@@ -11,8 +12,12 @@ mod theme;
 
 pub use frames::VideoFrames;
 pub use model::{
-    NoController, PttState, QualityLevel, TileDemand, VoiceController, VoiceStageModel,
-    build_tiles, grid_columns,
+    NoController, PttState, QualityLevel, ShareLook, TileDemand, VoiceController, VoiceStageModel,
+    bar_subtitle, build_tiles, camera_label, grid_columns, screen_label,
+};
+pub use picker::{
+    PickerActions, PickerModel, PickerSource, PickerState, THUMBNAIL_PX, source_picker,
+    thumbnail_image,
 };
 pub use stage::VoiceStage;
 

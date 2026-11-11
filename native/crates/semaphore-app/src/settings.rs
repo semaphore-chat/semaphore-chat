@@ -30,6 +30,101 @@ pub struct VoiceSettings {
     pub auto_gain: bool,
     pub push_to_talk: bool,
     pub push_to_talk_key: Option<String>,
+    /// How screen shares are sent. Wayland's portal starts straight from these, with no dialog of
+    /// ours in between.
+    pub screen_share: ShareSettings,
+}
+
+/// The box a screen share is scaled to fit, as the settings file spells it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ShareSize {
+    Native,
+    #[serde(rename = "2160p")]
+    P2160,
+    #[serde(rename = "1440p")]
+    P1440,
+    #[default]
+    #[serde(rename = "1080p")]
+    P1080,
+    #[serde(rename = "720p")]
+    P720,
+    #[serde(rename = "480p")]
+    P480,
+}
+
+impl ShareSize {
+    pub const ALL: [ShareSize; 6] = [
+        Self::Native,
+        Self::P2160,
+        Self::P1440,
+        Self::P1080,
+        Self::P720,
+        Self::P480,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Native => "Native",
+            Self::P2160 => "4K",
+            Self::P1440 => "1440p",
+            Self::P1080 => "1080p",
+            Self::P720 => "720p",
+            Self::P480 => "480p",
+        }
+    }
+
+    pub fn resolution(self) -> semaphore_core::model::ShareResolution {
+        use semaphore_core::model::ShareResolution as R;
+        match self {
+            Self::Native => R::Native,
+            Self::P2160 => R::P2160,
+            Self::P1440 => R::P1440,
+            Self::P1080 => R::P1080,
+            Self::P720 => R::P720,
+            Self::P480 => R::P480,
+        }
+    }
+}
+
+/// The frame rates offered.
+pub const SHARE_FPS: [u32; 3] = [15, 30, 60];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ShareSettings {
+    pub resolution: ShareSize,
+    /// 15, 30 or 60; anything else reads as 30.
+    pub fps: u32,
+    /// Send the system's audio with the screen: everything except our own call.
+    pub audio: bool,
+}
+
+impl Default for ShareSettings {
+    /// 1080p at 30 fps with audio. 60 fps is offered, but software VP8 at 1080p60 is a heavy default.
+    fn default() -> Self {
+        Self {
+            resolution: ShareSize::P1080,
+            fps: 30,
+            audio: true,
+        }
+    }
+}
+
+impl ShareSettings {
+    /// What to ask core for. `source_id` is `None` where the system's picker chooses.
+    pub fn request(&self, source_id: Option<String>) -> semaphore_core::model::ScreenShareRequest {
+        semaphore_core::model::ScreenShareRequest {
+            source_id,
+            resolution: self.resolution.resolution(),
+            fps: if SHARE_FPS.contains(&self.fps) {
+                self.fps
+            } else {
+                30
+            },
+            audio: self.audio,
+        }
+    }
 }
 
 impl Default for VoiceSettings {
@@ -42,6 +137,7 @@ impl Default for VoiceSettings {
             auto_gain: true,
             push_to_talk: false,
             push_to_talk_key: None,
+            screen_share: ShareSettings::default(),
         }
     }
 }
@@ -346,6 +442,30 @@ mod tests {
     }
 
     #[test]
+    fn share_settings_default_to_1080p30_with_audio_and_read_back() {
+        let defaults = ShareSettings::default();
+        let request = defaults.request(None);
+        assert_eq!(
+            request.resolution,
+            semaphore_core::model::ShareResolution::P1080
+        );
+        assert_eq!(request.fps, 30);
+        assert!(request.audio);
+        assert_eq!(request.source_id, None);
+        // An older file has no screen_share at all; a hand-edited one may have odd values.
+        let old: VoiceSettings = serde_json::from_str(r#"{"push_to_talk":true}"#).unwrap();
+        assert_eq!(old.screen_share, defaults);
+        let edited: ShareSettings =
+            serde_json::from_str(r#"{"resolution":"2160p","fps":7}"#).unwrap();
+        assert_eq!(edited.resolution, ShareSize::P2160);
+        assert_eq!(edited.request(Some("s".into())).fps, 30);
+        assert_eq!(
+            serde_json::to_value(ShareSize::Native).unwrap(),
+            serde_json::json!("native")
+        );
+    }
+
+    #[test]
     fn save_then_load_round_trips() {
         let dir = TempDir::new();
         let mut store = SettingsStore::load(&dir.0);
@@ -354,6 +474,11 @@ mod tests {
                 s.voice.input_device = Some("mic".into());
                 s.voice.push_to_talk = true;
                 s.voice.push_to_talk_key = Some("F13".into());
+                s.voice.screen_share = ShareSettings {
+                    resolution: ShareSize::P2160,
+                    fps: 60,
+                    audio: false,
+                };
                 s.close_to_tray = true;
                 s.last_channel = Some("cc-general".into());
                 s.link_preview_images = true;

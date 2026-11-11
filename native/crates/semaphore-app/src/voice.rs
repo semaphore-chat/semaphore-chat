@@ -8,9 +8,10 @@
 //! - The stage's buttons come back here as a `VoiceController`.
 
 use crate::runtime::{Activity, Exec};
+use crate::settings::ShareSettings;
 use semaphore_core::Core;
-use semaphore_core::model::VideoDemand;
-use semaphore_core::platform::CoreError;
+use semaphore_core::model::{LocalShare, VideoDemand};
+use semaphore_core::platform::{CaptureSource, CoreError, PickerKind, ScreenCapture};
 use semaphore_media_livekit::audio::AudioDevices;
 use semaphore_media_livekit::{LiveKitEngine, TokenSource, VideoFrameRef, VideoSink};
 use semaphore_ui::voice::{TileDemand, VideoFrames, VoiceController};
@@ -127,44 +128,77 @@ pub fn wire(
     sink
 }
 
-/// What the app shows of the audio share, beside core's view of the call.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub struct ShareState {
-    pub on: bool,
-    pub error: Option<String>,
-}
-
 /// Asks of the voice UI the app answers on its own thread.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VoiceRequest {
-    /// The share changed, or failed: draw again.
+    /// Something the bar shows changed: draw again.
     Redraw,
     OpenDevices,
+    /// The narrow bar's "more".
+    OpenMore,
+    /// Our own picker (X11, Windows): open it, loading, while the sources are listed.
+    OpenPicker,
+    /// The sources for the picker, or why they couldn't be listed.
+    PickerSources(Result<Vec<CaptureSource>, String>),
 }
 
-/// The stage's buttons. Mute, deafen, leave and tiles go through core; push-to-talk, devices and the
-/// audio share are the engine's alone.
+/// The stage's buttons. Mute, deafen, leave, tiles, the camera and the screen share go through core;
+/// push-to-talk and devices are the engine's alone.
 pub struct AppVoice {
     pub core: Arc<Core>,
     pub engine: Arc<LiveKitEngine>,
     pub exec: Exec,
-    pub share: Arc<Mutex<ShareState>>,
+    /// Who picks what to share: the system's portal, or our picker over this list.
+    pub screens: Arc<dyn ScreenCapture>,
+    /// The saved resolution, frame rate and audio switch for screen shares.
+    pub share_settings: Mutex<ShareSettings>,
     pub requests: async_channel::Sender<VoiceRequest>,
 }
 
 impl AppVoice {
-    pub fn share(&self) -> ShareState {
-        self.share.lock().unwrap_or_else(|p| p.into_inner()).clone()
-    }
-
     pub fn devices(&self) -> AudioDevices {
         self.engine.devices()
     }
 
-    /// Stops sharing, as a call ending does.
-    pub fn stop_share(&self) {
-        self.engine.stop_system_audio();
-        *self.share.lock().unwrap_or_else(|p| p.into_inner()) = ShareState::default();
+    pub fn share_settings(&self) -> ShareSettings {
+        *self
+            .share_settings
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+    }
+
+    pub fn set_share_settings(&self, settings: ShareSettings) {
+        *self
+            .share_settings
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = settings;
+    }
+
+    /// Starts a share of this source (`None`: the system's picker chooses), with the saved settings.
+    pub fn start_share(&self, source_id: Option<String>) {
+        let request = self.share_settings().request(source_id);
+        let core = self.core.clone();
+        self.exec.fire(async move {
+            if let Err(error) = core.start_screen_share(request).await {
+                log::warn!("sharing the screen: {error}");
+            }
+        });
+    }
+
+    /// Lists screens and windows for our picker, off the UI thread: thumbnails take a moment.
+    pub fn list_sources(&self) {
+        let (screens, requests) = (self.screens.clone(), self.requests.clone());
+        // Fired, so the activity the rig waits on moves once the list is in.
+        self.exec.fire(async move {
+            let listed = tokio::task::spawn_blocking(move || {
+                screens
+                    .sources(semaphore_ui::voice::THUMBNAIL_PX)
+                    .map_err(|error| error.to_string())
+            })
+            .await
+            .unwrap_or_else(|error| Err(error.to_string()));
+            let _ = requests.try_send(VoiceRequest::PickerSources(listed));
+        });
     }
 }
 
@@ -186,7 +220,6 @@ impl VoiceController for AppVoice {
     }
 
     fn leave(&self) {
-        self.stop_share();
         let core = self.core.clone();
         self.exec.fire(async move {
             if let Err(error) = core.leave_voice().await {
@@ -208,38 +241,37 @@ impl VoiceController for AppVoice {
         let _ = self.requests.try_send(VoiceRequest::OpenDevices);
     }
 
-    /// Off the UI thread: opening a PipeWire capture can take a moment.
-    fn set_system_audio(&self, on: bool) {
-        let (engine, share, requests) = (
-            self.engine.clone(),
-            self.share.clone(),
-            self.requests.clone(),
-        );
-        self.exec.handle().spawn_blocking(move || {
-            let next = if on {
-                let started = match semaphore_sysaudio::platform_capture() {
-                    Some(capture) => engine.start_system_audio(&*capture),
-                    None => Err("this platform can't capture system audio".into()),
-                };
-                match started {
-                    Ok(()) => ShareState {
-                        on: true,
-                        error: None,
-                    },
-                    Err(error) => {
-                        log::warn!("sharing audio: {error}");
-                        ShareState {
-                            on: false,
-                            error: Some(error),
-                        }
-                    }
-                }
-            } else {
-                engine.stop_system_audio();
-                ShareState::default()
-            };
-            *share.lock().unwrap_or_else(|p| p.into_inner()) = next;
-            let _ = requests.try_send(VoiceRequest::Redraw);
+    fn open_more(&self) {
+        let _ = self.requests.try_send(VoiceRequest::OpenMore);
+    }
+
+    fn set_camera(&self, on: bool) {
+        let core = self.core.clone();
+        self.exec.fire(async move {
+            if let Err(error) = core.set_camera(on).await {
+                log::warn!("camera: {error}");
+            }
         });
+    }
+
+    /// On: stop. Off or failed: the portal straight away on Wayland, our picker elsewhere.
+    fn toggle_screen_share(&self) {
+        match self.core.voice().local.screen {
+            LocalShare::On => {
+                let core = self.core.clone();
+                self.exec.fire(async move {
+                    let _ = core.stop_screen_share().await;
+                });
+            }
+            // The bar doesn't offer this, but a stale click mustn't start a second share.
+            LocalShare::Starting => {}
+            LocalShare::Off | LocalShare::Failed { .. } => match self.screens.picker() {
+                PickerKind::System => self.start_share(None),
+                PickerKind::Listed => {
+                    let _ = self.requests.try_send(VoiceRequest::OpenPicker);
+                    self.list_sources();
+                }
+            },
+        }
     }
 }
