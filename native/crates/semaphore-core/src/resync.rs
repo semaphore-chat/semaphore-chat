@@ -39,6 +39,8 @@ impl State {
         for op in RECONNECT_INVALIDATES
             .iter()
             .chain(NATIVE_RECONNECT_INVALIDATES)
+            // W5-A's views without socket events.
+            .chain(crate::commands::community_admin::admin_keys::RECONNECT)
         {
             marked.extend(self.invalidate(&keys::op(op)));
         }
