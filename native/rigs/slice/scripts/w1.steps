@@ -1,0 +1,197 @@
+# W1: the message features in the real app, against the showcase scenario. alexk owns the instance
+# (the instance owner may pin and remove anywhere; the fake server gives everyone else a moderator
+# role), so pins and removals are offered. Each part checks the server and core, then takes a shot.
+
+app 1280 800
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel cc-general
+wait core rows >= 14
+expect requests ModerationController_getPinnedMessages >= 1
+wait idle
+shot 00-general
+
+# 1. Edit in place: the toolbar's Edit, then Enter saves.
+hover-row message "you still have my headset"
+wait idle
+shot 01-toolbar-mine
+click message-action-edit
+wait core editing yes
+type " (found it)"
+wait idle
+shot 02-editing
+press enter
+wait core editing no
+wait core edited "headset btw (found it)"
+expect requests MessagesController_update >= 1
+# Up in the empty composer edits the last one of mine; Escape puts it away unchanged.
+press up
+wait core editing yes
+press escape
+wait core editing no
+expect core requests MessagesController_update == 1
+wait idle
+shot 03-edited
+
+# 2. A thread: the pane with its parent and replies, a reply, and the bell.
+hover-row message "are we doing friday or not"
+click message-action-thread
+wait core side-panel thread
+wait core thread-rows >= 5
+wait core subscribed yes
+expect requests ThreadsController_getReplies >= 1
+wait idle
+shot 12-thread
+type "count me in"
+press enter
+wait core thread-sent "count me in"
+expect requests sendThreadReply >= 1
+# The server's clock stands still: move it, so the choice comes after the reply, as it would.
+server advance_clock "{\"ms\": 1000}"
+click thread-subscribe
+wait core subscribed no
+expect requests ThreadsController_unsubscribe >= 1
+wait idle
+shot 13-thread-replied
+click thread-close
+wait core side-panel none
+# A thread with no replies yet: a first reply shows even while the server's count is still 0.
+hover-row message "found this from last time"
+click message-action-thread
+wait core side-panel thread
+wait core element thread-no-replies
+server fail_next_send "{\"code\": \"RATE_LIMITED\", \"retryable\": true}"
+type "first!"
+press enter
+wait core thread-rows >= 1
+expect core no-element thread-no-replies
+wait idle
+shot 14-thread-first-reply
+click thread-close
+wait core side-panel none
+
+# 3. Delete my own: the toolbar asks "Delete?" in place, then it's gone for everyone.
+type "this one is a mistake"
+press enter
+wait core sent "this one is a mistake"
+hover-row message "this one is a mistake"
+click message-action-delete
+wait idle
+shot 04-delete-staged
+click message-action-confirm-delete
+wait core no-text "this one is a mistake"
+expect requests MessagesController_remove >= 1
+
+# 4. Remove someone else's as a moderator, with a reason: moderators still see it.
+right-click-row message "yeah i'll bring it friday"
+expect label "Remove message"
+expect no-label "Delete message"
+wait idle
+shot 05-menu-moderator
+click message-menu-delete
+click remove-reason
+type "off topic"
+wait idle
+shot 06-remove-dialog
+click remove-confirm
+wait core removed "yeah i'll bring it friday"
+expect requests ModerationController_deleteMessageAsMod >= 1
+expect core no-notice
+wait idle
+shot 07-removed
+
+# 5. Pin, open the pins, jump to it, unpin from the panel.
+hover-row message "found this from last time"
+click message-action-pin
+wait core pinned "found this from last time"
+expect requests ModerationController_pinMessage >= 1
+wait core pinned-count 1
+click header-pins
+wait core side-panel pins
+wait core label "Unpin message"
+wait idle
+shot 08-pins
+click pin-sc-cc-pit-caption
+wait idle
+shot 09-pin-jumped
+click unpin-sc-cc-pit-caption
+wait core unpinned "found this from last time"
+expect requests ModerationController_unpinMessage >= 1
+wait core pinned-count 0
+click header-pins
+wait core side-panel none
+
+# 6. React from the picker, and who reacted in the tooltip. The composer's emoji button inserts.
+# The contract types a reaction's message id as a UUID, so this one has a real one.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-marcus\", \"text\": \"rematch tonight?\", \"id\": \"5f0c6a1e-8c2b-4d7a-9a1e-3b6f2c9d0e11\"}"
+wait core text "rematch tonight?"
+wait idle
+hover-row message "rematch tonight?"
+click message-action-react
+wait core picker open
+type "fire"
+wait idle
+shot 10-picker
+click "emoji-🔥"
+wait core picker closed
+wait core reaction "rematch tonight?" "🔥" 1
+expect requests MessagesController_addReaction >= 1
+hover-row reaction "rematch tonight?" 0
+wait core label "alexk"
+wait idle
+shot 11-reaction-tooltip
+click composer-emoji
+wait core picker open
+type "fire"
+click "emoji-🔥"
+wait core picker closed
+wait core composer-text "🔥"
+press backspace
+
+# 7. Search: the field has the caret; a hit in a thread opens it there, tinted.
+click header-search
+wait core side-panel search
+expect focused "Search messages"
+type "hop in voice"
+tick 400
+wait core requests MessagesController_searchChannelMessages >= 1
+wait core search-hits >= 1
+wait idle
+shot 15-search
+click search-hit-sc-thread-ok-9
+wait core side-panel thread
+wait core thread-rows >= 5
+wait idle
+shot 16-search-jumped
+click thread-close
+wait core side-panel search
+click header-search
+wait core side-panel none
+
+# 8. A message link in the web's form opens its channel at the message, not the browser.
+server post_as "{\"channelId\": \"cc-general\", \"authorId\": \"u-priya\", \"text\": \"the lfg post: $SERVER/#/community/c-couch/channel/cc-lfg?highlight=sc-msg-24\"}"
+wait core text "the lfg post"
+wait idle
+click-text "the lfg post" "/#/community"
+wait core channel cc-lfg
+wait core text "need one more"
+expect core no-notice
+wait idle
+shot 17-link-opened
+
+# 9. The unread divider where reading stopped when the channel opened.
+click community-c-lumen
+click channel-ch-general
+wait core channel ch-general
+wait core unread-after "Lunch spot recommendations"
+expect label "4 NEW MESSAGES"
+wait idle
+shot 18-unread-divider

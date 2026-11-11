@@ -3,7 +3,7 @@
 //! included, comes back here.
 
 use crate::AppConfig;
-use crate::conversation::ConversationPane;
+use crate::conversation::{ConversationPane, PaneEvent};
 use crate::files::{self, AppMedia, PreviewFetcher};
 use crate::runtime::Activity;
 use crate::services::{self, Services, StartOptions};
@@ -238,6 +238,8 @@ impl AppRoot {
                     .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
                     .ok();
             });
+        let backend = services.backend.clone();
+        let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
         let pane = cx.new(|cx| {
             ConversationPane::new(
                 core,
@@ -246,10 +248,13 @@ impl AppRoot {
                 self.config.scrollbar,
                 media,
                 open_attachment,
+                server_url,
                 window,
                 cx,
             )
         });
+        self._subscriptions
+            .push(cx.subscribe_in(&pane, window, Self::on_pane_event));
         let last_server = services.last_server.clone();
         // Voice: frames for this window, the controls, and the stage, made once.
         let frames = VideoFrames::for_window(window);
@@ -822,11 +827,45 @@ impl AppRoot {
         shell
     }
 
+    /// What the conversation pane asks of the shell.
+    fn on_pane_event(
+        &mut self,
+        _: &Entity<ConversationPane>,
+        event: &PaneEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(shell) = self.shell.clone() else {
+            return;
+        };
+        match event.clone() {
+            PaneEvent::SidePanel(panel) => {
+                shell.update(cx, |shell, cx| shell.set_side_panel(panel, cx));
+            }
+            PaneEvent::Navigate {
+                community_id,
+                channel_id,
+            } => shell.update(cx, |shell, cx| {
+                shell.navigate(
+                    Route::Channel {
+                        community_id,
+                        channel_id,
+                    },
+                    cx,
+                )
+            }),
+            PaneEvent::PinnedCount(count) => shell.update(cx, |shell, cx| {
+                shell.pinned_count = count;
+                cx.notify();
+            }),
+        }
+    }
+
     fn on_shell_event(
         &mut self,
         _: &Entity<Shell>,
         event: &ShellEvent,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(core) = self.core() else {
@@ -840,6 +879,21 @@ impl AppRoot {
             }
             ShellEvent::Navigated(_) => {}
             ShellEvent::JoinVoice { channel_id } => self.join_voice(channel_id.clone(), cx),
+            ShellEvent::OpenPins => {
+                if let Some(pane) = &self.pane {
+                    pane.update(cx, |pane, cx| pane.toggle_pins(window, cx));
+                }
+            }
+            ShellEvent::OpenSearch => {
+                if let Some(pane) = &self.pane {
+                    pane.update(cx, |pane, cx| pane.toggle_search(window, cx));
+                }
+            }
+            ShellEvent::CloseSidePanel => {
+                if let Some(pane) = &self.pane {
+                    pane.update(cx, |pane, cx| pane.close_side(cx));
+                }
+            }
             other => log::info!("{other:?}: not in this build yet"),
         }
     }

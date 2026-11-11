@@ -1,5 +1,8 @@
 //! The message list: `gpui::list` over `Arc<MessageRow>`, plus a selection the app owns.
 
+use super::actions::{
+    ListPermissions, MessageAction, UnreadDivider, delete_is_removal, render_menu, render_sheet,
+};
 use super::format::TimeFormat;
 use super::media::{Media, MediaSource};
 use super::palette::{Fonts, Palette};
@@ -7,12 +10,14 @@ use super::row::{Decor, ReplyPreview, Shared, render_empty, render_row, render_s
 use super::selection::{self, Motion, Pos, Selection, Unit, UnitDrag};
 use super::store::{RowChange, RowStore};
 use super::text;
+use crate::kit::{Button as KitButton, Dialog, TextField, text_state};
 use gpui_kit::base::AutoScroll;
 use gpui_kit::base::TestSupportExt as _;
+use gpui_kit::component::input::InputState;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{ListOp, MessageRow, SendState};
+use semaphore_core::model::{ListOp, MessageRow, ReactionUsers, SendState, UnreadMarker};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -134,6 +139,39 @@ pub enum MessageListEvent {
         client_nonce: String,
         index: u32,
     },
+    /// Reply: the owner puts the message in the composer's reply banner and focuses it.
+    Reply {
+        message_id: String,
+    },
+    /// Edit: the owner builds a composer in edit mode and calls `MessageList::set_editing`.
+    Edit {
+        message_id: String,
+    },
+    /// A confirmed delete: `Core::delete_message`. `reason` only for a moderator's removal.
+    Delete {
+        message_id: String,
+        reason: Option<String>,
+    },
+    /// `Core::pin_message`.
+    Pin {
+        message_id: String,
+    },
+    /// `Core::unpin_message`.
+    Unpin {
+        message_id: String,
+    },
+    /// The react button: show the emoji picker at `anchor` (window coordinates), then
+    /// `Core::add_reaction` with what was picked.
+    OpenReactionPicker {
+        message_id: String,
+        anchor: Point<Pixels>,
+    },
+    /// The pointer is over a reaction: the owner reads `Core::reaction_users` and answers with
+    /// `MessageList::set_reaction_users`, again on `ViewChanged { ReactionUsers }`.
+    ReactionHovered {
+        message_id: String,
+        emoji: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -191,7 +229,14 @@ pub struct MessageList {
     detached: bool,
     asked_newer: bool,
     animation_timer: Option<Task<()>>,
+    /// The right-click menu (or the phone sheet): the row and where it was asked for.
+    menu: Option<(i64, Point<Pixels>)>,
+    /// A moderator removing someone else's message: its seq, and the optional reason.
+    remove: Option<(i64, Entity<InputState>)>,
 }
+
+/// Under this list width the toolbar is one button and the menu a bottom sheet.
+const PHONE_WIDTH: f32 = 600.;
 
 impl EventEmitter<MessageListEvent> for MessageList {}
 
@@ -219,6 +264,16 @@ impl MessageList {
             next_animation_frame: Cell::new(None),
             animated_paints: Cell::new(0),
             view: RefCell::new(cx.weak_entity()),
+            hovered: Cell::new(None),
+            permissions: Cell::new(ListPermissions::default()),
+            staged_delete: Cell::new(None),
+            menu_for: Cell::new(None),
+            editing: RefCell::new(None),
+            unread: Cell::new(None),
+            highlight: Cell::new(None),
+            hovered_reaction: RefCell::new(None),
+            reaction_users: RefCell::new(HashMap::new()),
+            phone: Cell::new(false),
         });
         let count = shared.rows.borrow().len();
         let list = ListState::new(count, ListAlignment::Top, OVERDRAW);
@@ -250,7 +305,292 @@ impl MessageList {
             detached: false,
             asked_newer: false,
             animation_timer: None,
+            menu: None,
+            remove: None,
         }
+    }
+
+    /// What the user may do here; decides every row's toolbar and menu.
+    pub fn set_permissions(&mut self, permissions: ListPermissions, cx: &mut Context<Self>) {
+        if self.shared.permissions.replace(permissions) != permissions {
+            cx.notify();
+        }
+    }
+
+    /// Shows the toolbar on this row as if the pointer were over it. For stories and rigs.
+    pub fn set_hovered(&mut self, seq: Option<i64>, cx: &mut Context<Self>) {
+        self.shared.hovered.set(seq);
+        cx.notify();
+    }
+
+    /// Draws `editor` in place of the row's text (the owner's composer in edit mode), or none.
+    pub fn set_editing(&mut self, editing: Option<(i64, AnyView)>, cx: &mut Context<Self>) {
+        let old = self.editing_seq();
+        *self.shared.editing.borrow_mut() = editing;
+        let new = self.editing_seq();
+        for seq in [old, new].into_iter().flatten() {
+            self.remeasure_seq(seq);
+        }
+        cx.notify();
+    }
+
+    pub fn editing_seq(&self) -> Option<i64> {
+        self.shared.editing.borrow().as_ref().map(|(seq, _)| *seq)
+    }
+
+    /// `Core::unread_marker`: the divider goes below the row it names, once that row is loaded.
+    pub fn set_unread_marker(&mut self, marker: Option<&UnreadMarker>, cx: &mut Context<Self>) {
+        let divider = marker.and_then(|marker| {
+            marker.after_seq.map(|after_seq| UnreadDivider {
+                after_seq,
+                count: marker.unread_count,
+            })
+        });
+        let old = self.shared.unread.replace(divider);
+        if old != divider {
+            // The row the divider follows grows by it, and the one after it may lose its grouping.
+            for seq in [old, divider].into_iter().flatten().map(|d| d.after_seq) {
+                let ix = self.shared.rows.borrow().index_of(seq);
+                if let Some(ix) = ix {
+                    self.shared.frozen_decor.borrow_mut().remove(&seq);
+                    let next = self.shared.rows.borrow().get(ix + 1).map(|row| row.seq);
+                    if let Some(next) = next {
+                        self.shared.frozen_decor.borrow_mut().remove(&next);
+                    }
+                    let end = (ix + 2).min(self.shared.rows.borrow().len());
+                    self.list.remeasure_items(ix..end);
+                }
+            }
+            cx.notify();
+        }
+    }
+
+    pub fn unread_divider(&self) -> Option<UnreadDivider> {
+        self.shared.unread.get()
+    }
+
+    /// Tints a row the user jumped to. The owner clears it after a moment.
+    pub fn set_highlight(&mut self, seq: Option<i64>, cx: &mut Context<Self>) {
+        if self.shared.highlight.replace(seq) != seq {
+            cx.notify();
+        }
+    }
+
+    /// Who reacted with `emoji`, for the tooltip.
+    pub fn set_reaction_users(
+        &mut self,
+        message_id: String,
+        emoji: String,
+        users: ReactionUsers,
+        cx: &mut Context<Self>,
+    ) {
+        self.shared
+            .reaction_users
+            .borrow_mut()
+            .insert((message_id, emoji), users);
+        cx.notify();
+    }
+
+    /// Shows the tooltip of a reaction as if the pointer were over it. For stories and rigs.
+    pub fn set_hovered_reaction(&mut self, hovered: Option<(i64, String)>, cx: &mut Context<Self>) {
+        *self.shared.hovered_reaction.borrow_mut() = hovered;
+        cx.notify();
+    }
+
+    fn remeasure_seq(&self, seq: i64) {
+        if let Some(ix) = self.shared.rows.borrow().index_of(seq) {
+            self.list.remeasure_items(ix..ix + 1);
+        }
+    }
+
+    fn message_id(&self, seq: i64) -> Option<String> {
+        self.shared
+            .rows
+            .borrow()
+            .by_seq(seq)
+            .and_then(|row| row.id.clone())
+    }
+
+    /// Opens the actions menu for a row at `position` (a sheet at a phone's width). Nothing if the
+    /// row offers no actions.
+    pub fn open_menu(&mut self, seq: i64, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let has_actions = self.shared.rows.borrow().by_seq(seq).is_some_and(|row| {
+            !super::actions::message_actions(row, self.shared.permissions.get()).is_empty()
+        });
+        if !has_actions {
+            return;
+        }
+        self.menu = Some((seq, position));
+        self.shared.menu_for.set(Some(seq));
+        cx.notify();
+    }
+
+    pub fn close_menu(&mut self, cx: &mut Context<Self>) {
+        if self.menu.take().is_some() {
+            self.shared.menu_for.set(None);
+            cx.notify();
+        }
+    }
+
+    pub fn menu_open(&self) -> Option<i64> {
+        self.menu.map(|(seq, _)| seq)
+    }
+
+    /// What a toolbar button, menu item or sheet item does.
+    pub fn run_action(
+        &mut self,
+        seq: i64,
+        action: MessageAction,
+        anchor: Point<Pixels>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_menu(cx);
+        let Some(message_id) = self.message_id(seq) else {
+            return;
+        };
+        match action {
+            MessageAction::React => {
+                cx.emit(MessageListEvent::OpenReactionPicker { message_id, anchor })
+            }
+            MessageAction::Reply => cx.emit(MessageListEvent::Reply { message_id }),
+            MessageAction::Thread => cx.emit(MessageListEvent::OpenThread { message_id }),
+            MessageAction::Edit => cx.emit(MessageListEvent::Edit { message_id }),
+            MessageAction::Pin => cx.emit(MessageListEvent::Pin { message_id }),
+            MessageAction::Unpin => cx.emit(MessageListEvent::Unpin { message_id }),
+            MessageAction::Copy => {
+                let text = self
+                    .shared
+                    .rows
+                    .borrow()
+                    .by_seq(seq)
+                    .map(|row| text::plain_text(row))
+                    .unwrap_or_default();
+                if !text.is_empty() {
+                    cx.write_to_clipboard(ClipboardItem::new_string(text));
+                }
+            }
+            MessageAction::Delete => {
+                let removal = self
+                    .shared
+                    .rows
+                    .borrow()
+                    .by_seq(seq)
+                    .is_some_and(|row| delete_is_removal(row, self.shared.permissions.get()));
+                if removal {
+                    let reason = text_state(window, cx, false);
+                    self.remove = Some((seq, reason));
+                } else {
+                    self.shared.staged_delete.set(Some(seq));
+                }
+                cx.notify();
+            }
+        }
+    }
+
+    /// Opens the moderator's removal dialog for a row. For stories and rigs; a click on Delete does
+    /// the same.
+    pub fn open_remove_dialog(&mut self, seq: i64, window: &mut Window, cx: &mut Context<Self>) {
+        let reason = text_state(window, cx, false);
+        self.remove = Some((seq, reason));
+        cx.notify();
+    }
+
+    pub fn hovered(&self) -> Option<i64> {
+        self.shared.hovered.get()
+    }
+
+    pub fn remove_dialog_open(&self) -> bool {
+        self.remove.is_some()
+    }
+
+    pub fn staged_delete(&self) -> Option<i64> {
+        self.shared.staged_delete.get()
+    }
+
+    /// The staged delete's confirm, or the removal dialog's Remove.
+    pub fn confirm_delete(&mut self, seq: i64, reason: Option<String>, cx: &mut Context<Self>) {
+        self.shared.staged_delete.set(None);
+        self.remove = None;
+        if let Some(message_id) = self.message_id(seq) {
+            let reason = reason
+                .map(|reason| reason.trim().to_owned())
+                .filter(|reason| !reason.is_empty());
+            cx.emit(MessageListEvent::Delete { message_id, reason });
+        }
+        cx.notify();
+    }
+
+    pub fn cancel_delete(&mut self, cx: &mut Context<Self>) {
+        self.shared.staged_delete.set(None);
+        self.remove = None;
+        cx.notify();
+    }
+
+    /// A quick reaction from the phone sheet: toggles it, as a chip does.
+    pub fn quick_react(&mut self, seq: i64, emoji: String, cx: &mut Context<Self>) {
+        self.close_menu(cx);
+        if let Some(message_id) = self.message_id(seq) {
+            cx.emit(MessageListEvent::ToggleReaction { message_id, emoji });
+        }
+    }
+
+    /// Escape: closes whatever is open, else clears the selection.
+    fn escape(&mut self, cx: &mut Context<Self>) {
+        if self.menu.is_some() {
+            self.close_menu(cx);
+        } else if self.remove.is_some() || self.shared.staged_delete.get().is_some() {
+            self.cancel_delete(cx);
+        } else {
+            self.set_selection(None, cx);
+        }
+    }
+
+    fn render_remove_dialog(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let (seq, reason) = self.remove.clone()?;
+        let confirm_reason = reason.clone();
+        let error = crate::theme::SemTheme::sem(&**cx).error;
+        Some(
+            Dialog::new("Remove message")
+                .width(400.)
+                .on_close({
+                    let view = cx.weak_entity();
+                    move |_, cx| {
+                        view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
+                    }
+                })
+                .body(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(16.))
+                        .child("Remove this message for everyone? Moderators will still see it.")
+                        .child(
+                            TextField::new("remove-reason", &reason, "Reason (optional)")
+                                .placeholder("Shown to moderators"),
+                        ),
+                )
+                .action(KitButton::new("remove-cancel", "Cancel").on_click({
+                    let view = cx.weak_entity();
+                    move |_, _, cx| {
+                        view.update(cx, |list, cx| list.cancel_delete(cx)).ok();
+                    }
+                }))
+                .action(
+                    KitButton::new("remove-confirm", "Remove")
+                        .color(error)
+                        .on_click({
+                            let view = cx.weak_entity();
+                            move |_, _, cx| {
+                                let reason = confirm_reason.read(cx).value().to_string();
+                                view.update(cx, |list, cx| {
+                                    list.confirm_delete(seq, Some(reason), cx)
+                                })
+                                .ok();
+                            }
+                        }),
+                ),
+        )
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {
@@ -761,6 +1101,11 @@ impl MessageList {
 
     /// What's decided by what the last frame showed.
     fn after_paint(&mut self, cx: &mut Context<Self>) {
+        // The width is known only once laid out: a first frame at a phone's width redraws as one.
+        let width = f32::from(self.list.viewport_bounds().size.width);
+        if (width > 0. && width < PHONE_WIDTH) != self.shared.phone.get() {
+            cx.notify();
+        }
         // Here rather than in the scroll handler, which only hears the wheel: not a scrollbar drag,
         // a drag's auto-scroll or `scroll_to`.
         if self.list.logical_scroll_top().item_ix >= LOAD_OLDER_WITHIN {
@@ -828,6 +1173,23 @@ impl Render for MessageList {
             return root.child(render_empty(&palette));
         }
 
+        let width = f32::from(self.list.viewport_bounds().size.width);
+        self.shared.phone.set(width > 0. && width < PHONE_WIDTH);
+        // The editor grows as it's typed in; its row is measured afresh each frame.
+        if let Some(seq) = self.editing_seq() {
+            self.remeasure_seq(seq);
+        }
+        let menu_row = self
+            .menu
+            .and_then(|(seq, at)| Some((self.shared.rows.borrow().by_seq(seq)?.clone(), at)));
+        let menu = menu_row.map(|(row, at)| {
+            if self.shared.phone.get() {
+                render_sheet(&self.shared, &row, cx).into_any_element()
+            } else {
+                render_menu(&self.shared, &row, at, cx).into_any_element()
+            }
+        });
+        let remove_dialog = self.render_remove_dialog(cx);
         let shared = self.shared.clone();
         let rows = list(self.list.clone(), move |ix, window, cx| {
             render_row(&shared, ix, window, cx)
@@ -837,7 +1199,7 @@ impl Render for MessageList {
         let entity = cx.entity();
         root.on_action(cx.listener(|view, _: &CopySelection, _, cx| view.copy(cx)))
             .on_action(cx.listener(|view, _: &SelectAll, _, cx| view.select_all(cx)))
-            .on_action(cx.listener(|view, _: &ClearSelection, _, cx| view.set_selection(None, cx)))
+            .on_action(cx.listener(|view, _: &ClearSelection, _, cx| view.escape(cx)))
             .on_action(
                 cx.listener(|view, _: &ExtendLeft, _, cx| view.extend(Motion::PreviousChar, cx)),
             )
@@ -900,6 +1262,8 @@ impl Render for MessageList {
             .when(self.detached, |root| {
                 root.child(render_jump_to_present(&palette, cx))
             })
+            .children(menu)
+            .children(remove_dialog)
     }
 }
 

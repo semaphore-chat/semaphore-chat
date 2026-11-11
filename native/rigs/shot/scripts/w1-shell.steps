@@ -1,0 +1,10 @@
+# W1: the shell's side panel slot (docked at 1200 and up, a drawer below, a full-screen layer on a
+# phone), with a placeholder where pins, search or a thread go.
+story shell-side-panel 1440 900 dark-blue-balanced
+shot shell-side-panel-desktop-dark
+story shell-side-panel 1440 900 light-blue-balanced
+shot shell-side-panel-desktop-light
+story shell-side-panel 1024 800 dark-blue-balanced
+shot shell-side-panel-narrow-dark
+story shell-side-panel 390 844 light-blue-balanced
+shot shell-side-panel-phone-light

@@ -103,8 +103,26 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
   until you decide (it tells those sites your address).
 - [ ] Scroll a long channel full of images for a while: memory settles (it's bounded).
 
-Not in this build, so not bugs yet: DM voice, the emoji picker,
-threads, DMs, editing, notifications.
+### Message features (W1)
+
+- [ ] Hover a message: the toolbar. Edit your own (or Up in an empty composer), Enter saves, Escape
+  cancels. Delete your own: "Delete?" in place. Right-click someone else's: "Remove message", with
+  a reason; it stays visible to you, marked removed.
+- [ ] Pin from the toolbar; the header's pin badge counts it; the pin button opens the list, a click
+  jumps to the message and tints it, the cross unpins.
+- [ ] React from the toolbar's button: the picker opens with the caret in its search; hover a
+  reaction for who reacted. The composer's emoji button inserts into the text.
+- [ ] Reply in thread: the pane shows the message, its replies and a reply box; the bell turns
+  notifications off and on; closing it brings back the pins or search panel if one was open.
+- [ ] Search from the header: results as you type, "All channels" for the community; a hit opens its
+  message (a thread reply opens its thread).
+- [ ] A link to a message on this server (`https://server/#/community/C/channel/X?highlight=M`)
+  opens it here; any other link opens the browser.
+- [ ] A channel with unread messages shows the "N NEW MESSAGES" divider where you stopped reading,
+  and it stays there while the channel is open.
+- [ ] Anything the server refuses shows its message in a bar above the composer.
+
+Not in this build, so not bugs yet: DM voice, DMs, notifications.
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
 `SEMAPHORE_LOG=info`.
@@ -123,6 +141,12 @@ is retried, a screen share through our picker (the engine's fake screens, the ri
 our own stage with its audio failing cleanly (no PipeWire in a container), a cancelled picker, the
 bar elsewhere, a moderator removing us with the camera on (the call ends here and on the server, and
 the camera goes off), a second call, and leaving.
+
+`w1.steps` drives the message features against the showcase scenario: edit in place and Up to edit,
+a thread with a reply and the bell, a first reply shown while the thread's count is still 0, delete,
+a moderator's removal with a reason, pin, the pins panel, its jump and unpin, a reaction from the
+emoji picker and its tooltip, the composer's emoji button, search with a jump to a thread reply, a
+message link in the web's `/#/` form, and the unread divider.
 
 The default run executes every `rigs/slice/scripts/*.steps` except `voice.steps`, in sorted order,
 each twice with a fresh fake server per run, so a wave adds its own steps file instead of growing

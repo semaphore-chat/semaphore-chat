@@ -2,6 +2,9 @@
 //! styles, `MessageSpan`, `QuotePreview`, `MessageReactions`, `MessageAttachments`, `DaySeparator`,
 //! `OptimisticMessageActions` and `ThreadReplyBadge`, with `messageGrouping.ts` for the grouping.
 
+use super::actions::{
+    ListPermissions, UnreadDivider, render_reaction_tooltip, render_toolbar, render_unread_divider,
+};
 use super::format::{TimeFormat, file_size};
 use super::icons::{self, Glyph, glyph as icon};
 use super::media::{CacheKind, Media, MediaRef, MediaState, contain};
@@ -14,7 +17,9 @@ use super::view::{MessageList, MessageListEvent};
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{AttachmentKind, AttachmentView, MessageRow, SegKind, SendState};
+use semaphore_core::model::{
+    AttachmentKind, AttachmentView, MessageRow, ReactionUsers, SegKind, SendState,
+};
 use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
@@ -108,6 +113,24 @@ pub(crate) struct Shared {
     /// How many animated images have been painted, for tests and rigs.
     pub animated_paints: Cell<u64>,
     pub view: RefCell<WeakEntity<MessageList>>,
+    /// The row under the pointer: it shows the toolbar.
+    pub hovered: Cell<Option<i64>>,
+    pub permissions: Cell<ListPermissions>,
+    /// The row whose toolbar asks "Delete?".
+    pub staged_delete: Cell<Option<i64>>,
+    /// The row whose menu is open: it keeps its toolbar.
+    pub menu_for: Cell<Option<i64>>,
+    /// The row being edited, and the editor drawn in place of its text.
+    pub editing: RefCell<Option<(i64, AnyView)>>,
+    pub unread: Cell<Option<UnreadDivider>>,
+    /// A row just jumped to.
+    pub highlight: Cell<Option<i64>>,
+    /// The reaction chip under the pointer: seq and emoji.
+    pub hovered_reaction: RefCell<Option<(i64, String)>>,
+    /// `Core::reaction_users`, by message id and emoji.
+    pub reaction_users: RefCell<HashMap<(String, String), ReactionUsers>>,
+    /// Laid out at a phone's width last frame: the toolbar becomes one button, the menu a sheet.
+    pub phone: Cell<bool>,
 }
 
 impl Shared {
@@ -137,7 +160,15 @@ impl Shared {
             .is_none_or(|prev| self.time.day(prev.sent_at_ms) != self.time.day(row.sent_at_ms));
         Decor {
             day: new_day.then(|| self.time.day_label(row.sent_at_ms).into()),
-            grouped: previous.is_some_and(|prev| self.should_group(prev, row)),
+            // The unread divider between two rows starts a new group: the row after it shows its
+            // name again.
+            grouped: previous.is_some_and(|prev| {
+                self.should_group(prev, row)
+                    && self
+                        .unread
+                        .get()
+                        .is_none_or(|divider| divider.after_seq != prev.seq)
+            }),
         }
     }
 
@@ -157,7 +188,59 @@ impl Shared {
         prepared
     }
 
-    fn emit(&self, event: MessageListEvent, cx: &mut App) {
+    fn notify_view(&self, cx: &mut App) {
+        let view = self.view.borrow().clone();
+        view.update(cx, |_, cx| cx.notify()).ok();
+    }
+
+    fn hover_row(&self, seq: i64, hovered: bool, cx: &mut App) {
+        let now = if hovered {
+            Some(seq)
+        } else if self.hovered.get() == Some(seq) {
+            None
+        } else {
+            return;
+        };
+        if self.hovered.replace(now) != now {
+            self.notify_view(cx);
+        }
+    }
+
+    pub(crate) fn hover_reaction(
+        &self,
+        seq: i64,
+        message_id: Option<&str>,
+        emoji: &str,
+        hovered: bool,
+        cx: &mut App,
+    ) {
+        let key = (seq, emoji.to_owned());
+        {
+            let mut current = self.hovered_reaction.borrow_mut();
+            if hovered {
+                if current.as_ref() == Some(&key) {
+                    return;
+                }
+                *current = Some(key);
+            } else if current.as_ref() == Some(&key) {
+                *current = None;
+            } else {
+                return;
+            }
+        }
+        if hovered && let Some(message_id) = message_id {
+            self.emit(
+                MessageListEvent::ReactionHovered {
+                    message_id: message_id.to_owned(),
+                    emoji: emoji.to_owned(),
+                },
+                cx,
+            );
+        }
+        self.notify_view(cx);
+    }
+
+    pub(crate) fn emit(&self, event: MessageListEvent, cx: &mut App) {
         let view = self.view.borrow().clone();
         view.update(cx, |_, cx| cx.emit(event)).ok();
     }
@@ -320,7 +403,7 @@ fn prepare_block(
 }
 
 fn prepare(row: &MessageRow, inline_marks: bool, shared: &Shared) -> Prepared {
-    let pending = matches!(row.send_state, SendState::Pending);
+    let pending = matches!(row.send_state, SendState::Pending) || row.edit_pending;
     let blocks = text::blocks(row);
     let suffix_at = blocks
         .iter()
@@ -358,7 +441,7 @@ fn prepare(row: &MessageRow, inline_marks: bool, shared: &Shared) -> Prepared {
 }
 
 /// A clickable child of a row. A press on it must not start a selection.
-fn clickable(id: impl Into<ElementId>) -> Stateful<Div> {
+pub(crate) fn clickable(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .id(id)
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
@@ -495,7 +578,7 @@ fn render_reply(reply: &ReplyPreview, palette: &Palette) -> impl IntoElement {
 }
 
 fn render_marks(row: &MessageRow, palette: &Palette) -> Option<Div> {
-    let pending = matches!(row.send_state, SendState::Pending);
+    let pending = matches!(row.send_state, SendState::Pending) || row.edit_pending;
     (row.edited || pending).then(|| {
         div()
             .flex()
@@ -509,6 +592,29 @@ fn render_marks(row: &MessageRow, palette: &Palette) -> Option<Div> {
                 marks.child(icon(icons::SCHEDULE, 14., palette.text_secondary))
             })
     })
+}
+
+/// Who removed it and why: only moderators are sent these.
+fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoElement> {
+    let by = row.removed_by.as_ref().map(|user| {
+        user.display_name
+            .clone()
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| user.username.clone())
+    });
+    let label = match (by, row.removed_reason.as_deref().filter(|r| !r.is_empty())) {
+        (None, None) => return None,
+        (Some(by), None) => format!("Removed by {by}"),
+        (None, Some(reason)) => format!("Removed: {reason}"),
+        (Some(by), Some(reason)) => format!("Removed by {by}: {reason}"),
+    };
+    Some(
+        div()
+            .id("removed-by")
+            .text_size(px(CAPTION_SIZE))
+            .text_color(palette.error)
+            .child(label),
+    )
 }
 
 fn render_header(row: &MessageRow, prepared: &Prepared, palette: &Palette) -> impl IntoElement {
@@ -953,9 +1059,37 @@ fn render_reactions(
     let mut chips = Vec::with_capacity(row.reactions.len());
     for (index, reaction) in row.reactions.iter().enumerate() {
         let event_shared = shared.clone();
+        let hover_shared = shared.clone();
         let (message_id, emoji) = (row.id.clone(), reaction.emoji.clone());
+        let (hover_id, hover_emoji, seq) = (row.id.clone(), reaction.emoji.clone(), row.seq);
         let tint = palette.tint(palette.primary, 0.15);
+        let tooltip = shared
+            .hovered_reaction
+            .borrow()
+            .as_ref()
+            .is_some_and(|(hovered_seq, hovered)| {
+                *hovered_seq == row.seq && *hovered == reaction.emoji
+            })
+            .then(|| {
+                let users = row.id.as_ref().and_then(|id| {
+                    shared
+                        .reaction_users
+                        .borrow()
+                        .get(&(id.clone(), reaction.emoji.clone()))
+                        .cloned()
+                });
+                // Above the chip; deferred so the rows painted after it don't cover it.
+                deferred(
+                    div()
+                        .absolute()
+                        .left_0()
+                        .bottom(px(30.))
+                        .child(render_reaction_tooltip(users.as_ref(), &palette)),
+                )
+            });
         let mut chip = clickable(("reaction", (row.seq as u64) << 8 | index as u64))
+            .test_support()
+            .relative()
             .flex()
             .items_center()
             .gap(px(4.))
@@ -964,6 +1098,10 @@ fn render_reactions(
             .rounded(px(12.))
             .border_1()
             .text_size(px(13.))
+            .on_hover(move |hovered, _, cx| {
+                hover_shared.hover_reaction(seq, hover_id.as_deref(), &hover_emoji, *hovered, cx);
+            })
+            .children(tooltip)
             .on_click(move |_, _, cx| {
                 if let Some(message_id) = message_id.clone() {
                     event_shared.emit(
@@ -1267,14 +1405,33 @@ pub(crate) fn render_row(
                 .text_color(palette.text_disabled)
                 .child("[Message deleted]"),
         );
+        body = body.children(render_removed_by(&row, &palette));
     }
-    for block in &prepared.blocks {
-        body = body.child(render_block(shared, &row, block, window, cx));
+    let editor = shared
+        .editing
+        .borrow()
+        .as_ref()
+        .filter(|(seq, _)| *seq == row.seq)
+        .map(|(_, editor)| editor.clone());
+    let is_editing = editor.is_some();
+    if let Some(editor) = editor {
+        body = body.child(
+            div()
+                .id("message-editor")
+                .mt(px(4.))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                .child(editor),
+        );
+    } else {
+        for block in &prepared.blocks {
+            body = body.child(render_block(shared, &row, block, window, cx));
+        }
+        body = body
+            .children(render_attachments(shared, &row, window, cx))
+            .children(render_uploads(shared, &row))
+            .children(render_link_previews(shared, &row, window, cx));
     }
     body = body
-        .children(render_attachments(shared, &row, window, cx))
-        .children(render_uploads(shared, &row))
-        .children(render_link_previews(shared, &row, window, cx))
         .children(render_reactions(shared, &row, window, cx))
         .children(render_thread_badge(shared, &row))
         .children(render_failed(shared, &row));
@@ -1284,9 +1441,22 @@ pub(crate) fn render_row(
     }
 
     let highlighted = prepared.mentions_me;
+    let jumped_to = shared.highlight.get() == Some(row.seq);
+    let staged = shared.staged_delete.get() == Some(row.seq);
+    let show_toolbar = !is_editing
+        && (staged
+            || shared.menu_for.get() == Some(row.seq)
+            || shared.hovered.get() == Some(row.seq));
+    let toolbar = show_toolbar
+        .then(|| render_toolbar(shared, &row, staged, shared.phone.get()))
+        .flatten();
+    let hover_shared = shared.clone();
+    let menu_shared = shared.clone();
+    let seq = row.seq;
     let group = SharedString::new_static("message-row");
     let mut container = div()
         .id(("message", row.seq as u64))
+        .test_support()
         .group(group.clone())
         .relative()
         .flex()
@@ -1300,7 +1470,15 @@ pub(crate) fn render_row(
         .role(Role::ListItem)
         .aria_selected(selected)
         .aria_position_in_set(ix + 1)
-        .aria_size_of_set(total);
+        .aria_size_of_set(total)
+        .on_hover(move |hovered, _, cx| hover_shared.hover_row(seq, *hovered, cx))
+        .on_mouse_down(MouseButton::Right, move |event, _, cx| {
+            cx.stop_propagation();
+            let view = menu_shared.view.borrow().clone();
+            let position = event.position;
+            view.update(cx, |list, cx| list.open_menu(seq, position, cx))
+                .ok();
+        });
     if window.is_a11y_active() {
         container = container.aria_label(accessible_label(
             &row,
@@ -1309,7 +1487,13 @@ pub(crate) fn render_row(
             reply.as_ref(),
         ));
     }
-    container = if failed {
+    container = if jumped_to {
+        container
+            .bg(palette.tint(palette.warning, 0.15))
+            .hover(|style| style.bg(palette.tint(palette.warning, 0.2)))
+    } else if staged {
+        container.bg(palette.tint(palette.error, 0.08))
+    } else if failed {
         container
             .bg(palette.tint(palette.error, 0.06))
             .hover(|style| style.bg(palette.tint(palette.error, 0.1)))
@@ -1353,15 +1537,21 @@ pub(crate) fn render_row(
                 .child(render_avatar(shared, &row, &prepared, window, cx)),
         )
     };
-    let container = container.child(body);
+    let container = container.child(body).children(toolbar);
+    let divider = shared
+        .unread
+        .get()
+        .filter(|divider| divider.after_seq == row.seq && ix + 1 < total)
+        .map(|divider| render_unread_divider(divider.count, &palette));
 
-    match decor.day {
-        Some(label) => div()
+    match (decor.day, divider) {
+        (None, None) => container.into_any_element(),
+        (day, divider) => div()
             .w_full()
-            .child(render_day_separator(label, &palette))
+            .children(day.map(|label| render_day_separator(label, &palette)))
             .child(container)
+            .children(divider)
             .into_any_element(),
-        None => container.into_any_element(),
     }
 }
 

@@ -1,5 +1,6 @@
 //! The list's stories, drawn by `rig-shot`. Each is a fixed set of rows at a fixed time.
 
+use super::actions::{ListPermissions, MessageAction};
 use super::fixture::{self, FixtureMedia, NOW_MS};
 use super::format::TimeFormat;
 use super::row::ReplyPreview;
@@ -8,7 +9,7 @@ use super::view::{ListData, ListOptions, ListStatus, MessageList, init};
 use crate::stories::{Story, StoryEnv};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::MessageRow;
+use semaphore_core::model::{MessageRow, ReactionUsers, UnreadMarker};
 use semaphore_core::scenario::ScenarioViews;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -223,7 +224,234 @@ fn missing_images(cx: &mut App) -> AnyView {
     .view(cx)
 }
 
+const MEMBER: ListPermissions = ListPermissions {
+    reply: true,
+    react: true,
+    threads: true,
+    pin: false,
+    unpin: false,
+    remove_any: false,
+};
+
+const MODERATOR: ListPermissions = ListPermissions {
+    pin: true,
+    unpin: true,
+    remove_any: true,
+    ..MEMBER
+};
+
+type Setup = fn(&mut MessageList, &mut Window, &mut Context<MessageList>);
+
+/// The action fixture with `permissions`, then whatever `setup` opens or hovers.
+fn actions_story(
+    permissions: ListPermissions,
+    setup: Setup,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    init(cx);
+    cx.new(|cx| {
+        let mut list = MessageList::new(
+            ListData {
+                me_id: fixture::me().id,
+                rows: fixture::actions(),
+                replies: HashMap::new(),
+                status: ListStatus::Ready,
+            },
+            Rc::new(FixtureMedia::new()),
+            ListOptions {
+                time: TimeFormat::fixed(NOW_MS),
+                scrollbar: false,
+                ..ListOptions::default()
+            },
+            cx,
+        );
+        list.set_permissions(permissions, cx);
+        setup(&mut list, window, cx);
+        list
+    })
+    .into()
+}
+
+fn names(count: usize) -> ReactionUsers {
+    let all = [
+        ("u-ben", "ben", None),
+        ("u-cleo", "cleo", Some("Cleo")),
+        ("u-me", "me", Some("You")),
+    ];
+    ReactionUsers {
+        users: all[..count]
+            .iter()
+            .map(|(id, username, display)| fixture::user(id, username, *display))
+            .collect(),
+        more: 0,
+    }
+}
+
+fn action_stories() -> Vec<Story> {
+    vec![
+        Story::new("messages-toolbar-member", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.set_hovered(Some(1), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-toolbar-mine", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.set_hovered(Some(3), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-toolbar-moderator", |_, window, cx| {
+            actions_story(
+                MODERATOR,
+                |list, _, cx| list.set_hovered(Some(2), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-toolbar-read-only", |_, window, cx| {
+            actions_story(
+                ListPermissions::default(),
+                |list, _, cx| list.set_hovered(Some(3), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-delete-staged", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, window, cx| {
+                    list.run_action(3, MessageAction::Delete, Point::default(), window, cx)
+                },
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-menu-member", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.open_menu(1, point(px(320.), px(60.)), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-menu-mine", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.open_menu(3, point(px(320.), px(200.)), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-menu-moderator", |_, window, cx| {
+            actions_story(
+                MODERATOR,
+                |list, _, cx| list.open_menu(2, point(px(320.), px(120.)), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-remove-dialog", |_, window, cx| {
+            actions_story(
+                MODERATOR,
+                |list, window, cx| list.open_remove_dialog(1, window, cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-editing", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, window, cx| {
+                    let editor = crate::composer::edit_composer_for_story(window, cx).into();
+                    list.set_editing(Some((4, editor)), cx);
+                },
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-removed-moderator", |_, window, cx| {
+            actions_story(MODERATOR, |_, _, _| {}, window, cx)
+        }),
+        Story::new("messages-unread-divider", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| {
+                    let marker = UnreadMarker {
+                        after_message_id: String::new(),
+                        after_seq: Some(3),
+                        unread_count: 3,
+                        mention_count: 1,
+                    };
+                    list.set_unread_marker(Some(&marker), cx);
+                },
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-highlight", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.set_highlight(Some(2), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-reaction-tooltip-loading", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| list.set_hovered_reaction(Some((1, "\u{1F44D}".into())), cx),
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-reaction-tooltip", |_, window, cx| {
+            actions_story(
+                MEMBER,
+                |list, _, cx| {
+                    let id = fixture::actions()[0].id.clone().unwrap_or_default();
+                    let mut users = names(3);
+                    users.more = 4;
+                    list.set_reaction_users(id, "\u{1F44D}".into(), users, cx);
+                    list.set_hovered_reaction(Some((1, "\u{1F44D}".into())), cx);
+                },
+                window,
+                cx,
+            )
+        }),
+        Story::new("messages-sheet-narrow", |_, window, cx| {
+            let view = actions_story(
+                MODERATOR,
+                |list, _, cx| list.open_menu(1, Point::default(), cx),
+                window,
+                cx,
+            );
+            narrow(view, cx)
+        }),
+        Story::new("messages-toolbar-narrow", |_, window, cx| {
+            let view = actions_story(
+                MEMBER,
+                |list, _, cx| list.set_hovered(Some(3), cx),
+                window,
+                cx,
+            );
+            narrow(view, cx)
+        }),
+    ]
+}
+
 pub fn stories() -> Vec<Story> {
+    let mut stories = action_stories();
+    stories.extend(base_stories());
+    stories
+}
+
+fn base_stories() -> Vec<Story> {
     vec![
         Story::new("messages-conversation", |_, _, cx| conversation(None, cx)),
         Story::new("messages-conversation-top", |_, _, cx| {

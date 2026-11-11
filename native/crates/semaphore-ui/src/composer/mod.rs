@@ -17,6 +17,7 @@
 //! an input method uses. No test can drive a real input method or its candidate window: that part of
 //! T4 needs the owner's desktop.
 
+mod edit;
 mod menu;
 mod model;
 mod palette;
@@ -29,10 +30,12 @@ mod stories;
 mod tests;
 
 pub use model::{
-    AttachmentSource, Availability, ComposerEvent, Draft, DraftStore, MentionSource,
+    AttachmentSource, Availability, ComposerEvent, ComposerMode, Draft, DraftStore, MentionSource,
     PendingAttachment, ReplyTarget,
 };
 pub use view::{Composer, ComposerConfig};
 
+#[cfg(feature = "stories")]
+pub(crate) use stories::edit_composer_for_story;
 #[cfg(feature = "stories")]
 pub use stories::stories;

@@ -4,13 +4,16 @@
 
 pub mod auth;
 pub mod composer;
+pub mod emoji;
 pub mod kit;
 pub mod messages;
 pub mod nav;
+pub mod panel;
 pub mod shell;
 #[cfg(feature = "stories")]
 pub mod stories;
 pub mod theme;
+pub mod thread;
 pub mod voice;
 
 pub use shell::Shell;

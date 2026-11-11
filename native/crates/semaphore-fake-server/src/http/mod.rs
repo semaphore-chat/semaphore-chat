@@ -273,6 +273,7 @@ async fn control(
                     })
                     .map(|(id, name)| (id.to_owned(), name.to_owned())),
                 link_preview: request.get("linkPreview").cloned(),
+                id: field("id").map(str::to_owned),
             };
             let message =
                 crate::messages::post_as(&inner, channel, author, text, broadcast, extras);
