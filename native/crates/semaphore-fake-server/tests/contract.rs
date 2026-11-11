@@ -1482,3 +1482,321 @@ async fn dms_friends_and_notifications_match_openapi_and_socket_events() {
         "presenceOnline payload",
     );
 }
+
+/// W3: registration, invites, communities, profile, sessions, appearance and sign-in with browser:
+/// each request body, response and socket payload against the pinned spec.
+#[tokio::test]
+async fn accounts_match_openapi_and_socket_events() {
+    use reqwest::Method as M;
+    use semaphore_fake_server::{InviteSeed, ProfileOrder};
+    let schemas = Schemas::load();
+    let server = start("showcase").await;
+    let base = server.base_url();
+    let client = http();
+    let events: Value = serde_json::from_str(include_str!("../../../contract/socket-events.json"))
+        .expect("socket-events.json is valid JSON");
+    let payload_of =
+        |name: &str| schemas.reference(events["server"][name]["payload"]["$ref"].as_str().unwrap());
+
+    // One request: the body against its request schema, the answer against the response schema.
+    let check = |method: M,
+                 path: String,
+                 auth: bool,
+                 sent: Option<(&'static str, Value)>,
+                 status: u16,
+                 schema: Option<Value>| {
+        let (client, base) = (client.clone(), base.clone());
+        let request_schema = sent
+            .as_ref()
+            .map(|(name, _)| Schemas::load().component(name));
+        async move {
+            let what = format!("{method} {path}");
+            let body = sent.map(|(_, body)| body);
+            if let (Some(schema), Some(body)) = (&request_schema, &body) {
+                assert_valid(&Schemas::load(), schema, body, &format!("{what} request"));
+            }
+            let (actual, value) = request(&client, method, &base, &path, body, auth).await;
+            assert_eq!(actual, status, "{what}: {value}");
+            if let Some(schema) = schema {
+                assert_valid(&Schemas::load(), &schema, &value, &what);
+            }
+            value
+        }
+    };
+    let error = || Some(schemas.component("ErrorResponseDto"));
+
+    // Onboarding, all public.
+    server.seed_invite(InviteSeed::new("WELCOME"));
+    check(
+        M::GET,
+        "/api/invite/public/WELCOME".into(),
+        false,
+        None,
+        200,
+        Some(schemas.component("PublicInviteDto")),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/users".into(),
+        false,
+        Some((
+            "CreateUserDto",
+            json!({ "code": "nope", "username": "newcomer", "password": "Password123!" }),
+        )),
+        404,
+        error(),
+    )
+    .await;
+    let user = check(
+        M::POST,
+        "/api/users".into(),
+        false,
+        Some((
+            "CreateUserDto",
+            json!({ "code": "WELCOME", "username": "Newcomer", "password": "Password123!", "email": "n@example.com" }),
+        )),
+        201,
+        Some(schemas.component("UserEntity")),
+    )
+    .await;
+    assert_eq!(user["username"], "newcomer");
+    check(
+        M::POST,
+        "/api/users".into(),
+        false,
+        Some((
+            "CreateUserDto",
+            json!({ "code": "WELCOME", "username": "newcomer", "password": "Password123!" }),
+        )),
+        409,
+        error(),
+    )
+    .await;
+    check(
+        M::POST,
+        "/api/auth/forgot-password".into(),
+        false,
+        Some((
+            "ForgotPasswordRequestDto",
+            json!({ "email": "n@example.com" }),
+        )),
+        200,
+        Some(schemas.component("ForgotPasswordResponseDto")),
+    )
+    .await;
+
+    // Community, with its socket event.
+    let mut socket = Socket::connect(&base, json!({ "token": TOKEN, "protocol": 2 })).await;
+    let community = check(
+        M::POST,
+        "/api/community".into(),
+        true,
+        Some((
+            "CreateCommunityDto",
+            json!({ "name": "Contract Club", "description": "d" }),
+        )),
+        201,
+        Some(schemas.component("CommunityResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        "/api/community/mine".into(),
+        true,
+        None,
+        200,
+        Some(schemas.array_of("CommunityResponseDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        format!(
+            "/api/channels/community/{}",
+            community["id"].as_str().unwrap()
+        ),
+        true,
+        None,
+        200,
+        Some(schemas.array_of("ChannelDto")),
+    )
+    .await;
+    check(
+        M::GET,
+        format!(
+            "/api/membership/community/{}",
+            community["id"].as_str().unwrap()
+        ),
+        true,
+        None,
+        200,
+        Some(schemas.component("PaginatedMembershipsResponseDto")),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut socket]).await;
+    assert_eq!(names(&heard[0]), vec!["memberAddedToCommunity"]);
+    assert_valid(
+        &schemas,
+        &payload_of("memberAddedToCommunity"),
+        &heard[0][0].1,
+        "memberAddedToCommunity",
+    );
+
+    // Profile, in both orders.
+    for order in [ProfileOrder::Race, ProfileOrder::ReplyThenEvent] {
+        server.set_profile_order(order);
+        check(
+            M::PATCH,
+            "/api/users/profile".into(),
+            true,
+            Some((
+                "UpdateProfileDto",
+                json!({ "displayName": "Contract", "bio": "bio", "status": "here" }),
+            )),
+            200,
+            Some(schemas.component("UserEntity")),
+        )
+        .await;
+        server.release_held_events();
+        let heard = settle(&server, &mut [&mut socket]).await;
+        assert_eq!(names(&heard[0]), vec!["userProfileUpdated"]);
+        assert_valid(
+            &schemas,
+            &payload_of("userProfileUpdated"),
+            &heard[0][0].1,
+            "userProfileUpdated",
+        );
+    }
+    check(
+        M::PATCH,
+        "/api/users/profile".into(),
+        true,
+        Some(("UpdateProfileDto", json!({ "avatar": "never-uploaded" }))),
+        403,
+        error(),
+    )
+    .await;
+
+    // Sessions.
+    let phone = server.add_session("Phone", Some("203.0.113.7"));
+    let mut phone_socket = Socket::connect(
+        &base,
+        json!({ "token": format!("Bearer {}", phone.access_token), "protocol": 2 }),
+    )
+    .await;
+    let sessions = check(
+        M::GET,
+        "/api/auth/sessions".into(),
+        true,
+        None,
+        200,
+        Some(schemas.array_of("SessionInfoDto")),
+    )
+    .await;
+    assert_eq!(sessions.as_array().unwrap().len(), 2);
+    check(
+        M::DELETE,
+        format!("/api/auth/sessions/{}", phone.id),
+        true,
+        None,
+        200,
+        Some(schemas.component("RevokeSessionResponseDto")),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut phone_socket]).await;
+    assert_eq!(names(&heard[0]), vec!["sessionTerminated"]);
+    assert_valid(
+        &schemas,
+        &payload_of("sessionTerminated"),
+        &heard[0][0].1,
+        "sessionTerminated",
+    );
+    check(
+        M::DELETE,
+        format!("/api/auth/sessions/{}", phone.id),
+        true,
+        None,
+        404,
+        error(),
+    )
+    .await;
+    server.add_session("Tablet", None);
+    let revoked = check(
+        M::DELETE,
+        "/api/auth/sessions".into(),
+        true,
+        None,
+        200,
+        Some(schemas.component("RevokeAllSessionsResponseDto")),
+    )
+    .await;
+    assert_eq!(revoked["revokedCount"], 1);
+
+    // Appearance.
+    check(
+        M::GET,
+        "/api/appearance-settings".into(),
+        true,
+        None,
+        200,
+        Some(schemas.component("AppearanceSettingsResponseDto")),
+    )
+    .await;
+    check(
+        M::PATCH,
+        "/api/appearance-settings".into(),
+        true,
+        Some((
+            "UpdateAppearanceSettingsDto",
+            json!({ "themeMode": "light", "accentColor": "cyan", "intensity": "balanced" }),
+        )),
+        200,
+        Some(schemas.component("AppearanceSettingsResponseDto")),
+    )
+    .await;
+
+    // Sign in with browser: the redeem, and the event the user's other sessions hear.
+    let verifier = "contract-contract-contract-contract-contract-123";
+    let challenge = {
+        use base64::Engine;
+        use sha2::Digest;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(verifier))
+    };
+    let code = server.approve_desktop(&challenge);
+    let tokens = check(
+        M::POST,
+        "/api/auth/desktop/token".into(),
+        false,
+        Some((
+            "DesktopLoginTokenRequestDto",
+            json!({ "code": code, "codeVerifier": verifier }),
+        )),
+        200,
+        Some(schemas.component("LoginResponseDto")),
+    )
+    .await;
+    assert!(tokens["refreshToken"].is_string());
+    check(
+        M::POST,
+        "/api/auth/desktop/token".into(),
+        false,
+        Some((
+            "DesktopLoginTokenRequestDto",
+            json!({ "code": code, "codeVerifier": verifier }),
+        )),
+        401,
+        error(),
+    )
+    .await;
+    server.emit_desktop_sign_in(None);
+    let heard = settle(&server, &mut [&mut socket]).await;
+    assert_eq!(names(&heard[0]), vec!["desktopSignIn", "desktopSignIn"]);
+    for (_, payload) in &heard[0] {
+        assert_valid(
+            &schemas,
+            &payload_of("desktopSignIn"),
+            payload,
+            "desktopSignIn",
+        );
+    }
+}

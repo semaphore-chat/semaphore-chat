@@ -8368,6 +8368,7 @@ name = "semaphore-platform-desktop"
 version = "0.0.0"
 dependencies = [
  "async-channel",
+ "async-trait",
  "directories",
  "futures-util",
  "keyring",
@@ -8378,6 +8379,7 @@ dependencies = [
  "semaphore-core",
  "serde",
  "serde_json",
+ "tokio",
  "windows 0.62.2",
  "windows-sys 0.61.2",
  "zbus 5.19.0",

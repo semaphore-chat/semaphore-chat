@@ -6,12 +6,14 @@
 // parse helper would only make the handlers harder to read.
 #![allow(clippy::result_large_err)]
 
+mod account;
 mod communities;
 mod dms;
 mod files;
 mod messages;
 mod moderation;
 mod notify;
+mod onboarding;
 mod search;
 mod session;
 mod social;
@@ -45,6 +47,8 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .merge(dms::routes())
         .merge(social::routes())
         .merge(notify::routes())
+        .merge(account::routes())
+        .merge(onboarding::routes())
         .route("/socket.io/", any(crate::socket::socket_io))
         .route("/__control/{name}", post(control))
         .fallback(not_implemented)
@@ -64,6 +68,8 @@ fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
         .or_else(|| dms::operation_id(method, route))
         .or_else(|| social::operation_id(method, route))
         .or_else(|| notify::operation_id(method, route))
+        .or_else(|| account::operation_id(method, route))
+        .or_else(|| onboarding::operation_id(method, route))
 }
 
 fn bearer_token(headers: &HeaderMap) -> Option<&str> {
@@ -89,6 +95,10 @@ fn is_public(operation: Option<&str>) -> bool {
         Some(
             "AuthController_login"
                 | "AuthController_refresh"
+                | "AuthController_redeemDesktopLogin"
+                | "AuthController_forgotPassword"
+                | "UserController_register"
+                | "InviteController_getPublicInvite"
                 | "InstanceController_getPublicSettings"
                 | "Fixture_image"
         )
@@ -143,6 +153,22 @@ async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> 
         && bearer_token(request.headers()) != Some(required.as_str())
     {
         let response = inner.error(401, "UNAUTHENTICATED", "Access token expired", false);
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    // A session that was revoked: its tokens fail, as the backend's blacklist makes them.
+    if operation.is_some()
+        && !is_public(operation)
+        && let Some(token) = bearer_token(request.headers())
+        && inner.token_revoked(token)
+    {
+        let response = inner.error(401, "UNAUTHENTICATED", "Session revoked", false);
         inner.record_http(
             method.as_str(),
             &path,
