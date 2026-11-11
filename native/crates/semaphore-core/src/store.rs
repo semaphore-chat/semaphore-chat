@@ -873,11 +873,24 @@ fn attachment_kind(mime_type: &str) -> AttachmentKind {
     }
 }
 
+/// The prefix the web gives a community emoji's reaction: `custom:{emojiId}`.
+pub const CUSTOM_REACTION_PREFIX: &str = "custom:";
+
+/// The community emoji a reaction names, if it names one.
+pub fn custom_emoji_id(emoji: &str) -> Option<String> {
+    emoji
+        .strip_prefix(CUSTOM_REACTION_PREFIX)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+}
+
 fn reaction_view(reaction: &ReactionDto, me_id: &str) -> ReactionView {
     ReactionView {
         emoji: reaction.emoji.clone(),
         count: reaction.user_ids.len() as u32,
         me: reaction.user_ids.iter().any(|id| id == me_id),
+        user_ids: reaction.user_ids.clone(),
+        custom_emoji_id: custom_emoji_id(&reaction.emoji),
     }
 }
 
@@ -925,6 +938,8 @@ pub fn project(
         }
     });
     let author = view_of(&dto.author_id);
+    let removed_by = dto.deleted_by.is_some().then(|| view_of(&dto.deleted_by));
+    let pinned_by = dto.pinned_by.is_some().then(|| view_of(&dto.pinned_by));
     let link_previews = dto
         .link_previews
         .iter()
@@ -952,7 +967,11 @@ pub fn project(
         author,
         sent_at_ms: dto.sent_at.timestamp_millis(),
         edited: dto.edited_at.is_some(),
+        mine: !me_id.is_empty() && dto.author_id.as_deref() == Some(me_id),
+        edit_pending: false,
         removed,
+        removed_by: removed_by.filter(|_| removed),
+        removed_reason: dto.deleted_by_reason.clone().filter(|_| removed),
         display,
         segs,
         attachments: if removed {
@@ -985,6 +1004,8 @@ pub fn project(
         reply_to,
         link_previews,
         pinned: dto.pinned,
+        pinned_by: pinned_by.filter(|_| dto.pinned),
+        pinned_at_ms: dto.pinned_at.map(|at| at.timestamp_millis()),
         webhook,
         send_state: match &message.send {
             SendStatus::Settled => SendState::Sent,

@@ -5,9 +5,11 @@
 //! and fetch what's missing or stale, as `useQuery` does: `CoreEvent::ViewChanged` says when to read
 //! again.
 
+pub(crate) mod actions;
 mod communities;
 mod messages;
 mod queries;
+pub(crate) mod reading;
 mod session;
 mod voice;
 
@@ -103,6 +105,8 @@ impl State {
         self.sends.clear();
         self.typing.clear();
         self.mention_notifications.clear();
+        self.actions = Default::default();
+        self.reading = Default::default();
         self.effects.clear();
         self.main_conversation = None;
         self.thread_conversation = None;

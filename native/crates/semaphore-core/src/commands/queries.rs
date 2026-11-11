@@ -140,6 +140,24 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            keys::PINS => CacheValue::Pins(
+                backend
+                    .moderation_controller_get_pinned_messages(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::THREAD_META => CacheValue::ThreadMeta(
+                backend
+                    .threads_controller_get_metadata(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
+            keys::CHANNEL_ROLES => CacheValue::ChannelRoles(
+                backend
+                    .roles_controller_get_my_roles_for_channel(id)
+                    .await
+                    .map_err(|error| self.backend_failed(error))?,
+            ),
             op => {
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),

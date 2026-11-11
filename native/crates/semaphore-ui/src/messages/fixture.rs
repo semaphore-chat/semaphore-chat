@@ -144,6 +144,7 @@ fn reaction(emoji: &str, count: u32, me: bool) -> ReactionView {
         emoji: emoji.into(),
         count,
         me,
+        ..ReactionView::default()
     }
 }
 

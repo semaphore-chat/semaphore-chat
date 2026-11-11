@@ -74,11 +74,15 @@ pub struct AttachmentView {
     pub height: Option<u32>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ReactionView {
     pub emoji: String,
     pub count: u32,
     pub me: bool,
+    /// Who reacted, in the server's order. `Core::reaction_users` names them.
+    pub user_ids: Vec<String>,
+    /// Set for a community emoji, which the server spells `custom:{emojiId}` in `emoji`.
+    pub custom_emoji_id: Option<String>,
 }
 
 /// What a reply shows of the message it answers.
@@ -134,8 +138,16 @@ pub struct MessageRow {
     pub author: UserView,
     pub sent_at_ms: i64,
     pub edited: bool,
-    /// Removed: blank `display`, no attachments or reactions.
+    /// The author is the signed-in user.
+    pub mine: bool,
+    /// An edit of this client's is on its way: the row shows the new text already.
+    pub edit_pending: bool,
+    /// Removed by a moderator. The server blanks what a reader may not see, so a removed row shows
+    /// whatever text it was sent: none for most readers, the original for moderators.
     pub removed: bool,
+    /// Who removed it and why, sent only to readers who may see removed messages.
+    pub removed_by: Option<UserView>,
+    pub removed_reason: Option<String>,
     /// What is laid out and selected.
     pub display: String,
     pub segs: Vec<TextSeg>,
@@ -147,6 +159,8 @@ pub struct MessageRow {
     pub reply_to: Option<ReplyToView>,
     pub link_previews: Vec<LinkPreviewView>,
     pub pinned: bool,
+    pub pinned_by: Option<UserView>,
+    pub pinned_at_ms: Option<i64>,
     pub webhook: Option<WebhookView>,
     pub send_state: SendState,
     /// Files the server still expects for this message (`pendingAttachments`), from anyone.
@@ -186,6 +200,10 @@ pub enum MentionKind {
     Special,
     Alias,
     Channel,
+    /// In a draft only, as an edit keeps it: core offers no community candidates.
+    Community,
+    /// A custom emoji in a draft: `id` is the emoji's id and the range covers `:name:`.
+    Emoji,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

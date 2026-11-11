@@ -1,6 +1,10 @@
 //! Fakes for what core talks to, and a mirror that applies `ListOp`s the way a UI must.
 #![allow(dead_code)]
 
+// W1: each part's fakes in a file of its own, so the two don't edit the same lines.
+mod actions;
+mod reading;
+
 use async_trait::async_trait;
 use semaphore_core::backend::{
     BackendError, BackendResult, CommunitiesBackend, FilesBackend, MessagesBackend, SessionBackend,

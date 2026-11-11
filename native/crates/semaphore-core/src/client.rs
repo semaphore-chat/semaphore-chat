@@ -83,6 +83,10 @@ pub(crate) struct State {
     pub typing: HashMap<Conversation, Vec<(String, u64)>>,
     /// Unread mention notifications, so one being read can take its count back off.
     pub mention_notifications: HashMap<String, Conversation>,
+    /// Edit, delete, pin and react: `commands/actions.rs`.
+    pub actions: crate::commands::actions::ActionsState,
+    /// Threads, search, the unread divider and links: `commands/reading.rs`.
+    pub reading: crate::commands::reading::ReadingState,
     pub session: SessionState,
     pub me: Option<UserView>,
     pub voice: VoiceView,
@@ -124,6 +128,8 @@ impl State {
             next_upload_id: 0,
             typing: HashMap::new(),
             mention_notifications: HashMap::new(),
+            actions: Default::default(),
+            reading: Default::default(),
             session: SessionState::SignedOut,
             me: None,
             voice: VoiceView::default(),
