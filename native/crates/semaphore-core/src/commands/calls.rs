@@ -223,8 +223,24 @@ impl State {
             expires_at_ms: now + RING_MS,
         });
         self.view_changed(ViewKey::IncomingCall);
+        // To name a group DM that isn't listed yet: `w4_dms_arrived` renames the ring.
+        self.ensure_query(keys::op(keys::DMS));
         // To tell when the caller gives up.
         self.ensure_query(keys::scoped(keys::DM_VOICE_PRESENCE, &event.dm_group_id));
+    }
+
+    /// The DM list arrived: a ring named after its caller takes its group's name.
+    pub(crate) fn w4_dms_arrived(&mut self) {
+        let Some(call) = self.w4.incoming.clone() else {
+            return;
+        };
+        let name = self.dm_name(&call.dm_group_id, call.group_name.clone());
+        if name != call.group_name
+            && let Some(incoming) = &mut self.w4.incoming
+        {
+            incoming.group_name = name;
+            self.view_changed(ViewKey::IncomingCall);
+        }
     }
 
     pub(crate) fn w4_stop_ring(&mut self) {
