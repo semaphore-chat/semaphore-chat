@@ -1,6 +1,9 @@
 //! TextField and Select, outlined with a floating label: gpui-kit's editor inside MUI's frame.
 //!
 //! GPUI has no CSS outline notch, so a floated label sits on a patch of the surface colour.
+//! GPUI paints a div's border after its children, so that patch must not be a child of the
+//! bordered frame (the border would strike through the label): [`notched`] stacks the label
+//! over the frame as a later sibling.
 
 use super::{Variant, text};
 use crate::theme::SemTheme;
@@ -39,8 +42,14 @@ fn frame_color(focused: bool, error: bool, disabled: bool, cx: &App) -> Hsla {
     }
 }
 
-/// The floated or resting label over a frame. `surface` is whatever the field sits on.
-fn floating_label(
+/// A bordered `frame` with its `label` (from [`floating_label`]) painted over the border.
+pub(crate) fn notched(frame: impl IntoElement, label: Div) -> Div {
+    div().relative().w_full().child(frame).child(label)
+}
+
+/// The floated or resting label for [`notched`]. `surface` is whatever the field sits on.
+/// Positions are from the frame's outer edge, so the label stays put when the border thickens.
+pub(crate) fn floating_label(
     label: SharedString,
     required: bool,
     floated: bool,
@@ -54,14 +63,14 @@ fn floating_label(
     };
     let at_rest = div()
         .absolute()
-        .left(px(14.))
-        .top(px(16.))
+        .left(px(15.))
+        .top(px(17.))
         .text_color(color);
     if floated {
         div()
             .absolute()
-            .left(px(9.))
-            .top(px(-9.))
+            .left(px(10.))
+            .top(px(-8.))
             .px(px(5.))
             .bg(surface)
             .text_color(color)
@@ -171,7 +180,7 @@ impl RenderOnce for TextField {
             .w_full()
             .flex()
             .flex_col()
-            .child(
+            .child(notched(
                 div()
                     .id("frame")
                     .relative()
@@ -203,15 +212,15 @@ impl RenderOnce for TextField {
                             .top(px(15.))
                             .text_color(placeholder_color)
                             .child(text(Variant::Body1, shown))
-                    }))
-                    .child(floating_label(
-                        self.label,
-                        self.required,
-                        focused || !empty,
-                        label_color,
-                        surface,
-                    )),
-            )
+                    })),
+                floating_label(
+                    self.label,
+                    self.required,
+                    focused || !empty,
+                    label_color,
+                    surface,
+                ),
+            ))
             .children(self.helper.map(|helper| {
                 div()
                     .px(px(14.))
@@ -269,32 +278,27 @@ impl RenderOnce for SelectField {
             sem.text_secondary
         };
         let border = frame_color(false, false, self.disabled, cx);
-        div()
-            .relative()
-            .h(px(56.))
-            .w_full()
-            .rounded(px(4.))
-            .border_1()
-            .border_color(border)
-            .child(
-                div().size_full().flex().items_center().child(
-                    Select::new(&self.state)
-                        .id(self.id)
-                        .accessibility_label(self.label.clone())
-                        .appearance(false)
-                        .disabled(self.disabled)
-                        .h_full()
-                        .pl(px(14.))
-                        .pr(px(10.))
-                        .text_size(px(16.)),
+        notched(
+            div()
+                .h(px(56.))
+                .w_full()
+                .rounded(px(4.))
+                .border_1()
+                .border_color(border)
+                .child(
+                    div().size_full().flex().items_center().child(
+                        Select::new(&self.state)
+                            .id(self.id)
+                            .accessibility_label(self.label.clone())
+                            .appearance(false)
+                            .disabled(self.disabled)
+                            .h_full()
+                            .pl(px(14.))
+                            .pr(px(10.))
+                            .text_size(px(16.)),
+                    ),
                 ),
-            )
-            .child(floating_label(
-                self.label,
-                false,
-                chosen,
-                label_color,
-                surface,
-            ))
+            floating_label(self.label, false, chosen, label_color, surface),
+        )
     }
 }
