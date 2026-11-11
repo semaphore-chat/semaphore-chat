@@ -25,6 +25,7 @@ pub use display::{
     Spinner, reduced_motion, set_reduced_motion,
 };
 pub use fields::{SelectField, TextField, select_state, text_state};
+pub(crate) use fields::{floating_label, notched};
 pub use lists::{ListRow, Table, Tabs};
 pub use overlays::{Dialog, Menu, MenuItem, Paper, Popover, Tip, with_tip};
 pub use typography::{Variant, link, text};

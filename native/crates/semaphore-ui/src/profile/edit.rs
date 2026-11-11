@@ -5,7 +5,7 @@ use super::header::{banner, ringed_avatar};
 use super::{ImageSlot, Picked, ProfileEditEvent, ProfileEditForm};
 use crate::kit::{
     Alert, Button, ButtonSize, LinearProgress, Paper, Severity, Spinner, TextField, Variant,
-    spacing, text, text_state,
+    floating_label, notched, spacing, text, text_state,
 };
 use crate::panel::common::{design_icon, error_block, is_phone};
 use crate::theme::{FONT_FAMILY, SemTheme};
@@ -462,9 +462,8 @@ impl ProfileEditForm {
             .w_full()
             .flex()
             .flex_col()
-            .child(
+            .child(notched(
                 div()
-                    .relative()
                     .w_full()
                     .rounded(px(4.))
                     .border_1()
@@ -482,18 +481,9 @@ impl ProfileEditForm {
                             .disabled(self.is_busy())
                             .aria_label("About Me")
                             .accessibility_id("profile-bio-input"),
-                    )
-                    .child(
-                        div()
-                            .absolute()
-                            .left(px(9.))
-                            .top(px(-9.))
-                            .px(px(5.))
-                            .bg(sem.paper)
-                            .text_color(label_color)
-                            .child(text(Variant::Caption, "About Me").line_height(px(18.))),
                     ),
-            )
+                floating_label("About Me".into(), false, true, label_color, sem.paper),
+            ))
             .child(
                 div()
                     .px(px(14.))
