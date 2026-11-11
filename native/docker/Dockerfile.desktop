@@ -5,6 +5,9 @@
 # Built by scripts/window-probe.sh, which passes BASE (the build image's tag).
 ARG BASE
 FROM ${BASE}
+ARG HOST_UID=1000
 
+# dbus-daemon looks its user up and won't start for a uid that isn't in /etc/passwd.
 RUN pacman -S --noconfirm --needed weston \
- && rm -rf /var/cache/pacman/pkg/*
+ && rm -rf /var/cache/pacman/pkg/* \
+ && echo "builder:x:${HOST_UID}:${HOST_UID}:builder:/cache/home:/bin/sh" >> /etc/passwd

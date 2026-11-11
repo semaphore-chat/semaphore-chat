@@ -2,9 +2,32 @@
 //! sleep and network events ([`lifecycle`]), `semaphore://` links ([`links`]), one running app per
 //! user ([`instance`]) and the tray ([`tray`]).
 
+pub mod icon;
 pub mod instance;
 pub mod lifecycle;
 pub mod links;
+pub mod tray;
+
+/// What the desktop asks of the app: from the tray, a second launch, or a notification. Sent on
+/// whatever thread noticed it; a [`DesktopEventSink`] must only queue it for the UI thread.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DesktopEvent {
+    /// The tray icon was clicked, or its "Show/Hide" chosen: hide the window if it's in front,
+    /// otherwise show and focus it.
+    ToggleWindow,
+    /// The tray's "Close to tray" was toggled to this.
+    SetCloseToTray(bool),
+    /// The tray's "Quit".
+    Quit,
+    /// A second launch: show and focus the window (with its activation token, if it had one),
+    /// then open these candidate links, which are still unparsed and untrusted.
+    Opened {
+        urls: Vec<String>,
+        activation_token: Option<String>,
+    },
+}
+
+pub type DesktopEventSink = std::sync::Arc<dyn Fn(DesktopEvent) + Send + Sync>;
 
 use directories::ProjectDirs;
 use semaphore_core::platform::{AppPaths, Clock, CoreError, Notifier, SecretStore};

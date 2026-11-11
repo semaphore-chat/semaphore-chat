@@ -77,7 +77,7 @@ do nothing and return false, so macOS and the test platform are unchanged.
   toplevel, which xdg-shell allows, gets no configure from weston 15, so the role objects are made
   again, as GTK does. `activate_with_token` calls `xdg_activation_v1.activate`.
 
-`scripts/window-probe.sh` (in `verify.sh`) proves it on Xvfb and headless weston: the X11 map
+`scripts/desktop-probe.sh` (in `verify.sh`) proves it on Xvfb and headless weston: the X11 map
 state, no frames while hidden on Wayland, frames again after each show, and a hidden window closed
 without a protocol error. A real compositor (Hyprland, KDE, GNOME) is on the manual checklist in
 `docs/slice-app.md`. If a GPUI bump changes `WaylandWindowState` or the frame loop, port this and

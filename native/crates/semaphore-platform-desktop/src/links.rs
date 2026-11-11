@@ -220,8 +220,7 @@ fn failed(what: &str, error: impl std::fmt::Display) -> CoreError {
 mod linux {
     use super::*;
 
-    /// The app icon, installed for the desktop entry and the compositor.
-    const ICON_PNG: &[u8] = include_bytes!("../assets/icon.png");
+    use crate::icon::ICON_PNG;
 
     pub fn register(target: &RegisterTarget) -> Result<Registered, CoreError> {
         let file_name = format!("{APP_ID}.desktop");
