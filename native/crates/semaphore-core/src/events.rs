@@ -630,15 +630,6 @@ impl State {
                     event.reply_count,
                     event.last_reply_at,
                 );
-                self.edit_rows(
-                    context(&event.channel_id, &event.direct_message_group_id),
-                    None,
-                    &event.parent_message_id,
-                    |dto| {
-                        dto.reply_count = event.reply_count;
-                        dto.last_reply_at = event.last_reply_at;
-                    },
-                );
             }
             ServerEvent::ReadReceiptUpdated(event) => self.on_read_receipt(event),
             ServerEvent::NewNotification(event) => {

@@ -737,6 +737,18 @@ async fn every_emit_and_ack_matches_socket_events() {
         &reply,
         "newThreadReply payload",
     );
+    // Then the parent's badge, as the backend sends it.
+    let (count, _) = expect_broadcast(&mut socket, "threadReplyCountUpdated").await;
+    assert_valid(
+        &schemas,
+        &schemas.reference(
+            events["server"]["threadReplyCountUpdated"]["payload"]["$ref"]
+                .as_str()
+                .expect("a payload ref"),
+        ),
+        &count,
+        "threadReplyCountUpdated payload",
+    );
     let _ = expect_ack(&mut socket, 3).await;
 
     // A failed send's typed ack is a SendAckDto too.

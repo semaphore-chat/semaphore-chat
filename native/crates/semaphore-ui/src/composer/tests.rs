@@ -1229,6 +1229,21 @@ fn the_field_is_named_and_reports_its_value(cx: &mut TestAppContext) {
 }
 
 #[gpui_kit::test]
+fn the_placeholder_follows_the_conversation(cx: &mut TestAppContext) {
+    let rig = rig(cx);
+    let id = rig.field_id(cx);
+    rig.with(cx, |composer, window, cx| {
+        composer.update(cx, |composer, cx| {
+            composer.set_placeholder("Message #random", window, cx)
+        })
+    });
+    let placeholder = rig.with(cx, |_, window, _| {
+        window.find(id).placeholder().map(str::to_owned)
+    });
+    assert_eq!(placeholder.as_deref(), Some("Message #random"));
+}
+
+#[gpui_kit::test]
 fn every_control_is_named_with_the_webs_label(cx: &mut TestAppContext) {
     let rig = rig(cx);
     for label in ["add emoji", "attach file", "send"] {

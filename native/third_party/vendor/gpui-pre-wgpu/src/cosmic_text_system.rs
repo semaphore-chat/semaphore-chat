@@ -19,6 +19,7 @@ use swash::{
     scale::{Render, ScaleContext, Source, StrikeWith},
     zeno::{Format, Vector},
 };
+use unicode_properties::{EmojiStatus, UnicodeEmoji as _};
 use unicode_segmentation::UnicodeSegmentation;
 
 pub struct CosmicTextSystem(RwLock<CosmicTextSystemState>);
@@ -59,6 +60,9 @@ struct CosmicTextSystemState {
     font_ids_by_family_cache: HashMap<FontKey, SmallVec<[FontId; 4]>>,
     system_font_fallback: String,
     missing_glyph_sink: Option<Arc<dyn MissingGlyphSink>>,
+    /// The colour emoji font emoji-presentation text goes to, looked up once (`None` inside: none
+    /// installed). Forgotten when fonts are added.
+    color_emoji_font: Option<Option<(FontId, SharedString)>>,
 }
 
 struct LoadedFont {
@@ -141,6 +145,7 @@ impl CosmicTextSystem {
             font_ids_by_family_cache: HashMap::default(),
             system_font_fallback: system_font_fallback.to_string(),
             missing_glyph_sink: None,
+            color_emoji_font: None,
         }))
     }
 
@@ -160,6 +165,7 @@ impl CosmicTextSystem {
             font_ids_by_family_cache: HashMap::default(),
             system_font_fallback: system_font_fallback.to_string(),
             missing_glyph_sink: None,
+            color_emoji_font: None,
         }))
     }
 }
@@ -328,6 +334,7 @@ impl CosmicTextSystemState {
     #[profiling::function]
     fn add_fonts(&mut self, fonts: Vec<Cow<'static, [u8]>>) -> Result<()> {
         self.font_ids_by_family_cache.clear();
+        self.color_emoji_font = None;
         let db = self.font_system.db_mut();
         for bytes in fonts {
             db.load_font_source(cosmic_text::fontdb::Source::Binary(Arc::new(bytes)));
@@ -556,6 +563,25 @@ impl CosmicTextSystemState {
             .with_context(|| format!("unable to render glyph via swash for {params:?}"))
     }
 
+    /// The installed colour emoji font, if any: the first face, in database order, that
+    /// `check_is_known_emoji_font` knows.
+    fn color_emoji_font(&mut self) -> Option<&(FontId, SharedString)> {
+        if self.color_emoji_font.is_none() {
+            let found = self
+                .font_system
+                .db()
+                .faces()
+                .find(|face| check_is_known_emoji_font(&face.post_script_name))
+                .and_then(|face| Some((face.id, face.families.first()?.0.clone())));
+            let resolved = found.and_then(|(id, family)| {
+                let font_id = self.font_id_for_cosmic_id(id).ok()?;
+                Some((font_id, SharedString::from(family)))
+            });
+            self.color_emoji_font = Some(resolved);
+        }
+        self.color_emoji_font.as_ref().and_then(Option::as_ref)
+    }
+
     /// This is used when cosmic_text has chosen a fallback font instead of using the requested
     /// font, typically to handle some unicode characters. When this happens, `loaded_fonts` may not
     /// yet have an entry for this fallback font, and so one is added.
@@ -743,6 +769,32 @@ impl CosmicTextSystemState {
                 attrs_list.add_span(span.start..span.end, attrs);
             }
             offs = run_end;
+        }
+
+        // cosmic-text's fallback knows nothing of emoji presentation, and its list puts DejaVu Sans
+        // ahead of Noto Color Emoji, so 😀 drew as DejaVu's outline. Emoji-presentation clusters
+        // (and VS16 sequences) go to the colour emoji font when it has them; other text is untouched.
+        // ASCII has no emoji, so ordinary text skips the pass and the font lookup.
+        let emoji_attrs = if text.is_ascii() {
+            None
+        } else {
+            self.color_emoji_font()
+                .map(|(font_id, family)| (*font_id, family.clone()))
+        };
+        if let Some((emoji_id, emoji_family)) = &emoji_attrs {
+            let attrs = Attrs::new()
+                .metadata(emoji_id.0)
+                .family(Family::Name(emoji_family));
+            for (start, grapheme) in text.grapheme_indices(true) {
+                let Some(first) = grapheme.chars().next() else {
+                    continue;
+                };
+                if is_emoji_presentation(grapheme)
+                    && charmap_covers(&self.loaded_fonts, *emoji_id, first)
+                {
+                    attrs_list.add_span(start..start + grapheme.len(), &attrs);
+                }
+            }
         }
 
         let line = ShapeLine::new(
@@ -1197,6 +1249,26 @@ fn face_info_into_properties(
             cosmic_text::Stretch::UltraExpanded => font_kit::properties::Stretch::ULTRA_EXPANDED,
         },
     }
+}
+
+/// Whether a grapheme cluster draws as an emoji by default: its first character has
+/// `Emoji_Presentation=Yes` (😀, 🔥, a flag), or it asks for emoji with VS16 (❤️, #️⃣). VS15 asks
+/// for text and wins.
+fn is_emoji_presentation(grapheme: &str) -> bool {
+    let Some(first) = grapheme.chars().next() else {
+        return false;
+    };
+    if grapheme.contains('\u{FE0E}') {
+        return false;
+    }
+    let presentation = matches!(
+        first.emoji_status(),
+        EmojiStatus::EmojiPresentation
+            | EmojiStatus::EmojiPresentationAndModifierBase
+            | EmojiStatus::EmojiPresentationAndEmojiComponent
+            | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent
+    );
+    presentation || (grapheme.contains('\u{FE0F}') && first.is_emoji_char_or_emoji_component())
 }
 
 fn check_is_known_emoji_font(postscript_name: &str) -> bool {

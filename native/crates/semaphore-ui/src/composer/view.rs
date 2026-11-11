@@ -73,6 +73,8 @@ struct InFlight {
 
 pub struct Composer {
     text: Entity<TextareaState>,
+    /// What the field shows while empty, as last given to it.
+    placeholder: SharedString,
     conversation: Conversation,
     source: Rc<dyn MentionSource>,
     drafts: Entity<DraftStore>,
@@ -131,7 +133,7 @@ impl Composer {
             TextareaState::new(window, cx)
                 .auto_grow(1, rows)
                 .submit_on_enter(true)
-                .placeholder(placeholder)
+                .placeholder(placeholder.clone())
         });
         let subscriptions = vec![
             cx.subscribe_in(&text, window, Self::on_field_event),
@@ -146,6 +148,7 @@ impl Composer {
         ];
         let mut this = Self {
             text,
+            placeholder,
             conversation: config.conversation,
             source: config.source,
             drafts: config.drafts,
@@ -185,6 +188,11 @@ impl Composer {
     /// The text as it stands, preedit included.
     pub fn value(&self, cx: &App) -> SharedString {
         self.text.read(cx).value()
+    }
+
+    /// What the empty field shows.
+    pub fn placeholder(&self) -> &SharedString {
+        &self.placeholder
     }
 
     #[cfg(test)]
@@ -302,6 +310,22 @@ impl Composer {
         self.load_draft(window, cx);
         self.focus(window, cx);
         cx.notify();
+    }
+
+    /// What the empty field shows ("Message #general"). The owner sets it with each conversation.
+    pub fn set_placeholder(
+        &mut self,
+        placeholder: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let placeholder = placeholder.into();
+        if self.placeholder == placeholder {
+            return;
+        }
+        self.placeholder = placeholder.clone();
+        self.text
+            .update(cx, |text, cx| text.set_placeholder(placeholder, window, cx));
     }
 
     pub fn set_availability(

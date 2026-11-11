@@ -401,6 +401,7 @@ pub(crate) fn send(
         webhook: None,
     };
 
+    let mut count_update = None;
     match &target {
         SendTarget::Channel(id) => {
             let messages = data.channel_messages.entry(id.clone()).or_default();
@@ -419,6 +420,14 @@ pub(crate) fn send(
             if let Some(parent) = find_message_mut(&mut data, parent_id) {
                 parent.reply_count += 1;
                 parent.last_reply_at = Some(now);
+                // The parent's badge, as the backend's `announceReply` sends it after the reply.
+                count_update = Some(serde_json::json!({
+                    "parentMessageId": parent_id,
+                    "replyCount": parent.reply_count,
+                    "lastReplyAt": parent.last_reply_at,
+                    "channelId": parent.channel_id,
+                    "directMessageGroupId": parent.direct_message_group_id,
+                }));
             }
         }
     }
@@ -461,6 +470,9 @@ pub(crate) fn send(
     };
     drop(data);
     inner.broadcast(payload.0, payload.1);
+    if let Some(count) = count_update {
+        inner.broadcast("threadReplyCountUpdated", count);
+    }
     Ok(message)
 }
 
@@ -474,9 +486,6 @@ pub(crate) struct PostExtras {
     pub emoji: Option<(String, String)>,
     /// A link preview, as the server's unfurler would have made it.
     pub link_preview: Option<serde_json::Value>,
-    /// The message's id, in place of the next readable one: a UUID, for what the contract types
-    /// as one (reactions).
-    pub id: Option<String>,
 }
 
 pub(crate) fn post_as(
@@ -514,7 +523,7 @@ pub(crate) fn post_as(
         deleted_by_reason: None,
         direct_message_group_id: None,
         edited_at: None,
-        id: extras.id.unwrap_or_else(|| inner.next_message_id()),
+        id: inner.next_message_id(),
         last_reply_at: None,
         link_previews,
         parent_message_id: None,

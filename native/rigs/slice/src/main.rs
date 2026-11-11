@@ -30,7 +30,8 @@
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! ```
 //!
-//! `$SERVER` anywhere in a script is the fake server's URL, for links to it.
+//! `$SERVER` anywhere in a script is the fake server's URL, for links to it, and `$MSG(sc-msg-24)`
+//! the UUID the fake server serves that showcase message as (`message_uuid`).
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
@@ -39,7 +40,7 @@
 //! `reaction S EMOJI COUNT` (with mine among them), `thread-rows >= N`, `thread-sent S`,
 //! `subscribed yes|no` (the open thread), `unread-after S` (the divider follows that row),
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
-//! `search-hits >= N`, `element ID`, `no-element ID`.
+//! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestWindowExt as _;
@@ -202,6 +203,7 @@ enum Condition {
     NoNotice,
     PinnedCount(u32),
     ComposerText(String),
+    ComposerPlaceholder(String),
     SearchHits(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
@@ -346,12 +348,31 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["no-notice"] => Condition::NoNotice,
         ["pinned-count", count] => Condition::PinnedCount(number(count)? as u32),
         ["composer-text", text] => Condition::ComposerText((*text).into()),
+        ["composer-placeholder", text] => Condition::ComposerPlaceholder((*text).into()),
         ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
         ["element", id] => Condition::Element((*id).into(), true),
         ["no-element", id] => Condition::Element((*id).into(), false),
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
+}
+
+/// `$MSG(sc-cc-pit-caption)` is the UUID the fake server serves that showcase message as.
+fn message_ids(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut rest = source;
+    while let Some(start) = rest.find("$MSG(") {
+        let Some(len) = rest[start + 5..].find(')') else {
+            break;
+        };
+        out.push_str(&rest[..start]);
+        out.push_str(&semaphore_fake_server::message_uuid(
+            &rest[start + 5..start + 5 + len],
+        ));
+        rest = &rest[start + 5 + len + 1..];
+    }
+    out.push_str(rest);
+    out
 }
 
 fn parse(source: &str) -> Result<Vec<Step>> {
@@ -790,6 +811,7 @@ impl Rig {
             | Condition::NoNotice
             | Condition::PinnedCount(_)
             | Condition::ComposerText(_)
+            | Condition::ComposerPlaceholder(_)
             | Condition::SearchHits(_)
             | Condition::Element(..) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
@@ -903,6 +925,9 @@ impl Rig {
                 Condition::ComposerText(text) => pane
                     .composer()
                     .is_some_and(|composer| composer.read(cx).value(cx).contains(text.as_str())),
+                Condition::ComposerPlaceholder(text) => pane
+                    .composer()
+                    .is_some_and(|composer| composer.read(cx).placeholder() == text.as_str()),
                 Condition::SearchHits(count) => pane
                     .search_panel()
                     .is_some_and(|panel| panel.read(cx).hits().len() >= *count),
@@ -1325,9 +1350,11 @@ fn main() -> Result<()> {
         (None, None, None) => None,
         _ => bail!("--livekit-http, --livekit-key and --livekit-secret go together"),
     };
-    let source = std::fs::read_to_string(&script_path)
-        .with_context(|| script_path.clone())?
-        .replace("$SERVER", server.trim_end_matches('/'));
+    let source = message_ids(
+        &std::fs::read_to_string(&script_path)
+            .with_context(|| script_path.clone())?
+            .replace("$SERVER", server.trim_end_matches('/')),
+    );
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = scenario_now_ms(&scenario)?;
     std::fs::create_dir_all(&out_dir)?;
