@@ -13,7 +13,8 @@ gpui-kit.workspace = true
 image = { version = "0.25", default-features = false }
 semaphore-core.workspace = true
 semaphore-design.workspace = true
-serde_json = { workspace = true, optional = true }
+# Reads the emoji picker's data (`assets/emoji/emoji.json`, exported from the web client).
+serde_json.workspace = true
 unicode-segmentation = "1"
 
 # `mallopt`, for the allocator setting T2 found the list needs. See `messages::media`.
@@ -23,8 +24,7 @@ libc = "0.2"
 [dev-dependencies]
 gpui-kit = { workspace = true, features = ["test-support"] }
 semaphore-core = { workspace = true, features = ["fixtures"] }
-serde_json.workspace = true
 
 [features]
 # The story registry and scenario fixtures. The app never turns this on.
-stories = ["semaphore-core/fixtures", "dep:serde_json"]
+stories = ["semaphore-core/fixtures"]
