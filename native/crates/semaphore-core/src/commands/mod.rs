@@ -43,6 +43,8 @@ const REAUTHENTICATE_TIMEOUT_MS: u64 = 10_000;
 /// A page of members, and the most rows read. `MemberList::truncated` says when that wasn't all.
 const MEMBER_PAGE_SIZE: i64 = 100;
 const MAX_MEMBERS: usize = 1000;
+/// How many mention searches stay cached, most recently used first.
+const MEMBER_SEARCHES_KEPT: usize = 32;
 /// How many messages to ask for around an anchor: half on each side.
 const AROUND_LIMIT: i64 = 50;
 

@@ -38,8 +38,15 @@ impl Core {
                     if let CacheValue::Members(pages) = &value {
                         state.seed_users_from_members(pages, now);
                     }
+                    let search = matches!(value, CacheValue::MemberSearch(_));
                     state.cache.set(key.clone(), value, now);
                     state.failed_queries.remove(&key);
+                    if search {
+                        // One per typed mention query: keep the recent ones, not the session's.
+                        state
+                            .cache
+                            .evict_least_used(keys::MEMBER_SEARCH, super::MEMBER_SEARCHES_KEPT);
+                    }
                     // W4: an answer that was out when its data changed is from before the change.
                     state.w4.answer_dirty = dirty;
                     state.query_changed(&key);

@@ -254,6 +254,7 @@ impl Core {
                 .collect();
             let key = QueryKey::new(&[keys::MEMBER_SEARCH, &community_id, &needle]);
             state.ensure_query(key.clone());
+            state.cache.touch(&key);
             let users = state.cache.member_search(&key).into_iter().flatten();
             candidates.extend(users.filter_map(|member| member.user.as_ref()).map(|user| {
                 MentionCandidate {

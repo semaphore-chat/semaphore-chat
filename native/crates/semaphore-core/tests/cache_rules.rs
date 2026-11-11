@@ -174,3 +174,32 @@ async fn reconnecting_refetches_only_what_is_read_again() {
         unread + 1
     );
 }
+
+#[tokio::test]
+async fn mention_searches_keep_the_most_recently_used_and_forget_the_rest() {
+    let rig = Rig::new().signed_in().await;
+    let typed = |needle: &str| {
+        rig.core
+            .mention_candidates("comm".into(), format!("@{needle}"))
+    };
+    let requests = || rig.backend.member_search_requests.load(Ordering::SeqCst);
+
+    for n in 0..60 {
+        typed(&format!("a{n}"));
+        rig.core.run_until_idle().await;
+    }
+    assert_eq!(requests(), 60);
+    // Kept: the latest, and an old one that was used again lately.
+    typed("a0");
+    rig.core.run_until_idle().await;
+    let after_a0 = requests();
+    typed("a59");
+    typed("a0");
+    rig.core.run_until_idle().await;
+    assert_eq!(requests(), after_a0, "a recent search was fetched again");
+
+    // Forgotten: one typed long ago and not since.
+    typed("a1");
+    rig.core.run_until_idle().await;
+    assert_eq!(requests(), after_a0 + 1);
+}
