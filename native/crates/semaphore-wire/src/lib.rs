@@ -1,7 +1,8 @@
 //! Generated wire types and socket events, plus the tolerant enum module.
 //!
 //! Everything here comes from `native/contract/` through `tools/gen-api`; run
-//! `native/scripts/gen-api.sh` to regenerate. Only `lib.rs` is hand-written.
+//! `native/scripts/gen-api.sh` to regenerate. Only `lib.rs` and `overrides.rs` (the few types the
+//! generator is told not to make) are hand-written.
 //!
 //! The crate is deliberately pure Rust: no HTTP, no TLS, no C. Reader rules from
 //! `contract/wire-contract.md` are enforced by the generated types: unknown fields are
@@ -13,8 +14,15 @@ extern crate self as semaphore_wire;
 
 pub mod events;
 mod generated;
+pub mod overrides;
 
-pub use generated::{enums, types};
+pub use generated::enums;
+
+/// Every DTO: the generated ones and the overrides, under one path.
+pub mod types {
+    pub use crate::generated::types::*;
+    pub use crate::overrides::*;
+}
 // Also at the root, because `semaphore-api`'s generated client aliases this crate as `types`
 // and names every DTO `types::Foo`.
-pub use generated::types::*;
+pub use types::*;

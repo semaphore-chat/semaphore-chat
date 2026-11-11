@@ -2,7 +2,7 @@
 
 use crate::SemaphoreCore;
 use semaphore_core::CoreError;
-use semaphore_core::model::{ChannelModeration, MessageDraft, PinnedList, ReactionUsers};
+use semaphore_core::model::{ChannelModerationView, MessageDraft, PinnedList, ReactionUsers};
 
 #[uniffi::export]
 impl SemaphoreCore {
@@ -73,7 +73,12 @@ impl SemaphoreCore {
         self.core.pinned_messages(channel_id)
     }
 
-    pub fn channel_moderation(&self, channel_id: String) -> Option<ChannelModeration> {
+    pub fn channel_moderation(&self, channel_id: String) -> ChannelModerationView {
         self.core.channel_moderation(channel_id)
+    }
+
+    /// Reads again whatever failed: a `Failed` moderation view or pins list, among others.
+    pub fn retry_failed(&self) {
+        self.core.retry_failed()
     }
 }

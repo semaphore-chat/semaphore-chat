@@ -24,6 +24,10 @@ pub struct ActionsFake {
     pub role_actions: Mutex<Vec<&'static str>>,
     /// What `find_one` answers by id; an id not here is a 404.
     pub found: Mutex<HashMap<String, MessageDto>>,
+    /// What `find_one` fails with, once, instead.
+    pub find_one_error: Mutex<Option<BackendError>>,
+    /// Each update's body, as sent on the wire.
+    pub update_bodies: Mutex<Vec<Value>>,
 }
 
 pub fn refusal(status: u16, code: &str) -> BackendError {
@@ -94,15 +98,21 @@ impl FakeBackend {
         id: String,
         body: wire::UpdateMessageDto,
     ) -> BackendResult<MessageDto> {
+        self.actions
+            .update_bodies
+            .lock()
+            .unwrap()
+            .push(serde_json::to_value(&body).unwrap());
         self.action("update", &id).await?;
         let spans: Vec<wire::SpanDto> =
             serde_json::from_value(serde_json::to_value(&body.spans).unwrap()).unwrap();
         self.change_stored(&id, |message| {
             message.spans = spans;
             message.edited_at = Some("2026-09-22T19:00:00Z".parse().unwrap());
-            message
-                .attachments
-                .retain(|file| body.attachments.contains(&file.id));
+            // As the backend: absent leaves them, a list keeps those named.
+            if let Some(keep) = &body.attachments {
+                message.attachments.retain(|file| keep.contains(&file.id));
+            }
         })
         .ok_or_else(not_found)
     }
@@ -119,6 +129,9 @@ impl FakeBackend {
 
     pub async fn fake_find_one(&self, id: String) -> BackendResult<MessageDto> {
         self.action("find_one", &id).await?;
+        if let Some(error) = self.actions.find_one_error.lock().unwrap().take() {
+            return Err(error);
+        }
         self.actions
             .found
             .lock()

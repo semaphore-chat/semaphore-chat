@@ -161,6 +161,32 @@ async fn edit_react_pin_remove_and_delete_over_the_wire() {
     assert!(edited.segs[0].style.bold);
     assert!(edited.edited && !edited.edit_pending);
 
+    // Attachments: an edit that doesn't name them leaves the server's alone (a file that finished
+    // uploading meanwhile included); an empty list removes them all.
+    assert!(server.set_attachments(MINE, &["f-1", "f-2"]));
+    let draft = core.edit_draft(MINE.into()).expect("a draft");
+    core.edit_message(MINE.into(), draft.clone(), None)
+        .await
+        .unwrap();
+    let files = |server: &FakeServer| -> Vec<String> {
+        server
+            .message(MINE)
+            .unwrap()
+            .attachments
+            .into_iter()
+            .map(|file| file.id)
+            .collect()
+    };
+    assert_eq!(files(&server), vec!["f-1", "f-2"], "absent leaves them");
+    core.edit_message(MINE.into(), draft, Some(Vec::new()))
+        .await
+        .unwrap();
+    assert!(files(&server).is_empty(), "empty removes them all");
+    until("the row without files", || {
+        row(&events, &channel, MINE).is_some_and(|row| row.attachments.is_empty())
+    })
+    .await;
+
     // React and take it back.
     core.add_reaction(THEIRS.into(), "🔥".into()).await.unwrap();
     until("the reaction", || {

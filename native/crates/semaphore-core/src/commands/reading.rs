@@ -385,8 +385,14 @@ impl Core {
             (Some(parent_message_id), _) => {
                 self.open_conversation_at(conversation.clone(), parent_message_id.clone())
                     .await?;
-                self.open_conversation(Conversation::Thread { parent_message_id })
-                    .await?;
+                // The user may have gone elsewhere while the page came: the thread belongs to the
+                // link's conversation, so it opens only if that's still the one shown.
+                let still_here =
+                    self.read(|state| state.main_conversation.as_ref() == Some(&conversation));
+                if still_here {
+                    self.open_conversation(Conversation::Thread { parent_message_id })
+                        .await?;
+                }
             }
             (None, Some(message_id)) => {
                 self.open_conversation_at(conversation.clone(), message_id)

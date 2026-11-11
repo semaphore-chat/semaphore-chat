@@ -64,7 +64,7 @@ pub trait MessagesBackend: Send + Sync {
     ) -> BackendResult<wire::ReadReceiptDto>;
 
     // Edit and delete (W1). Defaults until a backend has them.
-    /// `PATCH /api/messages/{id}`. `attachments` is always sent: an empty list removes them all.
+    /// `PATCH /api/messages/{id}`. No `attachments` leaves them; a list, even empty, keeps those.
     async fn messages_controller_update(
         &self,
         _id: String,

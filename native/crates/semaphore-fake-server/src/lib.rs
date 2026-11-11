@@ -448,6 +448,32 @@ impl FakeServer {
         }
     }
 
+    /// Gives a stored message these attachments (file ids), replacing any it has. For tests of
+    /// what an edit keeps.
+    pub fn set_attachments(&self, id: &str, file_ids: &[&str]) -> bool {
+        let mut data = lock(&self.inner.data);
+        let Some(message) = messages::find_message_mut(&mut data, id) else {
+            return false;
+        };
+        message.attachments = file_ids
+            .iter()
+            .map(|file_id| semaphore_wire::types::AttachmentDto {
+                file_type: semaphore_wire::enums::FileType::Document,
+                filename: format!("{file_id}.txt"),
+                has_thumbnail: false,
+                id: (*file_id).to_owned(),
+                mime_type: "text/plain".into(),
+                size: 1,
+            })
+            .collect();
+        true
+    }
+
+    /// A stored message as the server holds it.
+    pub fn message(&self, id: &str) -> Option<semaphore_wire::types::MessageDto> {
+        messages::find_message(&lock(&self.inner.data), id)
+    }
+
     /// Send a server event to every connected socket.
     pub async fn emit(&self, event: &str, payload: Value) {
         self.inner.broadcast(event, payload);

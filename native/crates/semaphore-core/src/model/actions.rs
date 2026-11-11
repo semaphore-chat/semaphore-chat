@@ -34,3 +34,12 @@ pub struct ChannelModeration {
     /// Remove someone else's message. Those who may also still see what was removed.
     pub remove_any: bool,
 }
+
+/// What this user may do to others' messages in a channel, and whether that's known yet.
+/// `allowed` is all false until `state` is `Ready`: show no moderator actions meanwhile. `Failed`
+/// means the roles couldn't be read: `Core::retry_failed`, or a new connection, reads them again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ChannelModerationView {
+    pub state: LoadState,
+    pub allowed: ChannelModeration,
+}

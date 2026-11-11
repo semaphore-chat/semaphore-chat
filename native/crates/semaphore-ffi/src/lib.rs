@@ -11,14 +11,15 @@
 
 use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
-    AttachmentKind, AttachmentView, ChannelKind, ChannelModeration, ChannelPermissions, ChannelRow,
-    CommunityRow, ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView,
-    ErrorView, LinkPreviewView, ListOp, LoadState, LocalMediaView, LocalShare, MemberList,
-    MemberView, MentionCandidate, MentionKind, MessageDraft, MessageLink, MessageRow,
-    ParticipantView, PinnedList, PinnedRow, RailCounts, ReactionUsers, ReactionView, ReplyToView,
-    ScreenShareRequest, SearchHit, SearchScope, SegKind, SendState, SessionState, ShareResolution,
-    TextSeg, TextStyle, ThreadInfo, UnreadMarker, UploadView, UserView, VideoDemand,
-    VideoTrackView, ViewKey, VoiceStatus, VoiceView, WebhookView,
+    AttachmentKind, AttachmentView, ChannelKind, ChannelModeration, ChannelModerationView,
+    ChannelPermissions, ChannelRow, CommunityRow, ConnectionQuality, Conversation, DisplayRole,
+    DraftFile, DraftMention, EmojiView, ErrorView, LinkPreviewView, ListOp, LoadState,
+    LocalMediaView, LocalShare, MemberList, MemberView, MentionCandidate, MentionKind,
+    MessageDraft, MessageLink, MessageRow, ParticipantView, PinnedList, PinnedRow, RailCounts,
+    ReactionUsers, ReactionView, ReplyToView, ScreenShareRequest, SearchHit, SearchScope, SegKind,
+    SendState, SessionState, ShareResolution, TextSeg, TextStyle, ThreadInfo, UnreadMarker,
+    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
+    WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -435,6 +436,12 @@ pub struct ChannelModeration {
     pub pin: bool,
     pub unpin: bool,
     pub remove_any: bool,
+}
+
+#[uniffi::remote(Record)]
+pub struct ChannelModerationView {
+    pub state: LoadState,
+    pub allowed: ChannelModeration,
 }
 
 #[uniffi::remote(Enum)]
