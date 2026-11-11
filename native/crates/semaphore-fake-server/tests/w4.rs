@@ -315,6 +315,8 @@ async fn server_mute_refuses_myself_an_unknown_channel_and_a_bad_body() {
 async fn a_kick_tells_the_member_ends_their_call_and_unlists_them() {
     let (server, client, base) = showcase().await;
     let couch = id("c-couch");
+    // W5: kicking needs a role that outranks theirs; `me` is only a Member there.
+    server.act_as(&couch, None, &["role-community-admin-c-couch"]);
     let mut me = connect_as(&base, &id("me")).await;
     let mut kwame = connect_as(&base, &id("u-kwame")).await;
     let (status, body) = post(

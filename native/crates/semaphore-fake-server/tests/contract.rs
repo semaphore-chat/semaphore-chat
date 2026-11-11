@@ -1811,6 +1811,12 @@ async fn w4_voice_routes_match_openapi_and_socket_events() {
     use reqwest::Method as M;
     let schemas = Schemas::load();
     let server = start("showcase").await;
+    // W5: kicking needs a role that outranks theirs; `me` is only a Member in c-couch.
+    server.act_as(
+        &semaphore_fake_server::entity_uuid("c-couch"),
+        None,
+        &["role-community-admin-c-couch"],
+    );
     let base = server.base_url();
     let client = http();
     let id = |readable: &str| semaphore_fake_server::entity_uuid(readable);

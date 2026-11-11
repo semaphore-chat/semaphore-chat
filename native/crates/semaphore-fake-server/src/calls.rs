@@ -303,12 +303,18 @@ pub(crate) fn is_kicked(inner: &Inner, community_id: &str, user_id: &str) -> boo
 /// community's other members.
 pub(crate) fn kick(
     inner: &Inner,
+    actor: &str,
     community_id: &str,
     user_id: &str,
     reason: Option<String>,
 ) -> Result<(), Refusal> {
-    let me = inner.scenario.me.id.clone();
-    if user_id == me {
+    let me = actor.to_owned();
+    // W5: `ModerationService.kickUser`'s rank rule, with no way past it for the instance owner
+    // (#679), then the removal and its log entry.
+    let outranks =
+        crate::rbac::community(inner, community_id, |state, _| state.outranks(&me, user_id))
+            .unwrap_or(false);
+    if user_id == me || !outranks {
         return Err(refuse(
             403,
             "FORBIDDEN",
@@ -325,6 +331,16 @@ pub(crate) fn kick(
     lock(&inner.calls)
         .kicked
         .insert((community_id.to_owned(), user_id.to_owned()));
+    crate::rbac::remove_member(inner, community_id, user_id);
+    crate::rbac::log(
+        inner,
+        community_id,
+        &me,
+        "KICK_USER",
+        Some(user_id),
+        reason.clone(),
+        Value::Null,
+    );
     // An absent reason is `undefined` there: no field.
     let mut payload = json!({
         "communityId": community_id,

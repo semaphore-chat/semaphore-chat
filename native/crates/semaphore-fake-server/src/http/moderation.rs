@@ -7,7 +7,7 @@ use crate::actions::{self, EditBody, ReasonBody, Refusal};
 use axum::Router;
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::http::{Method, StatusCode};
+use axum::http::{HeaderMap, Method, StatusCode};
 use axum::response::Response;
 use axum::routing::{delete, get, post};
 use std::sync::Arc;
@@ -156,6 +156,7 @@ async fn my_channel_roles(
 /// scenario's own readable ids pass), an optional `{ reason }`, then `200`.
 async fn kick_user(
     State(inner): State<Arc<Inner>>,
+    headers: HeaderMap,
     Path((community_id, user_id)): Path<(String, String)>,
     body: Bytes,
 ) -> Response {
@@ -170,7 +171,11 @@ async fn kick_user(
         Ok(body) => body,
         Err(response) => return response,
     };
-    match crate::calls::kick(&inner, &community_id, &user_id, body.reason) {
+    let actor = inner.user_of(super::bearer_token(&headers));
+    if let Err(refusal) = crate::rbac::guard(&inner, &actor, &community_id, &["KICK_USER"]) {
+        return crate::rbac::respond(&inner, refusal);
+    }
+    match crate::calls::kick(&inner, &actor, &community_id, &user_id, body.reason) {
         Ok(()) => success("User kicked successfully"),
         Err((status, code, message)) => inner.error(status, code, message, false),
     }
