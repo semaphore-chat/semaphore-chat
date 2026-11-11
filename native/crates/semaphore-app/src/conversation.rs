@@ -3,26 +3,31 @@
 //! Core sends rows as `ListOp`s for the conversation on screen. The pane hands them to the list, keeps
 //! a mirror for what the list doesn't expose (the reply quotes it draws, the newest id for read
 //! marks, and the rig's checks), and answers what the list and composer ask by calling core.
+//!
+//! W1's message features live in two children: `actions` (edit in place, delete, pins, reactions
+//! and the emoji picker, links and jumps, the error notice) and `side` (the pins and search panels
+//! and the thread pane, in the shell's side panel). The pane asks the app for what it can't do
+//! itself with a [`PaneEvent`]: show a side panel, go to another channel, the header's pin count.
+
+mod actions;
+mod side;
 
 use crate::files::AppMedia;
 use crate::runtime::Exec;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::cache::keys;
 use semaphore_core::model::{AttachmentView, DraftFile};
 use semaphore_core::model::{
-    ChannelPermissions, ChannelRow, Conversation, ListOp, MentionCandidate, MessageRow,
-    SessionState, ViewKey,
+    ChannelModeration, ChannelPermissions, ChannelRow, Conversation, ListOp, MentionCandidate,
+    MessageRow, SessionState, ViewKey,
 };
 use semaphore_core::{Core, CoreEvent};
-use semaphore_ui::composer::{
-    AttachmentSource, Availability, Composer, ComposerConfig, ComposerEvent, DraftStore,
-    MentionSource, PendingAttachment,
-};
+use semaphore_ui::composer::{Availability, Composer, ComposerConfig, DraftStore, MentionSource};
 use semaphore_ui::kit::on_core_event;
 use semaphore_ui::messages::{
-    ListData, ListOptions, ListStatus, MessageList, MessageListEvent, ReplyPreview, TimeFormat,
+    ListData, ListOptions, ListPermissions, ListStatus, MessageList, ReplyPreview, TimeFormat,
 };
+use semaphore_ui::panel::PanelClock;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -31,6 +36,34 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// What the app does with a clicked attachment: the image viewer, or Save as.
 pub type OpenAttachment = Rc<dyn Fn(AttachmentView, &mut Window, &mut App)>;
+
+/// The server this session is on, for telling its message links from the rest.
+pub type ServerUrl = Rc<dyn Fn() -> Option<String>>;
+
+/// What the pane asks of the app.
+#[derive(Clone)]
+pub enum PaneEvent {
+    /// Show this in the shell's side panel, or close it.
+    SidePanel(Option<AnyView>),
+    /// Go to a channel: a jump or a link to a message elsewhere. Core has already opened it there.
+    Navigate {
+        community_id: String,
+        channel_id: String,
+    },
+    /// The header's pin badge.
+    PinnedCount(u32),
+}
+
+/// Which of the pane's lists something happened in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Which {
+    /// The conversation's own list.
+    Main,
+    /// The thread pane's replies.
+    Thread,
+    /// The thread pane's one-row list: the message the thread answers.
+    Parent,
+}
 
 /// The web sends `typingStart` at most this often while keys keep coming.
 const TYPING_EVERY: Duration = Duration::from_secs(3);
@@ -81,8 +114,28 @@ pub struct ConversationPane {
     /// The app opens an attachment: the image viewer, or Save as.
     open_attachment: OpenAttachment,
     list_subscription: Option<Subscription>,
+    server_url: ServerUrl,
+    /// What "5 minutes ago" in the panels is measured from: the rows' clock.
+    panel_clock: PanelClock,
+    /// What this user may do to others' messages in the channel on screen.
+    moderation: ChannelModeration,
+    pinned_count: Option<u32>,
+    pub(crate) thread: Option<side::ThreadView>,
+    pub(crate) side: Option<side::Side>,
+    pub(crate) editing: Option<actions::Editing>,
+    pub(crate) picker: Option<actions::OpenPicker>,
+    /// The reaction whose tooltip shows: its list, message and emoji.
+    hovered_reaction: Option<(Which, String, String)>,
+    /// The last thing the server refused, in its words, until dismissed.
+    notice: Option<String>,
+    /// A message to scroll to and tint once its rows arrive: its conversation and id.
+    flash: Option<(Conversation, String)>,
+    /// Takes the tint away again.
+    flash_timer: Option<Task<()>>,
     _subscriptions: Vec<Subscription>,
 }
+
+impl EventEmitter<PaneEvent> for ConversationPane {}
 
 impl ConversationPane {
     #[allow(clippy::too_many_arguments)]
@@ -93,10 +146,12 @@ impl ConversationPane {
         scrollbar: bool,
         media: Rc<AppMedia>,
         open_attachment: OpenAttachment,
+        server_url: ServerUrl,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
         on_core_event(cx.entity().downgrade(), Self::on_core, cx);
+        let panel_clock = time.now_ms.map(PanelClock::fixed).unwrap_or_default();
         Self {
             mentions: Rc::new(CoreMentions {
                 core: core.clone(),
@@ -121,6 +176,18 @@ impl ConversationPane {
             media,
             open_attachment,
             list_subscription: None,
+            server_url,
+            panel_clock,
+            moderation: ChannelModeration::default(),
+            pinned_count: None,
+            thread: None,
+            side: None,
+            editing: None,
+            picker: None,
+            hovered_reaction: None,
+            notice: None,
+            flash: None,
+            flash_timer: None,
             _subscriptions: Vec::new(),
         }
     }
@@ -171,27 +238,106 @@ impl ConversationPane {
             self.open(conversation, window, cx);
         } else if permissions_changed {
             self.apply_availability(window, cx);
+            self.apply_permissions(cx);
         }
     }
 
-    fn open(&mut self, conversation: Conversation, window: &mut Window, cx: &mut Context<Self>) {
-        self.conversation = Some(conversation.clone());
-        self.rows.clear();
-        self.replies.clear();
-        self.marked_read = None;
+    /// The channel on screen, if a channel is.
+    pub(crate) fn channel_id(&self) -> Option<String> {
+        match &self.conversation {
+            Some(Conversation::Channel { id }) => Some(id.clone()),
+            _ => None,
+        }
+    }
+
+    /// What the rows offer: posting and reacting from the channel's capabilities (open while they
+    /// load, as the composer is: the server enforces them), the rest from its moderation roles.
+    pub(crate) fn list_permissions(&self, which: Which) -> ListPermissions {
+        let permissions = self
+            .channel
+            .as_ref()
+            .and_then(|row| row.permissions.as_ref());
+        let (post, react, thread_reply) = permissions.map_or((true, true, true), |p| {
+            (
+                p.post && p.timed_out_until_ms.is_none_or(|until| until <= now_ms()),
+                p.react,
+                p.thread_reply,
+            )
+        });
+        let main = which == Which::Main;
+        ListPermissions {
+            reply: main && post,
+            react,
+            threads: main && thread_reply,
+            pin: self.moderation.pin,
+            unpin: self.moderation.unpin,
+            remove_any: self.moderation.remove_any,
+        }
+    }
+
+    /// Hands every list what it may offer now.
+    pub(crate) fn apply_permissions(&mut self, cx: &mut Context<Self>) {
+        for which in [Which::Main, Which::Thread, Which::Parent] {
+            let permissions = self.list_permissions(which);
+            if let Some(list) = self.list_of(which) {
+                list.update(cx, |list, cx| list.set_permissions(permissions, cx));
+            }
+        }
+    }
+
+    pub(crate) fn list_of(&self, which: Which) -> Option<Entity<MessageList>> {
+        match which {
+            Which::Main => self.list.clone(),
+            Which::Thread => self.thread.as_ref().map(|thread| thread.replies.clone()),
+            Which::Parent => self
+                .thread
+                .as_ref()
+                .map(|thread| thread.parent_list.clone()),
+        }
+    }
+
+    /// The rows a list shows, as core sent them.
+    pub(crate) fn rows_of(&self, which: Which) -> &[MessageRow] {
+        match (which, &self.thread) {
+            (Which::Main, _) => &self.rows,
+            (Which::Thread, Some(thread)) => &thread.rows,
+            (Which::Parent, Some(thread)) => thread.parent_row.as_slice(),
+            _ => &[],
+        }
+    }
+
+    /// The conversation a list's paging and holds go to. The parent's list has none of its own.
+    fn conversation_of(&self, which: Which) -> Option<Conversation> {
+        match which {
+            Which::Main => self.conversation.clone(),
+            Which::Thread => self
+                .thread
+                .as_ref()
+                .map(|thread| thread.conversation.clone()),
+            Which::Parent => None,
+        }
+    }
+
+    /// A message list over core's rows, as the conversation's own is made.
+    pub(crate) fn new_list(
+        &self,
+        rows: Vec<MessageRow>,
+        status: ListStatus,
+        cx: &mut Context<Self>,
+    ) -> Entity<MessageList> {
         let me_id = match self.core.session() {
             SessionState::SignedIn { me } => me.id,
             _ => String::new(),
         };
         let (time, scrollbar) = (self.time, self.scrollbar);
         let media: Rc<dyn semaphore_ui::messages::MediaSource> = self.media.clone();
-        let list = cx.new(|cx| {
+        cx.new(|cx| {
             MessageList::new(
                 ListData {
                     me_id,
-                    rows: Vec::new(),
+                    rows,
                     replies: HashMap::new(),
-                    status: ListStatus::Loading,
+                    status,
                 },
                 media,
                 ListOptions {
@@ -201,8 +347,52 @@ impl ConversationPane {
                 },
                 cx,
             )
+        })
+    }
+
+    /// The divider from core's snapshot of where reading stopped when the conversation opened.
+    fn refresh_unread(&mut self, cx: &mut Context<Self>) {
+        let Some(conversation) = self.conversation.clone() else {
+            return;
+        };
+        let marker = self.core.unread_marker(conversation);
+        if let Some(list) = &self.list {
+            list.update(cx, |list, cx| list.set_unread_marker(marker.as_ref(), cx));
+        }
+    }
+
+    /// Reads the moderation roles for the channel on screen, and what they allow.
+    fn refresh_moderation(&mut self, cx: &mut Context<Self>) {
+        self.moderation = match self.channel_id() {
+            Some(channel_id) => self.core.channel_moderation(channel_id).allowed,
+            None => ChannelModeration::default(),
+        };
+        self.apply_permissions(cx);
+        self.refresh_pins(cx);
+    }
+
+    fn open(&mut self, conversation: Conversation, window: &mut Window, cx: &mut Context<Self>) {
+        self.conversation = Some(conversation.clone());
+        self.rows.clear();
+        self.replies.clear();
+        self.marked_read = None;
+        self.editing = None;
+        self.picker = None;
+        self.hovered_reaction = None;
+        self.pinned_count = None;
+        // A thread belongs to the channel it was opened in, unless a jump opened it for this one.
+        if self
+            .thread
+            .as_ref()
+            .is_some_and(|thread| thread.in_conversation != conversation)
+        {
+            self.thread = None;
+            self.sync_side(cx);
+        }
+        let list = self.new_list(Vec::new(), ListStatus::Loading, cx);
+        let list_events = cx.subscribe_in(&list, window, |this, _, event, window, cx| {
+            this.on_list_event(Which::Main, event, window, cx)
         });
-        let list_events = cx.subscribe_in(&list, window, Self::on_list_event);
         self.list = Some(list);
 
         self.list_subscription = Some(list_events);
@@ -231,6 +421,8 @@ impl ConversationPane {
             }
         }
         self.apply_availability(window, cx);
+        self.refresh_moderation(cx);
+        self.refresh_unread(cx);
 
         let core = self.core.clone();
         let opening = conversation.clone();
@@ -248,6 +440,7 @@ impl ConversationPane {
                 if let Some(list) = &this.list {
                     list.update(cx, |list, cx| list.set_status(ListStatus::Ready, cx));
                 }
+                this.flash_if_loaded(cx);
             },
         );
         cx.notify();
@@ -323,16 +516,55 @@ impl ConversationPane {
                         list.set_status(ListStatus::Ready, cx);
                     });
                 }
+                // The divider's row may have just arrived.
+                if self
+                    .list
+                    .as_ref()
+                    .is_some_and(|list| list.read(cx).unread_divider().is_none())
+                {
+                    self.refresh_unread(cx);
+                }
+                self.parent_changed(cx);
+                self.flash_if_loaded(cx);
                 self.mark_read(cx);
             }
+            CoreEvent::MessagesChanged {
+                conversation: changed,
+                ops,
+            } if self
+                .thread
+                .as_ref()
+                .is_some_and(|thread| thread.conversation == *changed) =>
+            {
+                self.thread_rows_changed(ops, cx);
+                self.flash_if_loaded(cx);
+            }
+            CoreEvent::ViewChanged {
+                view: ViewKey::UnreadMarker { conversation: of },
+            } if *of == conversation => self.refresh_unread(cx),
+            CoreEvent::ViewChanged {
+                view: ViewKey::ChannelModeration { channel_id },
+            } if self.channel_id().as_ref() == Some(channel_id) => self.refresh_moderation(cx),
+            CoreEvent::ViewChanged {
+                view: ViewKey::Pins { channel_id },
+            } if self.channel_id().as_ref() == Some(channel_id) => self.refresh_pins(cx),
+            CoreEvent::ViewChanged {
+                view: ViewKey::Thread { parent_message_id },
+            } => self.refresh_thread_info(parent_message_id, cx),
+            CoreEvent::ViewChanged {
+                view: ViewKey::ReactionUsers { message_id, emoji },
+            } => self.refresh_reaction_users(message_id, emoji, cx),
             // Mention candidates arrive after the query that asked: show them. Custom emoji ride
             // the same view, so the list draws them now too.
             CoreEvent::ViewChanged {
                 view: ViewKey::Mentionables { .. } | ViewKey::Members { .. },
             } => {
                 self.refresh_composer(cx);
-                if let Some(list) = &self.list {
-                    list.update(cx, |_, cx| cx.notify());
+                self.refresh_picker_emoji(cx);
+                for which in [Which::Main, Which::Thread, Which::Parent] {
+                    if let Some(list) = self.list_of(which) {
+                        list.update(cx, |_, cx| cx.notify());
+                    }
                 }
             }
             _ => {}
@@ -437,219 +669,6 @@ impl ConversationPane {
         });
     }
 
-    fn on_list_event(
-        &mut self,
-        _: &Entity<MessageList>,
-        event: &MessageListEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let Some(conversation) = self.conversation.clone() else {
-            return;
-        };
-        let core = self.core.clone();
-        match event.clone() {
-            MessageListEvent::LoadOlder => self.exec.fire(async move {
-                log_failure("loading older rows", core.load_older(conversation).await);
-            }),
-            MessageListEvent::LoadNewer => self.exec.fire(async move {
-                log_failure("loading newer rows", core.load_newer(conversation).await);
-            }),
-            MessageListEvent::JumpToPresent => self.exec.fire(async move {
-                log_failure(
-                    "jumping to the present",
-                    core.jump_to_present(conversation).await,
-                );
-            }),
-            MessageListEvent::HoldRows(range) => core.hold_rows(conversation, range),
-            MessageListEvent::OpenLink { url } => cx.open_url(&url),
-            MessageListEvent::OpenReply { message_id } => {
-                let target = message_id.clone();
-                self.exec.run(
-                    window,
-                    cx,
-                    async move { core.open_conversation_at(conversation, message_id).await },
-                    move |this, result, _, cx| {
-                        if let Err(error) = result {
-                            log::warn!("opening the message answered: {error}");
-                            return;
-                        }
-                        // Already loaded: core sends nothing, and the list scrolls there itself.
-                        let seq = this
-                            .rows
-                            .iter()
-                            .find(|row| row.id.as_deref() == Some(target.as_str()))
-                            .map(|row| row.seq);
-                        if let (Some(seq), Some(list)) = (seq, &this.list) {
-                            list.update(cx, |list, cx| {
-                                list.scroll_to_seq(seq, 0.);
-                                cx.notify();
-                            });
-                        }
-                    },
-                );
-            }
-            MessageListEvent::ToggleReaction { message_id, emoji } => self.exec.fire(async move {
-                log_failure("reacting", core.toggle_reaction(message_id, emoji).await);
-            }),
-            MessageListEvent::RetrySend { client_nonce } => self.exec.fire(async move {
-                log_failure("retrying a send", core.retry_send(client_nonce).await);
-            }),
-            MessageListEvent::DiscardFailed { client_nonce } => self.exec.fire(async move {
-                log_failure(
-                    "discarding a failed send",
-                    core.discard_failed_send(client_nonce).await,
-                );
-            }),
-            MessageListEvent::OpenAttachment { file_id } => {
-                let attachment = self
-                    .rows
-                    .iter()
-                    .flat_map(|row| row.attachments.iter())
-                    .find(|attachment| attachment.file_id == file_id)
-                    .cloned();
-                if let Some(attachment) = attachment {
-                    (self.open_attachment)(attachment, window, cx);
-                }
-            }
-            MessageListEvent::RetryUpload {
-                client_nonce,
-                index,
-            } => self.exec.fire(async move {
-                log_failure(
-                    "retrying an upload",
-                    core.retry_upload(client_nonce, index).await,
-                );
-            }),
-            MessageListEvent::RemoveUpload {
-                client_nonce,
-                index,
-            } => self.exec.fire(async move {
-                log_failure(
-                    "removing an upload",
-                    core.remove_upload(client_nonce, index).await,
-                );
-            }),
-            MessageListEvent::OpenThread { message_id } => {
-                log::info!("opening the thread of {message_id}: the thread pane is a follow-up");
-            }
-            // W1's message actions: wired in the app-wiring piece (P5).
-            other => log::info!("message action not wired yet: {other:?}"),
-        }
-    }
-
-    fn on_composer_event(
-        &mut self,
-        composer: &Entity<Composer>,
-        event: &ComposerEvent,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        let core = self.core.clone();
-        match event.clone() {
-            ComposerEvent::Send {
-                conversation,
-                draft,
-                attachments,
-            } => {
-                self.last_typing = None;
-                let stop_for = conversation.clone();
-                let typing_core = core.clone();
-                self.exec.fire(async move {
-                    let _ = typing_core.send_typing(stop_for, false).await;
-                });
-                let composer = composer.downgrade();
-                let handle = self.exec.handle().clone();
-                // What can cross threads: a path to read, or the bytes a paste brought.
-                let attachments: Vec<FileSource> = attachments
-                    .iter()
-                    .map(|file| match &file.source {
-                        AttachmentSource::Path(path) => {
-                            FileSource::Path(file.name.to_string(), path.clone())
-                        }
-                        AttachmentSource::Image(image) => {
-                            FileSource::Bytes(file.name.to_string(), image.bytes.clone())
-                        }
-                    })
-                    .collect();
-                self.exec.run(
-                    window,
-                    cx,
-                    async move {
-                        // Reading the files is blocking work, off the async workers too.
-                        let files = handle
-                            .spawn_blocking(move || read_files(&attachments))
-                            .await
-                            .map_err(|error| semaphore_core::CoreError::Failed {
-                                message: error.to_string(),
-                            })??;
-                        let mut draft = draft;
-                        draft.files = files;
-                        core.send_message(conversation, draft).await
-                    },
-                    move |_, result, window, cx| {
-                        let result = result.map(|_| ()).map_err(|error| error.to_string());
-                        composer
-                            .update(cx, |composer, cx| composer.send_settled(result, window, cx))
-                            .ok();
-                    },
-                );
-            }
-            ComposerEvent::Typing => {
-                let Some(conversation) = self.conversation.clone() else {
-                    return;
-                };
-                let now = Instant::now();
-                if self
-                    .last_typing
-                    .is_some_and(|last| now.duration_since(last) < TYPING_EVERY)
-                {
-                    return;
-                }
-                self.last_typing = Some(now);
-                self.exec.fire(async move {
-                    let _ = core.send_typing(conversation, true).await;
-                });
-            }
-            ComposerEvent::TimeoutEnded => {
-                if let Some(community_id) = &self.community_id {
-                    core.invalidate(&keys::scoped(keys::CAPABILITIES, community_id));
-                }
-            }
-            ComposerEvent::OpenEmojiPicker => {
-                log::info!("the emoji picker is phase 4");
-                composer.update(cx, |composer, cx| composer.set_emoji_picker_open(false, cx));
-            }
-            ComposerEvent::OpenFilePicker => {
-                let picked = cx.prompt_for_paths(PathPromptOptions {
-                    files: true,
-                    directories: false,
-                    multiple: true,
-                    prompt: Some("Attach".into()),
-                });
-                let composer = composer.downgrade();
-                cx.spawn_in(window, async move |_, cx| {
-                    let Ok(Ok(Some(paths))) = picked.await else {
-                        return;
-                    };
-                    let files: Vec<PendingAttachment> = paths
-                        .iter()
-                        .map(|path| PendingAttachment::from_path(path))
-                        .collect();
-                    composer
-                        .update_in(cx, |composer, window, cx| {
-                            composer.add_attachments(files, window, cx)
-                        })
-                        .ok();
-                })
-                .detach();
-            }
-            ComposerEvent::EditLastMessage => log::info!("editing is a follow-up"),
-            // Only an edit-mode composer sends these: wired in the app-wiring piece (P5).
-            ComposerEvent::SaveEdit { .. } | ComposerEvent::CancelEdit { .. } => {}
-        }
-    }
-
     fn typing_line(&self) -> Option<String> {
         let conversation = self.conversation.clone()?;
         let names: Vec<String> = self
@@ -668,12 +687,6 @@ impl ConversationPane {
             [one, two] => Some(format!("{one} and {two} are typing...")),
             _ => Some("Several people are typing...".into()),
         }
-    }
-}
-
-fn log_failure(what: &str, result: Result<(), semaphore_core::CoreError>) {
-    if let Err(error) = result {
-        log::warn!("{what} failed: {error}");
     }
 }
 
@@ -772,9 +785,11 @@ pub fn mime_for(name: &str) -> String {
 }
 
 impl Render for ConversationPane {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let palette = semaphore_ui::messages::palette::Palette::dark();
         let typing = self.typing_line();
+        let notice = self.notice_element(cx);
+        let picker = self.picker_element(cx);
         div()
             .id("conversation")
             .size_full()
@@ -796,9 +811,11 @@ impl Render for ConversationPane {
                     .text_color(palette.text_secondary)
                     .when_some(typing, |this, typing| this.child(typing)),
             )
+            .children(notice)
             .when_some(self.composer.clone(), |this, composer| {
                 this.child(div().flex_shrink_0().child(composer))
             })
+            .children(picker)
     }
 }
 
