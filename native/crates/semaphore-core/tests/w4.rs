@@ -881,3 +881,45 @@ async fn the_last_other_leaving_a_dm_call_ends_it_with_a_sound() {
     // Not left for them (no auto-leave when alone).
     assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
 }
+
+// --- Found by the wire tests ---
+
+#[tokio::test]
+async fn a_join_reads_the_rooms_presence_again_once_connected() {
+    // A roster cached before the join predates us, and our own join event may not come.
+    let mut rig = signed_in().await;
+    let reads = |rig: &Rig| {
+        rig.backend
+            .presence_requests
+            .load(std::sync::atomic::Ordering::SeqCst)
+    };
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(reads(&rig), 1, "read once, after the join");
+    rig.core.leave_voice().await.unwrap();
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(reads(&rig), 2, "cached from before: read again");
+    let mut rig = in_dm_call(&["bob"]).await;
+    rig.core.leave_voice().await.unwrap();
+    rig.core.join_dm_call(DM.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("dm_presence"), 2);
+}
+
+#[tokio::test]
+async fn a_ring_takes_its_groups_name_once_the_dm_list_arrives() {
+    let mut rig = signed_in().await;
+    rig.backend.w2.answer(
+        "dms",
+        json!([{
+            "id": DM, "name": "Team", "isGroup": true, "createdAt": "2026-09-20T10:00:00.000Z",
+            "members": [], "lastMessage": null,
+        }]),
+    );
+    rig.backend.w4.answer("dm_users", json!([presence("bob")]));
+    rig.core.ingest(started(DM, "bob"));
+    assert_eq!(rig.core.incoming_call().unwrap().group_name, "bob name");
+    rig.settle().await;
+    assert_eq!(rig.core.incoming_call().unwrap().group_name, "Team");
+}

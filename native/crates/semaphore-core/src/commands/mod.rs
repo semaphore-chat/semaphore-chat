@@ -277,7 +277,10 @@ impl State {
                 self.w2_presence_changed();
             }
             keys::NOTIFICATION_COUNT => self.badge_changed(),
-            keys::DMS => self.view_changed(ViewKey::DirectMessages),
+            keys::DMS => {
+                self.view_changed(ViewKey::DirectMessages);
+                self.w4_dms_arrived();
+            }
             keys::FRIENDS => self.view_changed(ViewKey::Friends),
             keys::NOTIFICATIONS => self.view_changed(ViewKey::Notifications),
             keys::NOTIFY_SETTINGS => {

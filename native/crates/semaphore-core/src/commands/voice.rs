@@ -228,6 +228,9 @@ impl Core {
                     state.voice.status = VoiceStatus::Connected;
                     state.view_changed(ViewKey::Voice);
                     state.w4_log(now, "connected");
+                    // As the web does after a join (`voiceActions.ts`): the roster read at the
+                    // start may predate us, and our own join event may not come.
+                    state.invalidate(&State::room_presence_key(&room));
                     Ok(())
                 }
                 // The engine connected and dropped again before this finished. The server has heard

@@ -94,7 +94,19 @@ impl VoiceBackend for HttpBackend {
         channel_id: String,
         body: wire::MuteParticipantDto,
     ) -> BackendResult<wire::SuccessResponseDto> {
-        let (channel_id, body) = (channel_id.as_str(), &body);
-        rpc!(self, c => c.livekit_controller_mute_participant(channel_id, body))
+        // The backend answers 201 (a Nest `@Post` with no `@HttpCode`), but the spec says 200
+        // (`@ApiOkResponse`), and the generated client refuses any status the spec doesn't name.
+        // So this one is sent by hand and takes any 2xx.
+        let path = format!("/api/livekit/channels/{channel_id}/mute-participant");
+        let (path, body) = (
+            path.as_str(),
+            serde_json::to_value(&body).unwrap_or_default(),
+        );
+        let body = &body;
+        rpc!(self, c => async move {
+            let response =
+                super::notify::raw(&c, reqwest::Method::POST, path, Some(body)).await?;
+            ResponseValue::from_response(response).await
+        })
     }
 }
