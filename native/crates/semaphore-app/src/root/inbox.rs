@@ -516,6 +516,20 @@ impl AppRoot {
 
     /// A `semaphore://` link: routed now, or once signed in.
     pub(super) fn route_link(&mut self, link: DeepLink, cx: &mut Context<Self>) {
+        // An invite opens its page, signed out too: in a frame of its own, with the window.
+        if let DeepLink::Invite { invite_code } = &link
+            && (self.shell.is_some() || (self.server.is_some() && self.auth.is_some()))
+        {
+            let (window, root, code) = (self.window, cx.entity(), invite_code.clone());
+            cx.defer(move |cx| {
+                window
+                    .update(cx, |_, window, cx| {
+                        root.update(cx, |root, cx| root.route_invite_link(&code, window, cx))
+                    })
+                    .ok();
+            });
+            return;
+        }
         if self.shell.is_none() {
             log::info!("deep link kept until sign-in: {link:?}");
             self.inbox.pending_link = Some(link);

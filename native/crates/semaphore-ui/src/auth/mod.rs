@@ -140,6 +140,11 @@ impl AuthScreen {
         }
     }
 
+    /// The step on screen.
+    pub fn step(&self) -> &AuthStep {
+        &self.step
+    }
+
     pub fn set_step(&mut self, step: AuthStep, cx: &mut Context<Self>) {
         self.step = step;
         cx.notify();

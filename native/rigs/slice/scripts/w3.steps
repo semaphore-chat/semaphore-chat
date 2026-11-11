@@ -186,3 +186,64 @@ wait core no-element create-community-name
 wait core label "Board Games"
 wait idle
 shot 17-community-created
+
+# 10. Signed out: a forgotten password, then an invite link that registers someone new.
+server public_settings "{\"passwordResetEnabled\": true}"
+server seed_invite "{\"code\": \"w3-invite\"}"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core element auth-forgot
+click auth-forgot
+wait core element forgot-email
+click forgot-email
+type "alexk@example.com"
+click forgot-submit
+wait core element forgot-sent
+expect requests AuthController_forgotPassword >= 1
+wait idle
+shot 18-forgot-password-sent
+click forgot-back
+wait core element auth-username
+link "semaphore://join/w3-invite"
+wait core element invite-accept
+expect requests InviteController_getPublicInvite >= 1
+wait idle
+shot 19-invite-page
+click invite-accept
+wait core element register-username
+click register-username
+type "newcomer"
+click register-email
+type "newcomer@example.com"
+click register-password
+type "Password123!"
+wait idle
+shot 20-register-by-invite
+click register-submit
+wait core session signed-in
+expect requests UserController_register >= 1
+wait core route home
+wait idle
+shot 21-registered-home
+
+# 11. Sign in with the browser, end to end: the app opens the instance's desktop-login page, the
+# rig plays the browser (the signed-in user approves, the browser follows the redirect to the
+# app's loopback listener), and the app redeems the code.
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core element auth-browser
+click auth-browser
+wait core element auth-browser-cancel
+expect opened-url "/#/desktop-login?challenge="
+wait idle
+shot 22-browser-waiting
+browser approve
+wait core session signed-in
+expect requests AuthController_redeemDesktopLogin >= 1
+wait core channel $ID(cc-general)
+wait idle
+shot 23-browser-signed-in

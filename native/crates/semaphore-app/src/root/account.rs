@@ -207,6 +207,7 @@ impl AppRoot {
                 }
                 self.refresh_profile(user_id, cx);
             }
+            Route::Invite { invite_code } => self.signed_in_invite(invite_code, window, cx),
             Route::ProfileEdit => {
                 let form = cx.new(|cx| ProfileEditForm::new(window, cx));
                 self.account
@@ -235,6 +236,7 @@ impl AppRoot {
                 .map(IntoElement::into_any_element),
             Route::Profile { .. } => self.account.page.clone().map(IntoElement::into_any_element),
             Route::ProfileEdit => self.account.edit.clone().map(IntoElement::into_any_element),
+            Route::Invite { invite_code } => self.signed_in_invite_element(invite_code),
             Route::Home => {
                 let communities = self.home_communities();
                 if ZeroCommunityGate::applies(&communities) {

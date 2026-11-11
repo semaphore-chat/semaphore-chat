@@ -128,12 +128,36 @@ participant with video: `native/scripts/slice-e2e.sh --voice`'s publisher line, 
 - [ ] The bell opens the notification centre beside the messages; a row opens its message; "Mark all
   as read" clears the count on the rail, the tray and the dock.
 - [ ] A mention or DM while you're elsewhere raises a desktop notification with its sound (the
-  account menu's "Notification settings" has the switches and a test button); clicking it opens the
+  settings page's Notifications tab has the switches and a test button); clicking it opens the
   conversation; reading the conversation takes the notification down.
 - [ ] The @ button in a channel's header sets that channel's notification level.
 
-Not in this build, so not bugs yet: DM voice and calls, the settings page (notification settings sit
-in the account menu until then).
+### Account, settings and sign-in (W3)
+
+- [ ] Click a message's author, avatar or an @mention, a member, a one-to-one DM's name, or "View
+  Profile" in a friend's menu: the profile card; "View Profile" opens the page.
+- [ ] Your own page, Edit Profile: change the name, the avatar and the banner from the system's
+  file dialog (the portal on Wayland, the common dialog on Windows); Save, and the new picture is on
+  your messages and the rail.
+- [ ] The account menu's Settings: each tab. Voice & video: switch input mode, the processing
+  switches, mic quality, microphone, speakers and camera; join a call and check they took. The tab
+  says the mic test and the push-to-talk key aren't there yet; the voice bar's Push to Talk button
+  transmits.
+- [ ] Appearance: light, another accent, each intensity. The whole window follows at once (the
+  message list and composer included), and the next start opens in it.
+- [ ] Sessions: sign in on the web too, then revoke that session here; "Sign out all other devices".
+- [ ] Desktop app: close to tray (the tray menu's check follows), "Make Semaphore open
+  semaphore:// links" (a development build says it takes them from an installed app;
+  `SEMAPHORE_REGISTER_SCHEME=0` disables it), link preview images on and off without a restart.
+- [ ] Sign out, then: Forgot password? (with a server that has password reset), Register here, an
+  invite link (`xdg-open 'semaphore://join/CODE'`) that registers, and Sign in with browser: the
+  browser opens the instance's page; approving there signs the app in.
+- [ ] Signed in on another device with the browser flow: the "A desktop app signed in" banner here,
+  until dismissed; Review sessions opens the list.
+- [ ] Create a community from the rail's "+" (and from Home with none): it opens.
+
+Not in this build, so not bugs yet: DM voice and calls, the media player, a microphone test meter
+and voice-activity gating, a push-to-talk key outside the window.
 
 Please report anything that looks wrong with a screenshot, and the terminal output with
 `SEMAPHORE_LOG=info`.
@@ -204,6 +228,17 @@ clicked, opening the DM and marking it read on the server; the notification cent
 read emptying the badge; and links while signed in to a DM (through `parse_deep_link`) and a
 channel. The rig activates its window first, as a user's would be: the pane marks what it shows read
 only in an active window.
+
+`w3.steps` drives wave 3: signing out and in again in the same window and sending (the pane is
+built per session; the first section failed before that), a profile card from a message's author,
+the page, editing the name and the avatar (the rig answers the file picker), the settings page's
+tabs (push to talk and a processing switch reaching the engine and `settings.json`, a session
+revoked, the link handler (the rig's fake) and the link preview images switch), the desktop sign-in
+banner, appearance switched to light and seen in the settings, a conversation and a dialog, a
+restart that keeps all of it, creating a community, and signed out: forgot password, an invite link
+that registers a new user (who lands on the zero-community gate), and browser sign-in end to end
+(the rig records the URL the app opens, approves through the fake server's `approve_desktop`, and
+calls the app's loopback listener as the browser would).
 
 The default run executes every `rigs/slice/scripts/*.steps` except `voice.steps`, in sorted order,
 each twice with a fresh fake server per run, so a wave adds its own steps file instead of growing

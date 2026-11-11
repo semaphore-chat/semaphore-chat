@@ -20,7 +20,7 @@ use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
 use semaphore_platform_desktop::lifecycle::{self, OsEvent, OsWatcher};
 use semaphore_ui::Shell;
-use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep, BrowserLogin};
+use semaphore_ui::auth::{AuthEvent, AuthScreen, AuthStep};
 use semaphore_ui::kit::{
     Button, Dialog, Menu, MenuItem, Spinner, Variant, emit_core_event,
     on_core_event, text,
@@ -39,6 +39,7 @@ use std::sync::Mutex;
 
 pub mod account;
 pub mod inbox;
+pub mod onboarding;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -101,6 +102,8 @@ pub struct AppRoot {
     inbox: inbox::Inbox,
     /// W3: profiles, settings, Home, creating a community (`account`).
     account: account::Account,
+    /// W3: the signed-out pages (`onboarding`).
+    onboarding: onboarding::Onboarding,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -205,6 +208,7 @@ impl AppRoot {
             images: None,
             inbox: inbox::Inbox::default(),
             account: account::Account::default(),
+            onboarding: onboarding::Onboarding::default(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -261,6 +265,8 @@ impl AppRoot {
 
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         let core = services.core.clone();
+        // Browser sign-in's listener on 127.0.0.1.
+        core.set_loopback(Arc::new(semaphore_platform_desktop::loopback::DesktopLoopback));
         // Files: one store for the process, redrawn into whenever a fetch lands.
         let (arrived, landed) = async_channel::unbounded();
         cx.spawn(async move |_, cx| {
@@ -632,6 +638,7 @@ impl AppRoot {
         }
         self.inbox_on_core(event, cx);
         self.account_on_core(event, cx);
+        self.onboarding_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -678,6 +685,7 @@ impl AppRoot {
         match &session {
             SessionState::SignedIn { .. } => {
                 self.auth = None;
+                self.drop_onboarding_pages();
                 self.remember_server();
                 if self.shell.is_none() {
                     self.pane = Some(self.build_pane(window, cx));
@@ -712,19 +720,19 @@ impl AppRoot {
                 if notice.is_some()
                     && let Some((url, name)) = self.server.clone()
                 {
-                    auth.update(cx, |auth, cx| {
-                        auth.set_step(sign_in_step(url, name, notice), cx)
-                    });
+                    let step = self.sign_in_step(url, name, notice);
+                    auth.update(cx, |auth, cx| auth.set_step(step, cx));
                 }
                 auth.update(cx, |auth, cx| auth.set_session(session.clone(), cx));
                 self.auth = Some(auth);
+                self.probe_for_sign_in(window, cx);
             }
         }
     }
 
     fn build_auth(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<AuthScreen> {
         let step = match self.server.clone() {
-            Some((url, name)) => sign_in_step(url, name, None),
+            Some((url, name)) => self.sign_in_step(url, name, None),
             None => AuthStep::ServerUrl {
                 testing: false,
                 error: None,
@@ -779,7 +787,9 @@ impl AppRoot {
                                     .or(info.name)
                                     .unwrap_or_else(|| info.url.clone());
                                 this.server = Some((info.url.clone(), shown.clone()));
-                                sign_in_step(info.url, shown, None)
+                                let mode = info.registration;
+                                auth.update(cx, |auth, cx| auth.set_registration(mode, cx)).ok();
+                                this.sign_in_step(info.url, shown, None)
                             }
                             Err(error) => AuthStep::ServerUrl {
                                 testing: false,
@@ -811,14 +821,12 @@ impl AppRoot {
                     )
                 });
             }
-            // The web client does these; send the user there.
-            AuthEvent::Register | AuthEvent::ForgotPassword => {
-                if let Some((url, _)) = &self.server {
-                    cx.open_url(url);
-                }
-            }
-            AuthEvent::BrowserSignIn { .. } | AuthEvent::CancelBrowserSignIn => {
-                log::info!("browser sign-in needs the client-type backend: a follow-up");
+            AuthEvent::Register => self.open_register(None, window, cx),
+            AuthEvent::ForgotPassword => self.open_forgot_password(window, cx),
+            AuthEvent::BrowserSignIn { .. } => self.start_browser_sign_in(window, cx),
+            AuthEvent::CancelBrowserSignIn => {
+                core.cancel_browser_sign_in();
+                self.refresh_sign_in_step(cx);
             }
         }
     }
@@ -1294,16 +1302,6 @@ fn apply_os_event(core: &Core, event: OsEvent) {
     }
 }
 
-fn sign_in_step(server_url: String, server_name: String, notice: Option<String>) -> AuthStep {
-    AuthStep::SignIn {
-        server_url,
-        server_name,
-        browser: BrowserLogin::Unavailable,
-        notice,
-        password_reset: false,
-    }
-}
-
 /// The middle column for a route.
 #[allow(clippy::too_many_arguments)]
 fn content(
@@ -1378,7 +1376,14 @@ fn content(
             .upgrade()
             .and_then(|root| inbox::dm_conversation(&root, dm_group_id, false, window, cx))
             .unwrap_or_else(|| placeholder("Loading".into(), "")),
-        (route @ (Route::Settings { .. } | Route::Profile { .. } | Route::ProfileEdit | Route::Home), _)
+        (
+            route @ (Route::Settings { .. }
+            | Route::Profile { .. }
+            | Route::ProfileEdit
+            | Route::Home
+            | Route::Invite { .. }),
+            _,
+        )
             if let Some(element) = root
                 .upgrade()
                 .and_then(|root| root.read(cx).account_content(route, cx)) =>
@@ -1439,6 +1444,9 @@ impl Render for AppRoot {
                     root.child(self.picker_dialog(&picker, cx))
                 })
                 .children(self.viewer_overlay(cx));
+        }
+        if let Some(page) = self.onboarding_page() {
+            return root.child(page);
         }
         if let Some(auth) = &self.auth {
             return root.child(auth.clone());
