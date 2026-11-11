@@ -610,7 +610,7 @@ fn render_removed_by(row: &MessageRow, palette: &Palette) -> Option<impl IntoEle
     };
     Some(
         div()
-            .id("removed-by")
+            .id(("removed-by", row.seq as u64))
             .text_size(px(CAPTION_SIZE))
             .text_color(palette.error)
             .child(label),

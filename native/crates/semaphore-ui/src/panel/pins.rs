@@ -266,6 +266,9 @@ impl Render for PinsPanel {
                 let now = self.clock.now_ms();
                 let rows = self.pins.rows.clone();
                 rows.iter()
+                    // A pin is a sent message, so it has an id; one without can't be jumped to
+                    // or unpinned, and would share an element id with the next.
+                    .filter(|pin| pin.row.id.is_some())
                     .enumerate()
                     .map(|(index, pin)| {
                         self.pin_row(index, pin, now, touch, window, cx)
