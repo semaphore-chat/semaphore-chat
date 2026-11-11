@@ -6,6 +6,7 @@ mod common;
 use common::*;
 use serde_json::json;
 use std::sync::atomic::Ordering;
+use std::time::Duration;
 
 fn voice_channel(id: &str) -> serde_json::Value {
     json!({
@@ -91,4 +92,23 @@ async fn reconnecting_while_a_fetch_runs_fetches_again_after_it() {
         rig.backend.unread_requests.load(Ordering::SeqCst),
         unread + 2
     );
+}
+
+#[tokio::test]
+async fn a_member_list_from_a_server_that_never_ends_stops() {
+    let rig = Rig::new().signed_in().await;
+    *rig.backend.endless_member_pages.lock().unwrap() = true;
+
+    rig.core.members("comm".into());
+    tokio::time::timeout(Duration::from_secs(5), rig.core.run_until_idle())
+        .await
+        .expect("the member read never finished");
+
+    let list = rig
+        .core
+        .members("comm".into())
+        .expect("a list, if a short one");
+    assert!(list.members.is_empty());
+    assert!(list.truncated, "the server said more follow");
+    assert!(rig.backend.member_page_requests.load(Ordering::SeqCst) <= 2);
 }

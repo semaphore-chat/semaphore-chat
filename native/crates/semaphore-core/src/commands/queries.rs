@@ -254,9 +254,12 @@ impl Core {
                 )
                 .await
                 .map_err(|error| self.backend_failed(error))?;
+            // A page that adds nothing can't be followed: a server that keeps saying more follow
+            // would otherwise be asked forever. What was read stands, marked as not all of it.
+            let added = page.members.len();
             members.extend(page.members);
             token = page.continuation_token.filter(|token| !token.is_empty());
-            if token.is_none() || members.len() >= MAX_MEMBERS {
+            if token.is_none() || added == 0 || members.len() >= MAX_MEMBERS {
                 let truncated = token.is_some();
                 members.truncate(MAX_MEMBERS);
                 return Ok(MemberPages { members, truncated });
