@@ -1,0 +1,92 @@
+# W2 friends: the friends panel (all, pending both ways, empty, failed, long, busy rows) and the add friend dialog.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w2-friends.steps
+story friends-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-loading-desktop
+story friends-loading 390 844 light-blue-balanced
+wait idle
+shot w2-friends-loading-phone
+story friends-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-empty-desktop
+story friends-empty 390 844 light-blue-balanced
+wait idle
+shot w2-friends-empty-phone
+story friends-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-failed-desktop
+story friends-failed 390 844 light-blue-balanced
+wait idle
+shot w2-friends-failed-phone
+story friends-all 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-all-desktop
+story friends-all 390 844 light-blue-balanced
+wait idle
+shot w2-friends-all-phone
+story friends-pending-received 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-pending-received-desktop
+story friends-pending-received 390 844 light-blue-balanced
+wait idle
+shot w2-friends-pending-received-phone
+story friends-pending-sent 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-pending-sent-desktop
+story friends-pending-sent 390 844 light-blue-balanced
+wait idle
+shot w2-friends-pending-sent-phone
+story friends-pending-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-pending-empty-desktop
+story friends-pending-empty 390 844 light-blue-balanced
+wait idle
+shot w2-friends-pending-empty-phone
+story friends-long 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-long-desktop
+story friends-long 390 844 light-blue-balanced
+wait idle
+shot w2-friends-long-phone
+story friends-long-pending 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-long-pending-desktop
+story friends-long-pending 390 844 light-blue-balanced
+wait idle
+shot w2-friends-long-pending-phone
+story friends-add-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-empty-desktop
+story friends-add-empty 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-empty-phone
+story friends-add-results 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-results-desktop
+story friends-add-results 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-results-phone
+story friends-add-sending 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-sending-desktop
+story friends-add-sending 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-sending-phone
+story friends-add-sent 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-sent-desktop
+story friends-add-sent 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-sent-phone
+story friends-add-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-failed-desktop
+story friends-add-failed 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-failed-phone
+story friends-add-long 1280 800 dark-blue-balanced
+wait idle
+shot w2-friends-add-long-desktop
+story friends-add-long 390 844 light-blue-balanced
+wait idle
+shot w2-friends-add-long-phone

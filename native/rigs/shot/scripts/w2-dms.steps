@@ -1,0 +1,104 @@
+# W2 DMs: the DM sidebar (list and friends tab), the conversation header and the create dialog, docked on a desktop and full-screen on a phone, and the sidebar in the real shell.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w2-dms.steps
+story dms-list-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-list-loading-desktop
+story dms-list-loading 390 844 light-blue-balanced
+wait idle
+shot w2-dms-list-loading-phone
+story dms-list-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-list-empty-desktop
+story dms-list-empty 390 844 light-blue-balanced
+wait idle
+shot w2-dms-list-empty-phone
+story dms-list-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-list-failed-desktop
+story dms-list-failed 390 844 light-blue-balanced
+wait idle
+shot w2-dms-list-failed-phone
+story dms-list-mixed 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-list-mixed-desktop
+story dms-list-mixed 390 844 light-blue-balanced
+wait idle
+shot w2-dms-list-mixed-phone
+story dms-list-long 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-list-long-desktop
+story dms-list-long 390 844 light-blue-balanced
+wait idle
+shot w2-dms-list-long-phone
+story dms-sidebar-friends 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-sidebar-friends-desktop
+story dms-sidebar-friends 390 844 light-blue-balanced
+wait idle
+shot w2-dms-sidebar-friends-phone
+story dms-header-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-header-loading-desktop
+story dms-header-loading 390 844 light-blue-balanced
+wait idle
+shot w2-dms-header-loading-phone
+story dms-header-ready 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-header-ready-desktop
+story dms-header-ready 390 844 light-blue-balanced
+wait idle
+shot w2-dms-header-ready-phone
+story dms-header-unavailable 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-header-unavailable-desktop
+story dms-header-unavailable 390 844 light-blue-balanced
+wait idle
+shot w2-dms-header-unavailable-phone
+story dms-header-long 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-header-long-desktop
+story dms-header-long 390 844 light-blue-balanced
+wait idle
+shot w2-dms-header-long-phone
+story dms-create-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-empty-desktop
+story dms-create-empty 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-empty-phone
+story dms-create-results 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-results-desktop
+story dms-create-results 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-results-phone
+story dms-create-group 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-group-desktop
+story dms-create-group 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-group-phone
+story dms-create-busy 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-busy-desktop
+story dms-create-busy 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-busy-phone
+story dms-create-search-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-search-failed-desktop
+story dms-create-search-failed 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-search-failed-phone
+story dms-create-no-results 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-create-no-results-desktop
+story dms-create-no-results 390 844 light-blue-balanced
+wait idle
+shot w2-dms-create-no-results-phone
+story dms-in-shell 1280 800 dark-blue-balanced
+wait idle
+shot w2-dms-in-shell-desktop
+story dms-in-shell 390 844 light-blue-balanced
+wait idle
+shot w2-dms-in-shell-phone

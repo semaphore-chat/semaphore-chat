@@ -1,0 +1,120 @@
+# W2 notifications: the centre in the side panel (loading, empty, failed, unread mix, all read, long, more to load), the channel level menu (in a stand-in header and in the real shell) and the settings section.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w2-notifications.steps
+story notifications-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-loading-desktop
+story notifications-loading 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-loading-phone
+story notifications-empty 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-empty-desktop
+story notifications-empty 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-empty-phone
+story notifications-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-failed-desktop
+story notifications-failed 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-failed-phone
+story notifications-unread-mix 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-unread-mix-desktop
+story notifications-unread-mix 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-unread-mix-phone
+story notifications-all-read 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-all-read-desktop
+story notifications-all-read 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-all-read-phone
+story notifications-long 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-long-desktop
+story notifications-long 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-long-phone
+story notifications-has-more 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-has-more-desktop
+story notifications-has-more 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-has-more-phone
+story notifications-loading-more 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-loading-more-desktop
+story notifications-loading-more 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-loading-more-phone
+story notifications-menu-default 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-menu-default-desktop
+story notifications-menu-default 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-menu-default-phone
+story notifications-menu-override 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-menu-override-desktop
+story notifications-menu-override 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-menu-override-phone
+story notifications-menu-closed 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-menu-closed-desktop
+story notifications-menu-closed 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-menu-closed-phone
+story notifications-menu-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-menu-loading-desktop
+story notifications-menu-loading 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-menu-loading-phone
+story notifications-menu-in-shell 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-menu-in-shell-desktop
+story notifications-menu-in-shell 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-menu-in-shell-phone
+story notifications-settings-loading 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-loading-desktop
+story notifications-settings-loading 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-loading-phone
+story notifications-settings-failed 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-failed-desktop
+story notifications-settings-failed 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-failed-phone
+story notifications-settings-default 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-default-desktop
+story notifications-settings-default 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-default-phone
+story notifications-settings-schedule 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-schedule-desktop
+story notifications-settings-schedule 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-schedule-phone
+story notifications-settings-dirty 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-dirty-desktop
+story notifications-settings-dirty 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-dirty-phone
+story notifications-settings-bad-time 1280 800 dark-blue-balanced
+wait idle
+shot w2-notifications-settings-bad-time-desktop
+story notifications-settings-bad-time 390 844 light-blue-balanced
+wait idle
+shot w2-notifications-settings-bad-time-phone
+# The menu's own window at a narrow desktop width: it must stay inside the window.
+story notifications-menu-in-shell 1024 768 light-blue-balanced
+wait idle
+shot w2-notifications-menu-in-shell-narrow

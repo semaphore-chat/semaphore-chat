@@ -14,9 +14,27 @@ use semaphore_core::model::{
 use semaphore_design::Icon as IconName;
 
 impl Shell {
-    /// `None` outside a community.
-    pub(super) fn sidebar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let community_id = self.nav.current().community_id()?.to_owned();
+    /// The channel list in a community; outside one, whatever the owner's route sidebar draws.
+    pub(super) fn sidebar(
+        &self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let Some(community_id) = self.nav.current().community_id().map(str::to_owned) else {
+            let sem = cx.sem().clone();
+            return self.route_sidebar(false, window, cx).map(|body| {
+                div()
+                    .id("route-sidebar")
+                    .test_support()
+                    .size_full()
+                    .overflow_hidden()
+                    .bg(sem.paper)
+                    .border_1()
+                    .border_color(sem.paper_border)
+                    .child(body)
+                    .into_any_element()
+            });
+        };
         let sem = cx.sem().clone();
         let community = self.community();
         let body = self.channel_list(&community_id, false, cx);
