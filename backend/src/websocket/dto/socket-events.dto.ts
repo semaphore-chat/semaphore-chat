@@ -42,6 +42,16 @@ export class SessionTerminatedPayloadDto {
   reason: SessionTerminatedReasonValue;
 }
 
+export class DesktopSignInPayloadDto {
+  /** Where the desktop app signed in from, as the server saw it. */
+  @ApiProperty({ type: String, nullable: true })
+  ipAddress: string | null;
+
+  /** When the desktop app signed in. */
+  @ApiProperty({ type: String, format: 'date-time' })
+  signedInAt: string;
+}
+
 /** The acknowledgement of REAUTHENTICATE. */
 export class ReauthenticateResultDto {
   ok: boolean;

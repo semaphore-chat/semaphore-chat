@@ -13,6 +13,7 @@ import type {
   CommunityDeletedPayloadDto,
   CommunityUpdatedPayloadDto,
   DeleteMessagePayloadDto,
+  DesktopSignInPayloadDto,
   DmVoiceCallStartedPayloadDto,
   DmVoiceUserJoinedPayloadDto,
   DmVoiceUserLeftPayloadDto,
@@ -69,11 +70,7 @@ export type VoicePresenceUser = VoicePresenceUserDto;
 
 export type { SessionTerminatedReason } from '../generated';
 
-export interface DesktopSignInPayload {
-  /** Where the app signed in from, as the server saw it. */
-  ipAddress: string | null;
-  signedInAt: string;
-}
+export type DesktopSignInPayload = DesktopSignInPayloadDto;
 
 export type SessionTerminatedPayload = SessionTerminatedPayloadDto;
 

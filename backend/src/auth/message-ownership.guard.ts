@@ -93,7 +93,7 @@ export class MessageOwnershipGuard implements CanActivate {
     message: {
       channelId: string | null;
       directMessageGroupId: string | null;
-      deletedAt: Date | null;
+      deletedAt: Date | string | null;
     },
   ): Promise<void> {
     if (message.deletedAt) {

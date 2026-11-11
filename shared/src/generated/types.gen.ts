@@ -332,6 +332,17 @@ export type SessionTerminatedPayloadDto = {
     reason: SessionTerminatedReason;
 };
 
+export type DesktopSignInPayloadDto = {
+    /**
+     * Where the desktop app signed in from, as the server saw it.
+     */
+    ipAddress: string | null;
+    /**
+     * When the desktop app signed in.
+     */
+    signedInAt: string;
+};
+
 export type ReadReceiptUpdatedPayloadDto = {
     lastReadAt: string;
     /**

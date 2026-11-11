@@ -580,7 +580,7 @@ export class VoicePresenceService {
         {
           channelId,
           userId,
-          user: voiceUser,
+          user: toWireVoiceUser(voiceUser),
         },
       );
     }
