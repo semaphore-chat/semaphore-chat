@@ -42,6 +42,7 @@
 //! forget sounds                       # what the speaker heard so far no longer counts
 //! window activate                     # the window comes to the front, as a user's click would:
 //!                                     # the pane marks what it shows read only then
+//! core revoke-other-sessions          # W3: Core::revoke_other_sessions; fails if refused
 //! ```
 //!
 //! W2's conditions: `dm ID` (the pane is on that DM), `notified TAG` (the rig's notifier shows
@@ -323,6 +324,9 @@ enum Step {
         screen: bool,
         why: String,
     },
+    /// W3: `Core::revoke_other_sessions`, as the sessions tab's "Sign out other sessions" will.
+    /// Fails the script if the server refuses.
+    RevokeOtherSessions,
 }
 
 fn condition(words: &[&str]) -> Result<Condition> {
@@ -511,6 +515,7 @@ fn parse(source: &str) -> Result<Vec<Step>> {
                 Step::LinkChannel((*community).into(), (*channel).into())
             }
             ["forget", "sounds"] => Step::ForgetSounds,
+            ["core", "revoke-other-sessions"] => Step::RevokeOtherSessions,
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
@@ -1220,6 +1225,28 @@ impl Rig {
         }))
     }
 
+    fn revoke_other_sessions(&mut self) -> Result<()> {
+        let app = self.app()?.clone();
+        let core = self
+            .driver
+            .cx
+            .update(|cx| app.read(cx).core())
+            .ok_or_else(|| anyhow!("no core: not signed in"))?;
+        // On a runtime of its own, so the rig's thread can wait for it while the app's runs on.
+        let revoked = std::thread::spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|error| anyhow!("a runtime for the command: {error}"))?
+                .block_on(core.revoke_other_sessions())
+                .map_err(|error| anyhow!("revoke_other_sessions failed: {error}"))
+        })
+        .join()
+        .map_err(|_| anyhow!("revoke_other_sessions panicked"))??;
+        eprintln!("rig-slice: revoke_other_sessions ended {revoked} session(s)");
+        self.driver.settle()
+    }
+
     fn voice_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
         let app = self.app()?.clone();
         let answer = self.driver.cx.update(|cx| {
@@ -1584,6 +1611,7 @@ impl Rig {
                     .driver
                     .update(|window, _| window.activate_window())
                     .and_then(|()| self.driver.settle()),
+                Step::RevokeOtherSessions => self.revoke_other_sessions(),
                 Step::ForgetSounds => {
                     self.heard.store(0, std::sync::atomic::Ordering::Relaxed);
                     Ok(())

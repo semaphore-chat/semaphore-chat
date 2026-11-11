@@ -74,6 +74,7 @@ async fn fixture_image(Path(name): Path<String>) -> Response {
 /// attach call's DTO requires.
 async fn upload_file(
     State(inner): State<Arc<Inner>>,
+    headers: axum::http::HeaderMap,
     mut multipart: axum::extract::Multipart,
 ) -> Response {
     let (mut file, mut resource_type, mut resource_id) = (None, None, None);
@@ -88,6 +89,8 @@ async fn upload_file(
                 match field.bytes().await {
                     Ok(bytes) => {
                         file = Some(crate::StoredFile {
+                            uploaded_by: String::new(),
+                            resource_type: String::new(),
                             filename,
                             mime_type,
                             bytes: bytes.to_vec(),
@@ -101,9 +104,12 @@ async fn upload_file(
             _ => {}
         }
     }
-    let (Some(file), Some(resource_type)) = (file, resource_type) else {
+    let (Some(mut file), Some(resource_type)) = (file, resource_type) else {
         return invalid("file and resourceType are required");
     };
+    let uploader = inner.user_of(super::bearer_token(&headers));
+    file.uploaded_by = uploader.clone();
+    file.resource_type = resource_type.clone();
     // Deterministic, so a run's screenshots and logs repeat: the nth upload's id is always the same.
     let next = lock(&inner.data).files.len() as u128 + 1;
     let id = uuid::Uuid::from_u128(0x0000_f11e_0000_4000_8000_0000_0000_0000 | next).to_string();
@@ -117,7 +123,7 @@ async fn upload_file(
         "fileMessageId": resource_id, "fileType": file_type, "fileUserId": null,
         "filename": file.filename, "mimeType": file.mime_type, "resourceType": resource_type,
         "size": file.bytes.len(), "storagePath": format!("fake/{id}"), "storageType": "LOCAL",
-        "thumbnailPath": null, "uploadedAt": inner.now(), "uploadedById": inner.scenario.me.id,
+        "thumbnailPath": null, "uploadedAt": inner.now(), "uploadedById": uploader,
     });
     lock(&inner.data).files.insert(id, file);
     json_response(StatusCode::CREATED, record)

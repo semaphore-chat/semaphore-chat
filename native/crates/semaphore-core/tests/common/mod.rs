@@ -186,6 +186,8 @@ pub struct FakeBackend {
     pub reading: reading::ReadingFakes,
     /// W2's scripted DMs, friends and notifications: `common/w2.rs`.
     pub w2: w2::W2Fakes,
+    /// W3's scripted account and onboarding calls: `common/w3.rs`.
+    pub w3: w2::W2Fakes,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
@@ -381,7 +383,25 @@ impl SessionBackend for FakeBackend {
     }
 
     async fn user_controller_get_profile(&self) -> BackendResult<wire::UserEntity> {
+        if self.w3.answers.lock().unwrap().contains_key("profile") {
+            return self.w3.run("profile", &[]).await;
+        }
         decoded(user_json(ME))
+    }
+
+    async fn auth_controller_redeem_desktop_login(
+        &self,
+        body: wire::DesktopLoginTokenRequestDto,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        self.w3
+            .run("redeem", &[body.code.as_str(), body.code_verifier.as_str()])
+            .await
+    }
+
+    async fn instance_controller_get_public_settings(
+        &self,
+    ) -> BackendResult<wire::PublicSettingsResponseDto> {
+        self.w3.run("public_settings", &[]).await
     }
 
     async fn user_controller_get_user_by_id(&self, id: String) -> BackendResult<wire::UserEntity> {

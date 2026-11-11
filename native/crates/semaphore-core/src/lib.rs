@@ -14,6 +14,7 @@ pub mod lifecycle;
 pub mod links;
 pub mod model;
 pub mod notify;
+mod pkce;
 pub mod platform;
 pub mod realtime;
 pub mod resync;

@@ -23,11 +23,12 @@ pub trait OnboardingBackend: Send + Sync {
     ) -> BackendResult<wire::ForgotPasswordResponseDto> {
         Err(unsupported("password reset"))
     }
-    /// Public.
+    /// Public. `None`: the server's empty answer for a code that is unknown, expired, used up or
+    /// disabled, all alike.
     async fn invite_controller_get_public_invite(
         &self,
         _code: String,
-    ) -> BackendResult<wire::PublicInviteDto> {
+    ) -> BackendResult<Option<wire::PublicInviteDto>> {
         Err(unsupported("reading an invite"))
     }
     async fn community_controller_create(

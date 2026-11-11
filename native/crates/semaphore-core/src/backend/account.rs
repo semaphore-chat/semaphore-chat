@@ -29,6 +29,12 @@ pub trait AccountBackend: Send + Sync {
     ) -> BackendResult<wire::RevokeAllSessionsResponseDto> {
         Err(unsupported("revoking other sessions"))
     }
+    /// This user's instance roles, with their actions.
+    async fn roles_controller_get_my_instance_roles(
+        &self,
+    ) -> BackendResult<wire::UserRolesResponseDto> {
+        Err(unsupported("reading instance roles"))
+    }
     async fn appearance_settings_controller_get_settings(
         &self,
     ) -> BackendResult<wire::AppearanceSettingsResponseDto> {

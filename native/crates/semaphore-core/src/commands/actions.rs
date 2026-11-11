@@ -202,7 +202,7 @@ impl State {
         }
     }
 
-    fn is_instance_owner(&self) -> bool {
+    pub(crate) fn is_instance_owner(&self) -> bool {
         self.cache
             .profile(&keys::op(keys::PROFILE))
             .is_some_and(|profile| profile.role == InstanceRole::Owner)

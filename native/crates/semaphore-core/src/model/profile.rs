@@ -41,13 +41,28 @@ pub struct ProfilePatch {
     pub banner: Option<ImageChange>,
 }
 
+/// Which of the profile's images.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum ProfileImage {
+    #[default]
+    Avatar,
+    Banner,
+}
+
+/// An image of a profile edit on its way up.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProfileUpload {
+    pub image: ProfileImage,
+    pub upload: UploadView,
+}
+
 /// The profile edit on its way, for the edit form. `ViewKey::ProfileEdit` says when to read again.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProfileEditView {
     /// An edit is on its way: the form's Save waits.
     pub saving: bool,
     /// The image going up now, while it does.
-    pub upload: Option<UploadView>,
+    pub upload: Option<ProfileUpload>,
     /// Why the last edit failed, until the next one starts.
     pub error: Option<ErrorView>,
 }

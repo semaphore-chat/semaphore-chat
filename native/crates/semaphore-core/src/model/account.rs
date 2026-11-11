@@ -28,6 +28,16 @@ pub struct SessionsView {
     pub revoking_others: bool,
 }
 
+/// What this user may do on the instance, from their instance roles (`GET /roles/my/instance`)
+/// and whether they own it (an owner may do everything, as the server's `RbacGuard`).
+/// `ViewKey::InstancePermissions` says when to read again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstancePermissionsView {
+    pub state: LoadState,
+    /// `CREATE_COMMUNITY`: show "Create community". False until known.
+    pub can_create_community: bool,
+}
+
 /// Dark or light, as the server stores it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum ThemeMode {

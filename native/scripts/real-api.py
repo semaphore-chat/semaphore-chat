@@ -5,6 +5,10 @@
     python3 scripts/real-api.py <server> post-as <user> <channel-id> <text> [<mention-user>]
     python3 scripts/real-api.py <server> expect-device <user> <device-name>
     python3 scripts/real-api.py <server> revoke <user> <device-name>
+    python3 scripts/real-api.py <server> others <user> <device-name> some|only
+        `some`: besides this call's own session, a session not named <device-name> is live (a web
+        sign-in made by the call before, say). `only`: every live session but this call's own is
+        named <device-name>, and there is one.
 
 Each signs in as a web client (no X-Client-Type), so its own session never looks like the app's.
 The users and passwords are backend/prisma/seed-e2e.ts's. Standard library only: it runs in the
@@ -111,6 +115,20 @@ def revoke(server, user, name):
     print(f"real-api: revoked {user}'s session {named[0]['id']} ({name})")
 
 
+def others(server, user, name, wanted):
+    token = sign_in(server, user)
+    sessions = call(server, "GET", "/api/auth/sessions", token=token)
+    rest = [s for s in sessions if not s.get("isCurrent")]
+    named = [s for s in rest if s.get("deviceName") == name]
+    unnamed = [s for s in rest if s.get("deviceName") != name]
+    shown = json.dumps([{k: s.get(k) for k in ("deviceName", "isCurrent")} for s in sessions])
+    if wanted == "some" and not unnamed:
+        sys.exit(f"real-api: expected another session besides {name!r}: {shown}")
+    if wanted == "only" and (unnamed or len(named) != 1):
+        sys.exit(f"real-api: expected only the session {name!r} besides this call's: {shown}")
+    print(f"real-api: {user}: {len(named)} {name!r}, {len(unnamed)} other session(s)")
+
+
 def main(argv):
     if len(argv) < 2:
         sys.exit(__doc__)
@@ -123,6 +141,8 @@ def main(argv):
         expect_device(server, *rest)
     elif command == "revoke" and len(rest) == 2:
         revoke(server, *rest)
+    elif command == "others" and len(rest) == 3 and rest[2] in ("some", "only"):
+        others(server, *rest)
     else:
         sys.exit(__doc__)
 

@@ -726,8 +726,14 @@ impl State {
             | ServerEvent::EgressSegmentsReady(_)
             | ServerEvent::ReplayBufferFailed(_)
             | ServerEvent::ReplayBufferStopped(_) => {}
-            // "Your account signed in on a desktop app": a notice, which W3's sessions work shows.
-            ServerEvent::DesktopSignIn(_) => {}
+            // "Your account signed in on a desktop app": a warning, and a new row in the sessions.
+            ServerEvent::DesktopSignIn(event) => {
+                self.push_event(crate::platform::CoreEvent::DesktopSignedIn {
+                    ip_address: event.ip_address.clone().filter(|ip| !ip.is_empty()),
+                    at_ms: event.signed_in_at.timestamp_millis(),
+                });
+                self.invalidate(&keys::op(keys::SESSIONS));
+            }
             // Who's listed changed. The rules hold the web's keys, and this read has its own.
             ServerEvent::MemberAddedToCommunity(_)
             | ServerEvent::UserBanned(_)
