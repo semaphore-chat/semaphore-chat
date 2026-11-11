@@ -11,6 +11,7 @@ pub mod client;
 pub mod commands;
 pub mod events;
 pub mod lifecycle;
+pub mod links;
 pub mod model;
 pub mod platform;
 pub mod realtime;

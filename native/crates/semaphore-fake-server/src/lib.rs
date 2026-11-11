@@ -93,6 +93,10 @@ pub(crate) struct Data {
     pub channel_messages: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
     pub dm_messages: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
     pub threads: std::collections::BTreeMap<String, Vec<semaphore_wire::MessageDto>>,
+    /// Thread subscriptions the signed-in user set or cleared, and when, by parent. Otherwise, or
+    /// once they reply after that, the backend's default: subscribed if they wrote the parent or
+    /// a reply.
+    pub thread_subscriptions: std::collections::BTreeMap<String, (bool, DateTime<Utc>)>,
     pub voice: std::collections::BTreeMap<String, Vec<semaphore_wire::VoicePresenceUserDto>>,
     pub unread: std::collections::BTreeMap<String, (i64, i64)>,
     pub nonces: HashMap<(String, String), NonceEntry>,
@@ -384,6 +388,7 @@ impl FakeServer {
             channel_messages: scenario.channel_messages.clone(),
             dm_messages: scenario.dm_messages.clone(),
             threads: scenario.threads.clone(),
+            thread_subscriptions: Default::default(),
             voice: scenario.voice.clone(),
             unread: scenario.unread.clone(),
             nonces: HashMap::new(),

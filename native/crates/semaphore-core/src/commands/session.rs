@@ -63,6 +63,7 @@ impl Core {
         self.write(|state, _| {
             state.session = SessionState::SigningIn;
             state.view_changed(ViewKey::Session);
+            state.reading.server_url = Some(server_url.clone());
         });
         services.backend.set_server_url(server_url);
         let body = wire::LoginRequestDto { password, username };
@@ -116,9 +117,9 @@ impl Core {
             .services()
             .ok_or_else(|| unavailable("restoring a session"))?
             .clone();
-        services
-            .backend
-            .set_server_url(server_url.trim_end_matches('/').to_owned());
+        let server_url = server_url.trim_end_matches('/').to_owned();
+        self.write(|state, _| state.reading.server_url = Some(server_url.clone()));
+        services.backend.set_server_url(server_url);
         if !services.backend.has_stored_session() {
             return Ok(RestoreOutcome::NoSession);
         }
