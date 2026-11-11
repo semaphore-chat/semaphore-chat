@@ -2,7 +2,10 @@
 
 use crate::cache::keys;
 use crate::client::{Core, Effect};
-use crate::model::{ParticipantView, UserView, VideoDemand, ViewKey, VoiceStatus, VoiceView};
+use crate::model::{
+    LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest, UserView, VideoDemand,
+    ViewKey, VoiceStatus, VoiceView,
+};
 use crate::platform::CoreError;
 use crate::resync::unavailable;
 use semaphore_wire::types as wire;
@@ -14,6 +17,28 @@ fn voice_token_request(me: &UserView, channel_id: &str) -> wire::CreateTokenDto 
         room_id: channel_id.to_owned(),
         ttl: None,
     }
+}
+
+/// A call a camera or share can start in: one that's up, or rejoining (the engine republishes).
+fn in_call(status: VoiceStatus) -> bool {
+    matches!(status, VoiceStatus::Connected | VoiceStatus::Reconnecting)
+}
+
+fn failed(error: &CoreError) -> LocalShare {
+    LocalShare::Failed {
+        message: error.to_string(),
+    }
+}
+
+fn left_while_starting() -> CoreError {
+    CoreError::Failed {
+        message: "the call ended while it was starting".into(),
+    }
+}
+
+/// The engine was sending it, isn't now, and core still thinks it's on.
+fn ended(core: &LocalShare, before: &LocalShare, now: &LocalShare) -> bool {
+    *core == LocalShare::On && *before == LocalShare::On && *now != LocalShare::On
 }
 
 impl Core {
@@ -28,6 +53,8 @@ impl Core {
             state.voice.channel_id = Some(channel_id.clone());
             state.voice.reconnect_attempt = None;
             state.voice.error = None;
+            // A camera or share belongs to one call.
+            state.voice.local = LocalMediaView::default();
             state.media = None;
             state.call += 1;
             state.call_ended_early = None;
@@ -171,6 +198,112 @@ impl Core {
         Ok(())
     }
 
+    /// Sends the camera, or stops it. Only during a call. `local.camera` shows `Starting` at once,
+    /// then `On`, or `Failed` with why, which asking again retries.
+    pub async fn set_camera(&self, on: bool) -> Result<(), CoreError> {
+        let media = self
+            .services()
+            .and_then(|services| services.media.clone())
+            .ok_or_else(|| unavailable("camera"))?;
+        let ask = self.write(|state, _| {
+            if !in_call(state.voice.status) {
+                return None;
+            }
+            state.camera_ask += 1;
+            state.voice.local.camera = if on {
+                LocalShare::Starting
+            } else {
+                LocalShare::Off
+            };
+            state.view_changed(ViewKey::Voice);
+            Some((state.call, state.camera_ask))
+        });
+        let (call, ask) = ask.ok_or_else(|| unavailable("the camera outside a call"))?;
+        let result = media.set_camera(on).await;
+        self.write(|state, _| {
+            if state.call != call || !in_call(state.voice.status) {
+                return Err(left_while_starting());
+            }
+            if state.camera_ask == ask {
+                state.voice.local.camera = match (&result, on) {
+                    (Ok(()), true) => LocalShare::On,
+                    (Ok(()), false) => LocalShare::Off,
+                    (Err(error), _) => failed(error),
+                };
+                state.view_changed(ViewKey::Voice);
+            }
+            result.clone()
+        })
+    }
+
+    /// Starts sharing a screen or window, replacing any share. Only during a call. `local.screen`
+    /// shows `Starting` while the picker is open, then `On`, or `Failed` with why (a cancelled
+    /// picker included), which asking again retries. With `audio`, `local.screen_audio` says whether
+    /// the system audio started too; the screen is shared either way.
+    pub async fn start_screen_share(&self, request: ScreenShareRequest) -> Result<(), CoreError> {
+        let media = self
+            .services()
+            .and_then(|services| services.media.clone())
+            .ok_or_else(|| unavailable("screen share"))?;
+        let audio = request.audio;
+        let ask = self.write(|state, _| {
+            if !in_call(state.voice.status) {
+                return None;
+            }
+            state.screen_ask += 1;
+            state.voice.local.screen = LocalShare::Starting;
+            state.voice.local.screen_audio = if audio {
+                LocalShare::Starting
+            } else {
+                LocalShare::Off
+            };
+            state.view_changed(ViewKey::Voice);
+            Some((state.call, state.screen_ask))
+        });
+        let (call, ask) = ask.ok_or_else(|| unavailable("a screen share outside a call"))?;
+        let result = media.start_screen_share(request).await;
+        self.write(|state, _| {
+            if state.call != call || !in_call(state.voice.status) {
+                return Err(left_while_starting());
+            }
+            if state.screen_ask == ask {
+                let local = &mut state.voice.local;
+                match &result {
+                    Ok(started) => {
+                        local.screen = LocalShare::On;
+                        local.screen_audio = match &started.audio {
+                            None => LocalShare::Off,
+                            Some(Ok(())) => LocalShare::On,
+                            Some(Err(message)) => LocalShare::Failed {
+                                message: message.clone(),
+                            },
+                        };
+                    }
+                    Err(error) => {
+                        local.screen = failed(error);
+                        local.screen_audio = LocalShare::Off;
+                    }
+                }
+                state.view_changed(ViewKey::Voice);
+            }
+            result.clone().map(|_| ())
+        })
+    }
+
+    /// Stops the screen share and its audio. Does nothing when there's none.
+    pub async fn stop_screen_share(&self) -> Result<(), CoreError> {
+        self.write(|state, _| {
+            state.screen_ask += 1;
+            state.voice.local.screen = LocalShare::Off;
+            state.voice.local.screen_audio = LocalShare::Off;
+            state.view_changed(ViewKey::Voice);
+        });
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.stop_screen_share().await;
+        }
+        Ok(())
+    }
+
     /// Which video tiles are on screen. Goes straight to the media engine, which chooses layers.
     pub fn set_video_demands(&self, demands: Vec<VideoDemand>) {
         if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
@@ -262,6 +395,20 @@ impl Core {
                 }
                 _ => {}
             }
+            // A share the engine was sending and no longer is ended on its own: the shared window
+            // closed, the system's "stop sharing". Only an `On` it reported counts, so a report from
+            // before a start finished doesn't turn the start off.
+            let before = state.media.as_ref().map(|media| media.local.clone());
+            if let Some(before) = before {
+                let local = &mut state.voice.local;
+                if ended(&local.camera, &before.camera, &media.local.camera) {
+                    local.camera = media.local.camera.clone();
+                }
+                if ended(&local.screen, &before.screen, &media.local.screen) {
+                    local.screen = media.local.screen.clone();
+                    local.screen_audio = LocalShare::Off;
+                }
+            }
             state.media = Some(media);
             state.view_changed(ViewKey::Voice);
         });
@@ -334,6 +481,8 @@ impl Core {
                 voice.deafened = media.deafened;
                 voice.reconnect_attempt = media.reconnect_attempt;
                 voice.error = media.error.clone();
+                voice.local.may_camera = media.local.may_camera;
+                voice.local.may_share = media.local.may_share;
             }
             voice
         })

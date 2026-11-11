@@ -6,8 +6,12 @@ use semaphore_core::backend::{
     BackendError, BackendResult, CommunitiesBackend, FilesBackend, MessagesBackend, SessionBackend,
     VoiceBackend,
 };
-use semaphore_core::model::{Conversation, ListOp, MessageRow, VideoDemand, VoiceView};
-use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, MediaEngine};
+use semaphore_core::model::{
+    Conversation, ListOp, MessageRow, ScreenShareRequest, VideoDemand, VoiceView,
+};
+use semaphore_core::platform::{
+    Clock, CoreError, CoreEvent, EventSink, MediaEngine, ScreenShareStarted,
+};
 use semaphore_core::realtime::{Realtime, RealtimeError, RealtimeEvent};
 use semaphore_core::{Core, Services};
 use semaphore_wire::enums::{ErrorCode, MessagePageDirection};
@@ -806,6 +810,13 @@ pub struct FakeMedia {
     /// `connect` leaves the call through `core` before it returns, as a user who hangs up while
     /// the room is still connecting would.
     pub leave_during_connect: Mutex<bool>,
+    /// The next camera or screen start fails with this, as a busy camera or a cancelled picker.
+    pub camera_fails: Mutex<Option<String>>,
+    pub screen_fails: Mutex<Option<String>>,
+    /// The screen starts, but its system audio fails with this.
+    pub screen_audio_fails: Mutex<Option<String>>,
+    /// The next screen start waits for this before it returns, as an open picker does.
+    pub hold_screen: Mutex<Option<oneshot::Receiver<()>>>,
     pub core: Mutex<Option<Core>>,
 }
 
@@ -848,6 +859,42 @@ impl MediaEngine for FakeMedia {
     }
     fn set_video_demands(&self, demands: Vec<VideoDemand>) {
         *self.demands.lock().unwrap() = demands;
+    }
+    async fn set_camera(&self, on: bool) -> Result<(), CoreError> {
+        self.calls.lock().unwrap().push(format!("camera {on}"));
+        match self.camera_fails.lock().unwrap().take() {
+            Some(message) if on => Err(CoreError::Failed { message }),
+            _ => Ok(()),
+        }
+    }
+    async fn start_screen_share(
+        &self,
+        request: ScreenShareRequest,
+    ) -> Result<ScreenShareStarted, CoreError> {
+        self.calls.lock().unwrap().push(format!(
+            "screen {} {:?} {} audio {}",
+            request.source_id.as_deref().unwrap_or("picker"),
+            request.resolution,
+            request.fps,
+            request.audio
+        ));
+        let hold = self.hold_screen.lock().unwrap().take();
+        if let Some(hold) = hold {
+            let _ = hold.await;
+        }
+        if let Some(message) = self.screen_fails.lock().unwrap().take() {
+            return Err(CoreError::Failed { message });
+        }
+        let audio = request
+            .audio
+            .then(|| match self.screen_audio_fails.lock().unwrap().take() {
+                Some(message) => Err(message),
+                None => Ok(()),
+            });
+        Ok(ScreenShareStarted { audio })
+    }
+    async fn stop_screen_share(&self) {
+        self.calls.lock().unwrap().push("screen stop".into());
     }
 }
 

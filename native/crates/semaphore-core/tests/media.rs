@@ -4,8 +4,8 @@ mod common;
 
 use common::*;
 use semaphore_core::model::{
-    ConnectionQuality, ParticipantView, UserView, VideoDemand, VideoTrackView, VoiceStatus,
-    VoiceView,
+    ConnectionQuality, LocalMediaView, LocalShare, ParticipantView, UserView, VideoDemand,
+    VideoTrackView, VoiceStatus, VoiceView,
 };
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
@@ -397,4 +397,220 @@ async fn leaving_while_the_room_is_still_connecting_ends_what_the_join_started()
         Some("disconnect")
     );
     assert_eq!(voice_calls(&rig), ["leave", "join", "leave"]);
+}
+
+// Camera and screen share.
+
+fn share(audio: bool) -> semaphore_core::model::ScreenShareRequest {
+    semaphore_core::model::ScreenShareRequest {
+        audio,
+        ..Default::default()
+    }
+}
+
+fn local(rig: &Rig) -> LocalMediaView {
+    rig.core.voice().local
+}
+
+fn failed(message: &str) -> LocalShare {
+    LocalShare::Failed {
+        message: message.into(),
+    }
+}
+
+/// An engine report saying what it sends and what the room allows.
+fn sending(camera: bool, screen: bool) -> VoiceView {
+    let on = |yes: bool| if yes { LocalShare::On } else { LocalShare::Off };
+    VoiceView {
+        local: LocalMediaView {
+            camera: on(camera),
+            screen: on(screen),
+            may_camera: true,
+            may_share: true,
+            ..LocalMediaView::default()
+        },
+        ..report(VoiceStatus::Connected, vec![seen("me")])
+    }
+}
+
+#[tokio::test]
+async fn the_camera_starts_and_stops_through_the_engine() {
+    let rig = in_call(&["me"]).await;
+    rig.media.calls.lock().unwrap().clear();
+    rig.core.set_camera(true).await.unwrap();
+    assert_eq!(local(&rig).camera, LocalShare::On);
+    rig.core.set_camera(false).await.unwrap();
+    assert_eq!(local(&rig).camera, LocalShare::Off);
+    assert_eq!(media_calls(&rig), ["camera true", "camera false"]);
+}
+
+#[tokio::test]
+async fn a_screen_share_starts_with_its_audio_and_stops_with_it() {
+    let rig = in_call(&["me"]).await;
+    rig.media.calls.lock().unwrap().clear();
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    let shown = local(&rig);
+    assert_eq!(
+        (shown.screen, shown.screen_audio),
+        (LocalShare::On, LocalShare::On)
+    );
+    rig.core.stop_screen_share().await.unwrap();
+    let shown = local(&rig);
+    assert_eq!(
+        (shown.screen, shown.screen_audio),
+        (LocalShare::Off, LocalShare::Off)
+    );
+    assert_eq!(
+        media_calls(&rig),
+        ["screen picker P1080 60 audio true", "screen stop"]
+    );
+}
+
+#[tokio::test]
+async fn a_share_without_audio_leaves_the_audio_off() {
+    let rig = in_call(&["me"]).await;
+    rig.core.start_screen_share(share(false)).await.unwrap();
+    assert_eq!(local(&rig).screen_audio, LocalShare::Off);
+}
+
+#[tokio::test]
+async fn audio_that_fails_leaves_the_screen_shared() {
+    let rig = in_call(&["me"]).await;
+    *rig.media.screen_audio_fails.lock().unwrap() = Some("PipeWire isn't running".into());
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    let shown = local(&rig);
+    assert_eq!(shown.screen, LocalShare::On);
+    assert_eq!(shown.screen_audio, failed("PipeWire isn't running"));
+}
+
+#[tokio::test]
+async fn a_failed_camera_shows_why_and_can_be_retried() {
+    let rig = in_call(&["me"]).await;
+    *rig.media.camera_fails.lock().unwrap() = Some("the camera is busy".into());
+    assert!(rig.core.set_camera(true).await.is_err());
+    assert_eq!(local(&rig).camera, failed("the camera is busy"));
+    rig.core.set_camera(true).await.unwrap();
+    assert_eq!(local(&rig).camera, LocalShare::On);
+}
+
+#[tokio::test]
+async fn a_cancelled_picker_shows_why_and_can_be_retried() {
+    let rig = in_call(&["me"]).await;
+    *rig.media.screen_fails.lock().unwrap() = Some("the picker was cancelled".into());
+    assert!(rig.core.start_screen_share(share(true)).await.is_err());
+    let shown = local(&rig);
+    assert_eq!(shown.screen, failed("the picker was cancelled"));
+    assert_eq!(shown.screen_audio, LocalShare::Off);
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    assert_eq!(local(&rig).screen, LocalShare::On);
+}
+
+#[tokio::test]
+async fn neither_starts_outside_a_call() {
+    let rig = Rig::with_media().signed_in().await;
+    assert!(rig.core.set_camera(true).await.is_err());
+    assert!(rig.core.start_screen_share(share(true)).await.is_err());
+    assert_eq!(local(&rig), LocalMediaView::default());
+    assert!(
+        !media_calls(&rig)
+            .iter()
+            .any(|call| call.starts_with("camera") || call.starts_with("screen"))
+    );
+}
+
+#[tokio::test]
+async fn leaving_ends_both() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core.set_camera(true).await.unwrap();
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    rig.core.leave_voice().await.unwrap();
+    rig.settle().await;
+    assert_eq!(local(&rig), LocalMediaView::default());
+    // The engine stops both when it leaves the room.
+    assert_eq!(
+        media_calls(&rig).last().map(String::as_str),
+        Some("disconnect")
+    );
+}
+
+#[tokio::test]
+async fn signing_out_ends_both() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core.set_camera(true).await.unwrap();
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    rig.core.sign_out().await.unwrap();
+    rig.settle().await;
+    assert_eq!(local(&rig), LocalMediaView::default());
+    assert!(media_calls(&rig).contains(&"disconnect".to_owned()));
+}
+
+#[tokio::test]
+async fn the_next_call_starts_with_nothing_shared() {
+    let mut rig = in_call(&["me"]).await;
+    rig.core.set_camera(true).await.unwrap();
+    // The engine drops the call on its own.
+    rig.core.ingest_media(CALL, sending(true, false));
+    rig.core
+        .ingest_media(CALL, report(VoiceStatus::Disconnected, Vec::new()));
+    rig.settle().await;
+    assert_eq!(local(&rig), LocalMediaView::default());
+    rig.core.join_voice(ROOM.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(local(&rig).camera, LocalShare::Off);
+}
+
+#[tokio::test]
+async fn a_share_that_ends_on_its_own_turns_off() {
+    let rig = in_call(&["me"]).await;
+    rig.core.start_screen_share(share(true)).await.unwrap();
+    rig.core.ingest_media(CALL, sending(false, true));
+    assert_eq!(local(&rig).screen, LocalShare::On);
+    // The shared window closed.
+    rig.core.ingest_media(CALL, sending(false, false));
+    let shown = local(&rig);
+    assert_eq!(
+        (shown.screen, shown.screen_audio),
+        (LocalShare::Off, LocalShare::Off)
+    );
+}
+
+#[tokio::test]
+async fn a_report_from_before_a_start_finished_does_not_undo_it() {
+    let rig = in_call(&["me"]).await;
+    rig.core.ingest_media(CALL, sending(false, false));
+    rig.core.set_camera(true).await.unwrap();
+    // Sent before the camera was published; it only ever said Off.
+    rig.core.ingest_media(
+        CALL,
+        VoiceView {
+            muted: true,
+            ..sending(false, false)
+        },
+    );
+    assert_eq!(local(&rig).camera, LocalShare::On);
+}
+
+#[tokio::test]
+async fn what_the_room_allows_comes_from_the_engine() {
+    let rig = in_call(&["me"]).await;
+    assert!(!local(&rig).may_camera && !local(&rig).may_share);
+    rig.core.ingest_media(CALL, sending(false, false));
+    assert!(local(&rig).may_camera && local(&rig).may_share);
+}
+
+#[tokio::test]
+async fn a_share_that_finishes_starting_after_leaving_changes_nothing() {
+    let rig = in_call(&["me"]).await;
+    let (release, hold) = tokio::sync::oneshot::channel();
+    *rig.media.hold_screen.lock().unwrap() = Some(hold);
+    let core = rig.core.clone();
+    let start = tokio::spawn(async move { core.start_screen_share(share(true)).await });
+    // The picker is open.
+    while local(&rig).screen != LocalShare::Starting {
+        tokio::task::yield_now().await;
+    }
+    rig.core.leave_voice().await.unwrap();
+    release.send(()).unwrap();
+    assert!(start.await.unwrap().is_err());
+    assert_eq!(local(&rig), LocalMediaView::default());
 }

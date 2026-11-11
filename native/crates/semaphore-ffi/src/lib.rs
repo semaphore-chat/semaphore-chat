@@ -13,10 +13,11 @@ use semaphore_core::cache::QueryKey;
 use semaphore_core::model::{
     AttachmentKind, AttachmentView, ChannelKind, ChannelPermissions, ChannelRow, CommunityRow,
     ConnectionQuality, Conversation, DisplayRole, DraftFile, DraftMention, EmojiView, ErrorView,
-    LinkPreviewView, ListOp, MemberList, MemberView, MentionCandidate, MentionKind, MessageDraft,
-    MessageRow, ParticipantView, RailCounts, ReactionView, ReplyToView, SegKind, SendState,
-    SessionState, TextSeg, TextStyle, UploadView, UserView, VideoDemand, VideoTrackView, ViewKey,
-    VoiceStatus, VoiceView, WebhookView,
+    LinkPreviewView, ListOp, LocalMediaView, LocalShare, MemberList, MemberView, MentionCandidate,
+    MentionKind, MessageDraft, MessageRow, ParticipantView, RailCounts, ReactionView, ReplyToView,
+    ScreenShareRequest, SegKind, SendState, SessionState, ShareResolution, TextSeg, TextStyle,
+    UploadView, UserView, VideoDemand, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
+    WebhookView,
 };
 use semaphore_core::platform::{Clock, EventSink};
 use semaphore_core::{ConnectionState, Core, CoreError, CoreEvent, NetworkState, ResyncPlan};
@@ -358,6 +359,42 @@ pub struct VoiceView {
     pub participants: Vec<ParticipantView>,
     pub reconnect_attempt: Option<u32>,
     pub error: Option<String>,
+    pub local: LocalMediaView,
+}
+
+#[uniffi::remote(Enum)]
+pub enum LocalShare {
+    Off,
+    Starting,
+    On,
+    Failed { message: String },
+}
+
+#[uniffi::remote(Record)]
+pub struct LocalMediaView {
+    pub camera: LocalShare,
+    pub screen: LocalShare,
+    pub screen_audio: LocalShare,
+    pub may_camera: bool,
+    pub may_share: bool,
+}
+
+#[uniffi::remote(Enum)]
+pub enum ShareResolution {
+    Native,
+    P2160,
+    P1440,
+    P1080,
+    P720,
+    P480,
+}
+
+#[uniffi::remote(Record)]
+pub struct ScreenShareRequest {
+    pub source_id: Option<String>,
+    pub resolution: ShareResolution,
+    pub fps: u32,
+    pub audio: bool,
 }
 
 #[uniffi::remote(Enum)]
@@ -657,6 +694,18 @@ impl SemaphoreCore {
 
     pub async fn set_deafened(&self, deafened: bool) -> Result<(), CoreError> {
         self.core.set_deafened(deafened).await
+    }
+
+    pub async fn set_camera(&self, on: bool) -> Result<(), CoreError> {
+        self.core.set_camera(on).await
+    }
+
+    pub async fn start_screen_share(&self, request: ScreenShareRequest) -> Result<(), CoreError> {
+        self.core.start_screen_share(request).await
+    }
+
+    pub async fn stop_screen_share(&self) -> Result<(), CoreError> {
+        self.core.stop_screen_share().await
     }
 }
 
