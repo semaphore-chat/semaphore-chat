@@ -1,4 +1,14 @@
 {
+  "channelOverrides": [
+    {
+      "channelId": "tr-general",
+      "createdAt": "2026-09-22T18:00:00.000Z",
+      "id": "sc-notif-override-tr-general",
+      "level": "none",
+      "updatedAt": "2026-09-22T18:00:00.000Z",
+      "userId": "me"
+    }
+  ],
   "communities": [
     {
       "avatar": "sc-community-couch",
@@ -718,6 +728,35 @@
         "username": "alexk"
       },
       "userBId": "me"
+    },
+    {
+      "createdAt": "2026-08-17T14:00:00.000Z",
+      "id": "sc-friend-out-u-tomas",
+      "status": "PENDING",
+      "userA": {
+        "avatarUrl": "sc-avatar-me",
+        "bannerUrl": "sc-banner-me",
+        "bio": "Engineering lead at Lumen Studio. Coffee, synths and small, sharp tools.",
+        "displayName": "alexk",
+        "id": "me",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "OWNER",
+        "status": null,
+        "username": "alexk"
+      },
+      "userAId": "me",
+      "userB": {
+        "avatarUrl": "sc-avatar-u-tomas",
+        "bannerUrl": null,
+        "bio": null,
+        "displayName": "tomatillo",
+        "id": "u-tomas",
+        "lastSeen": "2026-09-23T01:04:00Z",
+        "role": "USER",
+        "status": null,
+        "username": "tomatillo"
+      },
+      "userBId": "u-tomas"
     }
   ],
   "instanceName": "Semaphore Chat",
@@ -5056,6 +5095,21 @@
       }
     ]
   },
+  "notificationSettings": {
+    "createdAt": "2026-09-22T18:00:00.000Z",
+    "defaultChannelLevel": "mentions",
+    "desktopEnabled": true,
+    "dmNotifications": true,
+    "dndEndTime": null,
+    "dndStartTime": null,
+    "dndTimezone": null,
+    "doNotDisturb": false,
+    "id": "sc-notif-settings",
+    "playSound": true,
+    "soundType": "default",
+    "updatedAt": "2026-09-22T18:00:00.000Z",
+    "userId": "me"
+  },
   "notifications": [
     {
       "author": {
@@ -5389,7 +5443,7 @@
       "communityId": "c-trail",
       "createdAt": "2026-09-22T14:10:00.000Z",
       "directMessageGroupId": null,
-      "dismissed": false,
+      "dismissed": true,
       "id": "sc-notif-sc-trail-ridge",
       "message": {
         "channelId": "tr-general",

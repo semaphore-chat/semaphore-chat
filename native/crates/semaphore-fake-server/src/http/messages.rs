@@ -184,7 +184,13 @@ async fn create_message(State(inner): State<Arc<Inner>>, body: Bytes) -> Respons
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::Channel(channel_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::Channel(channel_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
@@ -206,7 +212,13 @@ async fn create_direct_message(State(inner): State<Arc<Inner>>, body: Bytes) -> 
         );
     };
     let fault = inner.take_send_fault();
-    match messages::send(&inner, SendTarget::DirectMessage(group_id), &send, fault) {
+    match messages::send(
+        &inner,
+        &inner.scenario.me.id,
+        SendTarget::DirectMessage(group_id),
+        &send,
+        fault,
+    ) {
         Ok(message) => json_response(
             StatusCode::CREATED,
             serde_json::to_value(message).expect("a message serializes"),
@@ -265,8 +277,10 @@ async fn mark_read(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     };
     let channel = value.get("channelId").and_then(Value::as_str);
     let group = value.get("directMessageGroupId").and_then(Value::as_str);
-    json_response(
-        StatusCode::OK,
-        messages::mark_read(&inner, channel, group, last_read),
-    )
+    // As the backend's `markReadAndAnnounce`: notifications of the context are read and the
+    // receipt goes out over the socket.
+    match crate::socket::announce_read(&inner, &inner.scenario.me.id, channel, group, last_read) {
+        Ok(receipt) => json_response(StatusCode::OK, receipt),
+        Err(message) => inner.error(400, "BAD_REQUEST", message, false),
+    }
 }
