@@ -56,6 +56,10 @@ pub(crate) enum Effect {
     /// The session ended under a live call: the engine leaves the room. No presence call, because
     /// the session that would make it is gone.
     EndCall,
+    /// Upload this send's waiting files.
+    Upload(String),
+    /// Release a pending attachment slot on this message: a file the user gave up on.
+    ReleaseSlot(String),
 }
 
 pub(crate) struct State {
@@ -73,6 +77,9 @@ pub(crate) struct State {
     pub use_counter: u64,
     pub focused: bool,
     pub sends: HashMap<String, PendingSend>,
+    /// Files on their way to messages this client sent, by the send's nonce.
+    pub uploads: HashMap<String, crate::uploads::UploadJob>,
+    pub next_upload_id: u64,
     pub typing: HashMap<Conversation, Vec<(String, u64)>>,
     /// Unread mention notifications, so one being read can take its count back off.
     pub mention_notifications: HashMap<String, Conversation>,
@@ -113,6 +120,8 @@ impl State {
             use_counter: 0,
             focused: true,
             sends: HashMap::new(),
+            uploads: HashMap::new(),
+            next_upload_id: 0,
             typing: HashMap::new(),
             mention_notifications: HashMap::new(),
             session: SessionState::SignedOut,
@@ -268,9 +277,10 @@ impl State {
             }
             view
         };
+        let uploads = self.upload_views();
         let mut changes = Vec::new();
         for (conversation, window) in &mut self.windows {
-            let ops = window.take_ops(|row| project(row, &me_id, &mut author));
+            let ops = window.take_ops(|row| project(row, &me_id, &mut author, &uploads));
             if !ops.is_empty() {
                 changes.push(CoreEvent::MessagesChanged {
                     conversation: conversation.clone(),
@@ -477,6 +487,8 @@ impl Core {
             Effect::Send(nonce) => self.run_send(nonce).await,
             Effect::RefreshToken => self.refresh_token().await,
             Effect::LeavePresence(channel_id) => self.leave_presence(channel_id).await,
+            Effect::Upload(nonce) => self.run_uploads(nonce).await,
+            Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;

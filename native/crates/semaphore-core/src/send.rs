@@ -78,9 +78,12 @@ fn wire_send(
 ) -> (&'static str, Value) {
     let mut payload = json!({
         "spans": spans,
-        "attachments": draft.attachment_file_ids,
+        "attachments": [],
         "clientNonce": nonce,
     });
+    if !draft.files.is_empty() {
+        payload["pendingAttachments"] = json!(draft.files.len());
+    }
     let object = payload.as_object_mut().expect("just built as an object");
     let event = match conversation {
         Conversation::Channel { id } => {
@@ -133,6 +136,7 @@ fn optimistic_dto(
         "replyToId": draft.reply_to_message_id,
         "spans": spans,
         "attachments": [],
+        "pendingAttachments": draft.files.len(),
         "reactions": [],
         "pinned": false,
         "replyCount": 0,
@@ -247,6 +251,7 @@ impl State {
             }
             SendOutcome::Delivered { message_id } => {
                 self.sends.remove(nonce);
+                self.uploads_may_start(nonce, &message_id);
                 let Some(window) = self.windows.get_mut(&conversation) else {
                     return;
                 };
@@ -334,16 +339,33 @@ impl Core {
     pub(crate) fn begin_send(
         &self,
         conversation: Conversation,
-        draft: MessageDraft,
+        mut draft: MessageDraft,
     ) -> Result<String, CoreError> {
         self.services().ok_or_else(|| unavailable("sending"))?;
+        // The bytes go to the upload job; the send itself only needs how many.
+        let files = std::mem::take(&mut draft.files);
+        let file_count = files.len();
         let nonce = uuid::Uuid::new_v4().to_string();
         let client_id = format!("{OPTIMISTIC_ID_PREFIX}{nonce}");
         let spans: Vec<Value> = draft_to_spans(&draft).iter().map(span_json).collect();
-        let (event, payload) = wire_send(&conversation, &draft, &spans, &nonce);
+        let (event, mut payload) = wire_send(&conversation, &draft, &spans, &nonce);
+        if file_count > 0 {
+            payload["pendingAttachments"] = json!(file_count);
+        }
         self.write(|state, now| {
             let me = state.me_id().to_owned();
-            let dto = optimistic_dto(&conversation, &client_id, &nonce, &me, &draft, &spans, now)?;
+            let mut dto =
+                optimistic_dto(&conversation, &client_id, &nonce, &me, &draft, &spans, now)?;
+            dto.pending_attachments = Some(file_count as i64);
+            if file_count > 0 {
+                let job = crate::uploads::UploadJob::new(
+                    conversation.clone(),
+                    client_id.clone(),
+                    files,
+                    &mut state.next_upload_id,
+                );
+                state.uploads.insert(nonce.clone(), job);
+            }
             if let Some(window) = state.windows.get_mut(&conversation) {
                 window.prepend(StoredMessage {
                     dto,

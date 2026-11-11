@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["multipart", "ws"] }
 base64 = "0.22"
 chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
 futures-util = "0.3"

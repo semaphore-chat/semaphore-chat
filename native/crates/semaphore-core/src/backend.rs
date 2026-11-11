@@ -11,6 +11,21 @@ use semaphore_wire::enums::{ErrorCode, MessagePageDirection};
 use semaphore_wire::types as wire;
 
 use crate::model::ErrorView;
+use std::sync::Arc;
+
+/// One file for [`Backend::file_upload_controller_upload_file`]. The bytes are shared, so a failed
+/// upload can be tried again without a copy, and freed when the last holder lets go.
+#[derive(Clone)]
+pub struct FileUpload {
+    pub filename: String,
+    pub mime_type: String,
+    pub bytes: Arc<Vec<u8>>,
+    pub resource_type: semaphore_wire::enums::ResourceType,
+    pub resource_id: Option<String>,
+}
+
+/// Told how many bytes of an upload have gone so far.
+pub type UploadProgress = Arc<dyn Fn(u64) + Send + Sync>;
 
 /// A failed REST call, whether the server answered or not. `semaphore_api::ApiError` field for
 /// field, because core can't name that crate: it pulls in reqwest.
@@ -201,17 +216,40 @@ pub trait Backend: Send + Sync {
     async fn file_controller_get_file(&self, id: String) -> BackendResult<Vec<u8>>;
     async fn file_controller_get_file_thumbnail(&self, id: String) -> BackendResult<Vec<u8>>;
 
+    /// `POST /api/file-upload`, multipart. `progress` hears the bytes sent so far.
+    async fn file_upload_controller_upload_file(
+        &self,
+        _file: FileUpload,
+        _progress: UploadProgress,
+    ) -> BackendResult<wire::FileUploadResponseDto> {
+        Err(unsupported("uploading files"))
+    }
+
+    /// `POST /api/messages/{id}/attachments`: attaches an uploaded file, or with no file releases
+    /// one of the message's pending slots.
+    async fn messages_controller_add_attachment(
+        &self,
+        _id: String,
+        _body: wire::AddAttachmentDto,
+    ) -> BackendResult<wire::MessageDto> {
+        Err(unsupported("attaching files"))
+    }
+
     // Instance
     /// Before sign-in, against the server URL set last. A backend that has no such call says so.
     async fn instance_controller_get_public_settings(
         &self,
     ) -> BackendResult<wire::PublicSettingsResponseDto> {
-        Err(BackendError {
-            status: 0,
-            code: ErrorCode::Unknown("UNSUPPORTED".into()),
-            message: "this backend cannot read a server's public settings".into(),
-            retryable: false,
-            retry_after_ms: None,
-        })
+        Err(unsupported("reading a server's public settings"))
+    }
+}
+
+fn unsupported(what: &str) -> BackendError {
+    BackendError {
+        status: 0,
+        code: ErrorCode::Unknown("UNSUPPORTED".into()),
+        message: format!("this backend can't do this: {what}"),
+        retryable: false,
+        retry_after_ms: None,
     }
 }

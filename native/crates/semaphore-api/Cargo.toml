@@ -15,7 +15,8 @@ doctest = false
 progenitor-client = "0.15.1"
 # No TLS feature here: the client sends JSON over whatever reqwest client the caller
 # supplies. `semaphore-net` picks the TLS backend.
-reqwest = { workspace = true, features = ["multipart"] }
+reqwest = { workspace = true, features = ["multipart", "stream"] }
+futures-util = { workspace = true }
 semaphore-wire.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
