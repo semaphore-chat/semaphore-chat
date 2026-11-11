@@ -7,9 +7,11 @@
 //! 0..100. Only those 21 bins are computed. The web samples it about every 30 ms; this does it
 //! every 10 ms frame, which smooths a little faster.
 //!
-//! **The gate** (`useSpeakingDetection`): opens above the threshold (after at least 100 ms
-//! closed), stays open while the level is above the threshold less 5, and closes 300 ms after it
-//! last was. A threshold of 0 means no gate.
+//! **The gate** (`useSpeakingDetection`): starts open, as if the level had just been above the
+//! threshold, so the first words after a join go out; opens above the threshold (after at least
+//! 100 ms closed), stays open while the level is above the threshold less 5, and closes 300 ms
+//! after it last was. The level is compared unrounded, as the web's float. A threshold of 0 means
+//! no gate.
 
 use super::{FRAME_SAMPLES, SAMPLE_RATE};
 
@@ -56,8 +58,8 @@ impl Default for VoiceLevel {
 }
 
 impl VoiceLevel {
-    /// Takes the next samples and returns the level now.
-    pub fn push(&mut self, frame: &[i16]) -> u8 {
+    /// Takes the next samples and returns the level now, 0.0..=100.0.
+    pub fn push(&mut self, frame: &[i16]) -> f32 {
         let take = frame.len().min(FFT);
         self.history.copy_within(take.., 0);
         for (slot, sample) in self.history[FFT - take..]
@@ -85,12 +87,12 @@ impl VoiceLevel {
             sum += byte;
         }
         let level = sum / self.smoothed.len() as f64 / 255.0 * 100.0;
-        level.round().clamp(0.0, 100.0) as u8
+        level.clamp(0.0, 100.0) as f32
     }
 }
 
 /// Whether the mic may send, frame by frame.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct VadGate {
     open: bool,
     /// Milliseconds since the level was last above the closing threshold, and since closing.
@@ -98,16 +100,27 @@ pub struct VadGate {
     since_closed_ms: u32,
 }
 
+impl Default for VadGate {
+    /// Open, with the level last above the threshold just now: the web's start.
+    fn default() -> Self {
+        Self {
+            open: true,
+            since_above_ms: 0,
+            since_closed_ms: 0,
+        }
+    }
+}
+
 impl VadGate {
     /// Advances 10 ms. `threshold` 0 turns the gate off (always open).
-    pub fn step(&mut self, level: u8, threshold: u8) -> bool {
+    pub fn step(&mut self, level: f32, threshold: u8) -> bool {
         if threshold == 0 {
             self.open = true;
             self.since_above_ms = 0;
             return true;
         }
         if self.open {
-            if level > threshold.saturating_sub(HYSTERESIS) {
+            if level > f32::from(threshold.saturating_sub(HYSTERESIS)) {
                 self.since_above_ms = 0;
             } else {
                 self.since_above_ms = self.since_above_ms.saturating_add(FRAME_MS);
@@ -118,7 +131,7 @@ impl VadGate {
             }
         } else {
             self.since_closed_ms = self.since_closed_ms.saturating_add(FRAME_MS);
-            if level > threshold && self.since_closed_ms >= MIN_CLOSED_MS {
+            if level > f32::from(threshold) && self.since_closed_ms >= MIN_CLOSED_MS {
                 self.open = true;
                 self.since_above_ms = 0;
             }
@@ -132,11 +145,11 @@ mod tests {
     use super::*;
     use crate::testing::ToneMic;
 
-    fn level_of(hz: f64, amplitude: f64) -> u8 {
+    fn level_of(hz: f64, amplitude: f64) -> f32 {
         let mut mic = ToneMic::new(hz, amplitude);
         let mut level = VoiceLevel::default();
         let mut frame = [0i16; FRAME_SAMPLES];
-        let mut last = 0;
+        let mut last = 0.0;
         for _ in 0..20 {
             mic.fill(&mut frame);
             last = level.push(&frame);
@@ -146,20 +159,20 @@ mod tests {
 
     #[test]
     fn the_level_rises_with_loudness_and_ignores_what_voices_dont_have() {
-        assert_eq!(level_of(440.0, 0.0), 0);
+        assert_eq!(level_of(440.0, 0.0), 0.0);
         let quiet = level_of(440.0, 0.01);
         let loud = level_of(440.0, 0.5);
         assert!(quiet < loud, "{quiet} vs {loud}");
-        assert!(loud <= 100);
+        assert!(loud <= 100.0);
         // 10 kHz is outside 80 Hz..4 kHz: only window leakage shows.
         assert!(
-            level_of(10_000.0, 0.5) < loud / 2,
+            level_of(10_000.0, 0.5) < loud / 2.0,
             "{}",
             level_of(10_000.0, 0.5)
         );
     }
 
-    fn run(gate: &mut VadGate, level: u8, threshold: u8, ms: u32) -> Vec<bool> {
+    fn run(gate: &mut VadGate, level: f32, threshold: u8, ms: u32) -> Vec<bool> {
         (0..ms / FRAME_MS)
             .map(|_| gate.step(level, threshold))
             .collect()
@@ -168,24 +181,35 @@ mod tests {
     #[test]
     fn the_gate_opens_holds_and_closes_like_the_web() {
         let mut gate = VadGate::default();
-        // Closed to start; a level at the threshold isn't above it.
-        assert!(!run(&mut gate, 40, 40, 200).iter().any(|&open| open));
-        // Above it, it opens (it has been closed for long enough).
-        assert!(gate.step(41, 40));
+        // Open to start; silence closes it after the hold.
+        run(&mut gate, 0.0, 40, 300);
+        // A level at the threshold isn't above it.
+        assert!(!run(&mut gate, 40.0, 40, 200).iter().any(|&open| open));
+        // Just above it is, unrounded (it has been closed for long enough).
+        assert!(gate.step(40.4, 40));
         // Within the hysteresis band it stays open indefinitely.
-        assert!(run(&mut gate, 36, 40, 1000).iter().all(|&open| open));
+        assert!(run(&mut gate, 35.5, 40, 1000).iter().all(|&open| open));
         // Below it, it holds for 300 ms and then closes.
-        let falling = run(&mut gate, 10, 40, 300);
+        let falling = run(&mut gate, 10.0, 40, 300);
         assert!(falling[..29].iter().all(|&open| open));
         assert!(!falling[29]);
         // Reopening waits for 100 ms closed.
-        assert!(!run(&mut gate, 90, 40, 60).iter().any(|&open| open));
-        assert!(run(&mut gate, 90, 40, 50).iter().any(|&open| open));
+        assert!(!run(&mut gate, 90.0, 40, 60).iter().any(|&open| open));
+        assert!(run(&mut gate, 90.0, 40, 50).iter().any(|&open| open));
+    }
+
+    #[test]
+    fn the_gate_starts_open_like_the_web() {
+        // The web starts open with "last above" at now, so the first words after a join go out.
+        let mut gate = VadGate::default();
+        let start = run(&mut gate, 0.0, 40, 300);
+        assert!(start[..29].iter().all(|&open| open), "{start:?}");
+        assert!(!start[29]);
     }
 
     #[test]
     fn threshold_zero_is_no_gate() {
         let mut gate = VadGate::default();
-        assert!(run(&mut gate, 0, 0, 1000).iter().all(|&open| open));
+        assert!(run(&mut gate, 0.0, 0, 1000).iter().all(|&open| open));
     }
 }

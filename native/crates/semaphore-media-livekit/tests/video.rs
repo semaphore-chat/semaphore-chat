@@ -5,6 +5,8 @@
 //!
 //! Each test skips, loudly, without `LK_URL`, because `cargo test` alone has no server.
 
+#[path = "../examples/common/server_api.rs"]
+mod server_api;
 #[path = "../examples/common/token.rs"]
 mod token;
 
@@ -438,4 +440,32 @@ async fn a_rejoin_republishes_the_camera_and_the_screen() {
             .is_some_and(|tracks| tracks.video_sid == sid && tracks.audio_sid.is_some())
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_audio_track_that_arrives_after_its_share_stopped_is_taken_down() {
+    let url = server!();
+    let room = room_name("lateaudio");
+    let me = Peer::join(&url, &room, "sender").await;
+    me.engine
+        .start_screen_share(share(ShareResolution::P720, 15, true))
+        .await
+        .expect("the share starts");
+    // At once: the audio's publish is still on its way.
+    me.engine.stop_screen_share().await;
+    let audio = || server_api::track_sids(&url, &room, "sender", "SCREEN_SHARE_AUDIO");
+    eventually("no screen audio is left published", WAIT, || {
+        audio().is_empty()
+    })
+    .await;
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_millis(1500) {
+        assert!(
+            audio().is_empty(),
+            "a stale screen audio track: {:?}",
+            audio()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert_eq!(me.snapshot().voice.local.screen_audio, LocalShare::Off);
 }

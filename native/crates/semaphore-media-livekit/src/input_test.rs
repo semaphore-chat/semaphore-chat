@@ -1,54 +1,99 @@
 //! W4: the settings page's mic test: the input's level for the meter, and optionally the mic played
-//! back on the output (loopback), with the processing the call would use. Outside a call only.
+//! back on the output (loopback), with the processing the call would use. Outside a call only:
+//! joining one stops a running test (its `level()` is 0 from then on), so the test's streams and
+//! the call's never run together and loopback can't feed the call.
 //!
 //! The level is the voice-activity level (`audio::vad::VoiceLevel`, 0..100) over 100, so the meter
 //! and the threshold slider line up, as on the web. With loopback, what plays is handed to the
-//! echo canceller as the far end, so a speaker next to the mic doesn't howl.
+//! echo canceller as the far end, with the capture and render latencies as the call's mic gets
+//! them, so a speaker next to the mic doesn't howl.
 
 use crate::LiveKitEngine;
 use crate::audio::apm::Apm;
 use crate::audio::vad::VoiceLevel;
 use crate::audio::{AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex};
 
 /// 200 ms between the mic and the speakers at most; past that, the oldest goes.
 const LOOPBACK_SAMPLES: usize = FRAME_SAMPLES * 20;
 
+/// What the handle and the engine share: the engine stops it when a call starts.
+pub(crate) struct TestShared {
+    /// The level's `f32` bits, 0..100.
+    level: AtomicU32,
+    stopped: AtomicBool,
+    /// The input first: it feeds the output's ring.
+    streams: Mutex<Option<(AudioStream, Option<AudioStream>)>>,
+}
+
+impl TestShared {
+    /// Closes the devices; from then on the level reads 0.
+    pub(crate) fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        let streams = self
+            .streams
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
+        drop(streams);
+        self.level.store(0f32.to_bits(), Ordering::SeqCst);
+    }
+}
+
 /// A running mic test. Dropping it stops the test and closes the mic (and the speakers).
 pub struct InputTest {
-    level: Arc<AtomicU32>,
-    // The input first: it feeds the output's ring.
-    _input: AudioStream,
-    _output: Option<AudioStream>,
+    shared: Arc<TestShared>,
 }
 
 impl InputTest {
-    /// The input's level now, 0.0 (silence) to 1.0, for `set_mic_level`.
+    /// The input's level now, 0.0 (silence) to 1.0, for `set_mic_level`. 0 once stopped.
     pub fn level(&self) -> f32 {
-        self.level.load(Ordering::Relaxed) as f32 / 100.0
+        if !self.is_running() {
+            return 0.0;
+        }
+        f32::from_bits(self.shared.level.load(Ordering::Relaxed)) / 100.0
+    }
+
+    /// False once a call has started (or the test was otherwise stopped).
+    pub fn is_running(&self) -> bool {
+        !self.shared.stopped.load(Ordering::SeqCst)
+    }
+}
+
+impl Drop for InputTest {
+    fn drop(&mut self) {
+        self.shared.stop();
     }
 }
 
 impl LiveKitEngine {
     /// Opens the selected input for a test. With `loopback`, it's also played on the selected
-    /// output. Fails during a call, or when a device can't open, with why.
+    /// output. Fails during a call, or when a device can't open, with why. A newer test stops an
+    /// older one, as a call does.
     pub fn start_input_test(&self, loopback: bool) -> Result<InputTest, String> {
         let (io, input_device, output_device, processing, in_call) = self.input_test_setup();
         if in_call {
             return Err("the mic is in use by the call".into());
         }
         let apm = Arc::new(Apm::new(processing));
-        let level = Arc::new(AtomicU32::new(0));
+        let shared = Arc::new(TestShared {
+            level: AtomicU32::new(0f32.to_bits()),
+            stopped: AtomicBool::new(false),
+            streams: Mutex::new(None),
+        });
         let on_error: ErrorCallback = Arc::new(|error| log::warn!("mic test: {error}"));
+        let render_latency = Arc::new(AtomicU32::new(0));
 
         let (output, mut ring) = if loopback {
             let (mut producer, mut consumer) = rtrb::RingBuffer::<i16>::new(LOOPBACK_SAMPLES);
             let far_end = apm.clone();
             let mut chunker = Chunker::new();
+            let latency_out = render_latency.clone();
             let output = io.open_output(
                 output_device.as_deref(),
-                Box::new(move |out, _latency| {
+                Box::new(move |out, latency| {
+                    latency_out.store(latency, Ordering::Relaxed);
                     for slot in out.iter_mut() {
                         *slot = consumer.pop().unwrap_or(0);
                     }
@@ -70,15 +115,20 @@ impl LiveKitEngine {
             (None, None)
         };
 
-        let meter = level.clone();
+        let meter = Arc::downgrade(&shared);
         let mut voice = VoiceLevel::default();
         let mut chunker = Chunker::new();
         let input = io.open_input(
             input_device.as_deref(),
-            Box::new(move |samples, latency| {
+            Box::new(move |samples, capture_latency| {
+                // As the call's mic: the APM's delay is both ways round.
+                let delay = capture_latency + render_latency.load(Ordering::Relaxed);
                 chunker.push(samples, |frame| {
-                    apm.process_capture(frame, latency);
-                    meter.store(u32::from(voice.push(frame)), Ordering::Relaxed);
+                    apm.process_capture(frame, delay);
+                    let level = voice.push(frame);
+                    if let Some(shared) = meter.upgrade() {
+                        shared.level.store(level.to_bits(), Ordering::Relaxed);
+                    }
                     if let Some(push) = ring.as_mut() {
                         push(frame);
                     }
@@ -86,11 +136,9 @@ impl LiveKitEngine {
             }),
             on_error,
         )?;
-        Ok(InputTest {
-            level,
-            _input: input,
-            _output: output,
-        })
+        *shared.streams.lock().unwrap_or_else(|p| p.into_inner()) = Some((input, output));
+        self.track_input_test(&shared);
+        Ok(InputTest { shared })
     }
 }
 
@@ -100,6 +148,7 @@ mod tests {
     use crate::audio::virtual_io::VirtualIo;
     use crate::testing::{SpeakerTap, ToneMic};
     use crate::{EngineOptions, LiveKitEngine};
+    use semaphore_core::platform::MediaEngine as _;
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
@@ -152,6 +201,25 @@ mod tests {
         drop(test);
         eventually("both devices close", || io.open_streams() == 0);
         assert_eq!(io.opened_outputs().len(), 1);
+    }
+
+    #[test]
+    fn joining_a_call_stops_the_mic_test() {
+        let io = VirtualIo::new();
+        let mut tone = ToneMic::new(440.0, 0.3);
+        io.set_mic(Box::new(move |frame| tone.fill(frame)));
+        let engine = engine(&io);
+        let test = engine.start_input_test(true).unwrap();
+        eventually("the test runs", || test.level() > 0.15);
+        // Nothing listens there: the join fails, but joining at all ends the test.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let _ = runtime.block_on(engine.connect("ws://127.0.0.1:9".into(), "t".into(), 1));
+        eventually("the test's devices close", || io.open_streams() == 0);
+        assert_eq!(test.level(), 0.0);
+        assert!(!test.is_running());
     }
 
     #[test]
