@@ -1,6 +1,7 @@
 # U13 phase 2: voice against semaphore-fake-server minting real tokens for lk-stack's LiveKit, with
 # a demo publisher (`demo-peer`, video) already in Squad Up. Run by `slice-e2e.sh --voice`.
-# Snaps named *-live-* carry video and aren't compared; 04-left is.
+# Our camera and screens are the engine's fakes, and the picker lists the rig's two screens and a
+# window, as X11 or Windows would. Snaps named *-live-* carry video and aren't compared; 06-left is.
 
 app 1280 800
 click auth-connect
@@ -18,7 +19,7 @@ wait core connection connected
 click channel-vc-squad
 wait core voice connected within 30
 # The stage, with its own bar, is what the column shows.
-wait core label "Share audio"
+wait core label "Share screen"
 wait core voice participant demo-peer within 30
 wait core voice frames within 30
 expect requests VoicePresenceController_joinPresence >= 1
@@ -40,25 +41,72 @@ wait core voice undeafened
 click voice-mic
 wait core voice unmuted
 
-# Share audio: no PipeWire in a container, so it fails, says why, and the call goes on.
-click voice-share-audio
-wait core voice share-error within 10
+# The camera: on, our own preview on the stage, then off.
+wait core label "Turn on camera"
+click voice-camera
+wait core voice camera on within 15
+wait core voice own-frames camera within 15
+wait core label "Turn off camera"
+tick 100
+snap 02-live-camera-on
+click voice-camera
+wait core voice camera off within 15
+wait core label "Turn on camera"
+
+# A camera that won't open: the bar says why, and clicking again retries.
+video fail-next camera "the camera is in use by another application"
+click voice-camera
+wait core voice camera failed within 15
+wait core label "Retry camera"
+expect core voice connected
+click voice-camera
+wait core voice camera on within 15
+click voice-camera
+wait core voice camera off within 15
+
+# Screen share through our picker: two screens and a window, pick one, share. There's no PipeWire in
+# a container, so its audio fails and the screen is shared anyway, on our own stage.
+click voice-share
+wait core label "Screen 2"
+wait core label "Windows (1)"
+tick 100
+snap 03-live-picker
+click picker-source-screen-2
+click picker-share
+wait core voice screen on within 15
+wait core voice screen-audio failed within 15
+wait core voice own-frames screen within 15
+wait core label "Stop sharing screen"
 expect core voice connected
 tick 100
-snap 02-live-share-failed
+snap 04-live-sharing-self
+click voice-share
+wait core voice screen off within 15
+wait core label "Share screen"
+
+# A picker cancelled shares nothing.
+click voice-share
+wait core label "Screen 1"
+click picker-cancel
+expect core voice screen off
 
 # Elsewhere in the app, the call's bar stays under the columns.
 click channel-cc-general
 wait core channel cc-general
-wait core label "Share audio"
+wait core label "Share screen"
 expect core voice connected
 tick 100
-snap 03-live-bar-elsewhere
+snap 05-live-bar-elsewhere
+
+# A camera left on goes off with the call.
+click voice-camera
+wait core voice camera on within 15
 
 # A moderator removes us: the call ends here, and the server hears we left.
 livekit remove vc-squad me
 wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
+expect core voice camera off
 
 # A new call, then leaving it from the bar.
 click channel-vc-squad
@@ -69,4 +117,4 @@ wait core voice disconnected
 wait core requests VoicePresenceController_leavePresence >= 2
 wait core label "Join voice"
 wait idle
-shot 04-left
+shot 06-left
