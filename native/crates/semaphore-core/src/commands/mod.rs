@@ -7,10 +7,13 @@
 
 pub(crate) mod actions;
 mod communities;
+mod dms;
 mod messages;
+pub(crate) mod notify;
 mod queries;
 pub(crate) mod reading;
 mod session;
+pub mod social;
 mod voice;
 
 use crate::cache::{CacheValue, MemberPages, QueryKey, keys};

@@ -49,6 +49,9 @@ pub fn all() -> Vec<Story> {
         crate::emoji::stories(),
         crate::panel::stories(),
         crate::thread::stories(),
+        crate::dms::stories(),
+        crate::friends::stories(),
+        crate::notifications::stories(),
     ]
     .into_iter()
     .flatten()

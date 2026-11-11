@@ -8,17 +8,23 @@
 mod actions;
 mod common;
 mod communities;
+mod dms;
 mod files;
 mod messages;
+mod notify;
 mod reading;
 mod session;
+mod social;
 mod voice;
 
 pub use actions::*;
 pub use common::*;
 pub use communities::*;
+pub use dms::*;
 pub use files::*;
 pub use messages::*;
+pub use notify::*;
 pub use reading::*;
 pub use session::*;
+pub use social::*;
 pub use voice::*;

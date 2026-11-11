@@ -4,6 +4,7 @@
 // W1: each part's fakes in a file of its own, so the two don't edit the same lines.
 mod actions;
 mod reading;
+pub mod w2;
 #[allow(unused_imports)]
 pub use actions::refusal;
 
@@ -182,6 +183,8 @@ pub struct FakeBackend {
     pub thread_replies: Mutex<HashMap<String, Vec<MessageDto>>>,
     /// W1 part B's scripted threads and search: `common/reading.rs`.
     pub reading: reading::ReadingFakes,
+    /// W2's scripted DMs, friends and notifications: `common/w2.rs`.
+    pub w2: w2::W2Fakes,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,

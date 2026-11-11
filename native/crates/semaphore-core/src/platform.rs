@@ -5,7 +5,9 @@
 
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
-use crate::model::{Conversation, ListOp, ScreenShareRequest, VideoDemand, ViewKey};
+use crate::model::{
+    Conversation, ListOp, OsNotification, ScreenShareRequest, VideoDemand, ViewKey,
+};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -34,6 +36,16 @@ pub enum CoreEvent {
         conversation: Conversation,
         ops: Vec<ListOp>,
     },
+    /// Raise this OS notification: core has decided it should show (W2's `notify::decide`). The
+    /// app hands it to `Notifier::show`. A newer one with the same `tag` replaces the older.
+    Notify {
+        notification: OsNotification,
+    },
+    /// The conversation behind this tag was read: take its notifications down
+    /// (`Notifier::withdraw`).
+    WithdrawNotifications {
+        tag: String,
+    },
 }
 
 pub trait EventSink: Send + Sync {
@@ -51,8 +63,21 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, key: String) -> Result<(), CoreError>;
 }
 
+/// OS notifications. Every method may be called from any thread and must not block: hand the work
+/// to the platform's notification service and return.
 pub trait Notifier: Send + Sync {
     fn notify(&self, title: String, body: String) -> Result<(), CoreError>;
+
+    /// Shows a notification core decided on (`CoreEvent::Notify`), replacing any shown with the same
+    /// `tag`. A click should open `link` (and `parent_message_id`'s thread when set). The default
+    /// shows the text alone, with no click route or sound.
+    fn show(&self, notification: OsNotification) -> Result<(), CoreError> {
+        self.notify(notification.title, notification.body)
+    }
+
+    /// Takes down what is shown under this tag (`CoreEvent::WithdrawNotifications`). Nothing to do
+    /// by default.
+    fn withdraw(&self, _tag: &str) {}
 }
 
 /// Desktop only in practice; mobile has no tray and simply never implements it.

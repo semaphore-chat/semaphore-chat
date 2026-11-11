@@ -51,6 +51,9 @@ pub trait Realtime: Send + Sync {
     fn suspend(&self);
     /// `refresh` comes from [`crate::ResyncPlan::refresh_token`].
     fn resume(&self, refresh: bool);
+    /// Whether the user is idle (no input for a while, or the window hidden). The transport sends
+    /// it in every `presenceOnline`, including the one on each (re)connect. Nothing by default.
+    fn set_idle(&self, _idle: bool) {}
     async fn emit(&self, event: String, payload: Value) -> Result<(), RealtimeError>;
     /// Returns the server's ack arguments.
     async fn emit_with_ack(
