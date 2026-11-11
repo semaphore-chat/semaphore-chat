@@ -3,11 +3,9 @@ import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class NotificationQueryDto {
-  /**
-   * Only return unread notifications. Query params arrive as strings, and
-   * `Boolean('false')` is true, so parse 'true'/'false' explicitly. Absent
-   * means "all notifications".
-   */
+  /** Only return unread notifications. Absent means all of them. */
+  // Query params arrive as strings and `Boolean('false')` is true, so
+  // 'true'/'false' are parsed explicitly.
   @IsOptional()
   @IsBoolean()
   @Transform(({ value }: { value: unknown }) => {
