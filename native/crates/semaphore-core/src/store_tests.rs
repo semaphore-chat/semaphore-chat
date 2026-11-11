@@ -451,3 +451,182 @@ fn replacing_the_rows_while_shown_resets_the_ui() {
     let ops = window.take_ops(project_row);
     assert!(matches!(ops.as_slice(), [ListOp::Reset { rows }] if rows.len() == 2));
 }
+
+// --- bug:seq-reuse ---
+
+#[test]
+fn a_row_slotted_where_one_was_just_deleted_reaches_the_ui() {
+    // The resync deletes 2 and slots 9 between 1 and 3: 9 gets the seq 2 had. The UI must still
+    // be told, or it keeps showing the deleted row.
+    let mut window = window(1, 3);
+    window.show();
+    let mut ui = Ui::default();
+    ui.sync(&mut window);
+
+    assert_eq!(
+        window.apply_resync(vec![dto(3), named("m009", "missed"), dto(1)], true),
+        ResyncOutcome::Merged
+    );
+
+    ui.sync(&mut window);
+    assert_eq!(ui.0[1].display, "missed");
+}
+
+// --- Properties ---
+
+use proptest::prelude::*;
+use proptest::test_runner::{Config, RngSeed};
+
+/// A step a window can take, with ids drawn from a small pool so they collide.
+#[derive(Debug, Clone)]
+enum Step {
+    /// A live page of these ids (sorted newest first before use).
+    Live(Vec<u32>),
+    /// A page of ids older than the oldest loaded, at most `.0` of them.
+    Older(u8),
+    /// A new message, newer than everything.
+    New,
+    /// A repeat of a message's echo.
+    Echo(u32),
+    Edit(u32),
+    Delete(u32),
+    /// The server's rows after a gap: a subset of the pool, possibly with a new one on top.
+    Resync(Vec<u32>, bool, bool),
+    Hold(bool),
+    Show,
+    Hide,
+}
+
+fn step() -> impl Strategy<Value = Step> {
+    let ids =
+        || prop::collection::btree_set(0u32..60, 0..12).prop_map(|set| set.into_iter().collect());
+    prop_oneof![
+        1 => ids().prop_map(Step::Live),
+        2 => (0u8..5).prop_map(Step::Older),
+        3 => Just(Step::New),
+        1 => (0u32..80).prop_map(Step::Echo),
+        2 => (0u32..80).prop_map(Step::Edit),
+        2 => (0u32..80).prop_map(Step::Delete),
+        1 => (ids(), any::<bool>(), any::<bool>()).prop_map(|(ids, new, reach)| Step::Resync(ids, new, reach)),
+        1 => any::<bool>().prop_map(Step::Hold),
+        1 => Just(Step::Show),
+        1 => Just(Step::Hide),
+    ]
+}
+
+struct Model {
+    window: Window,
+    ui: Ui,
+    shown: bool,
+    /// The next new message's number: above every id in the pool.
+    next: u32,
+}
+
+impl Model {
+    fn new() -> Self {
+        Self {
+            window: window(30, 39),
+            ui: Ui::default(),
+            shown: false,
+            next: 100,
+        }
+    }
+
+    fn apply(&mut self, step: Step) {
+        match step {
+            Step::Live(mut ids) => {
+                ids.sort_unstable_by(|a, b| b.cmp(a));
+                let token = ids.last().map(|oldest| id(*oldest));
+                self.window.apply_live_page(page(&ids), token);
+            }
+            Step::Older(count) => {
+                let oldest = self
+                    .window
+                    .rows()
+                    .find_map(|row| row.message.dto.id[1..].parse::<u32>().ok())
+                    .unwrap_or(0);
+                let older: Vec<u32> = (oldest.saturating_sub(u32::from(count))..oldest)
+                    .rev()
+                    .collect();
+                if self.window.older_cursor().is_some() && !older.is_empty() {
+                    let token = older.last().map(|n| id(*n));
+                    self.window.apply_older_page(page(&older), token);
+                }
+            }
+            Step::New => {
+                self.window.reconcile_echo(dto(self.next));
+                self.window.evict_oldest();
+                self.next += 1;
+            }
+            Step::Echo(n) => {
+                if self.window.holds_id(&id(n)) {
+                    self.window.reconcile_echo(dto(n));
+                }
+            }
+            Step::Edit(n) => {
+                self.window.update(named(&id(n), "edited"), None);
+            }
+            Step::Delete(n) => {
+                self.window.delete(&id(n));
+            }
+            Step::Resync(mut ids, new, reaches) => {
+                if new {
+                    ids.push(self.next);
+                    self.next += 1;
+                }
+                ids.sort_unstable_by(|a, b| b.cmp(a));
+                // Any subset of the pool: loaded rows, rows never loaded, maybe one newer than all.
+                // What doesn't connect is reset, as core does.
+                if self.window.apply_resync(page(&ids), reaches) == ResyncOutcome::NeedsReset {
+                    self.window
+                        .apply_live_page(page(&ids), ids.last().map(|n| id(*n)));
+                }
+            }
+            Step::Hold(on) => self.window.hold(on.then_some((i64::MIN, i64::MAX))),
+            Step::Show => {
+                self.window.show();
+                self.shown = true;
+            }
+            Step::Hide => {
+                self.window.hide();
+                self.shown = false;
+            }
+        }
+    }
+
+    fn check(&mut self) {
+        assert_consistent(&self.window);
+        if self.shown {
+            self.ui.sync(&mut self.window);
+        } else {
+            assert!(self.window.take_ops(project_row).is_empty());
+            self.ui = Ui::default();
+        }
+    }
+}
+
+fn config() -> Config {
+    Config {
+        cases: 256,
+        rng_seed: RngSeed::Fixed(0x5704_e001),
+        ..Config::default()
+    }
+}
+
+proptest! {
+    #![proptest_config(config())]
+
+    /// After any steps, the window is consistent, and a UI fed only the ops it was sent holds
+    /// exactly the window's rows.
+    #[test]
+    fn any_steps_keep_the_window_consistent_and_the_ui_in_step(
+        steps in prop::collection::vec(step(), 1..40),
+    ) {
+        let mut model = Model::new();
+        for step in steps {
+            model.apply(step);
+            model.check();
+        }
+    }
+}
+// --- end bug:seq-reuse ---

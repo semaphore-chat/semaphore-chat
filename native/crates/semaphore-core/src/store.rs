@@ -119,6 +119,10 @@ pub struct Window {
     fetching: u32,
     touched: Vec<Touch>,
     pub last_used: u64,
+    /// The last revision handed out. Revisions are unique within a window, not per row: a resync
+    /// can slot a missed row at the seq of a row it just deleted, and the UI tells rows apart by
+    /// `(seq, revision)`, so a fresh row must never repeat a pair the UI holds.
+    revisions: u64,
 }
 
 impl Window {
@@ -182,12 +186,18 @@ impl Window {
         self.rows.binary_search_by_key(&seq, |row| row.seq).ok()
     }
 
+    fn next_revision(&mut self) -> u64 {
+        self.revisions += 1;
+        self.revisions
+    }
+
     fn push_back(&mut self, message: StoredMessage) {
         self.high += SEQ_STEP;
         self.by_id.insert(message.dto.id.clone(), self.high);
+        let revision = self.next_revision();
         self.rows.push_back(Row {
             seq: self.high,
-            revision: 1,
+            revision,
             message,
         });
     }
@@ -195,21 +205,23 @@ impl Window {
     fn push_front(&mut self, message: StoredMessage) {
         self.low -= SEQ_STEP;
         self.by_id.insert(message.dto.id.clone(), self.low);
+        let revision = self.next_revision();
         self.rows.push_front(Row {
             seq: self.low,
-            revision: 1,
+            revision,
             message,
         });
     }
 
     fn set_at(&mut self, index: usize, message: StoredMessage) {
+        let revision = self.next_revision();
         let row = &mut self.rows[index];
         if row.message.dto.id != message.dto.id {
             self.by_id.remove(&row.message.dto.id);
             self.by_id.insert(message.dto.id.clone(), row.seq);
         }
         row.message = message;
-        row.revision += 1;
+        row.revision = revision;
     }
 
     fn remove_at(&mut self, index: usize) {
@@ -356,9 +368,10 @@ impl Window {
         let Some(index) = self.index_of(id) else {
             return false;
         };
+        let revision = self.next_revision();
         let row = &mut self.rows[index];
         change(&mut row.message.dto);
-        row.revision += 1;
+        row.revision = revision;
         true
     }
 
@@ -371,7 +384,8 @@ impl Window {
                 .as_ref()
                 .and_then(|reply| reply.author_id.as_deref());
             if dto.author_id.as_deref() == Some(author_id) || reply_author == Some(author_id) {
-                row.revision += 1;
+                self.revisions += 1;
+                row.revision = self.revisions;
             }
         }
     }
@@ -685,11 +699,12 @@ impl Window {
         for (offset, dto) in run.into_iter().enumerate() {
             let seq = start + step * (offset as i64 + 1);
             self.by_id.insert(dto.id.clone(), seq);
+            let revision = self.next_revision();
             self.rows.insert(
                 at + offset,
                 Row {
                     seq,
-                    revision: 1,
+                    revision,
                     message: StoredMessage::from_server(dto),
                 },
             );
