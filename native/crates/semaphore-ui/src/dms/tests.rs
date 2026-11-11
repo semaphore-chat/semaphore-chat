@@ -296,20 +296,32 @@ fn the_header_back_arrow_and_buttons_emit_only_when_offered(cx: &mut TestAppCont
         header
     });
     assert!(!rig.has(cx, "dm-header-call"), "no call button by default");
+    assert!(!rig.has(cx, "dm-header-search"), "no search by default");
     rig.click(cx, "dm-header-back");
     rig.with(cx, |header, _, cx| {
-        header.update(cx, |header, cx| header.set_can_call(true, cx))
+        header.update(cx, |header, cx| {
+            header.set_can_call(true, cx);
+            header.set_search(true, cx);
+        })
     });
     rig.click(cx, "dm-header-call");
-    assert_eq!(rig.events(), [DmHeaderEvent::Back, DmHeaderEvent::JoinCall]);
+    rig.click(cx, "dm-header-search");
+    assert_eq!(
+        rig.events(),
+        [
+            DmHeaderEvent::Back,
+            DmHeaderEvent::JoinCall,
+            DmHeaderEvent::Search
+        ]
+    );
     rig.with(cx, |header, _, cx| {
         header.update(cx, |header, cx| {
             header.set_state(DmHeaderState::Unavailable, cx)
         })
     });
     assert!(
-        !rig.has(cx, "dm-header-call"),
-        "nothing to call when unavailable"
+        !rig.has(cx, "dm-header-call") && !rig.has(cx, "dm-header-search"),
+        "nothing to call or search when unavailable"
     );
 }
 
@@ -318,7 +330,11 @@ fn the_dialog_searches_after_the_debounce_and_creates_a_named_group(cx: &mut Tes
     let rig = rig(cx, 800., CreateDmDialog::new);
     let picker = rig.with(cx, |dialog, _, cx| dialog.read(cx).picker().clone());
     rig.with(cx, |_, _, cx| {
-        picker.update(cx, |picker, cx| picker.query_changed("av", cx))
+        picker.update(cx, |picker, cx| {
+            picker.query_changed("av", cx);
+            // Keystrokes after the first can report the same text: the search still goes out.
+            picker.query_changed("av", cx);
+        })
     });
     cx.executor()
         .advance_clock(DEBOUNCE - Duration::from_millis(1));
