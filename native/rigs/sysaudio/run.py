@@ -11,9 +11,13 @@ events of every run (slow windows and events, no 100 ms windows) under results/t
 
 Bars (fixed in the design before any run; see docs/spike-results.md, T11):
   present  level within 6 dB of nominal (-12.04 dBFS) in at least 95% of 1 s windows
-  absent   every 1 s window at or below min(L9 call level - 50 dB, -80 dBFS)
+  absent   no 1 s window is a leak: above min(L9 call level - 50 dB, -80 dBFS) and at least 20 dB
+           above the unplayed reference bin (330 Hz). Above the floor but not 20 dB above the
+           reference is a glitch (a dropout or click): counted, not a leak, but more than 5% glitch
+           windows fails the run as too noisy to judge (t11_judge.py)
   L3       mid-share stream heard within 1.0 s (local) / 1.5 s (viewer); viewer median under 0.5 s
-  L9       negative control valid: call tone within 6 dB of the game tone
+  L9       negative control valid: call tone within 6 dB of the game tone, and a leak by the
+           absent rule in at least 95% of windows
   L10      10 min soak: as L1, at most 1 dropped 10 ms block per minute, capture threads under
            2% of a core (provisional on a shared host)
 """
@@ -30,6 +34,8 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+import t11_judge
 
 NATIVE = Path(__file__).resolve().parents[2]
 ROOT = NATIVE.parent
@@ -128,29 +134,57 @@ def windows(events, role, span):
     return [e for e in events if e.get("ev") == "win" and e.get("role") == role and e.get("span") == span]
 
 
-def evaluate(result, mode, call_ref):
-    s, ev = result["scenario"], result["events"]
+def judged_windows(ev, mode):
+    """(slow, fast, viewer_first, error): the windows the bars judge, after the warm-up."""
     role = "local" if mode == "local" else "viewer"
     sharer = "local" if mode == "local" else "share"
     started = first(ev, "capture_started", src=sharer)
     done = first(ev, "done", src=sharer)
-    out = {"run": result["run"], "exit": result["exit"], "checks": {}, "metrics": {}}
     if not started or not done:
-        out["pass"] = False
-        out["error"] = "sharer never started or never finished: " + "; ".join(
+        return None, None, None, "sharer never started or never finished: " + "; ".join(
             e.get("msg", "") for e in ev if e.get("ev") in ("text", "error"))[:600]
-        return out
     begin = started["t"]
     viewer_first = first(ev, "first_frame")
     if mode == "livekit":
         if not viewer_first:
-            out["pass"] = False
-            out["error"] = "viewer never received the screen share audio track"
-            return out
+            return None, None, None, "viewer never received the screen share audio track"
         begin = max(begin, viewer_first["t"])
-        out["metrics"]["viewer_channels"] = viewer_first.get("channels")
     slow = [w for w in windows(ev, role, "slow") if w["t"] - 1000 >= begin + WARMUP_MS and w["t"] <= done["t"]]
     fast = [w for w in windows(ev, role, "fast") if w["t"] - 100 >= begin and w["t"] <= done["t"]]
+    return slow, fast, viewer_first, None
+
+
+def absent_threshold(call_ref):
+    return min(call_ref - ABSENT_BELOW_CALL, ABSENT_FLOOR)
+
+
+def judge_absence(s, slow, call_ref, ref_of=t11_judge.ref_bin):
+    """The absent checks and the L9 detection check: (checks, metrics). rejudge.py reuses it."""
+    checks, metrics = {}, {}
+    threshold = absent_threshold(call_ref)
+    for tone in ABSENT.get(s, []):
+        verdict = t11_judge.judge_absent(slow, tone, threshold, ref_of)
+        checks[f"absent_{tone}"] = verdict["no_leak"]
+        checks[f"judgeable_{tone}"] = verdict["judgeable"]
+        metrics[f"absent_{tone}_verdict"] = verdict
+    if s == "L9":
+        control = t11_judge.judge_control(slow, "b", threshold, ref_of)
+        checks["control_detected"] = control["detected"]
+        metrics["control_detected"] = control
+    return checks, metrics
+
+
+def evaluate(result, mode, call_ref):
+    s, ev = result["scenario"], result["events"]
+    sharer = "local" if mode == "local" else "share"
+    out = {"run": result["run"], "exit": result["exit"], "checks": {}, "metrics": {}}
+    slow, fast, viewer_first, error = judged_windows(ev, mode)
+    if error:
+        out["pass"] = False
+        out["error"] = error
+        return out
+    if viewer_first:
+        out["metrics"]["viewer_channels"] = viewer_first.get("channels")
     out["metrics"]["windows"] = len(slow)
     if len(slow) < (500 if s == "L10" else 10):
         out["checks"]["enough_windows"] = False
@@ -183,10 +217,11 @@ def evaluate(result, mode, call_ref):
             onset = next((w["t"] - a3_start for w in fast if w["t"] >= a3_start and w["db"]["a3"] >= NOMINAL - PRESENT_DB), None)
             out["metrics"]["a3_onset_ms"] = onset
             out["checks"]["a3_onset"] = onset is not None and onset <= (1000 if mode == "local" else 1500)
-    threshold = min(call_ref - ABSENT_BELOW_CALL, ABSENT_FLOOR)
+    threshold = absent_threshold(call_ref)
     # Not a bar: how far the absent tone stands above tones nobody plays, in the same window. A
     # leak puts it far above them; decoder noise (a concealed packet) raises them all together.
-    controls = [t for t in slow[0]["db"] if t not in PRESENT[s] and t not in ABSENT.get(s, []) and t != "a3"] if slow else []
+    controls = [t for t in slow[0]["db"] if t not in PRESENT[s] and t not in ABSENT.get(s, []) and t != "a3"
+                and t != t11_judge.REF] if slow else []
     for tone in ABSENT.get(s, []):
         margins = [w["db"][tone] - max(w["db"][c] for c in controls) for w in slow if controls]
         if margins:
@@ -194,10 +229,12 @@ def evaluate(result, mode, call_ref):
     for tone in ABSENT.get(s, []):
         levels = [w["db"][tone] for w in slow]
         fast_levels = [w["db"][tone] for w in fast]
-        out["checks"][f"absent_{tone}"] = bool(levels) and max(levels) <= threshold
         out["metrics"][f"absent_{tone}"] = {"threshold_db": round(threshold, 2), "max_db": max(levels) if levels else None,
                                             "median_db": statistics.median(levels) if levels else None,
                                             "max_fast_db": max(fast_levels) if fast_levels else None}
+    checks, metrics = judge_absence(s, slow, call_ref)
+    out["checks"].update(checks)
+    out["metrics"].update(metrics)
     if s == "L9":
         a = statistics.median(w["db"]["a"] for w in slow)
         b = statistics.median(w["db"]["b"] for w in slow)
@@ -293,7 +330,9 @@ def main():
                "generated": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                "commit": sh("git", "-C", str(ROOT), "rev-parse", "HEAD").stdout.strip(),
                "call_reference_db": round(call_ref, 2), "call_reference_from": "L9 median" if controls else "nominal",
-               "absent_threshold_db": round(min(call_ref - ABSENT_BELOW_CALL, ABSENT_FLOOR), 2),
+               "absent_threshold_db": round(absent_threshold(call_ref), 2),
+               "absent_rule": "leak = above the threshold and >= 20 dB above the 330 Hz reference bin; "
+                              "glitch = above it but not; > 5% glitch windows: too noisy to judge",
                "scenarios": {}}
     for s in scenarios:
         runs = [evaluate(r, args.mode, call_ref) for r in results if r["scenario"] == s]

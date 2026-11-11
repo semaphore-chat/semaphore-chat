@@ -14,3 +14,7 @@ path = "src/main.rs"
 gpui-kit = { workspace = true, features = ["test-support"] }
 anyhow.workspace = true
 image = { version = "0.25", default-features = false }
+
+# The version gpui-pre-windows already pulls: DXGI, to tell WARP by its adapter ids.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "=0.62.2", features = ["Win32_Graphics_Dxgi"] }

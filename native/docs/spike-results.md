@@ -29,7 +29,7 @@ Phase 1 was launched from this branch after Phase 0. Results land here as those 
 | T8 Socket.IO | **Pass**, see the limits below |
 | T10 agent loop | Harness passes on a one-screen crate (`results/t10.json`, provisional: load peaked at 107). Rerun on the slice's real UI crate is U14 |
 | `gpui-pre` audit | **Reviewed:** no behavioural change found. See "Supply chain" |
-| T11 system audio | **Linux headless: pass**, L1-L10 5/5 each through LiveKit, one run at a time. The first run, five at once on a loaded host, failed 4 scenarios on decoder glitches (kept, explained below). **Windows, Flatpak and the real desktop: untested** |
+| T11 system audio | **Linux headless: pass**, L1-L10 5/5 each through LiveKit, one run at a time, also under the glitch-aware absent rule (re-judged). The first run, five at once on a loaded host, failed on decoder glitches; re-judged, its soak passes and 3 runs are "too noisy to judge", none a leak. **Windows: 2 runs on a VM**, run 2 passes, run 1 failed on one glitch window and needs re-recording to be judged by the new rule. **Flatpak and the real desktop: untested** |
 | T4-T6, T9 | Not started, or reported separately |
 | Windows | CI job written, **never run**: pushing the branch is waiting on Mike |
 
@@ -207,6 +207,42 @@ Bars were fixed before any run: a tone is **present** when it is within 6 dB of 
 least 95% of 1 s windows, and **absent** when every 1 s window is at or below
 min(L9 call level - 50 dB, -80 dBFS), which is -80 dBFS. 5 runs each, after a 2 s warm-up.
 
+**The absent rule since 2026-11-10 (glitch-aware).** The old bar couldn't tell a dropout from a
+leak: a dropout or click spreads energy over every frequency, so one glitchy window put the call
+tone above -80 dBFS with nothing leaking. Now each 1 s window is:
+- **leak**: the call tone above -80 dBFS **and** at least 20 dB above a reference bin at 330 Hz,
+  which nobody plays (110 Hz from every harmonic, to the 6th, of every tone the rigs play), measured
+  the same way (Hann-windowed Goertzel, same window). Any leak window fails exclusion.
+- **glitch**: above -80 dBFS but less than 20 dB above the reference. Counted and reported; it
+  doesn't fail exclusion, but **more than 5% glitch windows fails the run as "too noisy to judge"**.
+- The negative control must be a leak by this rule in at least 95% of windows.
+
+The rule is in `rigs/sysaudio/t11_judge.py` (used by `run.py` and `desk_judge.py`, unit tests in
+`test_t11_judge.py`) and, identically, in `scripts/desk/t11-sysaudio-windows.ps1`. The rig
+(`rig-sysaudio`) only measures: it now measures `ref:330` in every window, by default and in every
+script.
+
+**Re-judged without re-recording.** Runs recorded before 2026-11-10 have no 330 Hz bin. For the
+Linux runs `rigs/sysaudio/rejudge.py` uses a stand-in, measured the same way in the same window:
+the median of the bins of the 5-6 tones the scenario doesn't play (440, 587, 659, 880, 1013,
+1109 Hz). The other checks (presence, onset, CPU, links) are kept from the stored verdict. Results
+are next to each summary as `*-rejudged.json`. The Windows runs measured only 523 and 743 Hz, the
+game and the call, so there is no unplayed bin: **the Windows runs can't be re-judged and need
+re-recording.**
+
+| Linux run set | Old verdict | Re-judged | Leak windows | Glitch windows |
+|---|---|---|---|---|
+| `livekit.json`, through LiveKit, one at a time (the verdict) | L1-L10 5/5 | L1-L10 5/5 | 0 | 0 |
+| `local.json`, before any codec | L1-L9 5/5 | L1-L9 5/5 | 0 | 0 |
+| `local-no-rt/`, no realtime priority | L1 4/5, rest 5/5 | L1 4/5 (run 2 too noisy: 1 glitch in 17 windows), rest 5/5 | 0 | 1 |
+| `parallel5/`, five at once on a loaded host | L2 4/5, L3 3/5, L9 4/5, L10 0/5 | L2 4/5, L3 3/5, L9 4/5, **L10 5/5** | 0 | 33 |
+
+In `parallel5/`: L10's soaks had 2-8 glitch windows of about 590 each (at most 1.4%), so they pass
+now. L2 run 1 (1 glitch in 16 windows) and L3 runs 3 and 5 (2 in 16 each) stay failed, as too noisy to
+judge, not as leaks; L3 run 3 also misses the game-presence bar. L9 run 1 fails the control's
+level check (call tone within 6 dB of the game) as before; the rule detects its leak in 100% of
+windows, as in every L9 run. In every set the negative control is a leak in 100% of windows.
+
 **Through LiveKit to a viewer (the verdict), one run at a time:**
 
 | | Scenario | Runs | Call tone B, worst window | Notes |
@@ -226,8 +262,8 @@ min(L9 call level - 50 dB, -80 dBFS), which is -80 dBFS. 5 runs each, after a 2 
 -112 dBFS at worst, -143 in most runs. Mid-share streams are captured 121-126 ms after they start.
 
 **Failed, and kept: the first full run, five at a time on a loaded host** (`results/t11/parallel5`).
-L1, L4-L8 passed 5/5; L2 4/5, L3 3/5, L9 4/5 and L10 0/5 failed the bars. The windows that failed
-are not leaks:
+L1, L4-L8 passed 5/5; L2 4/5, L3 3/5, L9 4/5 and L10 0/5 failed the old bars (re-judged above). The
+windows that failed are not leaks:
 - B never rose above the tones nobody was playing, in the same window: at most 8 dB above the
   loudest of six such tones, against about 80 dB for a real leak (L9).
 - The game tone dipped by 6-12 dB in the same windows. That's a dropped or concealed packet,
@@ -239,8 +275,24 @@ are not leaks:
   L10 soak above. Serial LiveKit runs L1-L9 ran without it and passed anyway. The run without it is
   in `results/t11/local-no-rt`.
 
-The bar as written can't tell a glitch from a leak. It stays as it is; whether to add "and B not
-above the unplayed tones" is a decision for the coordinator.
+That is what the glitch-aware rule above now encodes.
+
+### Results on Windows (VM, build 26300, one output device)
+
+`t11-sysaudio-windows.ps1` on a Windows VM (results outside the repo, in
+`~/vms/semaphore-win/results/t11-fix/`), judged by the old rule when they ran:
+
+| Run | Exclusion | Negative control | Switch |
+|---|---|---|---|
+| 1 | **fail**: one window of 28 had the call at -76.1 dBFS while the game dipped 11 dB (to -37.1) | pass, call at -26.02 | "pass", but repeated exclusion: one output device |
+| 2 | pass, call at most -133.4 dBFS | pass, call at -26.02 | same as run 1 |
+
+Run 1's window looks like a glitch (a dropout dips the game and lifts everything), against about
+-26 dBFS for a real leak, but these runs measured no unplayed bin, so the new rule can't be
+applied: **both runs need re-recording** with the current script (which measures 330 Hz) to be
+judged by it. `-Rejudge <folder>` reproduces the old verdicts on them (no reference means the old
+rule). With one output device the script now reports `switch: SKIPPED (one output device)` instead
+of repeating exclusion.
 
 ### Findings that change the plan
 
@@ -264,9 +316,9 @@ above the unplayed tones" is a decision for the coordinator.
 
 ### What's untested
 
-- **Windows: nothing has run.** The backend compiles for `x86_64-pc-windows-msvc` in the image
-  (`verify.sh` checks it) and the CI job builds and uploads `rig-sysaudio.exe`, but the branch
-  isn't pushed. `scripts/desk/t11-sysaudio-windows.ps1` is the run.
+- **Windows: only a VM**, two runs, one output device (above). Device switching and real hardware
+  are untested, and both runs need re-recording for the glitch-aware rule.
+  `scripts/desk/t11-sysaudio-windows.ps1` is the run.
 - **Flatpak:** not tested. A sandboxed client may not be allowed to link other apps' nodes.
 - **The real desktop:** not run (Mike's machine was in use). `scripts/desk/t11-sysaudio.sh` is the run.
 - **Real games, Bluetooth, HDMI, EasyEffects:** only on the desktop run.

@@ -7,7 +7,9 @@
 //! Prints one line, `SURFACE_SMOKE result=... renderer="..." software=...`, and exits:
 //! 0 when the pixels are right, 3 when there's no surface path to test (no window, no device, or no
 //! uploader), and 1 when the path ran and drew wrongly. A pass with `software=true` ran on a
-//! software rasterizer (WARP on Windows, lavapipe on Linux): it proves the code, not a GPU.
+//! software rasterizer (WARP on Windows, lavapipe on Linux): it proves the code, not a GPU. GPUI
+//! only reads DXGI's software flag, which WARP ("Microsoft Basic Render Driver") doesn't set, so on
+//! Windows the rig also looks the adapter up and calls it software by its vendor and device id.
 //!
 //! Linux renders headless, as rig-shot does. Windows has no headless renderer, so it opens a real
 //! window.
@@ -24,6 +26,43 @@ const RED_YUV: (u8, u8, u8) = (81, 90, 240);
 const TOLERANCE: i32 = 24;
 
 const NO_PATH: i32 = 3;
+/// WARP, Direct3D's software rasterizer: "Microsoft Basic Render Driver".
+#[cfg(any(target_os = "windows", test))]
+const WARP_VENDOR_ID: u32 = 0x1414;
+#[cfg(any(target_os = "windows", test))]
+const WARP_DEVICE_ID: u32 = 0x8c;
+
+/// Whether a DXGI adapter is a software rasterizer: the flag, or WARP by its ids.
+#[cfg(any(target_os = "windows", test))]
+fn is_software_adapter(vendor_id: u32, device_id: u32, software_flag: bool) -> bool {
+    software_flag || (vendor_id == WARP_VENDOR_ID && device_id == WARP_DEVICE_ID)
+}
+
+/// The DXGI adapter GPUI named `device_name`: its "vendor:device" ids and whether it's software.
+#[cfg(target_os = "windows")]
+fn dxgi_adapter(device_name: &str) -> Option<(String, bool)> {
+    use windows::Win32::Graphics::Dxgi::{
+        CreateDXGIFactory1, DXGI_ADAPTER_FLAG_SOFTWARE, IDXGIFactory1,
+    };
+    // SAFETY: plain DXGI calls on a factory we own; the descriptions are copied out.
+    let factory: IDXGIFactory1 = unsafe { CreateDXGIFactory1() }.ok()?;
+    (0..)
+        .map_while(|index| unsafe { factory.EnumAdapters1(index) }.ok())
+        .filter_map(|adapter| unsafe { adapter.GetDesc1() }.ok())
+        .find(|desc| String::from_utf16_lossy(&desc.Description).trim_matches('\0') == device_name)
+        .map(|desc| {
+            let flag = desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 != 0;
+            (
+                format!("{:#x}:{:#x}", desc.VendorId, desc.DeviceId),
+                is_software_adapter(desc.VendorId, desc.DeviceId, flag),
+            )
+        })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn dxgi_adapter(_: &str) -> Option<(String, bool)> {
+    None
+}
 
 struct Smoke {
     red: VideoSurfaceId,
@@ -60,6 +99,8 @@ impl Render for Smoke {
 struct Outcome {
     renderer: String,
     software: Option<bool>,
+    /// "vendor:device" of the DXGI adapter, on Windows when it was found.
+    adapter: Option<String>,
     isolation: &'static str,
 }
 
@@ -107,7 +148,13 @@ fn smoke(
             .as_ref()
             .map(|specs| format!("{} ({})", specs.device_name, specs.driver_name))
             .unwrap_or_else(|| "unknown".to_owned());
-        let software = specs.map(|specs| specs.is_software_emulated);
+        let adapter = specs
+            .as_ref()
+            .and_then(|specs| dxgi_adapter(&specs.device_name));
+        let software = specs.map(|specs| {
+            specs.is_software_emulated || adapter.as_ref().is_some_and(|(_, software)| *software)
+        });
+        let adapter = adapter.map(|(ids, _)| ids);
         let Some(uploader) = window.video_uploader() else {
             return Err(Failure::NoPath("the renderer has no video uploader".into()));
         };
@@ -157,6 +204,7 @@ fn smoke(
         Ok(Outcome {
             renderer,
             software,
+            adapter,
             isolation,
         })
     })
@@ -202,8 +250,12 @@ fn report(result: std::result::Result<Outcome, Failure>) -> i32 {
                 Some(software) => software.to_string(),
                 None => "unknown".to_owned(),
             };
+            let adapter = outcome
+                .adapter
+                .map(|ids| format!(" adapter={ids}"))
+                .unwrap_or_default();
             println!(
-                "SURFACE_SMOKE result=pass renderer=\"{}\" software={software} isolation={}",
+                "SURFACE_SMOKE result=pass renderer=\"{}\" software={software}{adapter} isolation={}",
                 outcome.renderer, outcome.isolation
             );
             0
@@ -236,4 +288,28 @@ fn main() {
     );
     let code = cx.update(|cx| report(run(cx)));
     std::process::exit(code);
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: gpui_kit's glob brings its own `test` attribute.
+    use super::is_software_adapter;
+
+    #[test]
+    fn warp_is_software_by_its_ids() {
+        assert!(is_software_adapter(0x1414, 0x8c, false));
+    }
+
+    #[test]
+    fn the_dxgi_software_flag_is_software() {
+        assert!(is_software_adapter(0x10de, 0x2684, true));
+    }
+
+    #[test]
+    fn hardware_and_other_microsoft_adapters_are_not() {
+        assert!(!is_software_adapter(0x10de, 0x2684, false));
+        assert!(!is_software_adapter(0x8086, 0x8c, false));
+        // Hyper-V's display adapter: Microsoft's vendor id, not WARP's device id.
+        assert!(!is_software_adapter(0x1414, 0x5353, false));
+    }
 }

@@ -117,10 +117,14 @@ jobs:
           line="$(echo "$out" | grep '^SURFACE_SMOKE' | tail -n 1)"
           case "$rc" in
             0)
-              if echo "$line" | grep -q 'software=false'; then
-                label="an adapter that says it is hardware (check which: hosted runners have no GPU)"
+              # The rig calls WARP ("Microsoft Basic Render Driver", 0x1414:0x8c) software by its
+              # adapter ids as well as by DXGI's software flag, which WARP doesn't set.
+              if echo "$line" | grep -q 'software=true'; then
+                label="a software renderer (WARP), so NOT proof that a GPU draws it"
+              elif echo "$line" | grep -q 'software=false'; then
+                label="a hardware adapter (neither DXGI's software flag nor WARP's ids)"
               else
-                label="software rendering (WARP, or unknown), so NOT proof that a GPU draws it"
+                label="an adapter of unknown kind, so NOT proof that a GPU draws it"
               fi
               echo "::notice title=Video surface smoke::Passed on $label: $line"
               echo "Video surface smoke test passed on $label: \`$line\`" >> "$GITHUB_STEP_SUMMARY"

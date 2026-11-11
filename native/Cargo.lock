@@ -7649,6 +7649,7 @@ dependencies = [
  "anyhow",
  "gpui-kit",
  "image",
+ "windows 0.62.2",
 ]
 
 [[package]]

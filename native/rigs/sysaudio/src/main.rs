@@ -11,10 +11,10 @@
 //!   MODE=desktop like local, on a real desktop session: plays the call tone quietly and records
 //!                the captured audio to RECORD (a WAV) for a person to listen to.
 //!
-//! Env: TONES=a:523,b:743 (name:Hz, judged in every window), CALL_HZ=743, DURATION_S=20,
-//! INCLUDE_OWN=1 (negative control: also capture our own streams), REOPEN_AT_S (reopen our output
-//! stream then: local reopens it, share switches the output to the "Rig headset" sink),
-//! CALL_AMPLITUDE (default 0.25), LK_URL, LK_TOKEN.
+//! Env: TONES=a:523,b:743,ref:330 (name:Hz, measured in every window; `ref` is played by nobody and
+//! is the judges' reference bin), CALL_HZ=743, DURATION_S=20, INCLUDE_OWN=1 (negative control: also
+//! capture our own streams), REOPEN_AT_S (reopen our output stream then: local reopens it, share
+//! switches the output to the "Rig headset" sink), CALL_AMPLITUDE (default 0.25), LK_URL, LK_TOKEN.
 
 use futures_util::StreamExt;
 use livekit::options::TrackPublishOptions;
@@ -84,7 +84,7 @@ fn env_f64(name: &str, default: f64) -> f64 {
 
 fn tones() -> Vec<(String, f64)> {
     env("TONES")
-        .unwrap_or_else(|| "a:523,b:743".into())
+        .unwrap_or_else(|| "a:523,b:743,ref:330".into())
         .split(',')
         .map(|pair| {
             let (name, hz) = pair.split_once(':').expect("name:hz");
