@@ -8365,13 +8365,13 @@ dependencies = [
 name = "semaphore-platform-desktop"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
  "directories",
  "futures-util",
  "keyring",
  "ksni",
  "libc",
  "log",
- "notify-rust",
  "png 0.18.1",
  "semaphore-core",
  "serde",

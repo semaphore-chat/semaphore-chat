@@ -144,8 +144,10 @@ fn main() -> ExitCode {
         .with_assets(semaphore_app::files::AppAssets)
         .run(move |cx| {
             semaphore_app::init(cx);
+            // Before any window or notification: Windows' toasts need the AppUserModelID.
+            cx.set_app_identity(links::APP_ID, "Semaphore");
             let settings = semaphore_app::settings::SettingsStore::load(&data_dir);
-            let desktop = DesktopServices::start(settings.get().close_to_tray, true);
+            let desktop = DesktopServices::start(settings.get().close_to_tray, true, cx);
             if let Some(primary) = primary {
                 let sink = desktop.sink.clone();
                 primary.serve(move |forward| {

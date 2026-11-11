@@ -6,7 +6,10 @@
 //!   a window. Otherwise closing quits, as before. "Quit" in the tray quits.
 //! - **Events** ([`DesktopEvent`]) arrive from the tray's and the single instance's threads on a
 //!   channel, and are handled here on the UI thread: show/hide, the setting, quit, and links.
-//!   Links are parsed with `parse_deep_link` and handed to [`AppRoot::open_link`].
+//!   Links are parsed with `parse_deep_link` and handed to [`AppRoot::open_link`]; a notification's
+//!   click shows the window and goes to [`AppRoot::open_notification`].
+//! - **Notifications:** the platform's notifier ([`crate::notifier`]) starts with the tray and
+//!   sends its clicks on the same channel.
 //! - **Placement:** the size and maximized state from the settings, and the position where the
 //!   compositor lets a client choose one (not Wayland). A position no display shows any more (a
 //!   monitor unplugged) is dropped and the window centred, as Electron does.
@@ -16,6 +19,7 @@
 use crate::AppRoot;
 use crate::settings::WindowState;
 use gpui_kit::*;
+use semaphore_core::platform::Notifier;
 use semaphore_platform_desktop::tray::{self, DesktopTray, TrayOptions};
 use semaphore_platform_desktop::{DesktopEvent, DesktopEventSink};
 use std::cell::Cell;
@@ -151,30 +155,39 @@ pub fn remember_window(app: &Entity<AppRoot>, window: &mut Window, cx: &mut App)
     });
 }
 
-/// The tray and the channel the desktop's events arrive on, made before the window.
+/// The tray, the notifier and the channel the desktop's events arrive on, made before the window.
 pub struct DesktopServices {
     pub sink: DesktopEventSink,
     events: async_channel::Receiver<DesktopEvent>,
     pub tray: Option<Arc<DesktopTray>>,
+    pub notifier: Option<Arc<dyn Notifier>>,
 }
 
 impl DesktopServices {
-    /// The channel, and the tray when `with_tray` (not in rigs and tests).
-    pub fn start(close_to_tray: bool, with_tray: bool) -> Self {
+    /// The channel, and the tray and the OS notifier when `with_os` (not in rigs and tests, which
+    /// must not reach the desktop).
+    pub fn start(close_to_tray: bool, with_os: bool, cx: &mut App) -> Self {
         let (sender, events) = async_channel::unbounded();
         let sink: DesktopEventSink = Arc::new(move |event| {
             let _ = sender.try_send(event);
         });
         let tray =
-            with_tray.then(|| Arc::new(tray::start(TrayOptions { close_to_tray }, sink.clone())));
-        Self { sink, events, tray }
+            with_os.then(|| Arc::new(tray::start(TrayOptions { close_to_tray }, sink.clone())));
+        let notifier = with_os.then(|| crate::notifier::start(sink.clone(), cx));
+        Self {
+            sink,
+            events,
+            tray,
+            notifier,
+        }
     }
 }
 
 /// The desktop side of the app, as a global: the tray (the app-wiring unit hands it to core for the
-/// unread count) and whether the window is hidden.
+/// unread count), the OS notifier (for core's `Notify`) and whether the window is hidden.
 pub struct DesktopShell {
     tray: Option<Arc<DesktopTray>>,
+    notifier: Option<Arc<dyn Notifier>>,
     window: AnyWindowHandle,
     app: WeakEntity<AppRoot>,
     hidden: Rc<Cell<bool>>,
@@ -185,6 +198,10 @@ impl Global for DesktopShell {}
 impl DesktopShell {
     pub fn tray(&self) -> Option<Arc<DesktopTray>> {
         self.tray.clone()
+    }
+
+    pub fn notifier(&self) -> Option<Arc<dyn Notifier>> {
+        self.notifier.clone()
     }
 
     pub fn is_hidden(&self) -> bool {
@@ -200,7 +217,12 @@ pub fn hides_on_close(setting: bool, tray_on_a_panel: bool, platform_can_hide: b
 /// Wires the window to the desktop: close to tray, the event channel, the taskbar dot. Call once,
 /// with the main window, from inside `open_window`.
 pub fn attach(services: DesktopServices, app: &Entity<AppRoot>, window: &mut Window, cx: &mut App) {
-    let DesktopServices { events, tray, .. } = services;
+    let DesktopServices {
+        events,
+        tray,
+        notifier,
+        ..
+    } = services;
     let hidden = Rc::new(Cell::new(false));
     #[cfg(windows)]
     if let (Some(tray), Ok(handle)) = (
@@ -213,6 +235,7 @@ pub fn attach(services: DesktopServices, app: &Entity<AppRoot>, window: &mut Win
     }
     cx.set_global(DesktopShell {
         tray: tray.clone(),
+        notifier,
         window: window.window_handle(),
         app: app.downgrade(),
         hidden: hidden.clone(),
@@ -306,6 +329,15 @@ fn handle(event: DesktopEvent, cx: &mut App) {
                     ),
                 }
             }
+        }
+        DesktopEvent::NotificationClicked {
+            tag,
+            activation_token,
+        } => {
+            let _ = window.update(cx, |_, window, _| {
+                show(window, &hidden, activation_token.as_deref());
+            });
+            let _ = app.update(cx, |root, cx| root.open_notification(&tag, cx));
         }
     }
 }

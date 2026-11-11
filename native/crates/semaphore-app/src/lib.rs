@@ -11,6 +11,7 @@
 pub mod conversation;
 pub mod desktop;
 pub mod files;
+pub mod notifier;
 pub mod root;
 pub mod runtime;
 pub mod services;

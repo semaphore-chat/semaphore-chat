@@ -131,8 +131,9 @@ Please report anything that looks wrong with a screenshot, and the terminal outp
 
 The tray, close to tray, single instance, `semaphore://` links and window restore (W2-desktop).
 `scripts/desktop-probe.sh` proves hide/show on Xvfb and headless weston and the tray on a private
-bus; everything below needs a real panel, compositor or Windows. Notification clicks come with the
-notifier (later).
+bus, and the notifier on a private bus with a fake `org.freedesktop.Notifications` (replace by tag,
+click with its activation token, closed cleanup, withdraw); everything below needs a real panel,
+compositor, notification daemon or Windows.
 
 A packaged build (built with `SEMAPHORE_PACKAGED=1`) registers `semaphore://` for itself on every
 start (Linux: a desktop entry and icon under `~/.local/share` and the default in
@@ -152,12 +153,14 @@ app once so it registers itself again. `SEMAPHORE_REGISTER_SCHEME=0` forbids it 
 | Hyprland | Links | `xdg-open 'semaphore://direct-messages'` with the app running, then quit it and run it again | Running: the window comes forward and the log (`SEMAPHORE_LOG=info`) shows the link received. Cold: the app starts and logs it (routing comes with the app-wiring unit) |
 | Hyprland | Window restore | Resize, quit, start | Same size (Wayland won't let a client place itself, so not the position); maximized stays maximized |
 | Hyprland | Unread dot | Once core reports unread (app-wiring unit) | A red dot on the tray icon, the count in its tooltip |
+| Hyprland | Notifications | Once core raises them (app-wiring unit), with mako or dunst running: two messages in one DM, then click | One notification for the DM (the newer replaced the older), the window comes forward (focused with `misc:focus_on_activate`) on that DM; reading the DM elsewhere takes it down |
 | KDE or GNOME (optional) | Same rows | | Also the count on the task manager or dock (`com.canonical.Unity.LauncherEntry`) |
 | Windows VM | Tray | Icon in the notification area (maybe under the overflow arrow); click and right-click | Click toggles the window, the menu as on Linux |
 | Windows VM | Explorer restart | Task Manager, restart Windows Explorer | The icon comes back |
 | Windows VM | Close to tray, restore | Close, then the tray; move to the second monitor, quit, start; unplug that monitor, start | Hides and returns; reopens where it was; centred when that monitor is gone |
 | Windows VM | Links | Win+R `semaphore://direct-messages`, and a link in a browser | The app comes forward (or starts) with the link logged; a second launch never opens a second window |
 | Windows VM | Unread | Once core reports unread | Dotted tray icon and a dot overlay on the taskbar button |
+| Windows VM | Toasts | Once core raises them: two messages in one DM, then click the toast | One toast for the DM, named Semaphore; a click brings the app forward on that DM |
 
 ## The headless proof
 
