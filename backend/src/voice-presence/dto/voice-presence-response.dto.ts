@@ -5,7 +5,9 @@ export class VoicePresenceUserDto {
   username: string;
   displayName?: string;
   avatarUrl?: string;
-  joinedAt: Date;
+  /** ISO-8601 timestamp, as sent on the socket. */
+  @ApiProperty({ type: String, format: 'date-time' })
+  joinedAt: string;
   isDeafened: boolean;
   isServerMuted: boolean;
 }

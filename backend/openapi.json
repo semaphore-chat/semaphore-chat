@@ -12741,6 +12741,11 @@
       "VoicePresenceUserDto": {
         "type": "object",
         "properties": {
+          "joinedAt": {
+            "type": "string",
+            "description": "ISO-8601 timestamp, as sent on the socket.",
+            "format": "date-time"
+          },
           "id": {
             "type": "string"
           },
@@ -12753,10 +12758,6 @@
           "avatarUrl": {
             "type": "string"
           },
-          "joinedAt": {
-            "format": "date-time",
-            "type": "string"
-          },
           "isDeafened": {
             "type": "boolean"
           },
@@ -12765,9 +12766,9 @@
           }
         },
         "required": [
+          "joinedAt",
           "id",
           "username",
-          "joinedAt",
           "isDeafened",
           "isServerMuted"
         ]

@@ -40,6 +40,7 @@ describe('LivekitReplayService', () => {
 
   let eventEmitter: any;
   let permissionsService: any;
+  let storageQuotaService: any;
 
   const mockEgressClient = {
     startTrackCompositeEgress: jest.fn(),
@@ -86,6 +87,7 @@ describe('LivekitReplayService', () => {
     replaySegmentsService = unitRef.get(ReplaySegmentsService);
     eventEmitter = unitRef.get(EventEmitter2);
     permissionsService = unitRef.get(PermissionsService);
+    storageQuotaService = unitRef.get(StorageQuotaService);
     // Default: the user may post files in the target channel
     permissionsService.userHasChannelActions.mockResolvedValue(true);
     // Default: clips fit the user's storage quota
@@ -1006,6 +1008,58 @@ describe('LivekitReplayService', () => {
       expect(ffmpegService.concatenateSegments).toHaveBeenCalled();
     });
 
+    it('should reject a custom range that starts past the buffered recording', async () => {
+      // 5 segments available (50 seconds)
+      replaySegmentsService.listCompleteSegments.mockResolvedValue(
+        [0, 1, 2, 3, 4].map((sequence) => ({
+          filename: `2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+          sequence,
+          path: `/app/storage/replay-segments/session-1/2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+        })),
+      );
+
+      const customDto = {
+        startSeconds: 60, // Past the 50s buffer; would clamp to a negative trim
+        endSeconds: 130,
+        destination: 'library' as const,
+      };
+
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        BadRequestException,
+      );
+      await expect(service.captureReplay(userId, customDto)).rejects.toThrow(
+        'That part of the replay is no longer available',
+      );
+      expect(ffmpegService.concatenateSegments).not.toHaveBeenCalled();
+      expect(databaseService.file.create).not.toHaveBeenCalled();
+    });
+
+    it('should trim from the requested start when the end passes the buffer', async () => {
+      // 5 segments available (50 seconds)
+      replaySegmentsService.listCompleteSegments.mockResolvedValue(
+        [0, 1, 2, 3, 4].map((sequence) => ({
+          filename: `2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+          sequence,
+          path: `/app/storage/replay-segments/session-1/2025-01-01T0000${sequence}0-segment_0000${sequence}.ts`,
+        })),
+      );
+
+      const customDto = {
+        startSeconds: 15,
+        endSeconds: 130, // Clamped to the 50s buffer end
+        destination: 'library' as const,
+      };
+
+      await service.captureReplay(userId, customDto);
+
+      // 15s - 130s becomes 5s into segment 1 through 50s: 35 seconds
+      expect(ffmpegService.concatenateSegments).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.any(String),
+        { startOffset: 5, duration: 35 },
+      );
+    });
+
     it('should throw when no complete segments are available', async () => {
       // All segments are incomplete (< 10KB), so listCompleteSegments returns empty
       replaySegmentsService.listCompleteSegments.mockResolvedValue([]);
@@ -1279,6 +1333,34 @@ describe('LivekitReplayService', () => {
           'target-channel-1',
           [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
         );
+      });
+
+      it('should leave no file, clip or quota charge when the destination refuses the capture', async () => {
+        const channelDto = {
+          durationMinutes: 1 as const,
+          destination: 'channel' as const,
+          targetChannelId: 'target-channel-1',
+        };
+
+        databaseService.channel.findUnique.mockResolvedValue({
+          id: 'target-channel-1',
+          communityId: 'community-1',
+        });
+        // May capture in the session's channel, not post in the target
+        permissionsService.userHasChannelActions.mockImplementation(
+          (_user: string, channelId: string) =>
+            Promise.resolve(channelId !== 'target-channel-1'),
+        );
+
+        await expect(service.captureReplay(userId, channelDto)).rejects.toThrow(
+          ForbiddenException,
+        );
+
+        // The destination is checked before encoding, so nothing was made
+        expect(ffmpegService.concatenateSegments).not.toHaveBeenCalled();
+        expect(databaseService.file.create).not.toHaveBeenCalled();
+        expect(databaseService.replayClip.create).not.toHaveBeenCalled();
+        expect(storageQuotaService.incrementUserStorage).not.toHaveBeenCalled();
       });
 
       it('should throw NotFoundException when posting to nonexistent channel', async () => {

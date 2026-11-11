@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A block now also stops reactions in a 1:1 direct message; removing your own reaction still works. (#642)
 - Capturing a replay accepts a custom range starting at 0 and rejects an invalid duration even when a range is sent. (#669)
 - The member list in the web client now refreshes after a ban, kick or timeout. (#680)
+- A replay capture refused because you cannot post in the target channel or conversation no longer leaves a clip in your library or uses your storage quota. (#667)
+- A replay capture range that starts after the buffered part of the recording is refused with a clear message instead of reaching FFmpeg with a negative duration, and an end past the buffer is clamped to the buffer end. (#668)
+- The voice presence endpoints now return the same user shape as the socket events, without the internal LiveKit session id. (#671)
+- A kicked or banned user no longer receives the kick or ban event twice. (#673)
+- Two people joining a DM call at the same moment announce the call as started only once. (#662)
+- Reordering community roles keeps every role above the Member role, even with ten or more custom roles. (#691)
+- The web role editor can grant and revoke the replay capture permission. (#693)
+- Adding a member to a private channel now returns the added user with the membership. (#697)
 
 ## [0.9.0] - 2026-11-11
 

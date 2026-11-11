@@ -629,8 +629,9 @@ export class CommunityRolesService {
   /**
    * Reorder roles for a community.
    * Accepts an ordered array of role IDs.
-   * Sets position = index * 10 + 10 for each (first=10, second=20, etc.).
-   * The "Member" default role is always last (position 100).
+   * Spaces positions evenly through 1..99 (up to 10 apart for small counts)
+   * so any number of roles stays strictly above the "Member" default role at
+   * position 100. The "Member" default role is always last.
    */
   async reorderRoles(
     communityId: string,
@@ -676,11 +677,25 @@ export class CommunityRolesService {
       );
     }
 
+    // Member sits at the fixed position 100, so only 1..99 is available.
+    if (reorderableIds.length > 99) {
+      throw new BadRequestException(
+        'A community can have at most 99 roles besides Member',
+      );
+    }
+
+    // Up to 10 apart while there is room (the familiar 10, 20, ... layout),
+    // compressed for large communities so no role reaches Member at 100.
+    const spacing = Math.max(
+      1,
+      Math.min(10, Math.floor(99 / (reorderableIds.length + 1))),
+    );
+
     await this.databaseService.$transaction(async (tx) => {
       for (let i = 0; i < reorderableIds.length; i++) {
         await tx.role.update({
           where: { id: reorderableIds[i] },
-          data: { position: (i + 1) * 10 },
+          data: { position: (i + 1) * spacing },
         });
       }
 

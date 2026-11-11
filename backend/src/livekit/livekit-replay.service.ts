@@ -392,6 +392,48 @@ export class LivekitReplayService
     }
   }
 
+  /**
+   * The clip's destination has to be postable before the clip is encoded or
+   * recorded, so a 403/404 leaves no file row, clip row or quota charge.
+   */
+  private async assertMayPostToDestination(
+    userId: string,
+    dto: CaptureReplayDto,
+  ): Promise<void> {
+    if (dto.destination === 'channel' && dto.targetChannelId) {
+      const channel = await this.databaseService.channel.findUnique({
+        where: { id: dto.targetChannelId },
+      });
+      if (!channel) {
+        throw new NotFoundException('That channel could not be found.');
+      }
+      // Posting a clip is sending a message with a file: the same channel
+      // permissions as any message (overwrites, timeouts, private channels).
+      const allowed = await this.permissionsService.userHasChannelActions(
+        userId,
+        dto.targetChannelId,
+        [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
+      );
+      if (!allowed) {
+        throw new ForbiddenException(
+          "You don't have permission to post in that channel.",
+        );
+      }
+    }
+
+    if (dto.destination === 'dm' && dto.targetDirectMessageGroupId) {
+      const dmMember =
+        await this.databaseService.directMessageGroupMember.findFirst({
+          where: { groupId: dto.targetDirectMessageGroupId, userId },
+        });
+      if (!dmMember) {
+        throw new ForbiddenException(
+          "You don't have permission to post in that conversation.",
+        );
+      }
+    }
+  }
+
   /** Clips count against the capturer's quota, like any upload. */
   private quotaExceeded() {
     return new PayloadTooLargeException(
@@ -1089,6 +1131,10 @@ export class LivekitReplayService
 
     await this.assertMayCapture(userId, session.channelId);
 
+    // Check the destination before encoding or creating anything: a refused
+    // capture must not leave an orphan clip behind or charge the quota.
+    await this.assertMayPostToDestination(userId, dto);
+
     // Already at the quota: don't spend ffmpeg on a clip that can't be kept
     if (!(await this.storageQuotaService.fitsQuota(userId, 0))) {
       throw this.quotaExceeded();
@@ -1117,6 +1163,16 @@ export class LivekitReplayService
     if (isCustomRange) {
       if (dto.startSeconds! >= dto.endSeconds!) {
         throw new BadRequestException('Start time must be before end time');
+      }
+
+      // The range must start inside the buffered part of the recording. A
+      // start past the end would otherwise clamp to the last segment and
+      // produce a non-positive trim duration for FFmpeg.
+      const bufferedSeconds = allSegments.length * 10;
+      if (dto.startSeconds! >= bufferedSeconds) {
+        throw new BadRequestException(
+          'That part of the replay is no longer available. Try a more recent time range.',
+        );
       }
 
       // Custom range: calculate segment indices from timestamps
@@ -1276,40 +1332,6 @@ export class LivekitReplayService
 
     // 9. Optionally create message with clip attachment (for channel/dm destinations)
     let messageId: string | undefined;
-
-    // Authorization: verify the user can post to the target destination
-    if (dto.destination === 'channel' && dto.targetChannelId) {
-      const channel = await this.databaseService.channel.findUnique({
-        where: { id: dto.targetChannelId },
-      });
-      if (!channel) {
-        throw new NotFoundException('That channel could not be found.');
-      }
-      // Posting a clip is sending a message with a file: the same channel
-      // permissions as any message (overwrites, timeouts, private channels).
-      const allowed = await this.permissionsService.userHasChannelActions(
-        userId,
-        dto.targetChannelId,
-        [RbacActions.CREATE_MESSAGE, RbacActions.ATTACH_FILES],
-      );
-      if (!allowed) {
-        throw new ForbiddenException(
-          "You don't have permission to post in that channel.",
-        );
-      }
-    }
-
-    if (dto.destination === 'dm' && dto.targetDirectMessageGroupId) {
-      const dmMember =
-        await this.databaseService.directMessageGroupMember.findFirst({
-          where: { groupId: dto.targetDirectMessageGroupId, userId },
-        });
-      if (!dmMember) {
-        throw new ForbiddenException(
-          "You don't have permission to post in that conversation.",
-        );
-      }
-    }
 
     if (dto.destination === 'channel' || dto.destination === 'dm') {
       const sizeMB = Math.round(stats.size / 1024 / 1024);
