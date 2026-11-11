@@ -145,6 +145,9 @@ enum Command {
         refresh: bool,
     },
     TokenRefreshed(String),
+    /// Tests: how many acks the actor is holding a place for.
+    #[cfg(test)]
+    PendingAcks(oneshot::Sender<usize>),
 }
 
 /// Handle to the session actor. Cheap to clone.
@@ -209,6 +212,14 @@ impl SocketClient {
     /// answer. With no socket, this connects. `refresh` comes from core's `ResyncPlan`.
     pub fn resume(&self, refresh: bool) {
         let _ = self.commands.send(Command::Resume { refresh });
+    }
+
+    /// How many acks the actor is holding a place for.
+    #[cfg(test)]
+    async fn pending_acks(&self) -> usize {
+        let (answer, count) = oneshot::channel();
+        let _ = self.commands.send(Command::PendingAcks(answer));
+        count.await.unwrap_or(usize::MAX)
     }
 
     pub fn set_idle(&self, idle: bool) {
@@ -351,6 +362,10 @@ impl Actor {
             Command::Suspend => self.want = Want::Suspended,
             Command::Resume { refresh } => self.resume(refresh).await,
             Command::RestartTransport | Command::TokenRefreshed(_) => {}
+            #[cfg(test)]
+            Command::PendingAcks(answer) => {
+                let _ = answer.send(self.pending.len());
+            }
         }
     }
 
@@ -672,6 +687,10 @@ impl Actor {
                 sent,
             } => {
                 let ack_id = ack.map(|ack| {
+                    // A caller that stopped waiting (`emit_with_ack` timed out) dropped its
+                    // receiver: its place goes, or each timeout would hold one until the socket
+                    // closed.
+                    self.pending.retain(|_, waiting| !waiting.is_closed());
                     self.next_ack_id += 1;
                     self.pending.insert(self.next_ack_id, ack);
                     self.next_ack_id
@@ -747,6 +766,11 @@ impl Actor {
                     .await
                     .err()
                     .map(|_| Ended::Transport("transport error"))
+            }
+            #[cfg(test)]
+            Command::PendingAcks(answer) => {
+                let _ = answer.send(self.pending.len());
+                None
             }
         }
     }
@@ -1555,6 +1579,36 @@ mod tests {
             SocketEvent::Connected { .. }
         ));
         assert!(events.try_recv().is_err(), "an ack is not an event");
+    }
+
+    #[tokio::test]
+    async fn acks_that_timed_out_are_not_kept() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let (client, _events) = start_client(&listener, ScriptedTokens::new(&[]), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        for _ in 0..3 {
+            let result = client
+                .emit_with_ack("slow", json!({}), Duration::from_millis(10))
+                .await;
+            assert_eq!(result, Err(EmitError::Timeout));
+            next_text(&mut ws).await;
+        }
+        let waiting = tokio::spawn({
+            let client = client.clone();
+            async move {
+                client
+                    .emit_with_ack("waiting", json!({}), Duration::from_secs(5))
+                    .await
+            }
+        });
+        next_text(&mut ws).await;
+
+        // Only the call still waiting holds a place.
+        assert_eq!(client.pending_acks().await, 1);
+        ws.send(Message::text(r#"434["ok"]"#)).await.unwrap();
+        assert_eq!(waiting.await.unwrap(), Ok(vec![json!("ok")]));
+        assert_eq!(client.pending_acks().await, 0);
     }
 
     #[test]
