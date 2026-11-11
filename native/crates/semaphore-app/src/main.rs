@@ -101,12 +101,10 @@ fn main() -> ExitCode {
                 screen_capture: None,
                 heartbeat: semaphore_app::voice::HEARTBEAT,
             };
+            let bounds =
+                semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);
             let options = semaphore_app::window_options(WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
-                    None,
-                    size(px(1280.), px(800.)),
-                    cx,
-                ))),
+                window_bounds: Some(bounds),
                 app_id: Some("app.semaphorechat.semaphore".into()),
                 titlebar: Some(TitlebarOptions {
                     title: Some("Semaphore".into()),
@@ -117,6 +115,7 @@ fn main() -> ExitCode {
             let mut app_root = None;
             gpui_kit::open_window(options, cx, |window, cx| {
                 let (root, app) = semaphore_app::build_root(config, window, cx);
+                semaphore_app::desktop::remember_window(&app, window, cx);
                 app_root = Some(app);
                 root
             })

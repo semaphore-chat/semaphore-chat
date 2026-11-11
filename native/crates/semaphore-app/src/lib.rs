@@ -6,8 +6,10 @@
 //! - `root`: splash, sign-in or shell, following core's session.
 //! - `conversation`: the message list and composer over core.
 //! - `voice`: the LiveKit engine wired to core, the stage's controls, video frames.
+//! - `desktop`: the window on the desktop: placement, close to tray, the tray, links from the OS.
 
 pub mod conversation;
+pub mod desktop;
 pub mod files;
 pub mod root;
 pub mod runtime;

@@ -192,6 +192,28 @@ impl AppRoot {
         self.shell.as_ref()
     }
 
+    /// The settings as changed in this run.
+    pub fn settings(&self) -> &crate::settings::Settings {
+        self.settings.get()
+    }
+
+    /// Changes the settings and saves them; a failed save is logged and the change kept in memory.
+    pub fn update_settings(&mut self, change: impl FnOnce(&mut crate::settings::Settings)) {
+        if let Err(error) = self.settings.update(change) {
+            log::warn!("saving the settings: {error}");
+        }
+    }
+
+    /// A `semaphore://` link the OS handed over, already parsed. The app-wiring unit routes it.
+    pub fn open_link(&mut self, link: semaphore_ui::nav::DeepLink, _cx: &mut Context<Self>) {
+        log::info!("deep link received, not routed yet: {link:?}");
+    }
+
+    /// The user clicked the OS notification with this tag. The app-wiring unit routes it.
+    pub fn open_notification(&mut self, tag: &str, _cx: &mut Context<Self>) {
+        log::info!("notification clicked, not routed yet: {tag}");
+    }
+
     /// Ends core and the socket. The stored session stays.
     pub fn shutdown(&mut self) {
         if let Some(services) = &mut self.services {

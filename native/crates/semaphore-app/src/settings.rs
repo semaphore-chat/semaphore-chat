@@ -172,7 +172,8 @@ impl Default for Settings {
             version: CURRENT_VERSION,
             voice: VoiceSettings::default(),
             user_volumes: BTreeMap::new(),
-            close_to_tray: false,
+            // On, like Electron. Closing only hides while a tray host shows our icon.
+            close_to_tray: true,
             window: None,
             last_channel: None,
             link_preview_images: false,
