@@ -1,5 +1,12 @@
-//! The window's life on the desktop: where it opens, what's remembered about it.
+//! The window's life on the desktop: where it opens, what's remembered about it, the tray, close
+//! to tray, and what a second launch hands over.
 //!
+//! - **Close to tray:** closing the window hides it (`Window::set_window_visible`, our GPUI patch)
+//!   when the setting is on, a tray icon is on a panel to bring it back, and the platform can hide
+//!   a window. Otherwise closing quits, as before. "Quit" in the tray quits.
+//! - **Events** ([`DesktopEvent`]) arrive from the tray's and the single instance's threads on a
+//!   channel, and are handled here on the UI thread: show/hide, the setting, quit, and links.
+//!   Links are parsed with `parse_deep_link` and handed to [`AppRoot::open_link`].
 //! - **Placement:** the size and maximized state from the settings, and the position where the
 //!   compositor lets a client choose one (not Wayland). A position no display shows any more (a
 //!   monitor unplugged) is dropped and the window centred, as Electron does.
@@ -9,6 +16,11 @@
 use crate::AppRoot;
 use crate::settings::WindowState;
 use gpui_kit::*;
+use semaphore_platform_desktop::tray::{self, DesktopTray, TrayOptions};
+use semaphore_platform_desktop::{DesktopEvent, DesktopEventSink};
+use std::cell::Cell;
+use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// The size of a first start.
@@ -139,6 +151,165 @@ pub fn remember_window(app: &Entity<AppRoot>, window: &mut Window, cx: &mut App)
     });
 }
 
+/// The tray and the channel the desktop's events arrive on, made before the window.
+pub struct DesktopServices {
+    pub sink: DesktopEventSink,
+    events: async_channel::Receiver<DesktopEvent>,
+    pub tray: Option<Arc<DesktopTray>>,
+}
+
+impl DesktopServices {
+    /// The channel, and the tray when `with_tray` (not in rigs and tests).
+    pub fn start(close_to_tray: bool, with_tray: bool) -> Self {
+        let (sender, events) = async_channel::unbounded();
+        let sink: DesktopEventSink = Arc::new(move |event| {
+            let _ = sender.try_send(event);
+        });
+        let tray =
+            with_tray.then(|| Arc::new(tray::start(TrayOptions { close_to_tray }, sink.clone())));
+        Self { sink, events, tray }
+    }
+}
+
+/// The desktop side of the app, as a global: the tray (the app-wiring unit hands it to core for the
+/// unread count) and whether the window is hidden.
+pub struct DesktopShell {
+    tray: Option<Arc<DesktopTray>>,
+    window: AnyWindowHandle,
+    app: WeakEntity<AppRoot>,
+    hidden: Rc<Cell<bool>>,
+}
+
+impl Global for DesktopShell {}
+
+impl DesktopShell {
+    pub fn tray(&self) -> Option<Arc<DesktopTray>> {
+        self.tray.clone()
+    }
+
+    pub fn is_hidden(&self) -> bool {
+        self.hidden.get()
+    }
+}
+
+/// Whether closing the window should hide it rather than quit.
+pub fn hides_on_close(setting: bool, tray_on_a_panel: bool, platform_can_hide: bool) -> bool {
+    setting && tray_on_a_panel && platform_can_hide
+}
+
+/// Wires the window to the desktop: close to tray, the event channel, the taskbar dot. Call once,
+/// with the main window, from inside `open_window`.
+pub fn attach(services: DesktopServices, app: &Entity<AppRoot>, window: &mut Window, cx: &mut App) {
+    let DesktopServices { events, tray, .. } = services;
+    let hidden = Rc::new(Cell::new(false));
+    #[cfg(windows)]
+    if let (Some(tray), Ok(handle)) = (
+        &tray,
+        raw_window_handle::HasWindowHandle::window_handle(window),
+    ) {
+        if let raw_window_handle::RawWindowHandle::Win32(handle) = handle.as_raw() {
+            tray.set_taskbar_window(handle.hwnd.get());
+        }
+    }
+    cx.set_global(DesktopShell {
+        tray: tray.clone(),
+        window: window.window_handle(),
+        app: app.downgrade(),
+        hidden: hidden.clone(),
+    });
+
+    let close_app = app.downgrade();
+    let close_tray = tray.clone();
+    let close_hidden = hidden.clone();
+    window.on_window_should_close(cx, move |window, cx| {
+        let setting = close_app
+            .update(cx, |root, _| {
+                root.save_window_state(window);
+                root.settings().close_to_tray
+            })
+            .unwrap_or(false);
+        let available = close_tray.as_ref().is_some_and(|tray| tray.available());
+        if hides_on_close(setting, available, window.can_hide_window())
+            && window.set_window_visible(false)
+        {
+            close_hidden.set(true);
+            return false;
+        }
+        true
+    });
+
+    cx.spawn(async move |cx| {
+        while let Ok(event) = events.recv().await {
+            cx.update(|cx| handle(event, cx));
+        }
+    })
+    .detach();
+}
+
+/// Shows the window if it's hidden, and brings it to the front.
+fn show(window: &mut Window, hidden: &Cell<bool>, token: Option<&str>) {
+    if hidden.get() && window.set_window_visible(true) {
+        hidden.set(false);
+    }
+    match token {
+        Some(token) => window.activate_window_with_token(token),
+        None => window.activate_window(),
+    }
+}
+
+fn handle(event: DesktopEvent, cx: &mut App) {
+    let Some(shell) = cx.try_global::<DesktopShell>() else {
+        return;
+    };
+    let (window, app, hidden, tray) = (
+        shell.window,
+        shell.app.clone(),
+        shell.hidden.clone(),
+        shell.tray.clone(),
+    );
+    match event {
+        DesktopEvent::ToggleWindow => {
+            // As Electron: a visible window hides (when it can come back), a hidden one shows.
+            let _ = window.update(cx, |_, window, _| {
+                let can_hide =
+                    tray.as_ref().is_some_and(|tray| tray.available()) && window.can_hide_window();
+                if !hidden.get() && can_hide {
+                    if window.set_window_visible(false) {
+                        hidden.set(true);
+                    }
+                } else {
+                    show(window, &hidden, None);
+                }
+            });
+        }
+        DesktopEvent::SetCloseToTray(on) => {
+            let _ = app.update(cx, |root, _| {
+                root.update_settings(|settings| settings.close_to_tray = on)
+            });
+        }
+        DesktopEvent::Quit => cx.quit(),
+        DesktopEvent::Opened {
+            urls,
+            activation_token,
+        } => {
+            let _ = window.update(cx, |_, window, _| {
+                show(window, &hidden, activation_token.as_deref());
+            });
+            for url in urls {
+                match semaphore_ui::nav::parse_deep_link(&url) {
+                    Some(link) => {
+                        let _ = app.update(cx, |root, cx| root.open_link(link, cx));
+                    }
+                    None => log::warn!(
+                        "dropped a malformed semaphore:// link: {:?}",
+                        url.chars().take(200).collect::<String>()
+                    ),
+                }
+            }
+        }
+    }
+}
+
 impl AppRoot {
     /// Writes the window's state to the settings, if it changed.
     pub fn save_window_state(&mut self, window: &Window) {
@@ -152,7 +323,7 @@ impl AppRoot {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: GPUI's glob brings its own `test` attribute.
-    use super::{WindowState, placement, rect, remembered};
+    use super::{WindowState, hides_on_close, placement, rect, remembered};
     use gpui_kit::{Bounds, Pixels, WindowBounds, px, size};
 
     fn state(x: i32, y: i32, width: u32, height: u32, maximized: bool) -> WindowState {
@@ -252,5 +423,15 @@ mod tests {
             placement(Some(&back), &screens(), true),
             WindowBounds::Windowed(rect(300., 200., 900., 640.))
         );
+    }
+
+    #[test]
+    fn closing_hides_only_when_something_can_bring_it_back() {
+        assert!(hides_on_close(true, true, true));
+        // The setting off, no panel showing our icon (Hyprland without a bar's tray), or a
+        // platform that can't hide: closing quits.
+        assert!(!hides_on_close(false, true, true));
+        assert!(!hides_on_close(true, false, true));
+        assert!(!hides_on_close(true, true, false));
     }
 }

@@ -8200,6 +8200,7 @@ dependencies = [
  "gpui-kit",
  "image",
  "log",
+ "raw-window-handle",
  "reqwest 0.13.5",
  "rustls",
  "semaphore-core",

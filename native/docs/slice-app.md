@@ -127,6 +127,35 @@ Not in this build, so not bugs yet: DM voice, DMs, notifications.
 Please report anything that looks wrong with a screenshot, and the terminal output with
 `SEMAPHORE_LOG=info`.
 
+## Desktop integration: what only a person can check
+
+The tray, close to tray, single instance, `semaphore://` links and window restore (W2-desktop).
+`scripts/desktop-probe.sh` proves hide/show on Xvfb and headless weston and the tray on a private
+bus; everything below needs a real panel, compositor or Windows. Notification clicks come with the
+notifier (later).
+
+Every start registers `semaphore://` for the binary that's running (Linux: a desktop entry and icon
+under `~/.local/share` and the default in `~/.config/mimeapps.list`; Windows: `HKCU\Software\Classes\semaphore`),
+unless a package installed `app.semaphorechat.semaphore.desktop` or `SEMAPHORE_REGISTER_SCHEME=0`
+is set. `slice-run.sh` therefore points links at `~/.cache/semaphore-slice/semaphore-app`.
+
+| Where | What | How | Expected |
+|---|---|---|---|
+| Hyprland | Tray host | Is there a StatusNotifier tray (waybar's `tray` module)? | With one: the icon shows. Without: no icon, and closing the window quits (it never hides where nothing could bring it back) |
+| Hyprland | Close to tray | Close the window (`killactive`), then click the tray icon | It hides, and comes back at its size with what was open; the call, if any, kept going |
+| Hyprland | Tray menu | Right-click: Show/Hide, Close to Tray (checked by default), Quit | Each does what it says; unchecking makes closing quit; Quit quits from hidden too |
+| Hyprland | Focus on show | Click the tray icon or run a second launch while the window is behind others | Focused if `misc:focus_on_activate = true`; with the default (false) Hyprland only marks it urgent |
+| Hyprland | Single instance | `~/.cache/semaphore-slice/semaphore-app` while it runs | No second window; the running one comes forward |
+| Hyprland | Links | `xdg-open 'semaphore://direct-messages'` with the app running, then quit it and run it again | Running: the window comes forward and the log (`SEMAPHORE_LOG=info`) shows the link received. Cold: the app starts and logs it (routing comes with the app-wiring unit) |
+| Hyprland | Window restore | Resize, quit, start | Same size (Wayland won't let a client place itself, so not the position); maximized stays maximized |
+| Hyprland | Unread dot | Once core reports unread (app-wiring unit) | A red dot on the tray icon, the count in its tooltip |
+| KDE or GNOME (optional) | Same rows | | Also the count on the task manager or dock (`com.canonical.Unity.LauncherEntry`) |
+| Windows VM | Tray | Icon in the notification area (maybe under the overflow arrow); click and right-click | Click toggles the window, the menu as on Linux |
+| Windows VM | Explorer restart | Task Manager, restart Windows Explorer | The icon comes back |
+| Windows VM | Close to tray, restore | Close, then the tray; move to the second monitor, quit, start; unplug that monitor, start | Hides and returns; reopens where it was; centred when that monitor is gone |
+| Windows VM | Links | Win+R `semaphore://direct-messages`, and a link in a browser | The app comes forward (or starts) with the link logged; a second launch never opens a second window |
+| Windows VM | Unread | Once core reports unread | Dotted tray icon and a dot overlay on the taskbar button |
+
 ## The headless proof
 
 ```bash
