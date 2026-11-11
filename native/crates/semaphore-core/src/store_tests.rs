@@ -630,3 +630,38 @@ proptest! {
     }
 }
 // --- end bug:seq-reuse ---
+
+// --- bug:duplicates ---
+
+#[test]
+fn a_page_that_repeats_a_row_holds_it_once() {
+    let mut window = Window::unloaded();
+    window.apply_live_page(page(&[3, 2, 2, 1, 3]), Some(id(1)));
+    assert_eq!(ids(&window), [1, 2, 3].map(id));
+    assert_consistent(&window);
+    // Deleting it leaves nothing behind.
+    window.delete(&id(2));
+    assert_eq!(ids(&window), [1, 3].map(id));
+    assert_consistent(&window);
+
+    let mut window = self::window(5, 7);
+    window.apply_older_page(page(&[4, 4, 3]), Some(id(3)));
+    assert_eq!(ids(&window), (3..=7).map(id).collect::<Vec<_>>());
+    assert_consistent(&window);
+
+    let mut window = Window::unloaded();
+    window.apply_around_page(page(&[7, 6, 5]), Some(id(5)), true);
+    assert!(window.apply_newer_page(page(&[9, 9, 8]), false));
+    assert_eq!(ids(&window), (5..=9).map(id).collect::<Vec<_>>());
+    assert_consistent(&window);
+
+    let mut window = self::window(1, 3);
+    assert_eq!(
+        window.apply_resync(page(&[5, 4, 4, 3, 2, 1]), true),
+        ResyncOutcome::Merged
+    );
+    assert_eq!(ids(&window), (1..=5).map(id).collect::<Vec<_>>());
+    assert_consistent(&window);
+}
+
+// --- end bug:duplicates ---

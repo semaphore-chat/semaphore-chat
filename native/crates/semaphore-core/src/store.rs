@@ -498,7 +498,7 @@ impl Window {
         self.stale = false;
         self.at_start = token.is_none();
         self.older_token = token;
-        for dto in newest_first.into_iter().rev() {
+        for dto in once_each(newest_first).into_iter().rev() {
             self.push_back(StoredMessage::from_server(dto));
         }
         for message in unsettled {
@@ -543,7 +543,7 @@ impl Window {
     /// last, in the gap before them: false when that has run out, and only a reset can fix it.
     pub fn apply_newer_page(&mut self, newest_first: Vec<MessageDto>, more: bool) -> bool {
         let mut run = Vec::new();
-        for dto in newest_first.into_iter().rev() {
+        for dto in once_each(newest_first).into_iter().rev() {
             if self.by_id.contains_key(&dto.id) {
                 self.update_keeping_send(dto);
             } else {
@@ -590,6 +590,7 @@ impl Window {
     /// newest first from the live edge. When `reaches_oldest` it covers every loaded row, so a row
     /// it doesn't have was deleted during the gap.
     pub fn apply_resync(&mut self, server: Vec<MessageDto>, reaches_oldest: bool) -> ResyncOutcome {
+        let server = once_each(server);
         let known: HashSet<&str> = server.iter().map(|dto| dto.id.as_str()).collect();
         let connects = self
             .rows
@@ -857,6 +858,15 @@ impl Window {
         *shown = current;
         ops
     }
+}
+
+/// A page with each message once, where it first appears. A server that repeats a row in a page
+/// would otherwise leave a second row the id index doesn't know, which no delete could remove.
+fn once_each(rows: Vec<MessageDto>) -> Vec<MessageDto> {
+    let mut seen = HashSet::new();
+    rows.into_iter()
+        .filter(|dto| seen.insert(dto.id.clone()))
+        .collect()
 }
 
 pub fn span_input(span: &SpanDto) -> SpanInput {
