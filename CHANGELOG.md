@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Security
+
+- Dependency updates for published advisories: `fast-uri` (ships in the backend image), and the build and development tools `decode-uri-component`, `follow-redirects`, `joi`, `zod`, `qs`, `vite` 6 and `serialize-javascript`.
+
+
 ## [0.9.0] - 2026-11-11
 
 One wire contract for REST and sockets, sends that are safe to retry, and clear reasons when a send is refused. It also closes a gap that let the instance owner read direct messages they weren't part of.
