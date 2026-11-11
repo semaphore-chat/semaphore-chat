@@ -456,3 +456,7 @@ impl Core {
         self.write(|state, now| state.settle_send(&nonce, outcome, now));
     }
 }
+
+#[cfg(test)]
+#[path = "send_tests.rs"]
+mod tests;
