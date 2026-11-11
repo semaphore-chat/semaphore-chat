@@ -34,17 +34,8 @@ impl std::fmt::Debug for RegisterForm {
     }
 }
 
-/// Whether an invite can still be used.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
-pub enum InviteUsable {
-    #[default]
-    Usable,
-    Expired,
-    UsedUp,
-    Disabled,
-}
-
-/// An instance invite, from `GET /invite/public/{code}`, before signing in.
+/// A usable instance invite, from `GET /invite/public/{code}`, before signing in. Its limits are
+/// shown as they stood when read ("3 of 5 used", "expires ...").
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InvitePreview {
     pub code: String,
@@ -53,11 +44,12 @@ pub struct InvitePreview {
     pub uses: u32,
     pub max_uses: Option<u32>,
     pub valid_until_ms: Option<i64>,
-    pub usable: InviteUsable,
 }
 
-/// `Core::invite_preview`. `ViewKey::InvitePreview { code }` says when to read again. A code the
-/// server doesn't know fails with the server's `NOT_FOUND`.
+/// `Core::invite_preview`. `ViewKey::InvitePreview { code }` says when to read again. `Ready` with
+/// no `invite`: the code can't be used. The server answers the same for a code that's unknown,
+/// expired, used up or disabled, so nobody can tell which. `Failed` is a read that didn't get an
+/// answer at all.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InvitePreviewView {
     pub state: LoadState,

@@ -7,8 +7,8 @@ use crate::backend::BackendError;
 use crate::cache::{CacheValue, keys};
 use crate::client::{Core, Effect, State};
 use crate::model::{
-    CreatedCommunity, InvitePreview, InvitePreviewView, InviteUsable, LoadState, NewCommunity,
-    RegisterForm, SessionState, ViewKey,
+    CreatedCommunity, InvitePreview, InvitePreviewView, LoadState, NewCommunity, RegisterForm,
+    SessionState, ViewKey,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -49,32 +49,19 @@ impl State {
     }
 }
 
-fn preview(invite: wire::PublicInviteDto, now_ms: u64) -> InvitePreview {
-    let valid_until_ms = invite.valid_until.map(|at| at.timestamp_millis());
-    let max_uses = invite
-        .max_uses
-        .filter(|max| *max > 0)
-        .map(|max| u32::try_from(max).unwrap_or(u32::MAX));
-    let uses = u32::try_from(invite.uses.max(0)).unwrap_or(u32::MAX);
-    let usable = if invite.disabled {
-        InviteUsable::Disabled
-    } else if valid_until_ms.is_some_and(|until| until <= now_ms as i64) {
-        InviteUsable::Expired
-    } else if max_uses.is_some_and(|max| uses >= max) {
-        InviteUsable::UsedUp
-    } else {
-        InviteUsable::Usable
-    };
+fn preview(invite: wire::PublicInviteDto) -> InvitePreview {
     InvitePreview {
         code: invite.code,
         created_by: invite
             .created_by
             .map(|creator| creator.username)
             .filter(|name| !name.is_empty()),
-        uses,
-        max_uses,
-        valid_until_ms,
-        usable,
+        uses: u32::try_from(invite.uses.max(0)).unwrap_or(u32::MAX),
+        max_uses: invite
+            .max_uses
+            .filter(|max| *max > 0)
+            .map(|max| u32::try_from(max).unwrap_or(u32::MAX)),
+        valid_until_ms: invite.valid_until.map(|at| at.timestamp_millis()),
     }
 }
 
@@ -165,7 +152,7 @@ impl Core {
             .backend
             .invite_controller_get_public_invite(code.clone())
             .await;
-        self.write(|state, now| {
+        self.write(|state, _| {
             // Another server's, or forgotten since.
             if state.auth.server_url != server_url || !state.auth.invites.contains_key(&code) {
                 return;
@@ -173,7 +160,7 @@ impl Core {
             let view = match result {
                 Ok(invite) => InvitePreviewView {
                     state: LoadState::Ready,
-                    invite: Some(preview(invite, now)),
+                    invite: invite.map(preview),
                 },
                 Err(error) => InvitePreviewView {
                     state: LoadState::Failed {
@@ -240,40 +227,16 @@ impl Core {
 mod tests {
     use super::*;
 
-    fn invite(json: serde_json::Value) -> wire::PublicInviteDto {
-        serde_json::from_value(json).unwrap()
-    }
-
     #[test]
-    fn an_invite_says_why_it_cant_be_used() {
-        let base = serde_json::json!({
-            "code": "abc", "uses": 1, "maxUses": 5, "validUntil": null, "disabled": false,
-            "createdBy": { "username": "ann" },
-        });
-        let now = 1_700_000_000_000;
-        assert_eq!(
-            preview(invite(base.clone()), now).usable,
-            InviteUsable::Usable
-        );
-        assert_eq!(
-            preview(invite(base.clone()), now).created_by.as_deref(),
-            Some("ann")
-        );
-        let mut used = base.clone();
-        used["uses"] = 5.into();
-        assert_eq!(preview(invite(used), now).usable, InviteUsable::UsedUp);
-        let mut unlimited = base.clone();
-        unlimited["uses"] = 50.into();
-        unlimited["maxUses"] = serde_json::Value::Null;
-        assert_eq!(preview(invite(unlimited), now).usable, InviteUsable::Usable);
-        let mut expired = base.clone();
-        expired["validUntil"] = "2023-01-01T00:00:00Z".into();
-        assert_eq!(preview(invite(expired), now).usable, InviteUsable::Expired);
-        let mut disabled = base;
-        disabled["disabled"] = true.into();
-        assert_eq!(
-            preview(invite(disabled), now).usable,
-            InviteUsable::Disabled
-        );
+    fn an_invite_shows_its_limits_as_read() {
+        let invite: wire::PublicInviteDto = serde_json::from_value(serde_json::json!({
+            "code": "abc", "uses": 1, "maxUses": 0, "validUntil": "2027-01-01T00:00:00Z",
+            "disabled": false, "createdBy": { "username": "" },
+        }))
+        .unwrap();
+        let shown = preview(invite);
+        assert_eq!(shown.max_uses, None, "0 is no limit");
+        assert_eq!(shown.created_by, None);
+        assert_eq!(shown.valid_until_ms, Some(1_798_761_600_000));
     }
 }

@@ -95,7 +95,7 @@ impl OnboardingBackend for FakeBackend {
     async fn invite_controller_get_public_invite(
         &self,
         code: String,
-    ) -> BackendResult<wire::PublicInviteDto> {
+    ) -> BackendResult<Option<wire::PublicInviteDto>> {
         self.w3.run("invite", &[&code]).await
     }
     async fn community_controller_create(

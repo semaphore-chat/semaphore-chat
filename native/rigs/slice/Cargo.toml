@@ -17,6 +17,8 @@ semaphore-fake-server = { path = "../../crates/semaphore-fake-server" }
 semaphore-media-livekit.workspace = true
 semaphore-ui.workspace = true
 serde_json.workspace = true
+# `core revoke-other-sessions` runs the command on a runtime of its own while the rig waits.
+tokio = { workspace = true, features = ["rt", "net", "time"] }
 
 [dev-dependencies]
 async-channel = "2"

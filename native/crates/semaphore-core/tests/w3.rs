@@ -11,8 +11,8 @@ use common::*;
 use semaphore_core::backend::BackendError;
 use semaphore_core::model::{
     AccentColor, AppearancePatch, BrowserSignInFailure, BrowserSignInView, DraftFile, ImageChange,
-    InviteUsable, LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm,
-    RegistrationMode, SessionState, ThemeIntensity, ThemeMode, ViewKey,
+    LoadState, NewCommunity, ProfileImage, ProfilePatch, RegisterForm, RegistrationMode,
+    SessionState, ThemeIntensity, ThemeMode, ViewKey,
 };
 use semaphore_core::platform::{CoreError, CoreEvent, LoopbackPage};
 use semaphore_wire::enums::ErrorCode;
@@ -419,7 +419,7 @@ async fn an_invite_preview_loads_says_why_and_fails_until_retried() {
     rig.core.probe_server("http://server".into()).await.ok();
     rig.backend.w3.answer(
         "invite",
-        json!({ "code": "ok", "uses": 3, "maxUses": 3, "validUntil": null, "disabled": false,
+        json!({ "code": "ok", "uses": 3, "maxUses": 5, "validUntil": null, "disabled": false,
                 "createdBy": { "username": "ann" } }),
     );
     assert_eq!(
@@ -430,10 +430,17 @@ async fn an_invite_preview_loads_says_why_and_fails_until_retried() {
     let view = rig.core.invite_preview("ok".into());
     assert_eq!(view.state, LoadState::Ready);
     let invite = view.invite.unwrap();
-    assert_eq!(invite.usable, InviteUsable::UsedUp);
+    assert_eq!((invite.uses, invite.max_uses), (3, Some(5)));
     assert_eq!(invite.created_by.as_deref(), Some("ann"));
 
-    rig.backend.w3.fail_next("invite", error(404, "NOT_FOUND"));
+    // One the server won't honour: an empty answer, the same for unknown, expired or used up.
+    rig.backend.w3.answer("invite", Value::Null);
+    rig.core.invite_preview("used".into());
+    rig.core.run_until_idle().await;
+    let view = rig.core.invite_preview("used".into());
+    assert_eq!((view.state, view.invite), (LoadState::Ready, None));
+
+    rig.backend.w3.fail_next("invite", error(0, "UNKNOWN"));
     rig.core.invite_preview("gone".into());
     rig.core.run_until_idle().await;
     assert!(matches!(
@@ -443,13 +450,13 @@ async fn an_invite_preview_loads_says_why_and_fails_until_retried() {
     rig.core.run_until_idle().await;
     assert_eq!(
         rig.backend.w3.count("invite"),
-        2,
+        3,
         "a failure isn't read again by itself"
     );
     rig.core.retry_failed();
     rig.core.invite_preview("gone".into());
     rig.core.run_until_idle().await;
-    assert_eq!(rig.backend.w3.count("invite"), 3);
+    assert_eq!(rig.backend.w3.count("invite"), 4);
     assert_eq!(
         rig.core.invite_preview("gone".into()).state,
         LoadState::Ready

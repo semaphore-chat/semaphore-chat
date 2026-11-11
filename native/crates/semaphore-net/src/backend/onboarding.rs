@@ -35,10 +35,16 @@ impl OnboardingBackend for HttpBackend {
     async fn invite_controller_get_public_invite(
         &self,
         code: String,
-    ) -> BackendResult<wire::PublicInviteDto> {
+    ) -> BackendResult<Option<wire::PublicInviteDto>> {
         let (client, _, _) = self.anon_client()?;
         match client.invite_controller_get_public_invite(&code).await {
-            Ok(response) => Ok(response.into_inner()),
+            Ok(response) => Ok(Some(response.into_inner())),
+            // The server answers a code it won't honour with an empty 200 (its `null`).
+            Err(Error::InvalidResponsePayload(bytes, _))
+                if matches!(std::str::from_utf8(&bytes).map(str::trim), Ok("" | "null")) =>
+            {
+                Ok(None)
+            }
             Err(error) => Err(convert(error).await),
         }
     }

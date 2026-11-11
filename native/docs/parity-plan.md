@@ -413,6 +413,19 @@ Found while building W2-core (2026-11-11). None blocks W2; each has a workaround
 | `channelName` on list rows, `parentMessageId` on `newNotification` | The list DTO lacks the name the event has; the event lacks the thread the list has | Takes names from cached channels; a thread reply's OS notification opens the channel |
 | A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call |
 | A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves |
+
+### Asks from W3 for the backend lane
+
+Found while building W3-core (2026-11-11). None blocks W3; each has a workaround in core or a product
+decision.
+
+| Ask | Why | Native's workaround meanwhile |
+|---|---|---|
+| Honour `registrationMode` in `POST /users` | `createUser` demands a valid invite code whatever the mode: `OPEN` still refuses a sign-up without one, and `CLOSED` still accepts a valid one. The web's register page doesn't read the mode either | Follows the advertised mode: Register hidden when `CLOSED`, an invite code asked for otherwise |
+| An endpoint for a signed-in user to accept an instance invite (join its default communities) | `/join/:code` only creates a new account (`register` with the code); an existing account can't use an invite | Signed in, `register` refuses with a message saying the account exists and the invite can't be applied from here |
+| `GET /invite/public/{code}`: a JSON `null` (or a 404 with a reason) for a code it won't honour | It answers 200 with an empty body, the same for unknown, expired, used up and disabled, which the generated client can't decode and nobody can tell apart | Reads an empty answer as "can't be used", with no reason |
+| An instance-role change event for the user (or `roleAssigned`/`roleUpdated` covering instance roles) | `GET /roles/my/instance` decides "Create community"; nothing says when it changes | Read when shown, again on a new connection |
+| `revokeAllOtherSessions` naming the reason when it can't tell the current session | It answers 401 "Could not determine current session", the code a client takes for a lost session | Core doesn't sign out on a 401 from that call; the slice's real-backend step 10 proves the app's own session survives |
 | An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle |
 | Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) |
 | `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" |

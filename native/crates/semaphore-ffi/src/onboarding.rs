@@ -8,7 +8,7 @@ use crate::SemaphoreCore;
 use semaphore_core::CoreError;
 use semaphore_core::model::{
     BrowserSignInFailure, BrowserSignInView, CreatedCommunity, ErrorView, InvitePreview,
-    InvitePreviewView, InviteUsable, LoadState, NewCommunity, RegisterForm, RegistrationMode,
+    InvitePreviewView, LoadState, NewCommunity, RegisterForm, RegistrationMode,
 };
 
 #[uniffi::remote(Enum)]
@@ -26,14 +26,6 @@ pub struct RegisterForm {
     pub invite_code: String,
 }
 
-#[uniffi::remote(Enum)]
-pub enum InviteUsable {
-    Usable,
-    Expired,
-    UsedUp,
-    Disabled,
-}
-
 #[uniffi::remote(Record)]
 pub struct InvitePreview {
     pub code: String,
@@ -41,7 +33,6 @@ pub struct InvitePreview {
     pub uses: u32,
     pub max_uses: Option<u32>,
     pub valid_until_ms: Option<i64>,
-    pub usable: InviteUsable,
 }
 
 #[uniffi::remote(Record)]
