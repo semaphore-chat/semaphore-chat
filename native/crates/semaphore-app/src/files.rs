@@ -9,6 +9,10 @@
 //! - **Untrusted images are checked before anyone decodes them**: past [`MAX_IMAGE_BYTES`] or
 //!   [`MAX_IMAGE_PIXELS`] (less for animated formats, whose frames multiply) they're refused, and
 //!   the UI draws the file row or the initials instead.
+//! - **Video posters** are the server's thumbnails, through the same store ([`poster_resolver`]).
+//! - **Saving** a download asks where with the system's save dialog ([`ask_save_path`]), then
+//!   writes off the UI thread ([`write_file`]). The rigs' headless platform never answers that
+//!   dialog, so nothing is saved, or shown, on the machine running them.
 
 use crate::runtime::Exec;
 use gpui_kit::{AssetSource, Resource, SharedString};
@@ -489,6 +493,50 @@ pub fn create_private_dir(directory: &std::path::Path) -> std::io::Result<()> {
         builder.mode(0o700);
     }
     builder.create(directory)
+}
+
+/// What `Players::set_posters` takes: a video with a server thumbnail gets it as its poster,
+/// fetched into the store on its first draw and drawn once it's there.
+pub fn poster_resolver(media: &std::rc::Rc<AppMedia>) -> semaphore_ui::player::PosterResolver {
+    let media = media.clone();
+    std::rc::Rc::new(move |attachment: &AttachmentView| {
+        if !attachment.has_thumbnail {
+            return None;
+        }
+        let (media, file_id) = (media.clone(), attachment.file_id.clone());
+        Some(gpui_kit::ImageSource::from(
+            move |window: &mut gpui_kit::Window, cx: &mut gpui_kit::App| match media.fetch_file(
+                file_path(&file_id, true),
+                file_id.clone(),
+                true,
+            ) {
+                MediaRef::Resource(resource) => {
+                    window.use_asset::<gpui_kit::ImgResourceLoader>(&resource, cx)
+                }
+                // Drawn again when the fetch lands (`AppMedia::arrived`).
+                MediaRef::Pending => None,
+                _ => Some(Err(gpui_kit::ImageCacheError::Asset(
+                    "the thumbnail isn't available".into(),
+                ))),
+            },
+        ))
+    })
+}
+
+/// Asks where to save a download called `name`: the save dialog the config chose
+/// (`crate::ask_save_path`; the system's, or the rig's queue). `None` when cancelled.
+pub fn ask_save_path(
+    name: &str,
+    cx: &mut gpui_kit::App,
+) -> gpui_kit::Task<Option<std::path::PathBuf>> {
+    crate::ask_save_path(name, cx)
+}
+
+/// Writes a download where the user chose, on a blocking thread of the net runtime.
+pub async fn write_file(path: std::path::PathBuf, bytes: Vec<u8>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || std::fs::write(&path, bytes).map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// A server's file name, made safe to suggest in a save dialog: the last path component only, no

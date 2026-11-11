@@ -19,7 +19,7 @@ pub mod model;
 mod picker;
 mod share;
 #[cfg(feature = "stories")]
-mod stories;
+pub(crate) mod stories;
 #[cfg(test)]
 mod tests;
 mod trim;

@@ -317,14 +317,19 @@ impl Render for HeaderFrame {
     }
 }
 
-fn header_story(state: DmHeaderState, call: bool, window: &mut Window, cx: &mut App) -> AnyView {
+fn header_story(
+    state: DmHeaderState,
+    call: Option<crate::voice::DmCallState>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
     let phone = f32::from(window.viewport_size().width) < PHONE;
     let header = cx.new(|cx| {
         let mut header = DmHeader::new(cx);
         header.set_state(state, cx);
         header.set_back(phone, cx);
-        header.set_can_call(call, cx);
-        header.set_members_button(call, cx);
+        header.set_members_button(call.is_some(), cx);
+        header.set_call_state(call, cx);
         header.set_search(true, cx);
         header
     });
@@ -433,23 +438,47 @@ pub fn stories() -> Vec<Story> {
             sidebar_story(LoadState::Ready, mixed_rows(), None, DmTab::Friends, cx)
         }),
         Story::new("dms-header-loading", |_, window, cx| {
-            header_story(DmHeaderState::Loading, false, window, cx)
+            header_story(DmHeaderState::Loading, None, window, cx)
         }),
         Story::new("dms-header-ready", |_, window, cx| {
             header_story(
                 DmHeaderState::Ready(mixed_rows()[0].clone()),
-                true,
+                Some(crate::voice::DmCallState::Idle),
+                window,
+                cx,
+            )
+        }),
+        Story::new("dms-header-in-call", |_, window, cx| {
+            header_story(
+                DmHeaderState::Ready(mixed_rows()[0].clone()),
+                Some(crate::voice::DmCallState::InThisCall),
+                window,
+                cx,
+            )
+        }),
+        Story::new("dms-header-joining", |_, window, cx| {
+            header_story(
+                DmHeaderState::Ready(mixed_rows()[0].clone()),
+                Some(crate::voice::DmCallState::Joining),
+                window,
+                cx,
+            )
+        }),
+        Story::new("dms-header-other-call", |_, window, cx| {
+            header_story(
+                DmHeaderState::Ready(mixed_rows()[0].clone()),
+                Some(crate::voice::DmCallState::InOtherCall),
                 window,
                 cx,
             )
         }),
         Story::new("dms-header-unavailable", |_, window, cx| {
-            header_story(DmHeaderState::Unavailable, false, window, cx)
+            header_story(DmHeaderState::Unavailable, None, window, cx)
         }),
         Story::new("dms-header-long", |_, window, cx| {
             header_story(
                 DmHeaderState::Ready(long_rows()[2].clone()),
-                true,
+                Some(crate::voice::DmCallState::Idle),
                 window,
                 cx,
             )

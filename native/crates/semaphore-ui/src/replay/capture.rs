@@ -433,6 +433,7 @@ impl Render for CaptureReplayDialog {
         });
         let body = div()
             .id("capture-body")
+            .test_support()
             .flex()
             .flex_col()
             .pt(px(8.))
@@ -507,14 +508,18 @@ impl Render for CaptureReplayDialog {
                     .on_click(move |_, _, cx| close(cx)),
             )
             .action(
-                Button::new("capture-go", label)
-                    .contained()
-                    .start_icon(IconName::VideocamOutlined)
-                    .disabled(!can_capture)
-                    .loading(self.busy)
-                    .on_click(move |_, _, cx| {
-                        view.update(cx, |dialog, cx| dialog.capture(cx)).ok();
-                    }),
+                // The actions row is padded 8 px, the body 24: on desktop the button ends where
+                // the body does instead of past it (a phone keeps the row's own edge).
+                div().when(!phone, |end| end.mr(px(16.))).child(
+                    Button::new("capture-go", label)
+                        .contained()
+                        .start_icon(IconName::VideocamOutlined)
+                        .disabled(!can_capture)
+                        .loading(self.busy)
+                        .on_click(move |_, _, cx| {
+                            view.update(cx, |dialog, cx| dialog.capture(cx)).ok();
+                        }),
+                ),
             )
     }
 }

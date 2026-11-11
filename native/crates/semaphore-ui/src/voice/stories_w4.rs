@@ -426,6 +426,29 @@ fn server_muted_others(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyVi
     stage_entity(model(people), window, cx).into()
 }
 
+// The replay buffer recording a share: Capture on the bar, the dot on the share button (in "more"
+// at phone width).
+
+fn bar_recording(_: &StoryEnv, window: &mut Window, cx: &mut App) -> AnyView {
+    let mut model = model(people());
+    model.voice.local.screen = semaphore_core::model::LocalShare::On;
+    model.voice.local.may_share = true;
+    model.voice.replay = semaphore_core::model::ReplayState::Recording {
+        session_id: "session-1".into(),
+    };
+    let stage = stage_entity(model, window, cx);
+    stage.update(cx, |stage, cx| {
+        stage.set_soundboard(
+            SoundboardBar {
+                view: Some(board(LoadState::Ready, some_sounds())),
+                open: false,
+            },
+            cx,
+        )
+    });
+    stage.into()
+}
+
 // The soundboard, open over the bar.
 
 fn sound(index: usize, name: &str, emoji: Option<&str>) -> SoundboardSound {
@@ -835,6 +858,7 @@ pub fn stories() -> Vec<Story> {
         Story::new("voice-kick-error", kick_error),
         Story::new("voice-server-muted-me", server_muted_me),
         Story::new("voice-server-muted-others", server_muted_others),
+        Story::new("voice-bar-recording", bar_recording),
         Story::new("voice-soundboard-closed", soundboard_closed),
         Story::new("voice-soundboard-loading", soundboard_loading),
         Story::new("voice-soundboard-empty", soundboard_empty),

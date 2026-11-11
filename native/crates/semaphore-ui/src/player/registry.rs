@@ -107,10 +107,14 @@ impl WeakPlayer {
     }
 }
 
+/// A video attachment's poster (its server thumbnail), or `None` for the plain dark box.
+pub type PosterResolver = Rc<dyn Fn(&AttachmentView) -> Option<ImageSource>>;
+
 struct Inner {
     opener: Rc<dyn PlayerOpener>,
     frames: Arc<VideoFrames>,
     made: RefCell<Vec<WeakPlayer>>,
+    posters: RefCell<Option<PosterResolver>>,
 }
 
 /// The window's players: give it to every message list through `ListOptions::players`. Without
@@ -127,8 +131,20 @@ impl Players {
                 opener,
                 frames,
                 made: RefCell::default(),
+                posters: RefCell::default(),
             }),
         }
+    }
+
+    /// Where video players made from now on get their poster: the app's thumbnails.
+    pub fn set_posters(&self, resolver: PosterResolver) {
+        *self.inner.posters.borrow_mut() = Some(resolver);
+    }
+
+    /// The output the voice settings chose (`None`: the system default), for players opened
+    /// after this.
+    pub fn set_output_device(&self, device: Option<String>) {
+        self.inner.opener.set_output_device(device);
     }
 
     /// Whether this attachment plays inline: audio or video in a format this client plays.
@@ -153,9 +169,19 @@ impl Players {
             AttachmentKind::Video => {
                 let frames = self.inner.frames.clone();
                 let dimensions = (attachment.width, attachment.height);
-                AttachmentPlayer::Video(
-                    cx.new(|cx| VideoPlayer::new(source, dimensions, opener, frames, cx)),
-                )
+                let poster = self
+                    .inner
+                    .posters
+                    .borrow()
+                    .as_ref()
+                    .and_then(|resolve| resolve(attachment));
+                AttachmentPlayer::Video(cx.new(|cx| {
+                    let mut player = VideoPlayer::new(source, dimensions, opener, frames, cx);
+                    if poster.is_some() {
+                        player.set_poster(poster, cx);
+                    }
+                    player
+                }))
             }
             _ => AttachmentPlayer::Audio(cx.new(|cx| AudioPlayer::new(source, opener, cx))),
         };

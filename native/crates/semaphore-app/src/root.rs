@@ -14,7 +14,7 @@ use gpui_kit::*;
 use semaphore_core::model::{AttachmentKind, AttachmentView};
 use semaphore_core::model::{
     ChannelKind, CommunityRow, ErrorView, LoadState, RestoreOutcome, SessionState, SignOutReason,
-    ViewKey,
+    ViewKey, VoiceRoom,
 };
 use semaphore_core::platform::CaptureKind;
 use semaphore_core::{Core, CoreEvent};
@@ -30,15 +30,17 @@ use semaphore_ui::shell::{ContentProps, CoreSource, ShellEvent};
 use semaphore_ui::theme::SemTheme as _;
 use semaphore_ui::voice::{
     PickerActions, PickerModel, PickerSource, QualityLevel, VideoFrames, VoiceController,
-    VoiceStage, VoiceStageModel, source_picker, voice_bar_element,
+    VoiceStage, VoiceStageModel, source_picker, voice_bar_element_with,
 };
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
 pub mod account;
+pub mod calls;
 pub mod inbox;
 pub mod onboarding;
+pub mod replay;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -84,6 +86,8 @@ pub struct AppRoot {
     os_watcher: Option<OsWatcher>,
     voice: Option<Arc<AppVoice>>,
     stage: Option<Entity<VoiceStage>>,
+    /// The window's video frames, for the float card (W4).
+    frames: Option<Arc<VideoFrames>>,
     /// The voice channel's name, from when it was joined.
     voice_channel_name: String,
     /// The narrow bar's "more" sheet.
@@ -105,6 +109,10 @@ pub struct AppRoot {
     account: account::Account,
     /// W3: the signed-out pages (`onboarding`).
     onboarding: onboarding::Onboarding,
+    /// W4: incoming calls, DM calls, the participant menu, soundboard, float card, debug panel.
+    calls: calls::Calls,
+    /// W4: capture, the clip library and sharing (`replay`).
+    replay: replay::Replay,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -166,6 +174,10 @@ impl AppRoot {
                 .pick_files
                 .clone()
                 .unwrap_or_else(crate::system_pick_files),
+            save_path: config
+                .save_path
+                .clone()
+                .unwrap_or_else(crate::system_save_path),
             open_url: config
                 .open_url
                 .clone()
@@ -202,6 +214,7 @@ impl AppRoot {
             os_watcher: None,
             voice: None,
             stage: None,
+            frames: None,
             voice_channel_name: String::new(),
             media: None,
             players: None,
@@ -211,6 +224,8 @@ impl AppRoot {
             inbox: inbox::Inbox::default(),
             account: account::Account::default(),
             onboarding: onboarding::Onboarding::default(),
+            calls: calls::Calls::default(),
+            replay: replay::Replay::default(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -271,7 +286,12 @@ impl AppRoot {
     }
 
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
+        calls::target_debug_panel(cx);
         let core = services.core.clone();
+        // W4: the system stays awake during calls (`AppConfig::keep_awake`).
+        if let Some(keep_awake) = self.config.keep_awake.clone() {
+            core.set_keep_awake(keep_awake);
+        }
         // Browser sign-in's listener on 127.0.0.1.
         core.set_loopback(Arc::new(
             semaphore_platform_desktop::loopback::DesktopLoopback,
@@ -311,6 +331,11 @@ impl AppRoot {
         let frames = VideoFrames::for_window(window);
         services.frames.attach(frames.clone());
         self.players = crate::player::players(&services, self.activity.clone(), frames.clone());
+        if let Some(players) = &self.players {
+            players.set_posters(files::poster_resolver(&media));
+            // The voice settings' output, for the attachment and clip players too.
+            players.set_output_device(self.settings.get().voice.output_device.clone());
+        }
         let (requests, asks) = async_channel::unbounded();
         let voice = Arc::new(AppVoice {
             core: services.core.clone(),
@@ -319,12 +344,13 @@ impl AppRoot {
             screens: services.screens.clone(),
             share_settings: Mutex::new(self.settings.get().voice.screen_share),
             requests,
+            vad_applied: Default::default(),
         });
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             while let Ok(ask) = asks.recv().await {
                 let gone = this
-                    .update(cx, |this, cx| {
-                        this.voice_request(ask, cx);
+                    .update_in(cx, |this, window, cx| {
+                        this.voice_request(ask, window, cx);
                         this.refresh_stage(cx);
                         cx.notify();
                     })
@@ -338,6 +364,7 @@ impl AppRoot {
         voice.apply_settings(&self.settings.get().voice);
         let controller: Arc<dyn VoiceController> = voice.clone();
         let model = VoiceStageModel::default();
+        self.frames = Some(frames.clone());
         self.stage = Some(cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx)));
         self.voice = Some(voice);
         let audio = services.audio.clone();
@@ -379,11 +406,20 @@ impl AppRoot {
             .map_or(QualityLevel::Unknown, |p| {
                 QualityLevel::from_core(p.quality)
             });
+        let (channel_name, is_dm) = match &voice.room {
+            Some(VoiceRoom::Dm { dm_group_id }) => (
+                core.dm(dm_group_id.clone())
+                    .map(|row| semaphore_ui::dms::names::dm_title(&row))
+                    .unwrap_or_default(),
+                true,
+            ),
+            _ => (self.voice_channel_name.clone(), false),
+        };
         VoiceStageModel {
             reconnect_attempt: voice.reconnect_attempt,
             voice,
-            channel_name: self.voice_channel_name.clone(),
-            is_dm: false,
+            channel_name,
+            is_dm,
             quality,
             local_quality,
             ptt: None,
@@ -394,12 +430,18 @@ impl AppRoot {
     fn refresh_stage(&mut self, cx: &mut Context<Self>) {
         let model = self.stage_model();
         // The picker is for this call's share: a call that ended takes it away.
-        if model.voice.channel_id.is_none() {
+        if model.voice.room.is_none() {
             self.picker = None;
             self.more_open = false;
+            self.call_ended();
         }
+        self.apply_server_mute(model.voice.server_muted);
+        let soundboard = self.soundboard_bar();
         if let Some(stage) = &self.stage {
-            stage.update(cx, |stage, cx| stage.set_model(model, cx));
+            stage.update(cx, |stage, cx| {
+                stage.set_model(model, cx);
+                stage.set_soundboard(soundboard, cx);
+            });
         }
         cx.notify();
     }
@@ -424,9 +466,10 @@ impl AppRoot {
         {
             self.voice_channel_name = channel.name;
         }
-        if let Some(voice) = &self.voice {
-            voice.apply_settings(&self.settings.get().voice);
-        }
+        self.prepare_join();
+        let Some(services) = &self.services else {
+            return;
+        };
         let core = services.core.clone();
         let joining = channel_id.clone();
         services.exec.fire(async move {
@@ -508,14 +551,10 @@ impl AppRoot {
         let Some(services) = &self.services else {
             return;
         };
-        let name = files::safe_file_name(&attachment.filename);
-        let directory = std::env::var_os("HOME")
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(std::env::temp_dir);
-        let chosen = cx.prompt_for_new_path(&directory, Some(&name));
+        let chosen = crate::ask_save_path(&attachment.filename, cx);
         let (core, handle) = (services.core.clone(), services.exec.handle().clone());
         cx.spawn(async move |_, _| {
-            let Ok(Ok(Some(path))) = chosen.await else {
+            let Some(path) = chosen.await else {
                 return;
             };
             let file_id = attachment.file_id.clone();
@@ -688,6 +727,8 @@ impl AppRoot {
         self.inbox_on_core(event, cx);
         self.account_on_core(event, cx);
         self.onboarding_on_core(event, cx);
+        self.calls_on_core(event, cx);
+        self.replay_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -761,6 +802,8 @@ impl AppRoot {
                 self.pane_subscription = None;
                 self.drop_inbox();
                 self.drop_account();
+                self.drop_calls();
+                self.drop_replay();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -943,14 +986,31 @@ impl AppRoot {
         let stage = self.stage.clone().expect("the stage exists once core does");
         let root = cx.entity().downgrade();
         let content_core = core.clone();
-        // The channel the middle column shows, as the shell last drew it. It draws the column
-        // before the bar, and the bar can't read the shell while the shell is drawing.
-        let showing: Rc<std::cell::RefCell<Option<String>>> = Rc::default();
+        // Whether the middle column shows the call's stage, as the shell last drew it. It draws
+        // the column before the bar, and the bar can't read the shell while the shell is drawing.
+        let showing: Rc<std::cell::Cell<bool>> = Rc::default();
         let shown = showing.clone();
         let content = Rc::new(
             move |props: &ContentProps, window: &mut Window, cx: &mut App| {
-                *shown.borrow_mut() = props.route.channel_id().map(str::to_owned);
-                content(&pane, &stage, &content_core, &root, props, window, cx)
+                let (element, stage_shown) =
+                    content(&pane, &stage, &content_core, &root, props, window, cx);
+                shown.set(stage_shown);
+                if stage_shown {
+                    return element;
+                }
+                // W4: the call over the column while its stage isn't shown (wide windows).
+                let float = root
+                    .upgrade()
+                    .and_then(|root| root.update(cx, |root, cx| root.float_card(window, cx)));
+                match float {
+                    Some(float) => div()
+                        .relative()
+                        .size_full()
+                        .child(element)
+                        .child(float)
+                        .into_any_element(),
+                    None => element,
+                }
             },
         );
         let connection = core.connection();
@@ -960,20 +1020,24 @@ impl AppRoot {
             // The call's bar under the columns, wherever the user is but the call's own channel.
             let bar: semaphore_ui::shell::VoiceBarSlot = Rc::new(move |window, cx| {
                 let root = bar_root.upgrade()?;
-                let (model, controller) = {
+                let (model, soundboard, controller) = {
                     let root = root.read(cx);
                     let model = root.stage_model();
-                    model.voice.channel_id.as_ref()?;
+                    model.voice.room.as_ref()?;
                     let controller: Arc<dyn VoiceController> = root.voice.clone()?;
-                    (model, controller)
+                    (model, root.soundboard_bar(), controller)
                 };
-                let on_its_channel =
-                    showing.borrow().as_deref() == model.voice.channel_id.as_deref();
-                if on_its_channel {
+                // The stage has a bar of its own.
+                if showing.get() {
                     return None;
                 }
                 let narrow = window.viewport_size().width < px(600.);
-                Some(voice_bar_element(&model, narrow, controller))
+                Some(voice_bar_element_with(
+                    &model,
+                    &soundboard,
+                    narrow,
+                    controller,
+                ))
             });
             Shell::new(
                 Rc::new(CoreSource(core.clone())),
@@ -1166,8 +1230,13 @@ impl AppRoot {
 }
 
 impl AppRoot {
-    fn voice_request(&mut self, ask: VoiceRequest, cx: &mut Context<Self>) {
+    fn voice_request(&mut self, ask: VoiceRequest, window: &mut Window, cx: &mut Context<Self>) {
         match ask {
+            VoiceRequest::OpenParticipantMenu { identity, position } => {
+                self.open_participant_menu(identity, position, window, cx)
+            }
+            VoiceRequest::ToggleSoundboard(open) => self.toggle_soundboard(open, cx),
+            VoiceRequest::OpenCapture => self.open_capture(window, cx),
             VoiceRequest::Redraw => {}
             VoiceRequest::OpenDevices => {
                 self.open_settings(semaphore_ui::settings::SettingsTab::VoiceVideo, cx)
@@ -1249,10 +1318,18 @@ impl AppRoot {
             .core()
             .map(|core| core.voice().local)
             .unwrap_or_default();
+        let recording = self.core().is_some_and(|core| {
+            matches!(
+                core.voice().replay,
+                semaphore_core::model::ReplayState::Recording { .. }
+            )
+        });
         let look = semaphore_ui::voice::ShareLook::of(&local.screen, local.may_share);
         let share_label = semaphore_ui::voice::screen_label(look);
         let this = cx.entity().downgrade();
-        let (share, settings, close, done) = (this.clone(), this.clone(), this.clone(), this);
+        let (share, settings, close, done) =
+            (this.clone(), this.clone(), this.clone(), this.clone());
+        let capture = this;
         let shut = |root: &mut AppRoot, cx: &mut Context<AppRoot>| {
             root.more_open = false;
             cx.notify();
@@ -1273,7 +1350,23 @@ impl AppRoot {
                             .ok();
                     })
                     .disabled(!look.clickable()),
-                    MenuItem::new("more-settings", "Voice settings", move |_, cx| {
+                ]
+                .into_iter()
+                .chain(recording.then(|| {
+                    // W4: Capture, while the replay buffer records.
+                    MenuItem::new("more-capture", "Capture replay", move |window, cx| {
+                        capture
+                            .update(cx, |root, cx| {
+                                shut(root, cx);
+                                root.open_capture(window, cx);
+                            })
+                            .ok();
+                    })
+                }))
+                .chain([MenuItem::new(
+                    "more-settings",
+                    "Voice settings",
+                    move |_, cx| {
                         settings
                             .update(cx, |root, cx| {
                                 shut(root, cx);
@@ -1283,8 +1376,9 @@ impl AppRoot {
                                 );
                             })
                             .ok();
-                    }),
-                ],
+                    },
+                )])
+                .collect(),
             ))
             .action(Button::new("more-done", "Close").on_click(move |_, _, cx| {
                 done.update(cx, shut).ok();
@@ -1380,7 +1474,7 @@ fn content(
     props: &ContentProps,
     window: &mut Window,
     cx: &mut App,
-) -> AnyElement {
+) -> (AnyElement, bool) {
     let sem = cx.sem().clone();
     let placeholder = |title: String, body: &'static str| {
         div()
@@ -1395,7 +1489,15 @@ fn content(
             .child(text(Variant::Body1, body))
             .into_any_element()
     };
-    match (&props.route, &props.channel) {
+    let voice = core.voice();
+    let stage_shown = match (&props.route, &props.channel, &voice.room) {
+        (_, Some(channel), _) => voice.channel_id.as_deref() == Some(channel.id.as_str()),
+        (Route::DirectMessage { dm_group_id }, _, Some(VoiceRoom::Dm { dm_group_id: id })) => {
+            id == dm_group_id
+        }
+        _ => false,
+    };
+    let element = match (&props.route, &props.channel) {
         (_, Some(channel)) if channel.kind == ChannelKind::Text => {
             let conversation = props.route.conversation();
             if let Some(conversation) = conversation {
@@ -1469,7 +1571,8 @@ fn content(
             None => placeholder("Loading".into(), ""),
         },
         _ => placeholder("Home".into(), "Pick a community from the rail."),
-    }
+    };
+    (element, stage_shown)
 }
 
 impl Render for AppRoot {
@@ -1500,6 +1603,8 @@ impl Render for AppRoot {
         if let Some(shell) = &self.shell {
             let mut overlays = self.inbox_overlays(cx);
             overlays.extend(self.account_overlays(cx));
+            overlays.extend(self.calls_overlays(window, cx));
+            overlays.extend(self.replay_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

@@ -408,6 +408,22 @@ fn long_names(fixture: &mut Fixture) {
     fixture.counts.notifications_unread = 150;
 }
 
+/// W4: in the call, one person muted by a moderator and one deafened: the rows' badges.
+fn connect_hangout_moderated(fixture: &mut Fixture) {
+    connect_hangout(fixture);
+    let voice = &mut fixture.views.voice;
+    for (index, participant) in voice.participants.iter_mut().enumerate().skip(1) {
+        match index {
+            1 => participant.server_muted = true,
+            2 => {
+                participant.muted = false;
+                participant.deafened = true;
+            }
+            _ => participant.muted = false,
+        }
+    }
+}
+
 fn connect_hangout(fixture: &mut Fixture) {
     let community = fixture.first_community();
     if let Some(id) = fixture
@@ -445,6 +461,7 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-long-content", edit: long_names),
         shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
+        shell_story!("shell-voice-server-muted", edit: connect_hangout_moderated),
         shell_story!("shell-empty-user", scenario: "empty-user", channel: None),
         shell_story!(
             "shell-empty-community",
