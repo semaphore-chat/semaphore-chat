@@ -181,6 +181,7 @@ impl SocketClient {
             refresh_at: None,
             last_ping: Instant::now(),
             resume_probe: None,
+            refreshing: Arc::new(AtomicBool::new(false)),
         };
         tokio::spawn(actor.run());
         (Self { commands, idle }, event_rx)
@@ -302,6 +303,9 @@ struct Actor {
     refresh_at: Option<Instant>,
     last_ping: Instant,
     resume_probe: Option<ResumeProbe>,
+    /// A refresh started by `tokenExpiring` or `resume` is running. Another is not started meanwhile:
+    /// each would rotate the refresh token and send its own `reauthenticate`.
+    refreshing: Arc<AtomicBool>,
 }
 
 /// An ack-requested `presenceOnline` sent to a socket that survived a suspend. TCP keeps order, so
@@ -648,7 +652,9 @@ impl Actor {
 
     fn on_event(&mut self, name: String, payload: Value) {
         match name.as_str() {
-            TOKEN_EXPIRING if self.refresh_at.is_none() => {
+            TOKEN_EXPIRING
+                if self.refresh_at.is_none() && !self.refreshing.load(Ordering::SeqCst) =>
+            {
                 let jitter = self.config.token_refresh_jitter.as_secs_f64() * jitter_unit();
                 self.refresh_at = Some(Instant::now() + Duration::from_secs_f64(jitter));
             }
@@ -665,12 +671,18 @@ impl Actor {
 
     /// Refreshing can take seconds, and the socket must keep answering pings meanwhile.
     fn start_refresh(&self) {
+        if self.refreshing.swap(true, Ordering::SeqCst) {
+            return;
+        }
         let tokens = self.tokens.clone();
         let commands = self.commands.clone();
+        let refreshing = self.refreshing.clone();
         tokio::spawn(async move {
+            let refreshed = tokens.refresh().await;
+            refreshing.store(false, Ordering::SeqCst);
             // A failure is left to the expiry: the server ends the session and
             // `recover_session` refreshes again, as SocketProvider does.
-            if let Refresh::Refreshed(token) = tokens.refresh().await
+            if let Refresh::Refreshed(token) = refreshed
                 && let Some(commands) = commands.upgrade()
             {
                 let _ = commands.send(Command::TokenRefreshed(token));
@@ -1121,6 +1133,14 @@ mod tests {
             Arc::new(Self {
                 token: std::sync::Mutex::new("first".into()),
                 script: std::sync::Mutex::new(script.iter().copied().collect()),
+                ..Self::default()
+            })
+        }
+
+        fn held() -> Arc<Self> {
+            Arc::new(Self {
+                token: std::sync::Mutex::new("first".into()),
+                gate: Some(tokio::sync::Semaphore::new(0)),
                 ..Self::default()
             })
         }
@@ -1609,6 +1629,57 @@ mod tests {
         ws.send(Message::text(r#"434["ok"]"#)).await.unwrap();
         assert_eq!(waiting.await.unwrap(), Ok(vec![json!("ok")]));
         assert_eq!(client.pending_acks().await, 0);
+    }
+
+    #[tokio::test]
+    async fn a_second_token_expiring_during_a_refresh_does_not_start_another() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let tokens = ScriptedTokens::held();
+        let (_client, mut events) = start_client(&listener, tokens.clone(), |_| {});
+        let (mut ws, _) = accept_live(&listener).await;
+
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":1}]"#))
+            .await
+            .unwrap();
+        for _ in 0..500 {
+            if tokens.calls() == 1 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(tokens.calls(), 1, "the first refresh started");
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":1}]"#))
+            .await
+            .unwrap();
+        // Both reached the actor.
+        for _ in 0..2 {
+            event_where(
+                &mut events,
+                |event| matches!(event, SocketEvent::Event { name, .. } if name == TOKEN_EXPIRING),
+            )
+            .await;
+        }
+        ws.send(Message::text("2")).await.unwrap();
+        assert_eq!(next_text(&mut ws).await, "3");
+        // A second refresh would start within a few ticks of the actor's loop.
+        for _ in 0..20 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+            assert_eq!(tokens.calls(), 1, "a second refresh started");
+        }
+        tokens.gate.as_ref().unwrap().add_permits(2);
+        assert_eq!(
+            next_text(&mut ws).await,
+            r#"421["reauthenticate",{"token":"Bearer fresh"}]"#
+        );
+        // A tokenExpiring after it finished refreshes again.
+        ws.send(Message::text(r#"42["tokenExpiring",{"expiresAt":2}]"#))
+            .await
+            .unwrap();
+        assert_eq!(
+            next_text(&mut ws).await,
+            r#"422["reauthenticate",{"token":"Bearer fresh"}]"#
+        );
+        assert_eq!(tokens.calls(), 2);
     }
 
     #[test]
