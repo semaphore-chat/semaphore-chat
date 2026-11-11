@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "rigs/shot", "rigs/list", "rigs/reconnect", "rigs/sio", "rigs/surface-smoke", "rigs/slice", "rigs/sysaudio", "rigs/fake-camera"]
+members = ["crates/*", "rigs/shot", "rigs/list", "rigs/reconnect", "rigs/sio", "rigs/surface-smoke", "rigs/slice", "rigs/sysaudio", "rigs/fake-camera", "rigs/window-hide"]
 # Fallback-framework rigs keep their own lockfile so Iced's dependency tree never
 # unifies with GPUI's. Nothing lives there in Phase 0.
 exclude = ["rigs/video-iced", "rigs/video", "third_party", "tools"]
@@ -49,10 +49,12 @@ tokio = { version = "1", features = ["sync"] }
 # is a refused connection and not a second trust store.
 tokio-tungstenite = { version = "0.26", features = ["__rustls-tls"] }
 
-# The NV12 video surface, and the capture options and camera module libwebrtc doesn't expose. Built
+# The NV12 video surface, hiding and showing a window (close to tray), and the capture options and
+# camera module libwebrtc doesn't expose. Built
 # from crates.io source and our patches: see third_party/README.md and third_party/PATCHES.md.
 [patch.crates-io]
 gpui-pre = { path = "third_party/vendor/gpui-pre" }
+gpui-pre-linux = { path = "third_party/vendor/gpui-pre-linux" }
 gpui-pre-wgpu = { path = "third_party/vendor/gpui-pre-wgpu" }
 gpui-pre-windows = { path = "third_party/vendor/gpui-pre-windows" }
 libwebrtc = { path = "third_party/vendor/libwebrtc" }
@@ -64,3 +66,11 @@ debug = "line-tables-only"
 [profile.release]
 strip = "symbols"
 lto = "thin"
+
+# What packages ship (docs/size.md): release plus whole-program LTO in one codegen unit, 14 MB
+# smaller, no runtime cost, about three minutes longer to build. verify.sh and CI keep `release`.
+#   scripts/in-image.sh cargo build --locked --profile dist -p semaphore-app   # -> target/dist/
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

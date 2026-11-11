@@ -1,0 +1,229 @@
+diff --color -ruN a/src/linux/wayland/window.rs b/src/linux/wayland/window.rs
+--- a/src/linux/wayland/window.rs
++++ b/src/linux/wayland/window.rs
+@@ -136,6 +136,11 @@
+     redraw_requested: bool,
+     presentation: PresentationState,
+     pending_frame_callback: Option<wl_callback::WlCallback>,
++    /// Semaphore patch: unmapped by `set_visible(false)`, for close to tray.
++    hidden_by_client: bool,
++    /// Semaphore patch: what a toplevel made again by `set_visible(true)` needs; `None` for a
++    /// window that can't be hidden (popups, dialogs, layer surfaces).
++    remap: Option<Remap>,
+     in_progress_configure: Option<InProgressConfigure>,
+     resize_throttle: bool,
+     in_progress_window_controls: Option<WindowControls>,
+@@ -590,6 +595,19 @@
+             WgpuRenderer::new(gpu_context, &raw_window, config, compositor_gpu)?
+         };
+ 
++        // Semaphore patch: kept to make the toplevel again after a hide.
++        let remap = (options.kind == WindowKind::Normal
++            && matches!(surface_state, WaylandSurfaceState::Xdg(_)))
++        .then(|| Remap {
++            title: options
++                .titlebar
++                .as_ref()
++                .and_then(|titlebar| titlebar.title.as_ref())
++                .map(|title| title.to_string()),
++            min_size: options.window_min_size,
++            max_texture_size: renderer.max_texture_size() as i32,
++        });
++
+         if let WaylandSurfaceState::Xdg(ref xdg_state) = surface_state {
+             if let Some(title) = options.titlebar.and_then(|titlebar| titlebar.title) {
+                 xdg_state.toplevel.set_title(title.to_string());
+@@ -639,6 +657,8 @@
+             hovered: false,
+             redraw_requested: false,
+             presentation: PresentationState::Unpresented,
++            hidden_by_client: false,
++            remap,
+             pending_frame_callback: None,
+             in_progress_window_controls: None,
+             window_controls: WindowControls::default(),
+@@ -752,6 +772,13 @@
+     }
+ }
+ 
++/// Semaphore patch: what `set_visible(true)` needs to make the toplevel again.
++struct Remap {
++    title: Option<String>,
++    min_size: Option<Size<Pixels>>,
++    max_texture_size: i32,
++}
++
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ enum FrameLoop {
+     Unconfigured,
+@@ -1719,6 +1746,102 @@
+ }
+ 
+ impl PlatformWindow for WaylandWindow {
++    // Semaphore patch: close to tray. Only a normal toplevel is hidden and made again.
++    fn can_hide(&self) -> bool {
++        self.borrow().remap.is_some()
++    }
++
++    // Semaphore patch: close to tray.
++    //
++    // Hiding attaches no buffer, which unmaps the toplevel, then destroys its role objects (the
++    // decoration, the toplevel, the xdg_surface) and returns the frame loop to `Unconfigured`, so
++    // nothing presents to the bare surface. Showing gives the same wl_surface a new xdg_surface and
++    // toplevel with the title, app id, size limits, decoration mode and maximized state it had,
++    // and commits with no buffer: the compositor configures it as a new window, and that
++    // configure's handler draws the first frame, which maps it. GTK hides the same way; re-mapping
++    // the old toplevel (xdg-shell allows it) isn't answered with a configure by every compositor
++    // (weston 15 doesn't).
++    fn set_visible(&self, visible: bool) -> bool {
++        let mut state = self.borrow_mut();
++        if state.remap.is_none() {
++            return false;
++        }
++        if state.hidden_by_client != visible {
++            return true;
++        }
++        state.hidden_by_client = !visible;
++        if visible {
++            let remap = state.remap.as_ref().expect("checked above");
++            let globals = &state.globals;
++            let surface = &state.surface;
++            let xdg_surface = globals
++                .wm_base
++                .get_xdg_surface(surface, &globals.qh, surface.id());
++            let toplevel = xdg_surface.get_toplevel(&globals.qh, surface.id());
++            if let Some(title) = &remap.title {
++                toplevel.set_title(title.clone());
++            }
++            if let Some(app_id) = &state.app_id {
++                toplevel.set_app_id(app_id.clone());
++            }
++            if let Some(size) = remap.min_size {
++                toplevel.set_min_size(f32::from(size.width) as i32, f32::from(size.height) as i32);
++            }
++            toplevel.set_max_size(remap.max_texture_size, remap.max_texture_size);
++            if state.maximized {
++                toplevel.set_maximized();
++            }
++            if state.fullscreen {
++                toplevel.set_fullscreen(None);
++            }
++            let decoration = globals.decoration_manager.as_ref().map(|manager| {
++                let decoration = manager.get_toplevel_decoration(&toplevel, &globals.qh, surface.id());
++                decoration.set_mode(state.decorations.to_xdg());
++                decoration
++            });
++            let new_state = WaylandSurfaceState::Xdg(WaylandXdgSurfaceState {
++                xdg_surface,
++                toplevel,
++                decoration,
++                dialog: None,
++            });
++            // The old role objects were destroyed at the hide; dropping their proxies sends nothing.
++            state.surface_state = new_state;
++            state.surface.commit();
++        } else {
++            self.0.frame_loop.set(FrameLoop::Unconfigured);
++            state.pending_frame_callback = None;
++            state.presentation = PresentationState::Unpresented;
++            state.in_progress_configure = None;
++            state.surface.attach(None, 0, 0);
++            state.surface.commit();
++            // The decoration first: destroying its toplevel before it is an `orphaned` error.
++            if let Some(decoration) = state.surface_state.decoration() {
++                decoration.destroy();
++            }
++            state.surface_state.destroy();
++        }
++        drop(state);
++        self.0.report_visibility(if visible {
++            WindowVisibility::Visible
++        } else {
++            WindowVisibility::Hidden
++        });
++        true
++    }
++
++    // Semaphore patch: a token from another process (a second launch, a notification).
++    fn activate_with_token(&self, token: &str) {
++        let state = self.borrow();
++        match &state.globals.activation {
++            Some(activation) => activation.activate(token.to_owned(), &state.surface),
++            None => {
++                drop(state);
++                self.activate();
++            }
++        }
++    }
++
+     fn bounds(&self) -> Bounds<Pixels> {
+         self.borrow().bounds
+     }
+@@ -1901,7 +2024,12 @@
+     }
+ 
+     fn set_title(&mut self, title: &str) {
+-        if let Some(toplevel) = self.borrow().surface_state.toplevel() {
++        let mut state = self.borrow_mut();
++        // Semaphore patch: a remade toplevel gets the latest title.
++        if let Some(remap) = state.remap.as_mut() {
++            remap.title = Some(title.to_string());
++        }
++        if let Some(toplevel) = state.surface_state.toplevel() {
+             toplevel.set_title(title.to_string());
+         }
+     }
+diff --color -ruN a/src/linux/x11/window.rs b/src/linux/x11/window.rs
+--- a/src/linux/x11/window.rs
++++ b/src/linux/x11/window.rs
+@@ -1385,6 +1385,50 @@
+ }
+ 
+ impl PlatformWindow for X11Window {
++    // Semaphore patch: close to tray.
++    fn can_hide(&self) -> bool {
++        true
++    }
++
++    // Semaphore patch: close to tray. Unmapping withdraws the window; ICCCM 4.1.4 also wants a
++    // synthetic UnmapNotify on the root so a reparenting window manager lets go of it.
++    fn set_visible(&self, visible: bool) -> bool {
++        let x_window = self.0.x_window;
++        let mapped = if visible {
++            check_reply(
++                || "X11 MapWindow failed.",
++                self.0.xcb.map_window(x_window),
++            )
++        } else {
++            let root = self.0.state.borrow().x_root_window;
++            check_reply(
++                || "X11 UnmapWindow failed.",
++                self.0.xcb.unmap_window(x_window),
++            )
++            .and_then(|()| {
++                let event = xproto::UnmapNotifyEvent {
++                    response_type: xproto::UNMAP_NOTIFY_EVENT,
++                    sequence: 0,
++                    event: root,
++                    window: x_window,
++                    from_configure: false,
++                };
++                check_reply(
++                    || "X11 SendEvent UnmapNotify failed.",
++                    self.0.xcb.send_event(
++                        false,
++                        root,
++                        xproto::EventMask::SUBSTRUCTURE_REDIRECT
++                            | xproto::EventMask::SUBSTRUCTURE_NOTIFY,
++                        event,
++                    ),
++                )
++            })
++        };
++        xcb_flush(&self.0.xcb);
++        mapped.log_err().is_some()
++    }
++
+     fn bounds(&self) -> Bounds<Pixels> {
+         self.0.state.borrow().bounds
+     }

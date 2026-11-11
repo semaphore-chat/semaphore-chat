@@ -70,6 +70,12 @@ Real-desktop runs for T1, T2, T3 and the Electron baseline: [scripts/desk](scrip
 `cargo build --workspace` turns on gpui-kit's `test-support` for every crate, because `rig-shot`
 needs it. For size or performance numbers, build with `-p semaphore-app` in release mode.
 
+Two release-type profiles: `release` (thin LTO, what `verify.sh`, CI and the rigs build) and `dist`
+(release plus fat LTO and one codegen unit: about 14 MB smaller, about three minutes longer). Packages
+are built with `native/scripts/in-image.sh cargo build --locked --profile dist -p semaphore-app`
+(output in `target/dist/`), from an older-glibc environment: see
+[docs/size.md](docs/size.md#release-build-environment).
+
 `verify.sh` reads the result schema from `scripts/native-baseline/result.schema.json`, or from
 `RESULT_SCHEMA_HOST` until that file reaches this branch.
 

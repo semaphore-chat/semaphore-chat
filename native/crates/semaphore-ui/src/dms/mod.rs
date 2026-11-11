@@ -85,7 +85,8 @@ impl DmListView {
         cx.notify();
     }
 
-    /// Users online, for the presence dot on a 1:1 row. A stopgap until `DmRow` says it.
+    /// Extra users to draw as online on a 1:1 row, on top of `DmRow.online` (which core keeps
+    /// current). For stories and for an owner that knows presence core hasn't reported yet.
     pub fn set_online(&mut self, user_ids: HashSet<String>, cx: &mut Context<Self>) {
         self.online = user_ids;
         cx.notify();

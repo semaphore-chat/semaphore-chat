@@ -31,5 +31,9 @@ semaphore-sysaudio.workspace = true
 semaphore-ui.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
 
+# The main window's HWND, for the taskbar's unread overlay.
+[target.'cfg(windows)'.dependencies]
+raw-window-handle = "0.6"
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "net", "io-util", "rt-multi-thread"] }
