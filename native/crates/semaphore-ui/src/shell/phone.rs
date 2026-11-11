@@ -19,9 +19,15 @@ impl Shell {
         let in_content = self.phone_content && channel.is_some();
         let view = cx.entity().downgrade();
 
+        let in_dms = matches!(
+            self.nav.current(),
+            Route::DirectMessages | Route::DirectMessage { .. }
+        );
         let bar_title = if in_content {
             let name = channel.as_ref().map(|c| c.name.clone()).unwrap_or_default();
             format!("# {name}")
+        } else if in_dms {
+            "Direct Messages".to_owned()
         } else {
             community
                 .as_ref()
@@ -112,6 +118,14 @@ impl Shell {
                 .size_full()
                 .overflow_y_scroll()
                 .child(self.channel_list(&community.id, true, cx))
+                .into_any_element()
+        } else if let Some(sidebar) = self.route_sidebar(true, window, cx) {
+            div()
+                .id("phone-route-sidebar")
+                .test_support()
+                .size_full()
+                .overflow_hidden()
+                .child(sidebar)
                 .into_any_element()
         } else {
             self.content_element(window, cx)

@@ -1,0 +1,12 @@
+# W2: the shell's route sidebar slot (the DM list column on /direct-messages, the list pane on a
+# phone) and the channel header's accessory slot (the notification level menu), with stand-ins.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w2-shell.steps
+story shell-route-sidebar 1280 800 dark-blue-balanced
+wait idle
+shot w2-shell-route-sidebar-desktop
+story shell-route-sidebar 390 844 light-blue-balanced
+wait idle
+shot w2-shell-route-sidebar-phone
+story shell-header-accessory 1280 800 dark-blue-balanced
+wait idle
+shot w2-shell-header-accessory-desktop
