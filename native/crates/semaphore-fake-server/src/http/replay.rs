@@ -24,6 +24,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
             get(segment),
         )
         .route("/api/livekit/replay/capture", post(capture))
+        .route("/api/livekit/replay/stream", get(stream))
         .route("/api/livekit/clips", get(my_clips))
         .route("/api/livekit/clips/user/{userId}", get(user_clips))
         .route(
@@ -45,6 +46,7 @@ pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str>
             "LivekitController_getPreviewSegment"
         }
         ("POST", "/api/livekit/replay/capture") => "LivekitController_captureReplay",
+        ("GET", "/api/livekit/replay/stream") => "LivekitController_streamReplay",
         ("GET", "/api/livekit/clips") => "LivekitController_getMyClips",
         ("GET", "/api/livekit/clips/user/{userId}") => "LivekitController_getUserPublicClips",
         ("PUT", "/api/livekit/clips/{clipId}") => "LivekitController_updateClip",
@@ -140,6 +142,46 @@ async fn capture(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     };
     let result = calls::capture(&inner, capture);
     answer(&inner, StatusCode::CREATED, result)
+}
+
+/// `GET replay/stream` ("Download only"): `StreamReplayDto` requires `durationMinutes`, one of
+/// 1, 2, 5 or 10 (a query string, converted to a number); then the last minutes as an MP4
+/// attachment, kept nowhere.
+async fn stream(
+    State(inner): State<Arc<Inner>>,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
+) -> Response {
+    let minutes = query
+        .as_deref()
+        .unwrap_or("")
+        .split('&')
+        .find_map(|pair| pair.strip_prefix("durationMinutes="))
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|minutes| [1, 2, 5, 10].contains(minutes));
+    if minutes.is_none() {
+        return invalid("Duration must be 1, 2, 5, or 10 minutes");
+    }
+    match calls::stream_replay(&inner) {
+        Ok(bytes) => {
+            let disposition = format!(
+                "attachment; filename=\"replay-{}.mp4\"",
+                inner.now().timestamp_millis()
+            );
+            (
+                [
+                    (header::CONTENT_TYPE, HeaderValue::from_static("video/mp4")),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        HeaderValue::from_str(&disposition)
+                            .unwrap_or_else(|_| HeaderValue::from_static("attachment")),
+                    ),
+                ],
+                bytes,
+            )
+                .into_response()
+        }
+        Err(refusal) => refused(&inner, refusal),
+    }
 }
 
 async fn my_clips(State(inner): State<Arc<Inner>>) -> Response {

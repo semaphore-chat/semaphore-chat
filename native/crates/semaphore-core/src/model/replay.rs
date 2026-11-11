@@ -53,7 +53,10 @@ pub enum ClipDestination {
     },
 }
 
-/// A part of the captured window, in seconds from its start; `end_seconds > start_seconds`.
+/// A part of the replay buffer, in seconds from the BUFFER's start (as the trim timeline shows
+/// it, from `ReplaySessionView`), not from the end of a `ReplayMinutes` window: the server keeps
+/// about 20 minutes. `end_seconds > start_seconds`, and within `ReplaySessionView::total_seconds`
+/// when that's known.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ReplayTrim {
     pub start_seconds: u32,
@@ -62,6 +65,7 @@ pub struct ReplayTrim {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureRequest {
+    /// The last this many minutes. Not used with a `trim`, which names its own part.
     pub minutes: ReplayMinutes,
     pub trim: Option<ReplayTrim>,
     pub destination: ClipDestination,
@@ -89,6 +93,10 @@ pub struct Clip {
     pub download_url: String,
     pub size_bytes: u64,
     pub filename: String,
+    /// The clip's file type. The server's `ClipResponseDto` doesn't carry it; clips are MP4.
+    pub mime_type: String,
+    /// The server's `ClipResponseDto` doesn't say; false until it does.
+    pub has_thumbnail: bool,
 }
 
 /// Clips: mine (`ViewKey::Clips`, all of them) or another user's public ones

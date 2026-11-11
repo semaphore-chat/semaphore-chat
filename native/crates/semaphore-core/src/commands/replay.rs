@@ -39,6 +39,9 @@ fn clip_view(dto: &wire::ClipResponseDto) -> Clip {
         download_url: dto.download_url.clone(),
         size_bytes: dto.size_bytes.max(0) as u64,
         filename: dto.filename.clone(),
+        // `ClipResponseDto` names no type and no thumbnail: every clip the server makes is MP4.
+        mime_type: "video/mp4".into(),
+        has_thumbnail: false,
     }
 }
 
@@ -306,15 +309,39 @@ impl Core {
             .map_err(|error| self.backend_failed(error))
     }
 
+    /// The last `minutes` of the buffer as MP4 bytes, saved nowhere on the server ("Download only",
+    /// `GET replay/stream`). The host writes them where the user chose, as it does an attachment's
+    /// bytes from `Core::file`.
+    pub async fn download_replay(&self, minutes: ReplayMinutes) -> Result<Vec<u8>, CoreError> {
+        let services = self
+            .services()
+            .ok_or_else(|| unavailable("downloading a replay"))?;
+        services
+            .backend
+            .livekit_controller_stream_replay(wire_minutes(minutes))
+            .await
+            .map_err(|error| self.backend_failed(error))
+    }
+
     /// Saves the last `minutes` (trimmed when asked) as a clip, to the library or posted to a
     /// channel or DM. A trim must end after it starts, within the window.
     pub async fn capture_replay(&self, request: CaptureRequest) -> Result<CapturedClip, CoreError> {
         let services = self
             .services()
             .ok_or_else(|| unavailable("capturing a replay"))?;
+        // A trim counts from the buffer's start, which holds about 20 minutes: it's checked
+        // against the buffer's length when that's been read, not against `minutes`.
+        let buffered = self.read(|state| {
+            state
+                .cache
+                .replay_session(&keys::op(keys::REPLAY_SESSION))
+                .filter(|info| info.has_active_session)
+                .and_then(|info| info.total_duration_seconds)
+                .filter(|seconds| *seconds > 0)
+        });
         if let Some(trim) = request.trim
             && (trim.end_seconds <= trim.start_seconds
-                || trim.end_seconds > request.minutes.minutes() * 60)
+                || buffered.is_some_and(|seconds| i64::from(trim.end_seconds) > seconds))
         {
             return Err(CoreError::Failed {
                 message: "The trim has to end after it starts, within the replay".into(),
@@ -335,7 +362,13 @@ impl Core {
         };
         let body = wire::CaptureReplayDto {
             destination,
-            duration_minutes: Some(wire_minutes(request.minutes)),
+            // With a range the server ignores the preset, and checks the range only without one
+            // (by truthiness, #669: a start of 0 counts as absent there, but the range is still
+            // taken, since the server tests `!== undefined`, and the end is never 0).
+            duration_minutes: request
+                .trim
+                .is_none()
+                .then(|| wire_minutes(request.minutes)),
             start_seconds: request.trim.map(|trim| u64::from(trim.start_seconds)),
             end_seconds: request
                 .trim

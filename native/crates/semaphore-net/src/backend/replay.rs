@@ -42,6 +42,14 @@ impl ReplayBackend for HttpBackend {
         bytes(rpc!(self, c => c.livekit_controller_get_preview_segment(segment_file))?).await
     }
 
+    async fn livekit_controller_stream_replay(
+        &self,
+        duration_minutes: semaphore_wire::enums::ReplayDurationMinutes,
+    ) -> BackendResult<Vec<u8>> {
+        let duration_minutes = &duration_minutes;
+        bytes(rpc!(self, c => c.livekit_controller_stream_replay(duration_minutes))?).await
+    }
+
     async fn livekit_controller_capture_replay(
         &self,
         body: wire::CaptureReplayDto,

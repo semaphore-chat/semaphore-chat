@@ -733,7 +733,8 @@ async fn a_capture_is_checked_then_posted() {
         .find(|c| c.starts_with("capture"))
         .unwrap();
     let body: Value = serde_json::from_str(call.trim_start_matches("capture ")).unwrap();
-    assert_eq!(body["durationMinutes"], json!(5));
+    // A trim names its own part: the server ignores a preset beside it.
+    assert_eq!(body.get("durationMinutes"), None);
     assert_eq!(body["destination"], json!("channel"));
     assert_eq!(body["targetChannelId"], json!(VOICE));
     assert_eq!(body["startSeconds"], json!(10));
@@ -1345,4 +1346,117 @@ fn the_unknown_join_failure_class_round_trips_as_the_backend_spells_it() {
     use semaphore_wire::enums::VoiceJoinErrorClass;
     let unknown: VoiceJoinErrorClass = serde_json::from_value(json!("unknown")).unwrap();
     assert_eq!(serde_json::to_value(&unknown).unwrap(), json!("unknown"));
+}
+
+// --- Trims from the buffer's start, download only, clip types ---
+
+fn capture_body(rig: &Rig) -> Value {
+    let call = rig
+        .backend
+        .w4
+        .calls()
+        .into_iter()
+        .rev()
+        .find(|call| call.starts_with("capture"))
+        .unwrap();
+    serde_json::from_str(call.trim_start_matches("capture ")).unwrap()
+}
+
+fn captured_answer(rig: &Rig) {
+    rig.backend.w4.answer(
+        "capture",
+        json!({
+            "clipId": "c1", "fileId": "f", "durationSeconds": 60, "requestedDurationSeconds": 60,
+            "sizeBytes": 10, "downloadUrl": "/api/file/f", "messageId": null,
+        }),
+    );
+}
+
+fn trim(start_seconds: u32, end_seconds: u32) -> CaptureRequest {
+    CaptureRequest {
+        minutes: ReplayMinutes::One,
+        trim: Some(ReplayTrim {
+            start_seconds,
+            end_seconds,
+        }),
+        destination: ClipDestination::Library,
+    }
+}
+
+#[tokio::test]
+async fn a_trim_counts_from_the_buffers_start_however_long_the_preset() {
+    let mut rig = signed_in().await;
+    rig.backend.w4.answer(
+        "session_info",
+        json!({ "hasActiveSession": true, "sessionId": "sess", "totalSegments": 120, "totalDurationSeconds": 1200 }),
+    );
+    rig.core.replay_session();
+    rig.settle().await;
+    captured_answer(&rig);
+    // 12:00 to 13:00 of a 20-minute buffer, with the one-minute preset showing.
+    rig.core.capture_replay(trim(720, 780)).await.unwrap();
+    let body = capture_body(&rig);
+    assert_eq!(body["startSeconds"], json!(720));
+    assert_eq!(body["endSeconds"], json!(780));
+    assert_eq!(body.get("durationMinutes"), None);
+    // Past what the buffer holds: refused here.
+    assert!(rig.core.capture_replay(trim(1190, 1210)).await.is_err());
+    assert_eq!(rig.backend.w4.count("capture"), 1);
+}
+
+#[tokio::test]
+async fn a_trim_from_the_very_start_is_sent_as_zero() {
+    let rig = signed_in().await;
+    captured_answer(&rig);
+    rig.core.capture_replay(trim(0, 30)).await.unwrap();
+    let body = capture_body(&rig);
+    assert_eq!(body["startSeconds"], json!(0));
+    assert_eq!(body["endSeconds"], json!(30));
+    assert_eq!(body.get("durationMinutes"), None);
+}
+
+#[tokio::test]
+async fn a_preset_capture_sends_its_minutes_only() {
+    let rig = signed_in().await;
+    captured_answer(&rig);
+    rig.core
+        .capture_replay(CaptureRequest {
+            minutes: ReplayMinutes::Ten,
+            trim: None,
+            destination: ClipDestination::Library,
+        })
+        .await
+        .unwrap();
+    let body = capture_body(&rig);
+    assert_eq!(body["durationMinutes"], json!(10));
+    assert_eq!(body.get("startSeconds"), None);
+    assert_eq!(body.get("endSeconds"), None);
+}
+
+#[tokio::test]
+async fn downloading_a_replay_hands_back_its_bytes() {
+    let rig = signed_in().await;
+    rig.backend
+        .w4
+        .answer("stream", json!([0, 0, 0, 24, 102, 116, 121, 112]));
+    let bytes = rig.core.download_replay(ReplayMinutes::Two).await.unwrap();
+    assert_eq!(&bytes[4..8], b"ftyp");
+    assert_eq!(rig.backend.w4.calls(), vec!["stream 2"]);
+    rig.backend
+        .w4
+        .fail_next("stream", refusal(400, "BAD_REQUEST"));
+    assert!(rig.core.download_replay(ReplayMinutes::One).await.is_err());
+}
+
+#[tokio::test]
+async fn a_clip_is_an_mp4_without_a_thumbnail_until_the_server_says() {
+    let mut rig = signed_in().await;
+    rig.backend
+        .w4
+        .answer("clips", json!([clip_json("c1", false)]));
+    rig.core.clips();
+    rig.settle().await;
+    let clip = rig.core.clips().clips.remove(0);
+    assert_eq!(clip.mime_type, "video/mp4");
+    assert!(!clip.has_thumbnail);
 }

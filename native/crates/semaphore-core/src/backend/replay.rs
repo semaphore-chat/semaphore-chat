@@ -35,6 +35,14 @@ pub trait ReplayBackend: Send + Sync {
     ) -> BackendResult<Vec<u8>> {
         Err(unsupported("the replay preview"))
     }
+    /// The last `duration_minutes` of the buffer as an MP4 (`GET replay/stream`), kept nowhere on
+    /// the server: the web's "Download only".
+    async fn livekit_controller_stream_replay(
+        &self,
+        _duration_minutes: semaphore_wire::enums::ReplayDurationMinutes,
+    ) -> BackendResult<Vec<u8>> {
+        Err(unsupported("downloading a replay"))
+    }
     async fn livekit_controller_capture_replay(
         &self,
         _body: wire::CaptureReplayDto,

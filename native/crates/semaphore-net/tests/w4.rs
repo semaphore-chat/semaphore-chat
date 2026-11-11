@@ -568,3 +568,45 @@ async fn the_clip_library_lists_toggles_deletes_and_shares() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn a_trim_counts_from_the_buffers_start_and_download_only_keeps_nothing() {
+    let server = server().await;
+    let client = recording(&server).await;
+    let core = &client.core;
+    // A buffer of 13:20 (80 segments of 10 s).
+    assert!(server.emit_segments_ready(80));
+    until("the buffer's length", || {
+        core.replay_session().total_seconds == 800
+    })
+    .await;
+    let trimmed = |start_seconds, end_seconds| CaptureRequest {
+        minutes: ReplayMinutes::One,
+        trim: Some(semaphore_core::model::ReplayTrim {
+            start_seconds,
+            end_seconds,
+        }),
+        destination: ClipDestination::Library,
+    };
+    // 11:40 to 13:10, with the one-minute preset showing: the range is what's taken.
+    let late = core.capture_replay(trimmed(700, 790)).await.unwrap();
+    assert_eq!(late.duration_seconds, 90);
+    // From the very start: a start of 0 is still a range.
+    let early = core.capture_replay(trimmed(0, 20)).await.unwrap();
+    assert_eq!(early.duration_seconds, 20);
+    // Past the buffer: refused before asking.
+    assert!(core.capture_replay(trimmed(790, 810)).await.is_err());
+    assert_eq!(
+        statuses(&server, "LivekitController_captureReplay"),
+        [201, 201]
+    );
+
+    let bytes = core.download_replay(ReplayMinutes::Two).await.unwrap();
+    assert_eq!(&bytes[4..8], b"ftyp");
+    assert_eq!(statuses(&server, "LivekitController_streamReplay"), [200]);
+    // The two captures only: the download is kept nowhere.
+    until("the library", || core.clips().clips.len() == 2).await;
+    let clip = core.clips().clips.remove(0);
+    assert_eq!(clip.mime_type, "video/mp4");
+    assert!(!clip.has_thumbnail);
+}
