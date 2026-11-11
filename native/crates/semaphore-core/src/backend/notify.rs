@@ -39,9 +39,11 @@ pub trait NotifyBackend: Send + Sync {
     ) -> BackendResult<wire::UserNotificationSettingsDto> {
         Err(unsupported("reading notification settings"))
     }
+    /// `body` is an `UpdateNotificationSettingsDto` as JSON, because clearing a DND time needs an
+    /// explicit `null`, which the generated type can't send.
     async fn notifications_controller_update_settings(
         &self,
-        _body: wire::UpdateNotificationSettingsDto,
+        _body: serde_json::Value,
     ) -> BackendResult<wire::UserNotificationSettingsDto> {
         Err(unsupported("saving notification settings"))
     }

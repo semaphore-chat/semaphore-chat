@@ -104,6 +104,7 @@ impl Core {
             state.view_changed(ViewKey::Session);
             state.ensure_query(keys::op(keys::COMMUNITIES));
             state.ensure_query(keys::op(keys::UNREAD));
+            state.w2_signed_in();
         });
         services.realtime.connect();
     }

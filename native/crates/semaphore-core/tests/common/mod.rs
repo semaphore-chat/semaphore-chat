@@ -825,6 +825,9 @@ impl Realtime for FakeRealtime {
     fn resume(&self, refresh: bool) {
         self.call(format!("resume({refresh})"));
     }
+    fn set_idle(&self, idle: bool) {
+        self.call(format!("set_idle({idle})"));
+    }
     async fn emit(&self, event: String, payload: Value) -> Result<(), RealtimeError> {
         self.emitted.lock().unwrap().push((event, payload));
         Ok(())

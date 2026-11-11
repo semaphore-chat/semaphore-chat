@@ -63,6 +63,8 @@ pub(crate) enum Effect {
     /// Read a message again after a `deleteMessage`, for a reader who may see removed ones: a
     /// moderator's removal keeps the row, a delete takes it away.
     RefetchMessage(String),
+    /// W2: tell the server the user went idle or came back, without waiting for the heartbeat.
+    Idle(bool),
 }
 
 pub(crate) struct State {
@@ -187,6 +189,11 @@ impl State {
             self.outbox
                 .push(CoreEvent::ConnectionChanged { state: connection });
         }
+    }
+
+    /// An event other than a view change or a list change, such as `CoreEvent::Notify`.
+    pub(crate) fn push_event(&mut self, event: CoreEvent) {
+        self.outbox.push(event);
     }
 
     pub fn view_changed(&mut self, view: ViewKey) {
@@ -527,6 +534,7 @@ impl Core {
             Effect::Upload(nonce) => self.run_uploads(nonce).await,
             Effect::ReleaseSlot(message_id) => self.release_slot(message_id).await,
             Effect::RefetchMessage(message_id) => self.refetch_message(message_id).await,
+            Effect::Idle(idle) => self.send_idle(idle).await,
             Effect::EndCall => {
                 if let Some(media) = self.services().and_then(|services| services.media.clone()) {
                     media.disconnect().await;

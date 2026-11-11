@@ -24,6 +24,8 @@ pub struct DmRow {
     pub last_message: Option<DmPreview>,
     pub unread: u32,
     pub mentions: u32,
+    /// A one-to-one DM whose other member is online now. Always false for a group.
+    pub online: bool,
 }
 
 /// This user's DMs and groups, the most recently active first. `ViewKey::DirectMessages` says when

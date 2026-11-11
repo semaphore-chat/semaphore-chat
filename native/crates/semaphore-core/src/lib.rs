@@ -13,6 +13,7 @@ pub mod events;
 pub mod lifecycle;
 pub mod links;
 pub mod model;
+pub mod notify;
 pub mod platform;
 pub mod realtime;
 pub mod resync;

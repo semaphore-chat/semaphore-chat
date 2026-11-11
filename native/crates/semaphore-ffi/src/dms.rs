@@ -20,6 +20,7 @@ pub struct DmRow {
     pub last_message: Option<DmPreview>,
     pub unread: u32,
     pub mentions: u32,
+    pub online: bool,
 }
 
 #[uniffi::remote(Record)]

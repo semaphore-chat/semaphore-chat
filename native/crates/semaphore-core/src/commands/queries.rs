@@ -163,6 +163,11 @@ impl Core {
                     .await
                     .map_err(|error| self.backend_failed(error))?,
             ),
+            keys::DMS => self.fetch_dms().await?,
+            keys::FRIENDS => self.fetch_friends().await?,
+            keys::NOTIFICATIONS => self.fetch_notifications().await?,
+            keys::NOTIFY_SETTINGS => self.fetch_notify_settings().await?,
+            keys::CHANNEL_LEVEL => self.fetch_channel_level(id).await?,
             op => {
                 return Err(CoreError::Failed {
                     message: format!("no fetch for {op}"),
