@@ -230,7 +230,7 @@ impl State {
         }
     }
 
-    fn community_of_channel(&self, channel_id: &str) -> Option<String> {
+    pub(crate) fn community_of_channel(&self, channel_id: &str) -> Option<String> {
         self.cache
             .keys_with_op(keys::CHANNELS)
             .iter()

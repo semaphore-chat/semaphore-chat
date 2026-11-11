@@ -1490,6 +1490,8 @@ impl Inner {
                 camera: own_camera,
                 screen_share: own_screen,
                 quality: quality_view(local.connection_quality()),
+                // Presence knows a server mute; core merges it.
+                server_muted: false,
             }];
             snapshot.local_quality = quality_view(local.connection_quality());
             snapshot.quality.clear();
@@ -1594,6 +1596,7 @@ fn remote_view(
         camera,
         screen_share,
         quality: quality_view(participant.connection_quality()),
+        server_muted: false,
     }
 }
 
@@ -1921,6 +1924,9 @@ impl Inner {
             screen_audio: on(lock(&self.system_audio).is_some()),
             may_camera: room.is_some() && may_publish(permission.as_ref(), ProtoSource::Camera),
             may_share: room.is_some() && may_publish(permission.as_ref(), ProtoSource::ScreenShare),
+            may_speak: room.is_some() && may_publish(permission.as_ref(), ProtoSource::Microphone),
+            // W4-media: the published share's sids, for the replay buffer.
+            screen_tracks: None,
         }
     }
 

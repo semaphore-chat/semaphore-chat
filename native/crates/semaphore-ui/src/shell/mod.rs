@@ -363,7 +363,8 @@ impl Shell {
             | CoreEvent::MessagesChanged { .. }
             | CoreEvent::Notify { .. }
             | CoreEvent::WithdrawNotifications { .. }
-            | CoreEvent::DesktopSignedIn { .. } => {}
+            | CoreEvent::DesktopSignedIn { .. }
+            | CoreEvent::Sound { .. } => {}
         }
         cx.notify();
     }

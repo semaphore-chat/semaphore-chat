@@ -4,6 +4,7 @@
 
 pub mod icon;
 pub mod instance;
+pub mod keep_awake;
 pub mod lifecycle;
 pub mod links;
 pub mod loopback;

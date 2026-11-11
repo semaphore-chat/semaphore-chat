@@ -18,9 +18,11 @@ mod messages;
 mod moderation;
 mod notify;
 mod onboarding;
+mod replay;
 mod search;
 mod session;
 mod social;
+mod soundboard;
 mod threads;
 mod voice;
 
@@ -32,9 +34,11 @@ pub use messages::MessagesBackend;
 pub use moderation::ModerationBackend;
 pub use notify::NotifyBackend;
 pub use onboarding::OnboardingBackend;
+pub use replay::ReplayBackend;
 pub use search::SearchBackend;
 pub use session::SessionBackend;
 pub use social::SocialBackend;
+pub use soundboard::SoundboardBackend;
 pub use threads::ThreadsBackend;
 pub use voice::VoiceBackend;
 
@@ -101,6 +105,8 @@ pub trait Backend:
     + NotifyBackend
     + AccountBackend
     + OnboardingBackend
+    + ReplayBackend
+    + SoundboardBackend
 {
 }
 
@@ -121,6 +127,8 @@ impl<T> Backend for T where
         + NotifyBackend
         + AccountBackend
         + OnboardingBackend
+        + ReplayBackend
+        + SoundboardBackend
 {
 }
 

@@ -4,7 +4,7 @@ use crate::cache::keys;
 use crate::client::{Core, Effect};
 use crate::model::{
     LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest, UserView, VideoDemand,
-    ViewKey, VoiceStatus, VoiceView,
+    ViewKey, VoiceModerationCaps, VoiceRoom, VoiceStatus, VoiceView,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -51,6 +51,10 @@ impl Core {
         let (muted, deafened, call) = self.write(|state, _| {
             state.voice.status = VoiceStatus::Connecting;
             state.voice.channel_id = Some(channel_id.clone());
+            state.voice.room = Some(VoiceRoom::Channel {
+                channel_id: channel_id.clone(),
+                community_id: state.community_of_channel(&channel_id),
+            });
             state.voice.reconnect_attempt = None;
             state.voice.error = None;
             // A camera or share belongs to one call.
@@ -414,6 +418,38 @@ impl Core {
         });
     }
 
+    /// W4: a moderator's server mute of someone in the channel call I'm in, or lifting it. Lifting
+    /// gives their mic back without turning it on. Refused by the server for someone I don't
+    /// outrank; its message is the error.
+    pub async fn server_mute(&self, _identity: String, _mute: bool) -> Result<(), CoreError> {
+        Err(unavailable("server mute"))
+    }
+
+    /// W4: removes a member from the community (the voice menu's "Kick", after a confirm), which
+    /// ends their call. `reason` is optional, as on the web.
+    pub async fn kick_member(
+        &self,
+        _community_id: String,
+        _user_id: String,
+        _reason: Option<String>,
+    ) -> Result<(), CoreError> {
+        Err(unavailable("kicking a member"))
+    }
+
+    /// W4: what I may do to others in this voice channel, from my roles for it (read when missing;
+    /// `ViewKey::ChannelModeration` says when they're in). All false until then.
+    pub fn voice_moderation_caps(&self, _channel_id: String) -> VoiceModerationCaps {
+        VoiceModerationCaps::default()
+    }
+
+    /// W4: how loud a participant plays here, 0 to 200 percent. Straight to the media engine,
+    /// which remembers it.
+    pub fn set_participant_volume(&self, identity: String, percent: u32) {
+        if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
+            media.set_participant_volume(identity, percent.min(200));
+        }
+    }
+
     pub(crate) async fn leave_presence(&self, channel_id: String) {
         let Some(services) = self.services() else {
             return;
@@ -467,6 +503,7 @@ impl Core {
                         camera: media.and_then(|media| media.camera.clone()),
                         screen_share: media.and_then(|media| media.screen_share.clone()),
                         quality: media.map(|media| media.quality).unwrap_or_default(),
+                        server_muted: user.is_server_muted,
                     }
                 })
                 .collect();
