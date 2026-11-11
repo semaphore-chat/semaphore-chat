@@ -359,13 +359,15 @@ async fn a_moderator_keeps_a_removed_row_and_loses_a_deleted_one() {
     rig.backend.make_moderator();
     rig.core.channel_moderation(CHANNEL.into());
     rig.core.run_until_idle().await;
+    let moderation = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(moderation.state, LoadState::Ready);
     assert_eq!(
-        rig.core.channel_moderation(CHANNEL.into()),
-        Some(ChannelModeration {
+        moderation.allowed,
+        ChannelModeration {
             pin: true,
             unpin: true,
             remove_any: true
-        })
+        }
     );
     let mut server_copy = message_json(&removed, "ava", "kept");
     server_copy["deletedAt"] = json!("2026-09-22T19:00:00Z");
@@ -669,11 +671,277 @@ async fn an_update_about_a_removed_message_shows_its_text_only_to_moderators() {
     rig.sync();
     assert_eq!(rig.row(&id).display, "");
 
+    // A moderator is shown it whole: not from the socket copy, which the server blanks, but read
+    // again over REST.
     rig.backend.make_moderator();
     rig.core.channel_moderation(CHANNEL.into());
     rig.settle().await;
+    rig.backend
+        .actions
+        .found
+        .lock()
+        .unwrap()
+        .insert(id.clone(), dto(removed.clone()));
     rig.core
         .ingest(event("updateMessage", json!({ "message": removed })));
-    rig.sync();
+    rig.settle().await;
     assert_eq!(rig.row(&id).display, "secret");
+}
+
+// --- Review fixes ---
+
+fn with_files(id: &str, author: &str, text: &str, files: &[&str]) -> MessageDto {
+    let mut value = message_json(id, author, text);
+    value["attachments"] = Value::Array(
+        files
+            .iter()
+            .map(|id| json!({ "id": id, "filename": format!("{id}.png"), "mimeType": "image/png", "fileType": "IMAGE", "size": 10, "hasThumbnail": false }))
+            .collect(),
+    );
+    dto(value)
+}
+
+fn reaction_added(
+    id: &str,
+    emoji: &str,
+    users: &[&str],
+) -> semaphore_core::realtime::RealtimeEvent {
+    event(
+        "reactionAdded",
+        json!({
+            "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null,
+            "reaction": { "emoji": emoji, "userIds": users },
+        }),
+    )
+}
+
+#[tokio::test]
+async fn an_edit_that_names_no_attachments_leaves_them_to_the_server() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![with_files(&id, ME, "files", &["f1"])]).await;
+    rig.core
+        .edit_message(id.clone(), draft("changed"), None)
+        .await
+        .unwrap();
+    let bodies = rig.backend.actions.update_bodies.lock().unwrap().clone();
+    assert!(
+        bodies[0].get("attachments").is_none(),
+        "a file that finished uploading meanwhile must survive: {}",
+        bodies[0]
+    );
+    rig.sync();
+    assert_eq!(rig.row(&id).attachments.len(), 1);
+}
+
+#[tokio::test]
+async fn an_edit_can_remove_every_attachment() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![with_files(&id, ME, "files", &["f1", "f2"])]).await;
+    rig.core
+        .edit_message(id.clone(), draft("files"), Some(Vec::new()))
+        .await
+        .unwrap();
+    let bodies = rig.backend.actions.update_bodies.lock().unwrap().clone();
+    assert_eq!(bodies[0]["attachments"], json!([]));
+    rig.sync();
+    assert!(rig.row(&id).attachments.is_empty());
+}
+
+#[tokio::test]
+async fn a_refused_edit_goes_back_after_an_unrelated_change() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, ME, "before")]).await;
+    rig.backend.fail_next("update", refusal(403, "FORBIDDEN"));
+    let (gate, task) = held(&mut rig, |core| {
+        let id = uuid(1);
+        Box::pin(async move { core.edit_message(id, draft("refused"), None).await })
+    })
+    .await;
+    rig.core.ingest(reaction_added(&id, "👍", &["ava"]));
+    gate.send(()).unwrap();
+    assert!(task.await.unwrap().is_err());
+    rig.sync();
+    let row = rig.row(&id);
+    assert_eq!(row.display, "before");
+    assert!(!row.edited && !row.edit_pending);
+    assert_eq!(row.reactions.len(), 1, "the reaction stays");
+}
+
+#[tokio::test]
+async fn a_refused_pin_goes_back_after_an_unrelated_change() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, "ava", "x")]).await;
+    rig.backend.fail_next("pin", refusal(403, "FORBIDDEN"));
+    let (gate, task) = held(&mut rig, |core| {
+        let id = uuid(1);
+        Box::pin(async move { core.pin_message(id, None).await })
+    })
+    .await;
+    rig.core.ingest(reaction_added(&id, "👍", &["ava"]));
+    gate.send(()).unwrap();
+    assert!(task.await.unwrap().is_err());
+    rig.sync();
+    assert!(!rig.row(&id).pinned);
+    assert_eq!(rig.row(&id).reactions.len(), 1);
+}
+
+#[tokio::test]
+async fn a_second_edit_before_the_first_answers() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, ME, "before")]).await;
+    let (first_gate, first) = held(&mut rig, |core| {
+        let id = uuid(1);
+        Box::pin(async move { core.edit_message(id, draft("one"), None).await })
+    })
+    .await;
+    let (second_gate, second) = held(&mut rig, |core| {
+        let id = uuid(1);
+        Box::pin(async move { core.edit_message(id, draft("two"), None).await })
+    })
+    .await;
+    assert_eq!(rig.row(&id).display, "two");
+
+    // The first is refused: the second is still on its way, and its text stays.
+    rig.backend.fail_next("update", refusal(500, "INTERNAL"));
+    first_gate.send(()).unwrap();
+    assert!(first.await.unwrap().is_err());
+    rig.sync();
+    assert_eq!(rig.row(&id).display, "two");
+    assert!(rig.row(&id).edit_pending, "the second hasn't answered");
+
+    // Refused too: back to what the server last agreed, from before both.
+    rig.backend.fail_next("update", refusal(500, "INTERNAL"));
+    second_gate.send(()).unwrap();
+    assert!(second.await.unwrap().is_err());
+    rig.sync();
+    assert_eq!(rig.row(&id).display, "before");
+    assert!(!rig.row(&id).edit_pending);
+}
+
+#[tokio::test]
+async fn a_failed_roles_read_says_so_and_a_retry_reads_them_again() {
+    let mut rig = rig_with(vec![]).await;
+    rig.backend.make_moderator();
+    rig.backend.fail_next("roles", refusal(500, "INTERNAL"));
+    assert_eq!(
+        rig.core.channel_moderation(CHANNEL.into()).state,
+        LoadState::Loading
+    );
+    rig.settle().await;
+    let failed = rig.core.channel_moderation(CHANNEL.into());
+    assert!(
+        matches!(failed.state, LoadState::Failed { .. }),
+        "{failed:?}"
+    );
+    assert_eq!(failed.allowed, ChannelModeration::default());
+
+    rig.core.retry_failed();
+    rig.settle().await;
+    let ready = rig.core.channel_moderation(CHANNEL.into());
+    assert_eq!(ready.state, LoadState::Ready);
+    assert!(ready.allowed.remove_any && ready.allowed.pin);
+}
+
+#[tokio::test]
+async fn edits_and_updates_reach_the_cached_pins() {
+    let id = uuid(1);
+    let mut pinned = message_json(&id, ME, "old text");
+    pinned["pinned"] = json!(true);
+    let mut rig = rig_with(vec![dto(pinned.clone())]).await;
+    rig.backend.set_pins(&[dto(pinned.clone())]);
+    rig.core.pinned_messages(CHANNEL.into());
+    rig.settle().await;
+
+    rig.core
+        .edit_message(id.clone(), draft("edited"), None)
+        .await
+        .unwrap();
+    let list = rig.core.pinned_messages(CHANNEL.into());
+    assert_eq!(list.rows[0].row.display, "edited");
+    assert_eq!(list.rows[0].row.author.id, ME);
+
+    let mut newer = pinned;
+    newer["spans"] = json!([{ "type": "PLAINTEXT", "text": "from elsewhere" }]);
+    rig.core
+        .ingest(event("updateMessage", json!({ "message": newer })));
+    let events = rig.sync();
+    assert!(views(&events).contains(&ViewKey::Pins {
+        channel_id: CHANNEL.into()
+    }));
+    assert_eq!(
+        rig.core.pinned_messages(CHANNEL.into()).rows[0].row.display,
+        "from elsewhere"
+    );
+}
+
+#[tokio::test]
+async fn a_moderator_rereads_a_removed_message_instead_of_taking_the_blank_socket_copy() {
+    let id = uuid(1);
+    let mut kept = message_json(&id, "ava", "kept");
+    kept["deletedAt"] = json!("2026-09-22T19:00:00Z");
+    let mut rig = rig_with(vec![dto(kept.clone())]).await;
+    rig.backend.make_moderator();
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    assert_eq!(rig.row(&id).display, "kept");
+
+    // A link preview, say: the server blanks every broadcast of a removed message.
+    let mut whole = kept.clone();
+    whole["linkPreviews"] = json!([]);
+    rig.backend
+        .actions
+        .found
+        .lock()
+        .unwrap()
+        .insert(id.clone(), dto(whole));
+    let mut blank = kept;
+    blank["spans"] = json!([]);
+    rig.core
+        .ingest(event("updateMessage", json!({ "message": blank })));
+    rig.settle().await;
+    assert_eq!(rig.row(&id).display, "kept");
+    assert!(
+        rig.backend
+            .action_calls()
+            .contains(&format!("find_one {id}"))
+    );
+}
+
+#[tokio::test]
+async fn a_failed_reread_leaves_the_row() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, "ava", "kept")]).await;
+    rig.backend.make_moderator();
+    rig.core.channel_moderation(CHANNEL.into());
+    rig.settle().await;
+    *rig.backend.actions.find_one_error.lock().unwrap() = Some(refusal(503, "UNAVAILABLE"));
+    rig.core.ingest(event(
+        "deleteMessage",
+        json!({ "messageId": id, "channelId": CHANNEL, "directMessageGroupId": null }),
+    ));
+    rig.settle().await;
+    assert_eq!(rig.ids(), vec![id.clone()], "only a 404 takes it away");
+    assert_eq!(rig.row(&id).display, "kept");
+}
+
+#[tokio::test]
+async fn a_failed_reaction_the_socket_confirmed_stays() {
+    let id = uuid(1);
+    let mut rig = rig_with(vec![message(&id, "ava", "x")]).await;
+    rig.backend.fail_next("add_reaction", refusal(0, "TIMEOUT"));
+    let (gate, task) = held(&mut rig, |core| {
+        let id = uuid(1);
+        Box::pin(async move { core.add_reaction(id, "👍".into()).await })
+    })
+    .await;
+    // The server applied it and said so, then the answer timed out.
+    rig.core.ingest(reaction_added(&id, "👍", &[ME]));
+    gate.send(()).unwrap();
+    assert!(task.await.unwrap().is_err());
+    rig.sync();
+    let reactions = &rig.row(&id).reactions;
+    assert!(
+        reactions.iter().any(|r| r.emoji == "👍" && r.me),
+        "{reactions:?}"
+    );
 }

@@ -185,6 +185,8 @@ pub struct FakeBackend {
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
+    /// Likewise for the next around-page.
+    pub around_gate: Mutex<Option<oneshot::Receiver<()>>>,
     pub unread: Mutex<Vec<Value>>,
     pub unread_requests: AtomicU64,
     pub channels: Mutex<Vec<Value>>,
@@ -520,7 +522,12 @@ impl MessagesBackend for FakeBackend {
         message_id: String,
         limit: Option<i64>,
     ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
-        self.around(&channel_id, &message_id, limit)
+        let page = self.around(&channel_id, &message_id, limit);
+        let gate = self.around_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        page
     }
 
     async fn messages_controller_find_all_for_group(

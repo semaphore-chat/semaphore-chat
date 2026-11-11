@@ -398,4 +398,5 @@ Things the contract makes awkward for a non-web client, found while designing W1
 | A specific `ErrorCode` for a blocked 1:1 DM | `assertNotBlockedInDm` throws a plain FORBIDDEN ("You cannot message this user") for sends, thread replies and edits | Shows the server's message; the composer can't lock itself |
 | A block check on reactions in 1:1 DMs | `reactions.service` has none, so a blocked user can still react | none (server gap) |
 | Paging for message search | `search/{channel,group,community}` take `q` and `limit` only, newest first | Asks for one page; the UI says when results stop at the limit |
+| Effective per-channel capabilities for pin, unpin, delete-any and see-removed | `rolesControllerGetMyRolesForChannel` returns community roles without the channel's permission overwrites, so a channel that denies or grants these is shown wrong (the web client has the same gap) | Uses the community roles, as the web does; the server still refuses what it denies |
 

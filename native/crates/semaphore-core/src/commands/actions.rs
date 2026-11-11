@@ -17,8 +17,8 @@
 use crate::cache::keys;
 use crate::client::{Core, State, user_view};
 use crate::model::{
-    ChannelModeration, LoadState, MentionKind, MessageDraft, PinnedList, PinnedRow, ReactionUsers,
-    UserView, ViewKey,
+    ChannelModeration, ChannelModerationView, LoadState, MentionKind, MessageDraft, PinnedList,
+    PinnedRow, ReactionUsers, UserView, ViewKey,
 };
 use crate::platform::CoreError;
 use crate::resync::unavailable;
@@ -35,20 +35,43 @@ pub const REACTION_USERS_SHOWN: usize = 15;
 /// How many reaction tooltips are told when their users change.
 const WATCHED_REACTIONS: usize = 16;
 
-/// An edit on its way: what the row was, and what core showed instead.
+/// The newest edit of a message on its way: what the server last agreed the message was, and
+/// the fields core showed instead.
 #[derive(Debug, Clone)]
 pub(crate) struct PendingEdit {
+    /// Which edit this is: a second edit before the first answers replaces the entry, and the
+    /// first's answer then only updates `original`.
+    change: u64,
     original: MessageDto,
     shown: Value,
+}
+
+/// A reaction on its way, by message id and emoji.
+#[derive(Debug, Clone)]
+struct PendingReaction {
+    change: u64,
+    /// A `reactionAdded`/`reactionRemoved` for it arrived meanwhile: the server has spoken, so a
+    /// failed request (a timeout after the server applied it) doesn't roll it back.
+    heard: bool,
 }
 
 /// What these commands keep between calls. Forgotten at sign-out.
 #[derive(Debug, Default)]
 pub(crate) struct ActionsState {
-    /// By message id. A row here shows `edit_pending`.
+    /// By message id, the newest edit. A row here shows `edit_pending`.
     pub pending_edits: HashMap<String, PendingEdit>,
+    pending_reactions: HashMap<(String, String), PendingReaction>,
+    /// Numbers each edit and reaction request.
+    next_change: u64,
     /// The reaction tooltips read lately, by message id and emoji, newest last.
     watched_reactions: Vec<(String, String)>,
+}
+
+impl ActionsState {
+    fn next_change(&mut self) -> u64 {
+        self.next_change += 1;
+        self.next_change
+    }
 }
 
 fn failed(message: impl Into<String>) -> CoreError {
@@ -68,8 +91,22 @@ fn pinned_message(pinned: &wire::PinnedMessageDto) -> Option<MessageDto> {
         .and_then(|value| serde_json::from_value(value).ok())
 }
 
-fn same(dto: &MessageDto, shown: &Value) -> bool {
-    serde_json::to_value(dto).is_ok_and(|value| value == *shown)
+/// The fields an edit writes: what a refused edit puts back, and what must still be as core
+/// showed it for that to happen. Anything else on the row (reactions, replies, previews) may change
+/// meanwhile without stopping it.
+fn edit_fields(dto: &MessageDto) -> Value {
+    serde_json::json!([dto.spans, dto.edited_at, dto.attachments])
+}
+
+fn copy_edit_fields(from: &MessageDto, to: &mut MessageDto) {
+    to.spans = from.spans.clone();
+    to.edited_at = from.edited_at;
+    to.attachments = from.attachments.clone();
+}
+
+/// The fields a pin or unpin writes.
+fn pin_fields(dto: &MessageDto) -> Value {
+    serde_json::json!([dto.pinned, dto.pinned_by, dto.pinned_at])
 }
 
 fn draft_kind(kind: &str) -> Option<MentionKind> {
@@ -102,29 +139,76 @@ impl State {
             })
     }
 
-    /// Changes a message wherever it's loaded.
+    /// Changes a message wherever it's loaded, its channel's cached pins included.
     fn edit_everywhere(&mut self, id: &str, change: impl Fn(&mut MessageDto)) {
         for window in self.windows.values_mut() {
             if window.edit(id, &change) {
                 window.note_update(id, None);
             }
         }
+        self.edit_pins(id, &change);
     }
 
     /// Replaces a message wherever it's loaded, with what the server sent.
-    fn replace_everywhere(&mut self, dto: &MessageDto) {
+    pub(crate) fn replace_everywhere(&mut self, dto: &MessageDto) {
         for window in self.windows.values_mut() {
             window.note_update(&dto.id, Some(dto.clone()));
             window.update(dto.clone(), None);
         }
+        self.edit_pins(&dto.id, |pinned| *pinned = dto.clone());
     }
 
-    /// Whether what's loaded of a message is still what core showed for it.
-    fn still_shown(&self, id: &str, shown: &Value) -> bool {
-        self.windows
-            .values()
-            .find_map(|window| window.find(id))
-            .is_some_and(|message| same(&message.dto, shown))
+    /// Changes a message in any cached pins list that holds it, keeping what only a pin carries
+    /// (its author). One no longer pinned, or removed, leaves the list, as the server's would.
+    pub(crate) fn edit_pins(&mut self, id: &str, change: impl Fn(&mut MessageDto)) {
+        for key in self.cache.keys_with_op(keys::PINS) {
+            let Some(pins) = self.cache.pins_mut(&key) else {
+                continue;
+            };
+            let Some(index) = pins.iter().position(|pin| pin.id == id) else {
+                continue;
+            };
+            let Some(mut dto) = pinned_message(&pins[index]) else {
+                continue;
+            };
+            change(&mut dto);
+            if !dto.pinned || dto.deleted_at.is_some() {
+                pins.remove(index);
+            } else {
+                let mut value = serde_json::to_value(&pins[index]).unwrap_or_default();
+                if let (Some(object), Ok(Value::Object(fields))) =
+                    (value.as_object_mut(), serde_json::to_value(&dto))
+                {
+                    object.extend(fields);
+                }
+                match serde_json::from_value(value) {
+                    Ok(pin) => pins[index] = pin,
+                    Err(error) => log::warn!("a pin can't take an update: {error}"),
+                }
+            }
+            self.note_direct_update(&key);
+            self.view_changed(ViewKey::Pins {
+                channel_id: key.segments.get(1).cloned().unwrap_or_default(),
+            });
+        }
+    }
+
+    /// Whether `fields` of a loaded message are still what core showed for them.
+    fn still_shown(&self, id: &str, fields: fn(&MessageDto) -> Value, shown: &Value) -> bool {
+        self.find_message(id)
+            .is_some_and(|dto| fields(&dto) == *shown)
+    }
+
+    /// A `reactionAdded` or `reactionRemoved` arrived: a request on its way for the same reaction
+    /// no longer rolls back if it fails.
+    pub(crate) fn heard_reaction(&mut self, message_id: &str, emoji: &str) {
+        if let Some(pending) = self
+            .actions
+            .pending_reactions
+            .get_mut(&(message_id.to_owned(), emoji.to_owned()))
+        {
+            pending.heard = true;
+        }
     }
 
     fn is_instance_owner(&self) -> bool {
@@ -333,7 +417,8 @@ impl Core {
     /// Replaces a message's text with `draft`'s, at once; the row shows `edit_pending` until the
     /// server answers, and goes back if it refuses. Only the author may edit. `draft.files` must be
     /// empty: an edit can't add files. `keep_attachment_ids` lists the attachments to keep (any
-    /// left out are removed); `None` keeps them all.
+    /// left out are removed; an empty list removes them all); `None` leaves them as the server has
+    /// them, including any that finish uploading meanwhile.
     pub async fn edit_message(
         &self,
         message_id: String,
@@ -357,40 +442,44 @@ impl Core {
                 .map_err(|error| failed(format!("the edit can't be sent: {error}")))?;
         let shown_spans: Vec<wire::SpanDto> = serde_json::from_value(Value::Array(spans))
             .map_err(|error| failed(format!("the edit can't be shown: {error}")))?;
-        let attachments = self.write(|state, now| {
-            let original = state
+        let change = self.write(|state, now| {
+            let current = state
                 .find_message(&message_id)
                 .ok_or_else(|| failed("that message isn't loaded"))?;
-            if original.author_id.as_deref() != Some(state.me_id()) {
+            if current.author_id.as_deref() != Some(state.me_id()) {
                 return Err(failed("only the author can edit a message"));
             }
-            if original.deleted_at.is_some() {
+            if current.deleted_at.is_some() {
                 return Err(failed("this message was removed"));
             }
-            let keep = keep_attachment_ids.clone().unwrap_or_else(|| {
-                original
-                    .attachments
-                    .iter()
-                    .map(|file| file.id.clone())
-                    .collect()
-            });
-            let mut shown = original.clone();
+            let mut shown = current.clone();
             shown.spans = shown_spans.clone();
             shown.edited_at = Some(timestamp(now));
-            shown.attachments.retain(|file| keep.contains(&file.id));
-            let shown_value = serde_json::to_value(&shown).unwrap_or_default();
-            state.replace_everywhere(&shown);
+            if let Some(keep) = &keep_attachment_ids {
+                shown.attachments.retain(|file| keep.contains(&file.id));
+            }
+            state.edit_everywhere(&message_id, |dto| copy_edit_fields(&shown, dto));
+            // An edit already on its way hasn't been agreed yet: what the server last agreed is
+            // what a refusal of this one goes back to.
+            let original = match state.actions.pending_edits.remove(&message_id) {
+                Some(earlier) => earlier.original,
+                None => current,
+            };
+            let change = state.actions.next_change();
             state.actions.pending_edits.insert(
                 message_id.clone(),
                 PendingEdit {
+                    change,
                     original,
-                    shown: shown_value,
+                    shown: edit_fields(&shown),
                 },
             );
-            Ok(keep)
+            Ok(change)
         })?;
         let body = wire::UpdateMessageDto {
-            attachments,
+            // Absent leaves the attachments as they are on the server, files that finished
+            // uploading meanwhile included; a list, even an empty one, keeps only those named.
+            attachments: keep_attachment_ids,
             channel_id: None,
             direct_message_group_id: None,
             pending_attachments: None,
@@ -403,15 +492,31 @@ impl Core {
             .await
             .map_err(|error| self.backend_failed(error));
         self.write(|state, _| {
+            let Some(pending) = state.actions.pending_edits.get_mut(&message_id) else {
+                return;
+            };
+            if pending.change != change {
+                // A later edit is on its way and owns the row. If this one went through, a refusal
+                // of the later one comes back to it.
+                if let Ok(dto) = &result {
+                    pending.original = dto.clone();
+                }
+                return;
+            }
             let Some(pending) = state.actions.pending_edits.remove(&message_id) else {
                 return;
             };
-            let still_shown = state.still_shown(&message_id, &pending.shown);
+            let still_shown = state.still_shown(&message_id, edit_fields, &pending.shown);
             match &result {
-                Ok(dto) if still_shown => state.replace_everywhere(dto),
-                Err(_) if still_shown => state.replace_everywhere(&pending.original),
-                // Something newer from the server replaced it meanwhile, and stands. The row is
-                // sent again, to clear `edit_pending`.
+                Ok(dto) if still_shown => {
+                    state.edit_everywhere(&message_id, |row| copy_edit_fields(dto, row));
+                }
+                Err(_) if still_shown => {
+                    let original = &pending.original;
+                    state.edit_everywhere(&message_id, |row| copy_edit_fields(original, row));
+                }
+                // Something newer from the server replaced the text meanwhile, and stands. The row
+                // is sent again, to clear `edit_pending`.
                 _ => state.edit_everywhere(&message_id, |_| {}),
             }
         });
@@ -498,10 +603,11 @@ impl Core {
         self.write(|state, _| {
             let dto = state.find_message(&message_id);
             match result {
-                Ok(fresh) if fresh.deleted_at.is_some() => state.replace_everywhere(&fresh),
-                // Gone (404), or unreadable: it goes, as it would on the web.
-                _ => {
+                Ok(fresh) => state.replace_everywhere(&fresh),
+                // Gone: it was deleted, so it goes, as it would on the web.
+                Err(error) if error.status == 404 => {
                     if let Some(dto) = dto {
+                        state.drop_from_pins(dto.channel_id.as_deref(), &message_id);
                         state.remove_message(&wire::DeleteMessagePayloadDto {
                             channel_id: dto.channel_id,
                             direct_message_group_id: dto.direct_message_group_id,
@@ -509,6 +615,9 @@ impl Core {
                         });
                     }
                 }
+                // Unreadable for now (offline, a timeout, a server error): the row stays as it is
+                // rather than vanish for a message that may still be there.
+                Err(error) => log::warn!("reading message {message_id} again failed: {error}"),
             }
         });
     }
@@ -536,15 +645,31 @@ impl Core {
         }))
     }
 
-    /// What this user may do to others' messages in a channel. `None` until their roles there
-    /// arrive: `ViewChanged(ChannelModeration)` says when to read again. Show no moderator actions
-    /// meanwhile.
-    pub fn channel_moderation(&self, channel_id: String) -> Option<ChannelModeration> {
+    /// What this user may do to others' messages in a channel. `Loading` until their roles there
+    /// arrive, `Failed` if they couldn't be read (`Core::retry_failed` reads them again):
+    /// `ViewChanged(ChannelModeration)` says when to read again. Nothing is allowed until `Ready`.
+    pub fn channel_moderation(&self, channel_id: String) -> ChannelModerationView {
         self.write(|state, _| {
+            let key = keys::scoped(keys::CHANNEL_ROLES, &channel_id);
             if !state.is_instance_owner() {
-                state.ensure_query(keys::scoped(keys::CHANNEL_ROLES, &channel_id));
+                state.ensure_query(key.clone());
             }
-            state.moderation_of(&channel_id)
+            if let Some(allowed) = state.moderation_of(&channel_id) {
+                return ChannelModerationView {
+                    state: LoadState::Ready,
+                    allowed,
+                };
+            }
+            let load = match state.failed_queries.get(&key) {
+                Some(error) => LoadState::Failed {
+                    error: error.clone(),
+                },
+                None => LoadState::Loading,
+            };
+            ChannelModerationView {
+                state: load,
+                allowed: ChannelModeration::default(),
+            }
         })
     }
 
@@ -583,13 +708,6 @@ impl Core {
                 .channel_id
                 .clone()
                 .ok_or_else(|| failed("only channel messages can be pinned"))?;
-            let me = state.me_id().to_owned();
-            let at = timestamp(now);
-            state.edit_everywhere(&message_id, |dto| {
-                dto.pinned = pinned;
-                dto.pinned_by = pinned.then(|| me.clone());
-                dto.pinned_at = pinned.then_some(at);
-            });
             // An unpin leaves the pins list at once; kept to put back.
             let key = keys::scoped(keys::PINS, &channel_id);
             let unlisted = if pinned {
@@ -608,9 +726,14 @@ impl Core {
                 }
                 found
             };
-            let shown = state
-                .find_message(&message_id)
-                .and_then(|dto| serde_json::to_value(dto).ok());
+            let me = state.me_id().to_owned();
+            let at = timestamp(now);
+            state.edit_everywhere(&message_id, |dto| {
+                dto.pinned = pinned;
+                dto.pinned_by = pinned.then(|| me.clone());
+                dto.pinned_at = pinned.then_some(at);
+            });
+            let shown = state.find_message(&message_id).map(|dto| pin_fields(&dto));
             Ok((dto, channel_id, unlisted, shown))
         })?;
         let (original, channel_id, unlisted, shown) = begun;
@@ -641,7 +764,7 @@ impl Core {
                 Err(_) => {
                     if shown
                         .as_ref()
-                        .is_some_and(|shown| state.still_shown(&message_id, shown))
+                        .is_some_and(|shown| state.still_shown(&message_id, pin_fields, shown))
                     {
                         let (was, by, at) = (
                             original.pinned,
@@ -779,7 +902,19 @@ impl Core {
         if self.reacted(&message_id, &emoji) == add {
             return Ok(());
         }
-        self.write(|state, _| state.set_my_reaction(&message_id, &emoji, add));
+        let key = (message_id.clone(), emoji.clone());
+        let change = self.write(|state, _| {
+            state.set_my_reaction(&message_id, &emoji, add);
+            let change = state.actions.next_change();
+            state.actions.pending_reactions.insert(
+                key.clone(),
+                PendingReaction {
+                    change,
+                    heard: false,
+                },
+            );
+            change
+        });
         let result = if add {
             services
                 .backend
@@ -798,13 +933,34 @@ impl Core {
                 .await
         }
         .map_err(|error| self.backend_failed(error));
-        self.write(|state, _| match &result {
-            Ok(answer) => {
-                let reactions = answer.reactions.clone();
-                state.edit_everywhere(&answer.id, |dto| dto.reactions = reactions.clone());
-                state.reaction_users_changed(Some(&answer.id));
+        self.write(|state, _| {
+            let pending = match state.actions.pending_reactions.get(&key) {
+                Some(pending) if pending.change == change => {
+                    state.actions.pending_reactions.remove(&key)
+                }
+                // A later request for the same reaction owns it now.
+                _ => None,
+            };
+            match &result {
+                Ok(answer) => {
+                    let reactions = answer.reactions.clone();
+                    state.edit_everywhere(&answer.id, |dto| dto.reactions = reactions.clone());
+                    state.reaction_users_changed(Some(&answer.id));
+                }
+                // Back only if this is still the newest request, the server hasn't said anything
+                // about this reaction since, and the row still shows the change.
+                Err(_) => {
+                    let still_shown = state.find_message(&message_id).is_some_and(|dto| {
+                        dto.reactions.iter().any(|reaction| {
+                            reaction.emoji == emoji
+                                && reaction.user_ids.iter().any(|id| id == state.me_id())
+                        }) == add
+                    });
+                    if pending.is_some_and(|pending| !pending.heard) && still_shown {
+                        state.set_my_reaction(&message_id, &emoji, !add);
+                    }
+                }
             }
-            Err(_) => state.set_my_reaction(&message_id, &emoji, !add),
         });
         result.map(|_| ())
     }

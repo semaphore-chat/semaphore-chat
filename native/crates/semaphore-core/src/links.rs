@@ -4,6 +4,10 @@
 //! - `/direct-messages/G?highlight=M`
 //! - `/direct-messages?group=G&highlight=M`
 //!
+//! The web app uses a `HashRouter`, so the links it shows and copies carry that route in the
+//! fragment, after the server's own path: `https://host/#/community/C/channel/X?highlight=M`
+//! (`frontend/src/utils/voiceChannelLink.ts`, `utils/swPush.ts`). Both forms are read.
+//!
 //! The server is compared by scheme, host and port, parsed, never by string prefix: a link to
 //! `https://good.example.evil.com` is not one to `https://good.example`. A link with user info
 //! (`https://good.example@evil.com`) is refused outright, and ids are plain tokens, so nothing
@@ -23,6 +27,8 @@ struct Parsed<'a> {
     origin: Origin,
     path: &'a str,
     query: &'a str,
+    /// After the `#`, if there is one.
+    fragment: Option<&'a str>,
 }
 
 fn parse_url(url: &str) -> Option<Parsed<'_>> {
@@ -66,12 +72,16 @@ fn parse_url(url: &str) -> Option<Parsed<'_>> {
         Some(port) if port.bytes().all(|byte| byte.is_ascii_digit()) => port.parse().ok()?,
         Some(_) => return None,
     };
-    let rest = rest.split('#').next().unwrap_or_default();
+    let (rest, fragment) = match rest.split_once('#') {
+        Some((rest, fragment)) => (rest, Some(fragment)),
+        None => (rest, None),
+    };
     let (path, query) = rest.split_once('?').unwrap_or((rest, ""));
     Some(Parsed {
         origin: Origin { scheme, host, port },
         path,
         query,
+        fragment,
     })
 }
 
@@ -104,6 +114,13 @@ pub fn parse_message_link(server_url: &str, link: &str) -> Option<MessageLink> {
     // A server under a path keeps its links under it too.
     let base = server.path.trim_end_matches('/');
     let route = link.path.strip_prefix(base)?;
+    // The web's HashRouter form: the server's own page, then the route and its query after `#`.
+    let (route, query) = match link.fragment {
+        Some(fragment) if fragment.starts_with('/') && matches!(route, "" | "/") => {
+            fragment.split_once('?').unwrap_or((fragment, ""))
+        }
+        _ => (route, link.query),
+    };
     if !route.starts_with('/') {
         return None;
     }
@@ -112,7 +129,7 @@ pub fn parse_message_link(server_url: &str, link: &str) -> Option<MessageLink> {
         .trim_end_matches('/')
         .split('/')
         .collect();
-    let message_id = match query_value(link.query, "highlight") {
+    let message_id = match query_value(query, "highlight") {
         Some(value) => Some(id(value)?),
         None => None,
     };
@@ -125,7 +142,7 @@ pub fn parse_message_link(server_url: &str, link: &str) -> Option<MessageLink> {
         ["direct-messages"] => (
             None,
             Conversation::DirectMessage {
-                id: id(query_value(link.query, "group")?)?,
+                id: id(query_value(query, "group")?)?,
             },
         ),
         _ => return None,

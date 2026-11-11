@@ -335,10 +335,28 @@ impl State {
         self.bump_unread(&conversation, &context_id, 1, 0);
     }
 
-    /// `handleUpdateMessage`, and the thread window for a reply.
+    /// `handleUpdateMessage`, and the thread window for a reply, and the channel's cached pins.
+    ///
+    /// The server blanks a removed message in every broadcast (`toWireMessage`), so for a reader
+    /// who may see removed messages the socket copy would wipe text they're shown. For them a
+    /// loaded removed row is read again over REST instead, which answers them in full.
     fn on_update_message(&mut self, mut dto: MessageDto) {
-        self.blank_for_reader(&mut dto);
         let id = dto.id.clone();
+        if dto.deleted_at.is_some() {
+            let may_see = dto
+                .channel_id
+                .as_deref()
+                .and_then(|channel_id| self.moderation_of(channel_id))
+                .is_some_and(|moderation| moderation.remove_any);
+            if may_see {
+                if self.find_message(&id).is_some() {
+                    self.push_effect(crate::client::Effect::RefetchMessage(id));
+                }
+                return;
+            }
+        }
+        self.blank_for_reader(&mut dto);
+        self.edit_pins(&id, |pinned| *pinned = dto.clone());
         let targets = [
             context(&dto.channel_id, &dto.direct_message_group_id),
             dto.parent_message_id
@@ -561,6 +579,7 @@ impl State {
             }
             ServerEvent::ReactionAdded(event) => {
                 let reaction = event.reaction;
+                self.heard_reaction(&event.message_id, &reaction.emoji);
                 self.reaction_users_changed(Some(&event.message_id));
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),
@@ -574,6 +593,7 @@ impl State {
             }
             ServerEvent::ReactionRemoved(event) => {
                 let reactions = event.reactions;
+                self.heard_reaction(&event.message_id, &event.emoji);
                 self.reaction_users_changed(Some(&event.message_id));
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),

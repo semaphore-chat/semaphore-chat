@@ -669,3 +669,99 @@ async fn message_links_need_a_session() {
         .unwrap_err();
     assert!(matches!(error, CoreError::Unavailable { .. }));
 }
+
+#[test]
+fn the_web_apps_hash_router_links_parse() {
+    // The shapes the web app shows and copies: its `HashRouter` routes after `#`, as built by
+    // `utils/voiceChannelLink.ts` and `utils/swPush.ts`, with the `?highlight=` its jumps add
+    // (`MessageSearch`, `NotificationCenter`, `QuotePreview`).
+    let chan = Conversation::Channel { id: "X".into() };
+    let dm = Conversation::DirectMessage { id: "G".into() };
+    let cases = [
+        (
+            "https://chat.example/#/community/C/channel/X?highlight=M",
+            link(chan.clone(), Some("C"), Some("M")),
+        ),
+        (
+            "https://chat.example/#/community/C/channel/X",
+            link(chan.clone(), Some("C"), None),
+        ),
+        (
+            "https://chat.example#/community/C/channel/X",
+            link(chan.clone(), Some("C"), None),
+        ),
+        (
+            "https://chat.example/#/direct-messages/G?highlight=M",
+            link(dm.clone(), None, Some("M")),
+        ),
+        (
+            "https://chat.example/#/direct-messages/G",
+            link(dm.clone(), None, None),
+        ),
+        (
+            "https://chat.example/#/direct-messages?group=G&highlight=M",
+            link(dm.clone(), None, Some("M")),
+        ),
+    ];
+    for (url, expected) in cases {
+        assert_eq!(parse_message_link(SERVER, url), Some(expected), "{url}");
+    }
+    assert_eq!(
+        parse_message_link(
+            "https://example.org/chat",
+            "https://example.org/chat/#/community/C/channel/X?highlight=M"
+        ),
+        Some(link(chan, Some("C"), Some("M"))),
+        "a server under a path"
+    );
+    for refused in [
+        "https://other.example/#/community/C/channel/X",
+        "https://chat.example/#/settings",
+        "https://chat.example/#/community/C/channel/..%2Fadmin",
+        // A route after the hash only counts on the server's own page.
+        "https://chat.example/elsewhere#/community/C/channel/X",
+        "https://chat.example/#/community/C/channel/X?highlight=a%2Fb",
+    ] {
+        assert_eq!(parse_message_link(SERVER, refused), None, "{refused}");
+    }
+}
+
+#[tokio::test]
+async fn a_thread_link_does_not_open_its_thread_after_the_user_went_elsewhere() {
+    let rig = Rig::new().signed_in().await;
+    let mut rows = history("m", 3);
+    rows.insert(1, message(PARENT, "someone", "the parent"));
+    rig.backend.set_messages(rows);
+    rig.backend.reading.set_meta(PARENT, false, 1);
+    let (release, gate) = oneshot::channel();
+    *rig.backend.around_gate.lock().unwrap() = Some(gate);
+    let core = rig.core.clone();
+    let following = tokio::spawn(async move {
+        core.open_message_link(
+            format!("http://server/community/c-1/channel/{CHANNEL}?highlight=r-1"),
+            Some(PARENT.into()),
+        )
+        .await
+    });
+    for _ in 0..10_000 {
+        if rig.backend.around_gate.lock().unwrap().is_none() {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        rig.backend.around_gate.lock().unwrap().is_none(),
+        "the page was never asked for"
+    );
+    // Meanwhile the user opens a DM.
+    rig.core
+        .open_conversation(Conversation::DirectMessage { id: "dm-1".into() })
+        .await
+        .unwrap();
+    release.send(()).unwrap();
+    following.await.unwrap().unwrap();
+    let opened_thread = rig.events.take().iter().any(|event| {
+        matches!(event, CoreEvent::MessagesChanged { conversation, .. } if *conversation == thread())
+    });
+    assert!(!opened_thread, "the thread opened over the DM");
+}

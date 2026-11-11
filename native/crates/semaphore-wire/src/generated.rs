@@ -6334,38 +6334,6 @@ pub mod types {
         #[serde(rename = "memberIds")]
         pub member_ids: ::std::vec::Vec<::uuid::Uuid>,
     }
-    ///`UpdateMessageDto`
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
-    pub struct UpdateMessageDto {
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub attachments: ::std::vec::Vec<::std::string::String>,
-        #[serde(
-            rename = "channelId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub channel_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(
-            rename = "directMessageGroupId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub direct_message_group_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(
-            rename = "pendingAttachments",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub pending_attachments: ::std::option::Option<u64>,
-        #[serde(
-            rename = "replyToId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub reply_to_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(default, skip_serializing_if = "::std::vec::Vec::is_empty")]
-        pub spans: ::std::vec::Vec<CreateMessageSpanDto>,
-    }
     ///`UpdateMessagePayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct UpdateMessagePayloadDto {
