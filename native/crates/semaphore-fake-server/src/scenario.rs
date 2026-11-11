@@ -67,9 +67,9 @@ pub fn message_uuid(readable: &str) -> String {
     uuid::Uuid::new_v5(&NAMESPACE, readable.as_bytes()).to_string()
 }
 
-/// The UUID a readable user, community or custom emoji id (`u-priya`, `c-couch`, `me`) is served
-/// as, in a scenario whose message ids are UUIDs: the contract types those ids as UUIDs in a
-/// message's spans, as the real backend issues them. The same on every run, so a script can name
+/// The UUID a readable user, community, channel or custom emoji id (`u-priya`, `c-couch`,
+/// `cc-general`, `me`) is served as, in a scenario whose message ids are UUIDs: the contract types
+/// those ids as UUIDs in a message's spans and in paths, as the real backend issues them. The same on every run, so a script can name
 /// one (`$ID(u-priya)` in the slice rig).
 pub fn entity_uuid(readable: &str) -> String {
     const NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x5e3a_9b0e_0000_4000_8000_656e_7469_7479);
@@ -88,9 +88,9 @@ const FREE_TEXT: &[&str] = &[
     "description",
 ];
 
-/// Every user and community id in the scenario's JSON, as a value or as a map's key, through
-/// `entity_uuid`. A walk over the JSON rather than over the decoded types, because user ids sit in
-/// a dozen places (authors, members, owners, mentions, reactions, voice presence, DMs).
+/// Every user, community and channel id in the scenario's JSON, as a value or as a map's key,
+/// through `entity_uuid`. A walk over the JSON rather than over the decoded types, because user ids
+/// sit in a dozen places (authors, members, owners, mentions, reactions, voice presence, DMs).
 fn uuid_entity_ids(root: &mut serde_json::Value) {
     use serde_json::Value;
     let mut ids = BTreeSet::new();
@@ -100,7 +100,7 @@ fn uuid_entity_ids(root: &mut serde_json::Value) {
     // Communities and users, then the rows of the W2 areas (DMs, friendships, notifications,
     // their settings and overrides) and the members of each DM: every one an id the backend
     // issues as a UUID. DM groups and friendships are named in paths, which the backend types as
-    // UUIDs. Channel ids stay readable (the slice scripts and tests name them).
+    // UUIDs. So are channels, which deep links (`semaphore://channels/...`) name.
     for list in [
         "users",
         "communities",
@@ -111,6 +111,13 @@ fn uuid_entity_ids(root: &mut serde_json::Value) {
     ] {
         for entry in root[list].as_array().into_iter().flatten() {
             if let Some(id) = entry["id"].as_str() {
+                ids.insert(id.to_owned());
+            }
+        }
+    }
+    for community in root["communities"].as_array().into_iter().flatten() {
+        for channel in community["channels"].as_array().into_iter().flatten() {
+            if let Some(id) = channel["id"].as_str() {
                 ids.insert(id.to_owned());
             }
         }

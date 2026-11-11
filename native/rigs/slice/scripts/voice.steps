@@ -12,11 +12,11 @@ click auth-password
 type "hunter2"
 click auth-login
 wait core session signed-in
-wait core channel cc-general
+wait core channel $ID(cc-general)
 wait core connection connected
 
 # Join: connected, the publisher seen, its video reaching a tile.
-click channel-vc-squad
+click channel-$ID(vc-squad)
 wait core voice connected within 30
 # The stage, with its own bar, is what the column shows.
 wait core label "Share screen"
@@ -91,8 +91,8 @@ click picker-cancel
 expect core voice screen off
 
 # Elsewhere in the app, the call's bar stays under the columns.
-click channel-cc-general
-wait core channel cc-general
+click channel-$ID(cc-general)
+wait core channel $ID(cc-general)
 wait core label "Share screen"
 expect core voice connected
 tick 100
@@ -103,13 +103,13 @@ click voice-camera
 wait core voice camera on within 15
 
 # A moderator removes us: the call ends here, and the server hears we left.
-livekit remove vc-squad $ID(me)
+livekit remove $ID(vc-squad) $ID(me)
 wait core voice disconnected within 15
 wait core requests VoicePresenceController_leavePresence >= 1
 expect core voice camera off
 
 # A new call, then leaving it from the bar.
-click channel-vc-squad
+click channel-$ID(vc-squad)
 wait core voice connected within 30
 wait core voice participant demo-peer within 30
 click voice-leave

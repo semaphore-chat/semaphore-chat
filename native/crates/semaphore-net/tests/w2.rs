@@ -397,8 +397,7 @@ async fn every_w2_call_over_the_wire() {
     assert_eq!(settings.dnd_start, None, "cleared with a null");
     assert_eq!(settings.dnd_end.as_deref(), Some("07:30"), "the rest kept");
 
-    // Channel ids in the showcase stay readable; the fake accepts a known one as the backend does a UUID.
-    let muted = "tr-general".to_owned();
+    let muted = entity_uuid("tr-general");
     core.channel_notify_level(muted.clone());
     until("a channel's level", || {
         core.channel_notify_level(muted.clone()).state == LoadState::Ready
@@ -408,7 +407,7 @@ async fn every_w2_call_over_the_wire() {
         core.channel_notify_level(muted.clone()).level,
         Some(NotifyLevel::Muted)
     );
-    let general = "cc-general".to_owned();
+    let general = entity_uuid("cc-general");
     core.channel_notify_level(general.clone());
     until("no level of its own", || {
         core.channel_notify_level(general.clone()).state == LoadState::Ready

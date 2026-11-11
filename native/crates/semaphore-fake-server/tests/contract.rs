@@ -1357,7 +1357,10 @@ async fn dms_friends_and_notifications_match_openapi_and_socket_events() {
         Some(schemas.component("UserNotificationSettingsDto")),
     )
     .await;
-    let override_path = "/api/notifications/channels/tr-general/override".to_owned();
+    let override_path = format!(
+        "/api/notifications/channels/{}/override",
+        semaphore_fake_server::entity_uuid("tr-general")
+    );
     check(
         M::GET,
         override_path.clone(),
@@ -1401,7 +1404,7 @@ async fn dms_friends_and_notifications_match_openapi_and_socket_events() {
         2,
         "sendMessage",
         json!({
-            "channelId": "cc-general",
+            "channelId": semaphore_fake_server::entity_uuid("cc-general"),
             "spans": [{ "type": "USER_MENTION", "text": "@alexk", "userId": id("me") }],
             "attachments": [],
             "clientNonce": uuid(12),

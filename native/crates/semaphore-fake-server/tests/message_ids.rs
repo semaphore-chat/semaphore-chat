@@ -27,7 +27,10 @@ async fn the_showcase_serves_uuids_and_its_references_follow() {
     let caption = server
         .message(&message_uuid("sc-cc-pit-caption"))
         .expect("served under its UUID");
-    assert_eq!(caption.channel_id.as_deref(), Some("cc-general"));
+    assert_eq!(
+        caption.channel_id.as_deref(),
+        Some(entity_uuid("cc-general").as_str())
+    );
     assert!(server.message("sc-cc-pit-caption").is_none());
 
     let client = http();
@@ -42,7 +45,15 @@ async fn the_showcase_serves_uuids_and_its_references_follow() {
         assert_eq!(reply["parentMessageId"].as_str(), Some(parent.as_str()));
     }
 
-    let (status, body) = get(&client, &base, "/api/messages/channel/cc-general?limit=100").await;
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!(
+            "/api/messages/channel/{}?limit=100",
+            entity_uuid("cc-general")
+        ),
+    )
+    .await;
     assert_eq!(status, 200, "{body}");
     let messages = body["messages"].as_array().expect("messages");
     for message in messages {
@@ -61,6 +72,29 @@ fn entity_ids_have_their_own_pinned_uuids() {
     assert_ne!(id, message_uuid("u-priya"));
     // Pinned: rig scripts name users and communities through it (`$ID(u-priya)`).
     assert_eq!(id, entity_uuid("u-priya"));
+    // scripts/slice-e2e.sh --voice names the room its LiveKit publisher joins by this value.
+    assert_eq!(
+        entity_uuid("vc-squad"),
+        "deedc434-97b9-503b-ac44-7b93a25560fd"
+    );
+}
+
+#[tokio::test]
+async fn the_showcase_serves_channel_ids_as_uuids() {
+    let server = start("showcase").await;
+    let client = http();
+    let base = server.base_url();
+    let couch = entity_uuid("c-couch");
+    let (status, channels) = get(&client, &base, &format!("/api/channels/community/{couch}")).await;
+    assert_eq!(status, 200, "{channels}");
+    let ids: Vec<&str> = channels
+        .as_array()
+        .expect("channels")
+        .iter()
+        .map(|channel| channel["id"].as_str().unwrap())
+        .collect();
+    assert!(ids.iter().all(|id| is_uuid(id)), "{ids:?}");
+    assert!(ids.contains(&entity_uuid("cc-general").as_str()), "{ids:?}");
 }
 
 #[tokio::test]
@@ -86,7 +120,15 @@ async fn the_showcase_serves_user_and_community_ids_as_uuids() {
             .any(|community| community["id"] == entity_uuid("c-couch").as_str())
     );
 
-    let (status, body) = get(&client, &base, "/api/messages/channel/cc-general?limit=100").await;
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!(
+            "/api/messages/channel/{}?limit=100",
+            entity_uuid("cc-general")
+        ),
+    )
+    .await;
     assert_eq!(status, 200, "{body}");
     let messages = body["messages"].as_array().expect("messages");
     let mut mentions = 0;
@@ -103,7 +145,12 @@ async fn the_showcase_serves_user_and_community_ids_as_uuids() {
     }
     assert!(mentions > 0, "the showcase's general channel has mentions");
     // Words that look like an id stay words.
-    let (_, lfg) = get(&client, &base, "/api/messages/channel/cc-lfg?limit=100").await;
+    let (_, lfg) = get(
+        &client,
+        &base,
+        &format!("/api/messages/channel/{}?limit=100", entity_uuid("cc-lfg")),
+    )
+    .await;
     assert!(lfg.to_string().contains(r#""text":"me""#), "{lfg}");
 }
 

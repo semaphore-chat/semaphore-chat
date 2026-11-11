@@ -12,7 +12,7 @@
 //! wait core text "hello" within 5     # a row on screen contains it
 //! expect core count "hello" 1         # checks once, after settling
 //! server drop_connections             # POST /__control/drop_connections
-//! server post_as {"channelId": "cc-general", "authorId": "pri", "text": "hi"}
+//! server post_as {"channelId": "$ID(cc-general)", "authorId": "pri", "text": "hi"}
 //! expect requests typingStart >= 1    # what the fake server saw, by operation or socket event
 //! expect clipboard "some text"        # what the last copy put there contains this
 //! os suspend                          # also resume, network-down, network-up
@@ -21,7 +21,7 @@
 //! snap name                           # one frame, no waiting for stillness (live video)
 //! attach rigs/slice/fixtures/notes.txt  # a file into the composer, as a dialog or drop would
 //! link-images on                      # the next start loads link previews' images
-//! livekit remove vc-squad me          # LiveKit's server API removes someone (needs --livekit-http)
+//! livekit remove $ID(vc-squad) me    # LiveKit's server API removes someone (needs --livekit-http)
 //! wait core voice connected           # also frames, muted, deafened, participant ID
 //! wait core voice camera on            # camera|screen|screen-audio off|starting|on|failed
 //! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
@@ -37,8 +37,6 @@
 //! server friend_request_as {"fromId": "…"}  # another user asks to be friends
 //! notification click "dm:…"           # the OS notification with that tag is clicked
 //! link "semaphore://…"                # the OS hands over a link, as a second launch would
-//! link-channel COMMUNITY CHANNEL      # likewise, already parsed: the showcase's channel ids aren't
-//!                                     # UUIDs, which `parse_deep_link` (unit-tested) requires
 //! forget sounds                       # what the speaker heard so far no longer counts
 //! window activate                     # the window comes to the front, as a user's click would:
 //!                                     # the pane marks what it shows read only then
@@ -316,7 +314,6 @@ enum Step {
     /// The fake camera or screen refuses its next start with this reason.
     NotificationClick(String),
     Link(String),
-    LinkChannel(String, String),
     ForgetSounds,
     ActivateWindow,
     VideoFailNext {
@@ -507,9 +504,6 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["exec", command] => Step::Exec((*command).into()),
             ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
             ["link", url] => Step::Link((*url).into()),
-            ["link-channel", community, channel] => {
-                Step::LinkChannel((*community).into(), (*channel).into())
-            }
             ["forget", "sounds"] => Step::ForgetSounds,
             ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
@@ -1567,15 +1561,6 @@ impl Rig {
                 Step::Link(url) => {
                     let link = semaphore_ui::nav::parse_deep_link(url)
                         .ok_or_else(|| anyhow!("not a link the app takes: {url}"))?;
-                    let app = self.app()?.clone();
-                    self.driver
-                        .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
-                }
-                Step::LinkChannel(community_id, channel_id) => {
-                    let link = semaphore_ui::nav::DeepLink::Channel {
-                        community_id: community_id.clone(),
-                        channel_id: channel_id.clone(),
-                    };
                     let app = self.app()?.clone();
                     self.driver
                         .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
