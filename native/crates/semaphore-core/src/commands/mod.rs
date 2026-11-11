@@ -63,6 +63,10 @@ fn view_for(key: &QueryKey) -> Option<ViewKey> {
         keys::COMMUNITIES => Some(ViewKey::Communities),
         keys::CHANNELS => Some(ViewKey::Channels { community_id: id() }),
         keys::MEMBERS => Some(ViewKey::Members { community_id: id() }),
+        // W1 part B: so a missing thread fails once, not on every read.
+        keys::THREAD_META => Some(ViewKey::Thread {
+            parent_message_id: id(),
+        }),
         _ => None,
     }
 }
@@ -212,7 +216,9 @@ impl State {
             }
             keys::PRESENCE => self.members_changed(None),
             keys::NOTIFICATION_COUNT => self.view_changed(ViewKey::Rail),
+            keys::THREAD_META => self.reading_meta_changed(id),
             keys::UNREAD => {
+                self.reading_counts_arrived();
                 self.view_changed(ViewKey::Communities);
                 self.view_changed(ViewKey::Rail);
                 for channels_key in self.cache.keys_with_op(keys::CHANNELS) {
@@ -261,6 +267,7 @@ impl State {
 
     /// `(on screen, still needs its first page)` after opening a conversation.
     fn open(&mut self, conversation: &Conversation) -> bool {
+        self.reading_opened(conversation);
         match conversation {
             Conversation::Thread { .. } => {
                 let previous = self.thread_conversation.replace(conversation.clone());

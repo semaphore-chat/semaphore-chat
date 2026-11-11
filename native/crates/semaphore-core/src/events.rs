@@ -538,6 +538,9 @@ impl State {
                     self.sends.remove(nonce);
                     self.uploads_may_start(nonce, &event.reply.id);
                 }
+                if is_mine && let Conversation::Thread { parent_message_id } = &conversation {
+                    self.reading_my_reply(parent_message_id);
+                }
                 if let Some(window) = self.windows.get_mut(&conversation) {
                     window.note_upsert(&event.reply.id, Some(event.reply.clone()));
                     window.reconcile_echo(event.reply);
@@ -587,6 +590,11 @@ impl State {
                 self.invalidate_for(name);
             }
             ServerEvent::ThreadReplyCountUpdated(event) => {
+                self.reading_reply_count(
+                    &event.parent_message_id,
+                    event.reply_count,
+                    event.last_reply_at,
+                );
                 self.edit_rows(
                     context(&event.channel_id, &event.direct_message_group_id),
                     None,

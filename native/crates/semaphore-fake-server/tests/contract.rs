@@ -407,6 +407,42 @@ async fn every_implemented_route_matches_openapi() {
             status: 201,
             schema: schemas.component("RefreshPresenceResponseDto"),
         },
+        // W1 part B: threads and search.
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/threads/msg-48/replies?limit=2".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("ThreadRepliesResponseDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/threads/msg-48/metadata".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.component("ThreadMetadataDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/messages/search/channel/channel-13?q=plan&limit=5".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.array_of("MessageDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/messages/search/group/dm-1?q=lunch".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.array_of("MessageDto"),
+        },
+        Case {
+            method: reqwest::Method::GET,
+            path: "/api/messages/search/community/community-1?q=plan".to_owned(),
+            body: None,
+            status: 200,
+            schema: schemas.array_of("CommunitySearchResultDto"),
+        },
     ];
 
     for case in cases {
@@ -419,6 +455,89 @@ async fn every_implemented_route_matches_openapi() {
             &body,
             &format!("{} {}", case.path, status),
         );
+    }
+
+    // Subscriptions answer 204 with no body; metadata follows them.
+    for (method, subscribed) in [
+        (reqwest::Method::POST, true),
+        (reqwest::Method::DELETE, false),
+    ] {
+        let (status, body) = request(
+            &client,
+            method,
+            &base,
+            "/api/threads/msg-48/subscribe",
+            None,
+            true,
+        )
+        .await;
+        assert_eq!(status, 204, "{body}");
+        assert_eq!(body, Value::String(String::new()));
+        let (_, meta) = get(&client, &base, "/api/threads/msg-48/metadata").await;
+        assert_eq!(meta["isSubscribed"], subscribed, "{meta}");
+    }
+    // Paging replies: oldest first, the token the last one sent.
+    let (_, first) = get(&client, &base, "/api/threads/msg-48/replies?limit=3").await;
+    let token = first["continuationToken"].as_str().expect("more to come");
+    let (_, rest) = get(
+        &client,
+        &base,
+        &format!("/api/threads/msg-48/replies?limit=3&continuationToken={token}"),
+    )
+    .await;
+    assert_eq!(first["replies"].as_array().unwrap().len(), 3);
+    assert_eq!(rest["replies"][0]["id"], "msg-200");
+    assert!(
+        rest.get("continuationToken").is_none_or(Value::is_null),
+        "{rest}"
+    );
+    // A missing parent, and a search with no query.
+    for path in ["/api/threads/nope/metadata", "/api/threads/nope/replies"] {
+        let (status, body) = get(&client, &base, path).await;
+        assert_eq!(status, 404, "{path}: {body}");
+        assert_eq!(body["errorCode"], "NOT_FOUND");
+        assert_valid(
+            &schemas,
+            &schemas.component("ErrorResponseDto"),
+            &body,
+            path,
+        );
+    }
+    let (status, body) = get(&client, &base, "/api/messages/search/channel/channel-13?q=").await;
+    assert_eq!(status, 400, "{body}");
+    // Fault injection reaches these routes like any other.
+    for operation in [
+        "ThreadsController_getReplies",
+        "ThreadsController_getMetadata",
+        "ThreadsController_subscribe",
+        "ThreadsController_unsubscribe",
+        "MessagesController_searchChannelMessages",
+        "MessagesController_searchDirectMessages",
+        "MessagesController_searchCommunityMessages",
+    ] {
+        server.fail_route(operation, 503, "SERVICE_UNAVAILABLE");
+    }
+    for (method, path) in [
+        (reqwest::Method::GET, "/api/threads/msg-48/replies"),
+        (reqwest::Method::GET, "/api/threads/msg-48/metadata"),
+        (reqwest::Method::POST, "/api/threads/msg-48/subscribe"),
+        (reqwest::Method::DELETE, "/api/threads/msg-48/subscribe"),
+        (
+            reqwest::Method::GET,
+            "/api/messages/search/channel/channel-13?q=plan",
+        ),
+        (
+            reqwest::Method::GET,
+            "/api/messages/search/group/dm-1?q=plan",
+        ),
+        (
+            reqwest::Method::GET,
+            "/api/messages/search/community/community-1?q=plan",
+        ),
+    ] {
+        let (status, body) = request(&client, method, &base, path, None, true).await;
+        assert_eq!(status, 503, "{path}: {body}");
+        assert_eq!(body["errorCode"], "SERVICE_UNAVAILABLE", "{path}");
     }
 
     // Files are binary; the contract declares opaque bytes.

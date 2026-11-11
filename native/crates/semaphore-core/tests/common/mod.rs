@@ -174,6 +174,8 @@ pub struct FakeBackend {
     /// Newest first, by channel.
     pub messages: Mutex<HashMap<String, Vec<MessageDto>>>,
     pub thread_replies: Mutex<HashMap<String, Vec<MessageDto>>>,
+    /// W1 part B's scripted threads and search: `common/reading.rs`.
+    pub reading: reading::ReadingFakes,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,

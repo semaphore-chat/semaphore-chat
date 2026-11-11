@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
-use semaphore_core::backend::SessionBackend;
+use semaphore_core::backend::{SearchBackend, SessionBackend, ThreadsBackend};
 use semaphore_core::lifecycle::ConnectionState;
 use semaphore_core::model::{
-    Conversation, ListOp, MessageDraft, MessageRow, SendState, SessionState,
+    Conversation, ListOp, LoadState, MessageDraft, MessageRow, SearchScope, SendState, SessionState,
 };
 use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, SecretStore};
 use semaphore_core::{Core, Services};
@@ -574,4 +574,311 @@ async fn tokens_stay_out_of_debug_output_and_errors() {
             assert!(!text.contains(secret), "{text}");
         }
     }
+}
+
+// --- W1 part B: threads, search and links ---
+
+const PARENT: &str = "msg-48";
+
+/// How many requests to an operation answered with this status.
+fn answered(server: &FakeServer, operation: &str, status: u16) -> usize {
+    server
+        .requests()
+        .iter()
+        .filter(|record| {
+            matches!(record, Record::Http { operation: Some(op), status: s, .. }
+                if *op == operation && *s == status)
+        })
+        .count()
+}
+
+#[tokio::test]
+async fn thread_metadata_and_subscriptions_round_trip() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    rig.core.thread_info(PARENT.into());
+    until("metadata", || {
+        rig.core.thread_info(PARENT.into()).state == LoadState::Ready
+    })
+    .await;
+    let info = rig.core.thread_info(PARENT.into());
+    assert!(!info.subscribed, "I wrote neither the parent nor a reply");
+    assert_eq!(info.reply_count, 4);
+    assert!(info.last_reply_at_ms.is_some());
+
+    rig.core
+        .set_thread_subscribed(PARENT.into(), true)
+        .await
+        .unwrap();
+    assert!(rig.core.thread_info(PARENT.into()).subscribed);
+    until("the refetch", || {
+        answered(&rig.server, "ThreadsController_getMetadata", 200) == 2
+    })
+    .await;
+    assert_eq!(answered(&rig.server, "ThreadsController_subscribe", 204), 1);
+    assert!(rig.core.thread_info(PARENT.into()).subscribed);
+
+    rig.core
+        .set_thread_subscribed(PARENT.into(), false)
+        .await
+        .unwrap();
+    assert_eq!(
+        answered(&rig.server, "ThreadsController_unsubscribe", 204),
+        1
+    );
+    until("the second refetch", || {
+        answered(&rig.server, "ThreadsController_getMetadata", 200) == 3
+    })
+    .await;
+    assert!(!rig.core.thread_info(PARENT.into()).subscribed);
+
+    // A 204 decodes as `()`, straight from the backend too.
+    assert_eq!(
+        rig.backend
+            .threads_controller_subscribe(PARENT.into())
+            .await,
+        Ok(())
+    );
+    assert_eq!(
+        rig.backend
+            .threads_controller_unsubscribe(PARENT.into())
+            .await,
+        Ok(())
+    );
+    let meta = rig
+        .backend
+        .threads_controller_get_metadata(PARENT.into())
+        .await
+        .unwrap();
+    assert!(!meta.is_subscribed);
+}
+
+#[tokio::test]
+async fn a_failed_subscribe_rolls_back() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    rig.core.thread_info(PARENT.into());
+    until("metadata", || {
+        rig.core.thread_info(PARENT.into()).state == LoadState::Ready
+    })
+    .await;
+    rig.server
+        .fail_route("ThreadsController_subscribe", 503, "SERVICE_UNAVAILABLE");
+    let error = rig
+        .core
+        .set_thread_subscribed(PARENT.into(), true)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("SERVICE_UNAVAILABLE"), "{error}");
+    assert!(!rig.core.thread_info(PARENT.into()).subscribed);
+    until("the refetch", || {
+        answered(&rig.server, "ThreadsController_getMetadata", 200) == 2
+    })
+    .await;
+    assert!(!rig.core.thread_info(PARENT.into()).subscribed);
+}
+
+#[tokio::test]
+async fn a_missing_thread_reads_as_not_found() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    rig.core.thread_info("no-such-message".into());
+    until("the failure", || {
+        matches!(rig.core.thread_info("no-such-message".into()).state,
+            LoadState::Failed { error } if error.code == "NOT_FOUND")
+    })
+    .await;
+    let error = rig
+        .core
+        .set_thread_subscribed("no-such-message".into(), true)
+        .await
+        .unwrap_err();
+    assert!(error.to_string().starts_with("NOT_FOUND"), "{error}");
+}
+
+#[tokio::test]
+async fn a_thread_opens_with_its_replies() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    let thread = Conversation::Thread {
+        parent_message_id: PARENT.into(),
+    };
+    rig.core.open_conversation(thread.clone()).await.unwrap();
+    let ids: Vec<String> = rows(&rig.events, &thread)
+        .into_iter()
+        .filter_map(|row| row.id)
+        .collect();
+    assert_eq!(ids, ["msg-197", "msg-198", "msg-199", "msg-200"]);
+    assert_eq!(
+        answered(&rig.server, "ThreadsController_getReplies", 200),
+        1
+    );
+}
+
+#[tokio::test]
+async fn search_finds_messages_in_each_scope() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+
+    let hits = rig
+        .core
+        .search_messages(
+            SearchScope::Channel { id: CHANNEL.into() },
+            "plan before next WEEK".into(),
+            Some(10),
+        )
+        .await
+        .unwrap();
+    let ids: Vec<&str> = hits
+        .iter()
+        .filter_map(|hit| hit.row.id.as_deref())
+        .collect();
+    assert_eq!(hits.len(), 3, "{ids:?}");
+    assert!(
+        ids.contains(&"msg-197") && ids.contains(&"msg-198"),
+        "{ids:?}"
+    );
+    let reply = hits
+        .iter()
+        .find(|hit| hit.row.id.as_deref() == Some("msg-197"))
+        .unwrap();
+    assert_eq!(reply.parent_message_id.as_deref(), Some(PARENT));
+    assert!(
+        hits.iter()
+            .all(|hit| hit.conversation == Conversation::Channel { id: CHANNEL.into() })
+    );
+    assert!(
+        hits.windows(2)
+            .all(|pair| pair[0].row.sent_at_ms >= pair[1].row.sent_at_ms)
+    );
+
+    let hits = rig
+        .core
+        .search_messages(
+            SearchScope::DirectMessage { id: "dm-1".into() },
+            "step away for lunch".into(),
+            None,
+        )
+        .await
+        .unwrap();
+    assert_eq!(hits.len(), 1);
+    assert_eq!(hits[0].row.id.as_deref(), Some("msg-203"));
+    assert_eq!(
+        hits[0].conversation,
+        Conversation::DirectMessage { id: "dm-1".into() }
+    );
+
+    let hits = rig
+        .core
+        .search_messages(
+            SearchScope::Community {
+                id: COMMUNITY.into(),
+            },
+            "plan before next week".into(),
+            Some(50),
+        )
+        .await
+        .unwrap();
+    let general: Vec<_> = hits
+        .iter()
+        .filter(|hit| hit.conversation == Conversation::Channel { id: CHANNEL.into() })
+        .collect();
+    assert_eq!(general.len(), 3);
+    assert!(
+        general
+            .iter()
+            .all(|hit| hit.channel_name.as_deref() == Some("general"))
+    );
+
+    // The raw calls, as the backend sees them.
+    assert_eq!(
+        rig.backend
+            .messages_controller_search_channel_messages(CHANNEL.into(), "zzz-nothing".into(), None)
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
+    for operation in [
+        "MessagesController_searchChannelMessages",
+        "MessagesController_searchDirectMessages",
+        "MessagesController_searchCommunityMessages",
+    ] {
+        assert!(answered(&rig.server, operation, 200) >= 1, "{operation}");
+    }
+
+    // A blank query never reaches the server.
+    let before = rig.server.requests().len();
+    let hits = rig
+        .core
+        .search_messages(
+            SearchScope::Channel { id: CHANNEL.into() },
+            "  ".into(),
+            None,
+        )
+        .await
+        .unwrap();
+    assert!(hits.is_empty());
+    assert_eq!(rig.server.requests().len(), before);
+
+    rig.server.fail_route(
+        "MessagesController_searchCommunityMessages",
+        500,
+        "INTERNAL_ERROR",
+    );
+    assert!(
+        rig.core
+            .search_messages(
+                SearchScope::Community {
+                    id: COMMUNITY.into()
+                },
+                "plan".into(),
+                None,
+            )
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn a_message_link_opens_the_message_and_its_thread() {
+    let rig = Rig::new().await;
+    rig.sign_in().await;
+    let base = rig.server.base_url();
+    let channel = Conversation::Channel { id: CHANNEL.into() };
+    let thread = Conversation::Thread {
+        parent_message_id: PARENT.into(),
+    };
+    let opened = rig
+        .core
+        .open_message_link(
+            format!("{base}/community/{COMMUNITY}/channel/{CHANNEL}?highlight=msg-197"),
+            Some(PARENT.into()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(opened, channel);
+    assert!(
+        rows(&rig.events, &channel)
+            .iter()
+            .any(|row| row.id.as_deref() == Some(PARENT))
+    );
+    assert_eq!(rows(&rig.events, &thread).len(), 4);
+    assert_eq!(
+        answered(&rig.server, "MessagesController_findAroundForChannel", 200),
+        1
+    );
+
+    let error = rig
+        .core
+        .open_message_link(
+            format!("{base}/community/{COMMUNITY}/channel/{CHANNEL}?highlight=msg-gone"),
+            None,
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(&error, CoreError::Failed { message } if message.starts_with("NOT_FOUND")),
+        "{error:?}"
+    );
 }
