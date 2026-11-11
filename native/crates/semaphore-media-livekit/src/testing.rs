@@ -91,3 +91,251 @@ impl SpeakerTap {
         tone_share(&samples, hz)
     }
 }
+
+/// What a test sees of one fake capture, and how it ends it.
+#[derive(Default)]
+pub struct FakeVideoControl {
+    frames: std::sync::atomic::AtomicU64,
+    stopped: std::sync::atomic::AtomicBool,
+    end: Mutex<Option<std::sync::mpsc::Sender<String>>>,
+}
+
+impl FakeVideoControl {
+    /// Frames handed to the engine so far.
+    pub fn frames(&self) -> u64 {
+        self.frames.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// The engine dropped the capture.
+    pub fn stopped(&self) -> bool {
+        self.stopped.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Ends the capture on its own, as a closed window or the system's "stop sharing" does.
+    pub fn end(&self, why: &str) {
+        if let Some(end) = lock(&self.end).take() {
+            let _ = end.send(why.to_owned());
+        }
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(|p| p.into_inner())
+}
+
+/// Known frames at a fixed size and rate: BGRA for a screen, I420 for a camera, as the real
+/// sources give them. The luma steps every frame, so a viewer can tell the picture is live.
+pub struct FakeVideoSource {
+    width: u32,
+    height: u32,
+    fps: u32,
+    i420: bool,
+    control: Arc<FakeVideoControl>,
+}
+
+impl FakeVideoSource {
+    pub fn screen(width: u32, height: u32, fps: u32) -> (Self, Arc<FakeVideoControl>) {
+        Self::new(width, height, fps, false)
+    }
+
+    pub fn camera(width: u32, height: u32, fps: u32) -> (Self, Arc<FakeVideoControl>) {
+        Self::new(width, height, fps, true)
+    }
+
+    fn new(width: u32, height: u32, fps: u32, i420: bool) -> (Self, Arc<FakeVideoControl>) {
+        let control = Arc::new(FakeVideoControl::default());
+        (
+            Self {
+                width,
+                height,
+                fps: fps.max(1),
+                i420,
+                control: control.clone(),
+            },
+            control,
+        )
+    }
+}
+
+struct FakeRunning {
+    stop: Option<std::sync::mpsc::Sender<String>>,
+    thread: Option<std::thread::JoinHandle<()>>,
+    control: Arc<FakeVideoControl>,
+}
+
+impl Drop for FakeRunning {
+    fn drop(&mut self) {
+        drop(self.stop.take());
+        lock(&self.control.end).take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+        self.control
+            .stopped
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+impl crate::video::local::VideoCaptureSource for FakeVideoSource {
+    fn start(
+        self: Box<Self>,
+        mut on_frame: crate::video::local::OnFrame,
+        on_ended: crate::video::local::OnEnded,
+    ) -> Result<crate::video::local::Capturing, String> {
+        use crate::video::local::SourceFrame;
+        use std::sync::mpsc::RecvTimeoutError;
+        // One channel for both a stop (the sender dropped) and an end (a reason sent).
+        let (tx, rx) = std::sync::mpsc::channel::<String>();
+        *lock(&self.control.end) = Some(tx.clone());
+        let control = self.control.clone();
+        let (width, height, i420) = (self.width, self.height, self.i420);
+        let period = std::time::Duration::from_secs_f64(1.0 / self.fps as f64);
+        let thread = std::thread::Builder::new()
+            .name("fake-video".into())
+            .spawn(move || {
+                let mut frame = 0u32;
+                let (chroma_w, chroma_h) = (width.div_ceil(2), height.div_ceil(2));
+                let mut y = vec![0u8; (width * height) as usize];
+                let uv = vec![128u8; (chroma_w * chroma_h) as usize];
+                let mut bgra = vec![0u8; (width * height * 4) as usize];
+                loop {
+                    let level = 16 + (frame * 8 % 200) as u8;
+                    if i420 {
+                        y.fill(level);
+                        on_frame(SourceFrame::I420 {
+                            width,
+                            height,
+                            y: &y,
+                            stride_y: width,
+                            u: &uv,
+                            stride_u: chroma_w,
+                            v: &uv,
+                            stride_v: chroma_w,
+                        });
+                    } else {
+                        for pixel in bgra.as_chunks_mut::<4>().0 {
+                            pixel.copy_from_slice(&[level, level, level, 255]);
+                        }
+                        on_frame(SourceFrame::Bgra {
+                            width,
+                            height,
+                            stride: width * 4,
+                            data: &bgra,
+                        });
+                    }
+                    frame += 1;
+                    control
+                        .frames
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    // Waits for the next frame's time, or a stop or an end.
+                    match rx.recv_timeout(period) {
+                        Err(RecvTimeoutError::Timeout) => {}
+                        Ok(why) => {
+                            on_ended(why);
+                            return;
+                        }
+                        Err(RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            })
+            .map_err(|error| error.to_string())?;
+        drop(tx);
+        Ok(crate::video::local::Capturing::new(FakeRunning {
+            stop: lock(&self.control.end).clone(),
+            thread: Some(thread),
+            control: self.control.clone(),
+        }))
+    }
+}
+
+/// Fake cameras and screens for the engine: each start makes a new [`FakeVideoSource`] whose
+/// control is kept here, and a start can be made to fail.
+pub struct FakeVideoSources {
+    pub camera_size: (u32, u32),
+    pub screen_size: (u32, u32),
+    pub fail_next_camera: Mutex<Option<String>>,
+    pub fail_next_screen: Mutex<Option<String>>,
+    pub cameras: Mutex<Vec<Arc<FakeVideoControl>>>,
+    pub screens: Mutex<Vec<Arc<FakeVideoControl>>>,
+    pub screen_requests: Mutex<Vec<semaphore_core::model::ScreenShareRequest>>,
+}
+
+impl Default for FakeVideoSources {
+    fn default() -> Self {
+        Self {
+            camera_size: (1280, 720),
+            screen_size: (1920, 1080),
+            fail_next_camera: Mutex::default(),
+            fail_next_screen: Mutex::default(),
+            cameras: Mutex::default(),
+            screens: Mutex::default(),
+            screen_requests: Mutex::default(),
+        }
+    }
+}
+
+impl FakeVideoSources {
+    pub fn last_camera(&self) -> Option<Arc<FakeVideoControl>> {
+        lock(&self.cameras).last().cloned()
+    }
+
+    pub fn last_screen(&self) -> Option<Arc<FakeVideoControl>> {
+        lock(&self.screens).last().cloned()
+    }
+}
+
+impl crate::video::local::VideoSources for FakeVideoSources {
+    fn camera(
+        &self,
+        _device: Option<&str>,
+    ) -> Result<Box<dyn crate::video::local::VideoCaptureSource>, String> {
+        if let Some(why) = lock(&self.fail_next_camera).take() {
+            return Err(why);
+        }
+        let (width, height) = self.camera_size;
+        let (source, control) = FakeVideoSource::camera(width, height, 30);
+        lock(&self.cameras).push(control);
+        Ok(Box::new(source))
+    }
+
+    fn screen(
+        &self,
+        request: &semaphore_core::model::ScreenShareRequest,
+    ) -> Result<Box<dyn crate::video::local::VideoCaptureSource>, String> {
+        lock(&self.screen_requests).push(request.clone());
+        if let Some(why) = lock(&self.fail_next_screen).take() {
+            return Err(why);
+        }
+        let (width, height) = self.screen_size;
+        let (source, control) = FakeVideoSource::screen(width, height, request.fps);
+        lock(&self.screens).push(control);
+        Ok(Box::new(source))
+    }
+}
+
+/// System audio for a screen share in tests: silence, or a failure, without PipeWire or WASAPI.
+#[derive(Default)]
+pub struct FakeSystemAudio {
+    pub fail_with: Mutex<Option<String>>,
+    pub starts: std::sync::atomic::AtomicU32,
+}
+
+impl crate::audio::system::SystemAudioCapture for FakeSystemAudio {
+    fn support(&self) -> crate::audio::system::SystemAudioSupport {
+        crate::audio::system::SystemAudioSupport::Supported
+    }
+
+    fn start(
+        &self,
+        _scope: crate::audio::system::CaptureScope,
+        _on_audio: crate::audio::system::SystemAudioCallback,
+        _on_error: crate::audio::ErrorCallback,
+    ) -> Result<crate::audio::AudioStream, String> {
+        self.starts
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        match lock(&self.fail_with).clone() {
+            Some(why) => Err(why),
+            None => Ok(crate::audio::AudioStream::new(())),
+        }
+    }
+}

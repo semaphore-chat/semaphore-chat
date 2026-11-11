@@ -31,30 +31,18 @@ pub const CAMERA_CAPTURE_WIDTH: u32 = 1280;
 pub const CAMERA_CAPTURE_HEIGHT: u32 = 720;
 pub const CAMERA_CAPTURE_FPS: u32 = 30;
 
-/// The screen share's resolution setting: the box the capture is scaled to fit, or the source's
-/// own size. The web's `ResolutionPreset`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ShareResolution {
-    Native,
-    P2160,
-    P1440,
-    #[default]
-    P1080,
-    P720,
-    P480,
-}
+/// The screen share's resolution setting, core's: the web's `ResolutionPreset`.
+pub use semaphore_core::model::ShareResolution;
 
-impl ShareResolution {
-    /// The bounding box, or `None` for the source's size.
-    pub fn bounds(self) -> Option<(u32, u32)> {
-        match self {
-            Self::Native => None,
-            Self::P2160 => Some((3840, 2160)),
-            Self::P1440 => Some((2560, 1440)),
-            Self::P1080 => Some((1920, 1080)),
-            Self::P720 => Some((1280, 720)),
-            Self::P480 => Some((854, 480)),
-        }
+/// The box a resolution setting scales the capture to fit, or `None` for the source's size.
+pub fn bounds(resolution: ShareResolution) -> Option<(u32, u32)> {
+    match resolution {
+        ShareResolution::Native => None,
+        ShareResolution::P2160 => Some((3840, 2160)),
+        ShareResolution::P1440 => Some((2560, 1440)),
+        ShareResolution::P1080 => Some((1920, 1080)),
+        ShareResolution::P720 => Some((1280, 720)),
+        ShareResolution::P480 => Some((854, 480)),
     }
 }
 
@@ -63,7 +51,7 @@ impl ShareResolution {
 /// ideal width and height.
 pub fn fit_capture(width: u32, height: u32, resolution: ShareResolution) -> (u32, u32) {
     let (width, height) = (width.max(2), height.max(2));
-    let scale = match resolution.bounds() {
+    let scale = match bounds(resolution) {
         Some((box_w, box_h)) => (box_w as f64 / width as f64)
             .min(box_h as f64 / height as f64)
             .min(1.0),

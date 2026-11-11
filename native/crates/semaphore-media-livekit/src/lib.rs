@@ -12,6 +12,10 @@ pub use engine::{
     ConnectionQualityView, EngineOptions, LiveKitEngine, MediaSnapshot, MicPreset, RejoinPolicy,
     TokenSource,
 };
+pub use video::local::{
+    Capturing, NoVideoSources, OnEnded, OnFrame, SourceFrame, VideoCaptureSource, VideoSources,
+};
+pub use video::platform::{DesktopScreenCapture, PlatformVideoSources};
 pub use video::publish;
 pub use video::{TrackVideoStats, VideoDemand, layer_for};
 

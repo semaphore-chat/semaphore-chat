@@ -63,12 +63,21 @@ The coordinator decided these on 2026-11-10. The product defaults are the owner'
 |---|---|
 | A. Shim: vendored `webrtc-sys` and `libwebrtc` ([third_party/PATCHES.md](../third_party/PATCHES.md)), `glib-main-loop`, the PipeWire stub fix shared from `semaphore_media_livekit::pipewire_stubs` | Done. `scripts/capture-probe.sh`: an Xvfb screen listed and captured (10 BGRA frames at a 15 fps cap), a PipeWire camera (`rigs/fake-camera`) listed and captured (30 I420 frames at 30 fps). The Rust side type-checks for Windows (`scripts/check-webrtc-windows.sh`) |
 | B. Publish options | Done: 19 tests |
-| C. Engine publish path (local video source, pacer, preview, rejoin, system audio paired with the screen) | Next |
-| D. T12 rig: a viewer asserting layers, fps, frame counter and bitrates | After C |
-| E. Core API | Waits for the core split |
+| C. Engine publish path | Done: `LiveKitEngine::set_camera`, `start_screen_share`, `stop_screen_share` (the `MediaEngine` methods), `select_camera`, `cameras`. Frames go source → `video/local.rs` (BGRA or I420 to I420, scaled to `fit_capture`) → `NativeVideoSource`, with a 640 px, 15 fps preview to the `VideoSink` under our publication's sid. Self's `camera` and `screen_share` come from our publications; `local.may_*` from the room's permissions. The screen's system audio starts after the screen is published, and its failing leaves the screen on. A rejoin republishes both from the same captures. Sources: `video/platform.rs` (libwebrtc) or `testing::FakeVideoSources`. 8 real-SFU tests (`proof/test-video.sh`) |
+| D. T12 rig: a viewer asserting layers, fps, frame counter and bitrates | Next |
+| E. Core API | Done: `Core::set_camera`, `start_screen_share`, `stop_screen_share`; `VoiceView.local: LocalMediaView` (`LocalShare::{Off, Starting, On, Failed}`, `may_camera`, `may_share`); `ScreenShareRequest`, `ShareResolution`; `ScreenCapture` with `picker()` and thumbnails; `MediaEngine` methods with `Unavailable` defaults. Mirrored in `semaphore-ffi`. 15 core tests in `tests/media.rs` |
 | F. UI: bar buttons, X11/Windows picker, settings | Against E's types |
 | G. Media Foundation camera | Deferred (see above) |
 | H. App wiring | Last |
+
+## How core and the engine share the state
+
+Core owns what the buttons show: `Starting` while a start runs, then `On`, or `Failed` with the
+engine's reason, which asking again retries. A start that finishes after a leave, or after a newer
+start, changes nothing. A join, a leave, a sign-out or the call ending resets everything to `Off`.
+The engine's reports carry what it actually sends (`On` or `Off`) and the permissions. Core turns
+a share off on its own only when a report goes from `On` to not `On`: the shared window closed, or
+the system's "stop sharing".
 
 ## Not proven yet
 
@@ -82,3 +91,9 @@ The coordinator decided these on 2026-11-10. The product defaults are the owner'
   portal in a sandbox.
 - **Hot-plugging a camera** while the backend is open.
 - **CPU cost.** The design's figures are estimates.
+- **Mid-share audio failure:** if system audio dies after it started, the engine logs it and
+  `local.screen_audio` stays `On`.
+- **A camera unplugged mid-call:** libwebrtc's module just stops delivering frames, so the share
+  stays `On` with a frozen picture.
+- **The camera portal for a sandboxed build** (the engine always opens its own PipeWire
+  connection), and `set_target_size` (screens are scaled on the CPU for now).
