@@ -28,8 +28,19 @@ if [ "${1:-}" = "--inner" ]; then
   export SEMAPHORE_LOG="${SEMAPHORE_LOG:-warn}"
   cargo build -q -p rig-slice
   target="${CARGO_TARGET_DIR:-target}/debug"
+  # The out-dir is replaced on every run, so only ever delete one this script made.
+  case "$out_dir" in
+    ""|/*|.|..|*..*)
+      echo "slice-real: out-dir must be a relative path under native/ without '..': '$out_dir'" >&2
+      exit 2 ;;
+  esac
+  if [ -e "$out_dir" ] && [ ! -e "$out_dir/.slice-real" ]; then
+    echo "slice-real: refusing to replace '$out_dir': it is not a previous slice-real output" >&2
+    exit 2
+  fi
   rm -rf "$out_dir"
   mkdir -p "$out_dir"
+  : >"$out_dir/.slice-real"
   python3 scripts/real-api.py "$server" ids >"$out_dir/ids.env"
   # {{NAME}} -> the id, for every NAME=value line, outside comments; an unknown NAME fails.
   python3 - "$out_dir/ids.env" rigs/slice/scripts/real.steps "$out_dir/real.steps" <<'EOF'
