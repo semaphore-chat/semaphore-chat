@@ -106,8 +106,8 @@ impl SettingsForm {
         None
     }
 
-    /// The fields that changed. A cleared time is sent as "", and changed hours carry
-    /// `local_timezone`, so they mean this user's clock.
+    /// The fields that changed. A cleared time is sent as "", and changed hours, or hours saved
+    /// without a zone, carry `local_timezone`, so they mean this user's clock.
     pub fn patch(
         &self,
         local_timezone: Option<&str>,
@@ -136,7 +136,10 @@ impl SettingsForm {
             patch.dnd_end = Some(time_text(&draft.dnd_end).to_owned());
             hours_changed = true;
         }
-        if hours_changed
+        // Hours saved without a zone count as UTC (core's `dnd_active`, as the server's
+        // `isDndActive`), so any save fills it in. A zone already stored moves only with the hours.
+        let zone_missing = saved.dnd_timezone.is_none();
+        if (hours_changed || zone_missing)
             && draft.dnd_start.is_some()
             && let Some(zone) = local_timezone
             && saved.dnd_timezone.as_deref() != Some(zone)

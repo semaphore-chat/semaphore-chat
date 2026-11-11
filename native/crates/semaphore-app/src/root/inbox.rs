@@ -954,7 +954,11 @@ impl AppRoot {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let section = cx.new(|cx| NotificationSettingsSection::new(window, cx));
+        let section = cx.new(|cx| {
+            let mut section = NotificationSettingsSection::new(window, cx);
+            section.set_local_timezone(semaphore_core::notify::system_timezone(), cx);
+            section
+        });
         self.inbox
             .subscriptions
             .push(cx.subscribe_in(&section, window, Self::on_settings));

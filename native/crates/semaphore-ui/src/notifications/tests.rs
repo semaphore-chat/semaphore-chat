@@ -162,6 +162,31 @@ fn new_hours_carry_the_local_zone_and_cleared_ones_are_empty() {
 }
 
 #[test]
+fn hours_saved_without_a_zone_get_one_on_the_next_save() {
+    let saved = NotificationSettings {
+        dnd: true,
+        dnd_start: Some("22:00".into()),
+        dnd_end: Some("07:00".into()),
+        ..NotificationSettings::default()
+    };
+    let mut form = SettingsForm::new(saved.clone());
+    form.draft.play_sound = !saved.play_sound;
+    let patch = form.patch(Some("Europe/Berlin")).unwrap();
+    assert_eq!(patch.dnd_timezone.as_deref(), Some("Europe/Berlin"));
+    assert_eq!(patch.dnd_start, None, "the hours themselves are unchanged");
+
+    let mut elsewhere = saved;
+    elsewhere.dnd_timezone = Some("America/New_York".into());
+    let mut form = SettingsForm::new(elsewhere);
+    form.draft.play_sound = !form.draft.play_sound;
+    let patch = form.patch(Some("Europe/Berlin")).unwrap();
+    assert_eq!(
+        patch.dnd_timezone, None,
+        "a stored zone moves only with the hours"
+    );
+}
+
+#[test]
 fn a_reload_keeps_unsaved_changes() {
     let mut form = SettingsForm::new(NotificationSettings::default());
     form.load(NotificationSettings {

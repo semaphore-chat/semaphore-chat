@@ -155,6 +155,17 @@ pub fn dnd_active(settings: &NotificationSettings, now_ms: u64) -> bool {
     }
 }
 
+/// This device's IANA time zone, such as `Europe/Berlin`, which do-not-disturb hours are saved
+/// with. `None` when the system's zone can't be read or has no IANA name (a bare offset or a
+/// copied `/etc/localtime`); hours saved without a zone count as UTC, as on the server.
+pub fn system_timezone() -> Option<String> {
+    iana_name(&jiff::tz::TimeZone::try_system().ok()?)
+}
+
+fn iana_name(tz: &jiff::tz::TimeZone) -> Option<String> {
+    tz.iana_name().map(Into::into)
+}
+
 /// Minutes past midnight at `now_ms` in `timezone`. The database is the system's (Linux, macOS,
 /// Android, iOS) or, on Windows, the copy jiff bundles.
 fn local_minutes(timezone: Option<&str>, now_ms: u64) -> u32 {
@@ -251,6 +262,20 @@ mod tests {
     }
 
     use NotificationKind::*;
+
+    #[test]
+    fn the_system_zone_is_named_only_when_it_has_an_iana_name() {
+        let berlin = jiff::tz::TimeZone::get("Europe/Berlin").unwrap();
+        assert_eq!(iana_name(&berlin).as_deref(), Some("Europe/Berlin"));
+        let offset = jiff::tz::TimeZone::fixed(jiff::tz::offset(2));
+        assert_eq!(iana_name(&offset), None);
+        if let Some(zone) = system_timezone() {
+            assert!(
+                jiff::tz::TimeZone::get(&zone).is_ok(),
+                "{zone} is a real zone"
+            );
+        }
+    }
 
     #[test]
     fn the_decision_table() {
