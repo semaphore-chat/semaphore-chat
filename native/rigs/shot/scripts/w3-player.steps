@@ -1,0 +1,167 @@
+# W3 player: both players in every state, a long name, past an hour, a tall video, the expanded
+# view, a hover time on the scrubber, and a conversation with a video and an audio attachment.
+# Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w3-player.steps
+story player-video-idle 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-idle-desktop
+story player-video-idle 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-idle-phone
+story player-video-idle-no-poster 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-idle-no-poster-desktop
+story player-video-idle-no-poster 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-idle-no-poster-phone
+story player-video-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-loading-desktop
+story player-video-loading 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-loading-phone
+story player-video-playing 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-playing-desktop
+story player-video-playing 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-playing-phone
+story player-video-paused 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-paused-desktop
+story player-video-paused 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-paused-phone
+story player-video-buffering 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-buffering-desktop
+story player-video-buffering 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-buffering-phone
+story player-video-ended 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-ended-desktop
+story player-video-ended 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-ended-phone
+story player-video-error 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-error-desktop
+story player-video-error 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-error-phone
+story player-video-unsupported 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-unsupported-desktop
+story player-video-unsupported 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-unsupported-phone
+story player-video-long-name 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-long-name-desktop
+story player-video-long-name 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-long-name-phone
+story player-video-over-an-hour 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-over-an-hour-desktop
+story player-video-over-an-hour 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-over-an-hour-phone
+story player-video-tall 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-tall-desktop
+story player-video-tall 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-tall-phone
+story player-video-expanded 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-video-expanded-desktop
+story player-video-expanded 390 844 light-blue-balanced
+wait idle
+shot w3-player-video-expanded-phone
+story player-audio-idle 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-idle-desktop
+story player-audio-idle 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-idle-phone
+story player-audio-loading 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-loading-desktop
+story player-audio-loading 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-loading-phone
+story player-audio-playing 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-playing-desktop
+story player-audio-playing 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-playing-phone
+story player-audio-paused 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-paused-desktop
+story player-audio-paused 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-paused-phone
+story player-audio-buffering 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-buffering-desktop
+story player-audio-buffering 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-buffering-phone
+story player-audio-ended 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-ended-desktop
+story player-audio-ended 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-ended-phone
+story player-audio-error 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-error-desktop
+story player-audio-error 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-error-phone
+story player-audio-unsupported 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-unsupported-desktop
+story player-audio-unsupported 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-unsupported-phone
+story player-audio-long-name 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-long-name-desktop
+story player-audio-long-name 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-long-name-phone
+story player-audio-over-an-hour 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-audio-over-an-hour-desktop
+story player-audio-over-an-hour 390 844 light-blue-balanced
+wait idle
+shot w3-player-audio-over-an-hour-phone
+story player-conversation 1280 800 dark-blue-balanced
+wait idle
+shot w3-player-conversation-desktop
+story player-conversation 390 844 light-blue-balanced
+wait idle
+shot w3-player-conversation-phone
+story player-video-paused 1280 800 dark-blue-balanced
+wait idle
+hover player-scrubber
+wait idle
+shot w3-player-video-hover-time-desktop
+story player-audio-paused 1280 800 dark-blue-balanced
+wait idle
+hover player-scrubber
+wait idle
+shot w3-player-audio-hover-time-desktop
+story player-video-paused 390 844 light-blue-balanced
+wait idle
+hover player-scrubber
+wait idle
+shot w3-player-video-hover-time-phone
+story player-audio-paused 390 844 light-blue-balanced
+wait idle
+hover player-scrubber
+wait idle
+shot w3-player-audio-hover-time-phone
