@@ -180,16 +180,25 @@ fn home_card(props: &ContentProps, sem: &crate::theme::Sem) -> impl IntoElement 
         )
 }
 
-struct Options {
-    scenario: &'static str,
-    channel: Option<&'static str>,
-    connection: ConnectionState,
-    edit: fn(&mut Fixture),
-    expanded: bool,
-    members_open: bool,
-    messages: bool,
-    phone_content: bool,
-    side_panel: bool,
+pub(crate) struct Options {
+    pub scenario: &'static str,
+    pub channel: Option<&'static str>,
+    pub connection: ConnectionState,
+    pub edit: fn(&mut Fixture),
+    pub expanded: bool,
+    pub members_open: bool,
+    pub messages: bool,
+    pub phone_content: bool,
+    pub side_panel: bool,
+    /// Open `/direct-messages` instead of a channel, with a stand-in route sidebar.
+    pub dm_route: bool,
+    /// A stand-in in the channel header's level button slot.
+    pub header_accessory: bool,
+    /// Real views in place of the stand-ins, for the W2 stories that show them in the shell.
+    pub route_sidebar: Option<RouteSidebarSlot>,
+    pub accessory: Option<AnyView>,
+    pub content: Option<ContentSlot>,
+    pub panel: Option<AnyView>,
 }
 
 impl Default for Options {
@@ -204,11 +213,17 @@ impl Default for Options {
             messages: true,
             phone_content: false,
             side_panel: false,
+            dm_route: false,
+            header_accessory: false,
+            route_sidebar: None,
+            accessory: None,
+            content: None,
+            panel: None,
         }
     }
 }
 
-fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
+pub(crate) fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
     let views = env.scenario(options.scenario).unwrap_or_else(|error| {
         panic!("story scenario {}: {error}", options.scenario);
     });
@@ -230,6 +245,7 @@ fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
     cx.set_global(ActiveFixture(source.clone()));
 
     let route = match &channel_id {
+        _ if options.dm_route => Route::DirectMessages,
         Some(channel_id) => Route::Channel {
             community_id: community.clone(),
             channel_id: channel_id.clone(),
@@ -259,9 +275,26 @@ fn shell_view(env: &StoryEnv, options: Options, cx: &mut App) -> AnyView {
         options.phone_content,
         options.side_panel,
     );
-    let panel: Option<AnyView> = side_panel.then(|| cx.new(|_| PlaceholderPanel).into());
+    let panel: Option<AnyView> = options
+        .panel
+        .or_else(|| side_panel.then(|| cx.new(|_| PlaceholderPanel).into()));
+    let accessory: Option<AnyView> = options.accessory.or_else(|| {
+        options
+            .header_accessory
+            .then(|| cx.new(|_| PlaceholderAccessory).into())
+    });
+    let route_sidebar = options.route_sidebar.or_else(|| {
+        options
+            .dm_route
+            .then(|| Rc::new(placeholder_sidebar) as RouteSidebarSlot)
+    });
+    let content: ContentSlot = options.content.unwrap_or_else(|| Rc::new(stub_rows));
     cx.new(|cx| {
-        let mut shell = Shell::new(source, route, Rc::new(stub_rows), connection, cx);
+        let mut shell = Shell::new(source, route, content, connection, cx);
+        if let Some(slot) = route_sidebar {
+            shell = shell.with_route_sidebar(slot);
+        }
+        shell.header_accessory = accessory;
         shell.rail_expanded = expanded;
         shell.members_open = members_open;
         shell.phone_content = phone_content;
@@ -283,6 +316,46 @@ impl Render for PlaceholderPanel {
             .p(px(16.))
             .bg(sem.paper)
             .child(crate::kit::text(crate::kit::Variant::H6, "Side panel"))
+    }
+}
+
+/// Stands in for the DM sidebar, which draws its own stories.
+fn placeholder_sidebar(
+    props: &RouteSidebarProps,
+    _: &mut Window,
+    cx: &mut App,
+) -> Option<AnyElement> {
+    let sem = cx.sem();
+    Some(
+        div()
+            .size_full()
+            .p(px(16.))
+            .bg(sem.paper)
+            .child(crate::kit::text(
+                crate::kit::Variant::H6,
+                if props.phone {
+                    "Route sidebar (phone)"
+                } else {
+                    "Route sidebar"
+                },
+            ))
+            .into_any_element(),
+    )
+}
+
+/// Stands in for the channel notification level menu.
+struct PlaceholderAccessory;
+
+impl Render for PlaceholderAccessory {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let sem = cx.sem();
+        div()
+            .px(px(8.))
+            .py(px(2.))
+            .rounded(px(4.))
+            .border_1()
+            .border_color(sem.primary)
+            .child(crate::kit::text(crate::kit::Variant::Caption, "Level"))
     }
 }
 
@@ -367,6 +440,8 @@ pub fn stories() -> Vec<Story> {
         shell_story!("shell-members-open", members_open: true, phone_content: true),
         shell_story!("shell-channel-pane", phone_content: true),
         shell_story!("shell-side-panel", side_panel: true, phone_content: true),
+        shell_story!("shell-route-sidebar", dm_route: true),
+        shell_story!("shell-header-accessory", header_accessory: true, phone_content: true),
         shell_story!("shell-long-content", edit: long_names),
         shell_story!("shell-long-content-expanded", edit: long_names, expanded: true),
         shell_story!("shell-voice-connected", edit: connect_hangout),
