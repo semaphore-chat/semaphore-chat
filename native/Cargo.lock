@@ -3588,8 +3588,6 @@ dependencies = [
 [[package]]
 name = "gpui-pre-linux"
 version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "79cac5cbd3485c1e3db8eafd5dc69019188f5cb0a39846946af772efa386f624"
 dependencies = [
  "accesskit",
  "accesskit_unix",
@@ -7665,6 +7663,15 @@ dependencies = [
  "semaphore-sysaudio",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "rig-window-hide"
+version = "0.0.0"
+dependencies = [
+ "gpui-kit",
+ "raw-window-handle",
+ "x11rb",
 ]
 
 [[package]]

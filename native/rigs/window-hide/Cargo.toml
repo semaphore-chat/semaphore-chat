@@ -1,0 +1,18 @@
+[package]
+name = "rig-window-hide"
+description = "Hides and shows a real window through the patched GPUI (close to tray) and checks it comes back."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "rig-window-hide"
+path = "src/main.rs"
+
+[dependencies]
+gpui-kit.workspace = true
+raw-window-handle = "0.6"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+x11rb = "0.13"

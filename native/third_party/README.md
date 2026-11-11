@@ -1,4 +1,4 @@
-# Vendored GPUI with the video surface patch, and libwebrtc with capture
+# Vendored GPUI with the video surface and close-to-tray patches, and libwebrtc with capture
 
 `vendor/` is crates.io source plus `patches/`, nothing else. Cargo uses it through
 `[patch.crates-io]` in `native/Cargo.toml`. Edit the patches, never `vendor/`.
@@ -9,6 +9,7 @@
 | `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface` |
 | `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates; emoji to the colour emoji font, see below |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
+| `patches/gpui-pre-linux.patch` | Ours, not the video agent's: close to tray and activation tokens on X11 and Wayland, see below |
 | `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
 | `vendor.sh` | Rebuilds `vendor/` from `series`. `--check` fails if it differs. Needs network |
 
@@ -56,6 +57,31 @@ sequence; VS15 opts out) to the installed colour emoji font, the first face `che
 knows, when that font has the character. Everything else is shaped exactly as before. It adds
 `unicode-properties` (already in the lock) for the emoji property. If a GPUI or cosmic-text bump
 changes `layout_line_no_separators`, port it and check the `emoji-default` story shot.
+
+## Close to tray and activation tokens (ours)
+
+Three `PlatformWindow` methods, each marked `Semaphore patch`, with `Window` wrappers:
+`set_window_visible(bool)` hides a window without closing it, `can_hide_window()` says whether
+that works here, and `activate_window_with_token(&str)` activates with a token another process
+handed over (a second launch's `XDG_ACTIVATION_TOKEN`). The default trait methods (`gpui-pre.patch`)
+do nothing and return false, so macOS and the test platform are unchanged.
+
+- **Windows** (`gpui-pre-windows.patch`): `ShowWindowAsync` with `SW_HIDE` or `SW_SHOW`.
+- **X11** (`gpui-pre-linux.patch`): `UnmapWindow` plus the ICCCM synthetic `UnmapNotify` on the
+  root, and `MapWindow`.
+- **Wayland** (`gpui-pre-linux.patch`): hiding attaches no buffer, destroys the decoration,
+  toplevel and xdg_surface, and parks the frame loop in `Unconfigured` so nothing presents to the
+  bare surface. Showing gives the same `wl_surface` a new xdg_surface and toplevel (title, app id,
+  size limits, decoration mode, maximized), commits with no buffer, and the configure handler draws
+  the first frame as at creation. Only `WindowKind::Normal` windows hide. Re-mapping the old
+  toplevel, which xdg-shell allows, gets no configure from weston 15, so the role objects are made
+  again, as GTK does. `activate_with_token` calls `xdg_activation_v1.activate`.
+
+`scripts/window-probe.sh` (in `verify.sh`) proves it on Xvfb and headless weston: the X11 map
+state, no frames while hidden on Wayland, frames again after each show, and a hidden window closed
+without a protocol error. A real compositor (Hyprland, KDE, GNOME) is on the manual checklist in
+`docs/slice-app.md`. If a GPUI bump changes `WaylandWindowState` or the frame loop, port this and
+rerun the probe.
 
 ## Swapping in a new patch set
 

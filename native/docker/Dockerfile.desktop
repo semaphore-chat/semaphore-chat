@@ -1,0 +1,10 @@
+# W2-desktop: the pinned build image plus a headless Wayland compositor (weston) and a session
+# D-Bus, from the same archive snapshot, for rig-window-hide's Wayland case and the tray tests.
+# Dockerfile.build stays unchanged so its tag, and everything that depends on it, doesn't move.
+#
+# Built by scripts/window-probe.sh, which passes BASE (the build image's tag).
+ARG BASE
+FROM ${BASE}
+
+RUN pacman -S --noconfirm --needed weston \
+ && rm -rf /var/cache/pacman/pkg/*
