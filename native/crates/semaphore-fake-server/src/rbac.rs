@@ -13,9 +13,6 @@
 //!
 //! Lock order: `accounts` before `rbac`; `rbac` is never held with `data`, `admin` or `calls`.
 
-// Parts of this are read only by the W5-B routes that follow, and W5-A's handlers.
-#![allow(dead_code)]
-
 use crate::{Inner, lock};
 use axum::response::{IntoResponse, Response};
 use chrono::{DateTime, Utc};
@@ -177,6 +174,16 @@ impl Rbac {
     }
 }
 
+/// The UUID a scenario's readable role id (`role-mods-c-couch`) is served as, in a scenario
+/// whose ids are UUIDs. A UUID already is one.
+pub fn role_uuid(readable: &str) -> String {
+    if uuid::Uuid::parse_str(readable).is_ok() {
+        readable.to_owned()
+    } else {
+        crate::scenario::entity_uuid(readable)
+    }
+}
+
 /// The action's wire value.
 pub(crate) fn action(name: &str) -> RbacAction {
     serde_json::from_value(Value::String(name.to_owned()))
@@ -198,8 +205,19 @@ fn seed(inner: &Inner, community_id: &str) -> Option<CommunityRbac> {
     if members.is_none() && listed.is_none() {
         return None;
     }
-    let members = members.unwrap_or_default();
+    let mut members = members.unwrap_or_default();
     let mut roles = listed.unwrap_or_default();
+    // The backend's role ids are UUIDs, and the contract types them as one in request bodies
+    // (`AssignRoleDto`, overrides): a scenario served with UUIDs gets them for roles too.
+    if inner.scenario.uuid_message_ids {
+        for role in roles.iter_mut().chain(
+            members
+                .iter_mut()
+                .flat_map(|member| member.roles.iter_mut()),
+        ) {
+            role.id = role_uuid(&role.id);
+        }
+    }
     for member in &members {
         for role in &member.roles {
             if !roles.iter().any(|known| known.id == role.id) {
@@ -251,6 +269,34 @@ pub(crate) fn community<T>(
     Some(result)
 }
 
+/// The community a channel belongs to: the scenario's, or one made over the API.
+pub(crate) fn community_of_channel(inner: &Inner, channel_id: &str) -> Option<String> {
+    inner
+        .scenario
+        .communities
+        .iter()
+        .find(|community| {
+            community
+                .channels
+                .iter()
+                .any(|channel| channel.id == channel_id)
+        })
+        .map(|community| community.id.clone())
+        .or_else(|| {
+            lock(&inner.accounts)
+                .communities
+                .iter()
+                .find(|created| {
+                    created
+                        .community
+                        .channels
+                        .iter()
+                        .any(|channel| channel.id == channel_id)
+                })
+                .map(|created| created.community.id.clone())
+        })
+}
+
 /// The instance owner, whom `RbacGuard` lets past every community check.
 pub(crate) fn is_owner(inner: &Inner, user_id: &str) -> bool {
     inner
@@ -299,6 +345,9 @@ pub(crate) fn is_member(inner: &Inner, community_id: &str, user_id: &str) -> boo
 /// W5-A: a new member gets the community's default Member role.
 #[allow(dead_code)]
 pub(crate) fn add_member(inner: &Inner, community_id: &str, user_id: &str) {
+    lock(&inner.calls)
+        .kicked
+        .remove(&(community_id.to_owned(), user_id.to_owned()));
     community(inner, community_id, |state, _| {
         let member = state.member_role().map(|role| role.id.clone());
         state
@@ -307,6 +356,14 @@ pub(crate) fn add_member(inner: &Inner, community_id: &str, user_id: &str) {
             .or_default()
             .extend(member);
     });
+}
+
+/// The community's members now: who hears what is sent to its room.
+pub(crate) fn members(inner: &Inner, community_id: &str) -> Vec<String> {
+    community(inner, community_id, |state, _| {
+        state.holders.keys().cloned().collect()
+    })
+    .unwrap_or_default()
 }
 
 /// Off the community, with their roles (kick, ban, leave).
@@ -363,6 +420,16 @@ pub(crate) fn set_roles(
     user_id: &str,
     role_ids: &[String],
 ) -> Result<(), String> {
+    let role_ids: Vec<String> = role_ids
+        .iter()
+        .map(|id| {
+            if inner.scenario.uuid_message_ids {
+                role_uuid(id)
+            } else {
+                id.clone()
+            }
+        })
+        .collect();
     community(inner, community_id, |state, _| {
         if let Some(unknown) = role_ids
             .iter()

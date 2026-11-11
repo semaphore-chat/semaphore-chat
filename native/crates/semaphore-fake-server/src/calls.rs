@@ -328,10 +328,6 @@ pub(crate) fn kick(
             "User is not a member of this community",
         ));
     }
-    lock(&inner.calls)
-        .kicked
-        .insert((community_id.to_owned(), user_id.to_owned()));
-    crate::rbac::remove_member(inner, community_id, user_id);
     crate::rbac::log(
         inner,
         community_id,
@@ -351,6 +347,18 @@ pub(crate) fn kick(
         payload["reason"] = Value::from(reason);
     }
     inner.emit_to_user(user_id, "userKicked", payload.clone());
+    remove_from_community(inner, community_id, user_id);
+    inner.emit_to_others(user_id, "userKicked", payload);
+    Ok(())
+}
+
+/// Off the community's lists and out of its calls (`removeUserFromCommunityVoice`:
+/// `voiceChannelUserLeft` for each): a kick's and a ban's removal.
+pub(crate) fn remove_from_community(inner: &Inner, community_id: &str, user_id: &str) {
+    lock(&inner.calls)
+        .kicked
+        .insert((community_id.to_owned(), user_id.to_owned()));
+    crate::rbac::remove_member(inner, community_id, user_id);
     let voice_channels: Vec<String> = inner
         .scenario
         .community(community_id)
@@ -378,8 +386,6 @@ pub(crate) fn kick(
             );
         }
     }
-    inner.emit_to_others(user_id, "userKicked", payload);
-    Ok(())
 }
 
 // ----- Replay buffer ---------------------------------------------------------------------------
