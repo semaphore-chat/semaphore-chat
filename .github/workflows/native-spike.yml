@@ -5,9 +5,15 @@ name: Native Spike
 # is pushed, so as of Phase 0 NO JOB HERE HAS RUN, the Windows one included.
 on:
   push:
-    branches: [spike/native-gpui]
+    branches: [main, spike/native-gpui]
     paths:
       - 'native/**'
+      - 'scripts/native-baseline/**'
+      - '.github/workflows/native-spike.yml'
+  pull_request:
+    paths:
+      - 'native/**'
+      - 'scripts/native-baseline/**'
       - '.github/workflows/native-spike.yml'
   workflow_dispatch:
 
