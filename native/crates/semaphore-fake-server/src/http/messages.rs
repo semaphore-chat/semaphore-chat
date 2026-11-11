@@ -245,6 +245,15 @@ async fn add_reaction(State(inner): State<Arc<Inner>>, body: Bytes) -> Response 
         Ok(parts) => parts,
         Err(response) => return response,
     };
+    // `reactions.service` `validateCustomReaction`.
+    if emoji.starts_with("custom:") && messages::is_direct_message(&inner, &id) {
+        return inner.error(
+            400,
+            "BAD_REQUEST",
+            "Custom emoji reactions are only available in communities",
+            false,
+        );
+    }
     match messages::add_reaction(&inner, &id, &emoji) {
         Some(dto) => json_response(
             StatusCode::CREATED,

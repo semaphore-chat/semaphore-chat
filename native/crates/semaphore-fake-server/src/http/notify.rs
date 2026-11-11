@@ -207,9 +207,21 @@ async fn update_settings(State(inner): State<Arc<Inner>>, body: Bytes) -> Respon
     {
         return invalid("defaultChannelLevel or soundType is not one of the allowed values");
     }
+    // An explicit `null` clears a nullable field: `@IsOptional` lets it through and Prisma writes it.
+    let raw: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
+    let cleared = |name: &str| raw.get(name).is_some_and(Value::is_null);
     let now = inner.now();
     let mut data = lock(&inner.data);
     let row = data.social.settings_for(&inner.scenario.me.id, now);
+    for (name, field) in [
+        ("dndStartTime", &mut row.dnd_start_time),
+        ("dndEndTime", &mut row.dnd_end_time),
+        ("dndTimezone", &mut row.dnd_timezone),
+    ] {
+        if cleared(name) {
+            *field = None;
+        }
+    }
     if let Some(level) = dto.default_channel_level {
         row.default_channel_level = level.as_str().into_owned();
     }

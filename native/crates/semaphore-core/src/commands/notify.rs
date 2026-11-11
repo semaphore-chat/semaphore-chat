@@ -61,6 +61,9 @@ pub(crate) struct W2State {
     raised_tags: HashSet<String>,
     /// What was last told to the server about idleness.
     pub idle: bool,
+    /// The last read mark acted on. A DM's mark arrives twice (to this user, and to the group with
+    /// this user's id), and the second must not read everything again.
+    last_context_read: Option<(Conversation, String)>,
     /// Friendships with a change on its way, and which change.
     pub busy_friendships: HashMap<String, u64>,
 }
@@ -382,7 +385,6 @@ impl State {
                     user_id: me_id,
                 },
             );
-            pages.total += 1;
             self.notifications_changed();
         }
         self.badge_changed();
@@ -515,7 +517,12 @@ impl State {
 
     /// This user read a channel or DM, here or on another device. The server marked its mentions
     /// and messages read and said nothing about them.
-    pub(crate) fn w2_on_context_read(&mut self, conversation: &Conversation) {
+    pub(crate) fn w2_on_context_read(&mut self, conversation: &Conversation, last_read: &str) {
+        let mark = (conversation.clone(), last_read.to_owned());
+        if self.w2.last_context_read.as_ref() == Some(&mark) {
+            return;
+        }
+        self.w2.last_context_read = Some(mark);
         let key = keys::op(keys::NOTIFICATIONS);
         self.note_direct_update(&key);
         let (channel, dm) = match conversation {
@@ -593,7 +600,7 @@ impl State {
             state,
             rows,
             unread_count: self.badge(),
-            has_more: (pages.rows.len() as i64) < pages.total,
+            has_more: pages.has_more,
         }
     }
 
@@ -636,7 +643,7 @@ impl Core {
                 .max(NOTIFICATION_PAGE)
         });
         let mut rows: Vec<wire::NotificationDto> = Vec::new();
-        let mut total;
+        let mut has_more;
         loop {
             let limit = (wanted - rows.len() as u64).min(MAX_PAGE);
             let page = backend
@@ -647,18 +654,21 @@ impl Core {
                 )
                 .await
                 .map_err(|error| self.backend_failed(error))?;
-            total = page.total;
             let got = page.notifications.len() as u64;
+            has_more = got >= limit;
             for row in page.notifications {
                 if !rows.iter().any(|known| known.id == row.id) {
                     rows.push(row);
                 }
             }
-            if got < limit || rows.len() as u64 >= wanted || rows.len() as i64 >= total {
+            if !has_more || rows.len() as u64 >= wanted {
                 break;
             }
         }
-        Ok(CacheValue::Notifications(NotificationPages { rows, total }))
+        Ok(CacheValue::Notifications(NotificationPages {
+            rows,
+            has_more,
+        }))
     }
 
     pub(crate) async fn fetch_notify_settings(&self) -> Result<CacheValue, CoreError> {
@@ -715,7 +725,7 @@ impl Core {
                 return None;
             }
             let pages = state.cache.notifications(&key)?;
-            if pages.rows.len() as i64 >= pages.total {
+            if !pages.has_more {
                 return None;
             }
             let offset = pages.rows.len() as u64;
@@ -746,7 +756,7 @@ impl Core {
                         pages.rows.push(row.clone());
                     }
                 }
-                pages.total = page.total.max(pages.rows.len() as i64);
+                pages.has_more = page.notifications.len() as u64 >= NOTIFICATION_PAGE;
             }
             state.notifications_changed();
         });

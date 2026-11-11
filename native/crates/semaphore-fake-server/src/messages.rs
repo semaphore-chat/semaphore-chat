@@ -693,6 +693,14 @@ pub(crate) fn message_map<'a>(
 }
 
 /// Add `me` to a message's reaction, returning the DTO the REST route sends.
+/// Whether a message is in a DM, which takes no custom emoji reactions (`validateCustomReaction`).
+pub(crate) fn is_direct_message(inner: &Inner, id: &str) -> bool {
+    let mut data = lock(&inner.data);
+    message_map(&mut data, id)
+        .and_then(|messages| messages.iter().find(|message| message.id == id))
+        .is_some_and(|message| message.channel_id.is_none())
+}
+
 pub(crate) fn add_reaction(inner: &Inner, id: &str, emoji: &str) -> Option<MessageReactionsDto> {
     let author = inner.scenario.me.id.clone();
     let mut data = lock(&inner.data);

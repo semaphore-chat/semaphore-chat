@@ -9,6 +9,8 @@ use super::{BackendResult, unsupported};
 /// Part of [`Backend`](super::Backend). Defaults until a backend has them.
 #[async_trait]
 pub trait NotifyBackend: Send + Sync {
+    /// Pass `unread_only` only as `Some(true)`: the server reads any value, `false` included, as
+    /// true. Its `total` is the size of the page sent, not of the list.
     async fn notifications_controller_get_notifications(
         &self,
         _limit: Option<u64>,

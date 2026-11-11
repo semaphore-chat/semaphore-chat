@@ -21,7 +21,9 @@ tokio = { version = "1", features = ["macros", "rt", "sync"] }
 async-trait.workspace = true
 # Inline, not workspace, because scripts/test-policy.sh copies this crate into its own workspace.
 chrono = { version = "0.4", default-features = false, features = ["std"] }
-chrono-tz = { version = "0.10", default-features = false, features = ["std"] }
+# DND windows in the user's timezone. Reads the system tz database on Linux, macOS, Android and
+# iOS; on Windows, which has none in that form, jiff bundles one (`tzdb-bundle-platform`).
+jiff = { version = "0.2", default-features = false, features = ["std", "tz-system", "tzdb-bundle-platform", "tzdb-zoneinfo", "tzdb-concatenated"] }
 log = "0.4"
 semaphore-wire.workspace = true
 serde.workspace = true

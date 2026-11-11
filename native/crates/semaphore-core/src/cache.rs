@@ -117,8 +117,9 @@ pub struct FriendsData {
 #[derive(Debug, Clone)]
 pub struct NotificationPages {
     pub rows: Vec<wire::NotificationDto>,
-    /// The server's count of every row, dismissed ones included.
-    pub total: i64,
+    /// The last page read was full, so more may follow. The server's `total` is the size of the
+    /// page it sent, not of the list, so it can't say.
+    pub has_more: bool,
 }
 
 /// As many pages of a community's members as core reads.

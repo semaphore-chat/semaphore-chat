@@ -450,7 +450,7 @@ impl State {
         let key = keys::op(keys::UNREAD);
         self.note_direct_update(&key);
         let Some(counts) = self.cache.unread_counts_mut(&key) else {
-            self.w2_on_context_read(&conversation);
+            self.w2_on_context_read(&conversation, &payload.last_read_message_id);
             return;
         };
         let read_at = Some(payload.last_read_at);
@@ -476,7 +476,7 @@ impl State {
         }
         let context_id = context_id.clone();
         self.unread_views_changed(&context_id);
-        self.w2_on_context_read(&conversation);
+        self.w2_on_context_read(&conversation, &payload.last_read_message_id);
     }
 
     /// The hybrid pattern: an update if this channel's presence is loaded, a refetch if not.

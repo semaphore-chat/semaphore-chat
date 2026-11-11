@@ -414,4 +414,6 @@ Found while building W2-core (2026-11-11). None blocks W2; each has a workaround
 | A JSON `null` for "no override" from `GET /notifications/channels/{id}/override` | It answers 200 with an empty body, which the generated client can't decode | A hand-written request for that one call |
 | A way to clear a DND time in `UpdateNotificationSettingsDto` that the contract can express | Clearing needs an explicit `null`, which the generated optional field can't send | A hand-written body for settings saves |
 | An idle or away status other users can see | Presence is a boolean; `presenceOnline { idle }` only stops push | Sends idle; shows nobody as idle |
+| Parse `unreadOnly` as a boolean on `GET /notifications` | Any value, `false` included, is read as true, so `unreadOnly=false` returns only unread rows | Never sends the parameter (`unread_only` only as `Some(true)`) |
+| `total` on `GET /notifications` that counts the list | It is the size of the page sent, so a client can't page by it | A full page means "more may follow" |
 

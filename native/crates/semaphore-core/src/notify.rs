@@ -24,7 +24,6 @@
 use crate::model::{
     Conversation, NotificationKind, NotificationSettings, NotifyLevel, NotifySound,
 };
-use chrono::{TimeZone, Timelike};
 
 /// What [`decide`] looks at.
 #[derive(Debug, Clone)]
@@ -156,16 +155,16 @@ pub fn dnd_active(settings: &NotificationSettings, now_ms: u64) -> bool {
     }
 }
 
+/// Minutes past midnight at `now_ms` in `timezone`. The database is the system's (Linux, macOS,
+/// Android, iOS) or, on Windows, the copy jiff bundles.
 fn local_minutes(timezone: Option<&str>, now_ms: u64) -> u32 {
-    let utc = chrono::Utc
-        .timestamp_millis_opt(now_ms as i64)
-        .single()
-        .unwrap_or_default();
-    let tz: chrono_tz::Tz = timezone
-        .and_then(|name| name.parse().ok())
-        .unwrap_or(chrono_tz::UTC);
-    let local = utc.with_timezone(&tz);
-    local.hour() * 60 + local.minute()
+    let tz = timezone
+        .and_then(|name| jiff::tz::TimeZone::get(name).ok())
+        .unwrap_or(jiff::tz::TimeZone::UTC);
+    let zoned = jiff::Timestamp::from_millisecond(now_ms as i64)
+        .unwrap_or_default()
+        .to_zoned(tz);
+    (zoned.hour() as u32) * 60 + zoned.minute() as u32
 }
 
 #[cfg(test)]
