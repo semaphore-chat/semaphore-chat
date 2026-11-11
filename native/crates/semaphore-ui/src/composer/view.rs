@@ -7,9 +7,11 @@
 //! Bound keys reach the field as actions, so the keys that mean something else while the dropdown is
 //! open are taken with `capture_action`, which runs before the field's own handlers.
 
+use super::edit::{KeptEmoji, edit_mentions, picked_from_draft};
 use super::menu::{AtCaret, MenuData, OnPick, menu};
 use super::model::{
-    Availability, ComposerEvent, Draft, DraftStore, MentionSource, PendingAttachment, ReplyTarget,
+    Availability, ComposerEvent, ComposerMode, Draft, DraftStore, MentionSource, PendingAttachment,
+    ReplyTarget,
 };
 use super::palette::{
     BODY_FONT, DRAFT_MAX_FRACTION, FIELD_LINE, FIELD_PAD_X, FIELD_PAD_Y, FIELD_TEXT, ICON_BUTTON,
@@ -28,7 +30,7 @@ use gpui_kit::component::input::{
 use gpui_kit::component::spinner::Spinner;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{Conversation, MentionCandidate, MessageDraft};
+use semaphore_core::model::{AttachmentView, Conversation, MentionCandidate, MessageDraft};
 use semaphore_design::Icon as DesignIcon;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -52,6 +54,7 @@ pub struct ComposerConfig {
     pub placeholder: SharedString,
     /// The instance's `maxFileSizeBytes`, when known.
     pub max_file_bytes: Option<u64>,
+    pub mode: ComposerMode,
 }
 
 struct OpenMenu {
@@ -70,6 +73,8 @@ struct InFlight {
 
 pub struct Composer {
     text: Entity<TextareaState>,
+    /// What the field shows while empty, as last given to it.
+    placeholder: SharedString,
     conversation: Conversation,
     source: Rc<dyn MentionSource>,
     drafts: Entity<DraftStore>,
@@ -98,6 +103,13 @@ pub struct Composer {
     actions_open: bool,
     focused: bool,
     ticker: Option<Task<()>>,
+    mode: ComposerMode,
+    /// Edit mode: the message's attachments still kept, whether any was removed, its custom emoji,
+    /// and the message it replies to.
+    edit_attachments: Vec<AttachmentView>,
+    edit_removed_attachment: bool,
+    edit_emoji: Vec<KeptEmoji>,
+    edit_reply_to: Option<String>,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -121,7 +133,7 @@ impl Composer {
             TextareaState::new(window, cx)
                 .auto_grow(1, rows)
                 .submit_on_enter(true)
-                .placeholder(placeholder)
+                .placeholder(placeholder.clone())
         });
         let subscriptions = vec![
             cx.subscribe_in(&text, window, Self::on_field_event),
@@ -136,6 +148,7 @@ impl Composer {
         ];
         let mut this = Self {
             text,
+            placeholder,
             conversation: config.conversation,
             source: config.source,
             drafts: config.drafts,
@@ -158,6 +171,11 @@ impl Composer {
             actions_open: false,
             focused: false,
             ticker: None,
+            mode: config.mode,
+            edit_attachments: Vec::new(),
+            edit_removed_attachment: false,
+            edit_emoji: Vec::new(),
+            edit_reply_to: None,
             _subscriptions: subscriptions,
         };
         this.load_draft(window, cx);
@@ -172,9 +190,104 @@ impl Composer {
         self.text.read(cx).value()
     }
 
+    /// What the empty field shows.
+    pub fn placeholder(&self) -> &SharedString {
+        &self.placeholder
+    }
+
     #[cfg(test)]
     pub(super) fn field_state(&self) -> Entity<TextareaState> {
         self.text.clone()
+    }
+
+    pub fn mode(&self) -> &ComposerMode {
+        &self.mode
+    }
+
+    /// Edit mode: the message as `Core::edit_draft` gives it, and its attachments. The caret goes
+    /// to the end, as the web's `autoFocus` leaves it.
+    pub fn set_edit_content(
+        &mut self,
+        draft: MessageDraft,
+        attachments: Vec<AttachmentView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let (picked, emoji) = picked_from_draft(&draft);
+        self.picked = picked;
+        self.edit_emoji = emoji;
+        self.edit_reply_to = draft.reply_to_message_id.clone();
+        self.edit_attachments = attachments;
+        self.edit_removed_attachment = false;
+        let end = draft.text.len();
+        self.text.update(cx, |field, cx| {
+            field.set_value(draft.text, window, cx);
+            field.set_selected_range(end..end, cx);
+        });
+        self.field_changed(window, cx);
+        self.focus(window, cx);
+        cx.notify();
+    }
+
+    fn is_editing(&self) -> bool {
+        matches!(self.mode, ComposerMode::Edit { .. })
+    }
+
+    fn may_save_edit(&self, cx: &App) -> bool {
+        !self.value(cx).trim().is_empty() || !self.edit_attachments.is_empty()
+    }
+
+    fn save_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let ComposerMode::Edit { message_id } = self.mode.clone() else {
+            return;
+        };
+        if !self.may_save_edit(cx) || self.is_composing(window, cx) {
+            return;
+        }
+        let text = self.value(cx).trim().to_owned();
+        let source = self.source.clone();
+        let mentions = edit_mentions(&text, &self.picked, &self.edit_emoji, |token| {
+            source
+                .candidates(&token[1..])
+                .into_iter()
+                .find(|candidate| candidate.insert_text == token)
+        });
+        let keep_attachment_ids = self.edit_removed_attachment.then(|| {
+            self.edit_attachments
+                .iter()
+                .map(|attachment| attachment.file_id.clone())
+                .collect()
+        });
+        cx.emit(ComposerEvent::SaveEdit {
+            message_id,
+            draft: MessageDraft {
+                text,
+                mentions,
+                reply_to_message_id: self.edit_reply_to.clone(),
+                files: Vec::new(),
+            },
+            keep_attachment_ids,
+        });
+    }
+
+    fn cancel_edit(&mut self, cx: &mut Context<Self>) {
+        if let ComposerMode::Edit { message_id } = self.mode.clone() {
+            cx.emit(ComposerEvent::CancelEdit { message_id });
+        }
+    }
+
+    fn remove_edit_attachment(
+        &mut self,
+        index: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if index < self.edit_attachments.len() {
+            self.edit_attachments.remove(index);
+            self.edit_removed_attachment = true;
+            self.focus(window, cx);
+            cx.notify();
+        }
     }
 
     pub fn focus(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -197,6 +310,22 @@ impl Composer {
         self.load_draft(window, cx);
         self.focus(window, cx);
         cx.notify();
+    }
+
+    /// What the empty field shows ("Message #general"). The owner sets it with each conversation.
+    pub fn set_placeholder(
+        &mut self,
+        placeholder: impl Into<SharedString>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let placeholder = placeholder.into();
+        if self.placeholder == placeholder {
+            return;
+        }
+        self.placeholder = placeholder.clone();
+        self.text
+            .update(cx, |text, cx| text.set_placeholder(placeholder, window, cx));
     }
 
     pub fn set_availability(
@@ -342,6 +471,10 @@ impl Composer {
     }
 
     fn save_draft(&self, cx: &mut Context<Self>) {
+        // An edit isn't the conversation's draft.
+        if self.is_editing() {
+            return;
+        }
         let draft = self.current_draft(cx);
         let conversation = self.conversation.clone();
         self.drafts
@@ -349,6 +482,9 @@ impl Composer {
     }
 
     fn load_draft(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_editing() {
+            return;
+        }
         let draft = self
             .drafts
             .read(cx)
@@ -393,6 +529,9 @@ impl Composer {
                 if !self.value(cx).is_empty() {
                     cx.emit(ComposerEvent::Typing);
                 }
+            }
+            FieldEvent::PressEnter { shift: false, .. } if self.is_editing() => {
+                self.save_edit(window, cx)
             }
             FieldEvent::PressEnter { shift: false, .. } => self.send(window, cx),
             FieldEvent::PressEnter { .. } => {}
@@ -511,7 +650,8 @@ impl Composer {
         if self.menu.is_some() {
             self.move_selection(false, cx);
             cx.stop_propagation();
-        } else if self.value(cx).is_empty()
+        } else if self.mode == ComposerMode::Send
+            && self.value(cx).is_empty()
             && self.attachments.is_empty()
             && !self.is_composing(window, cx)
         {
@@ -550,6 +690,9 @@ impl Composer {
         }
         if self.menu.is_some() {
             self.dismiss_menu(cx);
+            cx.stop_propagation();
+        } else if self.is_editing() {
+            self.cancel_edit(cx);
             cx.stop_propagation();
         } else if self.reply.is_some() {
             self.cancel_reply(window, cx);
@@ -594,13 +737,14 @@ impl Composer {
     }
 
     fn can_attach(&self) -> bool {
-        matches!(
-            self.availability,
-            Availability::Open {
-                can_attach: true,
-                ..
-            }
-        )
+        self.mode == ComposerMode::Send
+            && matches!(
+                self.availability,
+                Availability::Open {
+                    can_attach: true,
+                    ..
+                }
+            )
     }
 
     fn slowmode_left(&self, cx: &App) -> Option<Duration> {
@@ -621,6 +765,9 @@ impl Composer {
     }
 
     fn send(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.is_editing() {
+            return self.save_edit(window, cx);
+        }
         // An input method that lets Enter through is confirming a candidate, not sending.
         if !self.may_send(cx) || self.is_composing(window, cx) {
             return;
@@ -1144,19 +1291,21 @@ impl Composer {
                         .aria_expanded(self.emoji_open)
                         .on_click(cx.listener(|this, _, _, cx| this.open_emoji(cx))),
                     )
-                    .child(
-                        self.icon_button(
-                            "composer-attach",
-                            "attach file",
-                            DesignIcon::AttachFile,
-                            p.icon,
-                            sending || !can_attach,
+                    .when(self.mode == ComposerMode::Send, |paper| {
+                        paper.child(
+                            self.icon_button(
+                                "composer-attach",
+                                "attach file",
+                                DesignIcon::AttachFile,
+                                p.icon,
+                                sending || !can_attach,
+                            )
+                            .when(!can_attach, |button| {
+                                button.aria_description(self.attach_disabled_hint())
+                            })
+                            .on_click(cx.listener(|this, _, _, cx| this.open_files(cx))),
                         )
-                        .when(!can_attach, |button| {
-                            button.aria_description(self.attach_disabled_hint())
-                        })
-                        .on_click(cx.listener(|this, _, _, cx| this.open_files(cx))),
-                    )
+                    })
             })
             // Slim layout: send only once there's something to send, so the field gets the width.
             .when(!narrow || has_content || sending, |paper| {
@@ -1187,6 +1336,124 @@ impl Composer {
                 })
             })
             .into_any_element()
+    }
+
+    fn mention_overlay(
+        &self,
+        viewport: Size<Pixels>,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement + use<>> {
+        let p = self.palette;
+        let this = cx.entity().downgrade();
+        let on_pick: OnPick = Rc::new(move |index, window, cx| {
+            this.update(cx, |this, cx| this.pick(index, window, cx))
+                .ok();
+        });
+        self.menu.as_ref().map(|open| {
+            let data = MenuData {
+                candidates: &open.candidates,
+                selected: open.selected,
+                scroll: &self.menu_scroll,
+                on_pick,
+                avatars: cx.try_global::<crate::kit::AvatarImages>(),
+            };
+            deferred(AtCaret::new(self.text.clone(), menu(data, viewport, &p))).with_priority(1)
+        })
+    }
+
+    /// `MessageEditForm`: the field with save and cancel, and the kept attachments as chips.
+    fn render_edit(&self, cx: &mut Context<Self>) -> AnyElement {
+        let p = self.palette;
+        let may_save = self.may_save_edit(cx);
+        let field = self.render_field(cx);
+        let chips: Vec<_> = self
+            .edit_attachments
+            .iter()
+            .enumerate()
+            .map(|(index, file)| {
+                let label: SharedString = format!("remove {}", file.filename).into();
+                div()
+                    .flex_none()
+                    .max_w(px(220.))
+                    .h(px(24.))
+                    .flex()
+                    .items_center()
+                    .pl(px(8.))
+                    .pr(px(2.))
+                    .gap(px(4.))
+                    .rounded(px(12.))
+                    .bg(p.selected)
+                    .text_size(px(13.))
+                    .text_color(p.text)
+                    .child(div().min_w_0().truncate().child(file.filename.clone()))
+                    .child(
+                        Button::new(ElementId::NamedInteger(
+                            "edit-remove-attachment".into(),
+                            index as u64,
+                        ))
+                        .accessibility_label(label)
+                        .flex_none()
+                        .size(px(20.))
+                        .rounded_full()
+                        .cursor_pointer()
+                        .on_click(cx.listener(move |this, _, window, cx| {
+                            this.remove_edit_attachment(index, window, cx)
+                        }))
+                        .child(icon(
+                            DesignIcon::Close,
+                            14.,
+                            p.text_secondary,
+                        )),
+                    )
+            })
+            .collect();
+        observed(
+            div()
+                .id("composer-edit")
+                .role(Role::Group)
+                .aria_label("Edit message")
+                .w_full()
+                .flex()
+                .flex_col()
+                .gap(px(8.))
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(field)
+                        .child(
+                            self.sized_icon_button(
+                                "edit-save",
+                                "save edit",
+                                DesignIcon::Check,
+                                p.primary,
+                                !may_save,
+                                32.,
+                                20.,
+                            )
+                            .on_click(
+                                cx.listener(|this, _, window, cx| this.save_edit(window, cx)),
+                            ),
+                        )
+                        .child(
+                            self.sized_icon_button(
+                                "edit-cancel",
+                                "cancel edit",
+                                DesignIcon::Cancel,
+                                p.icon,
+                                false,
+                                32.,
+                                20.,
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| this.cancel_edit(cx))),
+                        ),
+                )
+                .when(!self.edit_attachments.is_empty(), |form| {
+                    form.child(div().flex().flex_wrap().gap(px(4.)).children(chips))
+                }),
+        )
+        .into_any_element()
     }
 
     fn open_emoji(&mut self, cx: &mut Context<Self>) {
@@ -1248,15 +1515,17 @@ impl Composer {
                         .text_color(p.text_secondary)
                         .child("Add to message"),
                 )
-                .child(
-                    row(
-                        "composer-attach",
-                        "Attach file",
-                        DesignIcon::AttachFile,
-                        can_attach,
+                .when(self.mode == ComposerMode::Send, |sheet| {
+                    sheet.child(
+                        row(
+                            "composer-attach",
+                            "Attach file",
+                            DesignIcon::AttachFile,
+                            can_attach,
+                        )
+                        .on_click(cx.listener(|this, _, _, cx| this.open_files(cx))),
                     )
-                    .on_click(cx.listener(|this, _, _, cx| this.open_files(cx))),
-                )
+                })
                 .child(
                     row(
                         "composer-emoji",
@@ -1287,23 +1556,23 @@ impl Render for Composer {
         if !self.can_compose() {
             return root.child(self.render_notice(cx));
         }
+        if self.is_editing() {
+            return root
+                .capture_action(cx.listener(Self::on_up))
+                .capture_action(cx.listener(Self::on_down))
+                .capture_action(cx.listener(Self::on_enter))
+                .capture_action(cx.listener(Self::on_tab))
+                .capture_action(cx.listener(Self::on_escape))
+                .on_key_down(cx.listener(Self::on_key_down))
+                .child(self.render_edit(cx))
+                .children(self.mention_overlay(viewport, cx));
+        }
         let slowmode = self.slowmode_left(cx);
-        let reply = self.reply.clone();
-        let this = cx.entity().downgrade();
-        let on_pick: OnPick = Rc::new(move |index, window, cx| {
-            this.update(cx, |this, cx| this.pick(index, window, cx))
-                .ok();
-        });
-        let overlay = self.menu.as_ref().map(|open| {
-            let data = MenuData {
-                candidates: &open.candidates,
-                selected: open.selected,
-                scroll: &self.menu_scroll,
-                on_pick,
-                avatars: cx.try_global::<crate::kit::AvatarImages>(),
-            };
-            deferred(AtCaret::new(self.text.clone(), menu(data, viewport, &p))).with_priority(1)
-        });
+        let reply = self
+            .reply
+            .clone()
+            .filter(|_| self.mode == ComposerMode::Send);
+        let overlay = self.mention_overlay(viewport, cx);
         root.capture_action(cx.listener(Self::on_up))
             .capture_action(cx.listener(Self::on_down))
             .capture_action(cx.listener(Self::on_enter))

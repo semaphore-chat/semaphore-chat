@@ -1,0 +1,45 @@
+# W1 message actions: toolbar, menu, delete, removal, edit slot, divider, tooltip, sheet.
+story messages-toolbar-member 900 640 dark-blue-balanced
+shot messages-toolbar-member-dark
+story messages-toolbar-mine 900 640 dark-blue-balanced
+shot messages-toolbar-mine-dark
+story messages-toolbar-moderator 900 640 dark-blue-balanced
+shot messages-toolbar-moderator-dark
+story messages-toolbar-read-only 900 640 dark-blue-balanced
+shot messages-toolbar-read-only-dark
+story messages-delete-staged 900 640 dark-blue-balanced
+shot messages-delete-staged-dark
+story messages-menu-member 900 640 dark-blue-balanced
+shot messages-menu-member-dark
+story messages-menu-mine 900 640 dark-blue-balanced
+shot messages-menu-mine-dark
+story messages-menu-moderator 900 640 dark-blue-balanced
+shot messages-menu-moderator-dark
+story messages-remove-dialog 900 640 dark-blue-balanced
+shot messages-remove-dialog-dark
+story messages-editing 900 640 dark-blue-balanced
+shot messages-editing-dark
+story messages-removed-moderator 900 640 dark-blue-balanced
+shot messages-removed-moderator-dark
+story messages-unread-divider 900 640 dark-blue-balanced
+shot messages-unread-divider-dark
+story messages-highlight 900 640 dark-blue-balanced
+shot messages-highlight-dark
+story messages-reaction-tooltip-loading 900 640 dark-blue-balanced
+shot messages-reaction-tooltip-loading-dark
+story messages-reaction-tooltip 900 640 dark-blue-balanced
+shot messages-reaction-tooltip-dark
+story messages-toolbar-moderator 900 640 light-blue-balanced
+shot messages-toolbar-moderator-light
+story messages-menu-moderator 900 640 light-blue-balanced
+shot messages-menu-moderator-light
+story messages-remove-dialog 900 640 light-blue-balanced
+shot messages-remove-dialog-light
+story messages-unread-divider 900 640 light-blue-balanced
+shot messages-unread-divider-light
+story messages-reaction-tooltip 900 640 light-blue-balanced
+shot messages-reaction-tooltip-light
+story messages-sheet-narrow 390 844 dark-blue-balanced
+shot messages-sheet-narrow-dark
+story messages-toolbar-narrow 390 844 dark-blue-balanced
+shot messages-toolbar-narrow-dark

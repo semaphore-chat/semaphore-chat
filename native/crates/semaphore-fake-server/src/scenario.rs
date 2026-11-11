@@ -51,6 +51,45 @@ impl fmt::Display for ScenarioError {
 
 impl std::error::Error for ScenarioError {}
 
+/// The scenarios (by their `seed`) whose message ids are served as UUIDs. The real backend only
+/// issues UUIDs, and the contract types some message ids as one (a reaction's), so the scenario
+/// the app is driven against end to end gets them; the others keep the readable ids their tests
+/// name. By seed, not file name: the binary hands its scenario over as JSON.
+const UUID_MESSAGE_IDS: &[&str] = &["showcase"];
+
+/// The UUID a readable message id (`sc-cc-pit-caption`) is served as: the same on every run and
+/// every machine, so a script or test can name it (`message_uuid("sc-cc-pit-caption")`).
+pub fn message_uuid(readable: &str) -> String {
+    const NAMESPACE: uuid::Uuid = uuid::Uuid::from_u128(0x5e3a_9b0e_0000_4000_8000_6d65_7373_6167);
+    uuid::Uuid::new_v5(&NAMESPACE, readable.as_bytes()).to_string()
+}
+
+/// Every message id, and every reference to one, through `message_uuid`.
+fn uuid_message_ids(
+    channel_messages: &mut BTreeMap<String, Vec<MessageDto>>,
+    dm_messages: &mut BTreeMap<String, Vec<MessageDto>>,
+    threads: &mut BTreeMap<String, Vec<MessageDto>>,
+) {
+    let map = |id: &mut String| *id = message_uuid(id);
+    *threads = std::mem::take(threads)
+        .into_iter()
+        .map(|(parent, replies)| (message_uuid(&parent), replies))
+        .collect();
+    for message in channel_messages
+        .values_mut()
+        .chain(dm_messages.values_mut())
+        .chain(threads.values_mut())
+        .flatten()
+    {
+        map(&mut message.id);
+        message.parent_message_id.as_mut().map(map);
+        message.reply_to_id.as_mut().map(map);
+        if let Some(reply_to) = message.reply_to.as_mut() {
+            map(&mut reply_to.id);
+        }
+    }
+}
+
 fn fixtures_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/scenarios")
 }
@@ -96,6 +135,8 @@ struct RawUnread {
 
 #[derive(Debug, Deserialize)]
 struct RawScenario {
+    #[serde(default)]
+    seed: Option<String>,
     me: UserEntity,
     #[serde(default)]
     users: Vec<UserEntity>,
@@ -140,6 +181,8 @@ pub struct Scenario {
     pub dm_ids: BTreeSet<String>,
     pub unread_notifications: i64,
     pub epoch: DateTime<Utc>,
+    /// Its message ids are UUIDs (`message_uuid`), and new messages get UUIDs too.
+    pub uuid_message_ids: bool,
 }
 
 impl Scenario {
@@ -152,6 +195,13 @@ impl Scenario {
         let mut channel_messages = raw.messages_by_channel;
         let mut dm_messages = raw.messages_by_dm_group;
         let mut threads = raw.thread_replies_by_parent;
+        let uuid_ids = raw
+            .seed
+            .as_deref()
+            .is_some_and(|seed| UUID_MESSAGE_IDS.contains(&seed));
+        if uuid_ids {
+            uuid_message_ids(&mut channel_messages, &mut dm_messages, &mut threads);
+        }
         for messages in channel_messages
             .values_mut()
             .chain(dm_messages.values_mut())
@@ -195,6 +245,7 @@ impl Scenario {
                 .filter(|notification| !notification.read)
                 .count() as i64,
             epoch,
+            uuid_message_ids: uuid_ids,
         })
     }
 

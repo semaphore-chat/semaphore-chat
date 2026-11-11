@@ -7,7 +7,7 @@
 |---|---|
 | `series` | Each vendored crate: version, sha256 of its `.crate`, its patch |
 | `patches/gpui-pre.patch` | `VideoSurfaceId`, `Nv12Frame`, `VideoUploader`, `Window::video_uploader`, `Window::paint_video_surface` |
-| `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates, see below |
+| `patches/gpui-pre-wgpu.patch` | Linux: NV12 textures updated in place, drawn in z-order with rounded corners; device-lost handling; images (polychrome sprites) filtered from tile-local coordinates; emoji to the colour emoji font, see below |
 | `patches/gpui-pre-windows.patch` | Windows: the same over D3D11: a `Surface` shader, dynamic R8 and R8G8 textures, parked frames flushed before each draw |
 | `patches/webrtc-sys.patch`, `patches/libwebrtc.patch` | Capture options libwebrtc has but doesn't expose (frame rate cap, PipeWire target size, WGC off) and a camera binding over its `VideoCaptureModule`. Each change and why: [PATCHES.md](PATCHES.md) |
 | `vendor.sh` | Rebuilds `vendor/` from `series`. `--check` fails if it differs. Needs network |
@@ -44,6 +44,18 @@ read its neighbouring tile. `fs_poly_sprite` now filters bilinearly itself from 
 coordinates with four `textureLoad`s clamped to the tile, so an image draws the same wherever it is in
 the atlas and never bleeds. Glyphs (monochrome and subpixel) draw 1:1 and are unchanged. If a GPUI
 bump drops or rewrites `fs_poly_sprite`, port this and rerun the default `slice-e2e.sh` many times.
+
+## Emoji in colour (ours)
+
+cosmic-text picks a font for a character the requested font lacks from its own list, which knows
+nothing of emoji presentation and puts DejaVu Sans ahead of Noto Color Emoji. So 😀 😂 ❤️ drew as
+DejaVu's black-and-white outlines wherever DejaVu is installed, and only emoji DejaVu lacks (🤣 👍)
+came out in colour. `layout_line_no_separators` in `cosmic_text_system.rs` now gives every grapheme
+cluster that draws as an emoji by default (first character `Emoji_Presentation=Yes`, or a VS16
+sequence; VS15 opts out) to the installed colour emoji font, the first face `check_is_known_emoji_font`
+knows, when that font has the character. Everything else is shaped exactly as before. It adds
+`unicode-properties` (already in the lock) for the emoji property. If a GPUI or cosmic-text bump
+changes `layout_line_no_separators`, port it and check the `emoji-default` story shot.
 
 ## Swapping in a new patch set
 

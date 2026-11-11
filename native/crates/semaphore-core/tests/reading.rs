@@ -152,7 +152,11 @@ async fn my_own_reply_subscribes_me() {
     assert!(thread_viewed(&rig.events.take()));
     assert!(rig.core.thread_info(PARENT.into()).subscribed);
     rig.core.run_until_idle().await;
-    assert_eq!(rig.backend.reading.meta_requests(), 1, "no request needed");
+    assert_eq!(
+        rig.backend.reading.meta_requests(),
+        2,
+        "the count is read again"
+    );
 }
 
 #[tokio::test]
@@ -764,4 +768,64 @@ async fn a_thread_link_does_not_open_its_thread_after_the_user_went_elsewhere() 
         matches!(event, CoreEvent::MessagesChanged { conversation, .. } if *conversation == thread())
     });
     assert!(!opened_thread, "the thread opened over the DM");
+}
+
+// --- The parent's reply count, on its row ---
+
+fn parent_row(reply_count: i64) -> semaphore_wire::types::MessageDto {
+    let mut parent = message_json(PARENT, "ava", "the parent");
+    parent["pinned"] = json!(true);
+    parent["replyCount"] = json!(reply_count);
+    serde_json::from_value(parent).unwrap()
+}
+
+#[tokio::test]
+async fn a_reply_count_update_reaches_the_row_and_the_cached_pins() {
+    let mut rig = Rig::new()
+        .signed_in()
+        .await
+        .open_channel(vec![parent_row(2)])
+        .await;
+    rig.backend.set_pins(&[parent_row(2)]);
+    rig.core.pinned_messages(CHANNEL.into());
+    rig.settle().await;
+    rig.core.ingest(event(
+        "threadReplyCountUpdated",
+        json!({
+            "parentMessageId": PARENT,
+            "channelId": CHANNEL,
+            "replyCount": 7,
+            "lastReplyAt": "2026-09-22T19:00:00.000Z",
+        }),
+    ));
+    rig.sync();
+    assert_eq!(rig.row(PARENT).reply_count, 7);
+    assert_eq!(
+        rig.core.pinned_messages(CHANNEL.into()).rows[0]
+            .row
+            .reply_count,
+        7
+    );
+}
+
+#[tokio::test]
+async fn my_own_reply_brings_the_rows_count_up_with_the_header() {
+    let mut rig = Rig::new()
+        .signed_in()
+        .await
+        .open_channel(vec![parent_row(2)])
+        .await;
+    rig.backend.reading.set_meta(PARENT, false, 2);
+    rig.core.thread_info(PARENT.into());
+    rig.settle().await;
+    // The server counted the reply; no count event came (or came before the parent loaded).
+    rig.backend.reading.set_meta(PARENT, true, 3);
+    rig.core.ingest(thread_reply("r-10", ME));
+    rig.settle().await;
+    assert_eq!(rig.core.thread_info(PARENT.into()).reply_count, 3);
+    assert_eq!(
+        rig.row(PARENT).reply_count,
+        3,
+        "the row agrees with the header"
+    );
 }

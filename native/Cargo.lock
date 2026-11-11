@@ -3861,6 +3861,7 @@ dependencies = [
  "smallvec",
  "swash",
  "unicode-bidi",
+ "unicode-properties",
  "unicode-segmentation",
  "web-sys",
  "wgpu",

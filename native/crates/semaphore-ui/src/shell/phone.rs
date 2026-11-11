@@ -201,7 +201,8 @@ impl Shell {
         let members_open = self.members_open && in_content;
         let scrim = hsla(0., 0., 0., 0.5);
         let rail = rail_open.then(|| self.rail(cx));
-        let members = members_open.then(|| self.members_drawer(cx));
+        let members = (members_open && self.side_panel.is_none()).then(|| self.members_drawer(cx));
+        let side_panel = self.side_panel_drawer(true, cx);
 
         self.body_ground(cx)
             .flex()
@@ -248,6 +249,7 @@ impl Shell {
                     )
             })
             .children(members)
+            .children(side_panel)
     }
 
     #[allow(clippy::too_many_arguments)]

@@ -138,6 +138,11 @@ version = "0.3.18"
 features = ["hardcoded-data"]
 default-features = false
 
+[dependencies.unicode-properties]
+version = "0.1"
+features = ["emoji"]
+default-features = false
+
 [dependencies.unicode-segmentation]
 version = "1.10"
 

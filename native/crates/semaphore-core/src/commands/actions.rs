@@ -140,7 +140,7 @@ impl State {
     }
 
     /// Changes a message wherever it's loaded, its channel's cached pins included.
-    fn edit_everywhere(&mut self, id: &str, change: impl Fn(&mut MessageDto)) {
+    pub(crate) fn edit_everywhere(&mut self, id: &str, change: impl Fn(&mut MessageDto)) {
         for window in self.windows.values_mut() {
             if window.edit(id, &change) {
                 window.note_update(id, None);

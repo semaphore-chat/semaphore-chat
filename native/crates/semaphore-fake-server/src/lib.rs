@@ -25,7 +25,7 @@ use std::time::Duration;
 use tokio::sync::{Notify, mpsc, watch};
 use tokio::task::JoinHandle;
 
-pub use scenario::{ScenarioError, ScenarioSource, load_named};
+pub use scenario::{ScenarioError, ScenarioSource, load_named, message_uuid};
 
 /// One thing the server saw, in the order it finished handling it.
 #[derive(Clone, Debug, Serialize)]
@@ -213,10 +213,15 @@ impl Inner {
     }
 
     pub fn next_message_id(&self) -> String {
-        format!(
+        let id = format!(
             "fake-msg-{:06}",
             self.next_message.fetch_add(1, Ordering::SeqCst) + 1
-        )
+        );
+        if self.scenario.uuid_message_ids {
+            scenario::message_uuid(&id)
+        } else {
+            id
+        }
     }
 
     pub fn next_receipt_id(&self) -> String {
@@ -435,8 +440,9 @@ impl FakeServer {
         self.inner.base_url.clone()
     }
 
-    /// Gives a stored message a new id, in place. The scenarios' ids are readable, and a few
-    /// routes type the id as a UUID, so a test that calls them renames its messages first.
+    /// Gives a stored message a new id, in place. Most scenarios' ids are readable (the showcase's
+    /// are UUIDs: `message_uuid`), and a few routes type the id as a UUID, so a test that calls
+    /// them renames its messages first.
     pub fn rename_message(&self, id: &str, new_id: &str) -> bool {
         let mut data = lock(&self.inner.data);
         match messages::find_message_mut(&mut data, id) {

@@ -401,6 +401,7 @@ pub(crate) fn send(
         webhook: None,
     };
 
+    let mut count_update = None;
     match &target {
         SendTarget::Channel(id) => {
             let messages = data.channel_messages.entry(id.clone()).or_default();
@@ -419,6 +420,14 @@ pub(crate) fn send(
             if let Some(parent) = find_message_mut(&mut data, parent_id) {
                 parent.reply_count += 1;
                 parent.last_reply_at = Some(now);
+                // The parent's badge, as the backend's `announceReply` sends it after the reply.
+                count_update = Some(serde_json::json!({
+                    "parentMessageId": parent_id,
+                    "replyCount": parent.reply_count,
+                    "lastReplyAt": parent.last_reply_at,
+                    "channelId": parent.channel_id,
+                    "directMessageGroupId": parent.direct_message_group_id,
+                }));
             }
         }
     }
@@ -461,6 +470,9 @@ pub(crate) fn send(
     };
     drop(data);
     inner.broadcast(payload.0, payload.1);
+    if let Some(count) = count_update {
+        inner.broadcast("threadReplyCountUpdated", count);
+    }
     Ok(message)
 }
 
@@ -712,7 +724,8 @@ fn reactions_dto(message: &MessageDto) -> MessageReactionsDto {
     }
 }
 
-/// The scenario's unread counts, plus anything `markAsRead` cleared.
+/// The scenario's unread counts, plus anything `markAsRead` cleared. With some unread, the last
+/// read message is the one before them, as the backend's read receipt says.
 pub(crate) fn unread_counts(inner: &Inner) -> Value {
     let data = lock(&inner.data);
     let counts: Vec<Value> = data
@@ -723,6 +736,20 @@ pub(crate) fn unread_counts(inner: &Inner) -> Value {
                 "unreadCount": unread,
                 "mentionCount": mentions,
             });
+            let messages = data
+                .channel_messages
+                .get(context)
+                .or_else(|| data.dm_messages.get(context));
+            if let Some(messages) = messages
+                && *unread > 0
+            {
+                let mut ordered: Vec<_> = messages.iter().collect();
+                ordered.sort_by_key(|message| message.sent_at);
+                let read = ordered.len().checked_sub(*unread as usize + 1);
+                if let Some(last_read) = read.and_then(|index| ordered.get(index)) {
+                    body["lastReadMessageId"] = Value::from(last_read.id.clone());
+                }
+            }
             if inner.scenario.dm_ids.contains(context) {
                 body["directMessageGroupId"] = Value::from(context.clone());
             } else {
