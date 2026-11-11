@@ -81,8 +81,7 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetCommunityRoles');
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(invalidateSpy).toHaveBeenCalledTimes(9);
+      expect(invalidateSpy).toHaveBeenCalledTimes(8);
     });
   });
 
@@ -94,8 +93,7 @@ describe('roleHandlers', () => {
       expect(keys).toContain('rolesControllerGetCommunityRoles');
       expect(keys).toContain('rolesControllerGetMyRolesForCommunity');
       expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(keys).toContain('membershipControllerFindAllForCommunity');
-      expect(invalidateSpy).toHaveBeenCalledTimes(9);
+      expect(invalidateSpy).toHaveBeenCalledTimes(8);
     });
   });
 

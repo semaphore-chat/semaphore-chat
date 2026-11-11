@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Server muting a participant answers HTTP 200, as the published API says, instead of 201. (#666)
 - A block now also stops reactions in a 1:1 direct message; removing your own reaction still works. (#642)
 - Capturing a replay accepts a custom range starting at 0 and rejects an invalid duration even when a range is sent. (#669)
-- The member list in the web client now refreshes after a ban, kick or timeout, and after a role is assigned or removed. (#680)
+- The member list in the web client now refreshes after a ban, kick or timeout. (#680)
 
 ## [0.9.0] - 2026-11-11
 
