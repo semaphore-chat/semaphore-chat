@@ -5,7 +5,7 @@
 
 use crate::cache::QueryKey;
 use crate::lifecycle::ConnectionState;
-use crate::model::{Conversation, ListOp, VideoDemand, ViewKey};
+use crate::model::{Conversation, ListOp, ScreenShareRequest, VideoDemand, ViewKey};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -65,14 +65,52 @@ pub trait AppPaths: Send + Sync {
     fn cache_dir(&self) -> String;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CaptureKind {
+    Screen,
+    Window,
+}
+
+/// A small picture of a source, for a picker.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Thumbnail {
+    pub width: u32,
+    pub height: u32,
+    /// `width * height * 4` bytes, B, G, R, A, rows top to bottom.
+    pub bgra: Vec<u8>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptureSource {
     pub id: String,
     pub name: String,
+    pub kind: CaptureKind,
+    pub thumbnail: Option<Thumbnail>,
+}
+
+/// Who picks what to share.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PickerKind {
+    /// The platform's own dialog, when the share starts: the xdg portal on Wayland, the system
+    /// pickers on macOS and phones. `ScreenShareRequest::source_id` is `None`.
+    System,
+    /// Ours, from `ScreenCapture::sources`: X11 and Windows.
+    Listed,
 }
 
 pub trait ScreenCapture: Send + Sync {
-    fn sources(&self) -> Result<Vec<CaptureSource>, CoreError>;
+    fn picker(&self) -> PickerKind;
+    /// Screens and windows to offer, with thumbnails that fit `thumbnail_px` on their long side (0:
+    /// none). Empty with `PickerKind::System`.
+    fn sources(&self, thumbnail_px: u32) -> Result<Vec<CaptureSource>, CoreError>;
+}
+
+/// A screen share that started.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenShareStarted {
+    /// Its system audio: `None` when not asked for, otherwise whether it started. The screen is
+    /// shared either way.
+    pub audio: Option<Result<(), String>>,
 }
 
 /// A voice/video session. Frames and audio devices stay behind the implementation.
@@ -83,6 +121,11 @@ pub trait ScreenCapture: Send + Sync {
 ///
 /// The setters are called from a UI's thread, so they must not block. What they ask for outlives any
 /// one connection: a rejoin puts it all back, and setting one before `connect` applies at `connect`.
+/// The camera and the screen share last one call: `disconnect` stops both.
+///
+/// A report's `local` carries what is actually being sent (`On` or `Off` for the camera and the
+/// screen), and `may_camera` and `may_share` from the room's permissions. Core keeps the rest:
+/// `Starting` while a start runs, and `Failed` with why.
 #[async_trait]
 pub trait MediaEngine: Send + Sync {
     /// `call` numbers this join. Every report the engine makes from here until the next `connect`
@@ -95,4 +138,28 @@ pub trait MediaEngine: Send + Sync {
     /// Replaces what's on screen. An implementation whose SDK chooses layers by itself can use this
     /// for pausing alone.
     fn set_video_demands(&self, demands: Vec<VideoDemand>);
+
+    /// Sends the camera, or stops it. Returns once it's published (or stopped). Only during a call:
+    /// unlike the setters above, it isn't remembered for the next one. A rejoin republishes it.
+    async fn set_camera(&self, _on: bool) -> Result<(), CoreError> {
+        Err(CoreError::Unavailable {
+            what: "camera".into(),
+        })
+    }
+
+    /// Starts sharing a screen or window, replacing any share. Returns once it's published, which
+    /// with `PickerKind::System` is after the user has chosen; a cancelled picker is an error. A
+    /// rejoin republishes it. While it runs, the engine's reports carry `local.screen = On`; a share
+    /// that ends on its own (the window closed, the system's "stop sharing") reports `Off`.
+    async fn start_screen_share(
+        &self,
+        _request: ScreenShareRequest,
+    ) -> Result<ScreenShareStarted, CoreError> {
+        Err(CoreError::Unavailable {
+            what: "screen share".into(),
+        })
+    }
+
+    /// Stops the screen share and its audio, if one runs.
+    async fn stop_screen_share(&self) {}
 }

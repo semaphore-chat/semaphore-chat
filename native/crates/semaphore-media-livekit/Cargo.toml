@@ -13,6 +13,8 @@ async-trait.workspace = true
 cpal = { version = "=0.18.2", features = ["pulseaudio"] }
 futures-util = { version = "0.3", default-features = false }
 livekit.workspace = true
+# The participant permission and track source types, which `livekit` uses but doesn't export.
+livekit-protocol = "=0.8.2"
 log = "0.4"
 rtrb = "0.3"
 semaphore-core.workspace = true

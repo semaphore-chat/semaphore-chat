@@ -8239,6 +8239,7 @@ dependencies = [
  "hmac",
  "libc",
  "livekit",
+ "livekit-protocol",
  "log",
  "rtrb",
  "semaphore-core",

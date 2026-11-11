@@ -92,6 +92,10 @@ pub(crate) struct State {
     pub call: u64,
     /// The engine said this call ended before `join_voice` had finished, with why.
     pub call_ended_early: Option<Option<String>>,
+    /// Numbers the camera and screen share commands, so one that finishes after a newer one
+    /// changes nothing.
+    pub camera_ask: u64,
+    pub screen_ask: u64,
     pub connection: ConnectionState,
     pub network: NetworkState,
     /// A connection has been up, so the next one follows a gap: the web's `hasConnectedRef`.
@@ -130,6 +134,8 @@ impl State {
             media: None,
             call: 0,
             call_ended_early: None,
+            camera_ask: 0,
+            screen_ask: 0,
             connection: ConnectionState::Disconnected,
             network: NetworkState::Available,
             had_connection: false,

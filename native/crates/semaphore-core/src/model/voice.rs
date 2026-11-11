@@ -69,4 +69,69 @@ pub struct VoiceView {
     pub reconnect_attempt: Option<u32>,
     /// Why a rejoin keeps failing, or, once `Disconnected`, why the call ended.
     pub error: Option<String>,
+    /// What we send besides the mic: camera, screen and the screen's audio.
+    pub local: LocalMediaView,
+}
+
+/// One thing we may send, as its button shows it.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum LocalShare {
+    #[default]
+    Off,
+    /// Asked for and not yet sent: a camera opening, the screen picker open.
+    Starting,
+    On,
+    /// It didn't start, or stopped on its own, and why. Asking again retries.
+    Failed {
+        message: String,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LocalMediaView {
+    pub camera: LocalShare,
+    pub screen: LocalShare,
+    /// The system audio that goes with the screen. Its failing leaves the screen on.
+    pub screen_audio: LocalShare,
+    /// Whether this call lets us send a camera, and a screen with its audio: the room's publish
+    /// permissions, as the media engine reports them. False until it has.
+    pub may_camera: bool,
+    pub may_share: bool,
+}
+
+/// How big a screen share is sent: the box it's scaled to fit, keeping its shape, or its own size.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ShareResolution {
+    Native,
+    P2160,
+    P1440,
+    #[default]
+    P1080,
+    P720,
+    P480,
+}
+
+/// What to share and how.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScreenShareRequest {
+    /// A source from `ScreenCapture::sources`, or `None` where the platform's own picker chooses
+    /// (`PickerKind::System`: the portal on Wayland).
+    pub source_id: Option<String>,
+    pub resolution: ShareResolution,
+    /// Frames a second: 15, 30 or 60.
+    pub fps: u32,
+    /// Share the system's audio too: everything except our own call.
+    pub audio: bool,
+}
+
+impl Default for ScreenShareRequest {
+    /// The web's defaults: 1080p at 60 fps, with audio.
+    fn default() -> Self {
+        Self {
+            source_id: None,
+            resolution: ShareResolution::P1080,
+            fps: 60,
+            audio: true,
+        }
+    }
 }

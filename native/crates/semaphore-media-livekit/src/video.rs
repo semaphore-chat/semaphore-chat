@@ -1,5 +1,7 @@
 //! Receiving video: which simulcast layer a tile asks for, and getting decoded frames to the sink.
 
+pub mod local;
+pub mod platform;
 pub mod publish;
 
 use crate::{VideoFrameRef, VideoSink};

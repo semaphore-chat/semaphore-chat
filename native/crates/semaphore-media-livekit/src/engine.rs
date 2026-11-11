@@ -15,6 +15,13 @@ use crate::audio::system::{
 use crate::audio::{
     AudioDevices, AudioIo, AudioStream, Chunker, ErrorCallback, FRAME_SAMPLES, SAMPLE_RATE,
 };
+use crate::video::local::{
+    Capturing, FramePipeline, VideoCaptureSource, VideoSources, may_publish,
+};
+use crate::video::platform::{PlatformVideoSources, uses_portal};
+use crate::video::publish::{
+    self, ScreenSharePublish, ShareResolution, camera_publish_options, fit_capture,
+};
 use crate::video::{TrackCounters, TrackVideoStats, VideoDemand, layer_for, pump_frames};
 use async_trait::async_trait;
 use futures_util::StreamExt;
@@ -22,20 +29,24 @@ use livekit::options::{AudioEncoding, TrackPublishOptions};
 use livekit::participant::ConnectionQuality;
 use livekit::prelude::*;
 use livekit::track::{
-    LocalAudioTrack, LocalTrack, RemoteAudioTrack, RemoteTrack, TrackDimension, TrackSource,
-    VideoQuality,
+    LocalAudioTrack, LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteTrack, TrackDimension,
+    TrackSource, VideoQuality,
 };
 use livekit::webrtc::audio_frame::AudioFrame;
 use livekit::webrtc::audio_source::native::NativeAudioSource;
 use livekit::webrtc::audio_source::{AudioSourceOptions, RtcAudioSource};
 use livekit::webrtc::audio_stream::native::NativeAudioStream;
+use livekit::webrtc::video_source::RtcVideoSource;
+use livekit::webrtc::video_source::native::NativeVideoSource;
 use livekit::{DisconnectReason, Room, RoomEvent, RoomOptions};
+use livekit_protocol::TrackSource as ProtoSource;
 use semaphore_core::CoreError;
 pub use semaphore_core::model::ConnectionQuality as ConnectionQualityView;
 use semaphore_core::model::{
-    ParticipantView, UserView, VideoTrackView, ViewKey, VoiceStatus, VoiceView,
+    LocalMediaView, LocalShare, ParticipantView, ScreenShareRequest, UserView, VideoTrackView,
+    ViewKey, VoiceStatus, VoiceView,
 };
-use semaphore_core::platform::{CoreEvent, EventSink, MediaEngine};
+use semaphore_core::platform::{CoreEvent, EventSink, MediaEngine, ScreenShareStarted};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -138,6 +149,11 @@ pub struct EngineOptions {
     pub mic_preset: MicPreset,
     pub rejoin: RejoinPolicy,
     pub device_poll: Duration,
+    /// Cameras and screens: libwebrtc's by default, fakes in tests.
+    pub video_sources: Arc<dyn VideoSources>,
+    /// The system audio a screen share sends when asked to. `None`: asking for it fails, and the
+    /// screen is shared without it. The app passes `semaphore_sysaudio::platform_capture()`.
+    pub system_audio: Option<Arc<dyn SystemAudioCapture>>,
 }
 
 impl Default for EngineOptions {
@@ -148,6 +164,8 @@ impl Default for EngineOptions {
             mic_preset: MicPreset::default(),
             rejoin: RejoinPolicy::default(),
             device_poll: Duration::from_secs(2),
+            video_sources: Arc::new(PlatformVideoSources),
+            system_audio: None,
         }
     }
 }
@@ -172,6 +190,8 @@ struct Wanted {
     output_device: Option<String>,
     demands: HashMap<String, VideoDemand>,
     preset: MicPreset,
+    /// A camera's unique id from `cameras()`, or `None` for the first one.
+    camera_device: Option<String>,
 }
 
 impl Wanted {
@@ -222,6 +242,15 @@ struct Inner {
     system_audio: Mutex<Option<SystemAudioShare>>,
     /// 10 ms system audio frames dropped because the publisher fell behind, since the engine began.
     system_audio_dropped: Arc<AtomicU64>,
+    video_sources: Arc<dyn VideoSources>,
+    system_audio_capture: Option<Arc<dyn SystemAudioCapture>>,
+    camera: Mutex<Option<LocalVideo>>,
+    screen: Mutex<Option<LocalVideo>>,
+    /// One camera or screen change at a time.
+    local_ops: tokio::sync::Mutex<()>,
+    /// `drop_room_for_test`: the room is treated as lost, and the engine rejoins.
+    lose_room: tokio::sync::Notify,
+    next_capture: AtomicU64,
 }
 
 struct SystemAudioShare {
@@ -229,6 +258,32 @@ struct SystemAudioShare {
     _capture: AudioStream,
     pump: JoinHandle<()>,
 }
+
+/// Our camera or screen while it runs. Outlives a `Room`, so a rejoin republishes it.
+struct LocalVideo {
+    /// Which capture this is, so a late "ended" from an earlier one stops nothing.
+    id: u64,
+    kind: TrackSource,
+    source: NativeVideoSource,
+    options: TrackPublishOptions,
+    /// The publication's sid in the current room, for the preview and the participant view.
+    sid: Arc<Mutex<Option<String>>>,
+    _capture: Capturing,
+}
+
+impl LocalVideo {
+    fn track_name(&self) -> &'static str {
+        if self.kind == TrackSource::Screenshare {
+            "screen_share"
+        } else {
+            "camera"
+        }
+    }
+}
+
+/// How long a source may take to give its first frame. A system picker waits for the user.
+const FIRST_FRAME: Duration = Duration::from_secs(10);
+const FIRST_FRAME_AFTER_PICKER: Duration = Duration::from_secs(300);
 
 pub struct LiveKitEngine {
     inner: Arc<Inner>,
@@ -295,6 +350,13 @@ impl LiveKitEngine {
                 session: tokio::sync::Mutex::new(None),
                 system_audio: Mutex::new(None),
                 system_audio_dropped: Arc::new(AtomicU64::new(0)),
+                video_sources: options.video_sources,
+                system_audio_capture: options.system_audio,
+                camera: Mutex::new(None),
+                screen: Mutex::new(None),
+                local_ops: tokio::sync::Mutex::new(()),
+                lose_room: tokio::sync::Notify::new(),
+                next_capture: AtomicU64::new(1),
             }),
             runtime: Some(runtime),
         }
@@ -412,43 +474,7 @@ impl LiveKitEngine {
     /// share's audio track, in stereo with no voice processing, as the web client does. Works
     /// before or during a call; a rejoin republishes it.
     pub fn start_system_audio(&self, capture: &dyn SystemAudioCapture) -> Result<(), String> {
-        self.stop_system_audio();
-        let source = NativeAudioSource::new(
-            // Music and game sound, not speech: no echo cancelling, suppression or gain.
-            AudioSourceOptions::default(),
-            SAMPLE_RATE,
-            SYSTEM_AUDIO_CHANNELS as u32,
-            SYSTEM_AUDIO_QUEUE_MS,
-        );
-        let (frames_tx, frames_rx) = mpsc::channel::<Vec<i16>>(16);
-        let mut chunker = StereoChunker::new();
-        let dropped = self.inner.system_audio_dropped.clone();
-        let on_audio = Box::new(move |samples: &[f32]| {
-            chunker.push(samples, |frame| {
-                // Full means the pump is behind by 160 ms: dropping 10 ms beats growing latency.
-                if frames_tx.try_send(frame.to_vec()).is_err() {
-                    dropped.fetch_add(1, Ordering::Relaxed);
-                }
-            });
-        });
-        let on_error: ErrorCallback =
-            Arc::new(|message| log::warn!("system audio capture: {message}"));
-        let capture = capture.start(CaptureScope::EverythingExceptOurs, on_audio, on_error)?;
-        let pump = self
-            .inner
-            .runtime
-            .spawn(pump_system_audio(source.clone(), frames_rx));
-        *lock(&self.inner.system_audio) = Some(SystemAudioShare {
-            source: source.clone(),
-            _capture: capture,
-            pump,
-        });
-        if let Some(room) = self.inner.current_room() {
-            self.inner
-                .runtime
-                .spawn(async move { publish_system_audio(&room, source).await });
-        }
-        Ok(())
+        self.inner.start_system_audio(capture)
     }
 
     pub fn system_audio_dropped_frames(&self) -> u64 {
@@ -457,18 +483,26 @@ impl LiveKitEngine {
 
     /// Stops the capture and unpublishes the track. Nothing is left in the OS audio graph.
     pub fn stop_system_audio(&self) {
-        let Some(share) = lock(&self.inner.system_audio).take() else {
-            return;
-        };
-        share.pump.abort();
-        if let Some(room) = self.inner.current_room() {
-            self.inner.runtime.spawn(async move {
-                unpublish_system_audio(&room).await;
-            });
-        }
+        self.inner.stop_system_audio();
     }
 
-    /// How far ahead of the speakers the mixer is working right now.
+    /// Tests and rigs: closes the room as if the network had dropped it for good, so the engine
+    /// rejoins as it would after the SDK gives up.
+    #[doc(hidden)]
+    pub fn drop_room_for_test(&self) {
+        self.inner.lose_room.notify_one();
+    }
+
+    /// Cameras for a settings list: unique id and name.
+    pub fn cameras(&self) -> Vec<(String, String)> {
+        self.inner.video_sources.cameras()
+    }
+
+    /// The camera to use from the next `set_camera(true)`; `None` for the first one.
+    pub fn select_camera(&self, device: Option<String>) {
+        lock(&self.inner.wanted).camera_device = device;
+    }
+
     pub fn output_latency_ms(&self) -> u32 {
         self.inner.render_latency.load(Ordering::Relaxed)
     }
@@ -580,6 +614,38 @@ impl MediaEngine for LiveKitEngine {
     fn set_video_demands(&self, demands: Vec<VideoDemand>) {
         LiveKitEngine::set_video_demands(self, demands);
     }
+
+    async fn set_camera(&self, on: bool) -> Result<(), CoreError> {
+        let inner = self.inner.clone();
+        self.inner
+            .runtime
+            .spawn(async move { inner.set_camera(on).await })
+            .await
+            .map_err(failed)?
+            .map_err(failed)
+    }
+
+    async fn start_screen_share(
+        &self,
+        request: ScreenShareRequest,
+    ) -> Result<ScreenShareStarted, CoreError> {
+        let inner = self.inner.clone();
+        self.inner
+            .runtime
+            .spawn(async move { inner.start_screen_share(request).await })
+            .await
+            .map_err(failed)?
+            .map_err(failed)
+    }
+
+    async fn stop_screen_share(&self) {
+        let inner = self.inner.clone();
+        let _ = self
+            .inner
+            .runtime
+            .spawn(async move { inner.stop_screen_share().await })
+            .await;
+    }
 }
 
 fn room_options() -> RoomOptions {
@@ -596,6 +662,58 @@ fn room_options() -> RoomOptions {
 }
 
 impl Inner {
+    fn start_system_audio(&self, capture: &dyn SystemAudioCapture) -> Result<(), String> {
+        self.stop_system_audio();
+        let source = NativeAudioSource::new(
+            // Music and game sound, not speech: no echo cancelling, suppression or gain.
+            AudioSourceOptions::default(),
+            SAMPLE_RATE,
+            SYSTEM_AUDIO_CHANNELS as u32,
+            SYSTEM_AUDIO_QUEUE_MS,
+        );
+        let (frames_tx, frames_rx) = mpsc::channel::<Vec<i16>>(16);
+        let mut chunker = StereoChunker::new();
+        let dropped = self.system_audio_dropped.clone();
+        let on_audio = Box::new(move |samples: &[f32]| {
+            chunker.push(samples, |frame| {
+                // Full means the pump is behind by 160 ms: dropping 10 ms beats growing latency.
+                if frames_tx.try_send(frame.to_vec()).is_err() {
+                    dropped.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+        });
+        let on_error: ErrorCallback =
+            Arc::new(|message| log::warn!("system audio capture: {message}"));
+        let capture = capture.start(CaptureScope::EverythingExceptOurs, on_audio, on_error)?;
+        let pump = self
+            .runtime
+            .spawn(pump_system_audio(source.clone(), frames_rx));
+        *lock(&self.system_audio) = Some(SystemAudioShare {
+            source: source.clone(),
+            _capture: capture,
+            pump,
+        });
+        if let Some(room) = self.current_room() {
+            self.runtime
+                .spawn(async move { publish_system_audio(&room, source).await });
+        }
+        Ok(())
+    }
+
+    /// Stops the capture and unpublishes the track. Nothing is left in the OS audio graph.
+    fn stop_system_audio(&self) {
+        let Some(share) = lock(&self.system_audio).take() else {
+            return;
+        };
+        share.pump.abort();
+        if let Some(room) = self.current_room() {
+            self.runtime.spawn(async move {
+                unpublish_system_audio(&room).await;
+            });
+        }
+    }
+
+    /// How far ahead of the speakers the mixer is working right now.
     fn current_room(&self) -> Option<Arc<Room>> {
         self.room.read().unwrap_or_else(|p| p.into_inner()).clone()
     }
@@ -665,10 +783,11 @@ impl Inner {
         session.device_task.abort();
         let _ = session.task.await;
         session.mic_pump.abort();
-        // Leaving the call ends the share's audio with it.
+        // Leaving the call ends the share's audio, the camera and the screen with it.
         if let Some(share) = lock(&self.system_audio).take() {
             share.pump.abort();
         }
+        self.drop_local_video();
         self.clear_media();
         self.stop_audio();
         lock(&self.applied_quality).clear();
@@ -706,6 +825,27 @@ impl Inner {
             .map(|share| share.source.clone());
         if let Some(source) = system_audio {
             publish_system_audio(room, source).await;
+        }
+        // A rejoin puts the camera and the screen back.
+        for slot in [&self.camera, &self.screen] {
+            let video = lock(slot).as_ref().map(|video| {
+                (
+                    video.track_name(),
+                    video.source.clone(),
+                    video.options.clone(),
+                    video.sid.clone(),
+                )
+            });
+            if let Some((name, source, options, sid)) = video {
+                // The old room's sid is gone with it: the preview moves to the new one.
+                let old = lock(&sid).take();
+                if let Some(old) = old {
+                    self.notify_track_ended(&old);
+                }
+                if let Err(error) = publish_video(room, name, source, options, &sid).await {
+                    log::warn!("republishing {name} failed: {error}");
+                }
+            }
         }
         self.subscribe_to_everything_audible(room);
         self.apply_video_demands();
@@ -763,6 +903,10 @@ impl Inner {
 
     /// The call is over and no one here asked for that.
     fn end_call(&self, reason: String) {
+        if let Some(share) = lock(&self.system_audio).take() {
+            share.pump.abort();
+        }
+        self.drop_local_video();
         self.clear_media();
         self.set_room(None);
         self.stop_audio();
@@ -843,6 +987,10 @@ impl Inner {
             let event = tokio::select! {
                 event = events.recv() => event,
                 _ = leave.changed() => return RoomEnd::Left,
+                _ = self.lose_room.notified() => {
+                    let _ = room.close().await;
+                    return RoomEnd::Lost;
+                }
             };
             let Some(event) = event else {
                 return RoomEnd::Lost;
@@ -1285,9 +1433,15 @@ impl Inner {
             wanted_deafened = wanted.deafened;
         }
         let speaking = lock(&self.speaking).clone();
+        let local_media = self.local_media(room.as_deref());
+        let (own_camera, own_screen) = room
+            .as_deref()
+            .map(|room| self.local_tracks(room))
+            .unwrap_or_default();
         self.update_snapshot(|snapshot| {
             snapshot.voice.muted = wanted_muted;
             snapshot.voice.deafened = wanted_deafened;
+            snapshot.voice.local = local_media;
             let Some(room) = &room else {
                 snapshot.voice.participants.clear();
                 // A rejoin is still this call, in this channel.
@@ -1308,8 +1462,8 @@ impl Inner {
                 speaking: speaking.contains(&local_identity),
                 muted: wanted_muted,
                 deafened: wanted_deafened,
-                camera: None,
-                screen_share: None,
+                camera: own_camera,
+                screen_share: own_screen,
                 quality: quality_view(local.connection_quality()),
             }];
             snapshot.local_quality = quality_view(local.connection_quality());
@@ -1493,5 +1647,306 @@ async fn pump_track_audio(track: RemoteAudioTrack, mut input: MixerInput) {
     let mut stream = NativeAudioStream::new(track.rtc_track(), SAMPLE_RATE as i32, 1);
     while let Some(frame) = stream.next().await {
         input.push(&frame.data);
+    }
+}
+
+/// Our camera and screen share.
+impl Inner {
+    async fn set_camera(self: Arc<Self>, on: bool) -> Result<(), String> {
+        let _one_at_a_time = self.local_ops.lock().await;
+        if !on {
+            self.stop_video(TrackSource::Camera).await;
+            return Ok(());
+        }
+        if lock(&self.camera).is_some() {
+            return Ok(());
+        }
+        let room = self.current_room().ok_or("not in a call")?;
+        let permission = room.local_participant().permission();
+        if !may_publish(permission.as_ref(), ProtoSource::Camera) {
+            return Err("this call doesn't let you send video".into());
+        }
+        let device = lock(&self.wanted).camera_device.clone();
+        let source = self.video_sources.camera(device.as_deref())?;
+        let video = self
+            .clone()
+            .start_video(source, TrackSource::Camera, None)
+            .await?;
+        self.go_live(&room, &self.camera, video).await
+    }
+
+    async fn start_screen_share(
+        self: Arc<Self>,
+        request: ScreenShareRequest,
+    ) -> Result<ScreenShareStarted, String> {
+        let _one_at_a_time = self.local_ops.lock().await;
+        self.stop_system_audio();
+        self.stop_video(TrackSource::Screenshare).await;
+        let room = self.current_room().ok_or("not in a call")?;
+        let permission = room.local_participant().permission();
+        if !may_publish(permission.as_ref(), ProtoSource::ScreenShare) {
+            return Err("this call doesn't let you share your screen".into());
+        }
+        let source = self.video_sources.screen(&request)?;
+        let video = self
+            .clone()
+            .start_video(source, TrackSource::Screenshare, Some(&request))
+            .await?;
+        self.go_live(&room, &self.screen, video).await?;
+        // The screen is shared either way; its audio only if it starts.
+        let audio = request.audio.then(|| match &self.system_audio_capture {
+            Some(capture) => self.start_system_audio(capture.as_ref()),
+            None => Err("sharing system audio isn't available here".into()),
+        });
+        if let Some(Err(error)) = &audio {
+            log::warn!("screen share audio: {error}");
+        }
+        self.publish_snapshot();
+        Ok(ScreenShareStarted { audio })
+    }
+
+    async fn stop_screen_share(self: Arc<Self>) {
+        let _one_at_a_time = self.local_ops.lock().await;
+        self.stop_system_audio();
+        self.stop_video(TrackSource::Screenshare).await;
+    }
+
+    /// Starts `source` and waits for its first frame, whose size sets what is sent.
+    async fn start_video(
+        self: Arc<Self>,
+        source: Box<dyn VideoCaptureSource>,
+        kind: TrackSource,
+        screen: Option<&ScreenShareRequest>,
+    ) -> Result<LocalVideo, String> {
+        let id = self.next_capture.fetch_add(1, Ordering::Relaxed);
+        let resolution = screen.map_or(ShareResolution::P720, |request| request.resolution);
+        let fps = screen.map(|request| publish::normalize_fps(request.fps));
+        let sid = Arc::new(Mutex::new(None::<String>));
+        let preview = self
+            .video_sink
+            .read()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone();
+        type First = Result<(NativeVideoSource, (u32, u32)), String>;
+        let (first_tx, first_rx) = tokio::sync::oneshot::channel::<First>();
+        let first = Arc::new(Mutex::new(Some(first_tx)));
+        let mut pipeline: Option<FramePipeline> = None;
+        let frame_first = first.clone();
+        let frame_sid = sid.clone();
+        let frame_runtime = self.runtime.clone();
+        let on_frame = Box::new(move |frame: crate::video::local::SourceFrame<'_>| {
+            let pipeline = pipeline.get_or_insert_with(|| {
+                // The source spawns its keepalive on the ambient runtime; this is a capture thread.
+                let _runtime = frame_runtime.enter();
+                let (width, height) = frame.size();
+                let target = if kind == TrackSource::Camera {
+                    fit_capture(width, height, ShareResolution::P720)
+                } else {
+                    fit_capture(width, height, resolution)
+                };
+                let pipeline = FramePipeline::new(
+                    target,
+                    kind == TrackSource::Screenshare,
+                    preview.clone(),
+                    frame_sid.clone(),
+                );
+                if let Some(first) = lock(&frame_first).take() {
+                    let _ = first.send(Ok((pipeline.source(), target)));
+                }
+                pipeline
+            });
+            pipeline.push(frame);
+        });
+        let weak = Arc::downgrade(&self);
+        let runtime = self.runtime.clone();
+        let on_ended = Box::new(move |why: String| {
+            // Before the first frame, the start fails with why (a cancelled picker).
+            if let Some(first) = lock(&first).take() {
+                let _ = first.send(Err(why));
+                return;
+            }
+            if let Some(inner) = weak.upgrade() {
+                runtime.spawn(async move { inner.local_ended(kind, id, why).await });
+            }
+        });
+        let capture = source.start(on_frame, on_ended)?;
+        let wait = if screen.is_some() && uses_portal() {
+            FIRST_FRAME_AFTER_PICKER
+        } else {
+            FIRST_FRAME
+        };
+        let (source, (width, height)) = match tokio::time::timeout(wait, first_rx).await {
+            Ok(Ok(first)) => first?,
+            Ok(Err(_)) => return Err("the capture stopped before its first frame".into()),
+            Err(_) => return Err("no picture came in time".into()),
+        };
+        let options = match fps {
+            Some(fps) => ScreenSharePublish::new(width, height, fps).track_publish_options(),
+            None => camera_publish_options(),
+        };
+        log::info!(
+            "{kind:?}: sending {width}x{height}, top layer {:?}",
+            options.video_encoding
+        );
+        Ok(LocalVideo {
+            id,
+            kind,
+            source,
+            options,
+            sid,
+            _capture: capture,
+        })
+    }
+
+    /// Keeps `video` in its slot and publishes it. In the slot first, so a rejoin meanwhile
+    /// republishes it; a leave meanwhile takes it, and the start fails.
+    async fn go_live(
+        &self,
+        room: &Arc<Room>,
+        slot: &Mutex<Option<LocalVideo>>,
+        video: LocalVideo,
+    ) -> Result<(), String> {
+        let (id, name, source, options, sid) = (
+            video.id,
+            video.track_name(),
+            video.source.clone(),
+            video.options.clone(),
+            video.sid.clone(),
+        );
+        *lock(slot) = Some(video);
+        let published = publish_video(room, name, source, options, &sid).await;
+        let still_ours = lock(slot).as_ref().is_some_and(|video| video.id == id);
+        let same_room = self
+            .current_room()
+            .is_some_and(|current| Arc::ptr_eq(&current, room));
+        let result = match (published, still_ours, same_room) {
+            (_, false, _) => Err("the call ended while it was starting".to_owned()),
+            (Ok(()), true, _) | (Err(_), true, false) => Ok(()),
+            (Err(error), true, true) => {
+                lock(slot).take();
+                Err(error)
+            }
+        };
+        self.publish_snapshot();
+        result
+    }
+
+    /// Unpublishes and stops one of them. Nothing happens if it isn't running.
+    async fn stop_video(&self, kind: TrackSource) {
+        let slot = if kind == TrackSource::Camera {
+            &self.camera
+        } else {
+            &self.screen
+        };
+        let Some(video) = lock(slot).take() else {
+            return;
+        };
+        if let Some(room) = self.current_room() {
+            unpublish_source(&room, kind).await;
+        }
+        let sid = lock(&video.sid).take();
+        drop(video);
+        if let Some(sid) = sid {
+            self.notify_track_ended(&sid);
+        }
+        self.publish_snapshot();
+    }
+
+    /// The call is over: the captures stop. The room's tracks go with the room.
+    fn drop_local_video(&self) {
+        for slot in [&self.camera, &self.screen] {
+            let video = lock(slot).take();
+            if let Some(sid) = video.as_ref().and_then(|video| lock(&video.sid).take()) {
+                self.notify_track_ended(&sid);
+            }
+        }
+    }
+
+    /// A capture stopped on its own. The screen's audio goes with it.
+    async fn local_ended(self: Arc<Self>, kind: TrackSource, id: u64, why: String) {
+        let _one_at_a_time = self.local_ops.lock().await;
+        let slot = if kind == TrackSource::Camera {
+            &self.camera
+        } else {
+            &self.screen
+        };
+        if lock(slot).as_ref().is_none_or(|video| video.id != id) {
+            return;
+        }
+        log::info!("{kind:?} ended: {why}");
+        if kind == TrackSource::Screenshare {
+            self.stop_system_audio();
+        }
+        self.stop_video(kind).await;
+    }
+
+    /// What we send, for the report: what runs, and what the room allows.
+    fn local_media(&self, room: Option<&Room>) -> LocalMediaView {
+        let on = |running: bool| {
+            if running {
+                LocalShare::On
+            } else {
+                LocalShare::Off
+            }
+        };
+        let permission = room.and_then(|room| room.local_participant().permission());
+        LocalMediaView {
+            camera: on(lock(&self.camera).is_some()),
+            screen: on(lock(&self.screen).is_some()),
+            screen_audio: on(lock(&self.system_audio).is_some()),
+            may_camera: room.is_some() && may_publish(permission.as_ref(), ProtoSource::Camera),
+            may_share: room.is_some() && may_publish(permission.as_ref(), ProtoSource::ScreenShare),
+        }
+    }
+
+    /// Our own camera and screen as tiles: the publications in the room, under their sids.
+    fn local_tracks(&self, room: &Room) -> (Option<VideoTrackView>, Option<VideoTrackView>) {
+        let (mut camera, mut screen) = (None, None);
+        for (sid, publication) in room.local_participant().track_publications() {
+            let TrackDimension(width, height) = publication.dimension();
+            let view = || VideoTrackView {
+                track_sid: sid.to_string(),
+                width,
+                height,
+            };
+            match publication.source() {
+                TrackSource::Camera => camera = Some(view()),
+                TrackSource::Screenshare => screen = Some(view()),
+                _ => {}
+            }
+        }
+        (camera, screen)
+    }
+}
+
+async fn publish_video(
+    room: &Room,
+    name: &str,
+    source: NativeVideoSource,
+    options: TrackPublishOptions,
+    sid: &Mutex<Option<String>>,
+) -> Result<(), String> {
+    let track = LocalVideoTrack::create_video_track(name, RtcVideoSource::Native(source));
+    let publication = room
+        .local_participant()
+        .publish_track(LocalTrack::Video(track), options)
+        .await
+        .map_err(|error| error.to_string())?;
+    *lock(sid) = Some(publication.sid().to_string());
+    Ok(())
+}
+
+async fn unpublish_source(room: &Room, source: TrackSource) {
+    let local = room.local_participant();
+    let sids: Vec<_> = local
+        .track_publications()
+        .values()
+        .filter(|publication| publication.source() == source)
+        .map(|publication| publication.sid())
+        .collect();
+    for sid in sids {
+        if let Err(error) = local.unpublish_track(&sid).await {
+            log::warn!("unpublishing {source:?} failed: {error}");
+        }
     }
 }
