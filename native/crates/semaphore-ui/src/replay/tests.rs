@@ -498,3 +498,78 @@ fn share_asks_for_channels_of_the_picked_community_or_dms(cx: &mut TestAppContex
     rig.click(cx, "share-cancel");
     assert_eq!(rig.events(), [ShareEvent::Close]);
 }
+
+// ---- The trim, under any presses. ----
+
+mod properties {
+    use super::super::model::*;
+    use proptest::prelude::*;
+    use proptest::test_runner::{Config, RngSeed};
+    use std::prelude::rust_2024::test;
+
+    fn config() -> Config {
+        Config {
+            cases: 512,
+            rng_seed: RngSeed::Fixed(0x7c1a_0001),
+            ..Config::default()
+        }
+    }
+
+    #[derive(Debug, Clone)]
+    enum Press {
+        Set(bool, u32),
+        Nudge(bool, i64),
+        Drag(f32),
+        Refresh(u32),
+    }
+
+    fn press() -> impl Strategy<Value = Press> {
+        prop_oneof![
+            (any::<bool>(), 0u32..2000).prop_map(|(start, at)| Press::Set(start, at)),
+            (any::<bool>(), -700i64..700).prop_map(|(start, by)| Press::Nudge(start, by)),
+            prop_oneof![-1f32..2., Just(f32::NAN)].prop_map(Press::Drag),
+            (0u32..1500).prop_map(Press::Refresh),
+        ]
+    }
+
+    fn handle(start: bool) -> Handle {
+        if start { Handle::Start } else { Handle::End }
+    }
+
+    proptest! {
+        #![proptest_config(config())]
+
+        #[test]
+        fn the_handles_stay_inside_the_buffer_and_apart(
+            max in 1u32..1500,
+            presses in prop::collection::vec(press(), 0..30),
+        ) {
+            let mut trim = TrimRange::new(max).unwrap();
+            for press in presses {
+                match press {
+                    Press::Set(start, at) => trim.set(handle(start), at),
+                    Press::Nudge(start, by) => trim.nudge(handle(start), by),
+                    Press::Drag(fraction) => {
+                        let at = trim.seconds_at(fraction);
+                        prop_assert!(at <= trim.max);
+                        trim.set(trim.nearest(fraction), at);
+                    }
+                    Press::Refresh(max) => trim.refresh(max),
+                }
+                prop_assert!(trim.start + MIN_TRIM <= trim.end, "{trim:?}");
+                prop_assert!(trim.end <= trim.max, "{trim:?}");
+                prop_assert!(trim.duration() >= MIN_TRIM);
+                let (start, end) = (trim.fraction(Handle::Start), trim.fraction(Handle::End));
+                prop_assert!((0.0..=1.0).contains(&start) && (0.0..=1.0).contains(&end));
+            }
+        }
+
+        #[test]
+        fn ruler_marks_rise_from_zero_within_the_buffer(max in 0u32..20_000, most in 0usize..40) {
+            let marks = ruler_marks(max, most);
+            prop_assert_eq!(marks.first(), Some(&0));
+            prop_assert!(marks.windows(2).all(|pair| pair[0] < pair[1]));
+            prop_assert!(marks.iter().all(|mark| *mark <= max));
+        }
+    }
+}

@@ -541,4 +541,93 @@ mod tests {
         bad.size.width = f32::INFINITY;
         assert!(!bad.is_valid());
     }
+
+    mod properties {
+        use super::*;
+        use proptest::prelude::*;
+        use proptest::test_runner::{Config, RngSeed};
+
+        fn config() -> Config {
+            Config {
+                cases: 512,
+                rng_seed: RngSeed::Fixed(0xd0c4_0001),
+                ..Config::default()
+            }
+        }
+
+        fn viewport() -> impl Strategy<Value = Viewport> {
+            (0f32..3000., 0f32..2000., 0f32..120.).prop_map(|(width, height, bottom_inset)| {
+                Viewport {
+                    width,
+                    height,
+                    bottom_inset,
+                }
+            })
+        }
+
+        fn size() -> impl Strategy<Value = Size2> {
+            (1f32..2000., 1f32..2000.).prop_map(|(width, height)| Size2 { width, height })
+        }
+
+        proptest! {
+            #![proptest_config(config())]
+
+            /// When the card fits, it is inside the area; when it doesn't, it sits at the padding.
+            #[test]
+            fn a_clamped_card_stays_inside_the_area(
+                vp in viewport(),
+                size in size(),
+                x in -5000f32..5000.,
+                y in -5000f32..5000.,
+            ) {
+                let at = clamp_position(Point2 { x, y }, size, vp);
+                prop_assert!(at.x >= EDGE_PADDING && at.y >= EDGE_PADDING);
+                if size.width + 2. * EDGE_PADDING <= vp.width {
+                    prop_assert!(at.x + size.width <= vp.width - EDGE_PADDING + 0.01);
+                }
+                if size.height + 2. * EDGE_PADDING <= vp.height - vp.bottom_inset {
+                    prop_assert!(at.y + size.height <= vp.height - vp.bottom_inset - EDGE_PADDING + 0.01);
+                }
+            }
+
+            #[test]
+            fn a_clamped_size_is_between_the_floor_and_the_area(vp in viewport(), size in size()) {
+                let clamped = clamp_size(size, vp);
+                prop_assert!(clamped.width >= MIN_WIDTH && clamped.height >= MIN_HEIGHT);
+                prop_assert!(clamped.width <= MIN_WIDTH.max(vp.width - 2. * EDGE_PADDING));
+            }
+
+            #[test]
+            fn a_free_card_put_back_where_it_was_lands_there(
+                size in size(),
+                x in 0f32..1.,
+                y in 0f32..1.,
+            ) {
+                let vp = Viewport { width: 2400., height: 1600., bottom_inset: 56. };
+                let size = clamp_size(size, vp);
+                let room_x = (vp.width - size.width - 2. * EDGE_PADDING).max(0.);
+                let room_y = (vp.height - vp.bottom_inset - size.height - 2. * EDGE_PADDING).max(0.);
+                let at = Point2 { x: EDGE_PADDING + x * room_x, y: EDGE_PADDING + y * room_y };
+                let (anchor, offset) = from_absolute(at, size, vp);
+                let placement = PipPlacement { anchor, offset, size, docked: false, collapsed: false };
+                let back = to_absolute(&placement, vp, size);
+                prop_assert!((back.x - at.x).abs() < 0.01 && (back.y - at.y).abs() < 0.01);
+            }
+
+            #[test]
+            fn nothing_panics_on_numbers_that_are_not_sizes(
+                w in prop_oneof![Just(f32::NAN), Just(f32::INFINITY), Just(-1f32), Just(0f32)],
+                h in prop_oneof![Just(f32::NAN), Just(f32::NEG_INFINITY), Just(-1f32), Just(0f32)],
+            ) {
+                let vp = Viewport { width: w, height: h, bottom_inset: 56. };
+                let size = Size2 { width: w, height: h };
+                let _ = clamp_size(size, vp);
+                let _ = clamp_position(Point2 { x: w, y: h }, CARD, vp);
+                let _ = from_absolute(Point2 { x: w, y: h }, CARD, vp);
+                let _ = hit_test_dock_zone(Point2 { x: w, y: h }, vp);
+                let placement = PipPlacement { offset: Point2 { x: w, y: h }, ..PipPlacement::default() };
+                prop_assert!(!placement.is_valid() || (w.is_finite() && h.is_finite()));
+            }
+        }
+    }
 }
