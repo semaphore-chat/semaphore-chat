@@ -64,3 +64,11 @@ debug = "line-tables-only"
 [profile.release]
 strip = "symbols"
 lto = "thin"
+
+# What packages ship (docs/size.md): release plus whole-program LTO in one codegen unit, 14 MB
+# smaller, no runtime cost, about three minutes longer to build. verify.sh and CI keep `release`.
+#   scripts/in-image.sh cargo build --locked --profile dist -p semaphore-app   # -> target/dist/
+[profile.dist]
+inherits = "release"
+lto = "fat"
+codegen-units = 1

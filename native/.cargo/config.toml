@@ -1,9 +1,12 @@
 # libwebrtc needs clang 21+ and lld, and the default link on Arch fails without the
 # explicit glib libraries. Linux only, so the mobile and Windows targets are untouched.
+# --icf=all folds identical functions (lld; 3.4 MB off the app, docs/size.md). Windows needs no flag:
+# rustc already passes /OPT:REF,ICF to MSVC link.exe in optimised builds (NOICF in dev, for link time).
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = [
     "-C", "link-arg=-fuse-ld=lld",
+    "-C", "link-arg=-Wl,--icf=all",
     "-C", "link-arg=-lgio-2.0",
     "-C", "link-arg=-lgobject-2.0",
     "-C", "link-arg=-lglib-2.0",

@@ -365,23 +365,17 @@ version = "2.3.0"
 features = ["compiled_data"]
 default-features = false
 
+# Semaphore patch: only the formats the app can receive (attachments, avatars, emoji, link
+# previews: PNG, JPEG, GIF, WebP, plus BMP and ICO for previews). Upstream also turns on dds, exr,
+# ff, hdr, pnm, qoi, rayon, tga and tiff (1.4 MB of code).
 [dependencies.image]
 version = "0.25.1"
 features = [
     "bmp",
-    "dds",
-    "exr",
-    "ff",
     "gif",
-    "hdr",
     "ico",
     "jpeg",
     "png",
-    "pnm",
-    "qoi",
-    "rayon",
-    "tga",
-    "tiff",
     "webp",
 ]
 default-features = false

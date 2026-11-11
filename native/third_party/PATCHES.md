@@ -2,7 +2,7 @@
 
 Both are LiveKit's crates (Apache-2.0), vendored from crates.io through `series` and `vendor.sh`
 like the GPUI crates (see [README.md](README.md)). The patches add only what screen and camera
-publishing need and the crates don't expose. The prebuilt libwebrtc that `webrtc-sys` downloads
+publishing need and the crates don't expose, and drop the software encoders we never use. The prebuilt libwebrtc that `webrtc-sys` downloads
 already contains all of it: everything here is glue compiled by `webrtc-sys`'s own build script
 against the prebuilt's headers, so no libwebrtc rebuild is involved.
 
@@ -17,6 +17,7 @@ Every change is marked `Semaphore patch` in the source.
 | `include/livekit/camera_capturer.h`, `src/camera_capturer.cpp`, `src/camera_capturer.rs` (new) | A cxx bridge over `webrtc::VideoCaptureModule` and `VideoCaptureFactory`: open a backend, list devices with their modes, start a mode into a `NativeVideoSink`, stop | Cameras. libwebrtc has PipeWire and V4L2 camera backends on Linux and DirectShow on Windows, but `webrtc-sys` binds none of them. Frames reuse the existing `NativeVideoSink`, the one remote tracks use, so they arrive in Rust as ordinary `VideoFrame`s with no copy |
 | `build.rs` | Builds the camera bridge on Linux and Windows; links `oleaut32` on Windows | macOS cameras live in the ObjC SDK, not in `VideoCaptureModule`, so it's left out there. DirectShow returns device names as VARIANTs |
 | `src/lib.rs` | `pub mod camera_capturer` on Linux and Windows | |
+| `src/video_encoder_factory.cpp` | The software encoder template lists VP8 only (upstream: VP8, OpenH264, libaom AV1, VP9). Decoders and the hardware encoder factories (VA-API, NVIDIA) are untouched | Size: the linker keeps an encoder only if the template names it, so this drops libaom and OpenH264, 3.8 MB of the app ([docs/size.md](../docs/size.md)). The app and the web client publish VP8 only. Publishing another codec later means adding its adapter back here |
 
 ## `patches/libwebrtc.patch`
 
