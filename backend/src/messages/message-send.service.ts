@@ -83,6 +83,8 @@ export class MessageSendService {
       );
     }
 
+    await this.assertDmMember(authorId, directMessageGroupId);
+
     const target = { directMessageGroupId };
     const sent = await this.findSent(authorId, dto, target);
     if (sent) return sent;
@@ -135,6 +137,25 @@ export class MessageSendService {
         : null;
       if (!sent) throw error;
       return { message: sent, retried: true };
+    }
+  }
+
+  /**
+   * Only the group's current members may post in a DM, whatever their instance
+   * role: RbacGuard lets an instance owner through, and a DM isn't theirs to
+   * read or write. The block check is in MessagesService.create.
+   */
+  private async assertDmMember(userId: string, groupId: string) {
+    const member =
+      await this.databaseService.directMessageGroupMember.findFirst({
+        where: { groupId, userId },
+        select: { id: true },
+      });
+    if (!member) {
+      throw new ForbiddenException('You are not a member of this DM group', {
+        description: 'Forbidden',
+        errorCode: ErrorCode.FORBIDDEN,
+      });
     }
   }
 

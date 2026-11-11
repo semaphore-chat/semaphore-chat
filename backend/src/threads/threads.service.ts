@@ -4,6 +4,7 @@ import {
   Logger,
   NotFoundException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { DatabaseService } from '@/database/database.service';
 import { WebsocketService } from '@/websocket/websocket.service';
@@ -226,8 +227,18 @@ export class ThreadsService {
     // Validate parent message exists and isn't a thread reply itself
     const parent = await this.getParentMessage(parentMessageId);
 
-    // Same as a new DM message: a 1:1 DM with a block between the two is closed
+    // Same as a new DM message: only current members may reply, whatever their
+    // instance role (RbacGuard lets an instance owner through), and a 1:1 DM
+    // with a block between the two is closed
     if (parent.directMessageGroupId) {
+      const member =
+        await this.databaseService.directMessageGroupMember.findFirst({
+          where: { groupId: parent.directMessageGroupId, userId: authorId },
+          select: { id: true },
+        });
+      if (!member) {
+        throw new ForbiddenException('You are not a member of this DM group');
+      }
       await assertNotBlockedInDm(
         this.databaseService,
         authorId,

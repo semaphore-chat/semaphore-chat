@@ -335,6 +335,16 @@ describe('Sending a message (e2e)', () => {
       expect(await db.message.count({ where: { searchText: text } })).toBe(0);
     });
 
+    it('rejects an instance owner who is not in the group', async () => {
+      const text = randomUUID();
+      const res = await restDm('owner', {
+        directMessageGroupId: group,
+        spans: spans(text),
+      }).expect(403);
+      expect(res.body).toMatchObject({ errorCode: 'FORBIDDEN' });
+      expect(await db.message.count({ where: { searchText: text } })).toBe(0);
+    });
+
     it('rejects a second target', async () => {
       const text = randomUUID();
       await restDm('sender', {
@@ -398,6 +408,19 @@ describe('Sending a message (e2e)', () => {
       await restReply('sender', parentMessageId, { attachments: 'abc' }).expect(
         400,
       );
+    });
+
+    it('refuses a DM thread reply from an instance owner not in the group', async () => {
+      const dm = await restDm('sender', {
+        directMessageGroupId: group,
+        spans: spans(randomUUID()),
+      }).expect(201);
+      const text = randomUUID();
+
+      await restReply('owner', (dm.body as { id: string }).id, {
+        spans: spans(text),
+      }).expect(403);
+      expect(await db.message.count({ where: { searchText: text } })).toBe(0);
     });
 
     it('broadcasts a reply in a DM thread to the group', async () => {
@@ -666,6 +689,25 @@ describe('Sending a message (e2e)', () => {
         spans: spans(randomUUID()),
       });
       expect((await event).message.id).toBe(ack);
+    });
+
+    it('SEND_DM refuses an instance owner who is not in the group', async () => {
+      const text = randomUUID();
+      const client = await connect('owner');
+      const { ack, exception } = await socketSend(
+        client,
+        ClientEvents.SEND_DM,
+        {
+          directMessageGroupId: group,
+          spans: spans(text),
+        },
+      );
+      expect(ack).toBeUndefined();
+      expect(exception).toMatchObject({
+        errorCode: 'FORBIDDEN',
+        message: 'You are not a member of this DM group',
+      });
+      expect(await db.message.count({ where: { searchText: text } })).toBe(0);
     });
 
     it('keeps the slowmode message on the exception event', async () => {

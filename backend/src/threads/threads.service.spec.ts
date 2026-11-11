@@ -3,7 +3,11 @@ import { NotificationsService } from '@/notifications/notifications.service';
 import { LinkPreviewsService } from '@/link-previews/link-previews.service';
 import { ServerEvents } from '@semaphore-chat/shared';
 import { TestBed } from '@suites/unit';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  NotFoundException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { ThreadsService } from './threads.service';
 import { DatabaseService } from '@/database/database.service';
 import { ChannelAccessService } from '@/roles/channel-access.service';
@@ -20,6 +24,9 @@ describe('ThreadsService', () => {
 
   beforeEach(async () => {
     mockDatabase = createMockDatabase();
+    mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue({
+      id: 'member-1',
+    });
 
     const { unit, unitRef } = await TestBed.solitary(ThreadsService)
       .mock(DatabaseService)
@@ -382,6 +389,23 @@ describe('ThreadsService', () => {
         parentMessageId,
         sentAt: reply.sentAt.toISOString(),
       });
+    });
+
+    it('refuses a DM thread reply from someone not in the group', async () => {
+      mockDatabase.message.findUnique.mockResolvedValue(
+        MessageFactory.build({
+          id: parentMessageId,
+          channelId: null,
+          directMessageGroupId: 'dm-group-123',
+          parentMessageId: null,
+        }),
+      );
+      mockDatabase.directMessageGroupMember.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.createThreadReply({ ...dto, parentMessageId }, authorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(mockDatabase.message.create).not.toHaveBeenCalled();
     });
 
     it('should auto-subscribe the replier to the thread', async () => {

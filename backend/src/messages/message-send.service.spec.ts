@@ -225,6 +225,30 @@ describe('MessageSendService', () => {
       attachments: [],
     } as any;
 
+    beforeEach(() => {
+      database.directMessageGroupMember.findFirst.mockResolvedValue({
+        id: 'member-1',
+      });
+    });
+
+    it('refuses a sender who is not in the group, before anything else', async () => {
+      database.directMessageGroupMember.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.sendToDirectMessageGroup('user-1', {
+          ...dto,
+          clientNonce: 'b6a4a0c2-5f7e-4a51-9a0b-3c1f2e9d8a71',
+        }),
+      ).rejects.toThrow(ForbiddenException);
+      expect(database.directMessageGroupMember.findFirst).toHaveBeenCalledWith({
+        where: { groupId: 'group-1', userId: 'user-1' },
+        select: { id: true },
+      });
+      expect(database.message.findUnique).not.toHaveBeenCalled();
+      expect(messagesService.create).not.toHaveBeenCalled();
+      expect(dispatch.dispatch).not.toHaveBeenCalled();
+    });
+
     it('writes the message and broadcasts it to the group', async () => {
       await service.sendToDirectMessageGroup('user-1', dto);
 
