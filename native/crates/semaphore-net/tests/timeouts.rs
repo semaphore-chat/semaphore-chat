@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use common::*;
-use semaphore_core::backend::Backend;
+use semaphore_core::backend::{CommunitiesBackend, FilesBackend, SessionBackend};
 use semaphore_net::{HttpBackend, Timeouts};
 use tokio::io::AsyncWriteExt;
 use tokio::net::TcpListener;

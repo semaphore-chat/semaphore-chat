@@ -1,0 +1,332 @@
+//! The REST surface: axum routes, the bearer gate, fault injection and recording.
+//!
+//! Each area has its own file with its routes and their `operationId`s; they are merged here.
+
+// Axum error responses are themselves `Response`s; boxing them for every small
+// parse helper would only make the handlers harder to read.
+#![allow(clippy::result_large_err)]
+
+mod communities;
+mod files;
+mod messages;
+mod session;
+mod voice;
+
+use crate::messages::SendFailure;
+use crate::{Inner, error_body, lock};
+use axum::Router;
+use axum::body::Bytes;
+use axum::extract::{MatchedPath, Path, Request, State};
+use axum::http::{HeaderMap, Method, StatusCode, Uri, header};
+use axum::middleware::{self, Next};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{any, post};
+use serde::de::DeserializeOwned;
+use serde_json::{Value, json};
+use std::collections::HashMap;
+use std::sync::Arc;
+
+pub(crate) fn router(inner: Arc<Inner>) -> Router {
+    Router::new()
+        .merge(session::routes())
+        .merge(communities::routes())
+        .merge(messages::routes())
+        .merge(voice::routes())
+        .merge(files::routes())
+        .route("/socket.io/", any(crate::socket::socket_io))
+        .route("/__control/{name}", post(control))
+        .fallback(not_implemented)
+        .layer(middleware::from_fn_with_state(inner.clone(), gate))
+        .with_state(inner)
+}
+
+fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
+    session::operation_id(method, route)
+        .or_else(|| communities::operation_id(method, route))
+        .or_else(|| messages::operation_id(method, route))
+        .or_else(|| voice::operation_id(method, route))
+        .or_else(|| files::operation_id(method, route))
+}
+
+fn bearer_token(headers: &HeaderMap) -> Option<&str> {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+}
+
+fn has_bearer(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(|token| !token.trim().is_empty())
+        .unwrap_or(false)
+}
+
+/// Routes that answer without a session.
+fn is_public(operation: Option<&str>) -> bool {
+    matches!(
+        operation,
+        Some(
+            "AuthController_login"
+                | "AuthController_refresh"
+                | "InstanceController_getPublicSettings"
+                | "Fixture_image"
+        )
+    )
+}
+
+async fn gate(State(inner): State<Arc<Inner>>, request: Request, next: Next) -> Response {
+    let method = request.method().clone();
+    let path = request.uri().path().to_owned();
+    let matched = request
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|matched| matched.as_str().to_owned());
+    let operation = matched
+        .as_deref()
+        .and_then(|route| operation_id(&method, route));
+
+    if let Some(fault) = inner.take_route_fault(operation) {
+        let response = inner.error(
+            fault.status,
+            &fault.code,
+            format!(
+                "Injected {} for {}",
+                fault.code,
+                operation.unwrap_or(path.as_str())
+            ),
+            false,
+        );
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    if operation.is_some() && !is_public(operation) && !has_bearer(request.headers()) {
+        let response = inner.error(401, "UNAUTHENTICATED", "Missing bearer token", false);
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    if operation.is_some()
+        && !is_public(operation)
+        && let Some(required) = inner.required_access_token()
+        && bearer_token(request.headers()) != Some(required.as_str())
+    {
+        let response = inner.error(401, "UNAUTHENTICATED", "Access token expired", false);
+        inner.record_http(
+            method.as_str(),
+            &path,
+            operation,
+            response.status().as_u16(),
+        );
+        return response;
+    }
+
+    // The idle control waits for every request to finish; the control request
+    // itself must not count, or it would wait for itself.
+    let tracked = !path.starts_with("/__control/");
+    if tracked {
+        inner.begin();
+    }
+    let response = next.run(request).await;
+    if tracked {
+        inner.end();
+    }
+    inner.record_http(
+        method.as_str(),
+        &path,
+        operation,
+        response.status().as_u16(),
+    );
+    response
+}
+
+async fn not_implemented(method: Method, uri: Uri) -> Response {
+    (
+        StatusCode::NOT_IMPLEMENTED,
+        axum::Json(error_body(
+            501,
+            "UNKNOWN",
+            format!("No fake route for {} {}", method, uri.path()),
+            false,
+            None,
+        )),
+    )
+        .into_response()
+}
+
+fn invalid(message: &str) -> Response {
+    (
+        StatusCode::BAD_REQUEST,
+        axum::Json(error_body(
+            400,
+            "VALIDATION_FAILED",
+            message.to_owned(),
+            false,
+            None,
+        )),
+    )
+        .into_response()
+}
+
+fn parse(bytes: &Bytes) -> Result<Value, Response> {
+    serde_json::from_slice(bytes).map_err(|_| invalid("The request body is not valid JSON"))
+}
+
+fn typed<T: DeserializeOwned>(bytes: &Bytes) -> Result<T, Response> {
+    serde_json::from_slice(bytes)
+        .map_err(|_| invalid("The request body does not match the contract"))
+}
+
+fn json_response(status: StatusCode, body: Value) -> Response {
+    (status, axum::Json(body)).into_response()
+}
+
+fn page_query(
+    query: &HashMap<String, String>,
+) -> Result<(usize, Option<String>, String), Response> {
+    crate::messages::page_params(query).map_err(|failure| failure_response(&failure))
+}
+
+fn limit_query(query: &HashMap<String, String>) -> Result<usize, Response> {
+    let limit = match query.get("limit") {
+        Some(raw) => raw
+            .parse::<usize>()
+            .map_err(|_| invalid("limit must be an integer"))?,
+        None => 50,
+    };
+    Ok(limit.min(100))
+}
+
+fn failure_response(failure: &SendFailure) -> Response {
+    (
+        StatusCode::from_u16(failure.status).unwrap_or(StatusCode::BAD_REQUEST),
+        axum::Json(error_body(
+            failure.status,
+            &failure.code,
+            failure.message.clone(),
+            failure.retryable,
+            failure.retry_after_ms,
+        )),
+    )
+        .into_response()
+}
+
+async fn control(
+    State(inner): State<Arc<Inner>>,
+    Path(name): Path<String>,
+    body: Bytes,
+) -> Response {
+    let request: Value = if body.is_empty() {
+        Value::Null
+    } else {
+        match serde_json::from_slice(&body) {
+            Ok(value) => value,
+            Err(_) => return invalid("The control body is not valid JSON"),
+        }
+    };
+    match name.as_str() {
+        "emit" => {
+            let Some(event) = request.get("event").and_then(Value::as_str) else {
+                return invalid("event is required");
+            };
+            let payload = request.get("payload").cloned().unwrap_or(Value::Null);
+            inner.broadcast(event, payload);
+        }
+        "post_as" => {
+            let field = |name: &str| request.get(name).and_then(Value::as_str);
+            let (Some(channel), Some(author), Some(text)) =
+                (field("channelId"), field("authorId"), field("text"))
+            else {
+                return invalid("channelId, authorId and text are required");
+            };
+            let broadcast = request
+                .get("broadcast")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+            let extras = crate::messages::PostExtras {
+                emoji: request
+                    .get("emoji")
+                    .and_then(|emoji| {
+                        Some((emoji.get("id")?.as_str()?, emoji.get("name")?.as_str()?))
+                    })
+                    .map(|(id, name)| (id.to_owned(), name.to_owned())),
+                link_preview: request.get("linkPreview").cloned(),
+            };
+            let message =
+                crate::messages::post_as(&inner, channel, author, text, broadcast, extras);
+            return json_response(StatusCode::OK, json!({ "id": message.id }));
+        }
+        "drop_connections" => {
+            inner.close_connections();
+        }
+        "refuse_connections" => {
+            lock(&inner.faults).refuse_connections = request
+                .get("refuse")
+                .and_then(Value::as_bool)
+                .unwrap_or(true);
+        }
+        "delay_acks" => {
+            let delay = request
+                .get("ms")
+                .and_then(Value::as_u64)
+                .map(std::time::Duration::from_millis);
+            lock(&inner.faults).delay_acks = delay;
+        }
+        "drop_acks" => {
+            lock(&inner.faults).drop_acks =
+                request.get("drop").and_then(Value::as_bool).unwrap_or(true);
+        }
+        "fail_next_send" => {
+            let code = request
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("RATE_LIMITED");
+            lock(&inner.faults).fail_next_send = Some(crate::SendFault {
+                code: code.to_owned(),
+                retryable: request
+                    .get("retryable")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false),
+                retry_after_ms: request.get("retryAfterMs").and_then(Value::as_u64),
+            });
+        }
+        "fail_route" => {
+            let Some(operation) = request.get("operationId").and_then(Value::as_str) else {
+                return invalid("operationId is required");
+            };
+            let status = request
+                .get("status")
+                .and_then(Value::as_u64)
+                .unwrap_or(500)
+                .min(599) as u16;
+            let code = request
+                .get("code")
+                .and_then(Value::as_str)
+                .unwrap_or("INTERNAL");
+            inner.fail_route(operation, status, code);
+        }
+        "advance_clock" => {
+            let millis = request.get("ms").and_then(Value::as_u64).unwrap_or(0);
+            inner.advance_clock(std::time::Duration::from_millis(millis));
+        }
+        "idle" => inner.idle().await,
+        "requests" => {
+            return json_response(StatusCode::OK, json!({ "requests": inner.requests() }));
+        }
+        _ => return invalid(&format!("Unknown control {name}")),
+    }
+    json_response(StatusCode::OK, json!({ "ok": true }))
+}

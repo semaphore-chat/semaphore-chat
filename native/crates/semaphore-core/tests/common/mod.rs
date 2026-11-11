@@ -2,7 +2,10 @@
 #![allow(dead_code)]
 
 use async_trait::async_trait;
-use semaphore_core::backend::{Backend, BackendError, BackendResult};
+use semaphore_core::backend::{
+    BackendError, BackendResult, CommunitiesBackend, FilesBackend, MessagesBackend, SessionBackend,
+    VoiceBackend,
+};
 use semaphore_core::model::{Conversation, ListOp, MessageRow, VideoDemand, VoiceView};
 use semaphore_core::platform::{Clock, CoreError, CoreEvent, EventSink, MediaEngine};
 use semaphore_core::realtime::{Realtime, RealtimeError, RealtimeEvent};
@@ -319,7 +322,7 @@ fn decoded<T: serde::de::DeserializeOwned>(value: Value) -> BackendResult<T> {
 }
 
 #[async_trait]
-impl Backend for FakeBackend {
+impl SessionBackend for FakeBackend {
     fn set_server_url(&self, server_url: String) {
         *self.server_url.lock().unwrap() = Some(server_url);
     }
@@ -328,6 +331,336 @@ impl Backend for FakeBackend {
         *self.stored_session.lock().unwrap()
     }
 
+    async fn auth_controller_login(
+        &self,
+        _: wire::LoginRequestDto,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        if *self.login_fails.lock().unwrap() {
+            return Err(refused());
+        }
+        decoded(json!({ "accessToken": self.access_token.lock().unwrap().clone() }))
+    }
+
+    async fn auth_controller_refresh(
+        &self,
+        _: wire::RefreshRequestDto,
+    ) -> BackendResult<wire::LoginResponseDto> {
+        self.refreshes.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.refresh_error.lock().unwrap().clone() {
+            return Err(error);
+        }
+        decoded(json!({ "accessToken": self.access_token.lock().unwrap().clone() }))
+    }
+
+    async fn auth_controller_logout(
+        &self,
+        _: wire::LogoutRequestDto,
+    ) -> BackendResult<wire::LogoutResponseDto> {
+        self.logged_out.fetch_add(1, Ordering::SeqCst);
+        decoded(json!({ "message": "bye" }))
+    }
+
+    async fn user_controller_get_profile(&self) -> BackendResult<wire::UserEntity> {
+        decoded(user_json(ME))
+    }
+
+    async fn user_controller_get_user_by_id(&self, id: String) -> BackendResult<wire::UserEntity> {
+        self.user_requests.fetch_add(1, Ordering::SeqCst);
+        decoded(user_json(&id))
+    }
+}
+
+#[async_trait]
+impl CommunitiesBackend for FakeBackend {
+    async fn community_controller_find_all_mine(
+        &self,
+    ) -> BackendResult<Vec<wire::CommunityResponseDto>> {
+        self.community_requests.fetch_add(1, Ordering::SeqCst);
+        if let Some(error) = self.communities_error.lock().unwrap().clone() {
+            return Err(error);
+        }
+        decoded(json!([{
+            "id": "comm", "name": "Community", "description": null, "avatar": null, "banner": null,
+            "createdAt": "2026-09-22T18:00:00.000Z",
+        }]))
+    }
+
+    async fn channels_controller_find_all_for_community(
+        &self,
+        _: String,
+    ) -> BackendResult<Vec<wire::ChannelDto>> {
+        self.channel_requests.fetch_add(1, Ordering::SeqCst);
+        decoded(Value::Array(self.channels.lock().unwrap().clone()))
+    }
+
+    async fn channel_permissions_controller_get_my_community_channel_permissions(
+        &self,
+        _: String,
+    ) -> BackendResult<wire::CommunityChannelCapabilitiesDto> {
+        match self.capabilities.lock().unwrap().clone() {
+            Some(capabilities) => decoded(capabilities),
+            None => Err(not_found()),
+        }
+    }
+
+    async fn read_receipts_controller_get_unread_counts(
+        &self,
+    ) -> BackendResult<Vec<wire::UnreadCountDto>> {
+        self.unread_requests.fetch_add(1, Ordering::SeqCst);
+        decoded(Value::Array(self.unread.lock().unwrap().clone()))
+    }
+
+    async fn membership_controller_find_all_for_community(
+        &self,
+        _: String,
+        limit: Option<i64>,
+        token: Option<String>,
+    ) -> BackendResult<wire::PaginatedMembershipsResponseDto> {
+        self.member_page_requests.fetch_add(1, Ordering::SeqCst);
+        let members = self.members.lock().unwrap().clone();
+        let start = token.map_or(0, |token| {
+            members
+                .iter()
+                .position(|member| member["id"] == token.as_str())
+                .map_or(members.len(), |index| index + 1)
+        });
+        let limit = limit.unwrap_or(100) as usize;
+        let page: Vec<Value> = members.iter().skip(start).take(limit).cloned().collect();
+        let more = start + page.len() < members.len();
+        let token = more
+            .then(|| page.last().map(|member| member["id"].clone()))
+            .flatten();
+        decoded(json!({ "members": page, "continuationToken": token }))
+    }
+
+    async fn presence_controller_get_bulk_presence(
+        &self,
+    ) -> BackendResult<wire::BulkPresenceResponseDto> {
+        Ok(wire::BulkPresenceResponseDto {
+            presence: self.bulk_presence.lock().unwrap().clone(),
+        })
+    }
+
+    async fn notifications_controller_get_unread_count(
+        &self,
+    ) -> BackendResult<wire::UnreadCountResponseDto> {
+        self.notification_requests.fetch_add(1, Ordering::SeqCst);
+        Ok(wire::UnreadCountResponseDto {
+            count: *self.notification_count.lock().unwrap(),
+        })
+    }
+
+    async fn membership_controller_search_community_members(
+        &self,
+        _: String,
+        _: String,
+        _: Option<i64>,
+    ) -> BackendResult<Vec<wire::MembershipResponseDto>> {
+        decoded(json!([{
+            "id": "m1", "userId": "ava", "communityId": "comm", "joinedAt": "2026-09-22T18:00:00.000Z",
+            "roles": [], "user": user_json("ava"),
+        }]))
+    }
+
+    async fn channels_controller_get_mentionable_channels(
+        &self,
+        _: String,
+    ) -> BackendResult<Vec<wire::ChannelDto>> {
+        decoded(Value::Array(self.channels.lock().unwrap().clone()))
+    }
+
+    async fn custom_emoji_controller_list_community_emojis(
+        &self,
+        _: String,
+    ) -> BackendResult<Vec<wire::CustomEmojiDto>> {
+        decoded(Value::Array(self.emojis.lock().unwrap().clone()))
+    }
+}
+
+#[async_trait]
+impl MessagesBackend for FakeBackend {
+    async fn messages_controller_find_all_for_channel(
+        &self,
+        channel_id: String,
+        token: Option<String>,
+        direction: Option<MessagePageDirection>,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
+        self.page_requests.fetch_add(1, Ordering::SeqCst);
+        // The snapshot is taken as the request arrives: the gate only delays the answer.
+        let page = if direction == Some(MessagePageDirection::Newer) {
+            self.newer_page(&channel_id, token, limit)
+        } else {
+            self.page(&channel_id, token, limit)
+        };
+        let gate = self.gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
+        Ok(page)
+    }
+
+    async fn messages_controller_find_around_for_channel(
+        &self,
+        channel_id: String,
+        message_id: String,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
+        self.around(&channel_id, &message_id, limit)
+    }
+
+    async fn messages_controller_find_all_for_group(
+        &self,
+        group_id: String,
+        token: Option<String>,
+        direction: Option<MessagePageDirection>,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
+        Ok(if direction == Some(MessagePageDirection::Newer) {
+            self.newer_page(&group_id, token, limit)
+        } else {
+            self.page(&group_id, token, limit)
+        })
+    }
+
+    async fn threads_controller_get_replies(
+        &self,
+        parent: String,
+        token: Option<String>,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::ThreadRepliesResponseDto> {
+        let rows = self
+            .thread_replies
+            .lock()
+            .unwrap()
+            .get(&parent)
+            .cloned()
+            .unwrap_or_default();
+        let start = token
+            .and_then(|token| {
+                rows.iter()
+                    .position(|row| row.id == token)
+                    .map(|index| index + 1)
+            })
+            .unwrap_or(0);
+        let limit = limit.unwrap_or(50) as usize;
+        let page: Vec<MessageDto> = rows.iter().skip(start).take(limit).cloned().collect();
+        let more = start + page.len() < rows.len();
+        Ok(wire::ThreadRepliesResponseDto {
+            continuation_token: if more {
+                page.last().map(|row| row.id.clone())
+            } else {
+                None
+            },
+            file_metadata: HashMap::new(),
+            replies: page,
+        })
+    }
+
+    async fn messages_controller_find_around_for_group(
+        &self,
+        group_id: String,
+        message_id: String,
+        limit: Option<i64>,
+    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
+        self.around(&group_id, &message_id, limit)
+    }
+
+    async fn messages_controller_create(
+        &self,
+        _: wire::CreateMessageDto,
+    ) -> BackendResult<MessageDto> {
+        Err(not_found())
+    }
+
+    async fn messages_controller_create_direct_message(
+        &self,
+        _: wire::CreateMessageDto,
+    ) -> BackendResult<MessageDto> {
+        Err(not_found())
+    }
+
+    async fn messages_controller_add_reaction(
+        &self,
+        _: wire::AddReactionDto,
+    ) -> BackendResult<wire::MessageReactionsDto> {
+        Err(not_found())
+    }
+
+    async fn messages_controller_remove_reaction(
+        &self,
+        _: wire::RemoveReactionDto,
+    ) -> BackendResult<wire::MessageReactionsDto> {
+        Err(not_found())
+    }
+
+    async fn read_receipts_controller_mark_as_read(
+        &self,
+        _: wire::MarkAsReadDto,
+    ) -> BackendResult<wire::ReadReceiptDto> {
+        Err(not_found())
+    }
+}
+
+#[async_trait]
+impl VoiceBackend for FakeBackend {
+    async fn livekit_controller_get_connection_info(
+        &self,
+    ) -> BackendResult<wire::ConnectionInfoResponseDto> {
+        decoded(json!({ "url": "ws://livekit" }))
+    }
+
+    async fn livekit_controller_generate_token(
+        &self,
+        body: wire::CreateTokenDto,
+    ) -> BackendResult<wire::TokenResponseDto> {
+        let minted = self.tokens_minted.fetch_add(1, Ordering::SeqCst) + 1;
+        decoded(json!({
+            "token": format!("token-{minted}"), "identity": body.identity, "roomId": body.room_id,
+        }))
+    }
+
+    async fn voice_presence_controller_get_channel_presence(
+        &self,
+        channel_id: String,
+    ) -> BackendResult<wire::ChannelVoicePresenceResponseDto> {
+        self.presence_requests.fetch_add(1, Ordering::SeqCst);
+        let users = self.voice_users.lock().unwrap().clone();
+        decoded(json!({ "channelId": channel_id, "count": users.len(), "users": users }))
+    }
+
+    async fn voice_presence_controller_join_presence(
+        &self,
+        channel: String,
+    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        self.voice_call("join", channel)
+    }
+
+    async fn voice_presence_controller_refresh_presence(
+        &self,
+        channel: String,
+    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        self.voice_call("refresh", channel)
+    }
+
+    async fn voice_presence_controller_leave_presence(
+        &self,
+        channel: String,
+    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        self.voice_call("leave", channel)
+    }
+
+    async fn voice_presence_controller_update_deafen_state(
+        &self,
+        channel: String,
+        _: wire::UpdateDeafenStateDto,
+    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        self.voice_call("deafen", channel)
+    }
+}
+
+#[async_trait]
+impl FilesBackend for FakeBackend {
     async fn file_upload_controller_upload_file(
         &self,
         file: semaphore_core::backend::FileUpload,
@@ -365,295 +698,10 @@ impl Backend for FakeBackend {
         Ok(message(&id, ME, "with files"))
     }
 
-    async fn auth_controller_login(
-        &self,
-        _: wire::LoginRequestDto,
-    ) -> BackendResult<wire::LoginResponseDto> {
-        if *self.login_fails.lock().unwrap() {
-            return Err(refused());
-        }
-        decoded(json!({ "accessToken": self.access_token.lock().unwrap().clone() }))
-    }
-    async fn auth_controller_refresh(
-        &self,
-        _: wire::RefreshRequestDto,
-    ) -> BackendResult<wire::LoginResponseDto> {
-        self.refreshes.fetch_add(1, Ordering::SeqCst);
-        if let Some(error) = self.refresh_error.lock().unwrap().clone() {
-            return Err(error);
-        }
-        decoded(json!({ "accessToken": self.access_token.lock().unwrap().clone() }))
-    }
-    async fn auth_controller_logout(
-        &self,
-        _: wire::LogoutRequestDto,
-    ) -> BackendResult<wire::LogoutResponseDto> {
-        self.logged_out.fetch_add(1, Ordering::SeqCst);
-        decoded(json!({ "message": "bye" }))
-    }
-    async fn user_controller_get_profile(&self) -> BackendResult<wire::UserEntity> {
-        decoded(user_json(ME))
-    }
-    async fn user_controller_get_user_by_id(&self, id: String) -> BackendResult<wire::UserEntity> {
-        self.user_requests.fetch_add(1, Ordering::SeqCst);
-        decoded(user_json(&id))
-    }
-    async fn community_controller_find_all_mine(
-        &self,
-    ) -> BackendResult<Vec<wire::CommunityResponseDto>> {
-        self.community_requests.fetch_add(1, Ordering::SeqCst);
-        if let Some(error) = self.communities_error.lock().unwrap().clone() {
-            return Err(error);
-        }
-        decoded(json!([{
-            "id": "comm", "name": "Community", "description": null, "avatar": null, "banner": null,
-            "createdAt": "2026-09-22T18:00:00.000Z",
-        }]))
-    }
-    async fn channels_controller_find_all_for_community(
-        &self,
-        _: String,
-    ) -> BackendResult<Vec<wire::ChannelDto>> {
-        self.channel_requests.fetch_add(1, Ordering::SeqCst);
-        decoded(Value::Array(self.channels.lock().unwrap().clone()))
-    }
-    async fn channel_permissions_controller_get_my_community_channel_permissions(
-        &self,
-        _: String,
-    ) -> BackendResult<wire::CommunityChannelCapabilitiesDto> {
-        match self.capabilities.lock().unwrap().clone() {
-            Some(capabilities) => decoded(capabilities),
-            None => Err(not_found()),
-        }
-    }
-    async fn read_receipts_controller_get_unread_counts(
-        &self,
-    ) -> BackendResult<Vec<wire::UnreadCountDto>> {
-        self.unread_requests.fetch_add(1, Ordering::SeqCst);
-        decoded(Value::Array(self.unread.lock().unwrap().clone()))
-    }
-    async fn messages_controller_find_all_for_channel(
-        &self,
-        channel_id: String,
-        token: Option<String>,
-        direction: Option<MessagePageDirection>,
-        limit: Option<i64>,
-    ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
-        self.page_requests.fetch_add(1, Ordering::SeqCst);
-        // The snapshot is taken as the request arrives: the gate only delays the answer.
-        let page = if direction == Some(MessagePageDirection::Newer) {
-            self.newer_page(&channel_id, token, limit)
-        } else {
-            self.page(&channel_id, token, limit)
-        };
-        let gate = self.gate.lock().unwrap().take();
-        if let Some(gate) = gate {
-            let _ = gate.await;
-        }
-        Ok(page)
-    }
-    async fn messages_controller_find_around_for_channel(
-        &self,
-        channel_id: String,
-        message_id: String,
-        limit: Option<i64>,
-    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
-        self.around(&channel_id, &message_id, limit)
-    }
-    async fn messages_controller_find_all_for_group(
-        &self,
-        group_id: String,
-        token: Option<String>,
-        direction: Option<MessagePageDirection>,
-        limit: Option<i64>,
-    ) -> BackendResult<wire::PaginatedMessagesResponseDto> {
-        Ok(if direction == Some(MessagePageDirection::Newer) {
-            self.newer_page(&group_id, token, limit)
-        } else {
-            self.page(&group_id, token, limit)
-        })
-    }
-    async fn threads_controller_get_replies(
-        &self,
-        parent: String,
-        token: Option<String>,
-        limit: Option<i64>,
-    ) -> BackendResult<wire::ThreadRepliesResponseDto> {
-        let rows = self
-            .thread_replies
-            .lock()
-            .unwrap()
-            .get(&parent)
-            .cloned()
-            .unwrap_or_default();
-        let start = token
-            .and_then(|token| {
-                rows.iter()
-                    .position(|row| row.id == token)
-                    .map(|index| index + 1)
-            })
-            .unwrap_or(0);
-        let limit = limit.unwrap_or(50) as usize;
-        let page: Vec<MessageDto> = rows.iter().skip(start).take(limit).cloned().collect();
-        let more = start + page.len() < rows.len();
-        Ok(wire::ThreadRepliesResponseDto {
-            continuation_token: if more {
-                page.last().map(|row| row.id.clone())
-            } else {
-                None
-            },
-            file_metadata: HashMap::new(),
-            replies: page,
-        })
-    }
-    async fn messages_controller_find_around_for_group(
-        &self,
-        group_id: String,
-        message_id: String,
-        limit: Option<i64>,
-    ) -> BackendResult<wire::AnchoredMessagesResponseDto> {
-        self.around(&group_id, &message_id, limit)
-    }
-    async fn membership_controller_find_all_for_community(
-        &self,
-        _: String,
-        limit: Option<i64>,
-        token: Option<String>,
-    ) -> BackendResult<wire::PaginatedMembershipsResponseDto> {
-        self.member_page_requests.fetch_add(1, Ordering::SeqCst);
-        let members = self.members.lock().unwrap().clone();
-        let start = token.map_or(0, |token| {
-            members
-                .iter()
-                .position(|member| member["id"] == token.as_str())
-                .map_or(members.len(), |index| index + 1)
-        });
-        let limit = limit.unwrap_or(100) as usize;
-        let page: Vec<Value> = members.iter().skip(start).take(limit).cloned().collect();
-        let more = start + page.len() < members.len();
-        let token = more
-            .then(|| page.last().map(|member| member["id"].clone()))
-            .flatten();
-        decoded(json!({ "members": page, "continuationToken": token }))
-    }
-    async fn presence_controller_get_bulk_presence(
-        &self,
-    ) -> BackendResult<wire::BulkPresenceResponseDto> {
-        Ok(wire::BulkPresenceResponseDto {
-            presence: self.bulk_presence.lock().unwrap().clone(),
-        })
-    }
-    async fn notifications_controller_get_unread_count(
-        &self,
-    ) -> BackendResult<wire::UnreadCountResponseDto> {
-        self.notification_requests.fetch_add(1, Ordering::SeqCst);
-        Ok(wire::UnreadCountResponseDto {
-            count: *self.notification_count.lock().unwrap(),
-        })
-    }
-    async fn messages_controller_create(
-        &self,
-        _: wire::CreateMessageDto,
-    ) -> BackendResult<MessageDto> {
-        Err(not_found())
-    }
-    async fn messages_controller_create_direct_message(
-        &self,
-        _: wire::CreateMessageDto,
-    ) -> BackendResult<MessageDto> {
-        Err(not_found())
-    }
-    async fn messages_controller_add_reaction(
-        &self,
-        _: wire::AddReactionDto,
-    ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
-    }
-    async fn messages_controller_remove_reaction(
-        &self,
-        _: wire::RemoveReactionDto,
-    ) -> BackendResult<wire::MessageReactionsDto> {
-        Err(not_found())
-    }
-    async fn read_receipts_controller_mark_as_read(
-        &self,
-        _: wire::MarkAsReadDto,
-    ) -> BackendResult<wire::ReadReceiptDto> {
-        Err(not_found())
-    }
-    async fn membership_controller_search_community_members(
-        &self,
-        _: String,
-        _: String,
-        _: Option<i64>,
-    ) -> BackendResult<Vec<wire::MembershipResponseDto>> {
-        decoded(json!([{
-            "id": "m1", "userId": "ava", "communityId": "comm", "joinedAt": "2026-09-22T18:00:00.000Z",
-            "roles": [], "user": user_json("ava"),
-        }]))
-    }
-    async fn channels_controller_get_mentionable_channels(
-        &self,
-        _: String,
-    ) -> BackendResult<Vec<wire::ChannelDto>> {
-        decoded(Value::Array(self.channels.lock().unwrap().clone()))
-    }
-    async fn custom_emoji_controller_list_community_emojis(
-        &self,
-        _: String,
-    ) -> BackendResult<Vec<wire::CustomEmojiDto>> {
-        decoded(Value::Array(self.emojis.lock().unwrap().clone()))
-    }
-    async fn livekit_controller_get_connection_info(
-        &self,
-    ) -> BackendResult<wire::ConnectionInfoResponseDto> {
-        decoded(json!({ "url": "ws://livekit" }))
-    }
-    async fn livekit_controller_generate_token(
-        &self,
-        body: wire::CreateTokenDto,
-    ) -> BackendResult<wire::TokenResponseDto> {
-        let minted = self.tokens_minted.fetch_add(1, Ordering::SeqCst) + 1;
-        decoded(json!({
-            "token": format!("token-{minted}"), "identity": body.identity, "roomId": body.room_id,
-        }))
-    }
-    async fn voice_presence_controller_get_channel_presence(
-        &self,
-        channel_id: String,
-    ) -> BackendResult<wire::ChannelVoicePresenceResponseDto> {
-        self.presence_requests.fetch_add(1, Ordering::SeqCst);
-        let users = self.voice_users.lock().unwrap().clone();
-        decoded(json!({ "channelId": channel_id, "count": users.len(), "users": users }))
-    }
-    async fn voice_presence_controller_join_presence(
-        &self,
-        channel: String,
-    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        self.voice_call("join", channel)
-    }
-    async fn voice_presence_controller_refresh_presence(
-        &self,
-        channel: String,
-    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        self.voice_call("refresh", channel)
-    }
-    async fn voice_presence_controller_leave_presence(
-        &self,
-        channel: String,
-    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        self.voice_call("leave", channel)
-    }
-    async fn voice_presence_controller_update_deafen_state(
-        &self,
-        channel: String,
-        _: wire::UpdateDeafenStateDto,
-    ) -> BackendResult<wire::RefreshPresenceResponseDto> {
-        self.voice_call("deafen", channel)
-    }
     async fn file_controller_get_file(&self, _: String) -> BackendResult<Vec<u8>> {
         Err(not_found())
     }
+
     async fn file_controller_get_file_thumbnail(&self, _: String) -> BackendResult<Vec<u8>> {
         Err(not_found())
     }
