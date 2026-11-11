@@ -1,7 +1,7 @@
 //! Voice bar and video tiles. Unit U11.
 
 mod bar;
-mod frames;
+pub(crate) mod frames;
 mod icons;
 mod model;
 mod picker;

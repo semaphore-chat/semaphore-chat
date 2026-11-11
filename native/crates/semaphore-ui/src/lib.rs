@@ -13,6 +13,7 @@ pub mod messages;
 pub mod nav;
 pub mod notifications;
 pub mod panel;
+pub mod player;
 pub mod profile;
 pub mod settings;
 pub mod shell;
