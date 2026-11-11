@@ -143,6 +143,7 @@ pub(super) fn locked_button(
     button: Button,
     id: impl Into<ElementId>,
     locked: Option<String>,
+    narrow: bool,
     cx: &App,
 ) -> AnyElement {
     match locked {
@@ -150,7 +151,8 @@ pub(super) fn locked_button(
         Some(reason) => div()
             .flex()
             .flex_col()
-            .items_end()
+            .when(narrow, |c| c.items_start())
+            .when(!narrow, |c| c.items_end())
             .gap(px(4.))
             .child(button.disabled(true))
             .child(locked_note(id, reason, cx).max_w(px(280.)))
@@ -164,7 +166,11 @@ pub(super) fn server_error(error: Option<&ErrorView>) -> Option<Alert> {
 }
 
 /// The red outlined action: the kit's filled button ignores a danger colour.
-pub(super) fn danger_button(id: impl Into<ElementId>, label: impl Into<SharedString>, cx: &App) -> Button {
+pub(super) fn danger_button(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    cx: &App,
+) -> Button {
     Button::new(id, label).outlined().color(cx.sem().error)
 }
 
@@ -189,9 +195,17 @@ impl Confirm {
         let on_cancel = Rc::new(on_cancel);
         let close = on_cancel.clone();
         let confirm = if self.danger {
-            danger_button(SharedString::from(format!("{}-confirm", self.id)), self.confirm, cx)
+            danger_button(
+                SharedString::from(format!("{}-confirm", self.id)),
+                self.confirm,
+                cx,
+            )
         } else {
-            Button::new(SharedString::from(format!("{}-confirm", self.id)), self.confirm).contained()
+            Button::new(
+                SharedString::from(format!("{}-confirm", self.id)),
+                self.confirm,
+            )
+            .contained()
         };
         Dialog::new(self.title)
             .body(
@@ -350,14 +364,62 @@ pub(super) fn tri_checkbox(
                 .rounded(px(2.))
                 .map(|box_| match state {
                     Tri::None => box_.border_2().border_color(off),
-                    Tri::Some => box_
-                        .bg(on)
-                        .child(div().w(px(10.)).h(px(2.)).bg(mark)),
+                    Tri::Some => box_.bg(on).child(div().w(px(10.)).h(px(2.)).bg(mark)),
                     Tri::All => box_.bg(on).child(
                         crate::kit::Icon::new(DesignIcon::Check)
                             .size(16.)
                             .color(mark),
                     ),
                 }),
+        )
+}
+
+/// A checkbox with its label beside it, the label wrapping where the kit's `Checkbox` would run
+/// past a narrow row.
+pub(super) fn check_row(
+    id: impl Into<ElementId>,
+    label: impl Into<SharedString>,
+    caption: Option<String>,
+    checked: bool,
+    disabled: bool,
+    on_press: impl Fn(&mut Window, &mut App) + 'static,
+    cx: &App,
+) -> Div {
+    let sem = cx.sem();
+    let label = label.into();
+    let state = if checked {
+        super::rules::Tri::All
+    } else {
+        super::rules::Tri::None
+    };
+    div()
+        .flex()
+        .items_center()
+        .min_w_0()
+        .child(tri_checkbox(
+            id,
+            label.clone(),
+            state,
+            disabled,
+            on_press,
+            cx,
+        ))
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .flex()
+                .flex_col()
+                .py(px(4.))
+                .child(text(Variant::Body1, label).text_color(if disabled {
+                    sem.text_disabled
+                } else {
+                    sem.text_primary
+                }))
+                .children(
+                    caption.map(|caption| {
+                        text(Variant::Caption, caption).text_color(sem.text_secondary)
+                    }),
+                ),
         )
 }

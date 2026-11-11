@@ -3,22 +3,21 @@
 //! user can't grant are off with the reason; actions this build doesn't know show in "Other",
 //! read-only, and are kept on save. A role the user can't edit opens read-only, with why.
 
-use super::common::{locked_note, tri_checkbox};
+use super::common::{check_row, locked_note, tri_checkbox};
 use super::list::{RolesEvent, RolesPanel};
 use super::rules::{
-    NameError, OTHER_GROUP, RoleDraftState, RoleOp, Tri, check_role_name, clean_name, group_label,
-    label_of, matrix_groups, permissions_count,
+    NameError, OTHER_GROUP, RoleDraftState, Tri, check_role_name, clean_name, failure, group_label,
+    label_of, matrix_groups, patch_is_empty, permissions_count, role_action, running,
 };
 use crate::kit::{
-    Alert, Button, Checkbox, Chip, IconButton, Severity, TextField, Variant, spacing, text,
-    with_tip,
+    Alert, Button, Chip, IconButton, Severity, TextField, Variant, spacing, text, with_tip,
 };
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{PermissionGroup, RoleDraft, RoleRow};
+use semaphore_core::model::{AdminAction, AdminActionKind, PermissionGroup, RoleDraft, RoleRow};
 use semaphore_design::Icon as DesignIcon;
 use std::collections::{BTreeSet, HashSet};
 
@@ -68,6 +67,16 @@ impl EditorState {
             touched: false,
             collapsed: HashSet::new(),
             _subscription,
+        }
+    }
+}
+
+impl EditorState {
+    /// The change a save of this editor is in `AdminOp::actions`.
+    pub fn action(&self) -> AdminAction {
+        match &self.role_id {
+            None => role_action(AdminActionKind::CreateRole, None),
+            Some(id) => role_action(AdminActionKind::UpdateRole, Some(id)),
         }
     }
 }
@@ -133,6 +142,19 @@ impl RolesPanel {
         }
     }
 
+    /// For stories: folds every group but these.
+    #[cfg(feature = "stories")]
+    pub(crate) fn collapse_all_but(&mut self, open: &[&str], cx: &mut Context<Self>) {
+        let ids: Vec<String> = self.catalog.iter().map(|g| g.id.clone()).collect();
+        if let Some(editor) = self.editor.as_mut() {
+            editor.collapsed = ids
+                .into_iter()
+                .filter(|id| !open.contains(&id.as_str()))
+                .collect();
+        }
+        cx.notify();
+    }
+
     /// Save pressed.
     pub(crate) fn save(&mut self, cx: &mut Context<Self>) {
         let others = self.other_names();
@@ -155,9 +177,10 @@ impl RolesPanel {
         let draft = editor.draft.clone();
         let role_id = editor.role_id.clone();
         let is_default = editor.is_default;
+        let action = editor.action();
         match role_id {
             None => self.send(
-                RoleOp::Create,
+                action,
                 RolesEvent::Create {
                     draft: RoleDraft {
                         name: clean_name(&draft.name).to_owned(),
@@ -167,21 +190,15 @@ impl RolesPanel {
                 cx,
             ),
             Some(role_id) => {
-                let mut changes = draft.changes();
+                let mut patch = draft.changes();
                 if is_default {
                     // A default role's name can't change; the field is locked anyway.
-                    changes.name = None;
+                    patch.name = None;
                 }
-                if changes.is_empty() {
+                if patch_is_empty(&patch) {
                     return;
                 }
-                self.send(
-                    RoleOp::Update {
-                        role_id: role_id.clone(),
-                    },
-                    RolesEvent::Update { role_id, changes },
-                    cx,
-                )
+                self.send(action, RolesEvent::Update { role_id, patch }, cx)
             }
         }
     }
@@ -255,9 +272,9 @@ impl RolesPanel {
                     },
                 )
                 .small()
-                .on_click(cx.listener(move |panel, _, _, cx| {
-                    panel.toggle_collapsed(&group_id, cx)
-                })),
+                .on_click(
+                    cx.listener(move |panel, _, _, cx| panel.toggle_collapsed(&group_id, cx)),
+                ),
             );
         let rows = (!collapsed).then(|| {
             div()
@@ -268,7 +285,9 @@ impl RolesPanel {
                 .children(group.actions.iter().map(|action| {
                     let checked = draft.actions.contains(action);
                     let reason = if other {
-                        Some("This app doesn't know this permission: it is kept as it is".to_owned())
+                        Some(
+                            "This app doesn't know this permission: it is kept as it is".to_owned(),
+                        )
                     } else if editor.read_only.is_some() {
                         Some("Read-only".to_owned())
                     } else if !grantable.contains(action) {
@@ -278,23 +297,27 @@ impl RolesPanel {
                     };
                     let disabled = reason.is_some() || busy;
                     let target = action.clone();
-                    let mut checkbox = Checkbox::new(
+                    let entity = cx.weak_entity();
+                    let checkbox = check_row(
                         SharedString::from(format!("role-action-{action}")),
                         label_of(action),
+                        super::rules::action_label(action).map(|_| action.clone()),
                         checked,
-                    )
-                    .disabled(disabled);
-                    if !disabled {
-                        let entity = cx.weak_entity();
-                        checkbox = checkbox.on_change(move |_, _, cx| {
-                            entity
-                                .update(cx, |panel, cx| panel.toggle_action(&target, cx))
-                                .ok();
-                        });
-                    }
+                        disabled,
+                        move |_, cx| {
+                            if !disabled {
+                                entity
+                                    .update(cx, |panel, cx| panel.toggle_action(&target, cx))
+                                    .ok();
+                            }
+                        },
+                        cx,
+                    );
                     let checkbox: AnyElement = match &reason {
                         Some(reason) if editor.read_only.is_none() => with_tip(
-                            div().id(SharedString::from(format!("role-action-{action}-locked"))),
+                            div()
+                                .id(SharedString::from(format!("role-action-{action}-locked")))
+                                .min_w_0(),
                             reason.clone(),
                         )
                         .test_support()
@@ -302,18 +325,7 @@ impl RolesPanel {
                         .into_any_element(),
                         _ => checkbox.into_any_element(),
                     };
-                    div()
-                        .flex()
-                        .flex_col()
-                        .child(checkbox)
-                        .child(
-                            text(Variant::Caption, action.clone())
-                                .pl(px(54.))
-                                .mt(px(-10.))
-                                .pb(px(4.))
-                                .text_color(sem.text_secondary),
-                        )
-                        .into_any_element()
+                    div().flex().flex_col().child(checkbox).into_any_element()
                 }))
         });
         div()
@@ -333,11 +345,8 @@ impl RolesPanel {
         let sem = cx.sem().clone();
         let editor = self.editor.as_ref().expect("editing");
         let others = self.other_names();
-        let busy = self.busy_with(|op| matches!(op, RoleOp::Create | RoleOp::Update { .. }));
-        let error = self
-            .about()
-            .filter(|op| matches!(op, RoleOp::Create | RoleOp::Update { .. }))
-            .and_then(|_| self.view.op.error.clone());
+        let busy = running(&self.view.op, &editor.action());
+        let error = failure(&self.view.op, &editor.action()).cloned();
         let read_only = editor.read_only.clone();
         let draft = &editor.draft;
         let title = match (&draft.original_name, &read_only) {
@@ -388,7 +397,11 @@ impl RolesPanel {
                 .child(
                     Button::new(
                         SharedString::from(format!("role-editor-cancel{suffix}")),
-                        if read_only.is_some() { "Back" } else { "Cancel" },
+                        if read_only.is_some() {
+                            "Back"
+                        } else {
+                            "Cancel"
+                        },
                     )
                     .outlined()
                     .disabled(busy)
@@ -435,7 +448,7 @@ impl RolesPanel {
             .children(read_only.clone().map(|reason| {
                 Alert::new(
                     Severity::Info,
-                    format!("You can't change this role: {reason}."),
+                    format!("You can't change this role. {reason}."),
                 )
             }))
             .when(editor.is_default && read_only.is_none(), |body| {

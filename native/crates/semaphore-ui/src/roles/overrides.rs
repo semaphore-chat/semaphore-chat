@@ -5,13 +5,15 @@
 //! the Edit Channel dialog's Permissions slot (`ChannelsTab::set_permissions_slot`).
 //!
 //! The overrides themselves are core's to build (`Core::build_preset`, rank-dependent): this view
-//! emits the choice. The advanced allow/deny/inherit matrix is later work beyond the web; it goes
+//! emits the choice, and reads the roles, the detected preset, what each preset needs and the
+//! default posters from `ChannelOverwritesView`. The advanced allow/deny/inherit matrix is later work beyond the web; it goes
 //! where `custom_section` draws the summary today.
 
-use super::common::{locked_note, phone, server_error};
+use super::common::{locked_note, phone};
 use super::rules::{
-    Card, Outcome, Pending, PresetChoice, PresetSupport, card_block, cards, choose_card, kept_roles,
-    needs, preset_dirty, summarize, toggle_poster,
+    Card, Outcome, Pending, PresetChoice, card_block, cards, choose_card, failure, kept_roles,
+    missing_for, needs, preset_dirty, role_action, running, stored_choice, summarize,
+    toggle_poster,
 };
 use crate::kit::{Alert, Button, Severity, Spinner, Switch, Variant, spacing, text, with_tip};
 use crate::panel::common::design_icon;
@@ -19,7 +21,7 @@ use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{ChannelOverwritesView, LoadState, RolesView};
+use semaphore_core::model::{AdminAction, AdminActionKind, ChannelOverwritesView, LoadState};
 use semaphore_design::Icon as DesignIcon;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -41,12 +43,9 @@ pub enum ChannelOverridesEvent {
 pub struct ChannelOverrides {
     channel_id: String,
     view: ChannelOverwritesView,
-    roles: RolesView,
-    support: Option<PresetSupport>,
     kept: Option<Vec<String>>,
     choice: Option<PresetChoice>,
-    sent: bool,
-    pending: Option<Pending<()>>,
+    pending: Option<Pending>,
 }
 
 impl EventEmitter<ChannelOverridesEvent> for ChannelOverrides {}
@@ -56,11 +55,8 @@ impl ChannelOverrides {
         Self {
             channel_id,
             view: ChannelOverwritesView::default(),
-            roles: RolesView::default(),
-            support: None,
             kept: None,
             choice: None,
-            sent: false,
             pending: None,
         }
     }
@@ -72,19 +68,19 @@ impl ChannelOverrides {
     /// `Core::channel_overwrites(channel)`, again on `ViewKey::ChannelOverwrites`.
     pub fn set_overwrites(&mut self, view: ChannelOverwritesView, cx: &mut Context<Self>) {
         if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(view.op.busy, view.op.error.as_ref()) {
+            match pending.observe(&view.op) {
                 Outcome::Waiting => {}
                 Outcome::Failed => self.pending = None,
                 Outcome::Succeeded => {
                     self.pending = None;
-                    self.sent = false;
                     self.choice = None;
+                    self.kept = None;
                 }
             }
         }
-        let was = self.support().detected;
+        let was = stored_choice(&self.view.detected);
         self.view = view;
-        let now = self.support().detected;
+        let now = stored_choice(&self.view.detected);
         // A choice still on the stored set follows it; one being edited stays.
         if self.choice.as_ref().is_some_and(|choice| *choice == was) {
             self.choice = None;
@@ -95,34 +91,22 @@ impl ChannelOverrides {
         cx.notify();
     }
 
-    /// `Core::roles(community)`: the poster picker's roles until `ChannelOverwritesView::roles`
-    /// lands.
-    pub fn set_roles(&mut self, roles: RolesView, cx: &mut Context<Self>) {
-        self.roles = roles;
-        cx.notify();
-    }
-
-    /// Core's preset data (roles, detected preset, missing actions, default posters), once
-    /// `ChannelOverwritesView` carries it; `None` uses `PresetSupport::fallback`.
-    pub fn set_support(&mut self, support: Option<PresetSupport>, cx: &mut Context<Self>) {
-        self.support = support;
-        cx.notify();
-    }
-
     /// `BuiltPreset::auto_allowed_role_ids` for the current choice, from `Preview`.
     pub fn set_kept(&mut self, kept: Option<Vec<String>>, cx: &mut Context<Self>) {
         self.kept = kept;
         cx.notify();
     }
 
-    fn support(&self) -> PresetSupport {
-        self.support
-            .clone()
-            .unwrap_or_else(|| PresetSupport::fallback(&self.view.overwrites, &self.roles))
+    fn action(&self) -> AdminAction {
+        role_action(AdminActionKind::ReplaceOverwrites, Some(&self.channel_id))
     }
 
     fn busy(&self) -> bool {
-        self.sent && self.view.op.busy
+        running(&self.view.op, &self.action())
+    }
+
+    fn stored(&self) -> PresetChoice {
+        stored_choice(&self.view.detected)
     }
 
     fn set_choice(&mut self, choice: PresetChoice, cx: &mut Context<Self>) {
@@ -142,15 +126,18 @@ impl ChannelOverrides {
         let Some(choice) = self.choice.clone() else {
             return;
         };
-        let support = self.support();
+        let missing = missing_for(&self.view.preset_access, card);
         if !self.view.editable
             || self.busy()
-            || card_block(card, choice.card, support.missing_for(card)).is_some()
+            || card_block(card, choice.card, &missing).is_some()
             || !card.builds()
         {
             return;
         }
-        self.set_choice(choose_card(&choice, card, &support.default_posters), cx);
+        self.set_choice(
+            choose_card(&choice, card, &self.view.default_post_role_ids),
+            cx,
+        );
     }
 
     pub(crate) fn toggle_poster(&mut self, role_id: &str, cx: &mut Context<Self>) {
@@ -158,7 +145,7 @@ impl ChannelOverrides {
             return;
         };
         let pickable = self
-            .support()
+            .view
             .roles
             .iter()
             .any(|role| role.id == role_id && role.below_me);
@@ -183,12 +170,10 @@ impl ChannelOverrides {
         let Some(choice) = self.choice.clone() else {
             return;
         };
-        if !self.view.editable || self.busy() || !preset_dirty(&choice, &self.support().detected)
-        {
+        if !self.view.editable || self.busy() || !preset_dirty(&choice, &self.stored()) {
             return;
         }
-        self.sent = true;
-        self.pending = Some(Pending::new(()));
+        self.pending = Some(Pending::new(self.action(), &self.view.op));
         cx.emit(ChannelOverridesEvent::Save {
             channel_id: self.channel_id.clone(),
             choice,
@@ -196,22 +181,13 @@ impl ChannelOverrides {
         cx.notify();
     }
 
-    /// As if Save had been pressed: for stories and tests.
-    #[cfg(any(test, feature = "stories"))]
-    pub(crate) fn mark_sent(&mut self) {
-        self.sent = true;
-        self.pending = Some(Pending::new(()));
-    }
-
-    fn card_view(
-        &self,
-        card: Card,
-        choice: &PresetChoice,
-        support: &PresetSupport,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn card_view(&self, card: Card, choice: &PresetChoice, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
-        let block = card_block(card, choice.card, support.missing_for(card));
+        let block = card_block(
+            card,
+            choice.card,
+            &missing_for(&self.view.preset_access, card),
+        );
         let locked = if !self.view.editable {
             Some(needs("MANAGE_CHANNEL_PERMISSIONS"))
         } else {
@@ -247,7 +223,11 @@ impl ChannelOverrides {
             .child(design_icon(
                 icon,
                 22.,
-                if selected { sem.primary } else { sem.text_secondary },
+                if selected {
+                    sem.primary
+                } else {
+                    sem.text_secondary
+                },
             ))
             .child(
                 div()
@@ -261,7 +241,9 @@ impl ChannelOverrides {
                             .font_weight(FontWeight(600.))
                             .text_color(sem.text_primary),
                     )
-                    .child(text(Variant::Caption, card.description()).text_color(sem.text_secondary))
+                    .child(
+                        text(Variant::Caption, card.description()).text_color(sem.text_secondary),
+                    )
                     .when_some(
                         block.filter(|_| card != Card::ModsOnly && !selected),
                         |c, reason| {
@@ -282,19 +264,28 @@ impl ChannelOverrides {
         }
     }
 
-    fn posters(
-        &self,
-        choice: &PresetChoice,
-        support: &PresetSupport,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn posters(&self, choice: &PresetChoice, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
-        let kept = kept_roles(support, choice, self.kept.as_deref());
+        let kept = kept_roles(
+            &self.view.roles,
+            &self.view.overwrites,
+            choice,
+            &self.stored(),
+            self.kept.as_deref(),
+        );
         let editable = self.view.editable && !self.busy();
-        let chips: Vec<AnyElement> = support
+        // Without the permission, only who posts shows, unpressable.
+        let chips: Vec<AnyElement> = self
+            .view
             .roles
             .iter()
-            .filter(|role| role.below_me || kept.contains(&role.id))
+            .filter(|role| {
+                if self.view.editable {
+                    role.below_me || kept.contains(&role.id)
+                } else {
+                    choice.post_role_ids.contains(&role.id) || kept.contains(&role.id)
+                }
+            })
             .map(|role| {
                 let on = choice.post_role_ids.contains(&role.id);
                 let base = div()
@@ -304,28 +295,35 @@ impl ChannelOverrides {
                     .items_center()
                     .gap(px(4.))
                     .h(px(32.))
+                    .max_w_full()
+                    .min_w_0()
                     .px(spacing(1.5))
                     .rounded(px(16.))
                     .border_1();
-                if role.below_me {
+                if role.below_me || !self.view.editable {
                     let id = role.id.clone();
                     base.role(Role::Button)
                         .aria_label(role.name.clone())
                         .border_color(if on { sem.primary } else { sem.divider })
                         .when(on, |c| {
-                            c.bg(sem.primary.opacity(0.12))
-                                .child(design_icon(DesignIcon::Check, 16., sem.primary))
+                            c.bg(sem.primary.opacity(0.12)).child(design_icon(
+                                DesignIcon::Check,
+                                16.,
+                                sem.primary,
+                            ))
                         })
                         .when(editable, |c| {
                             c.cursor_pointer()
                                 .hover(|s| s.bg(sem.action_hover))
-                                .on_click(cx.listener(move |view, _, _, cx| {
-                                    view.toggle_poster(&id, cx)
-                                }))
+                                .on_click(
+                                    cx.listener(move |view, _, _, cx| view.toggle_poster(&id, cx)),
+                                )
                         })
                         .when(!editable, |c| c.opacity(0.6))
                         .child(
                             text(Variant::Body2, role.name.clone())
+                                .truncate()
+                                .min_w_0()
                                 .text_color(if on { sem.primary } else { sem.text_primary }),
                         )
                         .into_any_element()
@@ -338,6 +336,8 @@ impl ChannelOverrides {
                             .child(design_icon(DesignIcon::Lock, 14., sem.text_secondary))
                             .child(
                                 text(Variant::Body2, role.name.clone())
+                                    .truncate()
+                                    .min_w_0()
                                     .text_color(sem.text_secondary),
                             ),
                         "Kept automatically: this role ranks at or above yours",
@@ -367,7 +367,7 @@ impl ChannelOverrides {
                         .text_color(sem.text_secondary),
                 )
             })
-            .when(!kept.is_empty(), |c| {
+            .when(!kept.is_empty() && self.view.editable, |c| {
                 c.child(
                     text(
                         Variant::Caption,
@@ -403,11 +403,8 @@ impl ChannelOverrides {
                     .min_w_0()
             }))
             .child(
-                text(
-                    Variant::Caption,
-                    "Pick a preset above to replace them.",
-                )
-                .text_color(sem.text_secondary),
+                text(Variant::Caption, "Pick a preset above to replace them.")
+                    .text_color(sem.text_secondary),
             )
             .into_any_element()
     }
@@ -439,18 +436,20 @@ impl Render for ChannelOverrides {
                 return root
                     .child(Alert::new(
                         Severity::Error,
-                        format!("Couldn't load this channel's permissions: {}", error.message),
+                        format!(
+                            "Couldn't load this channel's permissions: {}",
+                            error.message
+                        ),
                     ))
                     .into_any_element();
             }
             LoadState::Ready => {}
         }
-        let support = self.support();
-        let choice = self.choice.clone().unwrap_or_else(|| support.detected.clone());
-        let stored = support.detected.clone();
+        let stored = self.stored();
+        let choice = self.choice.clone().unwrap_or_else(|| stored.clone());
         let card_views: Vec<AnyElement> = cards(stored.card, choice.card)
             .into_iter()
-            .map(|card| self.card_view(card, &choice, &support, cx))
+            .map(|card| self.card_view(card, &choice, cx))
             .collect();
         let grid = div()
             .id("presets")
@@ -465,25 +464,29 @@ impl Render for ChannelOverrides {
         let dirty = preset_dirty(&choice, &stored);
         let entity = cx.weak_entity();
         let attach = (choice.card == Card::Normal).then(|| {
-            Switch::new(
-                "overrides-attach",
-                "Members can attach files",
-                choice.members_can_attach,
-            )
-            .disabled(!self.view.editable || busy)
-            .on_change(move |on, _, cx| {
-                entity.update(cx, |view, cx| view.set_attach(on, cx)).ok();
-            })
+            div()
+                .flex()
+                .items_center()
+                .gap(spacing(1.))
+                .child(
+                    Switch::new(
+                        "overrides-attach",
+                        "Members can attach files",
+                        choice.members_can_attach,
+                    )
+                    .disabled(!self.view.editable || busy)
+                    .on_change(move |on, _, cx| {
+                        entity.update(cx, |view, cx| view.set_attach(on, cx)).ok();
+                    }),
+                )
+                .child(
+                    text(Variant::Body2, "Members can attach files").text_color(sem.text_primary),
+                )
         });
-        let posters = choice
-            .card
-            .has_posters()
-            .then(|| self.posters(&choice, &support, cx));
+        let posters = choice.card.has_posters().then(|| self.posters(&choice, cx));
         let custom = (choice.card == Card::Custom).then(|| self.custom_section(cx));
-        let error = self
-            .sent
-            .then(|| server_error(self.view.op.error.as_ref()))
-            .flatten();
+        let error = failure(&self.view.op, &self.action())
+            .map(|error| Alert::new(Severity::Error, error.message.clone()));
         root.when(!self.view.editable, |root| {
             root.child(locked_note(
                 "overrides-locked",

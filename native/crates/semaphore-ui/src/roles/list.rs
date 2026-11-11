@@ -2,24 +2,26 @@
 //! permissions, moving one up or down, creating, editing (the editor replaces the list, as on the
 //! web), deleting behind a confirm, resetting the default roles behind a confirm, and who holds a
 //! role. What the user may do comes from `RolesView`'s flags; what they can't shows disabled with
-//! its reason.
+//! its reason. Each change reads its own entry in `AdminOp::actions`, so a delete running on one
+//! row and a failed one on another show on their own rows.
 
 use super::common::{
-    Confirm, action_icon, card, empty_line, list, loading_rows, locked_button,
-    phone, row, server_error, tone_chip, user_line,
+    Confirm, action_icon, card, empty_line, list, loading_rows, locked_button, phone, row,
+    tone_chip, user_line,
 };
 use super::editor::EditorState;
 use super::rules::{
-    Outcome, Pending, RoleChanges, RoleOp, actions_preview, can_move, can_read, created_at,
-    delete_block, edit_block, is_fixed, moved_order, needs, op_about, permissions_count,
+    Outcome, Pending, actions_preview, delete_block, edit_block, failure, move_block, moved_order,
+    needs, permissions_count, role_action, running,
 };
-use crate::kit::{Alert, Button, Chip, Dialog, Severity, Variant, spacing, text};
+use crate::kit::{Alert, Button, Chip, Dialog, Severity, Spinner, Variant, spacing, text};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    LoadState, PermissionGroup, RoleDraft, RoleMembersView, RoleRow, RolesView,
+    AdminAction, AdminActionKind, LoadState, PermissionGroup, RoleDraft, RoleMembersView,
+    RolePatch, RoleRow, RolesView,
 };
 use semaphore_design::Icon as DesignIcon;
 
@@ -27,11 +29,8 @@ use semaphore_design::Icon as DesignIcon;
 pub enum RolesEvent {
     /// `Core::create_role(community, draft)`.
     Create { draft: RoleDraft },
-    /// `Core::update_role` with what changed (core's `RolePatch`): a `None` is left as it is.
-    Update {
-        role_id: String,
-        changes: RoleChanges,
-    },
+    /// `Core::update_role(community, role_id, patch)`: only what changed.
+    Update { role_id: String, patch: RolePatch },
     /// Confirmed: `Core::delete_role(community, role_id)`.
     Delete { role_id: String },
     /// `Core::reorder_roles(community, role_ids)`: every role but Member, highest first.
@@ -57,11 +56,22 @@ pub struct RolesPanel {
     showing_members: Option<String>,
     confirming: Option<Confirming>,
     pub(super) editor: Option<EditorState>,
-    pub(super) last_sent: Option<RoleOp>,
-    pending: Option<Pending<RoleOp>>,
+    pending: Vec<Pending>,
 }
 
 impl EventEmitter<RolesEvent> for RolesPanel {}
+
+fn reorder() -> AdminAction {
+    role_action(AdminActionKind::ReorderRoles, None)
+}
+
+fn reset() -> AdminAction {
+    role_action(AdminActionKind::ResetDefaults, None)
+}
+
+fn delete(role_id: &str) -> AdminAction {
+    role_action(AdminActionKind::DeleteRole, Some(role_id))
+}
 
 impl RolesPanel {
     pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
@@ -72,25 +82,30 @@ impl RolesPanel {
             showing_members: None,
             confirming: None,
             editor: None,
-            last_sent: None,
-            pending: None,
+            pending: Vec::new(),
         }
     }
 
     /// `Core::roles(community)`, again on `ViewKey::Roles`.
     pub fn set_roles(&mut self, view: RolesView, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(view.op.busy, view.op.error.as_ref()) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.pending = None,
+        let mut done = Vec::new();
+        self.pending
+            .retain_mut(|pending| match pending.observe(&view.op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    match pending.action {
-                        RoleOp::Create | RoleOp::Update { .. } => self.editor = None,
-                        RoleOp::Delete { .. } | RoleOp::ResetDefaults => self.confirming = None,
-                        RoleOp::Reorder => {}
-                    }
-                    self.pending = None;
+                    done.push(pending.action.clone());
+                    false
                 }
+            });
+        for action in done {
+            // A saved role closes its editor.
+            if self
+                .editor
+                .as_ref()
+                .is_some_and(|editor| editor.action() == action)
+            {
+                self.editor = None;
             }
         }
         self.view = view;
@@ -110,36 +125,14 @@ impl RolesPanel {
         cx.notify();
     }
 
-    /// The change the op is about, while busy or failed.
-    pub(super) fn about(&self) -> Option<RoleOp> {
-        op_about(&self.view.op, self.last_sent.as_ref())
-    }
-
-    pub(super) fn busy_with(&self, matches: impl Fn(&RoleOp) -> bool) -> bool {
-        self.view.op.busy && self.about().is_some_and(|op| matches(&op))
-    }
-
-    fn error_for(&self, matches: impl Fn(&RoleOp) -> bool) -> Option<Alert> {
-        self.about()
-            .filter(|op| matches(op))
-            .and_then(|_| server_error(self.view.op.error.as_ref()))
-    }
-
-    pub(super) fn send(&mut self, op: RoleOp, event: RolesEvent, cx: &mut Context<Self>) {
-        if self.view.op.busy {
+    pub(super) fn send(&mut self, action: AdminAction, event: RolesEvent, cx: &mut Context<Self>) {
+        if running(&self.view.op, &action) {
             return;
         }
-        self.last_sent = Some(op.clone());
-        self.pending = Some(Pending::new(op));
+        self.pending.retain(|pending| pending.action != action);
+        self.pending.push(Pending::new(action, &self.view.op));
         cx.emit(event);
         cx.notify();
-    }
-
-    /// As if this change had been sent: for stories and tests.
-    #[cfg(any(test, feature = "stories"))]
-    pub(crate) fn mark_sent(&mut self, op: RoleOp) {
-        self.last_sent = Some(op.clone());
-        self.pending = Some(Pending::new(op));
     }
 
     pub(crate) fn open_create(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -154,31 +147,25 @@ impl RolesPanel {
         let Some(role) = self.view.roles.iter().find(|r| r.id == role_id).cloned() else {
             return;
         };
-        let read_only = edit_block(&self.view, &role);
+        let read_only = edit_block(&role);
         self.editor = Some(EditorState::new(Some(&role), read_only, window, cx));
         cx.notify();
     }
 
     pub(crate) fn close_editor(&mut self, cx: &mut Context<Self>) {
         self.editor = None;
-        if matches!(
-            self.about(),
-            Some(RoleOp::Create | RoleOp::Update { .. })
-        ) {
-            self.last_sent = None;
-        }
         cx.notify();
     }
 
     pub(crate) fn move_role(&mut self, role_id: &str, up: bool, cx: &mut Context<Self>) {
-        let Some(index) = self.view.roles.iter().position(|r| r.id == role_id) else {
+        let Some(role) = self.view.roles.iter().find(|r| r.id == role_id) else {
             return;
         };
-        if !can_move(&self.view, index, up) {
+        if move_block(&self.view, role, up, running(&self.view.op, &reorder())).is_some() {
             return;
         }
         if let Some(role_ids) = moved_order(&self.view.roles, role_id, up) {
-            self.send(RoleOp::Reorder, RolesEvent::Reorder { role_ids }, cx);
+            self.send(reorder(), RolesEvent::Reorder { role_ids }, cx);
         }
     }
 
@@ -186,7 +173,7 @@ impl RolesPanel {
         let Some(role) = self.view.roles.iter().find(|r| r.id == role_id) else {
             return;
         };
-        if !role.deletable {
+        if !role.deletable || running(&self.view.op, &delete(role_id)) {
             return;
         }
         self.confirming = Some(Confirming::Delete {
@@ -197,38 +184,26 @@ impl RolesPanel {
     }
 
     pub(crate) fn ask_reset(&mut self, cx: &mut Context<Self>) {
-        if self.view.can_reset_defaults {
+        if self.view.can_reset_defaults && !running(&self.view.op, &reset()) {
             self.confirming = Some(Confirming::Reset);
             cx.notify();
         }
     }
 
+    /// The confirm's action pressed: the dialog closes and the change shows on its row (or on
+    /// Reset Defaults), so several can run at once.
     pub(crate) fn confirm(&mut self, cx: &mut Context<Self>) {
-        match self.confirming.clone() {
-            Some(Confirming::Delete { role_id, .. }) => self.send(
-                RoleOp::Delete {
-                    role_id: role_id.clone(),
-                },
-                RolesEvent::Delete { role_id },
-                cx,
-            ),
-            Some(Confirming::Reset) => {
-                self.send(RoleOp::ResetDefaults, RolesEvent::ResetDefaults, cx)
+        match self.confirming.take() {
+            Some(Confirming::Delete { role_id, .. }) => {
+                self.send(delete(&role_id), RolesEvent::Delete { role_id }, cx)
             }
+            Some(Confirming::Reset) => self.send(reset(), RolesEvent::ResetDefaults, cx),
             None => {}
         }
+        cx.notify();
     }
 
     fn cancel_confirm(&mut self, cx: &mut Context<Self>) {
-        if self
-            .about()
-            .is_some_and(|op| matches!(op, RoleOp::Delete { .. } | RoleOp::ResetDefaults))
-        {
-            if self.view.op.busy {
-                return;
-            }
-            self.last_sent = None;
-        }
         self.confirming = None;
         cx.notify();
     }
@@ -251,12 +226,13 @@ impl RolesPanel {
 
     // ---- Drawing. ----
 
-    fn header_actions(&self, cx: &mut Context<Self>) -> Vec<AnyElement> {
-        let busy = self.busy_with(|op| matches!(op, RoleOp::ResetDefaults));
-        let reset = Button::new("roles-reset", "Reset Defaults")
+    fn header_actions(&self, narrow: bool, cx: &mut Context<Self>) -> Vec<AnyElement> {
+        let resetting = running(&self.view.op, &reset());
+        let reset_button = Button::new("roles-reset", "Reset Defaults")
             .outlined()
             .start_icon(DesignIcon::RestartAlt)
-            .loading(busy)
+            .loading(resetting)
+            .disabled(resetting)
             .on_click(cx.listener(|panel, _, _, cx| panel.ask_reset(cx)));
         let create = Button::new("roles-create", "Create Role")
             .contained()
@@ -264,40 +240,45 @@ impl RolesPanel {
             .on_click(cx.listener(|panel, _, window, cx| panel.open_create(window, cx)));
         vec![
             locked_button(
-                reset,
+                reset_button,
                 "roles-reset-locked",
                 (!self.view.can_reset_defaults).then(|| needs("UPDATE_ROLE")),
+                narrow,
                 cx,
             ),
             locked_button(
                 create,
                 "roles-create-locked",
                 (!self.view.can_create).then(|| needs("CREATE_ROLE")),
+                narrow,
                 cx,
             ),
         ]
     }
 
-    fn role_row(&self, index: usize, role: &RoleRow, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
+    fn role_row(&self, role: &RoleRow, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
         let id = role.id.clone();
-        let moving = self.busy_with(|op| matches!(op, RoleOp::Reorder));
-        let move_lock = |up: bool| -> Option<String> {
-            if !self.view.can_reorder {
-                Some(needs("UPDATE_ROLE"))
-            } else if moving {
-                Some("Moving roles\u{2026}".into())
-            } else if !can_move(&self.view, index, up) {
-                Some(if up {
-                    "Already at the top".into()
-                } else {
-                    "Already just above Member".into()
-                })
-            } else {
-                None
-            }
-        };
-        let arrows = (!is_fixed(role)).then(|| {
+        let moving = running(&self.view.op, &reorder());
+        let deleting = running(&self.view.op, &delete(&id));
+        let row_error = failure(&self.view.op, &delete(&id))
+            .or_else(|| {
+                // An edit that failed after its editor closed.
+                let open = self
+                    .editor
+                    .as_ref()
+                    .is_some_and(|editor| editor.role_id.as_deref() == Some(id.as_str()));
+                (!open)
+                    .then(|| {
+                        failure(
+                            &self.view.op,
+                            &role_action(AdminActionKind::UpdateRole, Some(&id)),
+                        )
+                    })
+                    .flatten()
+            })
+            .cloned();
+        let arrows = (!role.fixed).then(|| {
             let (up_id, down_id) = (id.clone(), id.clone());
             div()
                 .flex()
@@ -307,7 +288,7 @@ impl RolesPanel {
                     format!("role-up-{id}"),
                     DesignIcon::ArrowUpward,
                     format!("Move {} up", role.name),
-                    move_lock(true),
+                    move_block(&self.view, role, true, moving),
                     None,
                     cx.listener(move |panel, _, _, cx| panel.move_role(&up_id, true, cx)),
                 ))
@@ -315,7 +296,7 @@ impl RolesPanel {
                     format!("role-down-{id}"),
                     DesignIcon::ArrowDownward,
                     format!("Move {} down", role.name),
-                    move_lock(false),
+                    move_block(&self.view, role, false, moving),
                     None,
                     cx.listener(move |panel, _, _, cx| panel.move_role(&down_id, false, cx)),
                 ))
@@ -344,19 +325,43 @@ impl RolesPanel {
             .flex_wrap()
             .gap(px(4.))
             .children(shown.into_iter().map(Chip::new))
-            .when(more > 0, |chips| chips.child(Chip::new(format!("+{more} more"))))
+            .when(more > 0, |chips| {
+                chips.child(Chip::new(format!("+{more} more")))
+            })
             .when(role.actions.is_empty(), |chips| {
-                chips.child(
-                    text(Variant::Caption, "No permissions").text_color(sem.text_secondary),
-                )
+                chips.child(text(Variant::Caption, "No permissions").text_color(sem.text_secondary))
             });
-        let created = created_at(role).map(|ms| {
+        let created = role.created_at_ms.map(|ms| {
             text(Variant::Body2, super::date_label(ms))
                 .text_color(sem.text_secondary)
                 .whitespace_nowrap()
         });
         let (members_id, edit_id, delete_id) = (id.clone(), id.clone(), id.clone());
         let editable = role.editable;
+        let delete_button: AnyElement = if deleting {
+            div()
+                .id(SharedString::from(format!("role-deleting-{id}")))
+                .test_support()
+                .role(Role::ProgressIndicator)
+                .aria_label(format!("Deleting {}", role.name))
+                .size(px(34.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    Spinner::new(SharedString::from(format!("role-deleting-spin-{id}"))).size(18.),
+                )
+                .into_any_element()
+        } else {
+            action_icon(
+                format!("role-delete-{id}"),
+                DesignIcon::DeleteOutline,
+                format!("Delete {}", role.name),
+                delete_block(role),
+                Some(sem.error),
+                cx.listener(move |panel, _, _, cx| panel.ask_delete(&delete_id, cx)),
+            )
+        };
         let actions = div()
             .flex()
             .flex_shrink_0()
@@ -385,16 +390,18 @@ impl RolesPanel {
                 Some(sem.primary),
                 cx.listener(move |panel, _, window, cx| panel.open_edit(&edit_id, window, cx)),
             ))
-            .child(action_icon(
-                format!("role-delete-{id}"),
-                DesignIcon::DeleteOutline,
-                format!("Delete {}", role.name),
-                delete_block(&self.view, role),
-                Some(sem.error),
-                cx.listener(move |panel, _, _, cx| panel.ask_delete(&delete_id, cx)),
-            ));
-        let label = role.name.clone();
-        let base = row(SharedString::from(format!("role-{id}")), label, cx);
+            .child(delete_button);
+        let error = row_error.map(|error| {
+            div()
+                .w_full()
+                .child(Alert::new(Severity::Error, error.message))
+        });
+        let base = row(
+            SharedString::from(format!("role-{id}")),
+            role.name.clone(),
+            cx,
+        )
+        .when(deleting, |row| row.opacity(0.6));
         if narrow {
             base.flex_col()
                 .gap(spacing(1.))
@@ -411,25 +418,36 @@ impl RolesPanel {
                         .child(div().children(arrows))
                         .child(actions),
                 )
+                .children(error)
                 .into_any_element()
         } else {
-            base.items_center()
-                .child(div().w(px(68.)).flex_shrink_0().children(arrows))
-                .child(div().w(px(200.)).flex_shrink_0().min_w_0().child(name))
-                .child(div().flex_1().min_w_0().child(chips))
-                .children(created.map(|created| div().w(px(110.)).child(created)))
-                .child(actions)
+            base.flex_col()
+                .child(
+                    div()
+                        .w_full()
+                        .flex()
+                        .items_center()
+                        .gap(spacing(1.5))
+                        .child(div().w(px(68.)).flex_shrink_0().children(arrows))
+                        .child(div().w(px(200.)).flex_shrink_0().min_w_0().child(name))
+                        .child(div().flex_1().min_w_0().child(chips))
+                        .children(created.map(|created| div().w(px(110.)).child(created)))
+                        .child(actions),
+                )
+                .children(error)
                 .into_any_element()
         }
     }
 
     fn list_body(&self, narrow: bool, cx: &mut Context<Self>) -> AnyElement {
-        if !can_read(&self.view) {
-            return Alert::new(
-                Severity::Info,
-                "You don't have permission to view roles in this community.",
-            )
-            .into_any_element();
+        if !self.view.can_read && self.view.state != LoadState::Loading {
+            {
+                return Alert::new(
+                    Severity::Info,
+                    "You don't have permission to view roles in this community.",
+                )
+                .into_any_element();
+            }
         }
         match &self.view.state {
             LoadState::Loading => return loading_rows("roles-loading", "Loading roles", 4),
@@ -442,6 +460,7 @@ impl RolesPanel {
             }
             LoadState::Ready => {}
         }
+        let sem = cx.sem().clone();
         if self.view.roles.is_empty() {
             return div()
                 .flex()
@@ -455,27 +474,35 @@ impl RolesPanel {
                         "Create the first role. Default roles (Admin, Moderator, Member) are created automatically.",
                     )
                     .text_center()
-                    .text_color(cx.sem().text_secondary),
+                    .text_color(sem.text_secondary),
                 )
                 .into_any_element();
         }
         let roles = self.view.roles.clone();
         let rows: Vec<AnyElement> = roles
             .iter()
-            .enumerate()
-            .map(|(index, role)| self.role_row(index, role, narrow, cx))
+            .map(|role| self.role_row(role, narrow, cx))
             .collect();
-        let errors = self.error_for(|op| {
-            matches!(op, RoleOp::Reorder | RoleOp::Delete { .. } | RoleOp::ResetDefaults)
-        });
-        // The delete and reset errors show in their dialog while it is open.
-        let errors = errors.filter(|_| self.confirming.is_none());
-        let sem = cx.sem().clone();
+        let errors: Vec<Alert> = [
+            failure(&self.view.op, &reorder()),
+            failure(&self.view.op, &reset()),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|error| Alert::new(Severity::Error, error.message.clone()))
+        .collect();
+        let resetting = running(&self.view.op, &reset());
         div()
             .flex()
             .flex_col()
             .gap(spacing(1.5))
             .children(errors)
+            .when(resetting, |body| {
+                body.child(Alert::new(
+                    Severity::Info,
+                    "Resetting the default roles\u{2026}",
+                ))
+            })
             .child(
                 text(
                     Variant::Body2,
@@ -489,28 +516,24 @@ impl RolesPanel {
 
     fn confirm_dialog(&self, cx: &mut Context<Self>) -> Option<Dialog> {
         let confirming = self.confirming.clone()?;
-        let (id, title, message, label, danger, matches): (_, _, _, _, _, fn(&RoleOp) -> bool) =
-            match &confirming {
-                Confirming::Delete { name, .. } => (
-                    "role-delete",
-                    "Delete Role".to_owned(),
-                    format!(
-                        "Are you sure you want to delete the role \u{201c}{name}\u{201d}? This action cannot be undone and will remove the role from all users who have it assigned."
-                    ),
-                    "Delete Role",
-                    true,
-                    |op| matches!(op, RoleOp::Delete { .. }),
+        let (id, title, message, label, danger) = match &confirming {
+            Confirming::Delete { name, .. } => (
+                "role-delete",
+                "Delete Role".to_owned(),
+                format!(
+                    "Are you sure you want to delete the role \u{201c}{name}\u{201d}? This action cannot be undone and will remove the role from all users who have it assigned."
                 ),
-                Confirming::Reset => (
-                    "roles-reset",
-                    "Reset Default Roles".to_owned(),
-                    "This will restore the default roles (Community Admin, Moderator, Member) to their original permissions. Missing default roles will be recreated. Custom roles and user assignments will not be affected.".to_owned(),
-                    "Reset Defaults",
-                    false,
-                    |op| matches!(op, RoleOp::ResetDefaults),
-                ),
-            };
-        let mine = self.about().is_some_and(|op| matches(&op));
+                "Delete Role",
+                true,
+            ),
+            Confirming::Reset => (
+                "roles-reset",
+                "Reset Default Roles".to_owned(),
+                "This will restore the default roles (Community Admin, Moderator, Member) to their original permissions. Missing default roles will be recreated. Custom roles and user assignments will not be affected.".to_owned(),
+                "Reset Defaults",
+                false,
+            ),
+        };
         let confirm = cx.weak_entity();
         let cancel = cx.weak_entity();
         Some(
@@ -520,8 +543,8 @@ impl RolesPanel {
                 message,
                 confirm: label,
                 danger,
-                busy: mine && self.view.op.busy,
-                error: mine.then(|| self.view.op.error.clone()).flatten(),
+                busy: false,
+                error: None,
             }
             .dialog(
                 move |_, cx| {
@@ -580,16 +603,31 @@ impl RolesPanel {
                         .overflow_y_scroll()
                         .child(body),
                 )
-                .action(Button::new("role-members-close", "Close").on_click(
-                    move |_, _, cx| {
+                .action(
+                    Button::new("role-members-close", "Close").on_click(move |_, _, cx| {
                         close_button
                             .update(cx, |panel, cx| panel.close_members(cx))
                             .ok();
-                    },
-                ))
+                    }),
+                )
                 .on_close(move |_, cx| {
                     close.update(cx, |panel, cx| panel.close_members(cx)).ok();
                 }),
+        )
+    }
+
+    /// Whether any change of the list is on its way (for tests).
+    #[cfg(test)]
+    pub(crate) fn anything_running(&self) -> bool {
+        super::rules::any_running(
+            &self.view.op,
+            &[
+                AdminActionKind::CreateRole,
+                AdminActionKind::UpdateRole,
+                AdminActionKind::DeleteRole,
+                AdminActionKind::ReorderRoles,
+                AdminActionKind::ResetDefaults,
+            ],
         )
     }
 }
@@ -601,26 +639,27 @@ impl Render for RolesPanel {
         let content: AnyElement = if self.editor.is_some() {
             self.editor_view(narrow, cx)
         } else {
-            let heading = div()
-                .flex()
-                .when(narrow, |h| h.flex_col().items_start())
-                .when(!narrow, |h| h.items_start().justify_between())
-                .gap(spacing(1.))
-                .child(text(Variant::H6, "Role Management").text_color(sem.text_primary))
-                .child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(spacing(1.))
-                        .children(if can_read(&self.view) {
-                            self.header_actions(cx)
+            let heading =
+                div()
+                    .flex()
+                    .when(narrow, |h| h.flex_col().items_start())
+                    .when(!narrow, |h| h.items_start().justify_between())
+                    .gap(spacing(1.))
+                    .child(text(Variant::H6, "Role Management").text_color(sem.text_primary))
+                    .child(div().flex().flex_wrap().gap(spacing(1.)).children(
+                        if self.view.can_read {
+                            self.header_actions(narrow, cx)
                         } else {
                             Vec::new()
-                        }),
-                );
+                        },
+                    ));
             let body = self.list_body(narrow, cx);
-            card("Roles", body, cx)
-                .map(|card| div().flex().flex_col().gap(spacing(2.)).child(heading).child(card))
+            div()
+                .flex()
+                .flex_col()
+                .gap(spacing(2.))
+                .child(heading)
+                .child(card("Roles", body, cx))
                 .into_any_element()
         };
         let mut overlays: Vec<AnyElement> = Vec::new();

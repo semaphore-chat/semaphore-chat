@@ -2,12 +2,12 @@
 //! the role name rules, the editor's draft and what a save sends, the matrix's group checkbox,
 //! moving a role, the assignment dialog's changes, and the channel presets as the web shows them.
 //!
-//! Permission and rank rules are core's: these read its flags. Where core's view doesn't carry a
-//! flag yet, one `*_fallback` function here stands in for it, so the swap is a few lines.
+//! Permission and rank rules are core's: these read its flags and turn its reasons into words.
 
 use semaphore_core::model::{
-    AdminOp, ChannelPreset, ErrorView, LoadState, OverwriteRow, OverwriteTarget, PermissionGroup,
-    RoleRow, RolesView,
+    AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelPreset, DetectedPreset,
+    ErrorView, NotAllowed, OverwriteRoleOption, OverwriteRow, OverwriteTarget, PermissionGroup,
+    PresetAccess, RoleBlock, RolePatch, RoleRow, RolesView,
 };
 use std::collections::BTreeSet;
 
@@ -218,18 +218,9 @@ pub fn check_role_name<'a>(
 
 // ---- The editor's draft. ----
 
-/// What an edit changes: `None` is left as it is. Core's `RolePatch` once it lands; until then
-/// the app sends a `RoleDraft` with the role's current values for the `None`s.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct RoleChanges {
-    pub name: Option<String>,
-    pub actions: Option<Vec<String>>,
-}
-
-impl RoleChanges {
-    pub fn is_empty(&self) -> bool {
-        self.name.is_none() && self.actions.is_none()
-    }
+/// Whether a patch changes nothing.
+pub fn patch_is_empty(patch: &RolePatch) -> bool {
+    patch.name.is_none() && patch.actions.is_none()
 }
 
 /// A group checkbox's state.
@@ -317,9 +308,9 @@ impl RoleDraftState {
     /// What a save of an edit sends: the name only when it changed (spaces around don't count),
     /// the actions only when the set changed (their order doesn't count). Unknown actions are
     /// kept: they're in `actions` from the start and nothing can take them out.
-    pub fn changes(&self) -> RoleChanges {
+    pub fn changes(&self) -> RolePatch {
         let name = clean_name(&self.name);
-        RoleChanges {
+        RolePatch {
             name: match &self.original_name {
                 Some(original) if original.trim() == name => None,
                 _ => Some(name.to_owned()),
@@ -330,7 +321,7 @@ impl RoleDraftState {
     }
 
     pub fn is_dirty(&self) -> bool {
-        self.is_new() || !self.changes().is_empty()
+        self.is_new() || !patch_is_empty(&self.changes())
     }
 
     /// Why Save is off: the name, or no permission chosen (the server wants one at least).
@@ -347,44 +338,16 @@ impl RoleDraftState {
 
 // ---- The role list. ----
 
-/// The "Member" role: last, can't move or be deleted. `RoleRow::fixed` once it lands.
-pub fn is_fixed(role: &RoleRow) -> bool {
-    role.is_default && role.name == "Member"
-}
-
-/// Whether this role may go one place up or down. `RoleRow::can_move_up`/`can_move_down` once
-/// they land; until then the web's rule: not the Member role, not past the ends or below Member.
-pub fn can_move(view: &RolesView, index: usize, up: bool) -> bool {
-    let Some(role) = view.roles.get(index) else {
-        return false;
-    };
-    if !view.can_reorder || is_fixed(role) {
-        return false;
-    }
-    let target = if up {
-        index.checked_sub(1)
-    } else {
-        Some(index + 1)
-    };
-    target
-        .and_then(|target| view.roles.get(target))
-        .is_some_and(|target| !is_fixed(target))
-}
-
 /// The order `Core::reorder_roles` gets when this role moves: every role but Member, with this
-/// one swapped with its neighbour. `None` when it can't move that way.
+/// one swapped with its neighbour. `None` when there is no neighbour that way.
 pub fn moved_order(roles: &[RoleRow], role_id: &str, up: bool) -> Option<Vec<String>> {
     let mut ids: Vec<String> = roles
         .iter()
-        .filter(|role| !is_fixed(role))
+        .filter(|role| !role.fixed)
         .map(|role| role.id.clone())
         .collect();
     let from = ids.iter().position(|id| id == role_id)?;
-    let to = if up {
-        from.checked_sub(1)?
-    } else {
-        from + 1
-    };
+    let to = if up { from.checked_sub(1)? } else { from + 1 };
     if to >= ids.len() {
         return None;
     }
@@ -392,82 +355,109 @@ pub fn moved_order(roles: &[RoleRow], role_id: &str, up: bool) -> Option<Vec<Str
     Some(ids)
 }
 
-/// When the role was made. `RoleRow::created_at_ms` once it lands; the column hides until then.
-pub fn created_at(_role: &RoleRow) -> Option<i64> {
-    None
+/// Which change a role can be blocked from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleChange {
+    Edit,
+    Delete,
+    Assign,
 }
 
-/// Whether the user may see the roles. `RolesView::can_read` once it lands; until then a read the
-/// server refused.
-pub fn can_read(view: &RolesView) -> bool {
-    !matches!(&view.state, LoadState::Failed { error } if error.code == "FORBIDDEN")
-}
-
-/// Why the user can't edit this role, or `None` when they can. `RoleRow`'s block reasons once
-/// they land.
-pub fn edit_block(view: &RolesView, role: &RoleRow) -> Option<String> {
-    if role.editable {
-        return None;
+/// The sentence for core's reason a role is off.
+pub fn block_reason(change: RoleChange, block: Option<RoleBlock>) -> String {
+    match block {
+        Some(RoleBlock::Missing) => needs(match change {
+            RoleChange::Edit => "UPDATE_ROLE",
+            RoleChange::Delete => "DELETE_ROLE",
+            RoleChange::Assign => "UPDATE_MEMBER",
+        }),
+        Some(RoleBlock::Rank) => "This role ranks at or above yours".into(),
+        Some(RoleBlock::HoldsUngrantable) => "This role has permissions you don't have".into(),
+        Some(RoleBlock::DefaultRole) => "Default roles can't be deleted".into(),
+        None => match change {
+            RoleChange::Edit => "You can't edit this role".into(),
+            RoleChange::Delete => "You can't delete this role".into(),
+            RoleChange::Assign => "You can't give this role".into(),
+        },
     }
-    let grantable: BTreeSet<&str> = view.grantable.iter().map(String::as_str).collect();
-    Some(if !view.can_reorder {
-        needs("UPDATE_ROLE")
-    } else if role.actions.iter().any(|a| !grantable.contains(a.as_str())) {
-        "This role has permissions you don't have".into()
-    } else {
-        "This role ranks at or above yours".into()
-    })
+}
+
+/// Why the user can't edit this role, or `None` when they can.
+pub fn edit_block(role: &RoleRow) -> Option<String> {
+    (!role.editable).then(|| block_reason(RoleChange::Edit, role.edit_blocked))
 }
 
 /// Why the user can't delete this role.
-pub fn delete_block(view: &RolesView, role: &RoleRow) -> Option<String> {
-    if role.deletable {
-        return None;
-    }
-    let _ = view;
-    Some(if role.is_default {
-        "Default roles can't be deleted".into()
-    } else {
-        "This role ranks at or above yours, or you need the \u{201c}Delete roles\u{201d} permission"
-            .into()
-    })
+pub fn delete_block(role: &RoleRow) -> Option<String> {
+    (!role.deletable).then(|| block_reason(RoleChange::Delete, role.delete_blocked))
 }
 
 /// Why the user can't give this role to anyone.
-pub fn assign_block(view: &RolesView, role: &RoleRow) -> Option<String> {
-    if role.assignable {
-        return None;
-    }
-    let grantable: BTreeSet<&str> = view.grantable.iter().map(String::as_str).collect();
-    Some(if role.actions.iter().any(|a| !grantable.contains(a.as_str())) {
-        "This role has permissions you don't have".into()
+pub fn assign_block(role: &RoleRow) -> Option<String> {
+    (!role.assignable).then(|| block_reason(RoleChange::Assign, role.assign_blocked))
+}
+
+/// Why a move arrow is off, or `None` when the role can go that way.
+pub fn move_block(view: &RolesView, role: &RoleRow, up: bool, moving: bool) -> Option<String> {
+    let can = if up {
+        role.can_move_up
     } else {
-        "You can only give roles ranked below yours, with the \u{201c}Edit members\u{201d} permission".into()
-    })
+        role.can_move_down
+    };
+    if !view.can_reorder {
+        Some(needs("UPDATE_ROLE"))
+    } else if moving {
+        Some("Moving roles\u{2026}".into())
+    } else if can {
+        None
+    } else {
+        Some("You can only move roles ranked below yours, past others below yours".into())
+    }
+}
+
+/// Why the user can't change this member's roles at all.
+pub fn member_block(reason: NotAllowed) -> &'static str {
+    match reason {
+        NotAllowed::Missing => "You need the \u{201c}Edit members\u{201d} permission",
+        NotAllowed::Rank => "This member ranks at or above you",
+        NotAllowed::SelfTarget => "You can't change your own roles here",
+    }
 }
 
 // ---- Which change an op is about. ----
 
-/// A change the roles views send on the Roles view's op.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RoleOp {
-    Create,
-    Update { role_id: String },
-    Delete { role_id: String },
-    Reorder,
-    ResetDefaults,
-}
-
-/// The change `op` is about, when it is busy or failed. Core's W5-B `AdminOp::actions` once it
-/// lands; until then the last change sent.
-pub fn op_about(op: &AdminOp, last_sent: Option<&RoleOp>) -> Option<RoleOp> {
-    if !op.busy && op.error.is_none() {
-        return None;
+/// A change the role list sends, as core names it in `AdminOp::actions`.
+pub fn role_action(kind: AdminActionKind, target_id: Option<&str>) -> AdminAction {
+    AdminAction {
+        kind,
+        target_id: target_id.map(str::to_owned),
     }
-    last_sent.cloned()
 }
 
-/// Where a sent change stands.
+pub fn state_of<'a>(op: &'a AdminOp, action: &AdminAction) -> Option<&'a AdminActionState> {
+    op.actions.iter().find(|state| state.action == *action)
+}
+
+/// This change is on its way.
+pub fn running(op: &AdminOp, action: &AdminAction) -> bool {
+    state_of(op, action).is_some_and(|state| state.busy)
+}
+
+/// Why this change failed, until it starts again.
+pub fn failure<'a>(op: &'a AdminOp, action: &AdminAction) -> Option<&'a ErrorView> {
+    state_of(op, action)
+        .filter(|state| !state.busy)
+        .and_then(|state| state.error.as_ref())
+}
+
+/// Any change of these kinds on its way.
+pub fn any_running(op: &AdminOp, kinds: &[AdminActionKind]) -> bool {
+    op.actions
+        .iter()
+        .any(|state| kinds.contains(&state.action.kind) && state.busy)
+}
+
+/// Where a sent change stands, from its own entry in the op.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     Waiting,
@@ -475,32 +465,37 @@ pub enum Outcome {
     Failed,
 }
 
-/// A sent change, followed through the op until it ends. Core marks the op busy as it starts and
-/// ends it with an error or none; a refusal before sending ends it with an error, never busy.
+/// A sent change, followed through its own entry in `AdminOp::actions` until it ends. Core adds
+/// the entry as the change starts and drops it when it succeeds, so an entry gone after it was
+/// seen (or after the op moved on) is a success.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pending<A> {
-    pub action: A,
-    saw_busy: bool,
+pub struct Pending {
+    pub action: AdminAction,
+    before: AdminOp,
+    seen: bool,
 }
 
-impl<A> Pending<A> {
-    pub fn new(action: A) -> Self {
+impl Pending {
+    pub fn new(action: AdminAction, before: &AdminOp) -> Self {
         Self {
             action,
-            saw_busy: false,
+            before: before.clone(),
+            seen: false,
         }
     }
 
-    pub fn observe(&mut self, busy: bool, error: Option<&ErrorView>) -> Outcome {
-        if busy {
-            self.saw_busy = true;
-            Outcome::Waiting
-        } else if error.is_some() {
-            Outcome::Failed
-        } else if self.saw_busy {
-            Outcome::Succeeded
-        } else {
-            Outcome::Waiting
+    pub fn observe(&mut self, op: &AdminOp) -> Outcome {
+        match state_of(op, &self.action) {
+            Some(state) if state.busy => {
+                self.seen = true;
+                Outcome::Waiting
+            }
+            Some(state) if state.error.is_some() && (self.seen || *op != self.before) => {
+                Outcome::Failed
+            }
+            Some(_) => Outcome::Waiting,
+            None if self.seen || *op != self.before => Outcome::Succeeded,
+            None => Outcome::Waiting,
         }
     }
 }
@@ -579,6 +574,17 @@ impl Card {
         }
     }
 
+    /// The card for core's preset; an unknown one shows as Custom.
+    pub fn of(preset: ChannelPreset) -> Self {
+        match preset {
+            ChannelPreset::Normal => Self::Normal,
+            ChannelPreset::ReadOnly => Self::ReadOnly,
+            ChannelPreset::Announcement => Self::Announcement,
+            ChannelPreset::ModsOnly => Self::ModsOnly,
+            ChannelPreset::Custom | ChannelPreset::Unknown => Self::Custom,
+        }
+    }
+
     /// Whether choosing it builds a set (Normal, Read-only, Announcement).
     pub fn builds(self) -> bool {
         matches!(self, Self::Normal | Self::ReadOnly | Self::Announcement)
@@ -592,7 +598,12 @@ impl Card {
 
 /// The cards in the web's order, with Custom only when the stored set (or the choice) is one.
 pub fn cards(stored: Card, chosen: Card) -> Vec<Card> {
-    let mut cards = vec![Card::Normal, Card::ReadOnly, Card::Announcement, Card::ModsOnly];
+    let mut cards = vec![
+        Card::Normal,
+        Card::ReadOnly,
+        Card::Announcement,
+        Card::ModsOnly,
+    ];
     if stored == Card::Custom || chosen == Card::Custom {
         cards.push(Card::Custom);
     }
@@ -626,78 +637,23 @@ impl PresetChoice {
     }
 }
 
-/// `detectPreset`: which preset the stored set is, with its posters. Core's
-/// `ChannelOverwritesView::detected` once it lands.
-pub fn detect(overwrites: &[OverwriteRow]) -> PresetChoice {
-    let custom = PresetChoice {
-        card: Card::Custom,
-        post_role_ids: Vec::new(),
-        members_can_attach: true,
-    };
-    if overwrites.is_empty() {
-        return PresetChoice {
-            card: Card::Normal,
-            post_role_ids: Vec::new(),
-            members_can_attach: true,
-        };
+/// The stored set as a choice (core's `DetectedPreset`).
+pub fn stored_choice(detected: &DetectedPreset) -> PresetChoice {
+    PresetChoice {
+        card: Card::of(detected.preset),
+        post_role_ids: detected.post_role_ids.clone(),
+        members_can_attach: detected.members_can_attach,
     }
-    let everyone: Vec<&OverwriteRow> = overwrites
+    .normalized()
+}
+
+/// What this user lacks to apply a card's preset (core's `PresetAccess`).
+pub fn missing_for(access: &[PresetAccess], card: Card) -> Vec<String> {
+    access
         .iter()
-        .filter(|row| row.target == OverwriteTarget::Everyone)
-        .collect();
-    let roles: Vec<(&str, &OverwriteRow)> = overwrites
-        .iter()
-        .filter_map(|row| match &row.target {
-            OverwriteTarget::Role { role_id, .. } => Some((role_id.as_str(), row)),
-            OverwriteTarget::Everyone => None,
-        })
-        .collect();
-    if everyone.len() != 1 || !everyone[0].allow.is_empty() {
-        return custom;
-    }
-    if roles.iter().any(|(_, row)| !row.deny.is_empty()) {
-        return custom;
-    }
-    let deny = &everyone[0].deny;
-    let same = |a: &[String], b: &[&str]| {
-        a.len() == b.len() && a.iter().all(|x| b.contains(&x.as_str()))
-    };
-    if same(deny, &["ATTACH_FILES"]) {
-        return if roles
-            .iter()
-            .all(|(_, row)| row.allow.iter().all(|a| a == "ATTACH_FILES"))
-        {
-            PresetChoice {
-                card: Card::Normal,
-                post_role_ids: Vec::new(),
-                members_can_attach: false,
-            }
-        } else {
-            custom
-        };
-    }
-    for card in [Card::ReadOnly, Card::Announcement] {
-        let full = preset_denies(card, false);
-        if !same(deny, &full) {
-            continue;
-        }
-        if !roles.iter().all(|(_, row)| {
-            !row.allow.is_empty() && row.allow.iter().all(|a| full.contains(&a.as_str()))
-        }) {
-            return custom;
-        }
-        return PresetChoice {
-            card,
-            post_role_ids: roles
-                .iter()
-                .filter(|(_, row)| same(&row.allow, &full))
-                .map(|(id, _)| (*id).to_owned())
-                .collect(),
-            members_can_attach: false,
-        }
-        .normalized();
-    }
-    custom
+        .find(|entry| Card::of(entry.preset) == card)
+        .map(|entry| entry.missing.clone())
+        .unwrap_or_default()
 }
 
 /// Whether the choice differs from what's stored (the web's `dirty`): only a preset that builds
@@ -733,81 +689,6 @@ pub fn card_block(card: Card, chosen: Card, missing: &[String]) -> Option<String
     }
 }
 
-/// A role as the poster picker sees it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PresetRole {
-    pub id: String,
-    pub name: String,
-    pub position: i32,
-    pub actions: Vec<String>,
-    /// Ranked below the user (everything, for the instance owner): they may pick it.
-    pub below_me: bool,
-}
-
-/// What the presets need beside the stored set. Core's `ChannelOverwritesView::{roles, detected,
-/// missing, default posters}` once they land; `fallback` stands in until then.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PresetSupport {
-    pub roles: Vec<PresetRole>,
-    pub detected: PresetChoice,
-    /// The actions each preset needs that the user lacks.
-    pub missing: Vec<(Card, Vec<String>)>,
-    /// The posters a read-only kind starts with: roles below the user that manage permissions.
-    pub default_posters: Vec<String>,
-}
-
-impl PresetSupport {
-    /// From the stored set and the community's roles: a role the user may edit or give ranks
-    /// below them, and a preset needs the actions it denies among those they may grant.
-    pub fn fallback(overwrites: &[OverwriteRow], roles: &RolesView) -> Self {
-        let grantable: BTreeSet<&str> = roles.grantable.iter().map(String::as_str).collect();
-        let roles: Vec<PresetRole> = roles
-            .roles
-            .iter()
-            .map(|role| PresetRole {
-                id: role.id.clone(),
-                name: role.name.clone(),
-                position: role.position,
-                actions: role.actions.clone(),
-                below_me: role.editable || role.assignable || role.deletable,
-            })
-            .collect();
-        let missing = [Card::Normal, Card::ReadOnly, Card::Announcement]
-            .into_iter()
-            .map(|card| {
-                (
-                    card,
-                    preset_denies(card, false)
-                        .into_iter()
-                        .filter(|a| !grantable.contains(a))
-                        .map(str::to_owned)
-                        .collect(),
-                )
-            })
-            .collect();
-        let default_posters = roles
-            .iter()
-            .filter(|role| {
-                role.below_me && role.actions.iter().any(|a| a == "MANAGE_CHANNEL_PERMISSIONS")
-            })
-            .map(|role| role.id.clone())
-            .collect();
-        Self {
-            roles,
-            detected: detect(overwrites),
-            missing,
-            default_posters,
-        }
-    }
-
-    pub fn missing_for(&self, card: Card) -> &[String] {
-        self.missing
-            .iter()
-            .find(|(c, _)| *c == card)
-            .map_or(&[], |(_, missing)| missing.as_slice())
-    }
-}
-
 /// The choice after a card is pressed: a read-only kind with no posters yet starts with the
 /// default ones.
 pub fn choose_card(choice: &PresetChoice, card: Card, default_posters: &[String]) -> PresetChoice {
@@ -830,35 +711,38 @@ pub fn toggle_poster(choice: &PresetChoice, role_id: &str) -> PresetChoice {
     next.normalized()
 }
 
-/// The roles drawn as locked "Kept automatically" chips: those at or above the user that the
-/// preset would touch. From core's built set (`auto_allowed`) when the app has it, else the roles
-/// above the user holding one of the denied actions.
+/// The roles drawn as locked "Kept automatically" chips: those at or above the user that the set
+/// keeps. From `Core::build_preset`'s `auto_allowed_role_ids` for the current choice when the app
+/// has answered; before that, for the stored set, the roles at or above the user it allows.
 pub fn kept_roles(
-    support: &PresetSupport,
+    roles: &[OverwriteRoleOption],
+    overwrites: &[OverwriteRow],
     choice: &PresetChoice,
+    stored: &PresetChoice,
     auto_allowed: Option<&[String]>,
 ) -> Vec<String> {
-    let deny = preset_denies(choice.card, choice.members_can_attach);
-    support
-        .roles
+    roles
         .iter()
         .filter(|role| !role.below_me)
         .filter(|role| match auto_allowed {
             Some(auto) => auto.contains(&role.id),
-            None => role.actions.iter().any(|a| deny.contains(&a.as_str())),
+            None => {
+                choice == stored
+                    && overwrites.iter().any(|row| {
+                        !row.allow.is_empty()
+                            && matches!(&row.target, OverwriteTarget::Role { role_id, .. } if *role_id == role.id)
+                    })
+            }
         })
         .map(|role| role.id.clone())
         .collect()
 }
 
-/// A role row's name in the summary: its name, or "Deleted role" when the role is gone (core
-/// names it by its id then; `OverwriteRow::role_missing` once it lands).
-pub fn target_name(target: &OverwriteTarget) -> String {
-    match target {
+/// A row's name in the summary: "@everyone", the role's name, or "Deleted role".
+pub fn target_name(row: &OverwriteRow) -> String {
+    match &row.target {
         OverwriteTarget::Everyone => "@everyone".into(),
-        OverwriteTarget::Role { role_id, name } if name == role_id || name.is_empty() => {
-            "Deleted role".into()
-        }
+        OverwriteTarget::Role { .. } if row.role_missing => "Deleted role".into(),
         OverwriteTarget::Role { name, .. } => name.clone(),
     }
 }
@@ -871,10 +755,9 @@ pub fn summarize(overwrites: &[OverwriteRow]) -> Vec<String> {
             let list = |actions: &[String]| {
                 actions
                     .iter()
-                    .map(|a| label_of(a))
+                    .map(|a| action_label(a).map_or_else(|| a.clone(), str::to_lowercase))
                     .collect::<Vec<_>>()
                     .join(", ")
-                    .to_lowercase()
             };
             let parts: Vec<String> = [
                 (!row.allow.is_empty()).then(|| format!("can {}", list(&row.allow))),
@@ -883,7 +766,7 @@ pub fn summarize(overwrites: &[OverwriteRow]) -> Vec<String> {
             .into_iter()
             .flatten()
             .collect();
-            format!("{}: {}", target_name(&row.target), parts.join("; "))
+            format!("{}: {}", target_name(row), parts.join("; "))
         })
         .collect()
 }

@@ -4,8 +4,7 @@
 //!
 //! The views take core's view models through `set_*` and emit events; the app runs the core
 //! commands. What the user may do comes from core's flags (`RolesView`, `RoleRow`,
-//! `MemberRolesView`, `ChannelOverwritesView`), never from rank or permission rules here; where a
-//! flag hasn't landed in core yet, one `*_fallback`-style helper in `rules` stands in.
+//! `MemberRolesView`, `ChannelOverwritesView`), never from rank or permission rules here.
 //!
 //! - [`RolesPanel`] (`RolesEvent`): the Roles tab, for `CommunitySettingsScreen::set_roles_slot`.
 //! - [`RoleAssignmentDialog`] (`RoleAssignmentEvent`): one member's roles, opened from
@@ -27,7 +26,7 @@ mod tests;
 pub use assign::{RoleAssignmentDialog, RoleAssignmentEvent};
 pub use list::{RolesEvent, RolesPanel};
 pub use overrides::{ChannelOverrides, ChannelOverridesEvent};
-pub use rules::{Card, PresetChoice, PresetRole, PresetSupport, RoleChanges};
+pub use rules::{Card, PresetChoice};
 
 /// "Nov 1, 2026", in UTC.
 pub(crate) fn date_label(ms: i64) -> String {

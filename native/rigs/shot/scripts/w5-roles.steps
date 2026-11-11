@@ -1,4 +1,4 @@
-# W5 roles: the role list (owner, admin, moderator, member; loading, failed, no access, empty, many; moving, deleting, resetting; who holds a role),
+# W5 roles: the role list (owner, admin, moderator, member; loading, failed, no access, empty, many; moving, deleting, resetting, overlapping changes; who holds a role),
 # the role editor, the assignment dialog and a channel's presets, each on a desktop (dark) and a phone (light), then a few in another theme.
 # Render: scripts/in-image.sh rigs/shot/review.sh rigs/shot/scripts/w5-roles.steps
 story roles-loading 1280 800 dark-blue-balanced
@@ -85,6 +85,12 @@ shot w5-roles-delete-error-desktop
 story roles-delete-error 390 844 light-blue-balanced
 wait idle
 shot w5-roles-delete-error-phone
+story roles-overlapping 1280 800 dark-blue-balanced
+wait idle
+shot w5-roles-overlapping-desktop
+story roles-overlapping 390 844 light-blue-balanced
+wait idle
+shot w5-roles-overlapping-phone
 story roles-reset-confirm 1280 800 dark-blue-balanced
 wait idle
 shot w5-roles-reset-confirm-desktop

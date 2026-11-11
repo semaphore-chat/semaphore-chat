@@ -7,14 +7,17 @@
 //! `set_member_roles` and calls `set_saving(false)`: the error shows, the choice stays, and a retry
 //! sends only what is still different.
 
-use super::common::{empty_line, loading_rows, locked_note, server_error, tone_chip};
-use super::rules::{actions_preview, assign_block, assignment_diff, permissions_count};
-use crate::kit::{Alert, Button, Checkbox, Chip, Dialog, Severity, Variant, spacing, text, with_tip};
+use super::common::{check_row, empty_line, loading_rows, locked_note, tone_chip};
+use super::rules::{
+    actions_preview, any_running, assign_block, assignment_diff, failure, member_block,
+    permissions_count, role_action, running,
+};
+use crate::kit::{Alert, Button, Chip, Dialog, Severity, Variant, spacing, text, with_tip};
 use crate::theme::SemTheme;
 use gpui_kit::base::TestSupportExt as _;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{LoadState, MemberRolesView, NotAllowed, RolesView};
+use semaphore_core::model::{AdminActionKind, LoadState, MemberRolesView, RolesView};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,20 +42,6 @@ pub struct RoleAssignmentDialog {
 }
 
 impl EventEmitter<RoleAssignmentEvent> for RoleAssignmentDialog {}
-
-/// Why the user can't change this member's roles at all. `MemberRolesView::not_allowed` once it
-/// lands; until then nothing changeable means the member ranks at or above them.
-fn dialog_block(member: &MemberRolesView, roles: &RolesView) -> Option<NotAllowed> {
-    (member.changeable.is_empty() && !roles.roles.is_empty()).then_some(NotAllowed::Rank)
-}
-
-fn not_allowed_reason(reason: NotAllowed) -> &'static str {
-    match reason {
-        NotAllowed::Missing => "You need the \u{201c}Edit members\u{201d} permission",
-        NotAllowed::Rank => "This member ranks at or above you",
-        NotAllowed::SelfTarget => "You can't change your own roles here",
-    }
-}
 
 impl RoleAssignmentDialog {
     pub fn new(user_id: String, member_name: String) -> Self {
@@ -107,22 +96,38 @@ impl RoleAssignmentDialog {
     }
 
     fn busy(&self) -> bool {
-        self.saving || self.member.op.busy
+        self.saving
+            || any_running(
+                &self.member.op,
+                &[AdminActionKind::AssignRole, AdminActionKind::UnassignRole],
+            )
+    }
+
+    /// This role being given or taken right now.
+    fn role_running(&self, role_id: &str) -> bool {
+        [AdminActionKind::AssignRole, AdminActionKind::UnassignRole]
+            .into_iter()
+            .any(|kind| running(&self.member.op, &role_action(kind, Some(role_id))))
+    }
+
+    /// Why giving or taking this role failed.
+    fn role_failure(&self, role_id: &str) -> Option<String> {
+        [AdminActionKind::AssignRole, AdminActionKind::UnassignRole]
+            .into_iter()
+            .find_map(|kind| failure(&self.member.op, &role_action(kind, Some(role_id))))
+            .map(|error| error.message.clone())
     }
 
     /// Why this role's box is off.
     fn role_block(&self, role_id: &str) -> Option<String> {
-        if let Some(reason) = dialog_block(&self.member, &self.roles) {
-            return Some(not_allowed_reason(reason).to_owned());
+        if let Some(reason) = self.member.not_allowed {
+            return Some(member_block(reason).to_owned());
         }
         if self.member.changeable.iter().any(|id| id == role_id) {
             return None;
         }
         let role = self.roles.roles.iter().find(|r| r.id == role_id)?;
-        Some(
-            assign_block(&self.roles, role)
-                .unwrap_or_else(|| "This member ranks at or above you".to_owned()),
-        )
+        Some(assign_block(role).unwrap_or_else(|| "This member ranks at or above you".to_owned()))
     }
 
     pub(crate) fn toggle(&mut self, role_id: &str, cx: &mut Context<Self>) {
@@ -175,7 +180,7 @@ impl RoleAssignmentDialog {
         }
         let held = self.held();
         let busy = self.busy();
-        let whole = dialog_block(&self.member, &self.roles);
+        let whole = self.member.not_allowed;
         let rows: Vec<AnyElement> = self
             .roles
             .roles
@@ -185,28 +190,6 @@ impl RoleAssignmentDialog {
                 let block = self.role_block(&role.id);
                 let disabled = block.is_some() || busy;
                 let id = role.id.clone();
-                let mut checkbox = Checkbox::new(
-                    SharedString::from(format!("role-assign-{}", role.id)),
-                    role.name.clone(),
-                    on,
-                )
-                .disabled(disabled);
-                if !disabled {
-                    let entity = cx.weak_entity();
-                    checkbox = checkbox.on_change(move |_, _, cx| {
-                        entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
-                    });
-                }
-                let checkbox: AnyElement = match &block {
-                    Some(reason) => with_tip(
-                        div().id(SharedString::from(format!("role-assign-{}-locked", role.id))),
-                        reason.clone(),
-                    )
-                    .test_support()
-                    .child(checkbox)
-                    .into_any_element(),
-                    None => checkbox.into_any_element(),
-                };
                 let (shown, more) = actions_preview(&role.actions, 2);
                 let mut summary = permissions_count(role.actions.len());
                 if !shown.is_empty() {
@@ -215,6 +198,35 @@ impl RoleAssignmentDialog {
                 if more > 0 {
                     summary.push_str(&format!(" +{more} more"));
                 }
+                let entity = cx.weak_entity();
+                let checkbox = check_row(
+                    SharedString::from(format!("role-assign-{}", role.id)),
+                    role.name.clone(),
+                    Some(summary),
+                    on,
+                    disabled,
+                    move |_, cx| {
+                        entity.update(cx, |dialog, cx| dialog.toggle(&id, cx)).ok();
+                    },
+                    cx,
+                )
+                .flex_1();
+                let checkbox: AnyElement = match &block {
+                    Some(reason) => with_tip(
+                        div()
+                            .id(SharedString::from(format!(
+                                "role-assign-{}-locked",
+                                role.id
+                            )))
+                            .flex_1()
+                            .min_w_0(),
+                        reason.clone(),
+                    )
+                    .test_support()
+                    .child(checkbox)
+                    .into_any_element(),
+                    None => checkbox.into_any_element(),
+                };
                 div()
                     .flex()
                     .flex_col()
@@ -228,12 +240,21 @@ impl RoleAssignmentDialog {
                                 row.child(tone_chip("Current", sem.primary))
                             }),
                     )
-                    .child(
-                        text(Variant::Caption, summary)
-                            .pl(px(54.))
-                            .mt(px(-10.))
-                            .text_color(sem.text_secondary),
-                    )
+                    .when(self.role_running(&role.id), |row| {
+                        row.child(
+                            text(Variant::Caption, "Saving\u{2026}")
+                                .pl(px(54.))
+                                .text_color(sem.text_secondary),
+                        )
+                    })
+                    .when_some(self.role_failure(&role.id), |row, message| {
+                        row.child(
+                            div()
+                                .pl(px(54.))
+                                .pt(px(2.))
+                                .child(Alert::new(Severity::Error, message)),
+                        )
+                    })
                     .when_some(block.filter(|_| !busy && whole.is_none()), |row, reason| {
                         row.child(div().pl(px(54.)).pt(px(2.)).child(locked_note(
                             SharedString::from(format!("role-assign-{}-why", role.id)),
@@ -249,9 +270,8 @@ impl RoleAssignmentDialog {
             .flex()
             .flex_col()
             .gap(spacing(1.5))
-            .children(server_error(self.member.op.error.as_ref()))
             .when_some(whole, |body, reason| {
-                body.child(Alert::new(Severity::Info, not_allowed_reason(reason)))
+                body.child(Alert::new(Severity::Info, member_block(reason)))
             })
             .child(
                 text(
