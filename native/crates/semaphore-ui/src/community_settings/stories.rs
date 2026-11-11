@@ -3,7 +3,7 @@
 //! loading, empty, failed, long lists and names, busy, a server error, its dialogs, and with fewer
 //! permissions. `rigs/shot/scripts/w5-community.steps` renders them all, on a desktop and a phone.
 
-use super::rules::{CommunityTab, ExpiryPreset, OpAction};
+use super::rules::{CommunityTab, ExpiryPreset};
 use super::{
     ChannelsTab, CommunityImage, CommunitySettingsScreen, EmojiTab, InvitesTab, MembersTab,
     MentionGroupsTab, OverviewTab, PrivateChannelsTab, SoundboardTab,
@@ -16,13 +16,13 @@ use crate::profile::stories::picture;
 use crate::stories::{Story, StoryEnv};
 use gpui_kit::*;
 use semaphore_core::model::{
-    AdminOp, AliasGroupRow, AliasGroupView, AliasGroupsView, ChannelKind, ChannelPreset,
-    ChannelRow, CommunityCaps, CommunityPermissionsView, CommunitySettingsView, CreatedWebhook,
-    CustomEmojiRow, CustomEmojiView, DisplayRole, DraftFile, ErrorView, InviteRow, InvitesView,
-    LoadState, MemberList, MemberView, PrivateMemberRow, PrivateMembersView, SoundboardSound,
-    SoundboardView, UploadView, UserView, WebhookRow, WebhooksView,
+    AdminAction, AdminActionKind as K, AdminActionState, AdminOp, AliasGroupRow, AliasGroupView,
+    AliasGroupsView, ChannelKind, ChannelPreset, ChannelRow, CommunityCaps,
+    CommunityPermissionsView, CommunitySettingsView, CreatedWebhook, CustomEmojiRow,
+    CustomEmojiView, DisplayRole, DraftFile, ErrorView, InviteRow, InvitesView, LoadState,
+    MemberList, MemberView, PrivateMemberRow, PrivateMembersView, SoundboardSound, SoundboardView,
+    UploadView, UserView, WebhookRow, WebhooksView,
 };
-use std::collections::HashMap;
 
 const DAY: i64 = 24 * 60 * 60 * 1000;
 const COMMUNITY: &str = "community-1";
@@ -85,6 +85,7 @@ fn member_list(users: Vec<UserView>) -> MemberList {
                 status: None,
                 online: index % 3 == 0,
                 display_role: roles[index % roles.len()].clone(),
+                joined_at_ms: (index < 8).then(|| NOW_MS - (index as i64 + 1) * 37 * DAY),
             })
             .collect(),
         truncated: false,
@@ -113,14 +114,6 @@ fn long_members() -> MemberList {
     list.members[8].display_role = role("Very Long Role Name For Event Organisers", 4);
     list.truncated = true;
     list
-}
-
-fn joined() -> HashMap<String, i64> {
-    people()
-        .iter()
-        .enumerate()
-        .map(|(index, user)| (user.id.clone(), NOW_MS - (index as i64 + 1) * 37 * DAY))
-        .collect()
 }
 
 fn channel(
@@ -209,22 +202,53 @@ fn server_error(message: &str) -> ErrorView {
     }
 }
 
-fn busy() -> AdminOp {
+fn op(states: Vec<AdminActionState>) -> AdminOp {
+    let last = states.last().cloned();
     AdminOp {
+        busy: states.iter().any(|state| state.busy),
+        upload: last.as_ref().and_then(|state| state.upload.clone()),
+        error: last.as_ref().and_then(|state| state.error.clone()),
+        action: last.map(|state| state.action),
+        actions: states,
+    }
+}
+
+fn state(kind: K, target: Option<&str>) -> AdminActionState {
+    AdminActionState {
+        action: AdminAction {
+            kind,
+            target_id: target.map(str::to_owned),
+        },
+        busy: false,
+        upload: None,
+        error: None,
+    }
+}
+
+fn running_state(kind: K, target: Option<&str>) -> AdminActionState {
+    AdminActionState {
         busy: true,
-        ..AdminOp::default()
+        ..state(kind, target)
     }
 }
 
-fn erred(message: &str) -> AdminOp {
-    AdminOp {
+fn failed_state(kind: K, target: Option<&str>, message: &str) -> AdminActionState {
+    AdminActionState {
         error: Some(server_error(message)),
-        ..AdminOp::default()
+        ..state(kind, target)
     }
 }
 
-fn uploading(name: &str, sent: u64, size: u64) -> AdminOp {
-    AdminOp {
+fn busy(kind: K, target: Option<&str>) -> AdminOp {
+    op(vec![running_state(kind, target)])
+}
+
+fn erred(kind: K, target: Option<&str>, message: &str) -> AdminOp {
+    op(vec![failed_state(kind, target, message)])
+}
+
+fn uploading(kind: K, target: Option<&str>, name: &str, sent: u64, size: u64) -> AdminOp {
+    op(vec![AdminActionState {
         busy: true,
         upload: Some(UploadView {
             name: name.into(),
@@ -232,8 +256,8 @@ fn uploading(name: &str, sent: u64, size: u64) -> AdminOp {
             sent_bytes: sent,
             failed: None,
         }),
-        error: None,
-    }
+        ..state(kind, target)
+    }])
 }
 
 fn caps_owner() -> CommunityCaps {
@@ -507,7 +531,6 @@ fn shell(
         screen.members().update(cx, |tab, cx| {
             tab.set_members(Some(members()), cx);
             tab.set_me(Some(ids[0].id.clone()), cx);
-            tab.set_joined_dates(joined(), cx);
         });
         screen.channels().update(cx, |tab, cx| {
             tab.set_channels(LoadState::Ready, channels(), cx)
@@ -579,7 +602,6 @@ fn members_tab(
         tab.set_caps(caps, cx);
         tab.set_members(list, cx);
         tab.set_me(Some("u-me".into()), cx);
-        tab.set_joined_dates(joined(), cx);
         tweak(&mut tab, window, cx);
         tab.set_op(op, cx);
         tab
@@ -607,14 +629,12 @@ fn channels_tab(
     .into()
 }
 
-#[allow(clippy::too_many_arguments)]
 fn private_tab(
     state: LoadState,
     rows: Vec<ChannelRow>,
     view: PrivateMembersView,
     community: Option<MemberList>,
     caps: CommunityCaps,
-    sent: Option<OpAction>,
     window: &mut Window,
     cx: &mut App,
 ) -> AnyView {
@@ -623,9 +643,6 @@ fn private_tab(
         tab.set_caps(caps, cx);
         tab.set_channels(state, rows, cx);
         tab.set_members(community, cx);
-        if let Some(action) = sent {
-            tab.mark_sent(action);
-        }
         tab.set_view(view, cx);
         tab
     })
@@ -819,9 +836,14 @@ pub(crate) fn stories() -> Vec<Story> {
                     file("banner.png", "image/png", 10),
                     picture(600, 200, [0x0e, 0xa5, 0xe9], [0x7c, 0x3a, 0xed]),
                 );
-                tab.mark_sent(OpAction::UpdateCommunity, false);
                 tab.set_view(
-                    settings(uploading("banner.png", 300_000, 900_000)),
+                    settings(uploading(
+                        K::UpdateCommunity,
+                        Some(COMMUNITY),
+                        "banner.png",
+                        300_000,
+                        900_000,
+                    )),
                     window,
                     cx,
                 );
@@ -830,9 +852,13 @@ pub(crate) fn stories() -> Vec<Story> {
         ("community-settings-overview-error", |_, w, cx| {
             overview(ready_settings(), caps_owner(), w, cx, |tab, window, cx| {
                 tab.preset("Northwind Makers Guild", "", window, cx);
-                tab.mark_sent(OpAction::UpdateCommunity, true);
+                tab.set_tried(true);
                 tab.set_view(
-                    settings(erred("A community with that name already exists.")),
+                    settings(erred(
+                        K::UpdateCommunity,
+                        Some(COMMUNITY),
+                        "A community with that name already exists.",
+                    )),
                     window,
                     cx,
                 );
@@ -841,7 +867,7 @@ pub(crate) fn stories() -> Vec<Story> {
         ("community-settings-overview-invalid", |_, w, cx| {
             overview(ready_settings(), caps_owner(), w, cx, |tab, window, cx| {
                 tab.preset("N", &"x".repeat(510), window, cx);
-                tab.mark_sent(OpAction::UpdateCommunity, true);
+                tab.set_tried(true);
                 tab.set_view(ready_settings(), window, cx);
             })
         }),
@@ -876,16 +902,22 @@ pub(crate) fn stories() -> Vec<Story> {
         ("community-settings-overview-delete-busy", |_, w, cx| {
             overview(ready_settings(), caps_owner(), w, cx, |tab, window, cx| {
                 tab.open_delete("Northwind Makers", window, cx);
-                tab.mark_sent(OpAction::DeleteCommunity, false);
-                tab.set_view(settings(busy()), window, cx);
+                tab.set_view(
+                    settings(busy(K::DeleteCommunity, Some(COMMUNITY))),
+                    window,
+                    cx,
+                );
             })
         }),
         ("community-settings-overview-delete-error", |_, w, cx| {
             overview(ready_settings(), caps_owner(), w, cx, |tab, window, cx| {
                 tab.open_delete("Northwind Makers", window, cx);
-                tab.mark_sent(OpAction::DeleteCommunity, false);
                 tab.set_view(
-                    settings(erred("Only the community's owner can delete it.")),
+                    settings(erred(
+                        K::DeleteCommunity,
+                        Some(COMMUNITY),
+                        "Only the community's owner can delete it.",
+                    )),
                     window,
                     cx,
                 );
@@ -929,7 +961,7 @@ pub(crate) fn stories() -> Vec<Story> {
             members_tab(
                 Some(member_list(people()[..3].to_vec())),
                 caps_owner(),
-                busy(),
+                busy(K::AddMember, Some("u-10")),
                 w,
                 cx,
                 |tab, window, cx| {
@@ -976,7 +1008,11 @@ pub(crate) fn stories() -> Vec<Story> {
             members_tab(
                 Some(members()),
                 caps_owner(),
-                erred("That user is banned from this community."),
+                erred(
+                    K::AddMember,
+                    Some("u-9"),
+                    "That user is banned from this community.",
+                ),
                 w,
                 cx,
                 |tab, window, cx| {
@@ -1061,14 +1097,10 @@ pub(crate) fn stories() -> Vec<Story> {
                 LoadState::Ready,
                 channels(),
                 caps_owner(),
-                busy(),
+                busy(K::MoveChannel, Some("c-news")),
                 w,
                 cx,
-                |tab, _, _| {
-                    tab.mark_sent(OpAction::MoveChannel {
-                        channel_id: "c-news".into(),
-                    })
-                },
+                |_, _, _| {},
             )
         }),
         ("community-settings-channels-error", |_, w, cx| {
@@ -1076,14 +1108,38 @@ pub(crate) fn stories() -> Vec<Story> {
                 LoadState::Ready,
                 channels(),
                 caps_owner(),
-                erred("You can't delete the last text channel."),
+                erred(
+                    K::DeleteChannel,
+                    Some("c-general"),
+                    "You can't delete the last text channel.",
+                ),
                 w,
                 cx,
-                |tab, _, _| {
-                    tab.mark_sent(OpAction::DeleteChannel {
-                        channel_id: "c-general".into(),
-                    })
-                },
+                |_, _, _| {},
+            )
+        }),
+        ("community-settings-channels-overlap", |_, w, cx| {
+            // A delete running on one row while a move failed on another: each row shows its own.
+            channels_tab(
+                LoadState::Ready,
+                channels(),
+                caps_owner(),
+                op(vec![
+                    failed_state(
+                        K::MoveChannel,
+                        Some("c-rules"),
+                        "That channel is already at the top.",
+                    ),
+                    running_state(K::DeleteChannel, Some("c-random")),
+                    failed_state(
+                        K::DeleteChannel,
+                        Some("c-lounge"),
+                        "Voice channels with people in them can't be deleted.",
+                    ),
+                ]),
+                w,
+                cx,
+                |_, _, _| {},
             )
         }),
         ("community-settings-channels-readonly", |_, w, cx| {
@@ -1115,12 +1171,11 @@ pub(crate) fn stories() -> Vec<Story> {
                 LoadState::Ready,
                 channels(),
                 caps_owner(),
-                busy(),
+                busy(K::CreateChannel, None),
                 w,
                 cx,
                 |tab, window, cx| {
                     tab.open_create("Practice Room", ChannelKind::Voice, false, window, cx);
-                    tab.mark_sent(OpAction::CreateChannel);
                 },
             )
         }),
@@ -1129,12 +1184,15 @@ pub(crate) fn stories() -> Vec<Story> {
                 LoadState::Ready,
                 channels(),
                 caps_owner(),
-                erred("A channel with that name already exists."),
+                erred(
+                    K::CreateChannel,
+                    None,
+                    "A channel with that name already exists.",
+                ),
                 w,
                 cx,
                 |tab, window, cx| {
                     tab.open_create("general", ChannelKind::Text, false, window, cx);
-                    tab.mark_sent(OpAction::CreateChannel);
                 },
             )
         }),
@@ -1220,12 +1278,15 @@ pub(crate) fn stories() -> Vec<Story> {
                     cx,
                     |tab, window, cx| {
                         tab.open_edit("c-general", false, window, cx);
-                        tab.mark_sent(OpAction::CreateWebhook);
                         tab.set_webhooks(
                             webhooks(
                                 LoadState::Ready,
                                 1,
-                                erred("This channel has too many webhooks."),
+                                erred(
+                                    K::CreateWebhook,
+                                    None,
+                                    "This channel has too many webhooks.",
+                                ),
                             ),
                             window,
                             cx,
@@ -1318,7 +1379,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 PrivateMembersView::default(),
                 Some(members()),
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1330,7 +1390,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 PrivateMembersView::default(),
                 None,
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1342,7 +1401,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 private_view(failed(), Vec::new(), AdminOp::default()),
                 Some(members()),
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1354,7 +1412,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 private_view(LoadState::Ready, people()[..3].to_vec(), AdminOp::default()),
                 Some(members()),
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1366,7 +1423,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 private_view(LoadState::Ready, Vec::new(), AdminOp::default()),
                 Some(members()),
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1387,7 +1443,6 @@ pub(crate) fn stories() -> Vec<Story> {
                 ),
                 Some(long_members()),
                 caps_owner(),
-                None,
                 w,
                 cx,
             )
@@ -1396,12 +1451,13 @@ pub(crate) fn stories() -> Vec<Story> {
             private_tab(
                 LoadState::Ready,
                 channels(),
-                private_view(LoadState::Ready, people()[..3].to_vec(), busy()),
+                private_view(
+                    LoadState::Ready,
+                    people()[..3].to_vec(),
+                    busy(K::AddPrivateMember, Some("u-5")),
+                ),
                 Some(members()),
                 caps_owner(),
-                Some(OpAction::AddPrivateMember {
-                    user_id: "u-5".into(),
-                }),
                 w,
                 cx,
             )
@@ -1413,13 +1469,14 @@ pub(crate) fn stories() -> Vec<Story> {
                 private_view(
                     LoadState::Ready,
                     people()[..3].to_vec(),
-                    erred("That user isn't a member of this community."),
+                    erred(
+                        K::AddPrivateMember,
+                        Some("u-5"),
+                        "That user isn't a member of this community.",
+                    ),
                 ),
                 Some(members()),
                 caps_owner(),
-                Some(OpAction::AddPrivateMember {
-                    user_id: "u-5".into(),
-                }),
                 w,
                 cx,
             )
@@ -1544,7 +1601,7 @@ pub(crate) fn stories() -> Vec<Story> {
                 cx,
                 |tab, window, cx| {
                     tab.open_editor(None, "night owls!", "", window, cx);
-                    tab.mark_sent(OpAction::CreateGroup, true);
+                    tab.set_tried(true);
                     tab.set_groups(
                         groups(LoadState::Ready, group_rows(), AdminOp::default()),
                         cx,
@@ -1560,12 +1617,16 @@ pub(crate) fn stories() -> Vec<Story> {
                 cx,
                 |tab, window, cx| {
                     tab.open_editor(None, "designers", "", window, cx);
-                    tab.mark_sent(OpAction::CreateGroup, true);
+                    tab.set_tried(true);
                     tab.set_groups(
                         groups(
                             LoadState::Ready,
                             group_rows(),
-                            erred("A mention group named designers already exists."),
+                            erred(
+                                K::CreateAliasGroup,
+                                None,
+                                "A mention group named designers already exists.",
+                            ),
                         ),
                         cx,
                     );
@@ -1623,7 +1684,7 @@ pub(crate) fn stories() -> Vec<Story> {
                 emoji(
                     LoadState::Ready,
                     emoji_rows(3),
-                    uploading("party.gif", 120_000, 200_000),
+                    uploading(K::AddCustomEmoji, None, "party.gif", 120_000, 200_000),
                 ),
                 caps_owner(),
                 w,
@@ -1635,7 +1696,6 @@ pub(crate) fn stories() -> Vec<Story> {
                         window,
                         cx,
                     );
-                    tab.mark_sent(OpAction::AddEmoji);
                 },
             )
         }),
@@ -1644,7 +1704,11 @@ pub(crate) fn stories() -> Vec<Story> {
                 emoji(
                     LoadState::Ready,
                     emoji_rows(3),
-                    erred("An emoji named :shipit: already exists."),
+                    erred(
+                        K::AddCustomEmoji,
+                        None,
+                        "An emoji named :shipit: already exists.",
+                    ),
                 ),
                 caps_owner(),
                 w,
@@ -1656,7 +1720,6 @@ pub(crate) fn stories() -> Vec<Story> {
                         window,
                         cx,
                     );
-                    tab.mark_sent(OpAction::AddEmoji);
                 },
             )
         }),
@@ -1743,14 +1806,10 @@ pub(crate) fn stories() -> Vec<Story> {
             sounds_tab(
                 sounds(LoadState::Ready, sound_rows(4)),
                 caps_owner(),
-                erred("That sound is in use."),
+                erred(K::DeleteSound, Some("s-1"), "That sound is in use."),
                 w,
                 cx,
-                |tab, _, _| {
-                    tab.mark_sent(OpAction::DeleteSound {
-                        sound_id: "s-1".into(),
-                    })
-                },
+                |_, _, _| {},
             )
         }),
         ("community-settings-sounds-add", |_, w, cx| {
@@ -1793,7 +1852,7 @@ pub(crate) fn stories() -> Vec<Story> {
             sounds_tab(
                 sounds(LoadState::Ready, sound_rows(4)),
                 caps_owner(),
-                uploading("applause.mp3", 250_000, 400_000),
+                uploading(K::AddSound, None, "applause.mp3", 250_000, 400_000),
                 w,
                 cx,
                 |tab, window, cx| {
@@ -1805,7 +1864,6 @@ pub(crate) fn stories() -> Vec<Story> {
                         window,
                         cx,
                     );
-                    tab.mark_sent(OpAction::AddSound);
                 },
             )
         }),
@@ -1813,7 +1871,11 @@ pub(crate) fn stories() -> Vec<Story> {
             sounds_tab(
                 sounds(LoadState::Ready, sound_rows(4)),
                 caps_owner(),
-                erred("This community already has the most sounds it can."),
+                erred(
+                    K::AddSound,
+                    None,
+                    "This community already has the most sounds it can.",
+                ),
                 w,
                 cx,
                 |tab, window, cx| {
@@ -1825,7 +1887,6 @@ pub(crate) fn stories() -> Vec<Story> {
                         window,
                         cx,
                     );
-                    tab.mark_sent(OpAction::AddSound);
                 },
             )
         }),
@@ -1917,14 +1978,17 @@ pub(crate) fn stories() -> Vec<Story> {
                 invites(
                     LoadState::Ready,
                     invite_rows(),
-                    erred("You need an instance role to create invites."),
+                    erred(
+                        K::CreateInvite,
+                        None,
+                        "You need an instance role to create invites.",
+                    ),
                 ),
                 caps_owner(),
                 w,
                 cx,
                 |tab, window, cx| {
                     tab.open_create("", ExpiryPreset::Day, true, window, cx);
-                    tab.mark_sent(OpAction::CreateInvite);
                 },
             )
         }),
@@ -1933,16 +1997,16 @@ pub(crate) fn stories() -> Vec<Story> {
                 invites(
                     LoadState::Ready,
                     invite_rows(),
-                    erred("Only the invite's creator can delete it."),
+                    erred(
+                        K::DeleteInvite,
+                        Some("aB3x9Q"),
+                        "Only the invite's creator can delete it.",
+                    ),
                 ),
                 caps_owner(),
                 w,
                 cx,
-                |tab, _, _| {
-                    tab.mark_sent(OpAction::DeleteInvite {
-                        code: "aB3x9Q".into(),
-                    })
-                },
+                |_, _, _| {},
             )
         }),
     ];

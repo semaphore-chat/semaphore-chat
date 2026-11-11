@@ -6,6 +6,7 @@ use super::*;
 use crate::dms::rig::{Rig, rig};
 use core::prelude::v1::test;
 use gpui_kit::TestAppContext;
+use semaphore_core::model::{AdminActionKind, AdminActionState};
 use semaphore_core::model::{
     AdminOp, ChannelDraft, ChannelKind, ChannelMove, ChannelPreset, ChannelRow, CommunityCaps,
     CommunityPatch, CommunitySettingsView, DraftFile, ErrorView, InviteDraft, InviteRow,
@@ -459,69 +460,104 @@ fn tabs_lock_without_their_permission() {
     assert_eq!(first_open_tab(&none), CommunityTab::Overview);
 }
 
-// ---- Which tab an op is about. ----
+// ---- Each change's own state. ----
 
-#[test]
-fn an_op_belongs_to_the_change_sent_last() {
-    let channels =
-        |a: &OpAction| matches!(a, OpAction::CreateChannel | OpAction::MoveChannel { .. });
-    let busy = AdminOp {
-        busy: true,
+fn entry(
+    kind: AdminActionKind,
+    target: Option<&str>,
+    busy: bool,
+    error_message: Option<&str>,
+) -> AdminActionState {
+    AdminActionState {
+        action: act(kind, target),
+        busy,
+        upload: None,
+        error: error_message.map(error),
+    }
+}
+
+fn op_of(actions: Vec<AdminActionState>) -> AdminOp {
+    AdminOp {
+        busy: actions.iter().any(|state| state.busy),
+        actions,
         ..AdminOp::default()
-    };
-    let failed = AdminOp {
-        error: Some(error("no")),
-        ..AdminOp::default()
-    };
-    assert_eq!(
-        op_about(&busy, Some(&OpAction::CreateChannel), channels),
-        Some(OpAction::CreateChannel)
-    );
-    assert_eq!(
-        op_about(&failed, Some(&OpAction::CreateChannel), channels),
-        Some(OpAction::CreateChannel)
-    );
-    assert_eq!(
-        op_about(&busy, Some(&OpAction::AddSound), channels),
-        None,
-        "another tab's"
-    );
-    assert_eq!(
-        op_about(
-            &AdminOp::default(),
-            Some(&OpAction::CreateChannel),
-            channels
-        ),
-        None,
-        "idle"
-    );
-    assert_eq!(op_about(&busy, None, channels), None, "nothing sent here");
+    }
 }
 
 #[test]
-fn a_change_ends_after_its_op_was_busy() {
-    let idle = AdminOp::default();
-    let busy = AdminOp {
-        busy: true,
-        ..AdminOp::default()
-    };
-    let failed = AdminOp {
-        error: Some(error("no")),
-        ..AdminOp::default()
-    };
-    let mut pending = Pending::new(OpAction::AddEmoji);
-    assert_eq!(pending.observe(&idle), Outcome::Waiting, "not started");
-    assert_eq!(pending.observe(&busy), Outcome::Waiting);
-    assert_eq!(pending.observe(&idle), Outcome::Succeeded);
-    let mut pending = Pending::new(OpAction::AddEmoji);
-    assert_eq!(pending.observe(&busy), Outcome::Waiting);
-    assert_eq!(pending.observe(&failed), Outcome::Failed);
-    let mut refused = Pending::new(OpAction::AddEmoji);
+fn each_change_reads_only_its_own_entry() {
+    use AdminActionKind::{DeleteChannel, MoveChannel};
+    let op = op_of(vec![
+        entry(MoveChannel, Some("a"), false, Some("can't move")),
+        entry(DeleteChannel, Some("b"), true, None),
+    ]);
+    let (move_a, delete_b) = (act(MoveChannel, Some("a")), act(DeleteChannel, Some("b")));
+    assert!(running(&op, &delete_b));
+    assert!(!running(&op, &move_a));
     assert_eq!(
-        refused.observe(&failed),
+        failure(&op, &move_a).map(|e| e.message.as_str()),
+        Some("can't move")
+    );
+    assert_eq!(failure(&op, &delete_b), None, "running, not failed");
+    assert_eq!(
+        failure(&op, &act(MoveChannel, Some("b"))),
+        None,
+        "another row"
+    );
+    assert!(!running(&op, &act(DeleteChannel, Some("a"))));
+    assert_eq!(running_of(&op, &[DeleteChannel]).count(), 1);
+    assert_eq!(running_of(&op, &[MoveChannel]).count(), 0);
+    assert_eq!(
+        failure_of(&op, &[MoveChannel, DeleteChannel]).map(|(action, _)| action.clone()),
+        Some(move_a)
+    );
+    assert_eq!(failure_of(&op, &[DeleteChannel]), None);
+    assert_eq!(failure_of(&AdminOp::default(), &[DeleteChannel]), None);
+}
+
+#[test]
+fn a_change_ends_with_its_own_entry() {
+    use AdminActionKind::{AddCustomEmoji, DeleteCustomEmoji};
+    let add = act(AddCustomEmoji, None);
+    let idle = AdminOp::default();
+    let running_add = op_of(vec![entry(AddCustomEmoji, None, true, None)]);
+    let failed_add = op_of(vec![entry(AddCustomEmoji, None, false, Some("no"))]);
+    let other = op_of(vec![entry(DeleteCustomEmoji, Some("e1"), true, None)]);
+
+    let mut pending = Pending::new(add.clone(), &idle);
+    assert_eq!(pending.observe(&idle), Outcome::Waiting, "not started");
+    assert_eq!(pending.observe(&running_add), Outcome::Waiting);
+    assert_eq!(
+        pending.observe(&other),
+        Outcome::Succeeded,
+        "its entry went; another runs"
+    );
+
+    let mut pending = Pending::new(add.clone(), &idle);
+    assert_eq!(
+        pending.observe(&other),
+        Outcome::Succeeded,
+        "never seen, but the op moved on"
+    );
+
+    let mut pending = Pending::new(add.clone(), &idle);
+    assert_eq!(pending.observe(&running_add), Outcome::Waiting);
+    assert_eq!(pending.observe(&failed_add), Outcome::Failed);
+
+    let mut refused = Pending::new(add.clone(), &idle);
+    assert_eq!(
+        refused.observe(&failed_add),
         Outcome::Failed,
         "refused before sending"
     );
+
+    // Sent again after a failure: the old failure isn't this one's until the op changes.
+    let mut again = Pending::new(add.clone(), &failed_add);
+    assert_eq!(again.observe(&failed_add), Outcome::Waiting);
+    assert_eq!(again.observe(&running_add), Outcome::Waiting);
+    assert_eq!(again.observe(&failed_add), Outcome::Failed);
+    let mut again = Pending::new(add, &failed_add);
+    assert_eq!(again.observe(&idle), Outcome::Succeeded);
 }
 
 // ---- The tabs in a window. ----
@@ -687,10 +723,12 @@ fn channels_move_within_their_group(cx: &mut TestAppContext) {
     rig.with(cx, |view, _, cx| {
         view.update(cx, |tab, cx| {
             tab.set_op(
-                AdminOp {
-                    busy: true,
-                    ..AdminOp::default()
-                },
+                op_of(vec![entry(
+                    AdminActionKind::MoveChannel,
+                    Some("general"),
+                    true,
+                    None,
+                )]),
                 cx,
             )
         })
@@ -717,17 +755,35 @@ fn creating_a_channel_closes_its_dialog_once_done(cx: &mut TestAppContext) {
             slowmode_seconds: 0,
         })]
     );
-    for op in [
-        AdminOp {
-            busy: true,
-            ..AdminOp::default()
-        },
-        AdminOp::default(),
-    ] {
-        rig.with(cx, |view, _, cx| {
-            view.update(cx, |tab, cx| tab.set_op(op, cx))
-        });
-    }
+    let create = |busy, message| {
+        op_of(vec![entry(
+            AdminActionKind::CreateChannel,
+            None,
+            busy,
+            message,
+        )])
+    };
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |tab, cx| tab.set_op(create(true, None), cx))
+    });
+    assert!(rig.has(cx, "channel-create-submit"), "open while it runs");
+    // Another row's move failing doesn't close or touch it.
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |tab, cx| {
+            let mut op = create(true, None);
+            op.actions.push(entry(
+                AdminActionKind::MoveChannel,
+                Some("staff"),
+                false,
+                Some("no"),
+            ));
+            tab.set_op(op, cx)
+        })
+    });
+    assert!(rig.has(cx, "channel-create-submit"));
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |tab, cx| tab.set_op(AdminOp::default(), cx))
+    });
     assert!(!rig.has(cx, "channel-create-submit"));
 }
 
@@ -743,10 +799,12 @@ fn a_failed_create_keeps_its_dialog_and_says_why(cx: &mut TestAppContext) {
     rig.with(cx, |view, _, cx| {
         view.update(cx, |tab, cx| {
             tab.set_op(
-                AdminOp {
-                    error: Some(error("taken")),
-                    ..AdminOp::default()
-                },
+                op_of(vec![entry(
+                    AdminActionKind::CreateChannel,
+                    None,
+                    false,
+                    Some("taken"),
+                )]),
                 cx,
             )
         })
@@ -833,6 +891,7 @@ fn members_rig(cx: &mut TestAppContext, caps: CommunityCaps) -> Rig<MembersTab, 
                         status: None,
                         online: false,
                         display_role: None,
+                        joined_at_ms: Some(1_793_491_200_000),
                     })
                     .collect(),
                 truncated: false,
@@ -900,10 +959,12 @@ fn search_waits_for_typing_to_stop_then_adds(cx: &mut TestAppContext) {
         }]
     );
     for op in [
-        AdminOp {
-            busy: true,
-            ..AdminOp::default()
-        },
+        op_of(vec![entry(
+            AdminActionKind::AddMember,
+            Some("nova"),
+            true,
+            None,
+        )]),
         AdminOp::default(),
     ] {
         rig.with(cx, |view, _, cx| {
@@ -1014,4 +1075,46 @@ fn the_shell_opens_the_first_tab_these_caps_allow(cx: &mut TestAppContext) {
         [CommunityShellEvent::TabChanged(CommunityTab::Members)]
     );
     assert!(rig.has(cx, "community-members"));
+}
+
+#[gpui_kit::test]
+fn overlapping_changes_show_on_their_own_rows(cx: &mut TestAppContext) {
+    let rig = channels_rig(cx, caps());
+    rig.with(cx, |view, _, cx| {
+        view.update(cx, |tab, cx| {
+            tab.set_op(
+                op_of(vec![
+                    entry(
+                        AdminActionKind::MoveChannel,
+                        Some("general"),
+                        false,
+                        Some("can't move"),
+                    ),
+                    entry(AdminActionKind::DeleteChannel, Some("lounge"), true, None),
+                ]),
+                cx,
+            )
+        })
+    });
+    assert!(
+        rig.has(cx, "channel-error-general"),
+        "the move's failure on its row"
+    );
+    assert!(
+        !rig.has(cx, "channel-error-lounge"),
+        "the running delete has no error"
+    );
+    assert!(!rig.has(cx, "channel-error-staff"));
+    assert!(rig.has(cx, "channel-busy-lounge"));
+    assert!(!rig.has(cx, "channel-busy-general"));
+    rig.click(cx, "channel-delete-lounge");
+    assert!(
+        !rig.has(cx, "channel-delete-confirm"),
+        "already being deleted"
+    );
+    rig.click(cx, "channel-delete-staff");
+    assert!(
+        rig.has(cx, "channel-delete-confirm"),
+        "other rows still delete"
+    );
 }

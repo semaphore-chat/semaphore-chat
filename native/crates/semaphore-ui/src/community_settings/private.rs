@@ -6,7 +6,7 @@ use super::common::{
     Confirm, card, empty_line, list, loading_rows, locked_note, page, row, server_error, user_line,
     who,
 };
-use super::rules::{OpAction, Outcome, Pending, date_label, needs, op_about};
+use super::rules::{Pending, act, date_label, failure_of, needs, running};
 use crate::kit::{
     Alert, Button, ButtonSize, Severity, TextField, Variant, spacing, text, text_state,
 };
@@ -16,7 +16,8 @@ use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    ChannelRow, CommunityCaps, LoadState, MemberList, PrivateMembersView, UserView,
+    AdminAction, AdminActionKind, ChannelRow, CommunityCaps, LoadState, MemberList,
+    PrivateMembersView, UserView,
 };
 use semaphore_design::Icon as DesignIcon;
 
@@ -40,8 +41,7 @@ pub struct PrivateChannelsTab {
     view: PrivateMembersView,
     community: Option<MemberList>,
     caps: CommunityCaps,
-    last: Option<OpAction>,
-    pending: Option<Pending>,
+    pending: Vec<Pending>,
     filter: Entity<InputState>,
     removing: Option<UserView>,
     _subscriptions: Vec<Subscription>,
@@ -60,8 +60,7 @@ impl PrivateChannelsTab {
             view: PrivateMembersView::default(),
             community: None,
             caps: CommunityCaps::default(),
-            last: None,
-            pending: None,
+            pending: Vec::new(),
             filter,
             removing: None,
             _subscriptions,
@@ -100,11 +99,8 @@ impl PrivateChannelsTab {
 
     /// `Core::private_members(channel_id)` for the picked channel.
     pub fn set_view(&mut self, view: PrivateMembersView, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut()
-            && pending.observe(&view.op) != Outcome::Waiting
-        {
-            self.pending = None;
-        }
+        self.pending
+            .retain_mut(|pending| pending.observe(&view.op) == super::rules::Outcome::Waiting);
         self.view = view;
         cx.notify();
     }
@@ -113,13 +109,6 @@ impl PrivateChannelsTab {
     pub fn set_members(&mut self, members: Option<MemberList>, cx: &mut Context<Self>) {
         self.community = members;
         cx.notify();
-    }
-
-    /// As if `action` was sent: for stories and tests.
-    #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction) {
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
     }
 
     pub fn selected(&self) -> Option<&str> {
@@ -139,15 +128,14 @@ impl PrivateChannelsTab {
         cx.notify();
     }
 
-    fn send(&mut self, action: OpAction, event: PrivateChannelsEvent, cx: &mut Context<Self>) {
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
+    fn send(&mut self, action: AdminAction, event: PrivateChannelsEvent, cx: &mut Context<Self>) {
+        self.pending.push(Pending::new(action, &self.view.op));
         cx.emit(event);
         cx.notify();
     }
 
-    fn busy_with(&self) -> Option<OpAction> {
-        op_about(&self.view.op, self.last.as_ref(), |_| true).filter(|_| self.view.op.busy)
+    fn running(&self, kind: AdminActionKind, user_id: &str) -> bool {
+        running(&self.view.op, &act(kind, Some(user_id)))
     }
 
     fn picker(&self, cx: &mut Context<Self>) -> Div {
@@ -187,10 +175,6 @@ impl PrivateChannelsTab {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let sem = cx.sem().clone();
-        let removing = match self.busy_with() {
-            Some(OpAction::RemovePrivateMember { user_id }) => Some(user_id),
-            _ => None,
-        };
         let locked = (!self.caps.manage_private_members).then(|| needs("Remove members"));
         let body: AnyElement = match &self.view.state {
             LoadState::Loading => {
@@ -213,7 +197,7 @@ impl PrivateChannelsTab {
                     .iter()
                     .map(|member| {
                         let user = member.user.clone();
-                        let busy = removing.as_deref() == Some(user.id.as_str());
+                        let busy = self.running(AdminActionKind::RemovePrivateMember, &user.id);
                         row(
                             SharedString::from(format!("private-member-{}", user.id)),
                             who(&user),
@@ -272,10 +256,6 @@ impl PrivateChannelsTab {
             )
             .into_any_element();
         }
-        let adding = match self.busy_with() {
-            Some(OpAction::AddPrivateMember { user_id }) => Some(user_id),
-            _ => None,
-        };
         let body: AnyElement = match &self.community {
             None => loading_rows("private-add-loading", "Loading community members", 3),
             Some(list_of) => {
@@ -304,7 +284,7 @@ impl PrivateChannelsTab {
                     .iter()
                     .map(|user| {
                         let id = user.id.clone();
-                        let busy = adding.as_deref() == Some(user.id.as_str());
+                        let busy = self.running(AdminActionKind::AddPrivateMember, &user.id);
                         let channel_id = channel.id.clone();
                         row(
                             SharedString::from(format!("private-candidate-{id}")),
@@ -318,12 +298,9 @@ impl PrivateChannelsTab {
                                 .size(ButtonSize::Small)
                                 .start_icon(DesignIcon::PersonAdd)
                                 .loading(busy)
-                                .disabled(adding.is_some() && !busy)
                                 .on_click(cx.listener(move |tab, _, _, cx| {
                                     tab.send(
-                                        OpAction::AddPrivateMember {
-                                            user_id: id.clone(),
-                                        },
+                                        act(AdminActionKind::AddPrivateMember, Some(&id)),
                                         PrivateChannelsEvent::Add {
                                             channel_id: channel_id.clone(),
                                             user_id: id.clone(),
@@ -383,8 +360,14 @@ impl Render for PrivateChannelsTab {
             .into_any_element(),
             (LoadState::Ready, None) => self.picker(cx).into_any_element(),
             (LoadState::Ready, Some(channel)) => {
-                let error = op_about(&self.view.op, self.last.as_ref(), |_| true)
-                    .and_then(|_| server_error(self.view.op.error.as_ref()));
+                let error = failure_of(
+                    &self.view.op,
+                    &[
+                        AdminActionKind::AddPrivateMember,
+                        AdminActionKind::RemovePrivateMember,
+                    ],
+                )
+                .and_then(|(_, error)| server_error(Some(error)));
                 let picker = self.picker(cx);
                 let members = self.members_card(&channel, super::common::phone(window), cx);
                 let add = self.add_card(&channel, cx);
@@ -427,7 +410,7 @@ impl Render for PrivateChannelsTab {
                             .update(cx, |tab, cx| {
                                 tab.removing = None;
                                 tab.send(
-                                    OpAction::RemovePrivateMember { user_id: user_id.clone() },
+                                    act(AdminActionKind::RemovePrivateMember, Some(&user_id)),
                                     PrivateChannelsEvent::Remove {
                                         channel_id: channel_id.clone(),
                                         user_id: user_id.clone(),
