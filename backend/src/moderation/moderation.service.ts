@@ -212,8 +212,9 @@ export class ModerationService {
       banPayload,
     );
 
-    // Remove user's sockets from community rooms
-    this.eventEmitter.emit(RoomEvents.MODERATION_USER_BANNED, {
+    // Remove user's sockets from community rooms before the community-wide
+    // event, so the banned user cannot receive it a second time.
+    await this.eventEmitter.emitAsync(RoomEvents.MODERATION_USER_BANNED, {
       userId,
       communityId,
     });
@@ -401,8 +402,9 @@ export class ModerationService {
       kickPayload,
     );
 
-    // Remove user's sockets from community rooms
-    this.eventEmitter.emit(RoomEvents.MODERATION_USER_KICKED, {
+    // Remove user's sockets from community rooms before the community-wide
+    // event, so the kicked user cannot receive it a second time.
+    await this.eventEmitter.emitAsync(RoomEvents.MODERATION_USER_KICKED, {
       userId,
       communityId,
     });

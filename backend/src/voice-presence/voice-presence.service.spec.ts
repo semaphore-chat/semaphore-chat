@@ -24,6 +24,19 @@ describe('VoicePresenceService', () => {
     exec: jest.fn().mockResolvedValue([]),
   };
 
+  // DM joins use MULTI: SET, SADD members, SADD user DMs, SCARD members
+  const mockMulti = {
+    set: jest.fn().mockReturnThis(),
+    sadd: jest.fn().mockReturnThis(),
+    scard: jest.fn().mockReturnThis(),
+    exec: jest.fn().mockResolvedValue([
+      [null, 'OK'],
+      [null, 1],
+      [null, 1],
+      [null, 1],
+    ]),
+  };
+
   const mockRedis = {
     get: jest.fn(),
     set: jest.fn(),
@@ -32,6 +45,7 @@ describe('VoicePresenceService', () => {
     mget: jest.fn(),
     srem: jest.fn(),
     pipeline: jest.fn(() => mockPipeline),
+    multi: jest.fn(() => mockMulti),
   };
 
   beforeEach(async () => {
@@ -280,6 +294,27 @@ describe('VoicePresenceService', () => {
       expect(result[1].id).toBe('user-2');
     });
 
+    it('should strip sid and send joinedAt as an ISO string like the socket payload', async () => {
+      const channelId = 'channel-wire';
+
+      mockRedis.smembers.mockResolvedValue(['user-1']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'user-1',
+          username: 'user1',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+          sid: 'LK_internal',
+        }),
+      ]);
+
+      const result = await service.getChannelPresence(channelId);
+
+      expect(result[0]).not.toHaveProperty('sid');
+      expect(result[0].joinedAt).toBe('2024-01-01T10:00:00.000Z');
+    });
+
     it('should return empty array when no users in channel', async () => {
       const channelId = 'empty-channel';
 
@@ -476,8 +511,8 @@ describe('VoicePresenceService', () => {
         where: { id: userId },
         select: PUBLIC_USER_SELECT,
       });
-      expect(mockRedis.pipeline).toHaveBeenCalled();
-      expect(mockPipeline.set).toHaveBeenCalledWith(
+      expect(mockRedis.multi).toHaveBeenCalled();
+      expect(mockMulti.set).toHaveBeenCalledWith(
         expect.stringContaining(
           `dm_voice_presence:user:${dmGroupId}:${userId}`,
         ),
@@ -885,18 +920,16 @@ describe('VoicePresenceService', () => {
       // User has no existing presence entry
       mockRedis.get.mockResolvedValue(null);
       mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
-      // No one else in the call yet (isFirstUser check)
-      mockRedis.smembers.mockResolvedValue([]);
 
       await service.handleWebhookParticipantJoined(dmGroupId, mockUser.id);
 
-      expect(mockPipeline.set).toHaveBeenCalledWith(
+      expect(mockMulti.set).toHaveBeenCalledWith(
         `dm_voice_presence:user:${dmGroupId}:${mockUser.id}`,
         expect.any(String),
         'EX',
         90,
       );
-      expect(mockPipeline.sadd).toHaveBeenCalledWith(
+      expect(mockMulti.sadd).toHaveBeenCalledWith(
         `dm_voice_presence:dm:${dmGroupId}:members`,
         mockUser.id,
       );
@@ -908,7 +941,7 @@ describe('VoicePresenceService', () => {
       );
 
       // Round-trip: feed the written payload back through the read path
-      const writtenJson = mockPipeline.set.mock.calls[0][1] as string;
+      const writtenJson = mockMulti.set.mock.calls[0][1] as string;
       mockRedis.smembers.mockResolvedValue([mockUser.id]);
       mockRedis.mget.mockResolvedValue([writtenJson]);
 
@@ -919,6 +952,104 @@ describe('VoicePresenceService', () => {
         id: mockUser.id,
         username: mockUser.username,
       });
+    });
+
+    it('announces the DM call only once when two users join at the same time', async () => {
+      const dmGroupId = 'dm-race';
+      const users: Record<string, typeof mockUser> = {
+        'ghost-a': { ...mockUser, id: 'ghost-a', username: 'ghosta' },
+        'ghost-b': { ...mockUser, id: 'ghost-b', username: 'ghostb' },
+      };
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(null);
+      // Pre-fix code decided "first" from a separate SMEMBERS read, so both
+      // joins would see this empty set.
+      mockRedis.smembers.mockResolvedValue([]);
+      mockDatabaseService.user.findUnique.mockImplementation(
+        ({ where }: { where: { id: string } }) =>
+          Promise.resolve(users[where.id]),
+      );
+
+      // A real transaction: each join's SADD reply and SCARD run together,
+      // so the second join sees the first one's member.
+      const members = new Set<string>();
+      mockRedis.multi.mockImplementation(() => {
+        let ops: Array<() => [null, unknown]> = [];
+        const chain = {
+          set: jest.fn(),
+          sadd: jest.fn(),
+          scard: jest.fn(),
+          exec: jest.fn(),
+        };
+        chain.set.mockImplementation(() => {
+          ops.push(() => [null, 'OK']);
+          return chain;
+        });
+        chain.sadd.mockImplementation((key: string, member: string) => {
+          ops.push(() => {
+            // Only the members set is counted; the user-to-DMs set is not.
+            if (!key.endsWith(':members')) return [null, 1];
+            const added = members.has(member) ? 0 : 1;
+            members.add(member);
+            return [null, added];
+          });
+          return chain;
+        });
+        chain.scard.mockImplementation(() => {
+          ops.push(() => [null, members.size]);
+          return chain;
+        });
+        chain.exec.mockImplementation(() => {
+          const results = ops.map((op) => op());
+          ops = [];
+          return Promise.resolve(results);
+        });
+        return chain;
+      });
+
+      await Promise.all([
+        service.handleWebhookParticipantJoined(dmGroupId, 'ghost-a'),
+        service.handleWebhookParticipantJoined(dmGroupId, 'ghost-b'),
+      ]);
+
+      const started = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) => event === ServerEvents.DM_VOICE_CALL_STARTED,
+      );
+      const joined = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) => event === ServerEvents.DM_VOICE_USER_JOINED,
+      );
+      expect(started).toHaveLength(1);
+      expect(joined).toHaveLength(1);
+
+      mockRedis.multi.mockImplementation(() => mockMulti);
+    });
+
+    it('announces nothing when a write inside the DM join transaction fails', async () => {
+      const dmGroupId = 'dm-write-fails';
+      mockDatabaseService.directMessageGroup.findUnique.mockResolvedValue({
+        id: dmGroupId,
+      });
+      mockRedis.get.mockResolvedValue(null);
+      mockDatabaseService.user.findUnique.mockResolvedValue(mockUser);
+      // EXEC resolves, but one command inside it reports an error.
+      mockMulti.exec.mockResolvedValueOnce([
+        [null, 'OK'],
+        [new Error('WRONGTYPE'), null],
+        [null, 1],
+        [null, 1],
+      ]);
+      websocketService.sendToRoom.mockClear();
+
+      await service.handleWebhookParticipantJoined(dmGroupId, mockUser.id);
+
+      const announced = websocketService.sendToRoom.mock.calls.filter(
+        ([, event]) =>
+          event === ServerEvents.DM_VOICE_CALL_STARTED ||
+          event === ServerEvents.DM_VOICE_USER_JOINED,
+      );
+      expect(announced).toHaveLength(0);
     });
 
     it('participant_left for a DM room removes the presence entry', async () => {
@@ -1149,6 +1280,27 @@ describe('VoicePresenceService', () => {
       expect(result).toHaveLength(2);
       expect(result[0].id).toBe('user-1');
       expect(result[1].id).toBe('user-2');
+    });
+
+    it('should strip sid and send joinedAt as an ISO string like the socket payload', async () => {
+      const dmGroupId = 'dm-wire';
+
+      mockRedis.smembers.mockResolvedValue(['user-1']);
+      mockRedis.mget.mockResolvedValue([
+        JSON.stringify({
+          id: 'user-1',
+          username: 'user1',
+          joinedAt: '2024-01-01T10:00:00.000Z',
+          isDeafened: false,
+          isServerMuted: false,
+          sid: 'LK_internal',
+        }),
+      ]);
+
+      const result = await service.getDmPresence(dmGroupId);
+
+      expect(result[0]).not.toHaveProperty('sid');
+      expect(result[0].joinedAt).toBe('2024-01-01T10:00:00.000Z');
     });
 
     it('should return empty array when no users in DM call', async () => {

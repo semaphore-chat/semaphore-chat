@@ -267,6 +267,16 @@ describe('ModerationService', () => {
         callback(mockTx),
       );
 
+      const order: string[] = [];
+      websocketService.sendToRoom.mockImplementation((...args) => {
+        order.push(args[0]);
+        return true;
+      });
+      eventEmitter.emitAsync.mockImplementation((event) => {
+        order.push(String(event));
+        return Promise.resolve([]);
+      });
+
       await service.banUser(communityId, userId, moderatorId, 'spam');
 
       expect(mockTx.communityBan.upsert).toHaveBeenCalled();
@@ -282,7 +292,14 @@ describe('ModerationService', () => {
           }),
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
+      // The room removal is awaited before the community-wide emit, so the
+      // banned user cannot receive USER_BANNED twice.
+      expect(order).toEqual([
+        RoomName.user(userId),
+        RoomEvents.MODERATION_USER_BANNED,
+        RoomName.community(communityId),
+      ]);
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
         RoomEvents.MODERATION_USER_BANNED,
         { userId, communityId },
       );
@@ -538,6 +555,16 @@ describe('ModerationService', () => {
         callback(mockTx),
       );
 
+      const order: string[] = [];
+      websocketService.sendToRoom.mockImplementation((...args) => {
+        order.push(args[0]);
+        return true;
+      });
+      eventEmitter.emitAsync.mockImplementation((event) => {
+        order.push(String(event));
+        return Promise.resolve([]);
+      });
+
       await service.kickUser(
         communityId,
         userId,
@@ -557,7 +584,14 @@ describe('ModerationService', () => {
           }),
         }),
       );
-      expect(eventEmitter.emit).toHaveBeenCalledWith(
+      // The room removal is awaited before the community-wide emit, so the
+      // kicked user cannot receive USER_KICKED twice.
+      expect(order).toEqual([
+        RoomName.user(userId),
+        RoomEvents.MODERATION_USER_KICKED,
+        RoomName.community(communityId),
+      ]);
+      expect(eventEmitter.emitAsync).toHaveBeenCalledWith(
         RoomEvents.MODERATION_USER_KICKED,
         { userId, communityId },
       );

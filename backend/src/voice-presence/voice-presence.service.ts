@@ -221,7 +221,7 @@ export class VoicePresenceService {
   /**
    * Get all users currently in a voice channel
    */
-  async getChannelPresence(channelId: string): Promise<VoicePresenceUser[]> {
+  async getChannelPresence(channelId: string): Promise<VoicePresenceUserDto[]> {
     try {
       const channelMembersKey = `${this.VOICE_PRESENCE_CHANNEL_MEMBERS_PREFIX}:${channelId}:members`;
 
@@ -262,11 +262,14 @@ export class VoicePresenceService {
         }
       }
 
-      // Sort by join time
-      return users.sort(
-        (a, b) =>
-          new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
-      );
+      // Sort by join time, then drop internal fields (sid) and normalise
+      // joinedAt the same way the socket payload does.
+      return users
+        .sort(
+          (a, b) =>
+            new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
+        )
+        .map(toWireVoiceUser);
     } catch (error) {
       this.logger.error(
         `Failed to get presence for voice channel ${channelId}`,
@@ -669,28 +672,36 @@ export class VoicePresenceService {
     const dmMembersKey = `${this.DM_VOICE_PRESENCE_MEMBERS_PREFIX}:${dmGroupId}:members`;
     const userDmsKey = `${this.DM_VOICE_PRESENCE_USER_DMS_PREFIX}:${userId}`;
 
-    // Check if this is the first user joining
-    const existingMembers = await this.redis.smembers(dmMembersKey);
-    const isFirstUser = existingMembers.length === 0;
+    // Store the presence, add the member and read the resulting count in one
+    // transaction. Reading the set separately (before the write) let two
+    // simultaneous joins both see an empty set and both announce the call.
+    const results = await this.redis
+      .multi()
+      .set(
+        userDataKey,
+        JSON.stringify(voiceUser),
+        'EX',
+        this.VOICE_PRESENCE_TTL,
+      )
+      .sadd(dmMembersKey, userId)
+      .sadd(userDmsKey, dmGroupId)
+      .scard(dmMembersKey)
+      .exec();
 
-    // Use pipeline for atomic operations
-    const pipeline = this.redis.pipeline();
+    // EXEC answers null when the transaction is discarded, and a per-command
+    // error tuple when one write fails: either way nothing is announced.
+    const failed = results?.find(([error]) => error);
+    if (!results || failed) {
+      this.logger.warn(
+        `Could not register DM voice presence for ${userId} in ${dmGroupId}`,
+        failed?.[0],
+      );
+      return;
+    }
 
-    // Store user data with TTL
-    pipeline.set(
-      userDataKey,
-      JSON.stringify(voiceUser),
-      'EX',
-      this.VOICE_PRESENCE_TTL,
-    );
-
-    // Add user to DM members set
-    pipeline.sadd(dmMembersKey, userId);
-
-    // Add DM to user's DMs set
-    pipeline.sadd(userDmsKey, dmGroupId);
-
-    await pipeline.exec();
+    const addedToCall = results[1]?.[1] === 1;
+    const memberCount = results[3]?.[1];
+    const isFirstUser = addedToCall && memberCount === 1;
 
     if (isFirstUser) {
       // First user joining - emit "call started" event
@@ -937,7 +948,7 @@ export class VoicePresenceService {
   /**
    * Get all users currently in a DM voice call
    */
-  async getDmPresence(dmGroupId: string): Promise<VoicePresenceUser[]> {
+  async getDmPresence(dmGroupId: string): Promise<VoicePresenceUserDto[]> {
     try {
       const dmMembersKey = `${this.DM_VOICE_PRESENCE_MEMBERS_PREFIX}:${dmGroupId}:members`;
 
@@ -978,11 +989,14 @@ export class VoicePresenceService {
         }
       }
 
-      // Sort by join time
-      return users.sort(
-        (a, b) =>
-          new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
-      );
+      // Sort by join time, then drop internal fields (sid) and normalise
+      // joinedAt the same way the socket payload does.
+      return users
+        .sort(
+          (a, b) =>
+            new Date(a.joinedAt).getTime() - new Date(b.joinedAt).getTime(),
+        )
+        .map(toWireVoiceUser);
     } catch (error) {
       this.logger.error(
         `Failed to get presence for DM voice call ${dmGroupId}`,

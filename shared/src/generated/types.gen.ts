@@ -199,11 +199,14 @@ export type MessageReactionsDto = {
 };
 
 export type VoicePresenceUserDto = {
+    /**
+     * ISO-8601 timestamp, as sent on the socket.
+     */
+    joinedAt: string;
     id: string;
     username: string;
     displayName?: string;
     avatarUrl?: string;
-    joinedAt: string;
     isDeafened: boolean;
     isServerMuted: boolean;
 };
