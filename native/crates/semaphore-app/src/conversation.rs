@@ -240,6 +240,13 @@ impl ConversationPane {
             self.apply_availability(window, cx);
             self.apply_permissions(cx);
         }
+        // The composer outlives the conversation: it takes this one's name ("Message #random").
+        let placeholder = self.placeholder();
+        if let Some(composer) = &self.composer {
+            composer.update(cx, |composer, cx| {
+                composer.set_placeholder(placeholder, window, cx)
+            });
+        }
     }
 
     /// The channel on screen, if a channel is.

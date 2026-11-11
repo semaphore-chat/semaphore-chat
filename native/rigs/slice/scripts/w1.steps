@@ -183,6 +183,8 @@ wait idle
 click-text "the lfg post" "/#/community"
 wait core channel cc-lfg
 wait core text "need one more"
+# The composer outlives the switch, and takes the new channel's name.
+wait core composer-placeholder "Message #lfg"
 expect core no-notice
 wait idle
 shot 17-link-opened

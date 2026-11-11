@@ -39,7 +39,7 @@
 //! `reaction S EMOJI COUNT` (with mine among them), `thread-rows >= N`, `thread-sent S`,
 //! `subscribed yes|no` (the open thread), `unread-after S` (the divider follows that row),
 //! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
-//! `search-hits >= N`, `element ID`, `no-element ID`.
+//! `composer-placeholder S` (exactly), `search-hits >= N`, `element ID`, `no-element ID`.
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestWindowExt as _;
@@ -202,6 +202,7 @@ enum Condition {
     NoNotice,
     PinnedCount(u32),
     ComposerText(String),
+    ComposerPlaceholder(String),
     SearchHits(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
@@ -346,6 +347,7 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["no-notice"] => Condition::NoNotice,
         ["pinned-count", count] => Condition::PinnedCount(number(count)? as u32),
         ["composer-text", text] => Condition::ComposerText((*text).into()),
+        ["composer-placeholder", text] => Condition::ComposerPlaceholder((*text).into()),
         ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
         ["element", id] => Condition::Element((*id).into(), true),
         ["no-element", id] => Condition::Element((*id).into(), false),
@@ -790,6 +792,7 @@ impl Rig {
             | Condition::NoNotice
             | Condition::PinnedCount(_)
             | Condition::ComposerText(_)
+            | Condition::ComposerPlaceholder(_)
             | Condition::SearchHits(_)
             | Condition::Element(..) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
@@ -903,6 +906,9 @@ impl Rig {
                 Condition::ComposerText(text) => pane
                     .composer()
                     .is_some_and(|composer| composer.read(cx).value(cx).contains(text.as_str())),
+                Condition::ComposerPlaceholder(text) => pane
+                    .composer()
+                    .is_some_and(|composer| composer.read(cx).placeholder() == text.as_str()),
                 Condition::SearchHits(count) => pane
                     .search_panel()
                     .is_some_and(|panel| panel.read(cx).hits().len() >= *count),
