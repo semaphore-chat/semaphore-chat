@@ -11,9 +11,16 @@
 //! - **Anything else:** unavailable.
 //!
 //! **Threads.** Both run on a thread of this module's own, which owns the hold: [`KeepAwake::set`]
-//! hands it the change and waits (bounded) for the answer. So zbus's `block_on` (async-io; see
-//! `scripts/check-zbus-tokio.sh`) never runs on the caller's thread, which may be a Tokio worker
-//! ("Cannot start a runtime from within a runtime").
+//! hands it the change and waits for the answer for at most [`ANSWER_WITHIN`]. So zbus's
+//! `block_on` (async-io; see `scripts/check-zbus-tokio.sh`) never runs on the caller's thread,
+//! which may be a Tokio worker ("Cannot start a runtime from within a runtime"), and the caller
+//! is never held up long.
+//!
+//! **Bounds.** logind gets [`LOGIND_WITHIN`] to answer, on a helper thread; past that the attempt
+//! fails, and an inhibitor that comes later is closed at once. An answer slower than
+//! `ANSWER_WITHIN` isn't waited for: `set` returns `Ok` and the outcome is logged (the trait is
+//! synchronous, so a late refusal has nowhere else to go). Dropping it waits [`DROP_WITHIN`] for the
+//! thread to let go, then leaves it to finish alone, so app shutdown never hangs on the bus.
 
 use semaphore_core::platform::{CoreError, KeepAwake};
 use std::sync::Mutex;
@@ -23,7 +30,11 @@ use std::time::Duration;
 
 /// How long `set` waits for the system to answer. logind answers in milliseconds; a hung bus
 /// mustn't hang the caller.
-const ANSWER_WITHIN: Duration = Duration::from_secs(5);
+pub const ANSWER_WITHIN: Duration = Duration::from_millis(250);
+/// How long logind gets for an inhibitor.
+pub const LOGIND_WITHIN: Duration = Duration::from_secs(2);
+/// How long dropping waits for the hold to be let go.
+pub const DROP_WITHIN: Duration = Duration::from_millis(500);
 
 /// Takes the hold on the platform. Called on the keep-awake thread only; the returned value is the
 /// hold, and dropping it (on that thread too) lets the system sleep again.
@@ -37,6 +48,8 @@ enum Command {
 
 struct Worker {
     commands: mpsc::Sender<Command>,
+    /// Closed when the thread has ended (its hold dropped).
+    ended: mpsc::Receiver<()>,
     thread: JoinHandle<()>,
 }
 
@@ -92,14 +105,19 @@ impl DesktopKeepAwake {
             });
         };
         let (commands, receiver) = mpsc::channel();
+        let (ended_tx, ended) = mpsc::channel::<()>();
         let thread = std::thread::Builder::new()
             .name("semaphore-keep-awake".into())
-            .spawn(move || run(inhibitor, receiver))
+            .spawn(move || {
+                run(inhibitor, receiver);
+                drop(ended_tx);
+            })
             .map_err(|error| CoreError::Failed {
                 message: format!("couldn't start the keep-awake thread: {error}"),
             })?;
         *worker = Some(Worker {
             commands: commands.clone(),
+            ended,
             thread,
         });
         Ok(commands)
@@ -118,9 +136,31 @@ fn run(mut inhibitor: Box<dyn Inhibit>, commands: mpsc::Receiver<Command>) {
                 Ok(())
             }
         };
-        let _ = answer.send(result);
+        // The caller stops waiting after `ANSWER_WITHIN`; then only the log hears how it went.
+        if let Err(mpsc::SendError(Err(error))) = answer.send(result) {
+            log::warn!("keeping the system awake: {error}");
+        }
     }
     drop(hold);
+}
+
+/// Runs `call` on a thread of its own and waits at most `limit` for it. A result that comes later
+/// is dropped (an inhibitor's descriptor is closed with it).
+#[cfg_attr(not(any(target_os = "linux", test)), allow(dead_code))]
+fn bounded<T: Send + 'static>(
+    limit: Duration,
+    call: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, String> {
+    let (done, result) = mpsc::channel();
+    std::thread::Builder::new()
+        .name("semaphore-keep-awake-call".into())
+        .spawn(move || {
+            let _ = done.send(call());
+        })
+        .map_err(|error| format!("couldn't start a thread: {error}"))?;
+    result
+        .recv_timeout(limit)
+        .unwrap_or_else(|_| Err(format!("no answer within {limit:?}")))
 }
 
 impl KeepAwake for DesktopKeepAwake {
@@ -140,25 +180,37 @@ impl KeepAwake for DesktopKeepAwake {
             .map_err(|_| gone())?;
         match answered.recv_timeout(ANSWER_WITHIN) {
             Ok(result) => result.map_err(|message| CoreError::Failed { message }),
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(CoreError::Failed {
-                message: "the system didn't answer in time".into(),
-            }),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                log::info!("keeping the system awake: still asking; a refusal will be logged");
+                Ok(())
+            }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(gone()),
         }
     }
 }
 
 impl Drop for DesktopKeepAwake {
-    /// Lets the system sleep again before returning: the thread drops its hold and ends.
+    /// Lets the system sleep again: the thread drops its hold and ends. Waits `DROP_WITHIN` for
+    /// that, and no longer: a thread still waiting on the system finishes alone.
     fn drop(&mut self) {
         let worker = self
             .worker
             .get_mut()
             .unwrap_or_else(|p| p.into_inner())
             .take();
-        if let Some(Worker { commands, thread }) = worker {
+        if let Some(Worker {
+            commands,
+            ended,
+            thread,
+        }) = worker
+        {
             drop(commands);
-            let _ = thread.join();
+            match ended.recv_timeout(DROP_WITHIN) {
+                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                    let _ = thread.join();
+                }
+                _ => log::warn!("the keep-awake thread is still busy; leaving it to finish"),
+            }
         }
     }
 }
@@ -175,9 +227,11 @@ mod platform {
 
     impl Inhibit for Logind {
         fn acquire(&mut self) -> Result<Box<dyn Send>, String> {
-            zbus::block_on(inhibit_idle())
-                .map(|fd| Box::new(fd) as Box<dyn Send>)
-                .map_err(|error| format!("logind refused to hold off sleep: {error}"))
+            super::bounded(super::LOGIND_WITHIN, || {
+                zbus::block_on(inhibit_idle())
+                    .map_err(|error| format!("logind refused to hold off sleep: {error}"))
+            })
+            .map(|fd| Box::new(fd) as Box<dyn Send>)
         }
     }
 
@@ -332,6 +386,55 @@ mod tests {
         let keep = DesktopKeepAwake::with_inhibitor_opt(None);
         keep.set(false).unwrap();
         assert!(matches!(keep.set(true), Err(CoreError::Unavailable { .. })));
+    }
+
+    /// A system that never answers, until the test lets it go.
+    struct Hung(mpsc::Receiver<()>);
+
+    impl Inhibit for Hung {
+        fn acquire(&mut self) -> Result<Box<dyn Send>, String> {
+            let _ = self.0.recv();
+            Err("let go".into())
+        }
+    }
+
+    #[test]
+    fn a_hung_system_holds_up_neither_set_nor_drop() {
+        let (release, hung) = mpsc::channel();
+        let keep = DesktopKeepAwake::with_inhibitor(Hung(hung));
+        let started = std::time::Instant::now();
+        let _ = keep.set(true);
+        let waited = started.elapsed();
+        let (dropped_tx, dropped) = mpsc::channel();
+        std::thread::spawn(move || {
+            drop(keep);
+            let _ = dropped_tx.send(());
+        });
+        let dropped = dropped.recv_timeout(Duration::from_secs(2));
+        drop(release);
+        assert!(waited < Duration::from_secs(1), "set waited {waited:?}");
+        assert!(dropped.is_ok(), "dropping it hung");
+    }
+
+    #[test]
+    fn a_late_answer_is_given_up_on_and_let_go() {
+        let released = Arc::new(AtomicUsize::new(0));
+        let (answer, wait) = mpsc::channel::<()>();
+        let hold = released.clone();
+        let result = bounded(Duration::from_millis(50), move || {
+            let _ = wait.recv();
+            Ok(CountingHold(hold))
+        });
+        assert!(result.is_err());
+        drop(answer);
+        let started = std::time::Instant::now();
+        while released.load(Ordering::SeqCst) == 0 {
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "the late hold was kept"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 
     #[test]

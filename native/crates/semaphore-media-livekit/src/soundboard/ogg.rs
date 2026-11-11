@@ -191,8 +191,25 @@ pub(crate) mod tests {
             (pcm.sample_rate, pcm.channels, pcm.samples.len()),
             (48_000, 1, 24_000)
         );
+        // Stereo decodes straight to mono.
         let pcm = decode(&ogg_opus(2)).unwrap();
-        assert_eq!((pcm.channels, pcm.samples.len()), (2, 48_000));
+        assert_eq!((pcm.channels, pcm.samples.len()), (1, 24_000));
+    }
+
+    #[test]
+    fn a_tiny_file_cant_decode_to_minutes() {
+        // Silence packs into a few bytes per 20 ms: a small file that would decode for long. A
+        // soundboard sound needs 30 s at most.
+        let seconds = 31;
+        let audio = encode::packets(&vec![0i16; 48_000 * seconds], 1);
+        let mut packets = vec![encode::head(1, 0), b"OpusTags\0\0\0\0\0\0\0\0".to_vec()];
+        let mut granules = vec![0, 0];
+        for (i, packet) in audio.into_iter().enumerate() {
+            packets.push(packet);
+            granules.push(960 * (i as i64 + 1));
+        }
+        let file = ogg(&packets, &granules);
+        assert!(matches!(decode(&file), Err(DecodeError::TooLong)));
     }
 
     #[test]

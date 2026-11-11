@@ -147,13 +147,21 @@ fn samples(format: &Format, data: &[u8]) -> Result<Pcm, DecodeError> {
         return Err(DecodeError::TooLong);
     }
     let width = usize::from(format.bits / 8);
+    let channels = f32::from(format.channels);
+    // Straight to mono: no copy of every channel is made.
     let samples = data[..frames * block]
-        .chunks_exact(width)
-        .map(|bytes| sample(format, bytes))
+        .chunks_exact(block)
+        .map(|frame| {
+            frame
+                .chunks_exact(width)
+                .map(|bytes| sample(format, bytes))
+                .sum::<f32>()
+                / channels
+        })
         .collect();
     Ok(Pcm {
         sample_rate: format.rate,
-        channels: format.channels,
+        channels: 1,
         samples,
     })
 }
@@ -204,7 +212,8 @@ pub(crate) mod tests {
             .flat_map(|s| s.to_le_bytes())
             .collect();
         let pcm = decode(&wav(FLOAT, 2, 48_000, 32, &data)).unwrap();
-        assert_eq!((pcm.channels, pcm.samples), (2, vec![0.25, -0.75]));
+        // Mixed down as it's read.
+        assert_eq!((pcm.channels, pcm.samples), (1, vec![-0.25]));
 
         let data: Vec<u8> = [0.5f64].iter().flat_map(|s| s.to_le_bytes()).collect();
         assert_eq!(
