@@ -2,6 +2,7 @@
 
 use super::{FriendAction, ImageSlot, ProfileActions, ProfileEditForm, ProfileModal, ProfilePage};
 use crate::dms::stories::dialog_framed;
+use crate::replay::stories::{self as replay_stories, Library};
 use crate::stories::Story;
 use gpui_kit::*;
 use image::{Frame, RgbaImage};
@@ -145,6 +146,26 @@ fn page(view: ProfileView, actions: ProfileActions, images: bool, cx: &mut App) 
     .into()
 }
 
+/// The page with a clip library under it: mine (all my clips) or the user's public ones.
+fn page_with_clips(
+    view: ProfileView,
+    actions: ProfileActions,
+    library: Library,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyView {
+    let clips = library.entity(window, cx);
+    cx.new(|cx| {
+        let mut page = ProfilePage::new("u-ava", cx);
+        page.set_view(view, cx);
+        page.set_actions(actions, cx);
+        page.set_images(Some(avatar_picture()), Some(banner_picture()));
+        page.set_clips(clips, cx);
+        page
+    })
+    .into()
+}
+
 const MESSAGE: ProfileActions = ProfileActions {
     can_message: true,
     friend: FriendAction::None,
@@ -224,6 +245,37 @@ pub fn stories() -> Vec<Story> {
                     friend: FriendAction::Pending,
                 },
                 true,
+                cx,
+            )
+        }),
+        Story::new("profile-page-own-clips", |_, window, cx| {
+            page_with_clips(
+                ready(me()),
+                ProfileActions::default(),
+                Library::ready(true, replay_stories::clips()),
+                window,
+                cx,
+            )
+        }),
+        Story::new("profile-page-other-clips", |_, window, cx| {
+            let public = replay_stories::clips()
+                .into_iter()
+                .filter(|clip| clip.is_public)
+                .collect();
+            page_with_clips(
+                ready(ava()),
+                MESSAGE,
+                Library::ready(false, public),
+                window,
+                cx,
+            )
+        }),
+        Story::new("profile-page-clips-empty", |_, window, cx| {
+            page_with_clips(
+                ready(me()),
+                ProfileActions::default(),
+                Library::ready(true, Vec::new()),
+                window,
                 cx,
             )
         }),

@@ -2,10 +2,10 @@
 //! picked id across a reload of the list and says when the list is loading or empty.
 
 use super::model::{Choices, PickOption};
-use crate::kit::{Variant, floating_label, notched, select_state, text};
+use crate::kit::{SelectField, Variant, select_state, text};
 use crate::theme::SemTheme as _;
 use gpui_kit::component::IndexPath;
-use gpui_kit::component::select::{Select, SelectEvent, SelectState};
+use gpui_kit::component::select::{SelectEvent, SelectState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 
@@ -91,54 +91,9 @@ impl Picker {
         match &self.choices {
             None => note("Loading..."),
             Some(choices) if choices.is_empty() => note(empty),
-            Some(_) => self.select(id, label, disabled, cx),
+            Some(_) => SelectField::new(id, &self.state, label)
+                .disabled(disabled)
+                .into_any_element(),
         }
-    }
-
-    /// `kit::SelectField`'s look, without the select's own "Please select", which drew over the
-    /// resting label while nothing is picked.
-    fn select(
-        &self,
-        id: &'static str,
-        label: &'static str,
-        disabled: bool,
-        cx: &App,
-    ) -> AnyElement {
-        let sem = cx.sem();
-        let picked = self.picked.is_some();
-        let label_color = if disabled {
-            sem.text_disabled
-        } else {
-            sem.text_secondary
-        };
-        let border = if disabled {
-            sem.action_disabled_bg
-        } else {
-            sem.input_border
-        };
-        notched(
-            div()
-                .h(px(56.))
-                .w_full()
-                .rounded(px(4.))
-                .border_1()
-                .border_color(border)
-                .child(
-                    div().size_full().flex().items_center().child(
-                        Select::new(&self.state)
-                            .id(id)
-                            .accessibility_label(label)
-                            .placeholder("")
-                            .appearance(false)
-                            .disabled(disabled)
-                            .h_full()
-                            .pl(px(14.))
-                            .pr(px(10.))
-                            .text_size(px(16.)),
-                    ),
-                ),
-            floating_label(label.into(), false, picked, label_color, sem.paper),
-        )
-        .into_any_element()
     }
 }

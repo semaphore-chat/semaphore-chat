@@ -93,6 +93,10 @@ impl VideoPlayer {
         cx.notify();
     }
 
+    pub fn has_poster(&self) -> bool {
+        self.poster.is_some()
+    }
+
     pub fn phase(&self) -> &Phase {
         &self.playback.phase
     }

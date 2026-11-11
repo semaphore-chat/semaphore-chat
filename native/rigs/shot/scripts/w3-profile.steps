@@ -150,3 +150,21 @@ shot w3-profile-edit-load-failed-desktop
 story profile-edit-load-failed 390 844 light-blue-balanced
 wait idle
 shot w3-profile-edit-load-failed-phone
+story profile-page-own-clips 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-own-clips-desktop
+story profile-page-own-clips 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-own-clips-phone
+story profile-page-other-clips 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-other-clips-desktop
+story profile-page-other-clips 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-other-clips-phone
+story profile-page-clips-empty 1280 800 dark-blue-balanced
+wait idle
+shot w3-profile-page-clips-empty-desktop
+story profile-page-clips-empty 390 844 light-blue-balanced
+wait idle
+shot w3-profile-page-clips-empty-phone

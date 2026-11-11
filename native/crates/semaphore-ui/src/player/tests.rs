@@ -650,3 +650,49 @@ fn the_audio_row_shows_loading_and_buffering(cx: &mut TestAppContext) {
     });
     assert_eq!(label, "0:03 / 3:04");
 }
+
+// ---- The registry. ----
+
+#[gpui_kit::test]
+fn the_registry_gives_videos_with_a_thumbnail_their_poster(cx: &mut TestAppContext) {
+    use super::{AttachmentPlayer, Players};
+    use semaphore_core::model::{AttachmentKind, AttachmentView};
+    let attachment = |file_id: &str, has_thumbnail: bool| AttachmentView {
+        file_id: file_id.into(),
+        filename: "clip.mp4".into(),
+        mime_type: "video/mp4".into(),
+        size_bytes: 2048,
+        kind: AttachmentKind::Video,
+        has_thumbnail,
+        width: None,
+        height: None,
+    };
+    let rig: VideoRig = rig(cx, 600., |window, cx| {
+        let (opener, _) = FakeOpener::rc(Script::video());
+        let players = Players::new(opener, VideoFrames::for_window(window));
+        let poster =
+            |players: &Players, file_id: &str, thumb: bool, cx: &mut gpui_kit::App| match players
+                .create(&attachment(file_id, thumb), cx)
+            {
+                AttachmentPlayer::Video(video) => video.read(cx).has_poster(),
+                AttachmentPlayer::Audio(_) => panic!("a video attachment made an audio player"),
+            };
+        // Before the app gives a resolver, no poster.
+        assert!(!poster(&players, "f-1", true, cx));
+        players.set_posters(std::rc::Rc::new(|attachment: &AttachmentView| {
+            attachment
+                .has_thumbnail
+                .then(|| gpui_kit::ImageSource::from("thumb.png"))
+        }));
+        assert!(poster(&players, "f-2", true, cx));
+        assert!(!poster(&players, "f-3", false, cx));
+        VideoPlayer::new(
+            source("video"),
+            (None, None),
+            FakeOpener::rc(Script::video()).0,
+            VideoFrames::for_window(window),
+            cx,
+        )
+    });
+    drop(rig);
+}

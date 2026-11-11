@@ -18,8 +18,11 @@
 //!   [`Error::UnsupportedContainer`]; a known container that won't parse is [`Error::Invalid`];
 //!   a stream with no decoder here (HEVC, Theora, AAC without the `aac` feature) is
 //!   [`Error::UnsupportedCodec`] from [`Media::enable`], and the other streams still play.
+//! - **Short sounds** decode whole with [`decode_audio`] (the soundboard's MP3, AAC and Vorbis):
+//!   mono 48 kHz, length-capped.
 //! - **Desktop only.** `build.rs` refuses a target or a libwebrtc without this FFmpeg.
 
+mod decode;
 mod engine;
 mod ffi;
 pub mod resample;
@@ -28,6 +31,7 @@ pub mod buffered;
 pub mod range;
 pub use buffered::BufferedReport;
 
+pub use decode::{DECODED_RATE, DecodeAudioError, decode_audio};
 pub use engine::{Cancel, DesktopPlayers, Nv12Frame, Opener, Player, VideoSink};
 
 // Links libwebrtc.a, where every symbol the shim calls lives. None of webrtc-sys's Rust is used.
