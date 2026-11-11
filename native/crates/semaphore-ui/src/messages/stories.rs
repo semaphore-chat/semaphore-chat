@@ -273,22 +273,6 @@ fn actions_story(
     .into()
 }
 
-/// Stands in for the composer in edit mode, which the composer's own stories draw.
-struct EditorStandIn;
-
-impl Render for EditorStandIn {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .h(px(72.))
-            .rounded(px(8.))
-            .border_1()
-            .border_color(rgb(0x0d9488))
-            .p(px(12.))
-            .text_color(rgb(0xffffff))
-            .child("One more thing: the tray icon is blurry at 150%.")
-    }
-}
-
 fn names(count: usize) -> ReactionUsers {
     let all = [
         ("u-ben", "ben", None),
@@ -383,8 +367,8 @@ fn action_stories() -> Vec<Story> {
         Story::new("messages-editing", |_, window, cx| {
             actions_story(
                 MEMBER,
-                |list, _, cx| {
-                    let editor = cx.new(|_| EditorStandIn).into();
+                |list, window, cx| {
+                    let editor = crate::composer::edit_composer_for_story(window, cx).into();
                     list.set_editing(Some((4, editor)), cx);
                 },
                 window,

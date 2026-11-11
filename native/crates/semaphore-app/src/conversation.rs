@@ -219,6 +219,7 @@ impl ConversationPane {
                     drafts: self.drafts.clone(),
                     placeholder: self.placeholder(),
                     max_file_bytes: None,
+                    mode: semaphore_ui::composer::ComposerMode::Send,
                 };
                 let composer = cx.new(|cx| Composer::new(config, window, cx));
                 self._subscriptions.push(cx.subscribe_in(
@@ -644,6 +645,8 @@ impl ConversationPane {
                 .detach();
             }
             ComposerEvent::EditLastMessage => log::info!("editing is a follow-up"),
+            // Only an edit-mode composer sends these: wired in the app-wiring piece (P5).
+            ComposerEvent::SaveEdit { .. } | ComposerEvent::CancelEdit { .. } => {}
         }
     }
 

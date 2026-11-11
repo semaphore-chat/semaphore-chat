@@ -1,7 +1,8 @@
 //! Interaction tests: real keys, clicks and focus through `gpui_kit::test`, on the kit's real field.
 
 use super::model::{
-    Availability, ComposerEvent, DraftStore, MentionSource, PendingAttachment, ReplyTarget,
+    Availability, ComposerEvent, ComposerMode, DraftStore, MentionSource, PendingAttachment,
+    ReplyTarget,
 };
 use super::view::{Composer, ComposerConfig};
 use gpui_kit::component::input::TextareaState;
@@ -66,6 +67,8 @@ struct Log {
     files: usize,
     edit_last: usize,
     timeout_ended: usize,
+    edits: Vec<(String, MessageDraft, Option<Vec<String>>)>,
+    cancels: Vec<String>,
 }
 
 struct Rig {
@@ -94,6 +97,21 @@ fn open(
     window_size: Size<gpui_kit::Pixels>,
     drafts: Entity<DraftStore>,
 ) -> Rig {
+    open_mode(cx, window_size, drafts, ComposerMode::Send)
+}
+
+fn rig_mode(cx: &mut TestAppContext, mode: ComposerMode) -> Rig {
+    cx.update(gpui_kit::init);
+    let drafts = cx.update(|cx| cx.new(|_| DraftStore::default()));
+    open_mode(cx, size(px(900.), px(800.)), drafts, mode)
+}
+
+fn open_mode(
+    cx: &mut TestAppContext,
+    window_size: Size<gpui_kit::Pixels>,
+    drafts: Entity<DraftStore>,
+    mode: ComposerMode,
+) -> Rig {
     let log = Rc::new(RefCell::new(Log::default()));
     let (window, composer) = cx.update(|cx| {
         let store = drafts.clone();
@@ -117,6 +135,7 @@ fn open(
                             drafts: store,
                             placeholder: "Type a message...".into(),
                             max_file_bytes: None,
+                            mode,
                         },
                         window,
                         cx,
@@ -139,6 +158,18 @@ fn open(
                         ComposerEvent::OpenFilePicker => log.files += 1,
                         ComposerEvent::EditLastMessage => log.edit_last += 1,
                         ComposerEvent::TimeoutEnded => log.timeout_ended += 1,
+                        ComposerEvent::SaveEdit {
+                            message_id,
+                            draft,
+                            keep_attachment_ids,
+                        } => log.edits.push((
+                            message_id.clone(),
+                            draft.clone(),
+                            keep_attachment_ids.clone(),
+                        )),
+                        ComposerEvent::CancelEdit { message_id } => {
+                            log.cancels.push(message_id.clone())
+                        }
                     }
                 })
                 .detach();
@@ -1331,4 +1362,140 @@ fn a_leading_space_is_trimmed_before_ranges_are_taken(cx: &mut TestAppContext) {
         &draft.text[mention.start as usize..mention.end as usize],
         "@ben"
     );
+}
+
+// ---- Edit and thread modes (W1). ----
+
+fn edit_mode() -> ComposerMode {
+    ComposerMode::Edit {
+        message_id: "m-1".into(),
+    }
+}
+
+fn attachment(id: &str, name: &str) -> semaphore_core::model::AttachmentView {
+    semaphore_core::model::AttachmentView {
+        file_id: id.into(),
+        filename: name.into(),
+        mime_type: "application/octet-stream".into(),
+        size_bytes: 1,
+        kind: semaphore_core::model::AttachmentKind::Other,
+        has_thumbnail: false,
+        width: None,
+        height: None,
+    }
+}
+
+fn start_edit(
+    rig: &Rig,
+    cx: &mut TestAppContext,
+    draft: MessageDraft,
+    files: Vec<semaphore_core::model::AttachmentView>,
+) {
+    rig.with(cx, |composer, window, cx| {
+        composer.update(cx, |composer, cx| {
+            composer.set_edit_content(draft, files, window, cx)
+        })
+    });
+}
+
+#[gpui_kit::test]
+fn edit_mode_saves_on_enter_keeping_mentions(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, edit_mode());
+    let draft = MessageDraft {
+        text: "hi @ava".into(),
+        mentions: vec![semaphore_core::model::DraftMention {
+            start: 3,
+            end: 7,
+            kind: MentionKind::User,
+            id: "u1".into(),
+        }],
+        ..MessageDraft::default()
+    };
+    start_edit(&rig, cx, draft, Vec::new());
+    assert_eq!(rig.value(cx), "hi @ava");
+    rig.typed(cx, " again");
+    rig.press(cx, "enter");
+    let log = rig.log.borrow();
+    assert!(log.sends.is_empty(), "an edit never sends a new message");
+    let (id, draft, keep) = &log.edits[0];
+    assert_eq!(id, "m-1");
+    assert_eq!(draft.text, "hi @ava again");
+    assert_eq!(draft.mentions.len(), 1);
+    assert_eq!(draft.mentions[0].id, "u1");
+    assert_eq!(
+        *keep, None,
+        "untouched attachments stay as the server has them"
+    );
+}
+
+#[gpui_kit::test]
+fn edit_mode_escape_cancels_and_keeps_no_draft(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, edit_mode());
+    start_edit(
+        &rig,
+        cx,
+        MessageDraft {
+            text: "old".into(),
+            ..MessageDraft::default()
+        },
+        Vec::new(),
+    );
+    rig.typed(cx, " new");
+    rig.press(cx, "escape");
+    assert_eq!(rig.log.borrow().cancels, vec!["m-1".to_owned()]);
+    assert!(rig.log.borrow().edits.is_empty());
+    let saved = cx.update(|cx| rig.drafts.read(cx).get(&channel("a")).is_some());
+    assert!(!saved, "the edit's text isn't the conversation's draft");
+}
+
+#[gpui_kit::test]
+fn edit_mode_removing_an_attachment_lists_the_rest(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, edit_mode());
+    start_edit(
+        &rig,
+        cx,
+        MessageDraft {
+            text: "files".into(),
+            ..MessageDraft::default()
+        },
+        vec![attachment("f1", "a.png"), attachment("f2", "b.pdf")],
+    );
+    rig.click(
+        cx,
+        ElementId::NamedInteger("edit-remove-attachment".into(), 0),
+    );
+    rig.click(cx, "edit-save");
+    let log = rig.log.borrow();
+    assert_eq!(log.edits[0].2, Some(vec!["f2".to_owned()]));
+}
+
+#[gpui_kit::test]
+fn edit_mode_wont_save_an_empty_message(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, edit_mode());
+    start_edit(
+        &rig,
+        cx,
+        MessageDraft {
+            text: "x".into(),
+            ..MessageDraft::default()
+        },
+        Vec::new(),
+    );
+    rig.press(cx, "backspace");
+    rig.press(cx, "enter");
+    assert!(rig.log.borrow().edits.is_empty());
+}
+
+#[gpui_kit::test]
+fn thread_mode_has_no_attach_or_edit_last(cx: &mut TestAppContext) {
+    let rig = rig_mode(cx, ComposerMode::Thread);
+    let has_attach = rig.with(cx, |_, window, _| {
+        window.try_find("composer-attach").is_some()
+    });
+    assert!(!has_attach);
+    rig.press(cx, "up");
+    assert_eq!(rig.log.borrow().edit_last, 0);
+    rig.typed(cx, "a reply");
+    rig.press(cx, "enter");
+    assert_eq!(rig.log.borrow().sends.len(), 1);
 }

@@ -1,0 +1,23 @@
+# W1 composer modes: edit in place, thread reply box.
+story composer-edit 900 600 dark-blue-balanced
+shot composer-edit-dark
+story composer-edit 390 700 dark-blue-balanced
+shot composer-edit-narrow-dark
+story composer-edit-text-only 900 600 dark-blue-balanced
+shot composer-edit-text-only-dark
+story composer-edit-text-only 390 700 dark-blue-balanced
+shot composer-edit-text-only-narrow-dark
+story composer-edit-empty 900 600 dark-blue-balanced
+shot composer-edit-empty-dark
+story composer-edit-empty 390 700 dark-blue-balanced
+shot composer-edit-empty-narrow-dark
+story composer-thread 900 600 dark-blue-balanced
+shot composer-thread-dark
+story composer-thread 390 700 dark-blue-balanced
+shot composer-thread-narrow-dark
+story composer-thread-text 900 600 dark-blue-balanced
+shot composer-thread-text-dark
+story composer-thread-text 390 700 dark-blue-balanced
+shot composer-thread-text-narrow-dark
+story messages-editing 900 640 dark-blue-balanced
+shot messages-editing-composer-dark

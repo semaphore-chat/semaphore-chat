@@ -2,6 +2,19 @@
 
 use gpui_kit::{Image, ImageSource, SharedString};
 use semaphore_core::model::{Conversation, MentionCandidate, MessageDraft};
+
+/// What the composer is for.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum ComposerMode {
+    /// The conversation's composer: drafts, replies, files.
+    #[default]
+    Send,
+    /// A thread's reply box (`ThreadMessageInput`): no files and no reply banner.
+    Thread,
+    /// Editing a sent message in place (`MessageEditForm`): the owner fills it with
+    /// `Composer::set_edit_content`. Enter saves and Escape cancels; it keeps no draft.
+    Edit { message_id: String },
+}
 use std::collections::HashMap;
 use std::ops::Range;
 use std::path::{Path, PathBuf};
@@ -166,4 +179,13 @@ pub enum ComposerEvent {
     EditLastMessage,
     /// A timeout ran out. The composer has opened; the owner refetches what it may do now.
     TimeoutEnded,
+    /// Edit mode's save: `Core::edit_message`. `keep_attachment_ids` is `None` unless the user removed
+    /// an attachment, so files still uploading aren't dropped.
+    SaveEdit {
+        message_id: String,
+        draft: MessageDraft,
+        keep_attachment_ids: Option<Vec<String>>,
+    },
+    /// Edit mode's cancel, or Escape: the owner closes the editor.
+    CancelEdit { message_id: String },
 }

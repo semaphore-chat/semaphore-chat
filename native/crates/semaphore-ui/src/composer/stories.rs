@@ -1,14 +1,19 @@
 //! The composer's stories, drawn by `rig-shot`. The composer sits at the bottom of its window, as it
 //! does under the message list, so the dropdown has the room it has in the app.
 
-use super::model::{Availability, DraftStore, MentionSource, PendingAttachment, ReplyTarget};
+use super::model::{
+    Availability, ComposerMode, DraftStore, MentionSource, PendingAttachment, ReplyTarget,
+};
 use super::palette::Palette;
 use super::view::{Composer, ComposerConfig};
 use crate::stories::{Story, StoryEnv};
 use gpui_kit::component::{ActiveTheme as _, Theme, ThemeMode};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{Conversation, MentionCandidate, MentionKind};
+use semaphore_core::model::{
+    AttachmentKind, AttachmentView, Conversation, DraftMention, MentionCandidate, MentionKind,
+    MessageDraft,
+};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -97,24 +102,101 @@ fn host(
     cx: &mut App,
     setup: impl FnOnce(&mut Composer, &mut Window, &mut Context<Composer>),
 ) -> AnyView {
+    host_mode(window, cx, ComposerMode::Send, "Type a message...", setup)
+}
+
+fn new_composer(
+    window: &mut Window,
+    cx: &mut App,
+    mode: ComposerMode,
+    placeholder: &'static str,
+    setup: impl FnOnce(&mut Composer, &mut Window, &mut Context<Composer>),
+) -> Entity<Composer> {
     use_web_input_colours(cx);
     let drafts = cx.new(|_| DraftStore::default());
-    let composer = cx.new(|cx| {
+    cx.new(|cx| {
         let mut composer = Composer::new(
             ComposerConfig {
                 conversation: Conversation::Channel { id: "c1".into() },
                 source: Rc::new(Fixture),
                 drafts,
-                placeholder: "Type a message...".into(),
+                placeholder: placeholder.into(),
                 max_file_bytes: None,
+                mode,
             },
             window,
             cx,
         );
         setup(&mut composer, window, cx);
         composer
-    });
+    })
+}
+
+fn host_mode(
+    window: &mut Window,
+    cx: &mut App,
+    mode: ComposerMode,
+    placeholder: &'static str,
+    setup: impl FnOnce(&mut Composer, &mut Window, &mut Context<Composer>),
+) -> AnyView {
+    let composer = new_composer(window, cx, mode, placeholder, setup);
     cx.new(|_| Host { composer }).into()
+}
+
+fn edit_attachment(id: &str, name: &str) -> AttachmentView {
+    AttachmentView {
+        file_id: id.into(),
+        filename: name.into(),
+        mime_type: "image/png".into(),
+        size_bytes: 48_213,
+        kind: AttachmentKind::Image,
+        has_thumbnail: false,
+        width: None,
+        height: None,
+    }
+}
+
+/// A message being edited: text with a mention, and optionally its files.
+fn fill_edit(
+    composer: &mut Composer,
+    files: bool,
+    window: &mut Window,
+    cx: &mut Context<Composer>,
+) {
+    let text = "One more thing: the tray icon is blurry at 150%, @priya can you check?";
+    let at = text.find("@priya").unwrap_or(0) as u32;
+    let draft = MessageDraft {
+        text: text.into(),
+        mentions: vec![DraftMention {
+            start: at,
+            end: at + 6,
+            kind: MentionKind::User,
+            id: "u3".into(),
+        }],
+        ..MessageDraft::default()
+    };
+    let attachments = if files {
+        vec![
+            edit_attachment("f1", "tray-150.png"),
+            edit_attachment("f2", "tray-at-200-percent-scaling-on-a-second-monitor.png"),
+        ]
+    } else {
+        Vec::new()
+    };
+    composer.set_edit_content(draft, attachments, window, cx);
+}
+
+/// The composer in edit mode, for the message list's editing story.
+pub(crate) fn edit_composer_for_story(window: &mut Window, cx: &mut App) -> Entity<Composer> {
+    new_composer(
+        window,
+        cx,
+        ComposerMode::Edit {
+            message_id: "m-4".into(),
+        },
+        "",
+        |c, window, cx| fill_edit(c, false, window, cx),
+    )
 }
 
 const LONG: &str = "This draft runs on for a while, the way a long explanation does, so the field has to \
@@ -179,6 +261,51 @@ pub fn stories() -> Vec<Story> {
         host(window, cx, setup)
     }
     vec![
+        Story::new("composer-edit", |_, window, cx| {
+            host_mode(
+                window,
+                cx,
+                ComposerMode::Edit {
+                    message_id: "m-4".into(),
+                },
+                "",
+                |c, window, cx| fill_edit(c, true, window, cx),
+            )
+        }),
+        Story::new("composer-edit-text-only", |_, window, cx| {
+            host_mode(
+                window,
+                cx,
+                ComposerMode::Edit {
+                    message_id: "m-4".into(),
+                },
+                "",
+                |c, window, cx| fill_edit(c, false, window, cx),
+            )
+        }),
+        Story::new("composer-edit-empty", |_, window, cx| {
+            host_mode(
+                window,
+                cx,
+                ComposerMode::Edit {
+                    message_id: "m-4".into(),
+                },
+                "",
+                |c, window, cx| c.set_edit_content(MessageDraft::default(), Vec::new(), window, cx),
+            )
+        }),
+        Story::new("composer-thread", |_, window, cx| {
+            host_mode(window, cx, ComposerMode::Thread, "Reply...", |_, _, _| {})
+        }),
+        Story::new("composer-thread-text", |_, window, cx| {
+            host_mode(
+                window,
+                cx,
+                ComposerMode::Thread,
+                "Reply...",
+                |c, window, cx| c.insert_at_caret("agreed, @pri", window, cx),
+            )
+        }),
         Story::new("composer-empty", |_: &StoryEnv, window, cx| {
             build(window, cx, |_, _, _| {})
         }),
