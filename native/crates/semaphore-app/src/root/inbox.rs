@@ -26,6 +26,7 @@ use semaphore_core::model::{
     ViewKey,
 };
 use semaphore_core::platform::{CoreError, Tray as _};
+use semaphore_ui::dms::names::dm_placeholder;
 use semaphore_ui::dms::{
     CreateDmDialog, CreateDmEvent, DmHeader, DmHeaderEvent, DmHeaderState, DmListEvent, DmSidebar,
     DmSidebarEvent, DmTab, SEARCH_LIMIT,
@@ -136,8 +137,13 @@ pub(super) fn dm_conversation(
     let conversation = Conversation::DirectMessage {
         id: dm_id.to_owned(),
     };
+    let dm_placeholder = match header.read(cx).state() {
+        DmHeaderState::Ready(row) => Some(dm_placeholder(row)),
+        _ => None,
+    };
     pane.update(cx, |pane, cx| {
         pane.show(conversation, None, None, window, cx);
+        pane.set_dm_placeholder(dm_placeholder, window, cx);
         if focus.take() {
             pane.focus_composer(window, cx);
         }

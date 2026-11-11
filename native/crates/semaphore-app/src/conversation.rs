@@ -102,6 +102,8 @@ pub struct ConversationPane {
     conversation: Option<Conversation>,
     community_id: Option<String>,
     channel: Option<ChannelRow>,
+    /// The DM's composer placeholder ("Message @Ava"), once its row is known.
+    dm_placeholder: Option<String>,
     list: Option<Entity<MessageList>>,
     composer: Option<Entity<Composer>>,
     drafts: Entity<DraftStore>,
@@ -167,6 +169,7 @@ impl ConversationPane {
             conversation: None,
             community_id: None,
             channel: None,
+            dm_placeholder: None,
             list: None,
             composer: None,
             drafts: cx.new(|_| DraftStore::default()),
@@ -463,9 +466,29 @@ impl ConversationPane {
     }
 
     fn placeholder(&self) -> SharedString {
-        match &self.channel {
-            Some(channel) => format!("Message #{}", channel.name).into(),
-            None => "Type a message...".into(),
+        match (&self.channel, &self.conversation, &self.dm_placeholder) {
+            (Some(channel), _, _) => format!("Message #{}", channel.name).into(),
+            (None, Some(Conversation::DirectMessage { .. }), Some(name)) => name.clone().into(),
+            _ => "Type a message...".into(),
+        }
+    }
+
+    /// The DM on screen's placeholder, from its row (`None` while the row loads).
+    pub fn set_dm_placeholder(
+        &mut self,
+        placeholder: Option<String>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.dm_placeholder == placeholder {
+            return;
+        }
+        self.dm_placeholder = placeholder;
+        let placeholder = self.placeholder();
+        if let Some(composer) = &self.composer {
+            composer.update(cx, |composer, cx| {
+                composer.set_placeholder(placeholder, window, cx)
+            });
         }
     }
 
