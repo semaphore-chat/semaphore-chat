@@ -94,6 +94,10 @@ impl Shell {
                         .truncate(),
                 ),
             )
+            .when_some(
+                self.header_accessory.clone().filter(|_| in_content),
+                |bar, accessory| bar.child(accessory),
+            )
             .when(in_content, |bar| {
                 let view = view.clone();
                 bar.child(

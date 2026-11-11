@@ -199,8 +199,9 @@ impl Shell {
         slot(&props, window, cx)
     }
 
-    /// Draws `view` in the channel header in place of the notification level button: the owner's
-    /// level menu for the channel on screen. `None` puts the plain button back.
+    /// Draws `view` in the channel header in place of the notification level button, and in the
+    /// phone app bar beside the members button: the owner's level menu for the channel on screen.
+    /// `None` puts the plain button back (and nothing on a phone).
     pub fn set_header_accessory(&mut self, view: Option<AnyView>, cx: &mut Context<Self>) {
         self.header_accessory = view;
         cx.notify();

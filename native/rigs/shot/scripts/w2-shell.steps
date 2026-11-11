@@ -10,3 +10,6 @@ shot w2-shell-route-sidebar-phone
 story shell-header-accessory 1280 800 dark-blue-balanced
 wait idle
 shot w2-shell-header-accessory-desktop
+story shell-header-accessory 390 844 light-blue-balanced
+wait idle
+shot w2-shell-header-accessory-phone
