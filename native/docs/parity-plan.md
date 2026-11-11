@@ -410,13 +410,31 @@ Model changes after the freeze are additive only, with the coordinator. A's fake
   them.
 - Role actions are wire names, and a saved role keeps the ones this build doesn't know.
 
-**Carried over** (for whoever touches core next; not fixed in W5's freeze):
+**Carried over** (for whoever touches core next):
 
-- A ring stopped early once in a wave 4 rig run. The suspected cause is a late, empty DM-presence
-  answer from the previous ring stopping the new one (`semaphore-core/src/commands/calls.rs:301-316`,
-  where an empty presence ends the ring; `commands/queries.rs:44`, `answer_dirty`). W5-B is the
-  next lane in core's command files.
+- A ring stopped early once in a wave 4 rig run; the suspected cause was a late, empty DM-presence
+  answer from the previous ring. W5-B didn't reproduce it: `w4_ring` marks a presence read
+  already out as dirty, so its answer can't end the new ring. `semaphore-core/tests/w4.rs`
+  `a_late_empty_presence_from_the_previous_ring_does_not_end_the_next_one` (the read held while a
+  reconnect re-reads it and the caller calls again) and `a_late_leave_of_the_previous_call_...`
+  pass without a change. Still open: a direct `dmVoiceUserLeft` for another member applied to a
+  cached presence that a dirty (old) answer just wrote, in a group DM. Next step if it recurs:
+  the rig's event log around the ring.
 
+**W5-B notes** (2026-11-11):
+
+- The fake server's permission model is `semaphore-fake-server/src/rbac.rs`: `allows`, `guard`,
+  `is_member`, `add_member` (gives the Member role), `remove_member`, `is_banned`,
+  `timed_out_until`, `roles_of`, `members`, `community_of_channel`. Lock order: `accounts`, then
+  `rbac`; never `rbac` with `data`, `admin` or `calls`. Tests set ranks with `FakeServer::act_as`
+  (control `act_as`) and sign in as another scenario user with `FakeServer::sign_in_as` (control
+  `sign_in_as`). Role ids are served as UUIDs in UUID scenarios (`rbac::role_uuid`).
+- Kick now needs the KICK_USER guard and the rank rule, as the backend has it; the W4 tests that
+  kick give `me` the Community Admin role first.
+- Routes under `/api/channels/{...}` must name the segment `{channelId}`: axum refuses two
+  different names at the same place.
+- Membership in the fake: W5-A's member list should ask `rbac::is_member` / `roles_of` so bans,
+  kicks and role changes show there.
 ### Wave 6: instance admin and first run
 
 | Unit | Delivers | Touches | Depends on | Size | Done when |
@@ -555,3 +573,7 @@ Issues: #679 to #688, plus those named.
 | Timeout list behind VIEW_BAN_LIST: a moderator with only TIMEOUT_USER can't see it (product) (#688) | `backend/src/moderation/moderation.controller.ts:211` | Yes | Gates the list on VIEW_BAN_LIST |
 | A banned or kicked user can hear the event twice (personal room, then the community room after a room leave that isn't awaited) | `backend/src/moderation/moderation.service.ts:209-230,398-420` | No (invalidation is idempotent) | Core announces a removal once. #673 |
 | Channel capabilities for update, delete and webhooks; overrides in the role lookup; whether I outrank someone | `ChannelCapabilitiesDto`, `rolesControllerGetMyRolesForChannel` | Yes | Community roles, as the web does. #639, #644, #663 |
+| Grant-only-held checks a role update's whole action list, not what it adds: a role below you that holds one action you lack can't be saved at all, and the default Moderator can't assign the Member role (Member holds ATTACH_FILES, SPEAK, VIDEO, SCREEN_SHARE, which Moderator doesn't) | `backend/src/roles/community-roles.service.ts:895` (`assertHolds(st, updateRoleDto.actions)`), and `assertHolds(st, role.actions)` in `assignRoleAsActor` | Yes: the save or assignment is refused | `RoleRow::editable`/`assignable` are false then |
+| Reordering sets positions 10, 20, ...: with ten or more roles besides Member, the tenth ties Member at 100 and later ones rank below it | `backend/src/roles/community-roles.service.ts:683` | Yes | none |
+| The default Community Admin role has UNBAN_USER but not BAN_USER (product?) | `backend/src/roles/default-roles.config.ts:188-269` | Yes: community admins can't ban by default | none |
+| The web role editor leaves CAPTURE_REPLAY out of every permission group, so it can't be granted there | `frontend/src/constants/rbacActions.ts:114-200` (frontend) | Yes | Native's catalog puts it under voice |

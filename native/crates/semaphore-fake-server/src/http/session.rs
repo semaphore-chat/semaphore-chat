@@ -70,7 +70,9 @@ async fn login(State(inner): State<Arc<Inner>>, headers: HeaderMap, body: Bytes)
         Some(credential) if credential.password == dto.password => credential.user_id.clone(),
         Some(_) => return denied(),
         None if dto.password == "wrong" => return denied(),
-        None => inner.scenario.me.id.clone(),
+        // W5: a test's second session can sign in as another scenario user (`sign_in_as`).
+        None => crate::rbac::login_as(&inner, &dto.username)
+            .unwrap_or_else(|| inner.scenario.me.id.clone()),
     };
     let index = accounts.start_session(
         &user_id,

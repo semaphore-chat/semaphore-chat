@@ -834,13 +834,14 @@ fn uuid(n: u128) -> String {
 
 /// A route the fake does not implement names itself in its 501.
 async fn assert_routes_are_implemented(_schemas: &Schemas, client: &reqwest::Client, base: &str) {
-    let (status, body) = get(client, base, "/api/roles/community/community-1").await;
+    // W5-B serves community roles now; instance roles are W6's.
+    let (status, body) = get(client, base, "/api/roles/instance/all").await;
     assert_eq!(status, 501, "{body}");
     assert!(
         body["message"]
             .as_str()
             .unwrap_or_default()
-            .contains("/api/roles/community/community-1"),
+            .contains("/api/roles/instance/all"),
         "{body}"
     );
 }
@@ -1811,6 +1812,12 @@ async fn w4_voice_routes_match_openapi_and_socket_events() {
     use reqwest::Method as M;
     let schemas = Schemas::load();
     let server = start("showcase").await;
+    // W5: kicking needs a role that outranks theirs; `me` is only a Member in c-couch.
+    server.act_as(
+        &semaphore_fake_server::entity_uuid("c-couch"),
+        None,
+        &["role-community-admin-c-couch"],
+    );
     let base = server.base_url();
     let client = http();
     let id = |readable: &str| semaphore_fake_server::entity_uuid(readable);
