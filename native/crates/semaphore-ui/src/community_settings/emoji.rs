@@ -7,8 +7,8 @@ use super::common::{
     page, row, server_error, stored_image, upload_bar,
 };
 use super::rules::{
-    OpAction, Outcome, Pending, check_emoji_file, check_emoji_name, needs, op_about, shortcode,
-    size_label,
+    Outcome, Pending, act, check_emoji_file, check_emoji_name, failure_of, needs, running,
+    shortcode, size_label, state_of,
 };
 use crate::kit::{Button, ButtonSize, TextField, Variant, spacing, text, text_state};
 use crate::panel::common::{design_icon, error_block};
@@ -16,7 +16,10 @@ use crate::theme::SemTheme;
 use gpui_kit::component::input::InputState;
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{CommunityCaps, CustomEmojiRow, CustomEmojiView, DraftFile, LoadState};
+use semaphore_core::model::{
+    AdminAction, AdminActionKind, CommunityCaps, CustomEmojiRow, CustomEmojiView, DraftFile,
+    LoadState,
+};
 use semaphore_design::Icon as DesignIcon;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,8 +38,7 @@ pub enum EmojiEvent {
 pub struct EmojiTab {
     view: CustomEmojiView,
     caps: CommunityCaps,
-    last: Option<OpAction>,
-    pending: Option<Pending>,
+    pending: Vec<Pending>,
     picked: Option<DraftFile>,
     form_error: Option<String>,
     name: Entity<InputState>,
@@ -53,8 +55,7 @@ impl EmojiTab {
         Self {
             view: CustomEmojiView::default(),
             caps: CommunityCaps::default(),
-            last: None,
-            pending: None,
+            pending: Vec::new(),
             picked: None,
             form_error: None,
             name,
@@ -70,19 +71,20 @@ impl EmojiTab {
 
     /// `Core::custom_emoji(community)`.
     pub fn set_view(&mut self, view: CustomEmojiView, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(&view.op) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.pending = None,
+        let mut added = false;
+        self.pending
+            .retain_mut(|pending| match pending.observe(&view.op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    if pending.action == OpAction::AddEmoji {
-                        self.picked = None;
-                        self.name
-                            .update(cx, |field, cx| field.set_value("", window, cx));
-                    }
-                    self.pending = None;
+                    added |= pending.action.kind == AdminActionKind::AddCustomEmoji;
+                    false
                 }
-            }
+            });
+        if added {
+            self.picked = None;
+            self.name
+                .update(cx, |field, cx| field.set_value("", window, cx));
         }
         self.view = view;
         cx.notify();
@@ -123,13 +125,6 @@ impl EmojiTab {
         self.picked = file;
     }
 
-    /// As if `action` was sent: for stories and tests.
-    #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction) {
-        self.last = Some(action.clone());
-        self.pending = Some(Pending::new(action));
-    }
-
     pub(crate) fn submit(&mut self, cx: &mut Context<Self>) {
         if !self.caps.manage_emoji || self.busy() {
             return;
@@ -146,8 +141,8 @@ impl EmojiTab {
             return;
         };
         self.form_error = None;
-        self.last = Some(OpAction::AddEmoji);
-        self.pending = Some(Pending::new(OpAction::AddEmoji));
+        self.pending
+            .push(Pending::new(Self::add_action(), &self.view.op));
         cx.emit(EmojiEvent::Add {
             name: shortcode(&name).to_owned(),
             file,
@@ -155,12 +150,13 @@ impl EmojiTab {
         cx.notify();
     }
 
-    fn about(&self) -> Option<OpAction> {
-        op_about(&self.view.op, self.last.as_ref(), |_| true)
+    fn add_action() -> AdminAction {
+        act(AdminActionKind::AddCustomEmoji, None)
     }
 
+    /// An upload is on its way.
     fn busy(&self) -> bool {
-        self.about().is_some() && (self.view.op.busy || self.view.op.upload.is_some())
+        running(&self.view.op, &Self::add_action())
     }
 
     fn form(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -169,8 +165,9 @@ impl EmojiTab {
             return locked_note("emoji-locked", needs("Manage custom emojis"), cx)
                 .into_any_element();
         }
-        let adding = matches!(self.about(), Some(OpAction::AddEmoji));
         let busy = self.busy();
+        let upload =
+            state_of(&self.view.op, &Self::add_action()).and_then(|state| state.upload.clone());
         let picked = self
             .picked
             .as_ref()
@@ -220,7 +217,7 @@ impl EmojiTab {
                             Button::new("emoji-upload", "Upload")
                                 .contained()
                                 .start_icon(DesignIcon::Upload)
-                                .loading(busy && adding)
+                                .loading(busy)
                                 .disabled(busy)
                                 .on_click(cx.listener(|tab, _, _, cx| tab.submit(cx))),
                         ),
@@ -231,11 +228,7 @@ impl EmojiTab {
                     .clone()
                     .map(|message| div().id("emoji-form-error").child(field_error(message, cx))),
             )
-            .children(if adding {
-                upload_bar("emoji-upload-progress", self.view.op.upload.as_ref(), cx)
-            } else {
-                None
-            })
+            .children(upload_bar("emoji-upload-progress", upload.as_ref(), cx))
             .into_any_element()
     }
 
@@ -254,10 +247,6 @@ impl EmojiTab {
                 empty_line("No custom emojis yet", cx).into_any_element()
             }
             LoadState::Ready => {
-                let deleting = match self.about() {
-                    Some(OpAction::DeleteEmoji { emoji_id }) if self.view.op.busy => Some(emoji_id),
-                    _ => None,
-                };
                 let locked = (!self.caps.manage_emoji).then(|| needs("Manage custom emojis"));
                 let rows: Vec<_> = self
                     .view
@@ -280,7 +269,10 @@ impl EmojiTab {
                                 .into_any_element()
                             });
                         let row_emoji = emoji.clone();
-                        let busy = deleting.as_deref() == Some(emoji.id.as_str());
+                        let busy = running(
+                            &self.view.op,
+                            &act(AdminActionKind::DeleteCustomEmoji, Some(&emoji.id)),
+                        );
                         row(
                             SharedString::from(format!("emoji-{}", emoji.id)),
                             format!(":{}:", emoji.name),
@@ -336,9 +328,14 @@ impl EmojiTab {
 
 impl Render for EmojiTab {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let error = self
-            .about()
-            .and_then(|_| server_error(self.view.op.error.as_ref()));
+        let error = failure_of(
+            &self.view.op,
+            &[
+                AdminActionKind::AddCustomEmoji,
+                AdminActionKind::DeleteCustomEmoji,
+            ],
+        )
+        .and_then(|(_, error)| server_error(Some(error)));
         let form = self.form(cx);
         let table = self.table(cx);
         let title = match self.view.state {
@@ -371,9 +368,8 @@ impl Render for EmojiTab {
                     confirm
                         .update(cx, |tab, cx| {
                             tab.deleting = None;
-                            let action = OpAction::DeleteEmoji { emoji_id: id.clone() };
-                            tab.last = Some(action.clone());
-                            tab.pending = Some(Pending::new(action));
+                            let action = act(AdminActionKind::DeleteCustomEmoji, Some(&id));
+                            tab.pending.push(Pending::new(action, &tab.view.op));
                             cx.emit(EmojiEvent::Delete { emoji_id: id.clone() });
                             cx.notify();
                         })

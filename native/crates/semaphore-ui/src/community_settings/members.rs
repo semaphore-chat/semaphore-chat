@@ -3,12 +3,11 @@
 //! (ban, kick, timeout; "Remove" is that kick), and adding users found by search (the W5 default,
 //! not the web's admin-only user list).
 
-use super::OpLedger;
 use super::common::{
     action_icon, card, empty_line, list, loading_rows, locked_note, page, row, server_error,
     user_line,
 };
-use super::rules::{OpAction, Outcome, Pending, date_label, needs, op_about};
+use super::rules::{Outcome, Pending, act, date_label, failure_of, needs, running, running_of};
 use crate::dms::picker::{DEBOUNCE, Found, PickerModel};
 use crate::kit::{
     Alert, Button, ButtonSize, Chip, Severity, Spinner, TextField, Variant, spacing, text,
@@ -17,9 +16,11 @@ use crate::theme::SemTheme;
 use gpui_kit::component::input::{InputEvent, InputState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
-use semaphore_core::model::{AdminOp, CommunityCaps, MemberList, MemberView, UserView};
+use semaphore_core::model::{
+    AdminActionKind, AdminOp, CommunityCaps, MemberList, MemberView, UserView,
+};
 use semaphore_design::Icon as DesignIcon;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 /// From this window width the rows have room for "Joined …" (the web's 800 px card, beside the
 /// 260 px nav).
@@ -42,11 +43,10 @@ pub enum MembersEvent {
 pub struct MembersTab {
     members: Option<MemberList>,
     me: Option<String>,
-    joined: HashMap<String, i64>,
     caps: CommunityCaps,
-    ledger: OpLedger,
     op: AdminOp,
-    pending: Option<Pending>,
+    /// Adds on their way, each followed through its own entry.
+    pending: Vec<Pending>,
     added: HashSet<String>,
     field: Entity<InputState>,
     search: PickerModel,
@@ -58,14 +58,6 @@ impl EventEmitter<MembersEvent> for MembersTab {}
 
 impl MembersTab {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::with_ledger(OpLedger::default(), window, cx)
-    }
-
-    pub(crate) fn with_ledger(
-        ledger: OpLedger,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
         let field = cx.new(|cx| InputState::new(window, cx));
         let _subscriptions = vec![
             cx.subscribe_in(&field, window, |this, field, event, _, cx| {
@@ -78,11 +70,9 @@ impl MembersTab {
         Self {
             members: None,
             me: None,
-            joined: HashMap::new(),
             caps: CommunityCaps::default(),
-            ledger,
             op: AdminOp::default(),
-            pending: None,
+            pending: Vec::new(),
             added: HashSet::new(),
             field,
             search: PickerModel::new(false),
@@ -108,27 +98,20 @@ impl MembersTab {
         cx.notify();
     }
 
-    /// When each member joined, by user id. Goes once `MemberView::joined_at_ms` lands: then
-    /// `joined_at` reads the row.
-    pub fn set_joined_dates(&mut self, joined: HashMap<String, i64>, cx: &mut Context<Self>) {
-        self.joined = joined;
-        cx.notify();
-    }
-
     /// `CommunitySettingsView::op`, which adding a member reports on.
     pub fn set_op(&mut self, op: AdminOp, cx: &mut Context<Self>) {
-        if let Some(pending) = self.pending.as_mut() {
-            match pending.observe(&op) {
-                Outcome::Waiting => {}
-                Outcome::Failed => self.pending = None,
+        let added = &mut self.added;
+        self.pending
+            .retain_mut(|pending| match pending.observe(&op) {
+                Outcome::Waiting => true,
+                Outcome::Failed => false,
                 Outcome::Succeeded => {
-                    if let OpAction::AddMember { user_id } = &pending.action {
-                        self.added.insert(user_id.clone());
+                    if let Some(user_id) = &pending.action.target_id {
+                        added.insert(user_id.clone());
                     }
-                    self.pending = None;
+                    false
                 }
-            }
-        }
+            });
         self.op = op;
         cx.notify();
     }
@@ -146,7 +129,7 @@ impl MembersTab {
     }
 
     fn joined_at(&self, member: &MemberView) -> Option<i64> {
-        self.joined.get(&member.user.id).copied()
+        member.joined_at_ms
     }
 
     pub(crate) fn query_changed(&mut self, text: &str, cx: &mut Context<Self>) {
@@ -184,45 +167,33 @@ impl MembersTab {
         self.debounce = None;
         self.search.preset(query, found);
         if let Some(user_id) = adding {
-            let action = OpAction::AddMember {
-                user_id: user_id.to_owned(),
-            };
-            self.ledger.sent(action.clone());
-            self.pending = Some(Pending::new(action));
+            self.pending.push(Pending::new(
+                act(AdminActionKind::AddMember, Some(user_id)),
+                &self.op,
+            ));
         }
     }
 
     fn add(&mut self, user_id: String, cx: &mut Context<Self>) {
-        if !self.caps.add_members || self.adding().is_some() {
+        let action = act(AdminActionKind::AddMember, Some(&user_id));
+        if !self.caps.add_members || running(&self.op, &action) {
             return;
         }
-        let action = OpAction::AddMember {
-            user_id: user_id.clone(),
-        };
-        self.ledger.sent(action.clone());
-        self.pending = Some(Pending::new(action));
+        self.pending.push(Pending::new(action, &self.op));
         cx.emit(MembersEvent::Add { user_id });
         cx.notify();
     }
 
-    /// The add this op is about, while it is on its way.
-    fn adding(&self) -> Option<String> {
-        if !self.op.busy {
-            return None;
-        }
-        match op_about(&self.op, self.ledger.last().as_ref(), |action| {
-            matches!(action, OpAction::AddMember { .. })
-        }) {
-            Some(OpAction::AddMember { user_id }) => Some(user_id),
-            _ => None,
-        }
+    /// Whether adding this user is on its way.
+    fn adding(&self, user_id: &str) -> bool {
+        running_of(&self.op, &[AdminActionKind::AddMember])
+            .any(|state| state.action.target_id.as_deref() == Some(user_id))
     }
 
+    /// The newest failed add, by the server's words.
     fn add_error(&self) -> Option<Alert> {
-        let about = op_about(&self.op, self.ledger.last().as_ref(), |action| {
-            matches!(action, OpAction::AddMember { .. })
-        });
-        about.and_then(|_| server_error(self.op.error.as_ref()))
+        failure_of(&self.op, &[AdminActionKind::AddMember])
+            .and_then(|(_, error)| server_error(Some(error)))
     }
 
     fn member_row(
@@ -375,8 +346,7 @@ impl MembersTab {
                 .members
                 .as_ref()
                 .is_some_and(|list| list.members.iter().any(|m| m.user.id == user_id));
-        let adding = self.adding();
-        let this_adding = adding.as_deref() == Some(user_id.as_str());
+        let this_adding = self.adding(&user_id);
         let button = if member {
             Button::new(SharedString::from(format!("member-add-{user_id}")), "Added")
                 .size(ButtonSize::Small)
@@ -388,7 +358,6 @@ impl MembersTab {
                 .size(ButtonSize::Small)
                 .start_icon(DesignIcon::PersonAdd)
                 .loading(this_adding)
-                .disabled(adding.is_some() && !this_adding)
                 .on_click(cx.listener(move |tab, _, _, cx| tab.add(id.clone(), cx)))
         };
         row(

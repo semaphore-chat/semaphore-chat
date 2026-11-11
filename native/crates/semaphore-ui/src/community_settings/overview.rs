@@ -2,14 +2,13 @@
 //! avatar, the name and the description, saved with "Update Community"; then deleting the
 //! community behind its typed name (a native addition: the web has no delete).
 
-use super::OpLedger;
 use super::common::{
     card, field_error, locked_button, locked_note, page, phone, preview_of, server_error,
     stored_image, upload_bar,
 };
 use super::rules::{
-    DESCRIPTION_MAX, OpAction, Outcome, Pending, check_community_name, check_description,
-    check_image, confirms_name, js_len, needs, op_about,
+    DESCRIPTION_MAX, Outcome, Pending, act, check_community_name, check_description, check_image,
+    confirms_name, failure, js_len, needs, running, state_of,
 };
 use crate::kit::{
     Alert, Button, ButtonSize, Dialog, Severity, TextField, Variant, floating_label, notched,
@@ -23,7 +22,8 @@ use gpui_kit::component::input::{InputState, Textarea, TextareaState};
 use gpui_kit::prelude::*;
 use gpui_kit::*;
 use semaphore_core::model::{
-    CommunityCaps, CommunityPatch, CommunitySettingsView, DraftFile, ImageChange, LoadState,
+    AdminAction, AdminActionKind, CommunityCaps, CommunityPatch, CommunitySettingsView, DraftFile,
+    ImageChange, LoadState,
 };
 use semaphore_design::Icon as DesignIcon;
 
@@ -73,7 +73,6 @@ struct Base {
 pub struct OverviewTab {
     view: CommunitySettingsView,
     caps: CommunityCaps,
-    ledger: OpLedger,
     pending: Option<Pending>,
     base: Option<Base>,
     name: Entity<InputState>,
@@ -96,14 +95,6 @@ impl EventEmitter<OverviewEvent> for OverviewTab {}
 
 impl OverviewTab {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        Self::with_ledger(OpLedger::default(), window, cx)
-    }
-
-    pub(crate) fn with_ledger(
-        ledger: OpLedger,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> Self {
         let name = text_state(window, cx, false);
         let description = cx.new(|cx| {
             TextareaState::new(window, cx)
@@ -125,7 +116,6 @@ impl OverviewTab {
         Self {
             view: CommunitySettingsView::default(),
             caps: CommunityCaps::default(),
-            ledger,
             pending: None,
             base: None,
             name,
@@ -161,7 +151,7 @@ impl OverviewTab {
                 Outcome::Waiting => {}
                 Outcome::Failed => self.pending = None,
                 Outcome::Succeeded => {
-                    if pending.action == OpAction::UpdateCommunity {
+                    if pending.action.kind == AdminActionKind::UpdateCommunity {
                         self.avatar = None;
                         self.banner = None;
                         self.remove_avatar = false;
@@ -275,12 +265,9 @@ impl OverviewTab {
             CommunityImage::Banner => self.banner = picked,
         }
     }
-
-    /// As if "Update Community" or the delete was sent: for stories and tests.
+    /// As if "Update Community" was pressed once: field errors show. For stories.
     #[cfg(feature = "stories")]
-    pub(crate) fn mark_sent(&mut self, action: OpAction, tried: bool) {
-        self.ledger.sent(action.clone());
-        self.pending = Some(Pending::new(action));
+    pub(crate) fn set_tried(&mut self, tried: bool) {
         self.tried = tried;
     }
 
@@ -292,17 +279,20 @@ impl OverviewTab {
             .update(cx, |field, cx| field.set_value(typed, window, cx));
     }
 
-    fn current_action(&self) -> Option<OpAction> {
-        op_about(&self.view.op, self.ledger.last().as_ref(), |action| {
-            matches!(
-                action,
-                OpAction::UpdateCommunity | OpAction::DeleteCommunity
-            )
-        })
+    /// This community's change of `kind`, as core keys it.
+    fn action(&self, kind: AdminActionKind) -> AdminAction {
+        act(kind, Some(&self.view.community_id))
     }
 
+    /// An update or the delete is on its way.
     fn busy(&self) -> bool {
-        self.current_action().is_some() && (self.view.op.busy || self.view.op.upload.is_some())
+        running(
+            &self.view.op,
+            &self.action(AdminActionKind::UpdateCommunity),
+        ) || running(
+            &self.view.op,
+            &self.action(AdminActionKind::DeleteCommunity),
+        )
     }
 
     fn patch(&self, cx: &App) -> CommunityPatch {
@@ -343,8 +333,10 @@ impl OverviewTab {
         let patch = self.patch(cx);
         if name_error.is_none() && description_error.is_none() && patch != CommunityPatch::default()
         {
-            self.ledger.sent(OpAction::UpdateCommunity);
-            self.pending = Some(Pending::new(OpAction::UpdateCommunity));
+            self.pending = Some(Pending::new(
+                self.action(AdminActionKind::UpdateCommunity),
+                &self.view.op,
+            ));
             self.saved = false;
             cx.emit(OverviewEvent::Save {
                 patch: Box::new(patch),
@@ -359,8 +351,10 @@ impl OverviewTab {
         {
             return;
         }
-        self.ledger.sent(OpAction::DeleteCommunity);
-        self.pending = Some(Pending::new(OpAction::DeleteCommunity));
+        self.pending = Some(Pending::new(
+            self.action(AdminActionKind::DeleteCommunity),
+            &self.view.op,
+        ));
         cx.emit(OverviewEvent::Delete);
         cx.notify();
     }
@@ -637,12 +631,10 @@ impl OverviewTab {
 
     fn delete_dialog(&self, cx: &mut Context<Self>) -> Dialog {
         let sem = cx.sem().clone();
-        let deleting = self.current_action() == Some(OpAction::DeleteCommunity);
-        let busy = deleting && self.view.op.busy;
+        let delete = self.action(AdminActionKind::DeleteCommunity);
+        let busy = running(&self.view.op, &delete);
         let matched = confirms_name(&self.delete_typed.read(cx).value(), &self.view.name);
-        let error = deleting
-            .then(|| server_error(self.view.op.error.as_ref()))
-            .flatten();
+        let error = server_error(failure(&self.view.op, &delete));
         let cancel = cx.weak_entity();
         let close = cx.weak_entity();
         let confirm = cx.weak_entity();
@@ -745,15 +737,23 @@ impl OverviewTab {
     fn form(&mut self, narrow: bool, window: &Window, cx: &mut Context<Self>) -> AnyElement {
         let sem = cx.sem().clone();
         let editable = self.caps.update_community && !self.busy();
-        let updating = self.current_action() == Some(OpAction::UpdateCommunity);
+        let update = state_of(
+            &self.view.op,
+            &self.action(AdminActionKind::UpdateCommunity),
+        );
+        let updating = update.is_some_and(|state| state.busy || state.upload.is_some());
+        let upload = update.and_then(|state| state.upload.clone());
+        let update_error = update
+            .filter(|state| !state.busy)
+            .and_then(|state| state.error.clone());
         let (name_error, description_error) = self.errors(cx);
         let show = |error: Option<String>| error.filter(|_| self.tried);
         let name_error = show(name_error);
         let description_error = show(description_error);
         let dirty = self.patch(cx) != CommunityPatch::default();
-        let save_label = if updating && self.view.op.upload.is_some() {
+        let save_label = if upload.is_some() {
             "Uploading files..."
-        } else if updating && self.view.op.busy {
+        } else if updating {
             "Updating..."
         } else {
             "Update Community"
@@ -789,9 +789,7 @@ impl OverviewTab {
                     "You don't have permission to update community settings.",
                 ))
             })
-            .when(updating, |col| {
-                col.children(server_error(self.view.op.error.as_ref()))
-            })
+            .children(server_error(update_error.as_ref()))
             .when(self.saved, |col| {
                 col.child(Alert::new(Severity::Success, "Community updated."))
             });
@@ -804,11 +802,7 @@ impl OverviewTab {
                 .child(self.pictures(editable, narrow, cx))
                 .child(name_field)
                 .child(self.description_field(description_error, editable, window, cx))
-                .children(if updating {
-                    upload_bar("community-upload", self.view.op.upload.as_ref(), cx)
-                } else {
-                    None
-                })
+                .children(upload_bar("community-upload", upload.as_ref(), cx))
                 .child(div().flex().justify_end().child(save)),
             cx,
         );

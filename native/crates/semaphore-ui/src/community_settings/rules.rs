@@ -1,7 +1,10 @@
 //! What the tabs check before they send, and the labels they draw, with no GPUI in them. Lengths
 //! are counted as the web and the server's `class-validator` count them: UTF-16 code units.
 
-use semaphore_core::model::{AdminOp, ChannelPreset, CommunityCaps, DraftFile, InviteRow};
+use semaphore_core::model::{
+    AdminAction, AdminActionKind, AdminActionState, AdminOp, ChannelPreset, CommunityCaps,
+    DraftFile, ErrorView, InviteRow,
+};
 
 /// A string's length as JavaScript's `.length` (and so `maxLength` and `@MaxLength`) counts it.
 pub fn js_len(text: &str) -> usize {
@@ -454,50 +457,56 @@ pub fn first_open_tab(caps: &CommunityCaps) -> CommunityTab {
 
 // ---- Which change an op is about. ----
 
-/// One change a tab sends. Several share one op (`CommunitySettingsView::op` carries community,
-/// channel, member and sound changes), so a tab shows an op's busy state and error only when it is
-/// about one of its own.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum OpAction {
-    UpdateCommunity,
-    DeleteCommunity,
-    CreateChannel,
-    UpdateChannel { channel_id: String },
-    DeleteChannel { channel_id: String },
-    MoveChannel { channel_id: String },
-    AddMember { user_id: String },
-    AddSound,
-    DeleteSound { sound_id: String },
-    AddPrivateMember { user_id: String },
-    RemovePrivateMember { user_id: String },
-    CreateGroup,
-    SaveGroup { group_id: String },
-    DeleteGroup { group_id: String },
-    AddEmoji,
-    DeleteEmoji { emoji_id: String },
-    CreateWebhook,
-    DeleteWebhook { webhook_id: String },
-    CreateInvite,
-    DeleteInvite { code: String },
-}
-
-/// The change `op` is about, when it is busy or failed and `mine` claims it.
-///
-/// Today core's `AdminOp` doesn't say, so this is the last change sent on that op (`last_sent`,
-/// which the screen shares between the tabs that send on one op). Once `AdminOp::action` lands,
-/// this reads it instead and `last_sent` goes.
-pub fn op_about(
-    op: &AdminOp,
-    last_sent: Option<&OpAction>,
-    mine: impl Fn(&OpAction) -> bool,
-) -> Option<OpAction> {
-    if !op.busy && op.error.is_none() && op.upload.is_none() {
-        return None;
+/// A change, as core keys it in `AdminOp::actions`.
+pub fn act(kind: AdminActionKind, target_id: Option<&str>) -> AdminAction {
+    AdminAction {
+        kind,
+        target_id: target_id.map(str::to_owned),
     }
-    last_sent.filter(|action| mine(action)).cloned()
 }
 
-/// Where a sent change stands, from the ops seen since it was sent.
+/// This change's own state on `op`: running, or failed until it starts again. `None` once it has
+/// succeeded (or before it starts).
+pub fn state_of<'a>(op: &'a AdminOp, action: &AdminAction) -> Option<&'a AdminActionState> {
+    op.actions.iter().find(|state| state.action == *action)
+}
+
+/// This change is on its way (or its file is going up).
+pub fn running(op: &AdminOp, action: &AdminAction) -> bool {
+    state_of(op, action).is_some_and(|state| state.busy || state.upload.is_some())
+}
+
+/// Why this change failed, until it starts again.
+pub fn failure<'a>(op: &'a AdminOp, action: &AdminAction) -> Option<&'a ErrorView> {
+    state_of(op, action)
+        .filter(|state| !state.busy)
+        .and_then(|state| state.error.as_ref())
+}
+
+/// The running changes of these kinds, oldest first.
+pub fn running_of<'a>(
+    op: &'a AdminOp,
+    kinds: &'a [AdminActionKind],
+) -> impl Iterator<Item = &'a AdminActionState> + 'a {
+    op.actions
+        .iter()
+        .filter(move |state| kinds.contains(&state.action.kind))
+        .filter(|state| state.busy || state.upload.is_some())
+}
+
+/// The newest failure among these kinds, with the change it belongs to.
+pub fn failure_of<'a>(
+    op: &'a AdminOp,
+    kinds: &[AdminActionKind],
+) -> Option<(&'a AdminAction, &'a ErrorView)> {
+    op.actions
+        .iter()
+        .rev()
+        .filter(|state| kinds.contains(&state.action.kind) && !state.busy)
+        .find_map(|state| state.error.as_ref().map(|error| (&state.action, error)))
+}
+
+/// Where a sent change stands, from its own entry in the op.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     /// Not started yet, or still on its way.
@@ -506,34 +515,40 @@ pub enum Outcome {
     Failed,
 }
 
-/// A change this tab sent, followed through the op until it ends.
+/// A change this tab sent, followed through its own entry in `AdminOp::actions` until it ends.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pending {
-    pub action: OpAction,
-    saw_busy: bool,
+    pub action: AdminAction,
+    /// The op as it stood when the change was sent.
+    before: AdminOp,
+    /// Its entry has been seen running.
+    seen: bool,
 }
 
 impl Pending {
-    pub fn new(action: OpAction) -> Self {
+    pub fn new(action: AdminAction, before: &AdminOp) -> Self {
         Self {
             action,
-            saw_busy: false,
+            before: before.clone(),
+            seen: false,
         }
     }
 
-    /// The op as core shows it now. Core marks an op busy as a change starts and ends it with an
-    /// error or none, so an op that isn't busy, after one that was, has ended. A refusal before
-    /// sending (core's own checks) ends it with an error and never shows busy.
+    /// The op as core shows it now. An entry that is running waits; one that failed ends it; once
+    /// its entry is gone it succeeded, if it was seen or the op moved on since the change was sent
+    /// (core adds the entry as the change starts, so an unchanged op means it hasn't yet).
     pub fn observe(&mut self, op: &AdminOp) -> Outcome {
-        if op.busy || op.upload.is_some() {
-            self.saw_busy = true;
-            Outcome::Waiting
-        } else if op.error.is_some() {
-            Outcome::Failed
-        } else if self.saw_busy {
-            Outcome::Succeeded
-        } else {
-            Outcome::Waiting
+        match state_of(op, &self.action) {
+            Some(state) if state.busy || state.upload.is_some() => {
+                self.seen = true;
+                Outcome::Waiting
+            }
+            Some(state) if state.error.is_some() && (self.seen || *op != self.before) => {
+                Outcome::Failed
+            }
+            Some(_) => Outcome::Waiting,
+            None if self.seen || *op != self.before => Outcome::Succeeded,
+            None => Outcome::Waiting,
         }
     }
 }
