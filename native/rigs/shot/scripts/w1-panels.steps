@@ -90,6 +90,9 @@ shot w1-thread-unsubscribed-desktop
 story thread-unsubscribed 390 844 light-blue-balanced
 wait idle
 shot w1-thread-unsubscribed-phone
+story thread-first-reply-pending 1280 800 dark-blue-balanced
+wait idle
+shot w1-thread-first-reply-pending-desktop
 story thread-no-replies 1280 800 dark-blue-balanced
 wait idle
 shot w1-thread-no-replies-desktop

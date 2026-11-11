@@ -5,6 +5,8 @@
 //! theme light-blue-balanced                         # switches theme, live
 //! click channel-channel-13                          # by element id, with real hit testing
 //! click members-scrim 20 400                        # at an offset from its top left
+//! hover message-action-react                        # the pointer over an element, by id
+//! right-click channel-cc-general                    # a right press and release on it
 //! drag 360 400 600 400                              # window-local, through real hit testing
 //! type "hello there"                                # text to whatever has focus
 //! press enter
@@ -54,6 +56,12 @@ pub enum Step {
     Click {
         id: String,
         at: Option<(f32, f32)>,
+    },
+    Hover {
+        id: String,
+    },
+    RightClick {
+        id: String,
     },
     Drag {
         from: (f32, f32),
@@ -145,6 +153,8 @@ pub fn step(words: &[&str]) -> Result<Step, String> {
             id: (*id).into(),
             at: Some((number(x, "x")? as f32, number(y, "y")? as f32)),
         },
+        ["hover", id] => Step::Hover { id: (*id).into() },
+        ["right-click", id] => Step::RightClick { id: (*id).into() },
         ["drag", x1, y1, x2, y2] => Step::Drag {
             from: (number(x1, "x")? as f32, number(y1, "y")? as f32),
             to: (number(x2, "x")? as f32, number(y2, "y")? as f32),
@@ -212,6 +222,8 @@ mod tests {
             story shell-unread 1440 900 dark-blue-balanced
             theme light-teal-minimal  # trailing comment
             click channel-1
+            hover row-2
+            right-click row-3
             type "hello # there"
             press enter
             emit connection offline
@@ -227,15 +239,17 @@ mod tests {
             "#,
         )
         .unwrap();
-        assert_eq!(steps.len(), 15);
+        assert_eq!(steps.len(), 17);
+        assert_eq!(steps[3], Step::Hover { id: "row-2".into() });
+        assert_eq!(steps[4], Step::RightClick { id: "row-3".into() });
         assert_eq!(
-            steps[3],
+            steps[5],
             Step::Type {
                 text: "hello # there".into()
             }
         );
         assert_eq!(
-            steps[7],
+            steps[9],
             Step::Emit(Emit::Message {
                 channel: "general".into(),
                 author: "liam".into(),

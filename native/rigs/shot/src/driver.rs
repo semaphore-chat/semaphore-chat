@@ -130,6 +130,16 @@ impl Driver {
                     None => window.click(target, cx),
                 })?;
             }
+            Step::Hover { id } => {
+                self.settle()?;
+                let target = ElementId::Name(id.clone().into());
+                self.update(|window, cx| window.hover(target, cx))?;
+            }
+            Step::RightClick { id } => {
+                self.settle()?;
+                let target = ElementId::Name(id.clone().into());
+                self.update(|window, cx| window.right_click(target, cx))?;
+            }
             Step::Drag { from, to } => {
                 self.settle()?;
                 self.update(|window, cx| {

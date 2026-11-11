@@ -25,11 +25,21 @@
 //! wait core voice own-frames screen    # our own camera's or screen's preview reached the window
 //! video fail-next camera "why"         # the fake camera (or screen) refuses its next start
 //! expect stored-session yes           # a refresh token is in the (memory) keyring
+//! hover-row message "text"            # the pointer over a row's element, as click-row finds it
+//! right-click-row message "text"      # a right press on it: the actions menu
+//! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
 //! ```
+//!
+//! `$SERVER` anywhere in a script is the fake server's URL, for links to it.
 //!
 //! Conditions: `session signed-in|signed-out|failed`, `connection connected|disconnected|offline`,
 //! `rows >= N`, `text S`, `no-text S`, `sent S` (acked), `pending S`, `failed S`, `count S N`,
-//! `channel ID`, `detached`, `live`, `label NAME`.
+//! `channel ID`, `detached`, `live`, `label NAME`; and W1's: `side-panel none|pins|search|thread`,
+//! `editing yes|no`, `picker open|closed`, `pinned S`, `unpinned S`, `edited S`, `removed S`,
+//! `reaction S EMOJI COUNT` (with mine among them), `thread-rows >= N`, `thread-sent S`,
+//! `subscribed yes|no` (the open thread), `unread-after S` (the divider follows that row),
+//! `notice S`, `no-notice`, `pinned-count N` (the header's badge), `composer-text S`,
+//! `search-hits >= N`, `element ID`, `no-element ID`.
 
 use anyhow::{Context as _, Result, anyhow, bail};
 use gpui_kit::test::TestWindowExt as _;
@@ -177,6 +187,32 @@ enum Condition {
     FileReady(String),
     /// The image viewer is open.
     Viewer(bool),
+    SidePanel(String),
+    Editing(bool),
+    Picker(bool),
+    Pinned(String, bool),
+    Edited(String),
+    Removed(String),
+    Reaction(String, String, u32),
+    ThreadRows(usize),
+    ThreadSent(String),
+    Subscribed(bool),
+    UnreadAfter(String),
+    Notice(String),
+    NoNotice,
+    PinnedCount(u32),
+    ComposerText(String),
+    SearchHits(usize),
+    /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
+    Element(String, bool),
+}
+
+/// What a row step does to the element it finds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RowGesture {
+    Click,
+    Hover,
+    RightClick,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -206,6 +242,12 @@ enum Step {
         name: String,
         text: String,
         index: Option<u64>,
+        gesture: RowGesture,
+    },
+    /// A click on the glyphs of `needle` in the newest row containing `text`.
+    ClickText {
+        text: String,
+        needle: String,
     },
     /// What the OS watcher would report.
     Os(OsEvent),
@@ -281,6 +323,32 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["file-ready", file_id] => Condition::FileReady((*file_id).into()),
         ["viewer", "open"] => Condition::Viewer(true),
         ["viewer", "closed"] => Condition::Viewer(false),
+        ["side-panel", kind @ ("none" | "pins" | "search" | "thread")] => {
+            Condition::SidePanel((*kind).into())
+        }
+        ["editing", "yes"] => Condition::Editing(true),
+        ["editing", "no"] => Condition::Editing(false),
+        ["picker", "open"] => Condition::Picker(true),
+        ["picker", "closed"] => Condition::Picker(false),
+        ["pinned", text] => Condition::Pinned((*text).into(), true),
+        ["unpinned", text] => Condition::Pinned((*text).into(), false),
+        ["edited", text] => Condition::Edited((*text).into()),
+        ["removed", text] => Condition::Removed((*text).into()),
+        ["reaction", text, emoji, count] => {
+            Condition::Reaction((*text).into(), (*emoji).into(), number(count)? as u32)
+        }
+        ["thread-rows", ">=", count] => Condition::ThreadRows(number(count)?),
+        ["thread-sent", text] => Condition::ThreadSent((*text).into()),
+        ["subscribed", "yes"] => Condition::Subscribed(true),
+        ["subscribed", "no"] => Condition::Subscribed(false),
+        ["unread-after", text] => Condition::UnreadAfter((*text).into()),
+        ["notice", text] => Condition::Notice((*text).into()),
+        ["no-notice"] => Condition::NoNotice,
+        ["pinned-count", count] => Condition::PinnedCount(number(count)? as u32),
+        ["composer-text", text] => Condition::ComposerText((*text).into()),
+        ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
+        ["element", id] => Condition::Element((*id).into(), true),
+        ["no-element", id] => Condition::Element((*id).into(), false),
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
@@ -347,15 +415,27 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             },
             ["expect", "stored-session", "yes"] => Step::ExpectStoredSession(true),
             ["expect", "stored-session", "no"] => Step::ExpectStoredSession(false),
-            ["click-row", name, text] => Step::ClickRow {
-                name: (*name).into(),
+            ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
-                index: None,
+                needle: (*needle).into(),
             },
-            ["click-row", name, text, index] => Step::ClickRow {
+            [
+                verb @ ("click-row" | "hover-row" | "right-click-row"),
+                name,
+                text,
+                rest @ ..,
+            ] if rest.len() <= 1 => Step::ClickRow {
                 name: (*name).into(),
                 text: (*text).into(),
-                index: Some(index.parse().map_err(|_| at(anyhow!("index")))?),
+                index: match rest {
+                    [index] => Some(index.parse().map_err(|_| at(anyhow!("index")))?),
+                    _ => None,
+                },
+                gesture: match *verb {
+                    "hover-row" => RowGesture::Hover,
+                    "right-click-row" => RowGesture::RightClick,
+                    _ => RowGesture::Click,
+                },
             },
             _ => Step::Shot(script::step(&words).map_err(|error| at(anyhow!(error)))?),
         };
@@ -625,6 +705,14 @@ impl Rig {
             let showing = self.driver.cx.update(|cx| app.read(cx).viewer_open());
             return Ok(showing == *open);
         }
+        if let Condition::Element(id, drawn) = condition {
+            let id = ElementId::Name(id.clone().into());
+            let found = self.driver.query(|window| window.try_find(id).is_some())?;
+            return Ok(found == *drawn);
+        }
+        if let Some(answer) = self.w1_holds(condition)? {
+            return Ok(answer);
+        }
         let app = self.app()?.clone();
         let core = self.driver.cx.update(|cx| app.read(cx).core());
         let Some(core) = core else {
@@ -686,7 +774,24 @@ impl Rig {
             | Condition::Requests(..)
             | Condition::RequestsExactly(..)
             | Condition::FileReady(_)
-            | Condition::Viewer(_) => unreachable!("answered above"),
+            | Condition::Viewer(_)
+            | Condition::SidePanel(_)
+            | Condition::Editing(_)
+            | Condition::Picker(_)
+            | Condition::Pinned(..)
+            | Condition::Edited(_)
+            | Condition::Removed(_)
+            | Condition::Reaction(..)
+            | Condition::ThreadRows(_)
+            | Condition::ThreadSent(_)
+            | Condition::Subscribed(_)
+            | Condition::UnreadAfter(_)
+            | Condition::Notice(_)
+            | Condition::NoNotice
+            | Condition::PinnedCount(_)
+            | Condition::ComposerText(_)
+            | Condition::SearchHits(_)
+            | Condition::Element(..) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
             }
@@ -737,6 +842,76 @@ impl Rig {
             }
             activity.wait_past(seen, LOOK_EVERY.min(deadline - now));
         }
+    }
+
+    /// W1's conditions: the pane's side panel, editor, picker, thread and divider, and its rows.
+    fn w1_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
+        let app = self.app()?.clone();
+        Ok(self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            let core = root.core();
+            let Some(pane) = root.pane() else {
+                return Some(false);
+            };
+            let pane = pane.read(cx);
+            let newest = |text: &str| {
+                pane.rows()
+                    .iter()
+                    .rev()
+                    .find(|row| row.display.contains(text))
+                    .cloned()
+            };
+            Some(match condition {
+                Condition::SidePanel(kind) => pane.side_panel_kind() == kind,
+                Condition::Editing(yes) => pane.editing_message().is_some() == *yes,
+                Condition::Picker(open) => pane.picker_open() == *open,
+                Condition::Pinned(text, pinned) => {
+                    newest(text).is_some_and(|row| row.pinned == *pinned)
+                }
+                Condition::Edited(text) => {
+                    newest(text).is_some_and(|row| row.edited && !row.edit_pending)
+                }
+                Condition::Removed(text) => newest(text).is_some_and(|row| row.removed),
+                Condition::Reaction(text, emoji, count) => newest(text).is_some_and(|row| {
+                    row.reactions
+                        .iter()
+                        .any(|r| r.emoji == *emoji && r.count == *count && r.me)
+                }),
+                Condition::ThreadRows(count) => pane.thread_rows().len() >= *count,
+                Condition::ThreadSent(text) => pane.thread_rows().iter().any(|row| {
+                    row.display.contains(text.as_str())
+                        && row.id.is_some()
+                        && row.send_state == SendState::Sent
+                }),
+                Condition::Subscribed(yes) => match (pane.thread_parent(), &core) {
+                    (Some(parent), Some(core)) => {
+                        let info = core.thread_info(parent.to_owned());
+                        info.state == semaphore_core::model::LoadState::Ready
+                            && info.subscribed == *yes
+                    }
+                    _ => false,
+                },
+                Condition::UnreadAfter(text) => {
+                    let divider = pane.list().and_then(|list| list.read(cx).unread_divider());
+                    match (divider, newest(text)) {
+                        (Some(divider), Some(row)) => divider.after_seq == row.seq,
+                        _ => false,
+                    }
+                }
+                Condition::Notice(text) => pane.notice().is_some_and(|n| n.contains(text.as_str())),
+                Condition::NoNotice => pane.notice().is_none(),
+                Condition::ComposerText(text) => pane
+                    .composer()
+                    .is_some_and(|composer| composer.read(cx).value(cx).contains(text.as_str())),
+                Condition::SearchHits(count) => pane
+                    .search_panel()
+                    .is_some_and(|panel| panel.read(cx).hits().len() >= *count),
+                Condition::PinnedCount(count) => root
+                    .shell()
+                    .is_some_and(|shell| shell.read(cx).pinned_count == *count),
+                _ => return None,
+            })
+        }))
     }
 
     fn voice_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
@@ -908,7 +1083,13 @@ impl Rig {
         .map(|_| ())
     }
 
-    fn click_row(&mut self, name: &str, text: &str, index: Option<u64>) -> Result<()> {
+    fn click_row(
+        &mut self,
+        name: &str,
+        text: &str,
+        index: Option<u64>,
+        gesture: RowGesture,
+    ) -> Result<()> {
         self.driver.settle()?;
         let (rows, _, _) = self.rows()?;
         let seq = rows
@@ -924,7 +1105,40 @@ impl Rig {
                 None => seq as u64,
             },
         );
-        self.driver.update(|window, cx| window.click(id, cx))
+        self.driver.update(|window, cx| match gesture {
+            RowGesture::Click => window.click(id, cx),
+            RowGesture::Hover => window.hover(id, cx),
+            RowGesture::RightClick => window.right_click(id, cx),
+        })
+    }
+
+    fn click_text(&mut self, text: &str, needle: &str) -> Result<()> {
+        self.driver.settle()?;
+        let (rows, _, _) = self.rows()?;
+        let row = rows
+            .iter()
+            .rev()
+            .find(|row| row.display.contains(text))
+            .ok_or_else(|| anyhow!("no row contains {text:?}"))?;
+        let byte = row
+            .display
+            .find(needle)
+            .ok_or_else(|| anyhow!("{text:?} has no {needle:?}"))?;
+        let pos = semaphore_ui::messages::Pos {
+            seq: row.seq,
+            // A few glyphs in, so the point is on the needle and not its edge.
+            byte: (byte + needle.len().min(3)) as u32,
+        };
+        let app = self.app()?.clone();
+        let at = self
+            .driver
+            .cx
+            .update(|cx| {
+                let list = app.read(cx).pane()?.read(cx).list()?.clone();
+                list.read(cx).point_of(pos)
+            })
+            .ok_or_else(|| anyhow!("{needle:?} isn't painted"))?;
+        self.driver.update(|window, cx| window.drag(at, at, cx))
     }
 
     fn requests(&self, name: &str) -> Result<usize> {
@@ -983,7 +1197,13 @@ impl Rig {
                         ))
                     }
                 }
-                Step::ClickRow { name, text, index } => self.click_row(name, text, *index),
+                Step::ClickText { text, needle } => self.click_text(text, needle),
+                Step::ClickRow {
+                    name,
+                    text,
+                    index,
+                    gesture,
+                } => self.click_row(name, text, *index, *gesture),
                 Step::Os(event) => {
                     let app = self.app()?.clone();
                     self.driver.cx.update(|cx| app.read(cx).os_event(*event));
@@ -1105,7 +1325,9 @@ fn main() -> Result<()> {
         (None, None, None) => None,
         _ => bail!("--livekit-http, --livekit-key and --livekit-secret go together"),
     };
-    let source = std::fs::read_to_string(&script_path).with_context(|| script_path.clone())?;
+    let source = std::fs::read_to_string(&script_path)
+        .with_context(|| script_path.clone())?
+        .replace("$SERVER", server.trim_end_matches('/'));
     let steps = parse(&source).with_context(|| script_path.clone())?;
     let now_ms = scenario_now_ms(&scenario)?;
     std::fs::create_dir_all(&out_dir)?;
