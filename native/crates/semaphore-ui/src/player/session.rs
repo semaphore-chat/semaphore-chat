@@ -29,6 +29,10 @@ pub trait PlayerOpener: 'static {
         events: PlayerEvents,
         surface: Option<PlayerSurface>,
     ) -> Box<dyn MediaPlayer>;
+
+    /// The audio output for players opened after this (`None`: the default). Ignored by
+    /// openers with no output of their own.
+    fn set_output_device(&self, _device: Option<String>) {}
 }
 
 impl<F> PlayerOpener for F

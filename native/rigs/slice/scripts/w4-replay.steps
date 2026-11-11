@@ -1,0 +1,113 @@
+# W4 replay, against the fake server alone (no LiveKit): clip libraries on profile pages (mine
+# with the public switch, delete with its confirm, sharing to a channel and to a DM; another
+# user's public clips only). The capture dialog opens only while a buffer records, which needs
+# LiveKit: it's covered by the replay stories, not here. The window is tall so the clip cards'
+# buttons are on screen under the profile header.
+
+app 1280 1200
+window activate
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. Clips seeded before the pages read them: two of mine (one public), two of Priya's (one
+# public).
+server seed_clip "{\"id\": \"$ID(w4-mine-a)\", \"durationSeconds\": 42, \"isPublic\": false}"
+server seed_clip "{\"id\": \"$ID(w4-mine-b)\", \"durationSeconds\": 95, \"isPublic\": true}"
+server seed_clip "{\"id\": \"$ID(w4-priya-pub)\", \"userId\": \"$ID(u-priya)\", \"durationSeconds\": 30, \"isPublic\": true}"
+server seed_clip "{\"id\": \"$ID(w4-priya-priv)\", \"userId\": \"$ID(u-priya)\", \"durationSeconds\": 61, \"isPublic\": false}"
+
+# 2. My page: both clips, each with its public switch, share and delete.
+type "my clips"
+press enter
+wait core sent "my clips"
+click-row message-author "my clips"
+wait core profile-open $ID(me)
+wait core element profile-modal
+click profile-view-page
+wait core route profile/$ID(me)
+wait core element clip-library
+wait core clips 2
+wait core element clip-public-$ID(w4-mine-a)
+wait idle
+shot 01-own-library
+
+# 3. The public switch: the server is told, and the card says so.
+click clip-public-$ID(w4-mine-a)
+wait core requests LivekitController_updateClip >= 1
+wait core label "Visible on profile"
+wait idle
+
+# 4. Share to a channel: a community, then one of its channels.
+click clip-share-$ID(w4-mine-a)
+wait core dialog share open
+wait core element share-community
+click share-community
+press down
+press enter
+wait core element share-channel
+click share-channel
+press down
+press enter
+wait idle
+shot 02-share-channel
+click share-go
+wait core requests LivekitController_shareClip >= 1
+wait core dialog share closed
+wait core label "Clip shared successfully"
+wait idle
+shot 03-shared-toast
+
+# 5. Share to a DM.
+click clip-share-$ID(w4-mine-a)
+wait core dialog share open
+click share-kind-dm
+wait core element share-dm
+click share-dm
+press down
+press enter
+click share-go
+wait core requests LivekitController_shareClip >= 2
+wait core dialog share closed
+# The toast goes by itself.
+tick 5000
+wait core no-element replay-toast
+
+# 6. Delete, after its confirm: one clip left.
+click clip-delete-$ID(w4-mine-b)
+wait core element clip-delete-confirm
+wait idle
+shot 04-delete-confirm
+click clip-delete-confirm
+wait core requests LivekitController_deleteClip >= 1
+wait core clips 1
+wait core no-element clip-delete-confirm
+wait idle
+shot 05-deleted
+
+# 7. Priya's page: her public clip only, and none of the owner's controls.
+link "semaphore://community/$ID(c-couch)/channel/$ID(cc-general)"
+wait core channel $ID(cc-general)
+server post_as "{\"channelId\": \"$ID(cc-general)\", \"authorId\": \"$ID(u-priya)\", \"text\": \"see my clip\"}"
+wait core text "see my clip" within 5
+click-row message-author "see my clip"
+wait core profile-open $ID(u-priya)
+click profile-view-page
+wait core route profile/$ID(u-priya)
+wait core element user-clips
+wait core clips 1
+wait core element clip-download-$ID(w4-priya-pub)
+expect core no-element clip-public-$ID(w4-priya-pub)
+expect core no-element clip-download-$ID(w4-priya-priv)
+wait idle
+shot 06-other-public-clips

@@ -239,6 +239,7 @@ impl Render for ShareClipDialog {
             .body(
                 div()
                     .id("share-clip")
+                    .test_support()
                     .flex()
                     .flex_col()
                     .gap(px(8.))

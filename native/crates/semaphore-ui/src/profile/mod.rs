@@ -5,7 +5,8 @@
 //! - `ProfileModal` (`UserProfileModal.tsx`): banner, avatar, name, status, "About Me", and
 //!   "Message" / "View Profile". A dialog over whatever opened it.
 //! - `ProfilePage` (`ProfilePage.tsx` with `ProfileHeader.tsx`): Back, "Edit Profile" on this
-//!   user's own, the larger header. Route `Profile { user_id }`.
+//!   user's own, the larger header, and below it the clip library (`replay::ClipLibrary`) the
+//!   owner gives it. Route `Profile { user_id }`.
 //! - `ProfileEditForm` (`ProfileEditPage.tsx`, `ProfileEditForm.tsx`, `UserAvatarUpload.tsx`,
 //!   `UserBannerUpload.tsx`): the banner and avatar pickers, display name, status and bio, with the
 //!   web's limits, upload progress and Save. Route `ProfileEdit`.
@@ -124,11 +125,13 @@ impl ProfileModal {
     }
 }
 
-/// `ProfilePage`: Back, "Edit Profile" on this user's own, and the header.
+/// `ProfilePage`: Back, "Edit Profile" on this user's own, the header, and the clip library
+/// below it once the owner gives one ([`ProfilePage::set_clips`]).
 pub struct ProfilePage {
     view: ProfileView,
     actions: ProfileActions,
     user_id: String,
+    clips: Option<Entity<crate::replay::ClipLibrary>>,
     /// Decoded pictures standing in for the files, for stories: (avatar, banner).
     images: (Option<ImageSource>, Option<ImageSource>),
 }
@@ -141,6 +144,7 @@ impl ProfilePage {
             view: ProfileView::default(),
             actions: ProfileActions::default(),
             user_id: user_id.into(),
+            clips: None,
             images: (None, None),
         }
     }
@@ -153,6 +157,17 @@ impl ProfilePage {
     pub fn set_actions(&mut self, actions: ProfileActions, cx: &mut Context<Self>) {
         self.actions = actions;
         cx.notify();
+    }
+
+    /// The user's clips (mine, or their public ones), drawn under the header once the profile
+    /// has loaded, as the web's page does.
+    pub fn set_clips(&mut self, clips: Entity<crate::replay::ClipLibrary>, cx: &mut Context<Self>) {
+        self.clips = Some(clips);
+        cx.notify();
+    }
+
+    pub fn clips(&self) -> Option<&Entity<crate::replay::ClipLibrary>> {
+        self.clips.as_ref()
     }
 
     pub fn user_id(&self) -> &str {

@@ -117,7 +117,7 @@ impl Capture {
     }
 }
 
-fn clip(id: &str, name: &str, seconds: u32, public: bool, age_hours: i64) -> Clip {
+pub(crate) fn clip(id: &str, name: &str, seconds: u32, public: bool, age_hours: i64) -> Clip {
     Clip {
         id: id.into(),
         file_id: format!("f-{id}"),
@@ -133,7 +133,7 @@ fn clip(id: &str, name: &str, seconds: u32, public: bool, age_hours: i64) -> Cli
     }
 }
 
-fn clips() -> Vec<Clip> {
+pub(crate) fn clips() -> Vec<Clip> {
     vec![
         clip("c1", "replay-1762614240.mp4", 60, true, 0),
         clip("c2", LONG_NAME, 300, false, 5),
@@ -159,7 +159,7 @@ impl Render for LibraryFrame {
     }
 }
 
-struct Library {
+pub(crate) struct Library {
     own: bool,
     view: ClipsView,
     downloading: Vec<String>,
@@ -167,7 +167,7 @@ struct Library {
 }
 
 impl Library {
-    fn new(own: bool, view: ClipsView) -> Self {
+    pub(crate) fn new(own: bool, view: ClipsView) -> Self {
         Self {
             own,
             view,
@@ -176,7 +176,7 @@ impl Library {
         }
     }
 
-    fn ready(own: bool, clips: Vec<Clip>) -> Self {
+    pub(crate) fn ready(own: bool, clips: Vec<Clip>) -> Self {
         Self::new(
             own,
             ClipsView {
@@ -188,9 +188,15 @@ impl Library {
     }
 
     fn story(self, window: &mut Window, cx: &mut App) -> AnyView {
+        let library = self.entity(window, cx);
+        cx.new(|_| LibraryFrame { library }).into()
+    }
+
+    /// The library alone, for a profile page's story.
+    pub(crate) fn entity(self, window: &mut Window, cx: &mut App) -> Entity<ClipLibrary> {
         let (opener, _) = FakeOpener::rc(Script::video());
         let players = Players::new(opener, VideoFrames::for_window(window));
-        let library = cx.new(|cx| {
+        cx.new(|cx| {
             let mut library = ClipLibrary::new(self.own, Some(players), cx);
             library.set_view(self.view, cx);
             library.set_downloading(self.downloading, cx);
@@ -201,8 +207,7 @@ impl Library {
                 }
             }
             library
-        });
-        cx.new(|_| LibraryFrame { library }).into()
+        })
     }
 }
 
