@@ -273,7 +273,8 @@ impl AppRoot {
         self.inbox.level.clone().map(Into::into)
     }
 
-    /// Signed out: the views go with the shell; links and raised notifications stay.
+    /// Signed out: the views go with the shell, and the session's OS notifications come down (they
+    /// were this user's, and a click would act for whoever signs in next). Links stay.
     pub(super) fn drop_inbox(&mut self) {
         let Inbox {
             raised,
@@ -284,8 +285,12 @@ impl AppRoot {
             idle,
             ..
         } = std::mem::take(&mut self.inbox);
+        if let Some(notifier) = &self.config.notifier {
+            for tag in raised.keys() {
+                notifier.withdraw(tag);
+            }
+        }
         self.inbox = Inbox {
-            raised,
             pending_link,
             sounds,
             focus_dm,

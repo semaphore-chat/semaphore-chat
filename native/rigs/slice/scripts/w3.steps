@@ -1,0 +1,45 @@
+# W3: account, settings, sign-in extras and communities in the real app, against the showcase
+# scenario (alexk). Nothing reaches the desktop: the rig answers file pickers, records the URLs
+# the app opens (and plays the browser for them), and fakes the link handler.
+
+app 1280 800
+window activate
+wait idle
+click auth-connect
+wait core session signed-out within 5
+wait idle
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+
+# 1. Signing out and in again in the same window: the conversation shown again is opened again,
+# and a message sent in it shows at once and is acked.
+type "before signing out"
+press enter
+wait core sent "before signing out"
+click rail-account
+wait core label "Sign out"
+click account-sign-out
+wait core session signed-out
+wait core label "Username"
+click auth-username
+type "alexk"
+click auth-password
+type "hunter2"
+click auth-login
+wait core session signed-in
+wait core channel $ID(cc-general)
+wait core rows >= 14
+wait idle
+type "after signing in again"
+press enter
+wait core text "after signing in again" within 5
+wait core sent "after signing in again"
+wait idle
+shot 01-second-sign-in-sent

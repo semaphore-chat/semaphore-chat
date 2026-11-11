@@ -69,7 +69,9 @@ pub struct AppRoot {
     server: Option<(String, String)>,
     auth: Option<Entity<AuthScreen>>,
     shell: Option<Entity<Shell>>,
+    /// This session's conversation pane (`build_pane`), and what it asks of the shell.
     pane: Option<Entity<ConversationPane>>,
+    pane_subscription: Option<Subscription>,
     /// The session the screens were last built for.
     shown: Option<SessionState>,
     /// Signed-in sessions go to their first community once, as the web's last route would.
@@ -164,6 +166,7 @@ impl AppRoot {
             auth: None,
             shell: None,
             pane: None,
+            pane_subscription: None,
             shown: None,
             landed: false,
             account_open: false,
@@ -264,30 +267,6 @@ impl AppRoot {
             cx,
         ));
         self.media = Some(media.clone());
-        let opener = cx.entity().downgrade();
-        let open_attachment: crate::conversation::OpenAttachment =
-            Rc::new(move |attachment, window, cx| {
-                opener
-                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
-                    .ok();
-            });
-        let backend = services.backend.clone();
-        let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
-        let pane = cx.new(|cx| {
-            ConversationPane::new(
-                core,
-                services.exec.clone(),
-                self.config.time,
-                self.config.scrollbar,
-                media,
-                open_attachment,
-                server_url,
-                window,
-                cx,
-            )
-        });
-        self._subscriptions
-            .push(cx.subscribe_in(&pane, window, Self::on_pane_event));
         let last_server = services.last_server.clone();
         // Voice: frames for this window, the controls, and the stage, made once.
         let frames = VideoFrames::for_window(window);
@@ -320,7 +299,6 @@ impl AppRoot {
         let model = VoiceStageModel::default();
         self.stage = Some(cx.new(|cx| VoiceStage::new(model, frames, controller, window, cx)));
         self.voice = Some(voice);
-        self.pane = Some(pane);
         let audio = services.audio.clone();
         self.services = Some(services);
         self.start_inbox(audio, cx);
@@ -673,6 +651,7 @@ impl AppRoot {
                 self.auth = None;
                 self.remember_server();
                 if self.shell.is_none() {
+                    self.pane = Some(self.build_pane(window, cx));
                     self.shell = Some(self.build_shell(core.clone(), window, cx));
                     // A link that came before sign-in is where this session lands.
                     self.landed = self.route_pending_link(cx);
@@ -688,6 +667,8 @@ impl AppRoot {
                 }
                 self.viewer = None;
                 self.shell = None;
+                self.pane = None;
+                self.pane_subscription = None;
                 self.drop_inbox();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
@@ -808,6 +789,40 @@ impl AppRoot {
                 log::info!("browser sign-in needs the client-type backend: a follow-up");
             }
         }
+    }
+
+    /// The conversation pane for this session. Built per session: nothing of the last one (its
+    /// conversation, rows, drafts, threads, unread marker) may reach the next, and a conversation
+    /// shown again must be opened in core again, since signing out forgot it there.
+    fn build_pane(&mut self, window: &mut Window, cx: &mut Context<Self>) -> Entity<ConversationPane> {
+        let services = self.services.as_ref().expect("the pane is built once core is");
+        let media = self.media.clone().expect("media is set up with core");
+        let opener = cx.entity().downgrade();
+        let open_attachment: crate::conversation::OpenAttachment =
+            Rc::new(move |attachment, window, cx| {
+                opener
+                    .update(cx, |root, cx| root.open_attachment(attachment, window, cx))
+                    .ok();
+            });
+        let backend = services.backend.clone();
+        let server_url: crate::conversation::ServerUrl = Rc::new(move || backend.server_url());
+        let (core, exec) = (services.core.clone(), services.exec.clone());
+        let (time, scrollbar) = (self.config.time, self.config.scrollbar);
+        let pane = cx.new(|cx| {
+            ConversationPane::new(
+                core,
+                exec,
+                time,
+                scrollbar,
+                media,
+                open_attachment,
+                server_url,
+                window,
+                cx,
+            )
+        });
+        self.pane_subscription = Some(cx.subscribe_in(&pane, window, Self::on_pane_event));
+        pane
     }
 
     fn build_shell(

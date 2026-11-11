@@ -1152,8 +1152,10 @@ impl Rig {
         Ok(self.driver.cx.update(|cx| {
             let root = app.read(cx);
             let core = root.core();
+            // Signed out there's no pane (it's built per session): the conditions on it are
+            // false, the rest are someone else's to answer.
             let Some(pane) = root.pane() else {
-                return Some(false);
+                return w1_condition(condition).then_some(false);
             };
             let pane = pane.read(cx);
             let newest = |text: &str| {
@@ -1219,6 +1221,33 @@ impl Rig {
         }))
     }
 
+}
+
+/// The conditions `w1_holds` reads off the pane.
+fn w1_condition(condition: &Condition) -> bool {
+    matches!(
+        condition,
+        Condition::SidePanel(_)
+            | Condition::Editing(_)
+            | Condition::Picker(_)
+            | Condition::Pinned(..)
+            | Condition::Edited(_)
+            | Condition::Removed(_)
+            | Condition::Reaction(..)
+            | Condition::ThreadRows(_)
+            | Condition::ThreadSent(_)
+            | Condition::Subscribed(_)
+            | Condition::UnreadAfter(_)
+            | Condition::Notice(_)
+            | Condition::NoNotice
+            | Condition::ComposerText(_)
+            | Condition::ComposerPlaceholder(_)
+            | Condition::SearchHits(_)
+            | Condition::PinnedCount(_)
+    )
+}
+
+impl Rig {
     fn revoke_other_sessions(&mut self) -> Result<()> {
         let app = self.app()?.clone();
         let core = self
