@@ -7,8 +7,10 @@ use super::model::{
     QualityLevel, StageLayout, Tile, TileContent, TileDemand, VoiceController, VoiceStageModel,
     build_tiles, choose_layout, display_name, grid_columns, initial, tile_hue,
 };
+use super::soundboard::SoundboardBar;
 use super::theme::{self, alpha};
 use gpui_kit::*;
+use semaphore_core::model::ParticipantView;
 use semaphore_core::model::VoiceStatus;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -38,6 +40,7 @@ pub struct VoiceStage {
     frames: Arc<VideoFrames>,
     controller: Arc<dyn VoiceController>,
     pinned: Option<String>,
+    soundboard: SoundboardBar,
     /// Filled while tiles prepaint, read at the end of paint.
     visible: Rc<RefCell<Vec<TileDemand>>>,
     last_demands: Rc<RefCell<Option<Vec<TileDemand>>>>,
@@ -73,6 +76,7 @@ impl VoiceStage {
             frames,
             controller,
             pinned: None,
+            soundboard: SoundboardBar::default(),
             visible: Rc::default(),
             last_demands: Rc::default(),
             _redraw: redraw,
@@ -82,6 +86,14 @@ impl VoiceStage {
     pub fn set_model(&mut self, model: VoiceStageModel, cx: &mut Context<Self>) {
         if self.model != model {
             self.model = model;
+            cx.notify();
+        }
+    }
+
+    /// W4: the soundboard's button and popover on the bar (`view: Some` in a channel call).
+    pub fn set_soundboard(&mut self, soundboard: SoundboardBar, cx: &mut Context<Self>) {
+        if self.soundboard != soundboard {
+            self.soundboard = soundboard;
             cx.notify();
         }
     }
@@ -145,7 +157,15 @@ impl VoiceStage {
             .on_click(cx.listener(move |this, _, _, cx| {
                 let next = (this.pinned.as_deref() != Some(key.as_str())).then(|| key.clone());
                 this.set_pinned(next, cx);
-            }));
+            }))
+            .on_mouse_down(MouseButton::Right, {
+                let controller = self.controller.clone();
+                let identity = tile.participant.identity.clone();
+                move |event, _, cx| {
+                    cx.stop_propagation();
+                    controller.open_participant_menu(identity.clone(), event.position);
+                }
+            });
         if speaking {
             card = card.shadow(vec![BoxShadow {
                 color: alpha(positive, 0.45),
@@ -526,13 +546,14 @@ impl VoiceStage {
 fn compact_avatar(tile: &Tile) -> impl IntoElement {
     let tint = hsla(tile_hue(&tile.participant.identity) / 360., 0.65, 0.45, 1.0);
     let speaking = tile.participant.speaking;
-    let badge = if tile.participant.deafened {
-        Some(icons::HEADSET_OFF)
-    } else if tile.participant.muted {
-        Some(icons::MIC_OFF)
-    } else {
-        None
-    };
+    // Room for one: server-muted (red) over deafened over muted, as the web's `pickCompactBadge`.
+    let badge = voice_badges(&tile.participant)
+        .into_iter()
+        .min_by_key(|badge| match badge.kind {
+            VoiceBadgeKind::ServerMuted => 0,
+            VoiceBadgeKind::Deafened => 1,
+            VoiceBadgeKind::Muted => 2,
+        });
     let mut card = div()
         .size_full()
         .flex()
@@ -564,7 +585,7 @@ fn compact_avatar(tile: &Tile) -> impl IntoElement {
                 .text_size(px(COMPACT_AVATAR * 0.42))
                 .font_weight(FontWeight::MEDIUM)
                 .child(initial(display_name(&tile.participant)))
-                .children(badge.map(|glyph| {
+                .children(badge.map(|badge| {
                     div()
                         .absolute()
                         .right(px(-4.))
@@ -574,10 +595,14 @@ fn compact_avatar(tile: &Tile) -> impl IntoElement {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .bg(rgb(0x616161))
+                        .bg(if badge.danger {
+                            theme::error_main()
+                        } else {
+                            rgb(0x616161).into()
+                        })
                         .border_2()
                         .border_color(theme::grey_900())
-                        .child(icon(glyph, px(12.), theme::white()))
+                        .child(icon(badge.icon(), px(12.), theme::white()))
                 })),
         )
         .child(
@@ -613,16 +638,77 @@ fn tile_label(tile: &Tile) -> String {
     name
 }
 
-/// Only the out-of-the-ordinary: muted, deafened.
-fn status_badges(tile: &Tile, size: f32) -> Vec<AnyElement> {
-    let mut badges = Vec::new();
-    if tile.participant.muted {
-        badges.push(icon(icons::MIC_OFF, px(size), theme::grey_400()).into_any_element());
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VoiceBadgeKind {
+    Muted,
+    /// A moderator's: red, and it wins over a self-mute, since it's the one they can't undo.
+    ServerMuted,
+    Deafened,
+}
+
+/// One of the out-of-the-ordinary voice states worth drawing on a tile or a row (the web's
+/// `voiceStatusBadges`). The channel list's voice rows use these too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VoiceBadge {
+    pub kind: VoiceBadgeKind,
+    pub label: &'static str,
+    /// Imposed by a moderator: drawn red rather than grey.
+    pub danger: bool,
+}
+
+impl VoiceBadge {
+    pub(super) fn icon(self) -> icons::VoiceIcon {
+        match self.kind {
+            VoiceBadgeKind::Deafened => icons::HEADSET_OFF,
+            VoiceBadgeKind::Muted | VoiceBadgeKind::ServerMuted => icons::MIC_OFF,
+        }
     }
-    if tile.participant.deafened {
-        badges.push(icon(icons::HEADSET_OFF, px(size), theme::grey_400()).into_any_element());
+}
+
+pub fn voice_badges(participant: &ParticipantView) -> Vec<VoiceBadge> {
+    let mut badges = Vec::new();
+    if participant.server_muted {
+        badges.push(VoiceBadge {
+            kind: VoiceBadgeKind::ServerMuted,
+            label: "Muted by a moderator",
+            danger: true,
+        });
+    } else if participant.muted {
+        badges.push(VoiceBadge {
+            kind: VoiceBadgeKind::Muted,
+            label: "Muted",
+            danger: false,
+        });
+    }
+    if participant.deafened {
+        badges.push(VoiceBadge {
+            kind: VoiceBadgeKind::Deafened,
+            label: "Deafened",
+            danger: false,
+        });
     }
     badges
+}
+
+/// Only the out-of-the-ordinary: muted (grey), server-muted (red), deafened.
+fn status_badges(tile: &Tile, size: f32) -> Vec<AnyElement> {
+    voice_badges(&tile.participant)
+        .into_iter()
+        .map(|badge| {
+            div()
+                .flex_shrink_0()
+                .child(icon(
+                    badge.icon(),
+                    px(size),
+                    if badge.danger {
+                        theme::error_main()
+                    } else {
+                        theme::grey_400()
+                    },
+                ))
+                .into_any_element()
+        })
+        .collect()
 }
 
 pub(super) fn quality_bars(quality: QualityLevel) -> impl IntoElement {
@@ -689,7 +775,15 @@ impl Render for VoiceStage {
                     .p(px(if narrow { 4. } else { 8. }))
                     .child(body),
             )
-            .children(in_call.then(|| voice_bar(&self.model, narrow, self.controller.clone())))
+            .children(in_call.then(|| {
+                voice_bar(
+                    &self.model,
+                    &self.soundboard,
+                    narrow,
+                    self.controller.clone(),
+                    cx,
+                )
+            }))
             // Last in paint order, so every tile has reported by now.
             .child(
                 canvas(
@@ -707,5 +801,36 @@ impl Render for VoiceStage {
                 .absolute()
                 .size_0(),
             )
+    }
+}
+
+#[cfg(test)]
+mod badge_tests {
+    use super::*;
+    use std::prelude::rust_2024::test;
+
+    #[test]
+    fn a_server_mute_outranks_a_self_mute_and_deafened_comes_too() {
+        let mut person = ParticipantView {
+            muted: true,
+            ..ParticipantView::default()
+        };
+        assert_eq!(
+            voice_badges(&person)
+                .iter()
+                .map(|b| b.kind)
+                .collect::<Vec<_>>(),
+            vec![VoiceBadgeKind::Muted]
+        );
+        person.server_muted = true;
+        person.deafened = true;
+        let badges = voice_badges(&person);
+        assert_eq!(
+            badges.iter().map(|b| b.kind).collect::<Vec<_>>(),
+            vec![VoiceBadgeKind::ServerMuted, VoiceBadgeKind::Deafened]
+        );
+        assert!(badges[0].danger);
+        assert_eq!(badges[0].label, "Muted by a moderator");
+        assert!(voice_badges(&ParticipantView::default()).is_empty());
     }
 }
