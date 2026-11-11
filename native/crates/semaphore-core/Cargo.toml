@@ -36,3 +36,5 @@ uuid = { version = "1", features = ["v4"] }
 # challenge. Both pure Rust. Inline for scripts/test-policy.sh, as chrono above.
 getrandom = "0.4"
 sha2 = { version = "0.10", default-features = false }
+# Notification previews cut between graphemes, not code points. Pure Rust, no C.
+unicode-segmentation = "1"
