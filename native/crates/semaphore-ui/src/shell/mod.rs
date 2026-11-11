@@ -53,6 +53,21 @@ pub type ContentSlot = Rc<dyn Fn(&ContentProps, &mut Window, &mut App) -> AnyEle
 /// Draws under the columns when there's something to show: the voice bar (U11).
 pub type VoiceBarSlot = Rc<dyn Fn(&mut Window, &mut App) -> Option<AnyElement>>;
 
+/// Draws the sidebar column for a route outside a community: the DM list and friends on
+/// `/direct-messages`. `None` leaves the route without one. On a phone the shell shows what it
+/// returns in place of the middle column, so the owner returns `None` there for a route whose
+/// content should show instead (an open conversation).
+pub type RouteSidebarSlot =
+    Rc<dyn Fn(&RouteSidebarProps, &mut Window, &mut App) -> Option<AnyElement>>;
+
+/// What the shell knows when asking for a route's sidebar.
+#[derive(Debug, Clone)]
+pub struct RouteSidebarProps {
+    pub route: Route,
+    /// The phone layout: the sidebar would fill the pane between the app bar and the navigation.
+    pub phone: bool,
+}
+
 /// What the shell knows when asking for the middle column.
 #[derive(Debug, Clone)]
 pub struct ContentProps {
@@ -117,6 +132,9 @@ pub struct Shell {
     pub pinned_count: u32,
     /// Pins, search or a thread, beside the messages. Set by the owner.
     pub(crate) side_panel: Option<AnyView>,
+    pub(crate) route_sidebar: Option<RouteSidebarSlot>,
+    /// The channel header's notification level control. Set by the owner.
+    pub(crate) header_accessory: Option<AnyView>,
 }
 
 impl EventEmitter<ShellEvent> for Shell {}
@@ -149,6 +167,8 @@ impl Shell {
             voice_bar: None,
             pinned_count: 0,
             side_panel: None,
+            route_sidebar: None,
+            header_accessory: None,
         };
         shell.settle_route();
         shell
@@ -157,6 +177,34 @@ impl Shell {
     pub fn with_voice_bar(mut self, slot: VoiceBarSlot) -> Self {
         self.voice_bar = Some(slot);
         self
+    }
+
+    pub fn with_route_sidebar(mut self, slot: RouteSidebarSlot) -> Self {
+        self.route_sidebar = Some(slot);
+        self
+    }
+
+    /// What the route sidebar slot draws for the route on screen.
+    pub(crate) fn route_sidebar(
+        &self,
+        phone: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<AnyElement> {
+        let slot = self.route_sidebar.clone()?;
+        let props = RouteSidebarProps {
+            route: self.nav.current().clone(),
+            phone,
+        };
+        slot(&props, window, cx)
+    }
+
+    /// Draws `view` in the channel header in place of the notification level button, and in the
+    /// phone app bar beside the members button: the owner's level menu for the channel on screen.
+    /// `None` puts the plain button back (and nothing on a phone).
+    pub fn set_header_accessory(&mut self, view: Option<AnyView>, cx: &mut Context<Self>) {
+        self.header_accessory = view;
+        cx.notify();
     }
 
     /// Shows `panel` beside the messages (docked, a drawer, or a full-screen layer on a phone,
@@ -441,15 +489,17 @@ impl Shell {
                                     cx.listener(|_, _, _, cx| cx.emit(ShellEvent::OpenSearch)),
                                 ),
                         )
-                        .child(
-                            IconButton::new(
+                        .child(match self.header_accessory.clone() {
+                            Some(accessory) => accessory.into_any_element(),
+                            None => IconButton::new(
                                 "header-notifications",
                                 IconName::AlternateEmail,
                                 "Channel notifications",
                             )
                             .small_with_large_icon()
-                            .color(icon_color),
-                        )
+                            .color(icon_color)
+                            .into_any_element(),
+                        })
                         .when(narrow, |row| {
                             let view = cx.entity().downgrade();
                             row.child(
@@ -578,7 +628,7 @@ impl Render for Shell {
         let overlay_members = in_community && narrow && self.members_open && !panel_open;
         let divider = cx.sem().divider;
 
-        let sidebar = self.sidebar(cx);
+        let sidebar = self.sidebar(window, cx);
         let content = self.content_element(window, cx);
         let header = self.header(narrow, cx);
         let voice_bar = self.voice_bar.clone().and_then(|slot| slot(window, cx));
