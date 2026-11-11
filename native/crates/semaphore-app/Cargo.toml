@@ -36,4 +36,5 @@ tokio = { workspace = true, features = ["rt-multi-thread", "time"] }
 raw-window-handle = "0.6"
 
 [dev-dependencies]
+gpui-kit = { workspace = true, features = ["test-support"] }
 tokio = { workspace = true, features = ["macros", "net", "io-util", "rt-multi-thread"] }

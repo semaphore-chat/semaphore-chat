@@ -227,9 +227,11 @@ impl UserPicker {
                 })
                 .ok();
             }));
-        } else {
+        } else if text.trim().is_empty() {
             self.debounce = None;
         }
+        // Otherwise the same query stands, and so does its debounce: a field reports one change
+        // per keystroke, and may read the whole text for each of them.
         cx.notify();
     }
 

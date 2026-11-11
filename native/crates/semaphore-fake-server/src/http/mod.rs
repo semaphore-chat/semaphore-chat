@@ -267,17 +267,40 @@ async fn control(
                 None => inner.broadcast(event, payload),
             }
         }
-        "post_as" => {
+        "post_as" | "post_dm_as" => {
             let field = |name: &str| request.get(name).and_then(Value::as_str);
-            let (Some(channel), Some(author), Some(text)) =
-                (field("channelId"), field("authorId"), field("text"))
+            let target_field = if name == "post_as" {
+                "channelId"
+            } else {
+                "dmGroupId"
+            };
+            let (Some(target), Some(author), Some(text)) =
+                (field(target_field), field("authorId"), field("text"))
             else {
-                return invalid("channelId, authorId and text are required");
+                return invalid(&format!("{target_field}, authorId and text are required"));
+            };
+            if inner.scenario.user(author).is_none() {
+                return invalid("authorId is not a user of the scenario");
+            }
+            let target = if name == "post_as" {
+                crate::messages::PostTarget::Channel(target)
+            } else {
+                if crate::social::dm_member_ids(&lock(&inner.data), target).is_none() {
+                    return invalid("dmGroupId is not a DM of the scenario");
+                }
+                crate::messages::PostTarget::DirectMessage(target)
             };
             let broadcast = request
                 .get("broadcast")
                 .and_then(Value::as_bool)
                 .unwrap_or(true);
+            let mention = match field("mentionUserId") {
+                Some(user_id) => match inner.scenario.user(user_id) {
+                    Some(user) => Some((user.id.clone(), user.username.clone())),
+                    None => return invalid("mentionUserId is not a user of the scenario"),
+                },
+                None => None,
+            };
             let extras = crate::messages::PostExtras {
                 emoji: request
                     .get("emoji")
@@ -286,10 +309,20 @@ async fn control(
                     })
                     .map(|(id, name)| (id.to_owned(), name.to_owned())),
                 link_preview: request.get("linkPreview").cloned(),
+                mention,
             };
-            let message =
-                crate::messages::post_as(&inner, channel, author, text, broadcast, extras);
+            let message = crate::messages::post_as(&inner, target, author, text, broadcast, extras);
             return json_response(StatusCode::OK, json!({ "id": message.id }));
+        }
+        "friend_request_as" => {
+            let Some(from) = request.get("fromId").and_then(Value::as_str) else {
+                return invalid("fromId is required");
+            };
+            let id = request.get("id").and_then(Value::as_str);
+            return match crate::social::friend_request_as(&inner, from, id) {
+                Ok(id) => json_response(StatusCode::OK, json!({ "id": id })),
+                Err(message) => invalid(message),
+            };
         }
         "drop_connections" => {
             inner.close_connections();

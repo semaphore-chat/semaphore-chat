@@ -1,11 +1,12 @@
-//! Desktop OS services: the clock, app directories, the system keyring, notifications, the OS's
-//! sleep and network events ([`lifecycle`]), `semaphore://` links ([`links`]), one running app per
-//! user ([`instance`]) and the tray ([`tray`]).
+//! Desktop OS services: the clock, app directories, the system keyring, notifications
+//! ([`notify`]), the OS's sleep and network events ([`lifecycle`]), `semaphore://` links
+//! ([`links`]), one running app per user ([`instance`]) and the tray ([`tray`]).
 
 pub mod icon;
 pub mod instance;
 pub mod lifecycle;
 pub mod links;
+pub mod notify;
 pub mod tray;
 
 /// What the desktop asks of the app: from the tray, a second launch, or a notification. Sent on
@@ -25,12 +26,19 @@ pub enum DesktopEvent {
         urls: Vec<String>,
         activation_token: Option<String>,
     },
+    /// An OS notification was clicked: show and focus the window (with the activation token the
+    /// notification service handed over, if any), then open what the notification with this tag
+    /// was about.
+    NotificationClicked {
+        tag: String,
+        activation_token: Option<String>,
+    },
 }
 
 pub type DesktopEventSink = std::sync::Arc<dyn Fn(DesktopEvent) + Send + Sync>;
 
 use directories::ProjectDirs;
-use semaphore_core::platform::{AppPaths, Clock, CoreError, Notifier, SecretStore};
+use semaphore_core::platform::{AppPaths, Clock, CoreError, SecretStore};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct SystemClock;
@@ -132,23 +140,6 @@ impl SecretStore for KeyringSecrets {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
             Err(error) => Err(keyring_error(error)),
         }
-    }
-}
-
-/// Desktop notifications: the freedesktop notification service on Linux, toasts on Windows.
-pub struct DesktopNotifier;
-
-impl Notifier for DesktopNotifier {
-    fn notify(&self, title: String, body: String) -> Result<(), CoreError> {
-        notify_rust::Notification::new()
-            .appname("Semaphore")
-            .summary(&title)
-            .body(&body)
-            .show()
-            .map(|_| ())
-            .map_err(|error| CoreError::Unavailable {
-                what: format!("the notification service could not show it: {error}"),
-            })
     }
 }
 

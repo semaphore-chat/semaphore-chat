@@ -1,0 +1,325 @@
+//! The app's own sounds: the notification sounds the web plays (`useSound.ts`'s `channelMessage`,
+//! `directMessage` and `mention`), from the same WAV files.
+//!
+//! - **Where they go:** through the call's [`AudioIo`] (cpal in the app, the rig's virtual device in
+//!   rigs and tests, so nothing there reaches a real speaker), on the output the voice settings
+//!   chose. Mono 48 kHz, as every `AudioIo` takes it.
+//! - **One at a time:** a new sound stops the one playing. A stream is opened per sound and dropped
+//!   once it has played, so no device stays open between sounds.
+//! - **Never in the way:** [`Sounds::play`] only queues for the sounds' own thread (opening a device
+//!   can take a while). If opening fails, that is logged once and the app carries on silently.
+//!
+//! The WAV reader is ours and small: RIFF with a `fmt ` chunk of 16-bit integer PCM, any rate and
+//! channel count (mixed down, resampled linearly), which is what the bundled files are.
+
+use semaphore_core::model::NotifySound;
+use semaphore_media_livekit::audio::{AudioIo, AudioStream, SAMPLE_RATE};
+use std::sync::Arc;
+use std::sync::mpsc;
+
+const CHANNEL_MESSAGE: &[u8] = include_bytes!("../assets/sounds/pluck.wav");
+const DIRECT_MESSAGE: &[u8] = include_bytes!("../assets/sounds/asc-minor-third.wav");
+const MENTION: &[u8] = include_bytes!("../assets/sounds/asc-triad.wav");
+
+/// The file a notification sound plays, as the web maps them.
+pub fn file_for(sound: NotifySound) -> &'static [u8] {
+    match sound {
+        NotifySound::Default => CHANNEL_MESSAGE,
+        NotifySound::Dm => DIRECT_MESSAGE,
+        NotifySound::Mention => MENTION,
+    }
+}
+
+/// 16-bit PCM from a WAV file: its rate, and the samples mixed down to mono.
+pub fn read_wav(bytes: &[u8]) -> Result<(u32, Vec<i16>), String> {
+    if bytes.len() < 12 || &bytes[..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
+        return Err("not a RIFF WAVE file".into());
+    }
+    let u16_at = |at: usize| u16::from_le_bytes([bytes[at], bytes[at + 1]]);
+    let u32_at =
+        |at: usize| u32::from_le_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]]);
+    let mut format: Option<(u16, u32)> = None;
+    let mut at = 12;
+    while at + 8 <= bytes.len() {
+        let id = &bytes[at..at + 4];
+        let size = u32_at(at + 4) as usize;
+        let body = at + 8;
+        let end = body.checked_add(size).filter(|&end| end <= bytes.len());
+        let Some(end) = end else {
+            return Err("a chunk runs past the end of the file".into());
+        };
+        match id {
+            b"fmt " => {
+                if size < 16 {
+                    return Err("the fmt chunk is too short".into());
+                }
+                let (tag, channels, rate, bits) = (
+                    u16_at(body),
+                    u16_at(body + 2),
+                    u32_at(body + 4),
+                    u16_at(body + 14),
+                );
+                // 1: integer PCM. 0xFFFE (extensible) is PCM too when it says so; ours aren't.
+                if tag != 1 || bits != 16 || channels == 0 || rate == 0 {
+                    return Err(format!(
+                        "only 16-bit PCM is read (format {tag}, {bits} bits, {channels} channels)"
+                    ));
+                }
+                format = Some((channels, rate));
+            }
+            b"data" => {
+                let Some((channels, rate)) = format else {
+                    return Err("the data chunk comes before fmt".into());
+                };
+                let channels = usize::from(channels);
+                let frames = size / (2 * channels);
+                let samples = (0..frames)
+                    .map(|frame| {
+                        let sum: i32 = (0..channels)
+                            .map(|channel| {
+                                let at = body + (frame * channels + channel) * 2;
+                                i32::from(i16::from_le_bytes([bytes[at], bytes[at + 1]]))
+                            })
+                            .sum();
+                        (sum / channels as i32) as i16
+                    })
+                    .collect();
+                return Ok((rate, samples));
+            }
+            _ => {}
+        }
+        // Chunks are padded to an even size.
+        at = end + (size & 1);
+    }
+    Err("no data chunk".into())
+}
+
+/// `samples` at `from` Hz, at `to` Hz, by linear interpolation.
+pub fn resample(samples: &[i16], from: u32, to: u32) -> Vec<i16> {
+    if from == to || samples.is_empty() {
+        return samples.to_vec();
+    }
+    let out_len = (samples.len() as u64 * u64::from(to) / u64::from(from)) as usize;
+    let step = f64::from(from) / f64::from(to);
+    (0..out_len)
+        .map(|index| {
+            let position = index as f64 * step;
+            let left = position.floor() as usize;
+            let right = (left + 1).min(samples.len() - 1);
+            let fraction = position - left as f64;
+            let value =
+                f64::from(samples[left]) * (1. - fraction) + f64::from(samples[right]) * fraction;
+            value.round() as i16
+        })
+        .collect()
+}
+
+/// A bundled sound, ready for an `AudioIo`.
+fn clip(sound: NotifySound) -> Arc<[i16]> {
+    match read_wav(file_for(sound)) {
+        Ok((rate, samples)) => resample(&samples, rate, SAMPLE_RATE).into(),
+        Err(error) => {
+            log::warn!("sounds: the bundled {sound:?} sound can't be read: {error}");
+            Arc::from(Vec::new())
+        }
+    }
+}
+
+enum Command {
+    Play {
+        sound: NotifySound,
+        device: Option<String>,
+    },
+    /// The stream of this play has given all its samples.
+    Done(u64),
+    Quit,
+}
+
+/// Plays the app's sounds. See the module docs.
+pub struct Sounds {
+    commands: mpsc::Sender<Command>,
+}
+
+impl Sounds {
+    pub fn start(io: Arc<dyn AudioIo>) -> Self {
+        let (commands, receiver) = mpsc::channel();
+        let looped = commands.clone();
+        let spawned = std::thread::Builder::new()
+            .name("sounds".into())
+            .spawn(move || run(io, looped, receiver));
+        if let Err(error) = spawned {
+            log::warn!("sounds: cannot start their thread: {error}");
+        }
+        Self { commands }
+    }
+
+    /// Plays `sound` on `device` (`None`: the default output), stopping any sound playing.
+    pub fn play(&self, sound: NotifySound, device: Option<String>) {
+        let _ = self.commands.send(Command::Play { sound, device });
+    }
+}
+
+impl Drop for Sounds {
+    fn drop(&mut self) {
+        let _ = self.commands.send(Command::Quit);
+    }
+}
+
+fn run(io: Arc<dyn AudioIo>, commands: mpsc::Sender<Command>, receiver: mpsc::Receiver<Command>) {
+    let clips: Vec<(NotifySound, Arc<[i16]>)> =
+        [NotifySound::Default, NotifySound::Dm, NotifySound::Mention]
+            .into_iter()
+            .map(|sound| (sound, clip(sound)))
+            .collect();
+    let mut playing: Option<(u64, AudioStream)> = None;
+    let mut plays = 0u64;
+    let mut warned = false;
+    for command in receiver {
+        match command {
+            Command::Quit => break,
+            Command::Done(play) => {
+                if playing
+                    .as_ref()
+                    .is_some_and(|(current, _)| *current == play)
+                {
+                    playing = None;
+                }
+            }
+            Command::Play { sound, device } => {
+                // One at a time: the last one stops first.
+                playing = None;
+                plays += 1;
+                let play = plays;
+                let Some(samples) = clips
+                    .iter()
+                    .find(|(kind, _)| *kind == sound)
+                    .map(|(_, samples)| samples.clone())
+                    .filter(|samples| !samples.is_empty())
+                else {
+                    continue;
+                };
+                let done = commands.clone();
+                let mut position = 0usize;
+                let mut told = false;
+                let feed = Box::new(move |out: &mut [i16], _ahead: u32| {
+                    for sample in out.iter_mut() {
+                        *sample = samples.get(position).copied().unwrap_or(0);
+                        position += 1;
+                    }
+                    if position >= samples.len() && !told {
+                        told = true;
+                        let _ = done.send(Command::Done(play));
+                    }
+                });
+                let on_error: semaphore_media_livekit::audio::ErrorCallback =
+                    Arc::new(|error| log::debug!("sounds: the output stopped: {error}"));
+                match io.open_output(device.as_deref(), feed, on_error) {
+                    Ok(stream) => playing = Some((play, stream)),
+                    Err(error) => {
+                        if !warned {
+                            warned = true;
+                            log::warn!("sounds: no output for the app's sounds: {error}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semaphore_media_livekit::audio::virtual_io::VirtualIo;
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+
+    fn wav(channels: u16, rate: u32, samples: &[i16]) -> Vec<u8> {
+        let data: Vec<u8> = samples.iter().flat_map(|s| s.to_le_bytes()).collect();
+        let mut out = Vec::new();
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&(36 + data.len() as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVE");
+        out.extend_from_slice(b"fmt ");
+        out.extend_from_slice(&16u32.to_le_bytes());
+        out.extend_from_slice(&1u16.to_le_bytes());
+        out.extend_from_slice(&channels.to_le_bytes());
+        out.extend_from_slice(&rate.to_le_bytes());
+        out.extend_from_slice(&(rate * u32::from(channels) * 2).to_le_bytes());
+        out.extend_from_slice(&(channels * 2).to_le_bytes());
+        out.extend_from_slice(&16u16.to_le_bytes());
+        // An odd-sized chunk we skip, padded.
+        out.extend_from_slice(b"LIST");
+        out.extend_from_slice(&3u32.to_le_bytes());
+        out.extend_from_slice(&[1, 2, 3, 0]);
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        out.extend_from_slice(&data);
+        out
+    }
+
+    #[test]
+    fn the_bundled_sounds_read_as_mono_16_bit_at_44_1_khz() {
+        for (sound, bytes) in [
+            (NotifySound::Default, 14112),
+            (NotifySound::Dm, 23814),
+            (NotifySound::Mention, 30870),
+        ] {
+            let (rate, samples) = read_wav(file_for(sound)).unwrap();
+            assert_eq!(rate, 44_100);
+            assert_eq!(samples.len(), bytes / 2, "{sound:?}");
+            assert!(samples.iter().any(|&s| s != 0), "{sound:?} is silent");
+        }
+    }
+
+    #[test]
+    fn stereo_is_mixed_down_and_odd_chunks_are_skipped() {
+        let (rate, samples) = read_wav(&wav(2, 8000, &[100, 300, -50, -150])).unwrap();
+        assert_eq!((rate, samples), (8000, vec![200, -100]));
+    }
+
+    #[test]
+    fn what_is_not_16_bit_pcm_is_refused() {
+        assert!(read_wav(b"nope").is_err());
+        let mut eight_bit = wav(1, 8000, &[1, 2]);
+        eight_bit[34] = 8;
+        assert!(read_wav(&eight_bit).unwrap_err().contains("16-bit"));
+        let mut short = wav(1, 8000, &[1, 2]);
+        short.truncate(short.len() - 1);
+        assert!(read_wav(&short).unwrap_err().contains("past the end"));
+    }
+
+    #[test]
+    fn resampling_keeps_the_length_in_proportion_and_the_ends() {
+        let up = resample(&[0, 1000, 2000, 3000], 44_100, 48_000);
+        assert_eq!(up.len(), 4);
+        assert_eq!((up[0], *up.last().unwrap()), (0, 2756));
+        let ramp: Vec<i16> = (0..441).map(|i| i as i16).collect();
+        let out = resample(&ramp, 44_100, 48_000);
+        assert_eq!(out.len(), 480);
+        assert!(out.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert_eq!(resample(&ramp, 48_000, 48_000), ramp);
+    }
+
+    /// The virtual device, never a real one: what it heard, until it has heard `count` samples
+    /// that aren't silence.
+    #[test]
+    fn a_sound_plays_on_the_virtual_device_and_a_failing_device_is_quiet() {
+        let io = Arc::new(VirtualIo::new());
+        let heard = Arc::new(Mutex::new(0usize));
+        let counter = heard.clone();
+        io.set_speaker(Box::new(move |frame: &[i16]| {
+            *counter.lock().unwrap() += frame.iter().filter(|&&s| s != 0).count();
+        }));
+        let sounds = Sounds::start(io.clone());
+        sounds.play(NotifySound::Dm, Some("no-such-device".into()));
+        sounds.play(NotifySound::Dm, None);
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while *heard.lock().unwrap() < 1000 {
+            assert!(Instant::now() < deadline, "the sound never played");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        // The one on the missing device was refused (logged once); only the default output opened.
+        assert_eq!(io.opened_outputs(), vec![None]);
+    }
+}

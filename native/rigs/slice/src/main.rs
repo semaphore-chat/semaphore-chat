@@ -33,7 +33,21 @@
 //! hover-row message "text"            # the pointer over a row's element, as click-row finds it
 //! right-click-row message "text"      # a right press on it: the actions menu
 //! click-text "row text" "needle"      # a click on the glyphs of `needle` in that row (a link)
+//! server post_dm_as {"dmGroupId": "…", "authorId": "…", "text": "hi"}   # likewise into a DM
+//! server friend_request_as {"fromId": "…"}  # another user asks to be friends
+//! notification click "dm:…"           # the OS notification with that tag is clicked
+//! link "semaphore://…"                # the OS hands over a link, as a second launch would
+//! link-channel COMMUNITY CHANNEL      # likewise, already parsed: the showcase's channel ids aren't
+//!                                     # UUIDs, which `parse_deep_link` (unit-tested) requires
+//! forget sounds                       # what the speaker heard so far no longer counts
+//! window activate                     # the window comes to the front, as a user's click would:
+//!                                     # the pane marks what it shows read only then
 //! ```
+//!
+//! W2's conditions: `dm ID` (the pane is on that DM), `notified TAG` (the rig's notifier shows
+//! it), `withdrawn TAG` (shown, then taken down), `notifications-shown N` (shows since the start),
+//! `badge N`, `centre open|closed`, `sound heard|silent` (the virtual speaker), `incoming N` (friend
+//! requests to me), `friend ID`, `dms N`.
 //!
 //! `$SERVER` anywhere in a script is the fake server's URL, for links to it, `$MSG(sc-msg-24)`
 //! the UUID the fake server serves that showcase message as (`message_uuid`), and `$ID(u-priya)`
@@ -55,11 +69,13 @@ use rig_shot::driver::Driver;
 use rig_shot::script;
 use semaphore_app::settings::{Settings, SettingsStore};
 use semaphore_app::{AppConfig, AppRoot, OsEvent};
+use semaphore_core::model::OsNotification;
 use semaphore_core::model::{
     Conversation, LocalShare, MessageRow, SendState, SessionState, VoiceStatus,
 };
 use semaphore_core::platform::{
-    CaptureKind, CaptureSource, Clock, CoreError, PickerKind, ScreenCapture, SecretStore, Thumbnail,
+    CaptureKind, CaptureSource, Clock, CoreError, Notifier, PickerKind, ScreenCapture, SecretStore,
+    Thumbnail,
 };
 use semaphore_core::{ConnectionState, NetworkState};
 use semaphore_fake_server::livekit::LiveKit;
@@ -211,6 +227,17 @@ enum Condition {
     ComposerText(String),
     ComposerPlaceholder(String),
     SearchHits(usize),
+    /// W2's.
+    Dm(String),
+    Notified(String),
+    Withdrawn(String),
+    NotificationsShown(usize),
+    Badge(u32),
+    Centre(bool),
+    Sound(bool),
+    Incoming(usize),
+    Friend(String),
+    Dms(usize),
     /// An element with this id is drawn (`element ID`), or isn't (`no-element ID`).
     Element(String, bool),
 }
@@ -287,6 +314,11 @@ enum Step {
         identity: String,
     },
     /// The fake camera or screen refuses its next start with this reason.
+    NotificationClick(String),
+    Link(String),
+    LinkChannel(String, String),
+    ForgetSounds,
+    ActivateWindow,
     VideoFailNext {
         screen: bool,
         why: String,
@@ -368,6 +400,18 @@ fn condition(words: &[&str]) -> Result<Condition> {
         ["search-hits", ">=", count] => Condition::SearchHits(number(count)?),
         ["element", id] => Condition::Element((*id).into(), true),
         ["no-element", id] => Condition::Element((*id).into(), false),
+        ["dm", id] => Condition::Dm((*id).into()),
+        ["notified", tag] => Condition::Notified((*tag).into()),
+        ["withdrawn", tag] => Condition::Withdrawn((*tag).into()),
+        ["notifications-shown", count] => Condition::NotificationsShown(number(count)?),
+        ["badge", count] => Condition::Badge(number(count)? as u32),
+        ["centre", "open"] => Condition::Centre(true),
+        ["centre", "closed"] => Condition::Centre(false),
+        ["sound", "heard"] => Condition::Sound(true),
+        ["sound", "silent"] => Condition::Sound(false),
+        ["incoming", count] => Condition::Incoming(number(count)?),
+        ["friend", id] => Condition::Friend((*id).into()),
+        ["dms", count] => Condition::Dms(number(count)?),
         ["voice", status] => Condition::Voice((*status).into()),
         _ => bail!("not a condition: {}", words.join(" ")),
     })
@@ -461,6 +505,13 @@ fn parse(source: &str) -> Result<Vec<Step>> {
             ["expect", "stored-session", "rotated"] => Step::ExpectStoredSessionRotated,
             ["expect", "old-refresh-token", "refused"] => Step::ExpectOldRefreshRefused,
             ["exec", command] => Step::Exec((*command).into()),
+            ["notification", "click", tag] => Step::NotificationClick((*tag).into()),
+            ["link", url] => Step::Link((*url).into()),
+            ["link-channel", community, channel] => {
+                Step::LinkChannel((*community).into(), (*channel).into())
+            }
+            ["forget", "sounds"] => Step::ForgetSounds,
+            ["window", "activate"] => Step::ActivateWindow,
             ["click-text", text, needle] => Step::ClickText {
                 text: (*text).into(),
                 needle: (*needle).into(),
@@ -635,6 +686,69 @@ struct Rig {
     screens: Arc<RigScreens>,
     /// The refresh token `remember stored-session` noted.
     remembered: Option<String>,
+    /// What the app raised and took down, instead of the desktop's notifications.
+    notifier: Arc<RigNotifier>,
+    /// Samples the virtual speaker played that weren't silence, since `forget sounds`.
+    heard: Arc<std::sync::atomic::AtomicUsize>,
+}
+
+/// The app's `Notifier` in the rig: records, shows nothing.
+#[derive(Default)]
+struct RigNotifier {
+    /// Tags in the order shown, and whether each is still up.
+    shown: Mutex<Vec<(String, bool)>>,
+}
+
+impl Notifier for RigNotifier {
+    fn notify(&self, title: String, _body: String) -> Result<(), CoreError> {
+        self.shown
+            .lock()
+            .unwrap()
+            .push((format!("plain:{title}"), true));
+        Ok(())
+    }
+
+    fn show(&self, notification: OsNotification) -> Result<(), CoreError> {
+        let mut shown = self.shown.lock().unwrap();
+        // A newer one for the tag replaces the older, as the desktop's do.
+        for (tag, up) in shown.iter_mut() {
+            if *tag == notification.tag {
+                *up = false;
+            }
+        }
+        shown.push((notification.tag, true));
+        Ok(())
+    }
+
+    fn withdraw(&self, tag: &str) {
+        for (shown, up) in self.shown.lock().unwrap().iter_mut() {
+            if shown == tag {
+                *up = false;
+            }
+        }
+    }
+}
+
+impl RigNotifier {
+    fn is_up(&self, tag: &str) -> bool {
+        self.shown
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(shown, up)| shown == tag && *up)
+    }
+
+    fn was_shown(&self, tag: &str) -> bool {
+        self.shown
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|(shown, _)| shown == tag)
+    }
+
+    fn count(&self) -> usize {
+        self.shown.lock().unwrap().len()
+    }
 }
 
 impl Rig {
@@ -666,6 +780,8 @@ impl Rig {
             video: Arc::default(),
             screens: Arc::new(RigScreens),
             remembered: None,
+            notifier: Arc::default(),
+            heard: Arc::default(),
         }
     }
 
@@ -747,7 +863,7 @@ impl Rig {
             data_dir: self.data_dir.clone(),
             watch_os: false,
             // No sound card in a container, and a rig mustn't use the machine's.
-            audio: Some(Arc::new(VirtualIo::new())),
+            audio: Some(self.virtual_audio()),
             video_sources: Some(self.video.clone()),
             screen_capture: Some(self.screens.clone()),
             heartbeat: self.heartbeat,
@@ -763,6 +879,7 @@ impl Rig {
             server_url: Some(self.server.clone()),
             time: TimeFormat::fixed(self.now_ms),
             scrollbar: false,
+            notifier: Some(self.notifier.clone()),
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
@@ -787,6 +904,52 @@ impl Rig {
         self.driver.window = Some(handle);
         self.app = app;
         self.driver.settle()
+    }
+
+    /// The virtual devices, with a speaker that counts what isn't silence.
+    fn virtual_audio(&self) -> Arc<VirtualIo> {
+        let io = Arc::new(VirtualIo::new());
+        let heard = self.heard.clone();
+        io.set_speaker(Box::new(move |frame: &[i16]| {
+            let loud = frame.iter().filter(|&&sample| sample != 0).count();
+            heard.fetch_add(loud, std::sync::atomic::Ordering::Relaxed);
+        }));
+        io
+    }
+
+    /// W2's conditions.
+    fn w2_holds(&mut self, condition: &Condition) -> Result<Option<bool>> {
+        let app = self.app()?.clone();
+        let notifier = self.notifier.clone();
+        let heard = self.heard.load(std::sync::atomic::Ordering::Relaxed);
+        Ok(self.driver.cx.update(|cx| {
+            let root = app.read(cx);
+            let core = root.core();
+            Some(match condition {
+                Condition::Dm(id) => root
+                    .pane()
+                    .is_some_and(|pane| semaphore_app::root::inbox::pane_on_dm(pane.read(cx), id)),
+                Condition::Notified(tag) => notifier.is_up(tag),
+                Condition::Withdrawn(tag) => notifier.was_shown(tag) && !notifier.is_up(tag),
+                Condition::NotificationsShown(count) => notifier.count() == *count,
+                Condition::Centre(open) => root.centre_open() == *open,
+                Condition::Sound(yes) => (heard > 0) == *yes,
+                Condition::Badge(count) => core.is_some_and(|core| core.badge_count() == *count),
+                Condition::Incoming(count) => {
+                    core.is_some_and(|core| core.friends().incoming.len() == *count)
+                }
+                Condition::Friend(id) => core.is_some_and(|core| {
+                    core.friends()
+                        .friends
+                        .iter()
+                        .any(|friend| friend.user.id == *id)
+                }),
+                Condition::Dms(count) => {
+                    core.is_some_and(|core| core.dm_list().rows.len() == *count)
+                }
+                _ => return None,
+            })
+        }))
     }
 
     fn app(&self) -> Result<&Entity<AppRoot>> {
@@ -837,6 +1000,9 @@ impl Rig {
             return Ok(found == *drawn);
         }
         if let Some(answer) = self.w1_holds(condition)? {
+            return Ok(answer);
+        }
+        if let Some(answer) = self.w2_holds(condition)? {
             return Ok(answer);
         }
         let app = self.app()?.clone();
@@ -918,6 +1084,16 @@ impl Rig {
             | Condition::ComposerText(_)
             | Condition::ComposerPlaceholder(_)
             | Condition::SearchHits(_)
+            | Condition::Dm(_)
+            | Condition::Notified(_)
+            | Condition::Withdrawn(_)
+            | Condition::NotificationsShown(_)
+            | Condition::Badge(_)
+            | Condition::Centre(_)
+            | Condition::Sound(_)
+            | Condition::Incoming(_)
+            | Condition::Friend(_)
+            | Condition::Dms(_)
             | Condition::Element(..) => unreachable!("answered above"),
             Condition::Attachments(text, count) => {
                 newest(&rows, text).is_some_and(|row| row.attachments.len() == *count)
@@ -1382,6 +1558,36 @@ impl Rig {
                 }
                 Step::ExpectOldRefreshRefused => self.replay_old_refresh(),
                 Step::Exec(command) => exec(command),
+                Step::NotificationClick(tag) => {
+                    let app = self.app()?.clone();
+                    self.driver.update(|window, cx| {
+                        app.update(cx, |root, cx| root.open_notification(tag, window, cx))
+                    })
+                }
+                Step::Link(url) => {
+                    let link = semaphore_ui::nav::parse_deep_link(url)
+                        .ok_or_else(|| anyhow!("not a link the app takes: {url}"))?;
+                    let app = self.app()?.clone();
+                    self.driver
+                        .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
+                }
+                Step::LinkChannel(community_id, channel_id) => {
+                    let link = semaphore_ui::nav::DeepLink::Channel {
+                        community_id: community_id.clone(),
+                        channel_id: channel_id.clone(),
+                    };
+                    let app = self.app()?.clone();
+                    self.driver
+                        .update(|_, cx| app.update(cx, |root, cx| root.open_link(link, cx)))
+                }
+                Step::ActivateWindow => self
+                    .driver
+                    .update(|window, _| window.activate_window())
+                    .and_then(|()| self.driver.settle()),
+                Step::ForgetSounds => {
+                    self.heard.store(0, std::sync::atomic::Ordering::Relaxed);
+                    Ok(())
+                }
                 Step::ExpectStoredSession(wanted) => {
                     if self.stored_session() == *wanted {
                         Ok(())

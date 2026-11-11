@@ -146,8 +146,8 @@ Later in the order, not out of scope:
 - **Editing.** `ComposerEvent::EditLastMessage` logs; core has no edit command.
 - **Browser sign-in, registration, password reset.** Browser sign-in needs the client-type backend;
   Register and Forgot password open the server's web app.
-- **Notifications.** `DesktopNotifier` works (notify-rust's zbus is async-io, so it doesn't panic on
-  a Tokio worker, but it blocks: run it on its own thread), but core has no event that says to notify.
+- **Notifications.** Superseded in wave 2: core's `CoreEvent::Notify`, and the app's notifier
+  (`semaphore-app/src/notifier.rs`: our freedesktop client on Linux, GPUI's toasts on Windows).
 - **A DM list read.** Core has DM counts but no `direct-messages` read, so `Route::DirectMessages` has
   nothing to list.
 - **Publishing the local camera and screen.** The engine only receives video: a user's own

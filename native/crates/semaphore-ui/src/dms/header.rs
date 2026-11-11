@@ -59,6 +59,17 @@ impl Render for DmHeader {
             )
             .on_click(cx.listener(|_, _, _, cx| cx.emit(DmHeaderEvent::JoinCall)))
         });
+        let search = (ready && self.search).then(|| {
+            icon_button(
+                "dm-header-search",
+                DesignIcon::Search,
+                "Search messages",
+                touch,
+                sem.action_active,
+                cx,
+            )
+            .on_click(cx.listener(|_, _, _, cx| cx.emit(DmHeaderEvent::Search)))
+        });
         let members = (ready && self.members_button).then(|| {
             icon_button(
                 "dm-header-members",
@@ -102,6 +113,7 @@ impl Render for DmHeader {
                     .flex_shrink_0()
                     .items_center()
                     .gap(px(4.))
+                    .children(search)
                     .children(call)
                     .children(members),
             )

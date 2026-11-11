@@ -733,9 +733,11 @@ impl ConversationPane {
                         channel_id: id.clone(),
                     })
                 }
+                (Conversation::DirectMessage { id }, _) => {
+                    cx.emit(PaneEvent::OpenDm { dm_id: id.clone() })
+                }
                 _ => {
-                    self.notice = Some("Direct messages arrive in a later build.".into());
-                    cx.notify();
+                    log::warn!("a jump to {conversation:?} with no community to show it in");
                     return;
                 }
             }
