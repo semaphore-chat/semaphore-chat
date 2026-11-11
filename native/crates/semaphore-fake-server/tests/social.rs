@@ -1200,6 +1200,113 @@ async fn mark_as_read_with_no_context_or_a_foreign_message_is_refused() {
 }
 
 #[tokio::test]
+async fn rest_mark_read_reads_notifications_and_sends_the_receipts_like_the_socket_event() {
+    let (server, client, base) = showcase().await;
+    let mut me = connect_as(&base, &id("me")).await;
+    let mut priya = connect_as(&base, &id("u-priya")).await;
+    let dm = id("dm-priya");
+    let (status, receipt) = post(
+        &client,
+        &base,
+        "/api/read-receipts/mark-read",
+        json!({ "directMessageGroupId": dm, "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
+    )
+    .await;
+    assert_eq!(status, 200, "{receipt}");
+    assert_eq!(receipt["directMessageGroupId"], dm);
+    let heard = settle(&server, &mut [&mut me, &mut priya]).await;
+    // To the user, then the DM room (the reader is in it); the other member sees who read.
+    assert_eq!(
+        names(&heard[0]),
+        vec!["readReceiptUpdated", "readReceiptUpdated"]
+    );
+    assert!(heard[0][0].1.get("userId").is_none());
+    assert_eq!(heard[0][1].1["userId"], id("me"));
+    assert_eq!(names(&heard[1]), vec!["readReceiptUpdated"]);
+    let (_, count) = get(&client, &base, "/api/notifications/unread-count").await;
+    assert_eq!(
+        count["count"], 4,
+        "dm-priya's three unread notifications are read"
+    );
+
+    // A channel: only the self receipt, and its mention is read.
+    let (_, page) = get(&client, &base, "/api/messages/channel/ch-design?limit=1").await;
+    let last = page["messages"][0]["id"].clone();
+    post(
+        &client,
+        &base,
+        "/api/read-receipts/mark-read",
+        json!({ "channelId": "ch-design", "lastReadMessageId": last }),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me, &mut priya]).await;
+    assert_eq!(names(&heard[0]), vec!["readReceiptUpdated"]);
+    assert!(heard[1].is_empty());
+    let (_, count) = get(&client, &base, "/api/notifications/unread-count").await;
+    assert_eq!(count["count"], 3);
+
+    // The backend refuses a message that is not in that context.
+    let (status, body) = post(
+        &client,
+        &base,
+        "/api/read-receipts/mark-read",
+        json!({ "channelId": "ch-design", "lastReadMessageId": message_uuid("sc-dm-pri-never") }),
+    )
+    .await;
+    assert_eq!(
+        (status, body["errorCode"].as_str()),
+        (400, Some("BAD_REQUEST")),
+        "{body}"
+    );
+}
+
+#[tokio::test]
+async fn finding_one_dm_needs_membership() {
+    let (_server, client, base) = showcase().await;
+    let (status, group) = get(
+        &client,
+        &base,
+        &format!("/api/direct-messages/{}", id("dm-launch")),
+    )
+    .await;
+    assert_eq!(status, 200, "{group}");
+    assert_eq!(group["id"], id("dm-launch"));
+    assert_eq!(group["members"].as_array().unwrap().len(), 4);
+    // Unknown group and a group left are both "not a member": the backend checks that first.
+    let (status, body) = get(
+        &client,
+        &base,
+        &format!("/api/direct-messages/{}", uuid::Uuid::from_u128(4)),
+    )
+    .await;
+    assert_eq!(
+        (status, body["errorCode"].as_str()),
+        (403, Some("FORBIDDEN")),
+        "{body}"
+    );
+    delete(
+        &client,
+        &base,
+        &format!("/api/direct-messages/{}/members/me", id("dm-launch")),
+        Value::Null,
+    )
+    .await;
+    let (status, _) = get(
+        &client,
+        &base,
+        &format!("/api/direct-messages/{}", id("dm-launch")),
+    )
+    .await;
+    assert_eq!(status, 403);
+    let (status, body) = get(&client, &base, "/api/direct-messages/nope").await;
+    assert_eq!(
+        (status, body["errorCode"].as_str()),
+        (400, Some("BAD_REQUEST")),
+        "{body}"
+    );
+}
+
+#[tokio::test]
 async fn presence_online_is_recorded_and_acknowledged() {
     let (server, _client, base) = showcase().await;
     let mut me = connect_as(&base, &id("me")).await;

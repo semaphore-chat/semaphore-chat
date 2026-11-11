@@ -19,6 +19,7 @@ use std::sync::Arc;
 pub(super) fn routes() -> Router<Arc<Inner>> {
     Router::new()
         .route("/api/direct-messages", get(list).post(create))
+        .route("/api/direct-messages/{id}", get(find_one))
         .route("/api/direct-messages/{id}/members", post(add_members))
         .route("/api/direct-messages/{id}/members/me", delete(leave))
         .route("/api/users/search", get(search_users))
@@ -27,6 +28,7 @@ pub(super) fn routes() -> Router<Arc<Inner>> {
 pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
     Some(match (method.as_str(), route) {
         ("GET", "/api/direct-messages") => "DirectMessagesController_findUserDmGroups",
+        ("GET", "/api/direct-messages/{id}") => "DirectMessagesController_findDmGroup",
         ("POST", "/api/direct-messages") => "DirectMessagesController_createDmGroup",
         ("POST", "/api/direct-messages/{id}/members") => "DirectMessagesController_addMembers",
         ("DELETE", "/api/direct-messages/{id}/members/me") => {
@@ -58,6 +60,25 @@ async fn list(State(inner): State<Arc<Inner>>) -> Response {
         .map(dm_json)
         .collect();
     json_response(StatusCode::OK, Value::Array(groups))
+}
+
+/// `findDmGroup`: the membership is checked first, so a group that doesn't exist is as much a
+/// `403` as one the user isn't in (the backend never answers 404 here).
+async fn find_one(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
+    let me = &inner.scenario.me.id;
+    let data = lock(&inner.data);
+    let group = data.social.dm_groups.iter().find(|group| group.id == id);
+    if !valid_id(&id, group.is_some()) {
+        drop(data);
+        return bad_id(&inner, "a UUID");
+    }
+    match group.filter(|group| group.members.iter().any(|member| &member.user_id == me)) {
+        Some(group) => json_response(StatusCode::OK, dm_json(&social::dm_view(&data, group))),
+        None => {
+            drop(data);
+            forbidden(&inner, "You are not a member of this DM group")
+        }
+    }
 }
 
 /// `createDmGroup`: `isGroup` is the body's, or whether there are more than two members with the

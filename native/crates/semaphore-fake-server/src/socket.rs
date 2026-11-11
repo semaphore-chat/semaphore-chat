@@ -461,20 +461,41 @@ fn mark_as_read(
         field("directMessageGroupId"),
         field("lastReadMessageId"),
     );
-    let refuse = |message: &str| {
-        inner.enqueue_text(
-            tx,
-            event_frame(
-                "exception",
-                error_body(400, "BAD_REQUEST", message.to_owned(), false, None),
-            ),
-        );
-    };
     let Some(last) = last else {
-        return refuse("lastReadMessageId is required");
+        return refuse(inner, tx, "lastReadMessageId is required");
     };
+    if announce_read(inner, user, channel, group, last).is_err_and(|message| {
+        refuse(inner, tx, message);
+        true
+    }) {
+        return;
+    }
+    ack_value(inner, tx, ack, Value::from("ACK"));
+}
+
+fn refuse(inner: &Arc<Inner>, tx: &mpsc::UnboundedSender<Outbound>, message: &str) {
+    inner.enqueue_text(
+        tx,
+        event_frame(
+            "exception",
+            error_body(400, "BAD_REQUEST", message.to_owned(), false, None),
+        ),
+    );
+}
+
+/// What `markReadAndAnnounce` does, for the socket event and the REST route alike: the read state
+/// moves, the user's unread notifications of that context are marked read (no
+/// `notificationRead`), and `readReceiptUpdated` goes to the user's sockets and, for a DM, to
+/// the group with the reader's details. `Err` is the backend's 400 message.
+pub(crate) fn announce_read(
+    inner: &Arc<Inner>,
+    user: &str,
+    channel: Option<&str>,
+    group: Option<&str>,
+    last: &str,
+) -> Result<Value, &'static str> {
     if channel.is_some() == group.is_some() {
-        return refuse("Must provide exactly one of channelId or directMessageGroupId");
+        return Err("Must provide exactly one of channelId or directMessageGroupId");
     }
     let belongs = {
         let data = lock(&inner.data);
@@ -484,7 +505,7 @@ fn mark_as_read(
         })
     };
     if !belongs {
-        return refuse("Message not found in the specified channel or DM group");
+        return Err("Message not found in the specified channel or DM group");
     }
 
     let receipt = messages::mark_read(inner, channel, group, last);
@@ -509,5 +530,5 @@ fn mark_as_read(
         room["avatarUrl"] = json!(reader.avatar_url);
         inner.emit_to_users(&members, "readReceiptUpdated", room);
     }
-    ack_value(inner, tx, ack, Value::from("ACK"));
+    Ok(receipt)
 }

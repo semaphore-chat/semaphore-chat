@@ -1449,6 +1449,27 @@ async fn dms_friends_and_notifications_match_openapi_and_socket_events() {
             "readReceiptUpdated",
         );
     }
+    check(
+        M::POST,
+        "/api/read-receipts/mark-read".into(),
+        Some(json!({ "directMessageGroupId": id("dm-priya"), "lastReadMessageId": sent[0].1["message"]["id"] })),
+        200,
+        Some(schemas.component("ReadReceiptDto")),
+    )
+    .await;
+    let heard = settle(&server, &mut [&mut me]).await;
+    assert_eq!(
+        names(&heard[0]),
+        vec!["readReceiptUpdated", "readReceiptUpdated"]
+    );
+    for (_, payload) in &heard[0] {
+        assert_valid(
+            &schemas,
+            &payload_of("readReceiptUpdated"),
+            payload,
+            "REST readReceiptUpdated",
+        );
+    }
     let presence = json!({ "idle": true });
     assert_valid(
         &schemas,

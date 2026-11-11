@@ -277,8 +277,10 @@ async fn mark_read(State(inner): State<Arc<Inner>>, body: Bytes) -> Response {
     };
     let channel = value.get("channelId").and_then(Value::as_str);
     let group = value.get("directMessageGroupId").and_then(Value::as_str);
-    json_response(
-        StatusCode::OK,
-        messages::mark_read(&inner, channel, group, last_read),
-    )
+    // As the backend's `markReadAndAnnounce`: notifications of the context are read and the
+    // receipt goes out over the socket.
+    match crate::socket::announce_read(&inner, &inner.scenario.me.id, channel, group, last_read) {
+        Ok(receipt) => json_response(StatusCode::OK, receipt),
+        Err(message) => inner.error(400, "BAD_REQUEST", message, false),
+    }
 }
