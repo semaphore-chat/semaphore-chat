@@ -67,7 +67,7 @@ impl Core {
             .media
             .clone()
             .ok_or_else(|| unavailable("the soundboard"))?;
-        let (community_id, file_id, bytes) = self.write(|state, _| {
+        let (community_id, file_id, bytes, epoch) = self.write(|state, _| {
             let Some(VoiceRoom::Channel {
                 community_id: Some(community_id),
                 ..
@@ -95,7 +95,7 @@ impl Core {
                 community_id: community_id.clone(),
             });
             let bytes = state.w4.sound_bytes.get(&file_id).cloned();
-            Ok((community_id, file_id, bytes))
+            Ok((community_id, file_id, bytes, state.session_epoch))
         })?;
         let result = async {
             let bytes = match bytes {
@@ -106,12 +106,17 @@ impl Core {
                         .file_controller_get_file(file_id.clone())
                         .await
                         .map_err(|error| self.backend_failed(error))?;
+                    // The session it was read for may have ended meanwhile: then it's dropped.
                     self.write(|state, _| {
+                        if state.session_epoch != epoch {
+                            return Err(unavailable("the soundboard after the session ended"));
+                        }
                         if state.w4.sound_bytes.len() >= KEPT_SOUNDS {
                             state.w4.sound_bytes.clear();
                         }
                         state.w4.sound_bytes.insert(file_id.clone(), bytes.clone());
-                    });
+                        Ok(())
+                    })?;
                     bytes
                 }
             };
@@ -119,6 +124,9 @@ impl Core {
         }
         .await;
         self.write(|state, _| {
+            if state.session_epoch != epoch {
+                return;
+            }
             if state
                 .w4
                 .sound_playing

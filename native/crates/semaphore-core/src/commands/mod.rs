@@ -160,7 +160,9 @@ impl State {
         self.w3 = Default::default();
         self.w4 = Default::default();
         self.session_epoch += 1;
-        self.effects.clear();
+        // The sleep inhibitor isn't the session's: a change to it queued just now still runs.
+        self.effects
+            .retain(|effect| matches!(effect, Effect::KeepAwake { .. }));
         self.main_conversation = None;
         self.thread_conversation = None;
         self.me = None;

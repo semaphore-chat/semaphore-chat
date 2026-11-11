@@ -11,6 +11,56 @@ use semaphore_core::model::{
     VoiceRoom, VoiceStatus,
 };
 
+/// A mobile host's way to keep the device awake during a call (iOS `isIdleTimerDisabled` or an
+/// audio session, Android a wake lock or the call's foreground service). `set` returns whether it
+/// took.
+#[uniffi::export(with_foreign)]
+pub trait KeepAwakeHost: Send + Sync {
+    fn set(&self, on: bool) -> bool;
+}
+
+pub(crate) struct ForeignKeepAwake(pub(crate) std::sync::Arc<dyn KeepAwakeHost>);
+
+impl semaphore_core::platform::KeepAwake for ForeignKeepAwake {
+    fn set(&self, on: bool) -> Result<(), CoreError> {
+        if self.0.set(on) {
+            Ok(())
+        } else {
+            Err(CoreError::Failed {
+                message: format!("the host couldn't keep the device awake ({on})"),
+            })
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use semaphore_core::platform::KeepAwake;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct Host(Mutex<Vec<bool>>, bool);
+
+    impl KeepAwakeHost for Host {
+        fn set(&self, on: bool) -> bool {
+            self.0.lock().unwrap().push(on);
+            self.1
+        }
+    }
+
+    #[test]
+    fn keep_awake_reaches_the_foreign_host_and_its_refusal_comes_back() {
+        let host = Arc::new(Host(Mutex::new(Vec::new()), true));
+        let adapter = ForeignKeepAwake(host.clone());
+        adapter.set(true).unwrap();
+        adapter.set(false).unwrap();
+        assert_eq!(*host.0.lock().unwrap(), vec![true, false]);
+        let refusing = ForeignKeepAwake(Arc::new(Host(Mutex::new(Vec::new()), false)));
+        assert!(refusing.set(true).is_err());
+    }
+}
+
 #[uniffi::remote(Enum)]
 pub enum VoiceRoom {
     Channel {
@@ -33,6 +83,7 @@ pub struct IncomingCallView {
     pub dm_group_id: String,
     pub group_name: String,
     pub caller: UserView,
+    pub is_group: bool,
     pub started_at_ms: u64,
     pub expires_at_ms: u64,
 }
@@ -295,6 +346,20 @@ impl SemaphoreCore {
 
     pub fn voice_diagnostics(&self) -> VoiceDiagnosticsView {
         self.core.voice_diagnostics()
+    }
+
+    pub fn voice_diagnostics_report(&self) -> String {
+        self.core.voice_diagnostics_report()
+    }
+
+    pub fn expire_replay_audio_wait(&self) {
+        self.core.expire_replay_audio_wait();
+    }
+
+    /// The host's sleep inhibitor, held while a call runs.
+    pub fn set_keep_awake(&self, host: std::sync::Arc<dyn KeepAwakeHost>) {
+        self.core
+            .set_keep_awake(std::sync::Arc::new(ForeignKeepAwake(host)));
     }
 
     pub async fn refresh_voice_diagnostics(&self) {

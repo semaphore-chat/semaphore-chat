@@ -1492,6 +1492,7 @@ impl Inner {
                 quality: quality_view(local.connection_quality()),
                 // Presence knows a server mute; core merges it.
                 server_muted: false,
+                volume_percent: 100,
             }];
             snapshot.local_quality = quality_view(local.connection_quality());
             snapshot.quality.clear();
@@ -1597,6 +1598,7 @@ fn remote_view(
         screen_share,
         quality: quality_view(participant.connection_quality()),
         server_muted: false,
+        volume_percent: 100,
     }
 }
 

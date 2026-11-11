@@ -328,6 +328,14 @@ freeze, each lane owns these files:
 | W4-ui-replay | `semaphore-ui/src/replay/*` |
 | W4-app | `semaphore-app/src/{voice,root,sounds,services}.rs`, sound assets, `rigs/slice/scripts/voice-w4.steps` |
 
+**W4-media owes core the share's track ids.** The replay buffer starts from
+`LocalMediaView::screen_tracks` in the engine's reports, and the LiveKit engine reports `None`
+there today (`semaphore-media-livekit/src/engine.rs`, `local_media`). Until it fills the published
+screen share's video sid (and its audio sid once that track is published), no replay buffer starts
+on desktop. Core waits `REPLAY_AUDIO_WAIT_MS` (2 s) for a share's audio track, as the web does; the
+host calls `Core::expire_replay_audio_wait` at `VoiceView::replay_audio_wait_until_ms`, and an
+engine report of `screen_audio: Failed` starts the video alone at once.
+
 **W4 defaults** (chosen for the owner, who may overrule; 2026-11-11):
 
 - Declining an incoming call is local only: the caller isn't told (as on the web; telling them needs

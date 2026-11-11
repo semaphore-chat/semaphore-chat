@@ -5,6 +5,10 @@ use super::UserView;
 /// How long an incoming call rings before it gives up, as on the web.
 pub const RING_MS: u64 = 30_000;
 
+/// How long the replay buffer waits for a share's audio track before it starts with the video
+/// alone, as the web's `useReplayBuffer` does.
+pub const REPLAY_AUDIO_WAIT_MS: u64 = 2_000;
+
 /// A DM or group DM call ringing for me. One at a time: a newer ring replaces it. It stops on
 /// accept, decline (local only: the caller isn't told), `expires_at_ms`, my joining that call on any
 /// device, the caller giving up (the call's presence empties), or sign-out.
@@ -14,6 +18,8 @@ pub struct IncomingCallView {
     /// The group's name as the DM list shows it, or the caller's name when it isn't known.
     pub group_name: String,
     pub caller: UserView,
+    /// A group DM's call, not a one-to-one's. False until the DM list says so.
+    pub is_group: bool,
     pub started_at_ms: u64,
     /// `started_at_ms + RING_MS`. The host calls `Core::expire_incoming_call` then: core has no
     /// timers.

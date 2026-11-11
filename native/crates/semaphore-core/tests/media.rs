@@ -391,12 +391,13 @@ async fn leaving_while_the_room_is_still_connecting_ends_what_the_join_started()
     rig.settle().await;
     assert_eq!(rig.core.voice().status, VoiceStatus::Disconnected);
     assert_eq!(rig.core.voice().channel_id, None);
-    // The join finished after the leave: the engine and the server both hear it's over.
+    // The join finished after the leave: the engine hears it's over, and the server never heard
+    // of the join (it stops before announcing itself), only of the leave.
     assert_eq!(
         media_calls(&rig).last().map(String::as_str),
         Some("disconnect")
     );
-    assert_eq!(voice_calls(&rig), ["leave", "join", "leave"]);
+    assert_eq!(voice_calls(&rig), ["leave"]);
 }
 
 // Camera and screen share.

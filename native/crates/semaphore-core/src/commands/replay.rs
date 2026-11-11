@@ -9,6 +9,7 @@
 
 use crate::cache::keys;
 use crate::client::{Core, State};
+use crate::commands::calls::ReplayOp;
 use crate::model::{
     CaptureRequest, CapturedClip, Clip, ClipDestination, ClipsView, ErrorView, PreviewSegment,
     ReplayMinutes, ReplaySessionView, ReplayState, ViewKey, VoiceRoom,
@@ -19,6 +20,13 @@ use semaphore_wire::enums::{
     CaptureReplayDestination, ReplayDurationMinutes, ShareClipDestination,
 };
 use semaphore_wire::types as wire;
+
+fn ended_state(error: Option<String>) -> ReplayState {
+    match error {
+        Some(message) => ReplayState::Failed { message },
+        None => ReplayState::Off,
+    }
+}
 
 fn clip_view(dto: &wire::ClipResponseDto) -> Clip {
     Clip {
@@ -76,22 +84,21 @@ pub(crate) fn parse_playlist(text: &str, base: &str) -> Vec<PreviewSegment> {
 
 impl State {
     /// `replayBufferStopped` (no `error`) or `replayBufferFailed`: the server has no buffer now.
+    /// While ours is starting its session isn't known yet, so the ended one is kept for the start
+    /// to compare with its own.
     pub(crate) fn w4_replay_ended(&mut self, session_id: &str, error: Option<String>) {
         self.invalidate(&keys::op(keys::REPLAY_SESSION));
-        let ours = match &self.voice.replay {
-            ReplayState::Recording { session_id: ours } => ours == session_id,
-            ReplayState::Starting => true,
-            _ => false,
-        };
-        if !ours {
-            return;
+        match &self.voice.replay {
+            ReplayState::Recording { session_id: ours } if ours == session_id => {
+                self.w4.replay_live = false;
+                self.voice.replay = ended_state(error);
+                self.view_changed(ViewKey::Voice);
+            }
+            ReplayState::Starting => {
+                self.w4.replay_ended.push((session_id.to_owned(), error));
+            }
+            _ => {}
         }
-        self.w4.replay_live = false;
-        self.voice.replay = match error {
-            Some(message) => ReplayState::Failed { message },
-            None => ReplayState::Off,
-        };
-        self.view_changed(ViewKey::Voice);
     }
 
     fn clip_changed(&mut self, clip_id: &str, change: impl Fn(&mut Vec<wire::ClipResponseDto>)) {
@@ -143,9 +150,7 @@ impl State {
 impl Core {
     /// The effect `State::w4_replay` queues: tell the server to buffer this call's share.
     pub(crate) async fn start_replay(&self, call: u64) {
-        let Some(services) = self.services() else {
-            return;
-        };
+        let services = self.services().cloned();
         let request = self.read(|state| {
             let Some(VoiceRoom::Channel { channel_id, .. }) = &state.voice.room else {
                 return None;
@@ -154,7 +159,8 @@ impl Core {
             (state.call == call && state.w4.replay_live)
                 .then(|| (channel_id.clone(), tracks, state.me_id().to_owned()))
         });
-        let Some((channel_id, tracks, me)) = request else {
+        let (Some(services), Some((channel_id, tracks, me))) = (services, request) else {
+            self.write(|state, _| state.w4_replay_op_done());
             return;
         };
         let result = match uuid(&channel_id, "the channel") {
@@ -172,15 +178,27 @@ impl Core {
             Err(error) => Err(error),
         };
         self.write(|state, _| {
+            state.w4_replay_op_done();
             let current = state.call == call
                 && state.w4.replay_live
                 && state.w4.replay_done_for.as_deref() == Some(tracks.video_sid.as_str());
+            let ended = std::mem::take(&mut state.w4.replay_ended);
             match result {
-                // The share or the call ended while this ran: the stop may have gone first.
-                Ok(_) if !current => state.push_effect(crate::client::Effect::StopReplay),
+                // The share or the call ended while this ran: stop what it started.
+                Ok(_) if !current => state.w4_replay_op(ReplayOp::Stop),
                 Ok(started) => {
-                    state.voice.replay = ReplayState::Recording {
-                        session_id: started.session_id,
+                    let ended_already = ended
+                        .into_iter()
+                        .find(|(session, _)| *session == started.session_id);
+                    state.voice.replay = match ended_already {
+                        // It ended as it began: nothing to stop, and no restart for this share.
+                        Some((_, error)) => {
+                            state.w4.replay_live = false;
+                            ended_state(error)
+                        }
+                        None => ReplayState::Recording {
+                            session_id: started.session_id,
+                        },
                     };
                     state.view_changed(ViewKey::Voice);
                 }
@@ -198,16 +216,27 @@ impl Core {
     }
 
     pub(crate) async fn stop_replay(&self) {
-        let Some(services) = self.services() else {
-            return;
-        };
-        if let Err(error) = services
-            .backend
-            .livekit_controller_stop_replay_buffer()
-            .await
+        if let Some(services) = self.services()
+            && let Err(error) = services
+                .backend
+                .livekit_controller_stop_replay_buffer()
+                .await
         {
             log::warn!("stopping the replay buffer failed: {error}");
         }
+        self.write(|state, _| state.w4_replay_op_done());
+    }
+
+    /// The host calls this at `VoiceView::replay_audio_wait_until_ms`: past it, the buffer starts
+    /// with the share's video alone. Harmless early or twice.
+    pub fn expire_replay_audio_wait(&self) {
+        self.write(|state, now| {
+            if let Some((video, until)) = state.w4.replay_audio_wait.clone()
+                && now >= until
+            {
+                state.w4.replay_audio_waived = Some(video);
+            }
+        });
     }
 
     /// What the buffer holds now, for the trim timeline (`ViewKey::ReplaySession`).

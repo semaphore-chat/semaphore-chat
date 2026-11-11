@@ -193,6 +193,8 @@ pub struct FakeBackend {
     pub w4: w2::W2Fakes,
     /// File bytes by id, for `file_controller_get_file`; each read is counted in `w4` as `file <id>`.
     pub files: Mutex<HashMap<String, Vec<u8>>>,
+    /// W4: the next channel presence join waits for this.
+    pub join_gate: Mutex<Option<oneshot::Receiver<()>>>,
     pub page_requests: AtomicU64,
     /// Holds the next page until this fires, to test what happens while one is in flight.
     pub gate: Mutex<Option<oneshot::Receiver<()>>>,
@@ -249,6 +251,11 @@ impl FakeBackend {
         channel: String,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
         self.voice_calls.lock().unwrap().push(what.to_owned());
+        self.w4
+            .calls
+            .lock()
+            .unwrap()
+            .push(format!("presence {what} {channel}"));
         decoded(json!({ "channelId": channel, "message": "ok", "success": true }))
     }
 
@@ -712,6 +719,10 @@ impl VoiceBackend for FakeBackend {
         &self,
         channel: String,
     ) -> BackendResult<wire::RefreshPresenceResponseDto> {
+        let gate = self.join_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
         self.voice_call("join", channel)
     }
 
@@ -830,6 +841,10 @@ impl FilesBackend for FakeBackend {
     }
 
     async fn file_controller_get_file(&self, id: String) -> BackendResult<Vec<u8>> {
+        let gate = self.w4.gates.lock().unwrap().remove("file");
+        if let Some(gate) = gate {
+            let _ = gate.await;
+        }
         let bytes = self.files.lock().unwrap().get(&id).cloned();
         match bytes {
             Some(bytes) => {
@@ -959,6 +974,9 @@ pub struct FakeMedia {
     pub soundboard_fails: Mutex<Option<String>>,
     /// W4: what `diagnostics` answers.
     pub diagnostics: Mutex<Option<semaphore_core::model::MediaDiagnostics>>,
+    /// W4: the next `connect`, and the next `diagnostics`, wait for these.
+    pub hold_connect: Mutex<Option<oneshot::Receiver<()>>>,
+    pub hold_diagnostics: Mutex<Option<oneshot::Receiver<()>>>,
 }
 
 #[async_trait]
@@ -969,6 +987,10 @@ impl MediaEngine for FakeMedia {
             .unwrap()
             .push(format!("connect {url} {token}"));
         *self.last_call.lock().unwrap() = call;
+        let hold = self.hold_connect.lock().unwrap().take();
+        if let Some(hold) = hold {
+            let _ = hold.await;
+        }
         if let Some(report) = self.report_during_connect.lock().unwrap().take()
             && let Some(core) = self.core.lock().unwrap().clone()
         {
@@ -1057,6 +1079,10 @@ impl MediaEngine for FakeMedia {
             .push(format!("volume {identity} {percent}"));
     }
     async fn diagnostics(&self) -> Option<semaphore_core::model::MediaDiagnostics> {
+        let hold = self.hold_diagnostics.lock().unwrap().take();
+        if let Some(hold) = hold {
+            let _ = hold.await;
+        }
         self.diagnostics.lock().unwrap().clone()
     }
 }

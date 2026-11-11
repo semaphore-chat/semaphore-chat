@@ -176,8 +176,21 @@ impl Core {
             .services()
             .ok_or_else(|| unavailable("signing out"))?
             .clone();
+        // W4: a replay buffer the server keeps for us is stopped while the session can still say
+        // so. A session that expired can't, and the server ends the buffer with the share (its
+        // egress stops when the track goes).
+        if self.read(|state| state.w4.replay_live) {
+            self.write(|state, _| state.w4.replay_live = false);
+            if let Err(error) = services
+                .backend
+                .livekit_controller_stop_replay_buffer()
+                .await
+            {
+                log::warn!("stopping the replay buffer on sign-out: {error}");
+            }
+        }
         // Before the session goes: leaving tells the server, and a call mustn't outlive a sign-out.
-        if self.read(|state| state.voice.channel_id.is_some())
+        if self.read(|state| state.voice.channel_id.is_some() || state.voice.room.is_some())
             && let Err(error) = self.leave_voice().await
         {
             log::warn!("leaving voice on sign-out: {error}");

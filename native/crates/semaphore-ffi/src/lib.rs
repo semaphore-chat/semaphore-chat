@@ -374,6 +374,7 @@ pub struct ParticipantView {
     pub screen_share: Option<VideoTrackView>,
     pub quality: ConnectionQuality,
     pub server_muted: bool,
+    pub volume_percent: u32,
 }
 
 #[uniffi::remote(Record)]
@@ -389,6 +390,7 @@ pub struct VoiceView {
     pub local: LocalMediaView,
     pub server_muted: bool,
     pub replay: ReplayState,
+    pub replay_audio_wait_until_ms: Option<u64>,
 }
 
 #[uniffi::remote(Enum)]

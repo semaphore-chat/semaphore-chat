@@ -40,7 +40,10 @@ impl Core {
                     }
                     state.cache.set(key.clone(), value, now);
                     state.failed_queries.remove(&key);
+                    // W4: an answer that was out when its data changed is from before the change.
+                    state.w4.answer_dirty = dirty;
                     state.query_changed(&key);
+                    state.w4.answer_dirty = false;
                     if dirty {
                         // It changed while this was in flight, so this answer may be old.
                         state.invalidate(&key);
