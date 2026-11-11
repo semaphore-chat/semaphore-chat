@@ -787,6 +787,337 @@ pub mod types {
         pub mime_type: ::std::string::String,
         pub size: i64,
     }
+    ///`AuthControllerLoginXClientType`
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AuthControllerLoginXClientType {
+        #[serde(rename = "web")]
+        Web,
+        #[serde(rename = "electron")]
+        Electron,
+        #[serde(rename = "desktop-native")]
+        DesktopNative,
+        #[serde(rename = "mobile-native")]
+        MobileNative,
+    }
+    impl ::std::fmt::Display for AuthControllerLoginXClientType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Web => f.write_str("web"),
+                Self::Electron => f.write_str("electron"),
+                Self::DesktopNative => f.write_str("desktop-native"),
+                Self::MobileNative => f.write_str("mobile-native"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerLoginXClientType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "web" => Ok(Self::Web),
+                "electron" => Ok(Self::Electron),
+                "desktop-native" => Ok(Self::DesktopNative),
+                "mobile-native" => Ok(Self::MobileNative),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerLoginXClientType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AuthControllerLoginXClientType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`AuthControllerLoginXDeviceName`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AuthControllerLoginXDeviceName(::std::string::String);
+    impl ::std::ops::Deref for AuthControllerLoginXDeviceName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<AuthControllerLoginXDeviceName> for ::std::string::String {
+        fn from(value: AuthControllerLoginXDeviceName) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerLoginXDeviceName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerLoginXDeviceName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AuthControllerLoginXDeviceName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for AuthControllerLoginXDeviceName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///`AuthControllerRedeemDesktopLoginXClientType`
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AuthControllerRedeemDesktopLoginXClientType {
+        #[serde(rename = "web")]
+        Web,
+        #[serde(rename = "electron")]
+        Electron,
+        #[serde(rename = "desktop-native")]
+        DesktopNative,
+        #[serde(rename = "mobile-native")]
+        MobileNative,
+    }
+    impl ::std::fmt::Display for AuthControllerRedeemDesktopLoginXClientType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Web => f.write_str("web"),
+                Self::Electron => f.write_str("electron"),
+                Self::DesktopNative => f.write_str("desktop-native"),
+                Self::MobileNative => f.write_str("mobile-native"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerRedeemDesktopLoginXClientType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "web" => Ok(Self::Web),
+                "electron" => Ok(Self::Electron),
+                "desktop-native" => Ok(Self::DesktopNative),
+                "mobile-native" => Ok(Self::MobileNative),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerRedeemDesktopLoginXClientType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for AuthControllerRedeemDesktopLoginXClientType
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`AuthControllerRedeemDesktopLoginXDeviceName`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AuthControllerRedeemDesktopLoginXDeviceName(::std::string::String);
+    impl ::std::ops::Deref for AuthControllerRedeemDesktopLoginXDeviceName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<AuthControllerRedeemDesktopLoginXDeviceName> for ::std::string::String {
+        fn from(value: AuthControllerRedeemDesktopLoginXDeviceName) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerRedeemDesktopLoginXDeviceName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerRedeemDesktopLoginXDeviceName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String>
+        for AuthControllerRedeemDesktopLoginXDeviceName
+    {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for AuthControllerRedeemDesktopLoginXDeviceName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///`AuthControllerRefreshXClientType`
+    #[derive(
+        ::serde::Deserialize,
+        ::serde::Serialize,
+        Clone,
+        Copy,
+        Debug,
+        Eq,
+        Hash,
+        Ord,
+        PartialEq,
+        PartialOrd,
+    )]
+    pub enum AuthControllerRefreshXClientType {
+        #[serde(rename = "web")]
+        Web,
+        #[serde(rename = "electron")]
+        Electron,
+        #[serde(rename = "desktop-native")]
+        DesktopNative,
+        #[serde(rename = "mobile-native")]
+        MobileNative,
+    }
+    impl ::std::fmt::Display for AuthControllerRefreshXClientType {
+        fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+            match *self {
+                Self::Web => f.write_str("web"),
+                Self::Electron => f.write_str("electron"),
+                Self::DesktopNative => f.write_str("desktop-native"),
+                Self::MobileNative => f.write_str("mobile-native"),
+            }
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerRefreshXClientType {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            match value {
+                "web" => Ok(Self::Web),
+                "electron" => Ok(Self::Electron),
+                "desktop-native" => Ok(Self::DesktopNative),
+                "mobile-native" => Ok(Self::MobileNative),
+                _ => Err("invalid value".into()),
+            }
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerRefreshXClientType {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AuthControllerRefreshXClientType {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    ///`AuthControllerRefreshXDeviceName`
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AuthControllerRefreshXDeviceName(::std::string::String);
+    impl ::std::ops::Deref for AuthControllerRefreshXDeviceName {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<AuthControllerRefreshXDeviceName> for ::std::string::String {
+        fn from(value: AuthControllerRefreshXDeviceName) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for AuthControllerRefreshXDeviceName {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 64usize {
+                return Err("longer than 64 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthControllerRefreshXDeviceName {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AuthControllerRefreshXDeviceName {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for AuthControllerRefreshXDeviceName {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
     ///`AuthorizeDesktopLoginRequestDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct AuthorizeDesktopLoginRequestDto {
@@ -795,6 +1126,8 @@ pub mod types {
         pub code_challenge: AuthorizeDesktopLoginRequestDtoCodeChallenge,
         #[serde(rename = "codeChallengeMethod")]
         pub code_challenge_method: semaphore_wire::enums::CodeChallengeMethod,
+        ///The account's password: approving a new device needs more than a session.
+        pub password: AuthorizeDesktopLoginRequestDtoPassword,
     }
     ///PKCE S256 code challenge: base64url SHA-256 of the desktop app's code verifier
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -841,6 +1174,56 @@ pub mod types {
         }
     }
     impl<'de> ::serde::Deserialize<'de> for AuthorizeDesktopLoginRequestDtoCodeChallenge {
+        fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
+        where
+            D: ::serde::Deserializer<'de>,
+        {
+            ::std::string::String::deserialize(deserializer)?
+                .parse()
+                .map_err(|e: self::error::ConversionError| {
+                    <D::Error as ::serde::de::Error>::custom(e.to_string())
+                })
+        }
+    }
+    ///The account's password: approving a new device needs more than a session.
+    #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+    #[serde(transparent)]
+    pub struct AuthorizeDesktopLoginRequestDtoPassword(::std::string::String);
+    impl ::std::ops::Deref for AuthorizeDesktopLoginRequestDtoPassword {
+        type Target = ::std::string::String;
+        fn deref(&self) -> &::std::string::String {
+            &self.0
+        }
+    }
+    impl ::std::convert::From<AuthorizeDesktopLoginRequestDtoPassword> for ::std::string::String {
+        fn from(value: AuthorizeDesktopLoginRequestDtoPassword) -> Self {
+            value.0
+        }
+    }
+    impl ::std::str::FromStr for AuthorizeDesktopLoginRequestDtoPassword {
+        type Err = self::error::ConversionError;
+        fn from_str(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            if value.chars().count() > 128usize {
+                return Err("longer than 128 characters".into());
+            }
+            Ok(Self(value.to_string()))
+        }
+    }
+    impl ::std::convert::TryFrom<&str> for AuthorizeDesktopLoginRequestDtoPassword {
+        type Error = self::error::ConversionError;
+        fn try_from(value: &str) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl ::std::convert::TryFrom<::std::string::String> for AuthorizeDesktopLoginRequestDtoPassword {
+        type Error = self::error::ConversionError;
+        fn try_from(
+            value: ::std::string::String,
+        ) -> ::std::result::Result<Self, self::error::ConversionError> {
+            value.parse()
+        }
+    }
+    impl<'de> ::serde::Deserialize<'de> for AuthorizeDesktopLoginRequestDtoPassword {
         fn deserialize<D>(deserializer: D) -> ::std::result::Result<Self, D::Error>
         where
             D: ::serde::Deserializer<'de>,
@@ -1781,7 +2164,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub alias_id: ::std::option::Option<::std::string::String>,
+        pub alias_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub bold: ::std::option::Option<bool>,
         ///For CHANNEL_MENTION (text is ignored and stored as null).
@@ -1798,13 +2181,13 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub community_id: ::std::option::Option<::std::string::String>,
+        pub community_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(
             rename = "emojiId",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub emoji_id: ::std::option::Option<::std::string::String>,
+        pub emoji_id: ::std::option::Option<::uuid::Uuid>,
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub italic: ::std::option::Option<bool>,
         #[serde(
@@ -1824,7 +2207,7 @@ pub mod types {
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
-        pub user_id: ::std::option::Option<::std::string::String>,
+        pub user_id: ::std::option::Option<::uuid::Uuid>,
     }
     ///`CreateRoleDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -1833,7 +2216,7 @@ pub mod types {
         pub name: CreateRoleDtoName,
         ///Position for ordering (lower = higher priority)
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
-        pub position: ::std::option::Option<i64>,
+        pub position: ::std::option::Option<::std::num::NonZeroU64>,
     }
     ///`CreateRoleDtoName`
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -2021,12 +2404,14 @@ pub mod types {
             default
         )]
         pub pending_attachments: ::std::option::Option<u64>,
-        pub spans: ::std::vec::Vec<ThreadReplySpanDto>,
+        pub spans: ::std::vec::Vec<CreateMessageSpanDto>,
     }
     ///`CreateTokenDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct CreateTokenDto {
         pub identity: ::std::string::String,
+        /**Ignored: the display name in the token is the account's. Accepted because
+        clients send it, and the whitelist would otherwise only strip it.*/
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub name: ::std::option::Option<::std::string::String>,
         #[serde(rename = "roomId")]
@@ -2426,6 +2811,20 @@ pub mod types {
                     <D::Error as ::serde::de::Error>::custom(e.to_string())
                 })
         }
+    }
+    ///`DesktopSignInPayloadDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct DesktopSignInPayloadDto {
+        ///Where the desktop app signed in from, as the server saw it.
+        #[serde(
+            rename = "ipAddress",
+            deserialize_with = "::std::option::Option::deserialize",
+            default
+        )]
+        pub ip_address: ::std::option::Option<::std::string::String>,
+        ///When the desktop app signed in.
+        #[serde(rename = "signedInAt")]
+        pub signed_in_at: ::chrono::DateTime<::chrono::offset::Utc>,
     }
     ///`DmGroupLastMessageDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -3414,6 +3813,7 @@ pub mod types {
     pub struct LoginResponseDto {
         #[serde(rename = "accessToken")]
         pub access_token: ::std::string::String,
+        ///Only for a client that gets body delivery (see the X-Client-Type header) or presented its refresh token in the body. Web clients get an httpOnly refresh_token cookie instead. A native client that gets no refreshToken is talking to a server too old for it.
         #[serde(
             rename = "refreshToken",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -3424,7 +3824,7 @@ pub mod types {
     ///`LogoutRequestDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
     pub struct LogoutRequestDto {
-        ///Refresh token (required for Electron clients that cannot use cookies)
+        ///Refresh token, for a client that stores its own instead of using the refresh_token cookie
         #[serde(
             rename = "refreshToken",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -4130,6 +4530,36 @@ pub mod types {
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
         pub idle: ::std::option::Option<bool>,
     }
+    ///`PublicInviteCreatorDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct PublicInviteCreatorDto {
+        pub username: ::std::string::String,
+    }
+    ///`PublicInviteDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct PublicInviteDto {
+        pub code: ::std::string::String,
+        #[serde(
+            rename = "createdBy",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub created_by: ::std::option::Option<PublicInviteCreatorDto>,
+        pub disabled: bool,
+        #[serde(
+            rename = "maxUses",
+            deserialize_with = "::std::option::Option::deserialize",
+            default
+        )]
+        pub max_uses: ::std::option::Option<i64>,
+        pub uses: i64,
+        #[serde(
+            rename = "validUntil",
+            deserialize_with = "::std::option::Option::deserialize",
+            default
+        )]
+        pub valid_until: ::std::option::Option<::chrono::DateTime<::chrono::offset::Utc>>,
+    }
     ///`PublicSettingsResponseDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
     pub struct PublicSettingsResponseDto {
@@ -4161,6 +4591,28 @@ pub mod types {
         pub enabled: bool,
         #[serde(rename = "subscriptionCount")]
         pub subscription_count: i64,
+    }
+    ///`PushSubscriptionInfoDto`
+    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
+    pub struct PushSubscriptionInfoDto {
+        #[serde(rename = "createdAt")]
+        pub created_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        ///Host of the push service; the full endpoint URL is never returned.
+        #[serde(
+            rename = "endpointHost",
+            deserialize_with = "::std::option::Option::deserialize",
+            default
+        )]
+        pub endpoint_host: ::std::option::Option<::std::string::String>,
+        pub id: ::std::string::String,
+        #[serde(rename = "updatedAt")]
+        pub updated_at: ::chrono::DateTime<::chrono::offset::Utc>,
+        #[serde(
+            rename = "userAgent",
+            deserialize_with = "::std::option::Option::deserialize",
+            default
+        )]
+        pub user_agent: ::std::option::Option<::std::string::String>,
     }
     ///`PushSubscriptionKeys`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -4380,6 +4832,7 @@ pub mod types {
     ///`RefreshRequestDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug, Default)]
     pub struct RefreshRequestDto {
+        ///The refresh token, for a client that stores its own. Takes precedence over the refresh_token cookie; if it is invalid the request fails, without trying the cookie. The answer has the new refresh token in its body only when the token was presented here.
         #[serde(
             rename = "refreshToken",
             skip_serializing_if = "::std::option::Option::is_none",
@@ -4962,46 +5415,7 @@ pub mod types {
             default
         )]
         pub pending_attachments: ::std::option::Option<u64>,
-        pub spans: ::std::vec::Vec<SendThreadReplySpanDto>,
-    }
-    ///`SendThreadReplySpanDto`
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-    pub struct SendThreadReplySpanDto {
-        #[serde(
-            rename = "aliasId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub alias_id: ::std::option::Option<::std::string::String>,
-        ///For CHANNEL_MENTION (text is ignored and stored as null).
-        #[serde(
-            rename = "channelId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub channel_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(
-            rename = "communityId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub community_id: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "specialKind",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub special_kind: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
-        pub text: ::std::option::Option<::std::string::String>,
-        #[serde(rename = "type")]
-        pub type_: semaphore_wire::enums::SpanType,
-        #[serde(
-            rename = "userId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub user_id: ::std::option::Option<::std::string::String>,
+        pub spans: ::std::vec::Vec<CreateMessageSpanDto>,
     }
     ///`ServerStatsDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -5601,16 +6015,20 @@ pub mod types {
         pub audio_track_id: ::std::option::Option<::std::string::String>,
         #[serde(rename = "channelId")]
         pub channel_id: ::uuid::Uuid,
-        /**Participant identity (usually the user ID)
-        Used to query track resolution for matching egress encoding to source quality*/
+        ///Ignored: the tracks must be the caller's own. Existing clients send it.
         #[serde(
             rename = "participantIdentity",
             skip_serializing_if = "::std::option::Option::is_none",
             default
         )]
         pub participant_identity: ::std::option::Option<::std::string::String>,
-        #[serde(rename = "roomName")]
-        pub room_name: ::std::string::String,
+        ///Ignored: the room is the authorized channel's. Existing clients send it.
+        #[serde(
+            rename = "roomName",
+            skip_serializing_if = "::std::option::Option::is_none",
+            default
+        )]
+        pub room_name: ::std::option::Option<::std::string::String>,
         #[serde(rename = "videoTrackId")]
         pub video_track_id: ::std::string::String,
     }
@@ -5743,45 +6161,6 @@ pub mod types {
         pub parent_message_id: ::std::string::String,
         #[serde(rename = "replyCount")]
         pub reply_count: i64,
-    }
-    ///`ThreadReplySpanDto`
-    #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
-    pub struct ThreadReplySpanDto {
-        #[serde(
-            rename = "aliasId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub alias_id: ::std::option::Option<::std::string::String>,
-        ///For CHANNEL_MENTION (text is ignored and stored as null).
-        #[serde(
-            rename = "channelId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub channel_id: ::std::option::Option<::uuid::Uuid>,
-        #[serde(
-            rename = "communityId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub community_id: ::std::option::Option<::std::string::String>,
-        #[serde(
-            rename = "specialKind",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub special_kind: ::std::option::Option<::std::string::String>,
-        #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
-        pub text: ::std::option::Option<::std::string::String>,
-        #[serde(rename = "type")]
-        pub type_: semaphore_wire::enums::SpanType,
-        #[serde(
-            rename = "userId",
-            skip_serializing_if = "::std::option::Option::is_none",
-            default
-        )]
-        pub user_id: ::std::option::Option<::std::string::String>,
     }
     ///`TimeoutRemovedPayloadDto`
     #[derive(::serde::Deserialize, ::serde::Serialize, Clone, Debug)]
@@ -6739,7 +7118,7 @@ pub mod types {
         pub name: ::std::option::Option<UpdateRoleDtoName>,
         ///Position for ordering (lower = higher priority)
         #[serde(skip_serializing_if = "::std::option::Option::is_none", default)]
-        pub position: ::std::option::Option<i64>,
+        pub position: ::std::option::Option<::std::num::NonZeroU64>,
     }
     ///`UpdateRoleDtoName`
     #[derive(::serde::Serialize, Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]

@@ -1,6 +1,6 @@
 # The contract every generator reads. Update only with scripts/pin-contract.sh <git-ref>.
-ref=chore/stack-review-fixes
-commit=723bdd0ce57306008712e382527a7cc97cec47b3
-openapi.json=279930367af7b289567a9242e6c2de7599399199a741e026c2bfd83601b6e508
-socket-events.json=69832f0d523d6a3236c6d5c6275de5deab68e07c5bf820232b485a68c27d533c
+ref=origin/main
+commit=bdb75462baf96181a6a4cedc8e0529370e3d19a1
+openapi.json=980c952918ca77f2c9d5a2bba15e839128537dc9f062e300163fecc1a712dafe
+socket-events.json=fa7e76a13cec63ddaf72cd9f1551ce3bc65abc3db3b5a7296747d4fde0457150
 wire-contract.md=557a198f09e803978d8db131ad88ee13a3a8ff0431c5f54448ce894d59f47f9a

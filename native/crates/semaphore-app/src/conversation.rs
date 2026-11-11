@@ -209,6 +209,13 @@ impl ConversationPane {
         self.composer.as_ref()
     }
 
+    /// Keyboard focus to the composer, for a conversation the shell just landed on or re-selected.
+    pub fn focus_composer(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(composer) = &self.composer {
+            composer.update(cx, |composer, cx| composer.focus(window, cx));
+        }
+    }
+
     pub fn set_focused(&mut self, focused: bool, cx: &mut Context<Self>) {
         self.focused = focused;
         if focused {

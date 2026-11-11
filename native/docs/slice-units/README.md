@@ -47,10 +47,11 @@ inside `cache.rs`, which U5 replaces with typed entries.
 
 ## Known gaps to carry
 
-- **The pinned contract lacks the auth contract.** `security/release` isn't an ancestor of the pin,
-  so `X-Client-Type` isn't in `contract/openapi.json`. U7 sends it by hand (`desktop-native`, with `X-Device-Id` and a `User-Agent`, which the backend requires of native clients). Real-backend flows need
-  a backend with both, which is `security/release` plus the API-contract stack. The smoke test that
-  proves it, once one exists: [docs/slice-app.md](../slice-app.md#a-real-backend-smoke-test-later).
+- **The auth contract (closed by W0-contract).** The pin is now `main`, whose `contract/openapi.json`
+  has `X-Client-Type`, `X-Device-Id` and `X-Device-Name` as parameters of sign-in, refresh and the
+  desktop token redeem; `semaphore-net` passes them there instead of as default headers. Only
+  `User-Agent`, which the contract doesn't model, is still set by hand. The real-backend smoke test:
+  [docs/slice-app.md](../slice-app.md#the-real-backend-smoke-test).
 - **U5 must keep `scripts/test-policy.sh` working when core gains `semaphore-wire`:** its fixture
   copies core alone and has its own `[workspace.dependencies]`. Keep `[dependencies]` last in core's
   `Cargo.toml` too, because that script appends to the file.

@@ -1,10 +1,10 @@
-//! The showcase's message ids are served as UUIDs, as the real backend issues them; the other
-//! scenarios keep the readable ids their tests name.
+//! The showcase's message, user and community ids are served as UUIDs, as the real backend issues
+//! them; the other scenarios keep the readable ids their tests name.
 
 mod common;
 
 use common::*;
-use semaphore_fake_server::message_uuid;
+use semaphore_fake_server::{entity_uuid, message_uuid};
 use serde_json::Value;
 
 fn is_uuid(id: &str) -> bool {
@@ -52,6 +52,59 @@ async fn the_showcase_serves_uuids_and_its_references_follow() {
             assert_eq!(message["replyTo"]["id"], Value::from(reply_to));
         }
     }
+}
+
+#[test]
+fn entity_ids_have_their_own_pinned_uuids() {
+    let id = entity_uuid("u-priya");
+    assert!(is_uuid(&id), "{id}");
+    assert_ne!(id, message_uuid("u-priya"));
+    // Pinned: rig scripts name users and communities through it (`$ID(u-priya)`).
+    assert_eq!(id, entity_uuid("u-priya"));
+}
+
+#[tokio::test]
+async fn the_showcase_serves_user_and_community_ids_as_uuids() {
+    let server = start("showcase").await;
+    let client = http();
+    let base = server.base_url();
+
+    let (status, me) = get(&client, &base, "/api/users/profile").await;
+    assert_eq!(status, 200, "{me}");
+    assert_eq!(me["id"].as_str(), Some(entity_uuid("me").as_str()));
+
+    let (status, communities) = get(&client, &base, "/api/community/mine").await;
+    assert_eq!(status, 200, "{communities}");
+    let communities = communities.as_array().expect("communities");
+    assert!(!communities.is_empty());
+    for community in communities {
+        assert!(is_uuid(community["id"].as_str().unwrap()), "{community}");
+    }
+    assert!(
+        communities
+            .iter()
+            .any(|community| community["id"] == entity_uuid("c-couch").as_str())
+    );
+
+    let (status, body) = get(&client, &base, "/api/messages/channel/cc-general?limit=100").await;
+    assert_eq!(status, 200, "{body}");
+    let messages = body["messages"].as_array().expect("messages");
+    let mut mentions = 0;
+    for message in messages {
+        assert!(is_uuid(message["authorId"].as_str().unwrap()), "{message}");
+        for span in message["spans"].as_array().into_iter().flatten() {
+            for field in ["userId", "communityId", "aliasId", "emojiId"] {
+                if let Some(id) = span[field].as_str() {
+                    assert!(is_uuid(id), "{field} in {span}");
+                    mentions += 1;
+                }
+            }
+        }
+    }
+    assert!(mentions > 0, "the showcase's general channel has mentions");
+    // Words that look like an id stay words.
+    let (_, lfg) = get(&client, &base, "/api/messages/channel/cc-lfg?limit=100").await;
+    assert!(lfg.to_string().contains(r#""text":"me""#), "{lfg}");
 }
 
 #[tokio::test]

@@ -41,6 +41,11 @@
         "$ref": "./openapi.json#/components/schemas/DeleteMessagePayloadDto"
       }
     },
+    "desktopSignIn": {
+      "payload": {
+        "$ref": "./openapi.json#/components/schemas/DesktopSignInPayloadDto"
+      }
+    },
     "dmVoiceCallStarted": {
       "payload": {
         "$ref": "./openapi.json#/components/schemas/DmVoiceCallStartedPayloadDto"

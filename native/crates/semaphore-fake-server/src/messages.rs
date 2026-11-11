@@ -609,7 +609,13 @@ pub(crate) fn emojis_in_use(inner: &Inner, community_id: &str) -> Vec<serde_json
     let data = lock(&inner.data);
     let mut seen = std::collections::BTreeMap::new();
     // One every community has, so a test can post it without a scenario that uses it.
-    seen.insert("emoji-party".to_owned(), "party".to_owned());
+    // A UUID where the scenario's ids are (`entity_uuid`), as the contract types an emoji id.
+    let party = if inner.scenario.uuid_message_ids {
+        crate::scenario::entity_uuid("emoji-party")
+    } else {
+        "emoji-party".to_owned()
+    };
+    seen.insert(party, "party".to_owned());
     for channel in &channels {
         for message in data.channel_messages.get(channel).into_iter().flatten() {
             for span in &message.spans {

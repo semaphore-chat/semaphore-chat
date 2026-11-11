@@ -1363,8 +1363,14 @@ fn content(
             if let Some(conversation) = conversation {
                 let community = props.route.community_id().map(str::to_owned);
                 let channel = Some(channel.clone());
+                let take_focus = props.take_focus;
                 pane.update(cx, |pane, cx| {
-                    pane.show(conversation, community, channel, window, cx)
+                    pane.show(conversation, community, channel, window, cx);
+                    // Opening another conversation focuses the composer; landing on (or clicking)
+                    // the one already open has to as well.
+                    if take_focus {
+                        pane.focus_composer(window, cx);
+                    }
                 });
             }
             pane.clone().into_any_element()
