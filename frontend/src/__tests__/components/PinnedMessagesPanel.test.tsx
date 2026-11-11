@@ -16,8 +16,10 @@ vi.mock('../../api-client/client.gen', async (importOriginal) => {
 
 // Mock AttachmentPreview so we can assert it renders without side effects
 vi.mock('../../components/Message/AttachmentPreview', () => ({
-  AttachmentPreview: ({ metadata }: { metadata: { id: string; filename: string } }) => (
-    <div data-testid="attachment-preview">{metadata.filename}</div>
+  AttachmentPreview: ({ metadata }: { metadata: { id: string; filename: string; hasThumbnail: boolean } }) => (
+    <div data-testid="attachment-preview" data-has-thumbnail={String(metadata.hasThumbnail)}>
+      {metadata.filename}
+    </div>
   ),
 }));
 
@@ -110,6 +112,21 @@ describe('PinnedMessagesPanel', () => {
 
     expect(await screen.findByTestId('attachment-preview')).toBeInTheDocument();
     expect(screen.getByText('photo.png')).toBeInTheDocument();
+  });
+
+  it("passes the attachment's thumbnail flag through to the preview", async () => {
+    const msg = makePinnedMessage({
+      attachments: [
+        { id: 'file-1', filename: 'clip.mp4', mimeType: 'video/mp4', fileType: 'VIDEO', size: 4096, hasThumbnail: true },
+      ],
+    });
+    setupPinnedEndpoint([msg]);
+
+    renderWithProviders(
+      <PinnedMessagesPanel channelId="channel-1" communityId="community-1" />,
+    );
+
+    expect(await screen.findByTestId('attachment-preview')).toHaveAttribute('data-has-thumbnail', 'true');
   });
 
   it('renders both text and attachment for message with caption', async () => {

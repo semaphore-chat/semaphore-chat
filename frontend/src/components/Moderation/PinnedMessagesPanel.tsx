@@ -31,7 +31,6 @@ import { useCanPerformAction } from "../../features/roles/useUserPermissions";
 import { RBAC_ACTIONS } from "../../constants/rbacActions";
 import UserAvatar from "../Common/UserAvatar";
 import { AttachmentPreview } from "../Message/AttachmentPreview";
-import type { FileMetadata } from "../../types/message.type";
 import { formatDistanceToNow } from "date-fns";
 import { logger } from "../../utils/logger";
 import { useResponsive } from "../../hooks/useResponsive";
@@ -107,15 +106,6 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
       .map((span) => span.text)
       .join(" ");
   };
-
-  const toFileMetadata = (att: FileMetadata): FileMetadata => ({
-    id: att.id,
-    filename: att.filename,
-    mimeType: att.mimeType,
-    fileType: att.fileType,
-    size: att.size,
-    hasThumbnail: false,
-  });
 
   if (error) {
     return (
@@ -267,7 +257,7 @@ const PinnedMessagesPanel: React.FC<PinnedMessagesPanelProps> = ({
                                   }}
                                 >
                                   <AttachmentPreview
-                                    metadata={toFileMetadata(message.attachments[0])}
+                                    metadata={message.attachments[0]}
                                   />
                                 </Box>
                                 {message.attachments.length > 1 && (
