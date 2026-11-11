@@ -33,6 +33,7 @@ use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::*;
 use rig_shot::driver::Driver;
 use rig_shot::script;
+use semaphore_app::settings::{Settings, SettingsStore};
 use semaphore_app::{AppConfig, AppRoot, OsEvent};
 use semaphore_core::model::{Conversation, MessageRow, SendState, SessionState, VoiceStatus};
 use semaphore_core::platform::{Clock, CoreError, SecretStore};
@@ -466,7 +467,11 @@ impl Rig {
             // No sound card in a container, and a rig mustn't use the machine's.
             audio: Some(Arc::new(VirtualIo::new())),
             heartbeat: self.heartbeat,
-            link_preview_images: self.link_images,
+            // Never read from or written to disk: only this switch is set, as before.
+            settings: SettingsStore::ephemeral(Settings {
+                link_preview_images: self.link_images,
+                ..Settings::default()
+            }),
             clock: Arc::new(ScenarioClock {
                 start_ms: self.now_ms,
                 started: Instant::now(),

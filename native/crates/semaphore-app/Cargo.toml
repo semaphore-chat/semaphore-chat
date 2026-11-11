@@ -18,6 +18,8 @@ async-channel = "2"
 futures-util.workspace = true
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 reqwest = { workspace = true, features = ["stream"] }
+serde.workspace = true
+serde_json.workspace = true
 rustls = { version = "0.23", default-features = false }
 gpui-kit.workspace = true
 log.workspace = true

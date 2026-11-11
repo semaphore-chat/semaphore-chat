@@ -93,12 +93,11 @@ fn main() -> ExitCode {
                 server_url,
                 time: TimeFormat::default(),
                 scrollbar: true,
+                settings: semaphore_app::settings::SettingsStore::load(&data_dir),
                 data_dir,
                 watch_os: true,
                 audio: None,
                 heartbeat: semaphore_app::voice::HEARTBEAT,
-                // Waiting on Mike: loading them reveals the viewer's address to third-party sites.
-                link_preview_images: false,
             };
             let options = semaphore_app::window_options(WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::centered(

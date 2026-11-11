@@ -12,6 +12,7 @@ pub mod files;
 pub mod root;
 pub mod runtime;
 pub mod services;
+pub mod settings;
 pub mod voice;
 
 use gpui_kit::component::Root;
@@ -43,9 +44,10 @@ pub struct AppConfig {
     pub audio: Option<Arc<dyn semaphore_media_livekit::audio::AudioIo>>,
     /// How often voice presence is refreshed: `voice::HEARTBEAT`, or less in the rig.
     pub heartbeat: std::time::Duration,
-    /// Load link previews' images from the sites they're on. Off by default: each one tells that
-    /// site the viewer's address.
-    pub link_preview_images: bool,
+    /// The local settings, loaded once at start (`SettingsStore::load(&data_dir)`). Only
+    /// `link_preview_images` is read so far: it decides whether link previews load their images
+    /// from the sites they're on.
+    pub settings: settings::SettingsStore,
 }
 
 /// Once per process, before the first window.

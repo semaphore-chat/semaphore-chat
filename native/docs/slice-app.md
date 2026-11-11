@@ -106,7 +106,7 @@ Please report anything that looks wrong with a screenshot, and the terminal outp
 ## The headless proof
 
 ```bash
-native/scripts/in-image.sh scripts/slice-e2e.sh            # twice, about 45 s after the build
+native/scripts/in-image.sh scripts/slice-e2e.sh            # every steps file, each twice
 native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit too, about 15 s
 ```
 
@@ -114,6 +114,12 @@ native/scripts/slice-e2e.sh --voice                       # on the host: LiveKit
 `rigs/slice/scripts/voice.steps` twice: join, the publisher's video reaching a tile, the heartbeat,
 mute and deafen, Share audio failing cleanly (no PipeWire in a container), the bar elsewhere, a
 moderator removing us (the call ends here and on the server), a second call, and leaving.
+
+The default run executes every `rigs/slice/scripts/*.steps` except `voice.steps`, in sorted order,
+each twice with a fresh fake server per run, so a wave adds its own steps file instead of growing
+`text.steps`. `text.steps` writes `<out-dir>/run-N`; every other file writes `<out-dir>/<name>/run-N`.
+Each file's static shots must match between its two runs, and the script exits non-zero if any file's
+don't. `slice-e2e.sh <out-dir> <steps-file>` runs just that file.
 
 The default run also covers media: avatars and images drawn, two files sent after their message, a
 refused upload retried and one removed, the image viewer, a custom emoji, and a link preview whose
