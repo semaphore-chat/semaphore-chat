@@ -16,6 +16,7 @@ pub mod model;
 pub mod notify;
 mod pkce;
 pub mod platform;
+pub mod player;
 pub mod realtime;
 pub mod resync;
 #[cfg(feature = "fixtures")]

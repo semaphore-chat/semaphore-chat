@@ -105,4 +105,13 @@ unsafe extern "C" {
     ) -> c_int;
     pub fn sp_enable(media: *mut sp_media, index: c_int) -> c_int;
     pub fn sp_next_frame(media: *mut sp_media, out: *mut sp_frame) -> c_int;
+    pub fn sp_skipped_packets(media: *const sp_media) -> u64;
+    pub fn sp_seek(media: *mut sp_media, us: i64) -> c_int;
+    pub fn sp_i420_to_nv12(
+        frame: *const sp_frame,
+        y: *mut u8,
+        y_stride: c_int,
+        uv: *mut u8,
+        uv_stride: c_int,
+    ) -> c_int;
 }

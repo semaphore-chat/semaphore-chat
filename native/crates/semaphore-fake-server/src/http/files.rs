@@ -57,8 +57,62 @@ fn stored_or_image(inner: &Inner, id: &str, variant: &str) -> Response {
     }
 }
 
-async fn get_file(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {
-    stored_or_image(&inner, &id, "file")
+/// `GET /api/file/{id}`, with `Range` as the backend's `FileController.getFile` serves it:
+/// `bytes=start-end` or `bytes=start-` answers 206 with `Content-Range` (the end clamped to the
+/// file), a start past the end or after the end answers 416 with `Content-Range: bytes */size`,
+/// and anything else in `Range` is ignored (the whole file, 200). Every answer says
+/// `Accept-Ranges: bytes`.
+async fn get_file(
+    State(inner): State<Arc<Inner>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let mut response = stored_or_image(&inner, &id, "file");
+    response
+        .headers_mut()
+        .insert(header::ACCEPT_RANGES, HeaderValue::from_static("bytes"));
+    let Some(range) = headers
+        .get(header::RANGE)
+        .and_then(|v| v.to_str().ok())
+        .and_then(parse_range)
+    else {
+        return response;
+    };
+    let (parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, usize::MAX).await else {
+        return Response::from_parts(parts, axum::body::Body::empty());
+    };
+    let size = bytes.len() as u64;
+    let (start, end) = range;
+    let mut response = Response::from_parts(parts, axum::body::Body::empty());
+    if start >= size || end.is_some_and(|end| start > end) {
+        *response.status_mut() = StatusCode::RANGE_NOT_SATISFIABLE;
+        if let Ok(value) = HeaderValue::from_str(&format!("bytes */{size}")) {
+            response.headers_mut().insert(header::CONTENT_RANGE, value);
+        }
+        return response;
+    }
+    let end = end.unwrap_or(size - 1).min(size - 1);
+    let slice = bytes.slice(start as usize..=end as usize);
+    *response.status_mut() = StatusCode::PARTIAL_CONTENT;
+    if let Ok(value) = HeaderValue::from_str(&format!("bytes {start}-{end}/{size}")) {
+        response.headers_mut().insert(header::CONTENT_RANGE, value);
+    }
+    *response.body_mut() = axum::body::Body::from(slice);
+    response
+}
+
+/// `bytes=start-end` or `bytes=start-`, as the backend's regex `bytes=(\d+)-(\d*)` reads it.
+fn parse_range(value: &str) -> Option<(u64, Option<u64>)> {
+    let spec = value.trim().strip_prefix("bytes=")?;
+    let (start, end) = spec.split_once('-')?;
+    let start = start.parse().ok()?;
+    let end = if end.is_empty() {
+        None
+    } else {
+        Some(end.parse().ok()?)
+    };
+    Some((start, end))
 }
 
 async fn get_file_thumbnail(State(inner): State<Arc<Inner>>, Path(id): Path<String>) -> Response {

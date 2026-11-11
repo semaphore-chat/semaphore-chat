@@ -85,7 +85,15 @@ int sp_stream_count(const sp_media *media);
 int sp_stream_info_get(const sp_media *media, int index, sp_stream_info *out);
 /* Opens the stream's decoder. Frames come only from enabled streams. */
 int sp_enable(sp_media *media, int index);
-/* The next decoded frame of any enabled stream, in demux order: SP_OK, SP_EOF or an error. */
+/* The next decoded frame of any enabled stream, in demux order: SP_OK, SP_EOF or an error.
+ * A packet a decoder rejects (corrupt) is skipped and counted; many in a row is SP_E_DECODE. */
 int sp_next_frame(sp_media *media, sp_frame *out);
+uint64_t sp_skipped_packets(const sp_media *media);
+/* To the keyframe at or before `us`, decoders flushed; frames before `us` still come out, for
+ * the caller to drop. */
+int sp_seek(sp_media *media, int64_t us);
+/* A video frame from sp_next_frame into NV12 buffers of at least y_stride * height and
+ * uv_stride * ceil(height / 2) bytes (libyuv). */
+int sp_i420_to_nv12(const sp_frame *frame, uint8_t *y, int y_stride, uint8_t *uv, int uv_stride);
 
 #endif

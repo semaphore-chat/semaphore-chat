@@ -21,6 +21,8 @@
 #include "player.h"
 
 #define IO_BUFFER_SIZE (64 * 1024)
+/* A corrupt packet is skipped, as browsers do; this many in a row means the stream is garbage. */
+#define MAX_REJECTED_IN_A_ROW 64
 
 enum { DEC_NONE = 0, DEC_FFMPEG, DEC_VPX, DEC_DAV1D };
 
@@ -58,6 +60,9 @@ struct sp_media {
   int current; /* the stream whose decoder may have output, or -1 */
   int eof;     /* the demuxer has no more packets */
   int draining_index;
+  /* Packets the decoders rejected and were skipped, in all and in a row. */
+  uint64_t skipped;
+  int rejected_in_a_row;
   float *pcm;
   size_t pcm_capacity; /* floats */
 };
@@ -294,34 +299,41 @@ int sp_enable(sp_media *media, int index) {
   return SP_OK;
 }
 
-/* NULL packet: the end of input. */
-static int decoder_send(decoder *d, const AVPacket *packet) {
+/* A packet the decoder rejected: skipped, unless too many in a row. */
+static int rejected(sp_media *media) {
+  media->skipped++;
+  return ++media->rejected_in_a_row > MAX_REJECTED_IN_A_ROW ? SP_E_DECODE : SP_OK;
+}
+
+/* NULL packet: the end of input. An empty packet (which dav1d can't take) is ignored. */
+static int decoder_send(sp_media *media, decoder *d, const AVPacket *packet) {
   if (!packet) d->draining = 1;
+  if (packet && packet->size <= 0) return SP_OK;
   switch (d->type) {
     case DEC_FFMPEG: {
       int r = avcodec_send_packet(d->av, packet);
-      if (r < 0 && r != AVERROR_EOF) return SP_E_DECODE;
-      return SP_OK;
+      if (r < 0 && r != AVERROR_EOF) return packet ? rejected(media) : SP_E_DECODE;
+      break;
     }
     case DEC_VPX:
       d->iter = NULL;
       if (!packet) return vpx_codec_decode(&d->vpx, NULL, 0, NULL, 0) == VPX_CODEC_OK ? SP_OK : SP_E_DECODE;
       d->vpx_pts = packet->pts;
       if (vpx_codec_decode(&d->vpx, packet->data, (unsigned)packet->size, NULL, 0) != VPX_CODEC_OK)
-        return SP_E_DECODE;
-      return SP_OK;
-    case DEC_DAV1D:
+        return rejected(media);
+      break;
+    case DEC_DAV1D: {
       if (!packet) return SP_OK;
-    {
       uint8_t *bytes = dav1d_data_create(&d->pending, (size_t)packet->size);
       if (!bytes) return SP_E_NOMEM;
       memcpy(bytes, packet->data, (size_t)packet->size);
-    }
       d->pending.m.timestamp = packet->pts;
-      return SP_OK;
+      break;
+    }
     default:
       return SP_E_ARG;
   }
+  return SP_OK;
 }
 
 static int pcm_reserve(sp_media *media, size_t floats) {
@@ -395,7 +407,10 @@ static int decoder_receive(sp_media *media, decoder *d, sp_frame *out) {
       int r = avcodec_receive_frame(d->av, d->frame);
       if (r == AVERROR(EAGAIN)) return RECV_NEED_INPUT;
       if (r == AVERROR_EOF) return RECV_DRAINED;
-      if (r < 0) return SP_E_DECODE;
+      if (r < 0) {
+        r = rejected(media);
+        return r < 0 ? r : (d->draining ? RECV_DRAINED : RECV_NEED_INPUT);
+      }
       r = fill_ffmpeg(media, d, out);
       return r < 0 ? r : RECV_FRAME;
     }
@@ -423,12 +438,16 @@ static int decoder_receive(sp_media *media, decoder *d, sp_frame *out) {
           int s = dav1d_send_data(d->dav1d, &d->pending);
           if (s < 0 && s != DAV1D_ERR(EAGAIN)) {
             dav1d_data_unref(&d->pending);
-            return SP_E_DECODE;
+            s = rejected(media);
+            if (s < 0) return s;
           }
         }
         int r = dav1d_get_picture(d->dav1d, &d->picture);
         if (r == 0) break;
-        if (r != DAV1D_ERR(EAGAIN)) return SP_E_DECODE;
+        if (r != DAV1D_ERR(EAGAIN)) {
+          r = rejected(media);
+          if (r < 0) return r;
+        }
         if (d->pending.sz) continue; /* dav1d wanted its output read before more input */
         return d->draining ? RECV_DRAINED : RECV_NEED_INPUT;
       }
@@ -457,6 +476,7 @@ int sp_next_frame(sp_media *media, sp_frame *out) {
       decoder *d = &media->decoders[media->current];
       int r = decoder_receive(media, d, out);
       if (r == RECV_FRAME) {
+        media->rejected_in_a_row = 0;
         out->stream = media->current;
         return SP_OK;
       }
@@ -474,7 +494,7 @@ int sp_next_frame(sp_media *media, sp_frame *out) {
       if (r < 0) return r == AVERROR(EIO) ? SP_E_IO : SP_E_INVALID;
       int s = media->packet->stream_index;
       if (s >= 0 && s < media->count && media->decoders[s].type != DEC_NONE) {
-        r = decoder_send(&media->decoders[s], media->packet);
+        r = decoder_send(media, &media->decoders[s], media->packet);
         av_packet_unref(media->packet);
         if (r < 0) return r;
         media->current = s;
@@ -490,9 +510,62 @@ int sp_next_frame(sp_media *media, sp_frame *out) {
     if (media->draining_index >= media->count) return SP_EOF;
     decoder *d = &media->decoders[media->draining_index];
     if (!d->draining) {
-      int r = decoder_send(d, NULL);
+      int r = decoder_send(media, d, NULL);
       if (r < 0) return r;
     }
     media->current = media->draining_index;
   }
+}
+
+uint64_t sp_skipped_packets(const sp_media *media) { return media->skipped; }
+
+int sp_seek(sp_media *media, int64_t us) {
+  /* The keyframe at or before `us`, in AV_TIME_BASE (microseconds) across all streams. */
+  int r = avformat_seek_file(media->format, -1, INT64_MIN, us, us, 0);
+  if (r < 0) return r == AVERROR(EIO) ? SP_E_IO : SP_E_INVALID;
+  for (int i = 0; i < media->count; i++) {
+    decoder *d = &media->decoders[i];
+    d->draining = 0;
+    d->done = 0;
+    switch (d->type) {
+      case DEC_FFMPEG:
+        avcodec_flush_buffers(d->av);
+        av_frame_unref(d->frame);
+        break;
+      case DEC_VPX:
+        /* Nothing buffered with one thread and no frame parallelism; the keyframe resets it. */
+        d->iter = NULL;
+        break;
+      case DEC_DAV1D:
+        if (d->has_picture) {
+          dav1d_picture_unref(&d->picture);
+          d->has_picture = 0;
+        }
+        dav1d_data_unref(&d->pending);
+        dav1d_flush(d->dav1d);
+        break;
+      default:
+        break;
+    }
+  }
+  media->current = -1;
+  media->eof = 0;
+  media->draining_index = 0;
+  media->rejected_in_a_row = 0;
+  return SP_OK;
+}
+
+/* libyuv, in the same archive; C linkage on every platform. Declared here so the shim needs no
+ * libyuv headers (they pull C++ on some configurations). */
+extern int I420ToNV12(const uint8_t *src_y, int src_stride_y, const uint8_t *src_u,
+                      int src_stride_u, const uint8_t *src_v, int src_stride_v, uint8_t *dst_y,
+                      int dst_stride_y, uint8_t *dst_uv, int dst_stride_uv, int width, int height);
+
+int sp_i420_to_nv12(const sp_frame *frame, uint8_t *y, int y_stride, uint8_t *uv, int uv_stride) {
+  if (frame->kind != SP_KIND_VIDEO) return SP_E_ARG;
+  return I420ToNV12(frame->planes[0], frame->strides[0], frame->planes[1], frame->strides[1],
+                    frame->planes[2], frame->strides[2], y, y_stride, uv, uv_stride, frame->width,
+                    frame->height) == 0
+             ? SP_OK
+             : SP_E_ARG;
 }

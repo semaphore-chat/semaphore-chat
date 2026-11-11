@@ -7,6 +7,20 @@ use semaphore_wire::types as wire;
 
 use super::*;
 
+impl HttpBackend {
+    /// Bytes `start..=end` of file `id` (`GET /api/file/{id}` with `Range`), for the attachment
+    /// player's range reader. Bearer token, retried once after a refresh like every call; other
+    /// retries are the caller's, which knows whether the bytes are still wanted.
+    pub async fn file_range(
+        &self,
+        id: &str,
+        start: u64,
+        end: u64,
+    ) -> BackendResult<semaphore_api::FileRange> {
+        rpc!(self, c => c.file_controller_get_file_range(id, start, end))
+    }
+}
+
 #[async_trait]
 impl FilesBackend for HttpBackend {
     async fn file_controller_get_file(&self, id: String) -> BackendResult<Vec<u8>> {

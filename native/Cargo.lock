@@ -8392,6 +8392,14 @@ name = "semaphore-player"
 version = "0.0.0"
 dependencies = [
  "cc",
+ "log",
+ "rtrb",
+ "semaphore-core",
+ "semaphore-fake-server",
+ "semaphore-media-livekit",
+ "semaphore-net",
+ "semaphore-wire",
+ "tokio",
  "webrtc-sys",
  "webrtc-sys-build",
 ]
