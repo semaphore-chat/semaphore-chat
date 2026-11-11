@@ -223,7 +223,7 @@ async fn public_settings(State(_inner): State<Arc<Inner>>) -> Response {
             "maxFileSizeBytes": 10 * 1024 * 1024,
             "gifSearchEnabled": false,
             "passwordResetEnabled": false,
-            "desktopBrowserLogin": false,
+            "desktopBrowserLogin": true,
         }),
     )
 }

@@ -8355,6 +8355,7 @@ dependencies = [
  "semaphore-api",
  "semaphore-core",
  "semaphore-fake-server",
+ "semaphore-platform-desktop",
  "semaphore-wire",
  "serde_json",
  "tokio",
