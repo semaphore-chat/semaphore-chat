@@ -14,7 +14,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 pub(super) fn routes() -> Router<Arc<Inner>> {
-    Router::new().route("/api/soundboard/community/{communityId}", get(list))
+    Router::new().route(
+        "/api/soundboard/community/{communityId}",
+        get(list).post(super::community_admin::create_sound),
+    )
 }
 
 pub(super) fn operation_id(method: &Method, route: &str) -> Option<&'static str> {
@@ -129,11 +132,19 @@ async fn list(State(inner): State<Arc<Inner>>, Path(community_id): Path<String>)
         return super::dms::bad_id(&inner, "uuid");
     }
     match sounds_of(&inner.scenario, &community_id) {
+        // W5-A: with the sounds added and deleted since.
         Some(sounds) => json_response(
             StatusCode::OK,
-            serde_json::to_value(sounds).expect("sounds serialize"),
+            serde_json::to_value(crate::admin::sounds(&inner, &community_id, sounds))
+                .expect("sounds serialize"),
         ),
         // The guard's `false`, which Nest answers as its default 403.
         None => inner.error(403, "FORBIDDEN", "Forbidden resource", false),
     }
+}
+
+/// W5-A: the community's sounds now, for its create and delete checks.
+pub(crate) fn listed(inner: &Inner, community_id: &str) -> Vec<SoundboardSoundDto> {
+    let sounds = sounds_of(&inner.scenario, community_id).unwrap_or_default();
+    crate::admin::sounds(inner, community_id, sounds)
 }

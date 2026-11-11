@@ -310,14 +310,9 @@ fn search_with(inner: &Inner, q: &str, query: &HashMap<String, String>) -> Respo
                 (name_matches && shares_community(&user.id)) || user.username.to_lowercase() == q
             }
         })
+        // W5-A: members added since count too.
         .filter(|user| {
-            community.is_none_or(|community| {
-                !inner
-                    .scenario
-                    .memberships
-                    .get(community)
-                    .is_some_and(|members| members.iter().any(|m| m.user_id == user.id))
-            })
+            community.is_none_or(|community| !crate::admin::is_member(inner, community, &user.id))
         })
         .collect();
     found.sort_by(|a, b| a.username.cmp(&b.username));
