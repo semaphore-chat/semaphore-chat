@@ -129,8 +129,17 @@ pub fn wire(
 }
 
 /// Asks of the voice UI the app answers on its own thread.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum VoiceRequest {
+    /// W4: a right-click on someone's tile, at this point in the window: the participant menu.
+    OpenParticipantMenu {
+        identity: String,
+        position: gpui_kit::Point<gpui_kit::Pixels>,
+    },
+    /// W4: the soundboard's button; `open` is what its popover should be now.
+    ToggleSoundboard(bool),
+    /// W4: Capture, while the replay buffer records: the capture dialog (`root/replay.rs`).
+    OpenCapture,
     /// Something the bar shows changed: draw again.
     Redraw,
     OpenDevices,
@@ -270,6 +279,20 @@ impl VoiceController for AppVoice {
 
     fn open_more(&self) {
         let _ = self.requests.try_send(VoiceRequest::OpenMore);
+    }
+
+    fn open_participant_menu(&self, identity: String, position: gpui_kit::Point<gpui_kit::Pixels>) {
+        let _ = self
+            .requests
+            .try_send(VoiceRequest::OpenParticipantMenu { identity, position });
+    }
+
+    fn toggle_soundboard(&self, open: bool) {
+        let _ = self.requests.try_send(VoiceRequest::ToggleSoundboard(open));
+    }
+
+    fn open_capture(&self) {
+        let _ = self.requests.try_send(VoiceRequest::OpenCapture);
     }
 
     fn set_camera(&self, on: bool) {

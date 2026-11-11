@@ -69,6 +69,10 @@ pub struct AppConfig {
     /// Who opens `semaphore://` links, and registering for them: the desktop's
     /// (`desktop::DesktopLinks`) in the app, a fake in the rig, `None` for "can't tell".
     pub links: Option<Arc<dyn desktop::LinkRegistrar>>,
+    /// W4: holds off system sleep during a call (`Core::set_keep_awake`): the desktop's
+    /// (`DesktopKeepAwake`) in the app, a recorder in the rig, `None` for none. Never the
+    /// desktop's in tests or rigs.
+    pub keep_awake: Option<Arc<dyn semaphore_core::platform::KeepAwake>>,
 }
 
 /// `AppConfig::open_url`.

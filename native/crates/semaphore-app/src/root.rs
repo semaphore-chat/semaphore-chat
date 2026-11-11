@@ -37,8 +37,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 pub mod account;
+pub mod calls;
 pub mod inbox;
 pub mod onboarding;
+pub mod replay;
 
 /// What `SIGN_OUT_MESSAGES` says on the web when the server ended the session.
 const EXPIRED_NOTICE: &str = "Your session has expired. Please sign in again.";
@@ -105,6 +107,10 @@ pub struct AppRoot {
     account: account::Account,
     /// W3: the signed-out pages (`onboarding`).
     onboarding: onboarding::Onboarding,
+    /// W4: incoming calls, DM calls, the participant menu, soundboard, float card, debug panel.
+    calls: calls::Calls,
+    /// W4: capture, the clip library and sharing (`replay`).
+    replay: replay::Replay,
     /// What the server said about itself when it was last probed.
     server_info: Option<semaphore_core::model::ServerInfo>,
     window: AnyWindowHandle,
@@ -211,6 +217,8 @@ impl AppRoot {
             inbox: inbox::Inbox::default(),
             account: account::Account::default(),
             onboarding: onboarding::Onboarding::default(),
+            calls: calls::Calls::default(),
+            replay: replay::Replay::default(),
             server_info: None,
             window: window.window_handle(),
             _subscriptions: vec![activation, keys],
@@ -272,6 +280,10 @@ impl AppRoot {
 
     fn started(&mut self, services: Services, window: &mut Window, cx: &mut Context<Self>) {
         let core = services.core.clone();
+        // W4: the system stays awake during calls (`AppConfig::keep_awake`).
+        if let Some(keep_awake) = self.config.keep_awake.clone() {
+            core.set_keep_awake(keep_awake);
+        }
         // Browser sign-in's listener on 127.0.0.1.
         core.set_loopback(Arc::new(
             semaphore_platform_desktop::loopback::DesktopLoopback,
@@ -320,11 +332,11 @@ impl AppRoot {
             share_settings: Mutex::new(self.settings.get().voice.screen_share),
             requests,
         });
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             while let Ok(ask) = asks.recv().await {
                 let gone = this
-                    .update(cx, |this, cx| {
-                        this.voice_request(ask, cx);
+                    .update_in(cx, |this, window, cx| {
+                        this.voice_request(ask, window, cx);
                         this.refresh_stage(cx);
                         cx.notify();
                     })
@@ -687,6 +699,8 @@ impl AppRoot {
         self.inbox_on_core(event, cx);
         self.account_on_core(event, cx);
         self.onboarding_on_core(event, cx);
+        self.calls_on_core(event, cx);
+        self.replay_on_core(event, cx);
     }
 
     /// After sign-in, the first community instead of an empty home.
@@ -760,6 +774,8 @@ impl AppRoot {
                 self.pane_subscription = None;
                 self.drop_inbox();
                 self.drop_account();
+                self.drop_calls();
+                self.drop_replay();
                 self.account_open = false;
                 let notice = (matches!(session, SessionState::SignedOut)
                     && core.last_sign_out() == Some(SignOutReason::Expired))
@@ -1165,8 +1181,11 @@ impl AppRoot {
 }
 
 impl AppRoot {
-    fn voice_request(&mut self, ask: VoiceRequest, cx: &mut Context<Self>) {
+    fn voice_request(&mut self, ask: VoiceRequest, window: &mut Window, cx: &mut Context<Self>) {
         match ask {
+            // W4-app (agent A): the participant menu and the soundboard popover (`calls`).
+            VoiceRequest::OpenParticipantMenu { .. } | VoiceRequest::ToggleSoundboard(_) => {}
+            VoiceRequest::OpenCapture => self.open_capture(window, cx),
             VoiceRequest::Redraw => {}
             VoiceRequest::OpenDevices => {
                 self.open_settings(semaphore_ui::settings::SettingsTab::VoiceVideo, cx)
@@ -1499,6 +1518,8 @@ impl Render for AppRoot {
         if let Some(shell) = &self.shell {
             let mut overlays = self.inbox_overlays(cx);
             overlays.extend(self.account_overlays(cx));
+            overlays.extend(self.calls_overlays(cx));
+            overlays.extend(self.replay_overlays(cx));
             return root
                 .child(shell.clone())
                 .children(overlays)

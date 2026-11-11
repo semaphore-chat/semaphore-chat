@@ -205,6 +205,8 @@ impl AppRoot {
                         window,
                         Self::on_profile,
                     ));
+                    let own = self.my_id().as_deref() == Some(user_id.as_str());
+                    self.replay_profile_opened(&page, user_id, own, window, cx);
                     self.account.page = Some(page);
                 }
                 self.refresh_profile(user_id, cx);

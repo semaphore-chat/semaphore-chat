@@ -175,6 +175,9 @@ fn main() -> ExitCode {
                 open_url: None,
                 pick_files: None,
                 links: Some(Arc::new(semaphore_app::desktop::DesktopLinks::from_env())),
+                keep_awake: Some(Arc::new(
+                    semaphore_platform_desktop::keep_awake::DesktopKeepAwake::new(),
+                )),
             };
             let bounds =
                 semaphore_app::desktop::opening_bounds(config.settings.get().window.as_ref(), cx);

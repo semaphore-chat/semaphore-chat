@@ -1021,6 +1021,8 @@ impl Rig {
                 })
             }),
             links: Some(self.links.clone()),
+            // Never the machine's sleep inhibitor. W4-app adds the recorder.
+            keep_awake: None,
         };
         let mut app = None;
         let (handle, _) = self.driver.cx.update(|cx| {
