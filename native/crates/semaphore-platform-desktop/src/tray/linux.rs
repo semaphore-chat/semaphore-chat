@@ -185,6 +185,8 @@ pub(super) fn run(
             Command::CloseToTray(on) => {
                 handle.update(|item| item.close_to_tray = on);
             }
+            // The taskbar overlay is Windows'; the launcher count above is Linux's equivalent.
+            Command::TaskbarWindow(_) => {}
             Command::Shutdown => break,
         }
     }

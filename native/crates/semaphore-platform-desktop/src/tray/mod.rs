@@ -18,6 +18,8 @@ use std::sync::{Arc, Mutex};
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(windows)]
+mod windows;
 
 /// Where the tray icon is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,18 +34,26 @@ pub enum TrayStatus {
     Failed,
 }
 
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) enum Command {
     Unread(u32),
     CloseToTray(bool),
+    /// Windows: the app window whose taskbar button carries the dot.
+    TaskbarWindow(#[cfg_attr(not(windows), allow(dead_code))] isize),
     Shutdown,
 }
 
 pub(crate) struct Shared {
     status: Mutex<TrayStatus>,
+    /// Wakes a tray thread that waits on something other than the channel (Windows' message loop).
+    waker: std::sync::OnceLock<Box<dyn Fn() + Send + Sync>>,
 }
 
 impl Shared {
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) fn set_waker(&self, waker: Box<dyn Fn() + Send + Sync>) {
+        let _ = self.waker.set(waker);
+    }
+
     pub(crate) fn set_status(&self, status: TrayStatus) {
         let mut current = self
             .status
@@ -67,11 +77,8 @@ pub struct DesktopTray {
 }
 
 /// The menu's labels, shared by both platforms.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) const SHOW_HIDE: &str = "Show/Hide Semaphore";
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) const CLOSE_TO_TRAY: &str = "Close to Tray";
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 pub(crate) const QUIT: &str = "Quit";
 
 /// The tooltip: the app's name, and the count while anything is unread.
@@ -86,6 +93,7 @@ pub fn tooltip(unread: u32) -> String {
 pub fn start(options: TrayOptions, sink: DesktopEventSink) -> DesktopTray {
     let shared = Arc::new(Shared {
         status: Mutex::new(TrayStatus::Starting),
+        waker: std::sync::OnceLock::new(),
     });
     let (sender, receiver) = mpsc::channel();
     let thread_shared = shared.clone();
@@ -112,7 +120,17 @@ fn run(
     linux::run(options, sink, shared, commands);
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(windows)]
+fn run(
+    options: TrayOptions,
+    sink: DesktopEventSink,
+    shared: Arc<Shared>,
+    commands: mpsc::Receiver<Command>,
+) {
+    windows::run(options, sink, shared, commands);
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
 fn run(_: TrayOptions, _: DesktopEventSink, shared: Arc<Shared>, _: mpsc::Receiver<Command>) {
     shared.set_status(TrayStatus::Failed);
 }
@@ -134,6 +152,12 @@ impl DesktopTray {
     /// Sets the menu's "Close to tray" check box (after the setting changed elsewhere).
     pub fn set_close_to_tray(&self, on: bool) {
         self.send(Command::CloseToTray(on));
+    }
+
+    /// Windows: the window (an `HWND`) whose taskbar button shows the unread dot. Elsewhere
+    /// nothing.
+    pub fn set_taskbar_window(&self, hwnd: isize) {
+        self.send(Command::TaskbarWindow(hwnd));
     }
 
     /// Takes the icon off the panel. The thread ends.

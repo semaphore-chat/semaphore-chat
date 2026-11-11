@@ -8322,6 +8322,7 @@ dependencies = [
  "semaphore-core",
  "serde",
  "serde_json",
+ "windows 0.62.2",
  "windows-sys 0.61.2",
  "zbus 5.19.0",
 ]
