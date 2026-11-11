@@ -679,6 +679,16 @@ async fn a_new_connection_after_a_gap_rereads_members_and_presence() {
     let before = rig.backend.member_page_requests.load(Ordering::SeqCst);
     rig.core.ingest(dropped());
     rig.core.ingest(connected());
+    let events = rig.settle().await;
+    // The list is told to read again, and reading it fetches.
+    assert!(view_changed(
+        &events,
+        ViewKey::Members {
+            community_id: "comm".into()
+        }
+    ));
+    // Stale, so still shown while it is read again.
+    assert!(rig.core.members("comm".into()).is_some());
     rig.settle().await;
     assert_eq!(
         rig.backend.member_page_requests.load(Ordering::SeqCst),
@@ -706,6 +716,9 @@ async fn rail_counts_add_up_dms_and_follow_notifications() {
     rig.core.ingest(connected());
     let events = rig.settle().await;
     assert!(view_changed(&events, ViewKey::Rail));
+    // The rail reads again, as told, and that fetches.
+    rig.core.rail_counts();
+    rig.settle().await;
     let counts = rig.core.rail_counts();
     assert_eq!(counts.dm_unread, 5);
     assert_eq!(counts.notifications_unread, 4);
