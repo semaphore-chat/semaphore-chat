@@ -1,0 +1,90 @@
+# W0-real-smoke: the real app against a real backend (scripts/slice-real.sh, never slice-e2e.sh),
+# seeded by backend/prisma/seed-e2e.ts. {{NAME}} is an id `real-api.py ids` printed; $SERVER is the
+# backend's URL. Nothing here is compared between runs: the ids and times are new every run.
+
+# 1. Probe the server, then sign in. The refresh token comes in the body, so it is stored.
+app 1280 800
+wait idle
+click auth-connect
+wait core label "Username" within 15
+click auth-username
+type "testuser"
+click auth-password
+type "Test123!@#"
+click auth-login
+wait core session signed-in within 20
+expect stored-session yes
+wait core connection connected within 20
+
+# 2. Lists: both seeded communities, the first one's text channels.
+wait core element community-{{COMMUNITY}}
+wait core element community-{{SECOND_COMMUNITY}}
+click community-{{COMMUNITY}}
+wait core element channel-{{CH_GENERAL}}
+wait core element channel-{{CH_RANDOM}}
+click channel-{{CH_GENERAL}}
+wait core channel {{CH_GENERAL}}
+wait idle
+shot 01-general
+
+# 3. A send, acked by its nonce, exactly once. The composer is clicked first: the channel opened at
+# sign-in, and the shell's first render took the focus from its composer (see the W0 report).
+click composer-field
+type "hello from native"
+press enter
+wait core sent "hello from native"
+expect core count "hello from native" 1
+
+# 4. Someone else's message arrives over the socket.
+exec "python3 scripts/real-api.py $SERVER post-as testuser2 {{CH_GENERAL}} \"live from testuser2\""
+wait core text "live from testuser2"
+wait idle
+shot 02-live
+
+# 5. Mentions: one from the picker, and one of us by someone else.
+type "ping @testuser2"
+wait idle
+shot 03-mention-menu
+press enter
+type "thanks"
+press enter
+wait core sent "ping @testuser2 thanks"
+exec "python3 scripts/real-api.py $SERVER post-as testuser2 {{CH_GENERAL}} \"heads up\" testuser"
+wait core text "heads up @testuser"
+wait idle
+shot 04-mentions
+
+# 6. The server lists the app's session under its device name.
+exec "python3 scripts/real-api.py $SERVER expect-device testuser \"Semaphore Desktop on Linux\""
+
+# 7. A restart restores the session, and the refresh rotates the token.
+remember stored-session
+restart
+wait core session signed-in within 20
+wait core connection connected within 20
+expect stored-session rotated
+wait idle
+shot 05-restored
+
+# 8. The rotated-out token is refused, and reuse detection ends the session it belonged to: the app
+# signs out.
+expect old-refresh-token refused
+wait core session signed-out within 60
+expect stored-session no
+wait idle
+shot 06-reuse-signed-out
+
+# 9. Sign in again, then the session is revoked from the sessions list: the app signs out.
+wait core label "Username" within 15
+click auth-username
+type "testuser"
+click auth-password
+type "Test123!@#"
+click auth-login
+wait core session signed-in within 20
+wait core connection connected within 20
+exec "python3 scripts/real-api.py $SERVER revoke testuser \"Semaphore Desktop on Linux\""
+wait core session signed-out within 60
+expect stored-session no
+wait idle
+shot 07-revoked

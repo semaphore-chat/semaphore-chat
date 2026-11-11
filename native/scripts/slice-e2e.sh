@@ -2,7 +2,7 @@
 # U13: the real app, headless on lavapipe, against semaphore-fake-server, twice.
 #
 #   native/scripts/in-image.sh scripts/slice-e2e.sh [out-dir] [steps-file]
-#     no steps-file: every rigs/slice/scripts/*.steps except voice.steps, in sorted order, each
+#     no steps-file: every rigs/slice/scripts/*.steps except voice and real, in sorted order, each
 #     with a fresh fake server per run. text.steps writes <out-dir>/run-N (as it always did);
 #     any other file writes <out-dir>/<name>/run-N. A steps-file argument runs just that file.
 #   native/scripts/slice-e2e.sh --voice [out-dir]          # on the host: brings up LiveKit too
@@ -63,7 +63,8 @@ elif [ -n "${2:-}" ]; then
 else
   for f in rigs/slice/scripts/*.steps; do
     name="$(basename "$f" .steps)"
-    [ "$name" = voice ] && continue
+    # voice.steps needs --voice; real.steps a real backend (scripts/slice-real.sh).
+    case "$name" in voice | real) continue ;; esac
     if [ "$name" = text ]; then suites+=("$f|$out_dir"); else suites+=("$f|$out_dir/$name"); fi
   done
 fi

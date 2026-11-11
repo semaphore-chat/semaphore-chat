@@ -166,18 +166,26 @@ going away and back and changing, restarts that resume, can't reach, or are refu
 sign-out. Shots go to
 `results/slice/e2e/run-{1,2}`; every shot not named `*-live-*` must match between the runs.
 
-## A real-backend smoke test, later
+## The real-backend smoke test
 
-Not possible yet: the pinned contract lacks the client-type headers, and no backend build has both
-them and the API-contract stack. `chore/auth-client-contract` (one commit on `main`) merges cleanly
-with the stack tip `chore/stack-review-fixes`; `security/release` plus the stack conflicts. Once the
-stack is rebased onto a release that has the client-type contract and the pin moves there:
+`native/scripts/slice-real.sh` (from the host) drives the same app against this checkout's backend
+instead of the fake server:
 
-1. A per-ticket stack (`scripts/test-stack.sh <ticket> up`) and the backend from that ref, migrated,
-   with a seeded user and community.
-2. `slice-e2e.sh` against it with the fault steps left out (no `__control` on a real server): sign
-   in, lists, send and ack, the mention, sign-out, checking the server's sessions table for a
-   `desktop-native` session with a device id, and that the refresh token came in the body.
-3. A restart that restores the session and rotates the refresh token (the old one must then be
-   refused: reuse detection), and a session revoked from the web's session list that signs out with
-   the notice at the next start.
+1. `scripts/test-stack.sh w0real up` (postgres, redis, S3 on `semaphore-test`), then the backend in a
+   `test-stack.sh w0real run` container: `prisma:migrate`, `prisma/seed-e2e.ts` (the backend's own
+   e2e seed: `testuser`, `testuser2`, "Test Community", "Second Community"), `pnpm run start`. The
+   script waits for `/api/health`.
+2. In the build image, also on `semaphore-test`: `scripts/real-api.py ids` reads the seeded ids into
+   `rigs/slice/scripts/real.steps` (`{{CH_GENERAL}}` and so on), and `rig-slice` runs it with the
+   machine's clock (no `--scenario`).
+3. The script: sign in (the refresh token arrives in the body and is stored), both communities and
+   the first one's text channels, a send acked once, a message from `testuser2` arriving over the
+   socket, a mention from the picker and one of us, the server's sessions list naming the app's
+   session by its `X-Device-Name`, a restart that restores the session with a rotated refresh token,
+   the rotated-out token replayed and refused (reuse detection then ends the session and the app signs
+   out), a new sign-in, and that session revoked from the sessions list, which signs the app out.
+   What the other users do goes through `real-api.py` (the rig's `exec` step, used by no other
+   script).
+
+Shots go to `results/slice/real/`; nothing is compared between runs. Every container it started is
+removed on exit (`SLICE_REAL_KEEP=1` leaves them up).
