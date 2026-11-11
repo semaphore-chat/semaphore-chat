@@ -186,3 +186,28 @@ fn two_players_of_one_file_share_blocks_and_one_leaving_does_not_break_the_other
     drop(second);
     assert_eq!(cache.bytes(), 0);
 }
+
+#[test]
+fn a_short_answer_is_asked_again_rather_than_kept() {
+    let rt = runtime();
+    let file = File::new(2 * BLOCK);
+    file.short.store(1, Ordering::SeqCst);
+    let cache = Arc::new(BlockCache::default());
+    let mut source = open(&file, Some(2 * BLOCK as u64), &cache, &rt).unwrap();
+    assert!(read_all(&mut source).unwrap() == file.bytes);
+}
+
+#[test]
+fn answers_that_stay_short_fail_the_read_and_are_not_cached() {
+    let rt = runtime();
+    let file = File::new(BLOCK);
+    file.short.store(100, Ordering::SeqCst);
+    let cache = Arc::new(BlockCache::default());
+    let mut source = open(&file, Some(BLOCK as u64), &cache, &rt).unwrap();
+    assert!(read_all(&mut source).is_err());
+    assert_eq!(cache.bytes(), 0, "a short block was kept");
+    // Once the server answers in full, the next read works.
+    file.short.store(0, Ordering::SeqCst);
+    source.seek(SeekFrom::Start(0)).unwrap();
+    assert!(read_all(&mut source).unwrap() == file.bytes);
+}
