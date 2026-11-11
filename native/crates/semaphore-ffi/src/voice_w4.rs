@@ -179,6 +179,8 @@ pub struct Clip {
     pub download_url: String,
     pub size_bytes: u64,
     pub filename: String,
+    pub mime_type: String,
+    pub has_thumbnail: bool,
 }
 
 #[uniffi::remote(Record)]
@@ -314,6 +316,10 @@ impl SemaphoreCore {
 
     pub async fn replay_segment(&self, segment: PreviewSegment) -> Result<Vec<u8>, CoreError> {
         self.core.replay_segment(segment).await
+    }
+
+    pub async fn download_replay(&self, minutes: ReplayMinutes) -> Result<Vec<u8>, CoreError> {
+        self.core.download_replay(minutes).await
     }
 
     pub async fn capture_replay(&self, request: CaptureRequest) -> Result<CapturedClip, CoreError> {

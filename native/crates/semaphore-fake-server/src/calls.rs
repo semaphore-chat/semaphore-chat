@@ -782,6 +782,23 @@ fn check_destination(
     Ok(())
 }
 
+/// `streamReplay`: the active session (or the heal's 404) and at least one segment, as for a
+/// capture; the bytes are the fixture MP4, and nothing is stored.
+pub(crate) fn stream_replay(inner: &Inner) -> Result<Vec<u8>, Refusal> {
+    let active = lock(&inner.calls).active_session().cloned();
+    let Some(session) = active else {
+        return Err(recover_stale(inner));
+    };
+    if session.segments == 0 {
+        return Err(refuse(
+            400,
+            "BAD_REQUEST",
+            "Your replay is still warming up. Keep sharing your screen for a few seconds, then try again.",
+        ));
+    }
+    Ok(CLIP_MP4.to_vec())
+}
+
 /// `captureReplay`: the active session (or the heal's 404), at least one segment, the range
 /// (custom when both ends are given, otherwise the last N minutes, 1 by default), then the clip,
 /// and only then the destination's checks, as the backend orders them: a refused destination

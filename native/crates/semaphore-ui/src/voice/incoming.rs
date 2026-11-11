@@ -342,6 +342,7 @@ mod tests {
                 display_name: Some("Ava".into()),
                 avatar_file_id: None,
             },
+            is_group: false,
             started_at_ms: 0,
             expires_at_ms: 30_000,
         }

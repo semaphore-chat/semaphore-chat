@@ -1137,3 +1137,52 @@ async fn joining_a_channel_call_tells_the_channel_once() {
     assert_eq!(heard[0].1["user"]["id"], id("me").as_str());
     assert_eq!(heard[0].1["user"]["isServerMuted"], false);
 }
+
+#[tokio::test]
+async fn download_only_streams_the_last_minutes_as_an_mp4_and_keeps_nothing() {
+    // As `GET replay/stream`: the duration is required and one of the four; the active session
+    // (or the heal's 404) and a segment are needed, as for a capture.
+    let (_server, client, base) = showcase().await;
+    let (status, _) = get(
+        &client,
+        &base,
+        "/api/livekit/replay/stream?durationMinutes=1",
+    )
+    .await;
+    assert_eq!(status, 404, "no buffer");
+    let (server, client, base, _me) = recording(0).await;
+    let (status, body) = get(
+        &client,
+        &base,
+        "/api/livekit/replay/stream?durationMinutes=1",
+    )
+    .await;
+    assert_eq!(status, 400, "warming up: {body}");
+    assert!(server.emit_segments_ready(3));
+    for bad in ["", "?durationMinutes=3", "?durationMinutes=x"] {
+        let (status, _) = get(&client, &base, &format!("/api/livekit/replay/stream{bad}")).await;
+        assert_eq!(status, 400, "{bad}");
+    }
+    let response = client
+        .get(format!(
+            "{base}/api/livekit/replay/stream?durationMinutes=2"
+        ))
+        .header("Authorization", TOKEN)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), 200);
+    assert_eq!(response.headers()["content-type"], "video/mp4");
+    let disposition = response.headers()["content-disposition"]
+        .to_str()
+        .unwrap()
+        .to_owned();
+    assert!(
+        disposition.starts_with("attachment; filename=\"replay-"),
+        "{disposition}"
+    );
+    let bytes = response.bytes().await.unwrap();
+    assert_eq!(&bytes[4..8], b"ftyp");
+    let (_, clips) = get(&client, &base, "/api/livekit/clips").await;
+    assert_eq!(clips, json!([]), "saved nowhere");
+}

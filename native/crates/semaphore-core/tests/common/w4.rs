@@ -52,6 +52,13 @@ impl ReplayBackend for FakeBackend {
     async fn livekit_controller_get_preview_playlist(&self) -> BackendResult<String> {
         self.w4.run("playlist", &[]).await
     }
+    async fn livekit_controller_stream_replay(
+        &self,
+        duration_minutes: semaphore_wire::enums::ReplayDurationMinutes,
+    ) -> BackendResult<Vec<u8>> {
+        let minutes = serde_json::to_string(&duration_minutes).unwrap();
+        self.w4.run("stream", &[&minutes]).await
+    }
     async fn livekit_controller_capture_replay(
         &self,
         body: wire::CaptureReplayDto,
