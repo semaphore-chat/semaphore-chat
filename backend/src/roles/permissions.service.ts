@@ -94,6 +94,26 @@ export class PermissionsService {
     return actions;
   }
 
+  /**
+   * Whether the resource is a DM group, or a message in one. Membership is the
+   * only way into those: RbacGuard doesn't let an instance owner skip the check
+   * for them. A missing id or message is not a DM resource (the route answers
+   * for it as before).
+   */
+  async isDirectMessageResource(
+    resourceType: RbacResourceType | undefined,
+    resourceId: string | undefined,
+  ): Promise<boolean> {
+    if (!resourceId) return false;
+    if (resourceType === RbacResourceType.DM_GROUP) return true;
+    if (resourceType !== RbacResourceType.MESSAGE) return false;
+    const message = await this.databaseService.message.findUnique({
+      where: { id: resourceId },
+      select: { directMessageGroupId: true },
+    });
+    return !!message?.directMessageGroupId;
+  }
+
   async verifyActionsForUserAndResource(
     userId: string,
     resourceId: string | undefined,

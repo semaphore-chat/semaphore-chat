@@ -62,6 +62,64 @@ describe('RbacGuard', () => {
       ).not.toHaveBeenCalled();
     });
 
+    it.each([
+      [RbacResourceType.CHANNEL, 'channelId'],
+      [RbacResourceType.COMMUNITY, 'communityId'],
+      [RbacResourceType.MESSAGE, 'id'],
+    ])(
+      'still bypasses for an owner on a %s that is not a DM',
+      async (type, idKey) => {
+        const owner = UserFactory.buildOwner();
+        const context = createMockHttpExecutionContext({
+          user: owner,
+          params: { [idKey]: 'resource-1' },
+        });
+        jest
+          .spyOn(reflector, 'getAllAndOverride')
+          .mockReturnValueOnce([RbacActions.READ_MESSAGE])
+          .mockReturnValueOnce({ type, idKey, source: ResourceIdSource.PARAM });
+        permissionsService.isDirectMessageResource.mockResolvedValue(false);
+
+        await expect(guard.canActivate(context)).resolves.toBe(true);
+        expect(permissionsService.isDirectMessageResource).toHaveBeenCalledWith(
+          type,
+          'resource-1',
+        );
+        expect(
+          permissionsService.verifyActionsForUserAndResource,
+        ).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [RbacResourceType.DM_GROUP, 'groupId'],
+      [RbacResourceType.MESSAGE, 'id'],
+    ])(
+      'makes an owner pass the membership check on a DM %s',
+      async (type, idKey) => {
+        const owner = UserFactory.buildOwner();
+        const context = createMockHttpExecutionContext({
+          user: owner,
+          params: { [idKey]: 'dm-resource' },
+        });
+        jest
+          .spyOn(reflector, 'getAllAndOverride')
+          .mockReturnValueOnce([RbacActions.READ_MESSAGE])
+          .mockReturnValueOnce({ type, idKey, source: ResourceIdSource.PARAM });
+        permissionsService.isDirectMessageResource.mockResolvedValue(true);
+        permissionsService.verifyActionsForUserAndResource.mockResolvedValue(
+          false,
+        );
+
+        await expect(guard.canActivate(context)).resolves.toBe(false);
+        expect(
+          permissionsService.verifyActionsForUserAndResource,
+        ).toHaveBeenCalledWith(owner.id, 'dm-resource', type, [
+          RbacActions.READ_MESSAGE,
+        ]);
+      },
+    );
+
     it('should not bypass for non-owner users', async () => {
       const user = UserFactory.build({ role: InstanceRole.USER });
       const context = createMockHttpExecutionContext({ user });

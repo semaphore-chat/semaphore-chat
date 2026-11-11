@@ -41,7 +41,16 @@ export class RbacGuard implements CanActivate {
     this.logRbacCheck(requiredRbacActions, user, resourceId, resourceType);
 
     if (!user) return false;
-    if (user.role === InstanceRole.OWNER) {
+    // An instance owner skips RBAC everywhere except in direct messages: a DM
+    // belongs to its members, so there the owner needs membership like anyone
+    // (verifyActionsForUserAndResource checks it for DM_GROUP and DM messages).
+    if (
+      user.role === InstanceRole.OWNER &&
+      !(await this.permissionsService.isDirectMessageResource(
+        resourceType,
+        resourceId,
+      ))
+    ) {
       this.logger.debug('User is an owner, skipping RBAC check');
       return true;
     }
