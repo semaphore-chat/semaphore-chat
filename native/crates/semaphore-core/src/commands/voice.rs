@@ -12,6 +12,13 @@ use crate::resync::unavailable;
 use semaphore_wire::enums::RbacAction;
 use semaphore_wire::types as wire;
 
+/// How a join ended: still the one wanted, or replaced (or left) while it ran, with what it had
+/// done by then.
+enum Joined {
+    Current,
+    Stale { connected: bool, announced: bool },
+}
+
 /// How a failed REST call during a join is filed (the backend's `VoiceJoinErrorClass`).
 fn failure_class(error: &BackendError) -> JoinFailureClass {
     match error.status {
@@ -132,12 +139,25 @@ impl Core {
         media.set_deafened(deafened);
         media.set_muted(muted);
         let fail = |error: BackendError| (failure_class(&error), self.backend_failed(error));
+        // Whether this join is still the one the user wants: checked after every wait, so a join
+        // replaced while it waited neither connects, nor announces itself, nor rings a DM.
+        let current =
+            || self.read(|state| state.call == call && state.voice.room.as_ref() == Some(&room));
+        let stale = |connected: bool, announced: bool| {
+            Ok::<_, (JoinFailureClass, CoreError)>(Joined::Stale {
+                connected,
+                announced,
+            })
+        };
         let joined = async {
             let info = services
                 .backend
                 .livekit_controller_get_connection_info()
                 .await
                 .map_err(fail)?;
+            if !current() {
+                return stale(false, false);
+            }
             let request = voice_token_request(&me, room.id());
             let token = match &room {
                 VoiceRoom::Channel { .. } => {
@@ -162,11 +182,24 @@ impl Core {
                     },
                 )
             })?;
-            self.write(|state, _| state.w4.diagnostics.server_host = url_host(&url));
+            let still = self.write(|state, _| {
+                let still = state.call == call && state.voice.room.as_ref() == Some(&room);
+                if still {
+                    state.w4.diagnostics.server_host = url_host(&url);
+                    state.w4_platform.engine_call = call;
+                }
+                still
+            });
+            if !still {
+                return stale(false, false);
+            }
             media
                 .connect(url, token.token, call)
                 .await
                 .map_err(|error| (JoinFailureClass::MediaUnreachable, error))?;
+            if !current() {
+                return stale(true, false);
+            }
             match &room {
                 VoiceRoom::Channel { channel_id, .. } => {
                     services
@@ -174,6 +207,9 @@ impl Core {
                         .voice_presence_controller_join_presence(channel_id.clone())
                         .await
                         .map_err(fail)?;
+                    if !current() {
+                        return stale(true, true);
+                    }
                 }
                 // LiveKit's webhook lists us too, so a failure here only waits for it.
                 VoiceRoom::Dm { dm_group_id } => {
@@ -184,58 +220,82 @@ impl Core {
                     {
                         log::warn!("announcing DM call presence failed: {error}");
                     }
+                    if !current() {
+                        return stale(true, false);
+                    }
                 }
             }
-            Ok::<_, (JoinFailureClass, CoreError)>(())
+            Ok(Joined::Current)
         }
         .await;
-        let joined = joined.map_err(|(class, error)| {
-            self.write(|state, now| {
-                state.w4.diagnostics.last_failure = Some(JoinFailure {
-                    class,
-                    message: error.to_string(),
-                    duration_ms: now.saturating_sub(started),
-                    at_ms: now,
-                });
-                state.w4_log(now, format!("join failed ({class:?}): {error}"));
-            });
-            error
-        });
         let leave_presence = |state: &mut crate::client::State| {
             if let VoiceRoom::Channel { channel_id, .. } = &room {
                 state.push_effect(Effect::LeavePresence(channel_id.clone()));
             }
         };
-        self.write(|state, now| {
-            // Another join, a leave or a sign-out came while this one ran: it answers for nothing.
-            if state.call != call || state.voice.room.as_ref() != Some(&room) {
-                // A leave or sign-out can run before the engine has a room to leave, and this join
-                // then finishes after it. No newer join owns the engine, so end what this one
-                // started: the room, and the presence entry if there's still a session to say so.
-                if state.call == call && joined.is_ok() {
-                    state.push_effect(Effect::EndCall);
-                    if state.me.is_some() {
-                        leave_presence(state);
-                    }
+        let left = || CoreError::Failed {
+            message: "the call was left while joining".into(),
+        };
+        let (result, disconnect) = self.write(|state, now| {
+            let is_current = state.call == call && state.voice.room.as_ref() == Some(&room);
+            let joined = match joined {
+                Err((class, error)) if !is_current => {
+                    // Replaced while it ran: its failure is nobody's.
+                    log::info!("a replaced join failed ({class:?}): {error}");
+                    return (Err(error), false);
                 }
-                return joined.clone().and(Err(CoreError::Failed {
-                    message: "the call was left while joining".into(),
-                }));
+                Err((class, error)) => {
+                    state.w4.diagnostics.last_failure = Some(JoinFailure {
+                        class,
+                        message: error.to_string(),
+                        duration_ms: now.saturating_sub(started),
+                        at_ms: now,
+                    });
+                    state.w4_log(now, format!("join failed ({class:?}): {error}"));
+                    state.voice = VoiceView::default();
+                    state.media = None;
+                    state.view_changed(ViewKey::Voice);
+                    return (Err(error), false);
+                }
+                Ok(joined) => joined,
+            };
+            if let Joined::Stale {
+                connected,
+                announced,
+            } = joined
+            {
+                // The engine is this join's only while no newer join has connected it: then it
+                // leaves the room. A newer join that hasn't connected yet will itself.
+                let disconnect = connected && state.w4_platform.engine_call == call;
+                // Announced in a channel nobody is in now: the server hears it's left, unless the
+                // join that replaced this one is in that same channel.
+                let same_room = state
+                    .voice
+                    .room
+                    .as_ref()
+                    .is_some_and(|now_in| now_in.id() == room.id());
+                if announced && state.me.is_some() && !same_room {
+                    leave_presence(state);
+                }
+                return (Err(left()), disconnect);
+            }
+            if !is_current {
+                return (Err(left()), false);
             }
             let ended = state.call_ended_early.take();
-            match (&joined, ended) {
-                (Ok(()), None) => {
+            match ended {
+                None => {
                     state.voice.status = VoiceStatus::Connected;
                     state.view_changed(ViewKey::Voice);
                     state.w4_log(now, "connected");
                     // As the web does after a join (`voiceActions.ts`): the roster read at the
                     // start may predate us, and our own join event may not come.
                     state.invalidate(&State::room_presence_key(&room));
-                    Ok(())
+                    (Ok(()), false)
                 }
                 // The engine connected and dropped again before this finished. The server has heard
                 // of the join, so it hears of the leave too.
-                (Ok(()), Some(error)) => {
+                Some(error) => {
                     state.voice = VoiceView {
                         error: error.clone(),
                         ..VoiceView::default()
@@ -243,18 +303,15 @@ impl Core {
                     state.media = None;
                     leave_presence(state);
                     state.view_changed(ViewKey::Voice);
-                    Err(CoreError::Failed {
-                        message: error.unwrap_or_else(|| "the call ended as it started".into()),
-                    })
-                }
-                (Err(error), _) => {
-                    state.voice = VoiceView::default();
-                    state.media = None;
-                    state.view_changed(ViewKey::Voice);
-                    Err(error.clone())
+                    let message = error.unwrap_or_else(|| "the call ended as it started".into());
+                    (Err(CoreError::Failed { message }), false)
                 }
             }
-        })
+        });
+        if disconnect {
+            media.disconnect().await;
+        }
+        result
     }
 
     pub async fn leave_voice(&self) -> Result<(), CoreError> {
@@ -640,8 +697,13 @@ impl Core {
     /// W4: how loud a participant plays here, 0 to 200 percent. Straight to the media engine,
     /// which remembers it.
     pub fn set_participant_volume(&self, identity: String, percent: u32) {
+        let percent = percent.min(200);
+        self.write(|state, _| {
+            state.w4.volumes.insert(identity.clone(), percent);
+            state.view_changed(ViewKey::Voice);
+        });
         if let Some(media) = self.services().and_then(|services| services.media.as_ref()) {
-            media.set_participant_volume(identity, percent.min(200));
+            media.set_participant_volume(identity, percent);
         }
     }
 
@@ -697,6 +759,7 @@ impl Core {
                         screen_share: media.and_then(|media| media.screen_share.clone()),
                         quality: media.map(|media| media.quality).unwrap_or_default(),
                         server_muted: user.is_server_muted,
+                        volume_percent: 100,
                     }
                 })
                 .collect();
@@ -705,6 +768,14 @@ impl Core {
                     .filter(|media| !users.iter().any(|user| user.id == media.identity))
                     .cloned(),
             );
+            for participant in &mut participants {
+                participant.volume_percent = state
+                    .w4
+                    .volumes
+                    .get(&participant.identity)
+                    .copied()
+                    .unwrap_or(100);
+            }
             voice.participants = participants;
             if let Some(media) = &state.media {
                 voice.muted = media.muted;

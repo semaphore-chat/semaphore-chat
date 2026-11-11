@@ -455,6 +455,7 @@ impl Core {
         let now = self.now_ms();
         let (result, batch) = {
             let mut state = self.lock();
+            state.w4_platform.now_ms = now;
             let result = change(&mut state, now);
             state.collect_events();
             if !state.effects.is_empty()

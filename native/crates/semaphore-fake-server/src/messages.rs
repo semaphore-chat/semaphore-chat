@@ -893,21 +893,36 @@ pub(crate) fn voice_join(inner: &Inner, channel_id: &str) -> Value {
     let me = &inner.scenario.me;
     // A server mute outlives the call: the next join lists them muted (W4).
     let server_muted = crate::calls::is_server_muted(inner, channel_id, &me.id);
-    {
+    let joined = {
         let mut data = lock(&inner.data);
         let users = data.voice.entry(channel_id.to_owned()).or_default();
         match users.iter_mut().find(|user| user.id == me.id) {
-            Some(user) => user.joined_at = now,
-            None => users.push(semaphore_wire::VoicePresenceUserDto {
-                avatar_url: me.avatar_url.clone(),
-                display_name: me.display_name.clone(),
-                id: me.id.clone(),
-                is_deafened: false,
-                is_server_muted: server_muted,
-                joined_at: now,
-                username: me.username.clone(),
-            }),
+            Some(user) => {
+                user.joined_at = now;
+                None
+            }
+            None => {
+                let user = semaphore_wire::VoicePresenceUserDto {
+                    avatar_url: me.avatar_url.clone(),
+                    display_name: me.display_name.clone(),
+                    id: me.id.clone(),
+                    is_deafened: false,
+                    is_server_muted: server_muted,
+                    joined_at: now,
+                    username: me.username.clone(),
+                };
+                users.push(user.clone());
+                Some(user)
+            }
         }
+    };
+    // As the backend's `handleWebhookChannelParticipantJoined`: a new participant is announced to
+    // the channel; one already listed only has its presence refreshed.
+    if let Some(user) = joined {
+        inner.broadcast(
+            "voiceChannelUserJoined",
+            serde_json::json!({ "channelId": channel_id, "user": user }),
+        );
     }
     presence_result(channel_id, "Joined voice channel")
 }

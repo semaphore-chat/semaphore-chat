@@ -266,8 +266,13 @@ async fn a_server_mute_updates_the_participant_and_outlives_the_call() {
     assert_eq!(mine["isServerMuted"], true);
     server.server_mute(&squad, &id("me"), false);
     let heard = settle(&server, &mut [&mut me]).await.remove(0);
-    assert_eq!(names(&heard), ["voiceChannelUserUpdated"]);
-    assert_eq!(heard[0].1["user"]["isServerMuted"], false);
+    // My join is announced, listing me muted; lifting it updates me.
+    assert_eq!(
+        names(&heard),
+        ["voiceChannelUserJoined", "voiceChannelUserUpdated"]
+    );
+    assert_eq!(heard[0].1["user"]["isServerMuted"], true);
+    assert_eq!(heard[1].1["user"]["isServerMuted"], false);
 }
 
 #[tokio::test]
@@ -442,7 +447,7 @@ async fn each_community_lists_its_sounds_by_name_and_their_files_download() {
 /// Me in vc-squad's call with a running replay buffer of `segments` complete segments.
 async fn recording(segments: usize) -> (FakeServer, reqwest::Client, String, Socket) {
     let (server, client, base) = showcase().await;
-    let me = connect_as(&base, &id("me")).await;
+    let mut me = connect_as(&base, &id("me")).await;
     let squad = id("vc-squad");
     post(
         &client,
@@ -451,6 +456,9 @@ async fn recording(segments: usize) -> (FakeServer, reqwest::Client, String, Soc
         json!({}),
     )
     .await;
+    // The join's own announcement, heard before what the tests look for.
+    let joined = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&joined), ["voiceChannelUserJoined"]);
     let (status, body) = post(
         &client,
         &base,
@@ -1111,4 +1119,21 @@ async fn every_w4_operation_can_be_failed_by_its_operation_id() {
         let last = serde_json::to_value(recorded.last().unwrap()).unwrap();
         assert_eq!(last["operation"], operation);
     }
+}
+
+#[tokio::test]
+async fn joining_a_channel_call_tells_the_channel_once() {
+    // As the backend's handleWebhookChannelParticipantJoined: a new participant is announced; one
+    // already listed only has its presence refreshed.
+    let (server, client, base) = showcase().await;
+    let squad = id("vc-squad");
+    let mut me = connect_as(&base, &id("me")).await;
+    let path = format!("/api/channels/{squad}/voice-presence/join");
+    post(&client, &base, &path, json!({})).await;
+    post(&client, &base, &path, json!({})).await;
+    let heard = settle(&server, &mut [&mut me]).await.remove(0);
+    assert_eq!(names(&heard), ["voiceChannelUserJoined"]);
+    assert_eq!(heard[0].1["channelId"], squad.as_str());
+    assert_eq!(heard[0].1["user"]["id"], id("me").as_str());
+    assert_eq!(heard[0].1["user"]["isServerMuted"], false);
 }

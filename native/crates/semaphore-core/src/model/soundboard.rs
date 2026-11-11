@@ -15,7 +15,8 @@ pub struct SoundboardView {
     pub community_id: String,
     pub state: LoadState,
     pub sounds: Vec<SoundboardSound>,
-    /// The sound playing now, if any.
+    /// The sound being started: set from `Core::play_sound` until the engine says it has started.
+    /// The engine doesn't report when a sound ends, so this is "starting", not "playing".
     pub playing: Option<String>,
     /// Why the last play failed.
     pub error: Option<ErrorView>,

@@ -22,9 +22,9 @@ use std::sync::Arc;
 use crate::cache::keys;
 use crate::client::{Core, Effect, State};
 use crate::model::{
-    Conversation, ErrorView, IncomingCallView, JoinFailure, LoadState, MediaDiagnostics,
-    MessageLink, OsNotification, RING_MS, ReplayState, SoundCue, UserView, ViewKey,
-    VoiceDiagnosticEvent, VoiceRoom, VoiceStatus,
+    Conversation, ErrorView, IncomingCallView, JoinFailure, LoadState, LocalShare,
+    MediaDiagnostics, MessageLink, OsNotification, REPLAY_AUDIO_WAIT_MS, RING_MS, ReplayState,
+    SoundCue, UserView, ViewKey, VoiceDiagnosticEvent, VoiceRoom, VoiceStatus,
 };
 use crate::platform::{CoreError, CoreEvent, KeepAwake};
 use crate::resync::unavailable;
@@ -48,9 +48,30 @@ pub struct W4State {
     /// The video track the buffer was last started for, so a buffer that stopped or failed isn't
     /// started again for the same share.
     pub(crate) replay_done_for: Option<String>,
+    /// Buffers the server ended while ours was starting, with why: the start's own session among
+    /// them means it ended as it began.
+    pub(crate) replay_ended: Vec<(String, Option<String>)>,
+    /// A replay start or stop is running, and the one asked for since.
+    pub(crate) replay_running: bool,
+    pub(crate) replay_pending: Option<ReplayOp>,
+    /// The share's video track waiting for its audio track, and until when.
+    pub(crate) replay_audio_wait: Option<(String, u64)>,
+    /// The video track whose audio wait ran out: it records without.
+    pub(crate) replay_audio_waived: Option<String>,
     pub(crate) clips_busy: Vec<String>,
+    /// Participant volumes set this session, by identity.
+    pub(crate) volumes: HashMap<String, u32>,
+    /// Set while a query's answer that's older than a change to its data is applied.
+    pub(crate) answer_dirty: bool,
     pub(crate) clips_error: Option<ErrorView>,
     pub(crate) diagnostics: Diagnostics,
+}
+
+/// A replay buffer call to make (`W4State::replay_pending`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ReplayOp {
+    Start(u64),
+    Stop,
 }
 
 /// What the voice debug panel shows.
@@ -70,6 +91,10 @@ pub struct W4Platform {
     /// What `keep_awake` was last set to.
     pub(crate) awake: bool,
     pub(crate) awake_changes: u64,
+    /// The join whose `connect` the engine was last given.
+    pub(crate) engine_call: u64,
+    /// The clock at the change being settled.
+    pub(crate) now_ms: u64,
     pub(crate) ringing: bool,
     pub(crate) last_status: VoiceStatus,
     /// Everyone but me in the call's room, by room id, once its presence was known while connected.
@@ -138,6 +163,14 @@ impl State {
         self.view_changed(ViewKey::VoiceDiagnostics);
     }
 
+    /// Whether the DM list says this is a group DM.
+    fn dm_is_group(&self, dm_group_id: &str) -> bool {
+        self.cache
+            .dm_groups(&keys::op(keys::DMS))
+            .and_then(|groups| groups.iter().find(|group| group.id == dm_group_id))
+            .is_some_and(|group| group.is_group)
+    }
+
     /// The name a DM goes by: the group's own, its other members', or `fallback`.
     fn dm_name(&self, dm_group_id: &str, fallback: String) -> String {
         let me = self.me_id();
@@ -189,6 +222,7 @@ impl State {
         };
         let caller_name = name_of(&caller);
         let group_name = self.dm_name(&event.dm_group_id, caller_name.clone());
+        let is_group = self.dm_is_group(&event.dm_group_id);
         if let Some(previous) = self.w4.incoming.take()
             && previous.dm_group_id != event.dm_group_id
         {
@@ -219,14 +253,20 @@ impl State {
             dm_group_id: event.dm_group_id.clone(),
             group_name,
             caller,
+            is_group,
             started_at_ms: now,
             expires_at_ms: now + RING_MS,
         });
         self.view_changed(ViewKey::IncomingCall);
         // To name a group DM that isn't listed yet: `w4_dms_arrived` renames the ring.
         self.ensure_query(keys::op(keys::DMS));
-        // To tell when the caller gives up.
-        self.ensure_query(keys::scoped(keys::DM_VOICE_PRESENCE, &event.dm_group_id));
+        // To tell when the caller gives up. A read already out began before this call did: its
+        // answer can't say the caller left, so it's read again after.
+        let key = keys::scoped(keys::DM_VOICE_PRESENCE, &event.dm_group_id);
+        if let Some(dirty) = self.fetching.get_mut(&key) {
+            *dirty = true;
+        }
+        self.ensure_query(key);
     }
 
     /// The DM list arrived: a ring named after its caller takes its group's name.
@@ -235,10 +275,12 @@ impl State {
             return;
         };
         let name = self.dm_name(&call.dm_group_id, call.group_name.clone());
-        if name != call.group_name
+        let is_group = self.dm_is_group(&call.dm_group_id);
+        if (name != call.group_name || is_group != call.is_group)
             && let Some(incoming) = &mut self.w4.incoming
         {
             incoming.group_name = name;
+            incoming.is_group = is_group;
             self.view_changed(ViewKey::IncomingCall);
         }
     }
@@ -261,7 +303,7 @@ impl State {
 
     /// The ringing DM's presence is known or changed: nobody but me left means the caller gave up.
     pub(crate) fn w4_ring_presence(&mut self, dm_group_id: &str) {
-        if !self.ringing_for(dm_group_id) {
+        if !self.ringing_for(dm_group_id) || self.w4.answer_dirty {
             return;
         }
         let me = self.me_id().to_owned();
@@ -426,24 +468,28 @@ impl State {
     }
 
     /// Starts the replay buffer once our share in a channel call is published (with its audio
-    /// track, when it has one), and stops it once the share or the call ends.
+    /// track, when it has one, or once `REPLAY_AUDIO_WAIT_MS` has passed without it or the engine
+    /// says its audio failed), and stops it once the share or the call ends.
     fn w4_replay(&mut self) {
         let in_channel = matches!(self.voice.room, Some(VoiceRoom::Channel { .. }))
             && matches!(
                 self.voice.status,
                 VoiceStatus::Connected | VoiceStatus::Reconnecting
             );
-        let sharing = self.voice.local.screen == crate::model::LocalShare::On;
-        let tracks = self
-            .media
-            .as_ref()
-            .and_then(|media| media.local.screen_tracks.clone())
+        let sharing = self.voice.local.screen == LocalShare::On;
+        let media_local = self.media.as_ref().map(|media| &media.local);
+        let audio_failed = media_local
+            .is_some_and(|local| matches!(local.screen_audio, LocalShare::Failed { .. }));
+        let tracks = media_local
+            .and_then(|local| local.screen_tracks.clone())
             .filter(|_| in_channel && sharing);
         let Some(tracks) = tracks else {
             self.w4.replay_done_for = None;
+            self.w4.replay_audio_waived = None;
+            self.w4_audio_wait(None);
             if self.w4.replay_live {
                 self.w4.replay_live = false;
-                self.push_effect(Effect::StopReplay);
+                self.w4_replay_op(ReplayOp::Stop);
             }
             if self.voice.replay != ReplayState::Off {
                 self.voice.replay = ReplayState::Off;
@@ -451,16 +497,64 @@ impl State {
             }
             return;
         };
-        let audio_pending = self.voice.local.screen_audio == crate::model::LocalShare::On
-            && tracks.audio_sid.is_none();
-        if audio_pending || self.w4.replay_done_for.as_deref() == Some(tracks.video_sid.as_str()) {
+        if self.w4.replay_done_for.as_deref() == Some(tracks.video_sid.as_str()) {
+            self.w4_audio_wait(None);
             return;
         }
+        let audio_pending = self.voice.local.screen_audio == LocalShare::On
+            && tracks.audio_sid.is_none()
+            && !audio_failed
+            && self.w4.replay_audio_waived.as_deref() != Some(tracks.video_sid.as_str());
+        if audio_pending {
+            let waiting_for_this = self
+                .w4
+                .replay_audio_wait
+                .as_ref()
+                .is_some_and(|(video, _)| *video == tracks.video_sid);
+            if !waiting_for_this {
+                let until = self.w4_platform.now_ms + REPLAY_AUDIO_WAIT_MS;
+                self.w4_audio_wait(Some((tracks.video_sid, until)));
+            }
+            return;
+        }
+        self.w4_audio_wait(None);
         self.w4.replay_done_for = Some(tracks.video_sid);
         self.w4.replay_live = true;
+        self.w4.replay_ended.clear();
         self.voice.replay = ReplayState::Starting;
         self.view_changed(ViewKey::Voice);
-        self.push_effect(Effect::StartReplay(self.call));
+        self.w4_replay_op(ReplayOp::Start(self.call));
+    }
+
+    fn w4_audio_wait(&mut self, wait: Option<(String, u64)>) {
+        let until = wait.as_ref().map(|(_, until)| *until);
+        self.w4.replay_audio_wait = wait;
+        if self.voice.replay_audio_wait_until_ms != until {
+            self.voice.replay_audio_wait_until_ms = until;
+            self.view_changed(ViewKey::Voice);
+        }
+    }
+
+    /// Replay starts and stops run one at a time, as the web's `useReplayBuffer` does: while one
+    /// runs, the latest asked for waits, and replaces any other waiting.
+    pub(crate) fn w4_replay_op(&mut self, op: ReplayOp) {
+        if self.w4.replay_running {
+            self.w4.replay_pending = Some(op);
+            return;
+        }
+        self.w4.replay_running = true;
+        self.push_effect(match op {
+            ReplayOp::Start(call) => Effect::StartReplay(call),
+            ReplayOp::Stop => Effect::StopReplay,
+        });
+    }
+
+    /// A replay start or stop finished: the one waiting, if any, runs.
+    pub(crate) fn w4_replay_op_done(&mut self) {
+        self.w4.replay_running = false;
+        if let Some(op) = self.w4.replay_pending.take() {
+            self.w4_replay_op(op);
+        }
     }
 
     /// Whether a list this core reads has arrived, as `Core::load_state` says it.

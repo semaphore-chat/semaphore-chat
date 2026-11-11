@@ -2010,7 +2010,14 @@ async fn w4_voice_routes_match_openapi_and_socket_events() {
     )
     .await;
     assert!(server.emit_segments_ready(3));
-    check_events(&heard(&server, &mut me, &["egressSegmentsReady"]).await);
+    check_events(
+        &heard(
+            &server,
+            &mut me,
+            &["voiceChannelUserJoined", "egressSegmentsReady"],
+        )
+        .await,
+    );
     check(
         M::GET,
         "/api/livekit/replay/session-info".into(),

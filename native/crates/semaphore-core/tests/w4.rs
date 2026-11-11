@@ -923,3 +923,426 @@ async fn a_ring_takes_its_groups_name_once_the_dm_list_arrives() {
     rig.settle().await;
     assert_eq!(rig.core.incoming_call().unwrap().group_name, "Team");
 }
+
+// --- Review findings (2026-11-11) ---
+
+/// Runs core's background work on its own task, for a test whose fake holds a call open.
+fn drive(rig: &Rig) -> tokio::task::JoinHandle<()> {
+    let core = rig.core.clone();
+    tokio::spawn(async move { core.run_until_idle().await })
+}
+
+async fn yields() {
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+}
+
+fn connects(rig: &Rig) -> Vec<String> {
+    media_calls(rig)
+        .into_iter()
+        .filter(|call| call.starts_with("connect"))
+        .collect()
+}
+
+fn presence_calls(rig: &Rig) -> Vec<String> {
+    rig.backend
+        .w4
+        .calls()
+        .into_iter()
+        .filter(|call| call.starts_with("presence "))
+        .collect()
+}
+
+#[tokio::test]
+async fn a_dm_join_replaced_while_waiting_for_its_token_never_connects() {
+    let mut rig = signed_in().await;
+    let hold = rig.backend.w4.hold("dm_token");
+    let core = rig.core.clone();
+    let dm = tokio::spawn(async move { core.join_dm_call(DM.into()).await });
+    yields().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    hold.send(()).unwrap();
+    assert!(dm.await.unwrap().is_err());
+    rig.settle().await;
+    assert_eq!(connects(&rig), vec!["connect ws://livekit token-2"]);
+    assert_eq!(rig.backend.w4.count("dm_refresh"), 0, "nobody is rung");
+    let voice = rig.core.voice();
+    assert_eq!(voice.status, VoiceStatus::Connected);
+    assert_eq!(voice.channel_id.as_deref(), Some(VOICE));
+}
+
+#[tokio::test]
+async fn a_channel_join_replaced_after_it_announced_leaves_its_presence() {
+    let mut rig = signed_in().await;
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.backend.join_gate.lock().unwrap() = Some(gate);
+    let core = rig.core.clone();
+    let first = tokio::spawn(async move { core.join_voice("chan-a".into()).await });
+    yields().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    release.send(()).unwrap();
+    assert!(first.await.unwrap().is_err());
+    rig.settle().await;
+    assert_eq!(
+        presence_calls(&rig),
+        vec![
+            format!("presence join {VOICE}"),
+            "presence join chan-a".to_owned(),
+            "presence leave chan-a".to_owned(),
+        ]
+    );
+    assert!(!media_calls(&rig).contains(&"disconnect".to_owned()));
+    assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
+}
+
+#[tokio::test]
+async fn a_channel_join_replaced_while_connecting_announces_nothing() {
+    let mut rig = signed_in().await;
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.media.hold_connect.lock().unwrap() = Some(gate);
+    let core = rig.core.clone();
+    let first = tokio::spawn(async move { core.join_voice("chan-a".into()).await });
+    yields().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    release.send(()).unwrap();
+    assert!(first.await.unwrap().is_err());
+    rig.settle().await;
+    assert_eq!(presence_calls(&rig), vec![format!("presence join {VOICE}")]);
+    // The newer join connected after it: the engine is the newer call's.
+    assert!(!media_calls(&rig).contains(&"disconnect".to_owned()));
+}
+
+#[tokio::test]
+async fn a_replaced_join_that_fails_records_nothing() {
+    let mut rig = signed_in().await;
+    let hold = rig.backend.w4.hold("dm_token");
+    rig.backend
+        .w4
+        .fail_next("dm_token", refusal(403, "FORBIDDEN"));
+    let core = rig.core.clone();
+    let dm = tokio::spawn(async move { core.join_dm_call(DM.into()).await });
+    yields().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    hold.send(()).unwrap();
+    assert!(dm.await.unwrap().is_err());
+    rig.settle().await;
+    let diagnostics = rig.core.voice_diagnostics();
+    assert_eq!(diagnostics.last_failure, None);
+    assert!(
+        !diagnostics
+            .events
+            .iter()
+            .any(|event| event.message.contains("failed"))
+    );
+    assert_eq!(rig.core.voice().status, VoiceStatus::Connected);
+}
+
+#[tokio::test]
+async fn a_presence_answer_older_than_the_ring_does_not_end_it() {
+    let mut rig = signed_in().await;
+    let hold = rig.backend.w4.hold("dm_presence");
+    // Joining reads the DM's presence; that read is still out when the call rings.
+    rig.core.join_dm_call(DM.into()).await.unwrap();
+    let driver = drive(&rig);
+    yields().await;
+    rig.core.leave_voice().await.unwrap();
+    rig.backend.w4.answer("dm_users", json!([presence("bob")]));
+    rig.core.ingest(started(DM, "bob"));
+    assert!(rig.core.incoming_call().is_some());
+    hold.send(()).unwrap();
+    driver.await.unwrap();
+    rig.settle().await;
+    assert!(
+        rig.core.incoming_call().is_some(),
+        "an answer from before the call"
+    );
+    assert_eq!(rig.backend.w4.count("dm_presence"), 2, "read again");
+}
+
+async fn share_published(rig: &mut Rig, audio: bool) {
+    rig.core
+        .start_screen_share(ScreenShareRequest {
+            audio,
+            ..ScreenShareRequest::default()
+        })
+        .await
+        .unwrap();
+    rig.core
+        .ingest_media(1, sharing(tracks("TR_v", None), audio));
+}
+
+fn replay_answers(rig: &Rig) {
+    rig.backend.w4.answer(
+        "replay_start",
+        json!({ "sessionId": "sess", "egressId": "eg", "status": "active" }),
+    );
+    rig.backend.w4.answer(
+        "replay_stop",
+        json!({ "sessionId": "sess", "egressId": "eg", "status": "stopped" }),
+    );
+}
+
+#[tokio::test]
+async fn a_buffer_ending_for_another_session_while_starting_is_not_ours() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    let hold = rig.backend.w4.hold("replay_start");
+    share_published(&mut rig, false).await;
+    let driver = drive(&rig);
+    yields().await;
+    assert_eq!(rig.core.voice().replay, ReplayState::Starting);
+    rig.core.ingest(event(
+        "replayBufferStopped",
+        json!({ "sessionId": "old", "egressId": "eg0", "channelId": VOICE }),
+    ));
+    hold.send(()).unwrap();
+    driver.await.unwrap();
+    rig.settle().await;
+    assert_eq!(
+        rig.core.voice().replay,
+        ReplayState::Recording {
+            session_id: "sess".into()
+        }
+    );
+    assert_eq!(rig.backend.w4.count("replay_stop"), 0);
+}
+
+#[tokio::test]
+async fn a_buffer_failing_as_it_starts_says_why_and_is_not_restarted() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    let hold = rig.backend.w4.hold("replay_start");
+    share_published(&mut rig, false).await;
+    let driver = drive(&rig);
+    yields().await;
+    rig.core.ingest(event(
+        "replayBufferFailed",
+        json!({ "sessionId": "sess", "egressId": "eg", "channelId": VOICE, "error": "no egress" }),
+    ));
+    hold.send(()).unwrap();
+    driver.await.unwrap();
+    rig.settle().await;
+    assert_eq!(
+        rig.core.voice().replay,
+        ReplayState::Failed {
+            message: "no egress".into()
+        }
+    );
+    assert_eq!(rig.backend.w4.count("replay_start"), 1);
+}
+
+#[tokio::test]
+async fn signing_out_while_recording_stops_the_buffer() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    share_published(&mut rig, false).await;
+    rig.settle().await;
+    assert!(matches!(
+        rig.core.voice().replay,
+        ReplayState::Recording { .. }
+    ));
+    rig.core.sign_out().await.unwrap();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_stop"), 1);
+}
+
+#[tokio::test]
+async fn replay_start_and_stop_run_one_at_a_time() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    let hold = rig.backend.w4.hold("replay_start");
+    share_published(&mut rig, false).await;
+    let driver = drive(&rig);
+    yields().await;
+    rig.core.stop_screen_share().await.unwrap();
+    yields().await;
+    assert_eq!(
+        rig.backend.w4.count("replay_stop"),
+        0,
+        "waits for the start"
+    );
+    hold.send(()).unwrap();
+    driver.await.unwrap();
+    rig.settle().await;
+    let calls = rig.backend.w4.calls();
+    let start = calls
+        .iter()
+        .position(|call| call.starts_with("replay_start"));
+    let stop = calls.iter().position(|call| call == "replay_stop");
+    assert!(start.unwrap() < stop.unwrap(), "{calls:?}");
+    assert_eq!(rig.core.voice().replay, ReplayState::Off);
+}
+
+#[tokio::test]
+async fn a_share_whose_audio_never_comes_records_its_video_after_two_seconds() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    share_published(&mut rig, true).await;
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 0);
+    let now = rig.clock.0.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        rig.core.voice().replay_audio_wait_until_ms,
+        Some(now + semaphore_core::model::REPLAY_AUDIO_WAIT_MS)
+    );
+    rig.clock
+        .advance(semaphore_core::model::REPLAY_AUDIO_WAIT_MS - 1);
+    rig.core.expire_replay_audio_wait();
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 0, "too early");
+    rig.clock.advance(1);
+    rig.core.expire_replay_audio_wait();
+    rig.settle().await;
+    assert!(
+        rig.backend
+            .w4
+            .calls()
+            .contains(&format!("replay_start {VOICE} TR_v  {ME}"))
+    );
+    assert_eq!(rig.core.voice().replay_audio_wait_until_ms, None);
+}
+
+#[tokio::test]
+async fn an_engine_saying_the_share_audio_failed_starts_the_video_alone() {
+    let mut rig = in_channel_call(&[ME]).await;
+    replay_answers(&rig);
+    share_published(&mut rig, true).await;
+    let mut report = sharing(tracks("TR_v", None), true);
+    report.local.screen_audio = LocalShare::Failed {
+        message: "no monitor".into(),
+    };
+    rig.core.ingest_media(1, report);
+    rig.settle().await;
+    assert_eq!(rig.backend.w4.count("replay_start"), 1);
+}
+
+#[tokio::test]
+async fn sound_bytes_read_for_an_ended_session_are_not_kept() {
+    let mut rig = in_channel_call(&[ME]).await;
+    rig.backend
+        .w4
+        .answer("sounds", json!([sound_json("s1", "f1")]));
+    rig.backend
+        .files
+        .lock()
+        .unwrap()
+        .insert("f1".into(), vec![1, 2, 3]);
+    rig.core.soundboard(COMMUNITY.into());
+    rig.settle().await;
+    let hold = rig.backend.w4.hold("file");
+    let core = rig.core.clone();
+    let play = tokio::spawn(async move { core.play_sound("s1".into()).await });
+    yields().await;
+    rig.core.sign_out().await.unwrap();
+    hold.send(()).unwrap();
+    assert!(play.await.unwrap().is_err());
+    assert!(
+        !media_calls(&rig)
+            .iter()
+            .any(|call| call.starts_with("soundboard s1"))
+    );
+    // The next session reads the file itself.
+    rig.core
+        .sign_in("http://server".into(), "me".into(), "pw".into())
+        .await
+        .unwrap();
+    rig.settle().await;
+    rig.core.channels(COMMUNITY.into());
+    rig.settle().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.core.soundboard(COMMUNITY.into());
+    rig.settle().await;
+    rig.core.play_sound("s1".into()).await.unwrap();
+    assert_eq!(rig.backend.w4.count("file"), 2);
+}
+
+#[tokio::test]
+async fn diagnostics_read_for_an_ended_session_are_dropped() {
+    let mut rig = in_channel_call(&[ME]).await;
+    *rig.media.diagnostics.lock().unwrap() = Some(semaphore_core::model::MediaDiagnostics {
+        rtt_ms: Some(40),
+        ..Default::default()
+    });
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *rig.media.hold_diagnostics.lock().unwrap() = Some(gate);
+    let core = rig.core.clone();
+    let refresh = tokio::spawn(async move { core.refresh_voice_diagnostics().await });
+    yields().await;
+    rig.core.sign_out().await.unwrap();
+    release.send(()).unwrap();
+    refresh.await.unwrap();
+    rig.settle().await;
+    assert_eq!(rig.core.voice_diagnostics().media, None);
+}
+
+#[tokio::test]
+async fn a_participants_volume_shows_on_them_until_sign_out() {
+    let mut rig = in_channel_call(&[ME, "bob"]).await;
+    rig.core.set_participant_volume("bob".into(), 150);
+    let volume = |rig: &Rig, id: &str| {
+        rig.core
+            .voice()
+            .participants
+            .iter()
+            .find(|participant| participant.identity == id)
+            .map(|participant| participant.volume_percent)
+    };
+    assert_eq!(volume(&rig, "bob"), Some(150));
+    assert_eq!(volume(&rig, ME), Some(100));
+    rig.core.sign_out().await.unwrap();
+    rig.core
+        .sign_in("http://server".into(), "me".into(), "pw".into())
+        .await
+        .unwrap();
+    rig.settle().await;
+    rig.core.join_voice(VOICE.into()).await.unwrap();
+    rig.settle().await;
+    assert_eq!(volume(&rig, "bob"), Some(100));
+}
+
+#[tokio::test]
+async fn a_group_calls_ring_says_it_is_a_group() {
+    let mut rig = signed_in().await;
+    rig.backend.w2.answer(
+        "dms",
+        json!([{
+            "id": DM, "name": null, "isGroup": true, "createdAt": "2026-09-20T10:00:00.000Z",
+            "members": [], "lastMessage": null,
+        }]),
+    );
+    rig.backend.w4.answer("dm_users", json!([presence("bob")]));
+    rig.core.ingest(started(DM, "bob"));
+    rig.settle().await;
+    assert!(rig.core.incoming_call().unwrap().is_group);
+}
+
+#[tokio::test]
+async fn the_diagnostics_report_is_plain_text_without_tokens() {
+    let mut rig = in_channel_call(&[ME]).await;
+    *rig.media.diagnostics.lock().unwrap() = Some(semaphore_core::model::MediaDiagnostics {
+        candidate_types: vec!["relay".into()],
+        rtt_ms: Some(40),
+        ..Default::default()
+    });
+    rig.core.refresh_voice_diagnostics().await;
+    rig.settle().await;
+    let report = rig.core.voice_diagnostics_report();
+    assert!(report.contains("Status: Connected"), "{report}");
+    assert!(report.contains("Server: livekit"), "{report}");
+    assert!(report.contains("RTT: 40 ms"), "{report}");
+    assert!(report.contains("Candidates: relay"), "{report}");
+    assert!(
+        report.contains(&format!("joining channel {VOICE}")),
+        "{report}"
+    );
+    assert!(!report.contains("token"), "{report}");
+}
+
+#[test]
+fn the_unknown_join_failure_class_round_trips_as_the_backend_spells_it() {
+    // The generator leaves `unknown` to the tolerant catch-all, which sends it as it came.
+    use semaphore_wire::enums::VoiceJoinErrorClass;
+    let unknown: VoiceJoinErrorClass = serde_json::from_value(json!("unknown")).unwrap();
+    assert_eq!(serde_json::to_value(&unknown).unwrap(), json!("unknown"));
+}

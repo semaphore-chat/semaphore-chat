@@ -82,6 +82,9 @@ pub struct ParticipantView {
     /// W4: a moderator's server mute (from voice presence), which outlives the call. A moderator's
     /// menu offers to lift it.
     pub server_muted: bool,
+    /// W4: how loud they play here, 0 to 200 percent (100 is as sent), as set with
+    /// `Core::set_participant_volume` this session.
+    pub volume_percent: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -106,6 +109,9 @@ pub struct VoiceView {
     pub server_muted: bool,
     /// W4: the replay buffer of my screen share (channel calls only).
     pub replay: ReplayState,
+    /// W4: the share's video is published and its audio track isn't yet: the buffer waits for it
+    /// until then, when the host calls `Core::expire_replay_audio_wait` and it starts video-only.
+    pub replay_audio_wait_until_ms: Option<u64>,
 }
 
 /// One thing we may send, as its button shows it.
